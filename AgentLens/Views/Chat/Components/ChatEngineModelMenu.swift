@@ -31,6 +31,8 @@ struct ChatEngineModelMenu: View {
             return liveCLIRows(for: .forge, defaultTitle: nil)
         case .antigravity:
             return liveCLIRows(for: .antigravity, defaultTitle: nil)
+        case .cursorAgent:
+            return liveCLIRows(for: .cursorAgent, defaultTitle: "Default (Cursor Agent profile)")
         }
     }
 
@@ -114,7 +116,7 @@ struct ChatEngineModelMenu: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity:
+        case .codex, .claude, .droid, .antigravity, .cursorAgent:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,
@@ -182,6 +184,7 @@ struct ChatEngineModelMenu: View {
         case .droid: return .droid
         case .forge: return .forge
         case .antigravity: return .antigravity
+        case .cursorAgent: return .cursorAgent
         case .hermes, .openclaw, .piAgent: return nil
         }
     }

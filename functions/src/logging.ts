@@ -1,9 +1,66 @@
 /**
- * Structured Cloud Functions logging with trace correlation.
+ * Structured Cloud Functions logging with trace correlation and PII scrubbing.
+ *
+ * All log fields are scrubbed before emission:
+ *   - Email addresses → "[email]"
+ *   - IP addresses → "[ip]"
+ *   - Firebase UIDs are truncated to first 8 characters (user_id_hash)
+ *   - API keys and tokens are masked to "[REDACTED]"
+ *   - String values > 1024 chars are truncated to prevent log injection
  */
 
 import { randomUUID } from "node:crypto";
 import type { CallableRequest } from "firebase-functions/v2/https";
+
+// Patterns for PII and sensitive data scrubbing
+const SCRUB_PATTERNS: Array<[RegExp, string]> = [
+  // Email addresses
+  [/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, "[email]"],
+  // IPv4 addresses
+  [/\b(\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
+  // API keys / bearer tokens (long alphanumeric strings with known prefixes)
+  // Note: Stripe sk-, Google AIza, Google OAuth ya29., JWT eyJ headers
+  [/\b(sk-|AIza|ya29\.|eyJ)[A-Za-z0-9\-_.+/]{20,}/g, "[REDACTED]"],
+  // Credit card-like numbers (16 digits, optional separators)
+  [/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]"],
+  // NOTE: Firebase Auth UIDs (28-char alphanumeric) are handled by key-based
+  // logic in scrubFields, NOT by regex, to avoid false-positives on
+  // correlation IDs, git hashes, and other 28-char tokens.
+];
+
+const MAX_FIELD_LENGTH = 1024;
+
+/** Scrub a single string value for PII and sensitive data. */
+function scrubString(value: string): string {
+  let result = value;
+  if (result.length > MAX_FIELD_LENGTH) {
+    result = result.slice(0, MAX_FIELD_LENGTH) + "...[truncated]";
+  }
+  for (const [pattern, replacement] of SCRUB_PATTERNS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+/** Recursively scrub all string values in a log payload. */
+function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
+  const scrubbed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === "string") {
+      // Never log raw UIDs — always hash/truncate
+      if (key === "uid" || key === "userId" || key === "user_id") {
+        scrubbed[key === "uid" ? "user_id_hash" : key] = value.slice(0, 8);
+      } else {
+        scrubbed[key] = scrubString(value);
+      }
+    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      scrubbed[key] = scrubFields(value as Record<string, unknown>);
+    } else {
+      scrubbed[key] = value;
+    }
+  }
+  return scrubbed;
+}
 
 export interface LogFields {
   event: string;
@@ -14,29 +71,29 @@ export interface LogFields {
 }
 
 export function logInfo(fields: LogFields): void {
-  const payload = {
+  const payload = scrubFields({
     severity: "INFO",
     trace_id: fields.trace_id ?? randomUUID(),
     ...fields,
-  };
+  });
   console.log(JSON.stringify(payload));
 }
 
 export function logError(fields: LogFields & { error?: string }): void {
-  const payload = {
+  const payload = scrubFields({
     severity: "ERROR",
     trace_id: fields.trace_id ?? randomUUID(),
     ...fields,
-  };
+  });
   console.error(JSON.stringify(payload));
 }
 
 export function logWarn(fields: LogFields): void {
-  const payload = {
+  const payload = scrubFields({
     severity: "WARNING",
     trace_id: fields.trace_id ?? randomUUID(),
     ...fields,
-  };
+  });
   console.warn(JSON.stringify(payload));
 }
 
@@ -103,8 +160,7 @@ export function onCallWithLogging<T, R>(
   name: string,
   handler: (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R>,
 ): (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R> {
-  return async (request) =>
-    withCallableLogging(name, request, request.auth?.uid, async () => handler(request));
+  return async (request) => withCallableLogging(name, request, request.auth?.uid, async () => handler(request));
 }
 
 /**

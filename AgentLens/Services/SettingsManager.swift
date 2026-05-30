@@ -207,7 +207,8 @@ final class SettingsManager {
             "computer_use_phone_control_enabled": false as NSObject,
             "computer_use_trust_modes_enabled": false as NSObject,
             "computer_use_polish_enabled": false as NSObject,
-            "computer_use_kill_switch": false as NSObject
+            "computer_use_kill_switch": false as NSObject,
+            "media_kill_switch": false as NSObject
         ])
 
         _ = await withCheckedContinuation { continuation in
@@ -228,6 +229,8 @@ final class SettingsManager {
         if killSwitchEnabled {
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
         }
+
+        mediaKillSwitch = remoteConfig.configValue(forKey: "media_kill_switch").boolValue
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -652,6 +655,11 @@ final class SettingsManager {
     var computerUseKillSwitch: Bool {
         get { chatBackend.computerUseKillSwitch }
         set { chatBackend.computerUseKillSwitch = newValue }
+    }
+
+    var mediaKillSwitch: Bool {
+        get { chatBackend.mediaKillSwitch }
+        set { chatBackend.mediaKillSwitch = newValue }
     }
 
     var launchHermesWithOpenBurnBar: Bool {

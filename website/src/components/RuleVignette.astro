@@ -128,7 +128,9 @@ const fallbackEndpoint = hasFallback ? fallback : null;
             />
             <span class="vignette__nodename mono">{fallbackEndpoint.name}</span>
             <span class="vignette__nodestate mono">{fallbackEndpoint.state ?? "healthy"}</span>
-            {fallbackEndpoint.auth && <span class="vignette__nodeauth mono">{fallbackEndpoint.auth}</span>}
+            {fallbackEndpoint.auth && (
+              <span class="vignette__nodeauth mono">{fallbackEndpoint.auth}</span>
+            )}
             <span class="vignette__okstamp mono">200 · ok</span>
           </li>
         ) : (

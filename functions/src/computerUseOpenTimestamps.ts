@@ -21,7 +21,8 @@ import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineString } from "firebase-functions/params";
-import { enforceAuthAndAppCheck } from "./auth.js";
+import { getConfig } from "./config.js";
+import { enforceHighRiskComputerUseCallable } from "./appCheckAttestation.js";
 import { logCallableStart, traceIdFromCallableRequest, wrapCallableHandler } from "./logging.js";
 import { readOpenBurnBarFunctionsConfig } from "./firebaseRuntime.js";
 import { isRecord, jsonObject, stringField } from "./guards.js";
@@ -38,18 +39,12 @@ const DEFAULT_MAX_CHAIN_BYTES = 10 * 1024 * 1024;
 const OPENBURNBAR_OTS_VERIFY_URL_PARAM = defineString("OPENBURNBAR_OTS_VERIFY_URL", {
   default: "",
 });
-const OPENBURNBAR_OTS_VERIFY_AUDIENCE_PARAM = defineString(
-  "OPENBURNBAR_OTS_VERIFY_AUDIENCE",
-  { default: "" },
-);
+const OPENBURNBAR_OTS_VERIFY_AUDIENCE_PARAM = defineString("OPENBURNBAR_OTS_VERIFY_AUDIENCE", { default: "" });
 
 export type ComputerUseOpenTimestampsVerifier = (
   proofBytes: Buffer,
   chainBytes?: Buffer,
-) => Promise<Pick<
-  ComputerUseOpenTimestampsValidationResponse,
-  "status" | "verified" | "otsVerifierOutput"
->>;
+) => Promise<Pick<ComputerUseOpenTimestampsValidationResponse, "status" | "verified" | "otsVerifierOutput">>;
 
 export type ComputerUseOpenTimestampsServerHeadLookup = (
   uid: string,
@@ -82,20 +77,13 @@ function optionalString(value: unknown, field: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function decodeBase64(
-  value: string,
-  field: string,
-  maxBytes: number,
-): Buffer {
+function decodeBase64(value: string, field: string, maxBytes: number): Buffer {
   const decoded = Buffer.from(value, "base64");
   if (decoded.length === 0) {
     throw new HttpsError("invalid-argument", `${field} decoded to empty bytes.`);
   }
   if (decoded.length > maxBytes) {
-    throw new HttpsError(
-      "invalid-argument",
-      `${field} is too large (${decoded.length} bytes > ${maxBytes}).`,
-    );
+    throw new HttpsError("invalid-argument", `${field} is too large (${decoded.length} bytes > ${maxBytes}).`);
   }
   return decoded;
 }
@@ -115,10 +103,7 @@ export function parseComputerUseOpenTimestampsValidationRequest(
 
 function otsBinaryPath(): string | undefined {
   const cfg = readOpenBurnBarFunctionsConfig();
-  const configured = (
-    process.env.OPENBURNBAR_OTS_VERIFY_BIN ??
-    stringField(cfg, "ots_verify_bin")
-  )?.trim();
+  const configured = (process.env.OPENBURNBAR_OTS_VERIFY_BIN ?? stringField(cfg, "ots_verify_bin"))?.trim();
   if (configured) return configured;
   return "ots";
 }
@@ -145,9 +130,7 @@ function otsVerifierServiceAudience(serviceURL: string): string | undefined {
 }
 
 async function fetchGoogleIdentityToken(audience: string): Promise<string> {
-  const url = new URL(
-    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
-  );
+  const url = new URL("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity");
   url.searchParams.set("audience", audience);
   url.searchParams.set("format", "full");
   const response = await fetch(url, {
@@ -186,24 +169,19 @@ async function runOtsVerifyViaService(
       return {
         status: "ots_verifier_unavailable",
         verified: false,
-        otsVerifierOutput: error instanceof Error
-          ? error.message
-          : "metadata identity token request failed",
+        otsVerifierOutput: error instanceof Error ? error.message : "metadata identity token request failed",
       };
     }
   }
 
-  const response = await fetch(
-    url,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        proofBase64: proofBytes.toString("base64"),
-        chainFileBase64: chainBytes?.toString("base64"),
-      }),
-    },
-  );
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      proofBase64: proofBytes.toString("base64"),
+      chainFileBase64: chainBytes?.toString("base64"),
+    }),
+  });
   const text = await response.text();
   let parsed: Record<string, unknown> = {};
   try {
@@ -213,9 +191,7 @@ async function runOtsVerifyViaService(
   }
   if (!response.ok) {
     return {
-      status: response.status === 503
-        ? "ots_verifier_unavailable"
-        : "ots_verify_failed",
+      status: response.status === 503 ? "ots_verifier_unavailable" : "ots_verify_failed",
       verified: false,
       otsVerifierOutput: String(parsed.output ?? parsed.error ?? text),
     };
@@ -271,10 +247,7 @@ export async function runOtsVerify(
     const stdout = typeof nodeError.stdout === "string" ? nodeError.stdout : undefined;
     const stderr = typeof nodeError.stderr === "string" ? nodeError.stderr : undefined;
     const message = error instanceof Error ? error.message : String(error);
-    const output = [stdout, stderr, message]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+    const output = [stdout, stderr, message].filter(Boolean).join("\n").trim();
     return {
       status: "ots_verify_failed",
       verified: false,
@@ -290,9 +263,7 @@ export async function serverHeadStatus(
   sessionId: string,
   claimedHead: string,
 ): Promise<Awaited<ReturnType<ComputerUseOpenTimestampsServerHeadLookup>>> {
-  const doc = await getFirestore()
-    .doc(`users/${uid}/computer_use_sessions/${sessionId}`)
-    .get();
+  const doc = await getFirestore().doc(`users/${uid}/computer_use_sessions/${sessionId}`).get();
   if (!doc.exists) {
     return { status: "session_not_found" };
   }
@@ -317,28 +288,17 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
   request: ComputerUseOpenTimestampsValidationRequest,
   dependencies: ComputerUseOpenTimestampsValidationDependencies = {},
 ): Promise<ComputerUseOpenTimestampsValidationResponse> {
-  const proofBytes = decodeBase64(
-    request.proofBase64,
-    "proofBase64",
-    DEFAULT_MAX_PROOF_BYTES,
-  );
-  const chainBytes = request.chainFileBase64 == null
-    ? undefined
-    : decodeBase64(
-        request.chainFileBase64,
-        "chainFileBase64",
-        DEFAULT_MAX_CHAIN_BYTES,
-      );
+  const proofBytes = decodeBase64(request.proofBase64, "proofBase64", DEFAULT_MAX_PROOF_BYTES);
+  const chainBytes =
+    request.chainFileBase64 == null
+      ? undefined
+      : decodeBase64(request.chainFileBase64, "chainFileBase64", DEFAULT_MAX_CHAIN_BYTES);
 
   const lookupServerHead = dependencies.serverHeadStatus ?? serverHeadStatus;
   const verifyProof = dependencies.verifyProof ?? runOtsVerify;
   const checkedAt = (dependencies.now ?? (() => new Date()))().toISOString();
 
-  const head = await lookupServerHead(
-    request.uid,
-    request.sessionId,
-    request.auditHeadHashHex,
-  );
+  const head = await lookupServerHead(request.uid, request.sessionId, request.auditHeadHashHex);
   if (head.status !== "server_head_matched") {
     return {
       status: head.status,
@@ -365,15 +325,17 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
 export const validateOpenTimestampsProof = onCall(
   {
     region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
     timeoutSeconds: 60,
     memory: "512MiB",
   },
-  wrapCallableHandler("validateOpenTimestampsProof", async (
-    request: CallableRequest,
-  ): Promise<ComputerUseOpenTimestampsValidationResponse> => {
-    const parsed = parseComputerUseOpenTimestampsValidationRequest(request.data);
-    logCallableStart("validateOpenTimestampsProof", traceIdFromCallableRequest(request), parsed.uid);
-    enforceAuthAndAppCheck(request, parsed.uid);
-    return validateComputerUseOpenTimestampsProofForRequest(parsed);
-  },
-));
+  wrapCallableHandler(
+    "validateOpenTimestampsProof",
+    async (request: CallableRequest): Promise<ComputerUseOpenTimestampsValidationResponse> => {
+      const parsed = parseComputerUseOpenTimestampsValidationRequest(request.data);
+      logCallableStart("validateOpenTimestampsProof", traceIdFromCallableRequest(request), parsed.uid);
+      enforceHighRiskComputerUseCallable(request, parsed.uid);
+      return validateComputerUseOpenTimestampsProofForRequest(parsed);
+    },
+  ),
+);

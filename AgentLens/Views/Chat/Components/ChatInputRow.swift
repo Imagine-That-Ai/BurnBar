@@ -6,6 +6,8 @@ import OpenBurnBarCore
 struct ChatInputRow: View {
     @Bindable var controller: ChatSessionController
     var chatBackend: ChatBackendID
+    var cliAssistantAllowed: Bool = true
+    var onRequestCLIAssistantConsent: (() -> Void)?
     var onSubmit: () -> Void
 
     @State private var isDropTargeted = false
@@ -20,6 +22,7 @@ struct ChatInputRow: View {
         case .droid: return "Ask Droid\u{2026}"
         case .forge: return "Ask Forge\u{2026}"
         case .antigravity: return "Ask Antigravity\u{2026}"
+        case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         }
     }
 
@@ -33,6 +36,10 @@ struct ChatInputRow: View {
         controller.isStreaming
             || (controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && controller.pendingAttachments.isEmpty)
+    }
+
+    private var shouldRequestCLIAssistantPermission: Bool {
+        chatBackend.requiresCLIAssistantConsent && !cliAssistantAllowed
     }
 
     var body: some View {
@@ -62,6 +69,9 @@ struct ChatInputRow: View {
                 }
             }
             .animation(DesignSystem.Animation.standard, value: controller.pendingTextExpansionPreview != nil)
+            if shouldRequestCLIAssistantPermission {
+                cliPermissionPrompt
+            }
             HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
                 attachmentMenu
                 TextField(inputPlaceholder, text: $controller.inputText, axis: .vertical)
@@ -69,7 +79,7 @@ struct ChatInputRow: View {
                     .font(DesignSystem.Typography.body)
                     .lineLimit(1...5)
                     .submitLabel(.send)
-                    .onSubmit { onSubmit() }
+                    .onSubmit { submitOrRequestPermission() }
                     .padding(DesignSystem.Spacing.sm)
                     .background {
                         ZStack {
@@ -94,7 +104,7 @@ struct ChatInputRow: View {
                             .foregroundStyle(DesignSystem.Colors.error)
                     }
                     Button {
-                        onSubmit()
+                        submitOrRequestPermission()
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 26))
@@ -133,6 +143,47 @@ struct ChatInputRow: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: isDropTargeted)
+    }
+
+    private var cliPermissionPrompt: some View {
+        HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.whimsy)
+                .frame(width: 22, height: 22)
+
+            Text("Mac CLI assistants are off for \(chatBackend.displayName). Enable them to send this message locally.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: DesignSystem.Spacing.sm)
+
+            Button {
+                onRequestCLIAssistantConsent?()
+            } label: {
+                Label("Enable", systemImage: "lock.open")
+            }
+            .font(DesignSystem.Typography.tiny)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(DesignSystem.Colors.whimsy.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.whimsy.opacity(0.18), lineWidth: 0.75)
+        )
+    }
+
+    private func submitOrRequestPermission() {
+        if shouldRequestCLIAssistantPermission {
+            onRequestCLIAssistantConsent?()
+            return
+        }
+        onSubmit()
     }
 
     // MARK: - Attachment menu

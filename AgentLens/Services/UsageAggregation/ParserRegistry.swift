@@ -12,6 +12,7 @@ enum ParserRegistry {
         parsers[.copilot] = CopilotParser()
         parsers[.aider] = AiderParser()
         parsers[.cursor] = CursorParser()
+        parsers[.cursorAgent] = CursorAgentParser()
         parsers[.codex] = CodexParser()
         parsers[.openCode] = OpenCodeParser()
         parsers[.piAgent] = PiAgentParser()

@@ -33,18 +33,18 @@ export const SURFACES: Surface[] = [
   },
   {
     id: "ios",
-    name: "iOS & iPadOS companion",
+    name: "iPhone & iPad companion",
     platform: "iOS 17+",
     status: "review",
     statusLabel: "In App Store review",
     description:
-      "Quota Watch, Pulse, Streams, Hermes, Chart Studio. The Mac runs the data; the phone/tablet renders it natively.",
+      "Your whole burn picture, in your pocket. The Mac does the work; the phone and tablet show it — and reach back to it.",
     bullets: [
-      "Native Swift Charts via Chart Studio — 10 chart kinds plus sandboxed Mermaid",
-      "Trend Atlas insights rotate across 9 rules",
-      "Lock-screen Live Activity, Dynamic Island, Siri shortcut",
-      "Adaptive split-view + sidebar nav on iPad, keyboard shortcuts ⌘1–4, ⌘R, ⌘H",
-      "Hermes Realtime Relay reaches the Mac's local assistant remotely (paid feature)"
+      "See spend the moment it happens — charts drawn from your own numbers",
+      "Live on the lock screen and Dynamic Island, plus a “What's my burn today?” Siri shortcut",
+      "Floo — see, steer, and unlock your Mac right from your phone",
+      "Watch an agent work, or approve its moves, on the go",
+      "Ask your Mac's assistant from anywhere — privately (paid)"
     ],
     cta: { href: "/download#ios", label: "iOS launch status" }
   },
@@ -125,14 +125,14 @@ export const SURFACES: Surface[] = [
     id: "android",
     name: "Android companion",
     platform: "Android 8+",
-    status: "planned",
-    statusLabel: "In development",
+    status: "beta",
+    statusLabel: "Feature-complete · Play Store pending",
     description:
-      "Read-only Firestore consumer — renders burn data other clients push to Firebase. Source under android/.",
+      "Everything the iPhone app does, now on Android — your burn, your sessions, the assistant, and Floo. Built and tested; not yet on the Play Store.",
     bullets: [
-      "Material 3 + Jetpack Compose, edge-to-edge",
-      "Full screen set: burn · streams · pulse · providers · hermes · chart studio · smart display · store · you",
-      "No Play Store distribution path yet"
+      "Full parity with the iPhone & iPad app, screen for screen",
+      "Floo media and the assistant, same as on iOS",
+      "Not yet distributed through the Play Store — that's the last step"
     ]
   },
   {

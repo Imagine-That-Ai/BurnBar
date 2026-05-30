@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "group:allNonMajor"
+  ],
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": "0 days"
+  },
+  "packageRules": [
+    {
+      "description": "Patch updates: stable after 5 days, group together",
+      "matchUpdateTypes": ["patch"],
+      "minimumReleaseAge": "5 days",
+      "automerge": false,
+      "groupName": "patch updates"
+    },
+    {
+      "description": "Minor updates: stable after 7 days",
+      "matchUpdateTypes": ["minor"],
+      "minimumReleaseAge": "7 days",
+      "groupName": "minor updates"
+    },
+    {
+      "description": "Major updates: never auto-merge, long stability window",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "14 days",
+      "automerge": false
+    },
+    {
+      "description": "GitHub Actions — pin to SHA for supply chain safety",
+      "matchManagers": ["github-actions"],
+      "minimumReleaseAge": "5 days",
+      "pinDigests": true
+    },
+    {
+      "description": "Firebase/Google packages — weekly batch",
+      "matchPackagePrefixes": ["firebase", "@firebase", "firebase-admin", "firebase-functions", "googleapis"],
+      "schedule": ["on monday"]
+    },
+    {
+      "description": "Swift packages",
+      "matchManagers": ["swift"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Android/Gradle dependencies",
+      "matchManagers": ["gradle", "gradle-wrapper"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Cargo/Rust — iroh relay crate",
+      "matchManagers": ["cargo"],
+      "minimumReleaseAge": "7 days"
+    }
+  ],
+  "ignoreDeps": [],
+  "labels": ["dependencies"],
+  "assignees": ["Ajnunezg"],
+  "reviewers": ["Ajnunezg"],
+  "commitMessagePrefix": "deps:",
+  "prBodyTemplate": "This PR updates `{{{depName}}}` from `{{{currentVersion}}}` to `{{{newVersion}}}`.\n\n**Minimum release age:** `{{{minimumReleaseAge}}}` — this version has been stable for the required period.\n\n{{{releaseNotes}}}",
+  "enabled": true
+}

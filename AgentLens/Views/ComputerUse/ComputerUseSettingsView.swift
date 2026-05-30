@@ -931,7 +931,8 @@ struct ComputerUseSettingsView: View {
                 let response = try await OpenBurnBarDaemonManager.shared.exportComputerUseAudit(
                     ComputerUseAuditExportRequest(
                         sessionId: sessionId,
-                        includeScreenshots: auditIncludeScreenshots
+                        includeScreenshots: auditIncludeScreenshots,
+                        anchorOpenTimestamps: auditNotarizationOptIn
                     )
                 )
                 let archiveURL = URL(fileURLWithPath: response.archiveURL)

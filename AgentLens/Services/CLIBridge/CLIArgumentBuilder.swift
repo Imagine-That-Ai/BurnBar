@@ -163,6 +163,27 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    static func cursorAgentArguments(
+        prompt: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        var arguments: [String] = []
+        if let workspaceDirectory {
+            arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
+        }
+        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant) {
+            arguments.append("--dangerously-skip-permissions")
+        } else {
+            arguments.append("--sandbox")
+        }
+        arguments.append(contentsOf: [
+            "--print",
+            sanitizedPrompt(prompt)
+        ])
+        return arguments
+    }
+
     private static func claudeAllowedTools(for grant: AgentCapabilityGrant) -> [String] {
         var tools: [String] = []
         if grant.capabilities.contains(.workspaceRead) {
@@ -283,6 +304,18 @@ extension CLIBridge {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> [String] {
         CLIArgumentBuilder.antigravityArguments(
+            prompt: prompt,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
+        )
+    }
+
+    nonisolated static func cursorAgentArguments(
+        prompt: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.cursorAgentArguments(
             prompt: prompt,
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant

@@ -25,13 +25,20 @@ struct ProviderQuotaBucketRow: View {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     HStack(spacing: DesignSystem.Spacing.sm) {
+                        if bucket.isCreditBalance {
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(theme.gradient)
+                        }
                         Text(bucket.label)
                             .font(DesignSystem.Typography.headline)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                         QuotaMicroBadge(text: signalStatus.label, tint: signalStatus.tint)
 
-                        if let windowBadgeText {
+                        if bucket.isCreditBalance {
+                            QuotaMicroBadge(text: "Balance", tint: DesignSystem.Colors.gold)
+                        } else if let windowBadgeText {
                             QuotaMicroBadge(text: windowBadgeText, tint: theme.primaryColor)
                         }
                     }
@@ -47,16 +54,13 @@ struct ProviderQuotaBucketRow: View {
                 QuotaFigureTile(bucket: bucket, provider: provider)
             }
 
-            QuotaSignalView(bucket: bucket, provider: provider)
-                .frame(height: 104)
+            if !bucket.isCreditBalance {
+                QuotaSignalView(bucket: bucket, provider: provider)
+                    .frame(height: 104)
+            }
 
             HStack(spacing: DesignSystem.Spacing.sm) {
                 if let pair = bucket.resetsAtDisplay {
-                    // Combined "in 2h 14m · May 8, 3:35 AM" — the relative
-                    // half answers "when do I get my budget back" at a
-                    // glance, the absolute half pins it for far-future
-                    // weekly windows where the relative read alone
-                    // ("in 6 days") loses precision.
                     QuotaMicroBadge(
                         text: "Resets \(pair.relative) · \(pair.absolute)",
                         tint: DesignSystem.Colors.textMuted
@@ -81,11 +85,9 @@ struct ProviderQuotaBucketRow: View {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [
-                                theme.primaryColor.opacity(0.10),
-                                theme.accentColor.opacity(0.05),
-                                Color.clear
-                            ],
+                            colors: bucket.isCreditBalance
+                                ? [DesignSystem.Colors.gold.opacity(0.10), DesignSystem.Colors.gold.opacity(0.04), Color.clear]
+                                : [theme.primaryColor.opacity(0.10), theme.accentColor.opacity(0.05), Color.clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -94,7 +96,7 @@ struct ProviderQuotaBucketRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .stroke(theme.primaryColor.opacity(0.12), lineWidth: 1)
+                .stroke(bucket.isCreditBalance ? DesignSystem.Colors.gold.opacity(0.16) : theme.primaryColor.opacity(0.12), lineWidth: 1)
         )
     }
 }
@@ -105,6 +107,9 @@ struct QuotaFigureTile: View {
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
     private var descriptor: String {
+        if bucket.isCreditBalance {
+            return "credit balance"
+        }
         switch bucket.unit {
         case .percent:
             return "window left"

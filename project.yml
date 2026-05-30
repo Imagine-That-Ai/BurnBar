@@ -124,8 +124,34 @@ targets:
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+      - name: Bundle Remote Unlock Input Helpers
+        script: |
+          set -euo pipefail
+          HELPERS_DIR="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers"
+          mkdir -p "${HELPERS_DIR}"
+          for NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge; do
+            SOURCE="${BUILT_PRODUCTS_DIR}/${NAME}"
+            if [[ ! -x "${SOURCE}" ]]; then
+              echo "warning: ${NAME} helper not built; Remote Unlock setup may be unavailable."
+              continue
+            fi
+            cp "${SOURCE}" "${HELPERS_DIR}/${NAME}"
+            chmod 755 "${HELPERS_DIR}/${NAME}"
+          done
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputExecution
+          - $(BUILT_PRODUCTS_DIR)/OpenBurnBarVirtualHIDBridge
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge
     dependencies:
       - target: OpenBurnBarDaemonExecutable
+        link: false
+        embed: false
+      - target: OpenBurnBarPrivilegedInputExecution
+        link: false
+        embed: false
+      - target: OpenBurnBarVirtualHIDBridge
         link: false
         embed: false
       - package: OpenBurnBarCore
@@ -219,6 +245,59 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+
+  OpenBurnBarPrivilegedInputExecution:
+    type: tool
+    platform: macOS
+    sources:
+      - path: OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputExecution
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarPrivilegedInputExecution
+        PRODUCT_MODULE_NAME: OpenBurnBarPrivilegedInputExecution
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.privileged-input-execution
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: true
+    dependencies:
+      - target: OpenBurnBarRemoteAccessAgentCore
+
+  OpenBurnBarVirtualHIDBridge:
+    type: tool
+    platform: macOS
+    sources:
+      - path: OpenBurnBarDaemon/Sources/OpenBurnBarVirtualHIDBridge
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarVirtualHIDBridge
+        PRODUCT_MODULE_NAME: OpenBurnBarVirtualHIDBridge
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.virtual-hid-bridge
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: true
+    dependencies:
+      - target: OpenBurnBarRemoteAccessAgentCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
+      - sdk: SystemConfiguration.framework
+
+  OpenBurnBarRemoteAccessAgentCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarRemoteAccessAgentCore
+        SKIP_INSTALL: true
+    dependencies:
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
+      - sdk: CoreGraphics.framework
+      - sdk: IOKit.framework
+      - sdk: Security.framework
 
   OpenBurnBarTests:
     type: bundle.unit-test

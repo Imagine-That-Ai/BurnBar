@@ -14,9 +14,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
-import type {
-  ComputerUseQuotaUsageDoc,
-} from "./types.js";
+import type { ComputerUseQuotaUsageDoc } from "./types.js";
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -52,8 +50,7 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
     const action = docSnap.data();
     const toolKind = stringField(action, "toolKind") ?? "";
     const isBrowser = toolKind.startsWith("browser_");
-    const isSystem = toolKind.startsWith("mac_input_") ||
-      toolKind === "mac_inspect_accessibility";
+    const isSystem = toolKind.startsWith("mac_input_") || toolKind === "mac_inspect_accessibility";
     const isPhone = stringField(action, "approvedBy") === "phone";
     const status = stringField(action, "status");
 
@@ -69,9 +66,7 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
     counters.visionModelSpendUSD += numberField(action, "visionTokensCostUSD") ?? 0;
   }
 
-  await firestore
-    .doc(`users/${uid}/computer_use_quota_usage/${dayKey}`)
-    .set(counters, { merge: true });
+  await firestore.doc(`users/${uid}/computer_use_quota_usage/${dayKey}`).set(counters, { merge: true });
 }
 
 export const recomputeComputerUseQuotaUsage = onSchedule(

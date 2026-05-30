@@ -8,10 +8,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
-import type {
-  MediaFeature,
-  MediaSessionDailyRollupDoc,
-} from "./types.js";
+import type { MediaFeature, MediaSessionDailyRollupDoc } from "./types.js";
 
 const ROLLUP_SCHEMA_VERSION = 1;
 const ROLLUP_COLLECTION = "ops/media_session_daily_rollups/days";
@@ -62,24 +59,37 @@ function percentile(sorted: number[], pct: number): number | undefined {
 
 function bucketRtt(b: string | undefined): number | undefined {
   switch (b) {
-    case "lt_50ms": return 25;
-    case "50_150ms": return 100;
-    case "150_400ms": return 275;
-    case "gte_400ms": return 600;
-    default: return undefined;
+    case "lt_50ms":
+      return 25;
+    case "50_150ms":
+      return 100;
+    case "150_400ms":
+      return 275;
+    case "gte_400ms":
+      return 600;
+    default:
+      return undefined;
   }
 }
 
 function bucketBitsPerSecond(b: string | undefined): number | undefined {
   switch (b) {
-    case "lt_300kbps": return 200_000;
-    case "300_600kbps": return 450_000;
-    case "600kbps_1mbps": return 800_000;
-    case "1_2mbps": return 1_500_000;
-    case "2_4mbps": return 3_000_000;
-    case "4_8mbps": return 6_000_000;
-    case "gte_8mbps": return 12_000_000;
-    default: return undefined;
+    case "lt_300kbps":
+      return 200_000;
+    case "300_600kbps":
+      return 450_000;
+    case "600kbps_1mbps":
+      return 800_000;
+    case "1_2mbps":
+      return 1_500_000;
+    case "2_4mbps":
+      return 3_000_000;
+    case "4_8mbps":
+      return 6_000_000;
+    case "gte_8mbps":
+      return 12_000_000;
+    default:
+      return undefined;
   }
 }
 
@@ -122,9 +132,7 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
 
     const bucket = perFeature[feature];
     bucket.sessionCount += 1;
-    bucket.totalBytes +=
-      (numberField(raw, "byteCountInbound") ?? 0) +
-      (numberField(raw, "byteCountOutbound") ?? 0);
+    bucket.totalBytes += (numberField(raw, "byteCountInbound") ?? 0) + (numberField(raw, "byteCountOutbound") ?? 0);
 
     successesByFeature[feature].total += 1;
     if (stringField(raw, "endReason") === "completedSuccess") {
@@ -203,5 +211,5 @@ export const rollupMediaSessionDaily = onSchedule(
   async () => {
     const target = previousUtcDay(new Date());
     await rollupMediaSessionsForDay({ dateUTC: target });
-  }
+  },
 );

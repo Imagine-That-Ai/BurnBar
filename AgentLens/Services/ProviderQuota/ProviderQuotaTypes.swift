@@ -84,6 +84,15 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
 
     var id: String { key }
 
+    /// Whether this bucket represents a prepaid credit balance (no hard
+    /// limit or window — you have $X remaining forever) as opposed to a
+    /// time-windowed quota bucket (used Y of Z per month). DeepSeek and
+    /// xAI GrokBuild expose lifetime balance buckets; quota buckets have
+    /// a meaningful limit and resetsAt.
+    var isCreditBalance: Bool {
+        windowKind == .lifetime && limitValue == nil && remainingValue != nil
+    }
+
     var remainingPercent: Double? {
         // Prioritize usedPercent — it's the most reliable signal when present,
         // because remainingValue may be a raw count that coincidentally looks like a percent.

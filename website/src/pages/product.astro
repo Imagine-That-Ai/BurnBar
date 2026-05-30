@@ -5,6 +5,14 @@ import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import { SURFACES } from "@data/surfaces";
 import { FEATURES_BY_CATEGORY } from "@data/features";
+import {
+  FLOO,
+  FLOO_CAPABILITIES,
+  FLOO_PROMISES,
+  CONTROL,
+  CONTROL_CAPABILITIES,
+  CONTROL_PROMISES
+} from "@data/capabilities";
 ---
 
 <BaseLayout
@@ -26,11 +34,21 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   </section>
 
   <section>
-    <div class="container container--wide">
+    <div class="container container--wide prodshots">
       <RealDashboard
-        src="/screens/ipad-burn.png"
-        alt="OpenBurnBar iPadOS app — Burn tab with Fleet Quota 42% Pressured, per-provider rings, $18.74 today across Today / 7d / 30d / 90d / All-Time"
+        src="/screens/ipad-pulse-live.png"
+        alt="OpenBurnBar iPadOS app — Pulse tab streaming live from the Mac: $11,967.96 burned in the last 24h across 6.23B tokens and 559 requests, ahead of the 7-day average, $23,958.93 end-of-day forecast, 53% quota remaining across 9 providers"
+        caption="Real iPadOS capture · Pulse tab · streaming live from your Mac"
+        width={711}
+        height={1024}
+      />
+      <RealDashboard
+        variant="bare"
+        src="/screens/ipad-burn-wide.png"
+        alt="OpenBurnBar iPadOS app — Burn tab with Fleet Quota 52% Pressured, eight per-provider rings (Codex 47%, Cursor 58%, and more), and a Today / 7d / 30d / 90d / All-Time window switcher above per-provider cards"
         caption="Real iPadOS capture · Burn tab · same SwiftUI design renders on macOS"
+        width={1024}
+        height={711}
       />
     </div>
   </section>
@@ -172,6 +190,85 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     </div>
   </section>
 
+  <!-- FLOO — phone ⇄ Mac -->
+  <section class="featgroup featgroup--mercury">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">{FLOO.name} · your phone & your Mac</span>
+        <h2>{FLOO.tagline}</h2>
+        <p class="lead">
+          Your Mac does the work. Your phone is the window — and the remote. See it, steer it, send
+          files, take a call, even unlock it, from across the room or across town.
+        </p>
+        <p class="cap-aside mono">
+          <span class="tag tag--mercury tag--plain mono">{FLOO.statusLabel}</span>
+          <span aria-hidden="true">·</span>
+          <span>{FLOO.name} — {FLOO.expansion} <em>(a.k.a. {FLOO.expansionWhimsical})</em></span>
+        </p>
+      </header>
+      <ul class="featgroup__grid">
+        {
+          FLOO_CAPABILITIES.map((f) => (
+            <li class="feat feat--mercury glass-pane">
+              <h3>{f.title}</h3>
+              <p>{f.blurb}</p>
+            </li>
+          ))
+        }
+      </ul>
+      <div class="promises glass-pane">
+        <h3 class="promises__h">Safe by design</h3>
+        <ul class="promises__list">
+          {FLOO_PROMISES.map((p) => <li>{p}</li>)}
+        </ul>
+      </div>
+      <div class="routing__cta">
+        <a class="btn btn--ghost" href={FLOO.href}>
+          See everything {FLOO.name} does <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENT CONTROL -->
+  <section class="featgroup">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">{CONTROL.name}</span>
+        <h2>{CONTROL.tagline}</h2>
+        <p class="lead">
+          Some jobs are faster if the agent just does them — clicks the buttons, fills the forms,
+          works the apps. OpenBurnBar lets it, on a leash you hold. It does nothing you didn't
+          allow, and you can stop it in an instant.
+        </p>
+        <p class="cap-aside mono">
+          <span class="tag tag--ember tag--plain mono">{CONTROL.statusLabel}</span>
+        </p>
+      </header>
+      <ul class="featgroup__grid">
+        {
+          CONTROL_CAPABILITIES.map((f) => (
+            <li class="feat glass-pane">
+              <h3>{f.title}</h3>
+              <p>{f.blurb}</p>
+            </li>
+          ))
+        }
+      </ul>
+      <div class="promises glass-pane">
+        <h3 class="promises__h">You're always in charge</h3>
+        <ul class="promises__list">
+          {CONTROL_PROMISES.map((p) => <li>{p}</li>)}
+        </ul>
+      </div>
+      <div class="routing__cta">
+        <a class="btn btn--ghost" href={CONTROL.href}>
+          How {CONTROL.name} keeps you safe <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- SURFACES -->
   <section class="featgroup">
     <div class="container container--wide">
@@ -229,6 +326,11 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
 </BaseLayout>
 
 <style>
+  .prodshots {
+    display: grid;
+    justify-items: center;
+    gap: clamp(var(--s-6), 6vw, var(--s-9));
+  }
   .pagehead {
     padding-block: var(--s-9) var(--s-6);
   }
@@ -253,6 +355,62 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   }
   .featgroup--mercury {
     background: radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
+  }
+  .cap-aside {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+    margin-top: var(--s-1);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+  .cap-aside em {
+    color: var(--text-base);
+    font-style: italic;
+  }
+  .promises {
+    margin-top: var(--s-5);
+    padding: var(--s-5);
+    display: grid;
+    gap: var(--s-3);
+    border-radius: var(--r-4);
+  }
+  .promises__h {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-variation-settings: "wght" 600;
+  }
+  .featgroup--mercury .promises__h {
+    color: var(--mercury-bright);
+  }
+  .promises__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--s-2) var(--s-5);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .promises__list li {
+    position: relative;
+    padding-left: 1.5em;
+    color: var(--text-base);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .promises__list li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .featgroup--mercury .promises__list li::before {
+    color: var(--mercury-bright);
   }
   .sec-head {
     display: grid;

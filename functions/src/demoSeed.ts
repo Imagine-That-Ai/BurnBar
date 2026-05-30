@@ -100,30 +100,142 @@ const DEMO_PROJECTS = [
 ] as const;
 
 const USAGE_SEEDS: DemoUsageSeed[] = [
-  { id: "codex_review_today", project: DEMO_PROJECTS[0], provider: DEMO_PROVIDERS[0], daysAgo: 0, hour: 9, inputTokens: 42_000, outputTokens: 8_400, cacheReadTokens: 6_000, reasoningTokens: 11_000 },
-  { id: "cursor_ui_today", project: DEMO_PROJECTS[0], provider: DEMO_PROVIDERS[1], daysAgo: 0, hour: 11, inputTokens: 18_200, outputTokens: 5_100, cacheReadTokens: 1_200, reasoningTokens: 2_000 },
-  { id: "openai_insights_today", project: DEMO_PROJECTS[2], provider: DEMO_PROVIDERS[2], daysAgo: 0, hour: 14, inputTokens: 66_500, outputTokens: 9_800, cacheReadTokens: 12_000, reasoningTokens: 4_800 },
-  { id: "factory_refactor_yesterday", project: DEMO_PROJECTS[3], provider: DEMO_PROVIDERS[3], daysAgo: 1, hour: 15, inputTokens: 31_000, outputTokens: 7_200, cacheReadTokens: 2_800, reasoningTokens: 6_100 },
-  { id: "codex_rollups_yesterday", project: DEMO_PROJECTS[1], provider: DEMO_PROVIDERS[0], daysAgo: 1, hour: 18, inputTokens: 53_500, outputTokens: 12_400, cacheReadTokens: 9_000, reasoningTokens: 18_600 },
-  { id: "cursor_nav_2d", project: DEMO_PROJECTS[0], provider: DEMO_PROVIDERS[1], daysAgo: 2, hour: 10, inputTokens: 24_000, outputTokens: 6_800, cacheReadTokens: 3_200, reasoningTokens: 2_900 },
-  { id: "openai_docs_3d", project: DEMO_PROJECTS[1], provider: DEMO_PROVIDERS[2], daysAgo: 3, hour: 13, inputTokens: 72_000, outputTokens: 14_000, cacheReadTokens: 18_000, reasoningTokens: 7_200 },
-  { id: "factory_qa_5d", project: DEMO_PROJECTS[2], provider: DEMO_PROVIDERS[3], daysAgo: 5, hour: 16, inputTokens: 38_000, outputTokens: 9_100, cacheReadTokens: 2_200, reasoningTokens: 5_000 },
-  { id: "codex_release_8d", project: DEMO_PROJECTS[0], provider: DEMO_PROVIDERS[0], daysAgo: 8, hour: 12, inputTokens: 91_000, outputTokens: 20_400, cacheReadTokens: 22_000, reasoningTokens: 26_000 },
-  { id: "openai_billing_13d", project: DEMO_PROJECTS[2], provider: DEMO_PROVIDERS[2], daysAgo: 13, hour: 17, inputTokens: 44_000, outputTokens: 8_900, cacheReadTokens: 5_300, reasoningTokens: 3_000 },
-  { id: "cursor_widgets_21d", project: DEMO_PROJECTS[3], provider: DEMO_PROVIDERS[1], daysAgo: 21, hour: 11, inputTokens: 28_000, outputTokens: 7_600, cacheReadTokens: 2_700, reasoningTokens: 3_400 },
-  { id: "codex_archive_34d", project: DEMO_PROJECTS[1], provider: DEMO_PROVIDERS[0], daysAgo: 34, hour: 10, inputTokens: 47_000, outputTokens: 10_500, cacheReadTokens: 8_300, reasoningTokens: 12_700 },
+  {
+    id: "codex_review_today",
+    project: DEMO_PROJECTS[0],
+    provider: DEMO_PROVIDERS[0],
+    daysAgo: 0,
+    hour: 9,
+    inputTokens: 42_000,
+    outputTokens: 8_400,
+    cacheReadTokens: 6_000,
+    reasoningTokens: 11_000,
+  },
+  {
+    id: "cursor_ui_today",
+    project: DEMO_PROJECTS[0],
+    provider: DEMO_PROVIDERS[1],
+    daysAgo: 0,
+    hour: 11,
+    inputTokens: 18_200,
+    outputTokens: 5_100,
+    cacheReadTokens: 1_200,
+    reasoningTokens: 2_000,
+  },
+  {
+    id: "openai_insights_today",
+    project: DEMO_PROJECTS[2],
+    provider: DEMO_PROVIDERS[2],
+    daysAgo: 0,
+    hour: 14,
+    inputTokens: 66_500,
+    outputTokens: 9_800,
+    cacheReadTokens: 12_000,
+    reasoningTokens: 4_800,
+  },
+  {
+    id: "factory_refactor_yesterday",
+    project: DEMO_PROJECTS[3],
+    provider: DEMO_PROVIDERS[3],
+    daysAgo: 1,
+    hour: 15,
+    inputTokens: 31_000,
+    outputTokens: 7_200,
+    cacheReadTokens: 2_800,
+    reasoningTokens: 6_100,
+  },
+  {
+    id: "codex_rollups_yesterday",
+    project: DEMO_PROJECTS[1],
+    provider: DEMO_PROVIDERS[0],
+    daysAgo: 1,
+    hour: 18,
+    inputTokens: 53_500,
+    outputTokens: 12_400,
+    cacheReadTokens: 9_000,
+    reasoningTokens: 18_600,
+  },
+  {
+    id: "cursor_nav_2d",
+    project: DEMO_PROJECTS[0],
+    provider: DEMO_PROVIDERS[1],
+    daysAgo: 2,
+    hour: 10,
+    inputTokens: 24_000,
+    outputTokens: 6_800,
+    cacheReadTokens: 3_200,
+    reasoningTokens: 2_900,
+  },
+  {
+    id: "openai_docs_3d",
+    project: DEMO_PROJECTS[1],
+    provider: DEMO_PROVIDERS[2],
+    daysAgo: 3,
+    hour: 13,
+    inputTokens: 72_000,
+    outputTokens: 14_000,
+    cacheReadTokens: 18_000,
+    reasoningTokens: 7_200,
+  },
+  {
+    id: "factory_qa_5d",
+    project: DEMO_PROJECTS[2],
+    provider: DEMO_PROVIDERS[3],
+    daysAgo: 5,
+    hour: 16,
+    inputTokens: 38_000,
+    outputTokens: 9_100,
+    cacheReadTokens: 2_200,
+    reasoningTokens: 5_000,
+  },
+  {
+    id: "codex_release_8d",
+    project: DEMO_PROJECTS[0],
+    provider: DEMO_PROVIDERS[0],
+    daysAgo: 8,
+    hour: 12,
+    inputTokens: 91_000,
+    outputTokens: 20_400,
+    cacheReadTokens: 22_000,
+    reasoningTokens: 26_000,
+  },
+  {
+    id: "openai_billing_13d",
+    project: DEMO_PROJECTS[2],
+    provider: DEMO_PROVIDERS[2],
+    daysAgo: 13,
+    hour: 17,
+    inputTokens: 44_000,
+    outputTokens: 8_900,
+    cacheReadTokens: 5_300,
+    reasoningTokens: 3_000,
+  },
+  {
+    id: "cursor_widgets_21d",
+    project: DEMO_PROJECTS[3],
+    provider: DEMO_PROVIDERS[1],
+    daysAgo: 21,
+    hour: 11,
+    inputTokens: 28_000,
+    outputTokens: 7_600,
+    cacheReadTokens: 2_700,
+    reasoningTokens: 3_400,
+  },
+  {
+    id: "codex_archive_34d",
+    project: DEMO_PROJECTS[1],
+    provider: DEMO_PROVIDERS[0],
+    daysAgo: 34,
+    hour: 10,
+    inputTokens: 47_000,
+    outputTokens: 10_500,
+    cacheReadTokens: 8_300,
+    reasoningTokens: 12_700,
+  },
 ];
 
 function isoAt(now: Date, daysAgo: number, hour: number): string {
-  const date = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() - daysAgo,
-    hour,
-    30,
-    0,
-    0
-  ));
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo, hour, 30, 0, 0));
   return date.toISOString();
 }
 
@@ -182,14 +294,8 @@ function demoQuotaSnapshot(provider: DemoProvider, nowISO: string): QuotaSnapsho
 function demoUsage(seed: DemoUsageSeed, now: Date): UsageEventDoc & Record<string, unknown> {
   const startTime = isoAt(now, seed.daysAgo, seed.hour);
   const endTime = new Date(new Date(startTime).getTime() + 11 * 60 * 1000).toISOString();
-  const totalTokens =
-    seed.inputTokens +
-    seed.outputTokens +
-    seed.cacheReadTokens +
-    seed.reasoningTokens;
-  const costUsd = Number(
-    (seed.provider.costPerSession * (0.72 + totalTokens / 150_000)).toFixed(6)
-  );
+  const totalTokens = seed.inputTokens + seed.outputTokens + seed.cacheReadTokens + seed.reasoningTokens;
+  const costUsd = Number((seed.provider.costPerSession * (0.72 + totalTokens / 150_000)).toFixed(6));
   return {
     provider: seed.provider.provider,
     providerID: seed.provider.providerID,
@@ -236,7 +342,10 @@ function projectSummaries(usages: Array<UsageEventDoc & Record<string, unknown>>
     summaries.set(name, current);
   }
   return [...summaries.entries()].map(([name, summary]) => ({
-    id: `${DEMO_PREFIX}${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    id: `${DEMO_PREFIX}${name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`,
     data: {
       name,
       total_cost: Number(summary.totalCost.toFixed(6)),
@@ -248,11 +357,7 @@ function projectSummaries(usages: Array<UsageEventDoc & Record<string, unknown>>
   }));
 }
 
-async function deleteDemoDocs(
-  db: Firestore,
-  uid: string,
-  collectionName: string
-): Promise<number> {
+async function deleteDemoDocs(db: Firestore, uid: string, collectionName: string): Promise<number> {
   const snapshot = await db.collection(`users/${uid}/${collectionName}`).get();
   const refs = snapshot.docs
     .filter((doc) => doc.id.startsWith(DEMO_PREFIX) || doc.get("demo") === true)
@@ -274,7 +379,7 @@ async function deleteDemoDocs(
 export async function seedAndroidDemoAccount(
   db: Firestore,
   uid: string,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): Promise<SeedAndroidDemoAccountResult> {
   await Promise.all([
     deleteDemoDocs(db, uid, "usage"),

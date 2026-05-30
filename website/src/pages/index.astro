@@ -9,7 +9,8 @@ import LockedModelRelay from "@components/LockedModelRelay.astro";
 import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
-import { PROVIDERS_PRIMARY } from "@data/providers";
+import { PROVIDERS_PRIMARY, PROVIDERS_ALL } from "@data/providers";
+import { FLOO, CONTROL } from "@data/capabilities";
 
 const previewProviders = PROVIDERS_PRIMARY.filter((p) =>
   ["claude-code", "codex", "openai", "cursor", "copilot", "factory", "minimax", "warp"].includes(
@@ -19,6 +20,11 @@ const previewProviders = PROVIDERS_PRIMARY.filter((p) =>
 const surfaceShowcase = SURFACES.filter((s) =>
   ["macos", "ios", "cursor", "daemon", "cli", "widgets", "smart-display", "android"].includes(s.id)
 );
+
+// Provider counts come from the data so headline copy can never drift.
+const primaryCount = PROVIDERS_PRIMARY.length;
+const totalCount = PROVIDERS_ALL.length;
+const detectedCount = totalCount - primaryCount;
 ---
 
 <BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">
@@ -123,7 +129,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
   <section class="band" aria-label="At a glance">
     <div class="container container--wide band__inner">
       <div class="band__stat">
-        <div class="band__num mono">11</div>
+        <div class="band__num mono">{primaryCount}</div>
         <div class="band__lbl">Providers with real usage data today</div>
       </div>
       <div class="band__sep" aria-hidden="true"></div>
@@ -255,19 +261,19 @@ const surfaceShowcase = SURFACES.filter((s) =>
         <span class="eyebrow eyebrow--ember">Providers</span>
         <h2 id="provshow-h">The list of vendors it actually understands.</h2>
         <p class="lead">
-          Twenty-two providers ship with real usage data today. Eight more are detected at install but
-          don't expose data — so we show "Installed / Not installed" and stop there.
+          {primaryCount} providers ship with real usage data today. {detectedCount} more are detected
+          at install but don't expose data — so we show "Installed / Not installed" and stop there.
         </p>
       </header>
- 
+
       <ProviderTable
         rows={previewProviders}
         caption="Selected · see Providers for the full matrix"
       />
- 
+
       <div class="provshow__cta">
         <a class="btn btn--ghost" href="/providers">
-          See all 30 providers <span class="btn-arrow" aria-hidden="true">→</span>
+          See all {totalCount} providers <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
       </div>
     </div>
@@ -501,6 +507,44 @@ const surfaceShowcase = SURFACES.filter((s) =>
   </section>
 
   <!-- ────────────────────────────────────────────────
+       COMPANION — Floo + Agent Control
+       ──────────────────────────────────────────────── -->
+  <section class="companion" aria-labelledby="companion-h">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">Beyond the dashboard</span>
+        <h2 id="companion-h">It doesn't just watch. It reaches.</h2>
+        <p class="lead">
+          OpenBurnBar started as the calmest way to see your spend. It grew into the calmest way to
+          run your whole setup — from your phone, and through your agents — without ever giving up
+          control.
+        </p>
+      </header>
+      <div class="companion__grid">
+        <a class="companion__card companion__card--floo glass-pane" href={FLOO.href}>
+          <span class="companion__tag tag tag--mercury tag--plain mono">{FLOO.statusLabel}</span>
+          <h3>{FLOO.name} — your phone & your Mac, joined</h3>
+          <p>
+            See your Mac from your phone, reach in and control it, send files, take a call, even
+            unlock it. Only your own devices. Encrypted end to end. You approve every connection.
+          </p>
+          <span class="companion__more">Explore {FLOO.name} <span aria-hidden="true">→</span></span>
+        </a>
+        <a class="companion__card companion__card--control glass-pane" href={CONTROL.href}>
+          <span class="companion__tag tag tag--ember tag--plain mono">{CONTROL.statusLabel}</span>
+          <h3>Agent Control — let it use the computer</h3>
+          <p>
+            Hand off the busywork and let an agent click, type, and work your apps. Watch every
+            move, approve each step or set the limits, and stop it in an instant. It only ever does
+            what you allow.
+          </p>
+          <span class="companion__more">How it stays safe <span aria-hidden="true">→</span></span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
        PRIVACY / TRUST
        ──────────────────────────────────────────────── -->
   <section class="trust" aria-labelledby="trust-h">
@@ -600,9 +644,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
        ──────────────────────────────────────────────── -->
   <section class="endcta">
     <div class="container container--narrow endcta__inner">
-      <h2 class="endcta__h">
-        Watch the burn. <span class="ember">Keep building.</span>
-      </h2>
+      <h2 class="endcta__h">Dont get burned. Keep Building.</h2>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
           OpenBurnBar is MIT-licensed, signed and notarized for macOS, and ready to run today.

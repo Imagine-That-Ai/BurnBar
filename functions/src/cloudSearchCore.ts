@@ -47,7 +47,7 @@ export async function readCloudSearchManifest(db: Firestore, uid: string): Promi
       tokenPostingCount: Number(data.tokenPostingCount ?? 0),
       semanticPostingCount: Number(data.semanticPostingCount ?? 0),
       stale: data.stale === true,
-      compactionStatus: typeof data.compactionStatus === "string" ? data.compactionStatus : undefined
+      compactionStatus: typeof data.compactionStatus === "string" ? data.compactionStatus : undefined,
     };
   }
   const states = await db.collection(`users/${uid}/cloud_search_index_state`).limit(100).get();
@@ -69,6 +69,6 @@ export async function readCloudSearchManifest(db: Firestore, uid: string): Promi
     tokenPostingCount: 0,
     semanticPostingCount: 0,
     stale: states.empty,
-    compactionStatus: "legacy_index_state"
+    compactionStatus: "legacy_index_state",
   };
 }

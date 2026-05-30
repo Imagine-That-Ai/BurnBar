@@ -2182,6 +2182,9 @@ public actor BurnBarHTTPGatewayServer {
         let usageLane: String?
         let nativeStreaming: Bool
         let displayName: String
+        /// `true` when `displayName` is a verbatim user rename emitted as-is
+        /// (no provider/route/reasoning suffixes). Lets clients badge it.
+        let displayNameIsCustom: Bool
         let capabilities: [String]
         let modelCapabilities: ModelIOCapabilities?
         let formatFamily: String
@@ -2231,12 +2234,16 @@ public actor BurnBarHTTPGatewayServer {
             self.servedBy = Self.servedBy(from: models)
             self.usageLane = Self.usageLane(from: models)
             self.nativeStreaming = !models.allSatisfy { Self.isFactoryModel($0) }
-            self.displayName = OpenBurnBarModelDisplayName.compose(
-                modelName: rawDisplayName,
-                providerName: representative.providerName,
-                providerID: representative.providerID,
-                reasoningLevel: thinkingLevel
-            )
+            let isCustomDisplayName = models.contains(where: { $0.displayNameIsCustom == true })
+            self.displayNameIsCustom = isCustomDisplayName
+            self.displayName = isCustomDisplayName
+                ? rawDisplayName
+                : OpenBurnBarModelDisplayName.compose(
+                    modelName: rawDisplayName,
+                    providerName: representative.providerName,
+                    providerID: representative.providerID,
+                    reasoningLevel: thinkingLevel
+                )
             self.capabilities = capabilities
             self.modelCapabilities = modelCapabilities
             self.formatFamily = formatFamily.rawValue
@@ -2416,6 +2423,7 @@ public actor BurnBarHTTPGatewayServer {
             case usageLane = "usage_lane"
             case nativeStreaming = "native_streaming"
             case displayName = "display_name"
+            case displayNameIsCustom = "display_name_is_custom"
             case capabilities
             case modelCapabilities = "model_capabilities"
             case formatFamily = "format_family"

@@ -6,7 +6,7 @@ import {
   hashRemoteMcpSecret,
   type RemoteMcpGrantMode,
   type RemoteMcpScope,
-  upsertRemoteMcpClient
+  upsertRemoteMcpClient,
 } from "./remoteMcpGrant.js";
 
 export interface RemoteMcpAccessClaims {
@@ -27,9 +27,7 @@ export function signRemoteMcpAccessToken(claims: RemoteMcpAccessClaims, secret: 
 }
 
 export function assertPkce(verifier: string, challenge: string): void {
-  const actual = Buffer.from(
-    createHash("sha256").update(verifier).digest()
-  ).toString("base64url");
+  const actual = Buffer.from(createHash("sha256").update(verifier).digest()).toString("base64url");
   if (actual !== challenge) {
     throw new HttpsError("permission-denied", "PKCE challenge verification failed.");
   }
@@ -49,7 +47,7 @@ export async function issueRemoteMcpGrantForSignedInUser(
     entitlementExpiresAt?: string;
     tokenSecret: string;
     audience: string;
-  }
+  },
 ) {
   const clientId = input.clientId?.trim() || `obbc_${randomBytes(12).toString("hex")}`;
   const scopes: RemoteMcpScope[] = input.scopes?.length
@@ -62,31 +60,34 @@ export async function issueRemoteMcpGrantForSignedInUser(
     clientType: input.clientType?.trim() || "generic",
     installFingerprint: input.installFingerprint,
     allowedScopes: scopes,
-    grantMode
+    grantMode,
   });
   const { grant, refreshToken } = await createRemoteMcpGrant(db, uid, {
     clientId,
     scopes,
     entitlementFamily: input.entitlementFamily,
-    entitlementExpiresAt: input.entitlementExpiresAt
+    entitlementExpiresAt: input.entitlementExpiresAt,
   });
-  const accessToken = signRemoteMcpAccessToken({
-    sub: uid,
-    aud: input.audience,
-    client_id: clientId,
-    scopes,
-    entitlement_family: input.entitlementFamily,
-    grant_mode: grantMode,
-    exp: Math.floor(Date.now() / 1000) + 15 * 60,
-    jti: `mcp_${randomBytes(16).toString("hex")}`
-  }, input.tokenSecret);
+  const accessToken = signRemoteMcpAccessToken(
+    {
+      sub: uid,
+      aud: input.audience,
+      client_id: clientId,
+      scopes,
+      entitlement_family: input.entitlementFamily,
+      grant_mode: grantMode,
+      exp: Math.floor(Date.now() / 1000) + 15 * 60,
+      jti: `mcp_${randomBytes(16).toString("hex")}`,
+    },
+    input.tokenSecret,
+  );
   await db.doc(`users/${uid}/remote_mcp_audit_events/${Date.now()}_${grant.grantId}`).set({
     eventKind: "grant_issued",
     hashedClientID: hashRemoteMcpSecret(clientId),
     scopes,
     entitlementSource: input.entitlementFamily,
     createdAt: Timestamp.now(),
-    schemaVersion: 1
+    schemaVersion: 1,
   });
   return {
     tokenType: "Bearer",
@@ -95,6 +96,6 @@ export async function issueRemoteMcpGrantForSignedInUser(
     refreshToken,
     clientId,
     scopes,
-    grantMode
+    grantMode,
   };
 }

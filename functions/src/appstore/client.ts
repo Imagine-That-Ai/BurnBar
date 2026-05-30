@@ -49,7 +49,7 @@ function cacheKey(k: ClientCacheKey): string {
  */
 export function getAppStoreServerAPIClient(
   cfg: AppStoreConfig,
-  environment: AppStoreEnvironment = cfg.environment
+  environment: AppStoreEnvironment = cfg.environment,
 ): AppStoreServerAPIClient {
   if (!cfg.bundleId) throw new Error("bundleId is required");
   if (!cfg.asc.keyId) throw new Error("ASC keyId is required");
@@ -73,7 +73,7 @@ export function getAppStoreServerAPIClient(
     cfg.asc.keyId,
     cfg.asc.issuerId,
     cfg.bundleId,
-    libEnvironment
+    libEnvironment,
   );
   cache.set(ck, client);
   return client;
@@ -98,7 +98,7 @@ export interface SignedSubscriptionPair {
 export async function fetchLiveSubscriptionStatus(
   cfg: AppStoreConfig,
   environment: AppStoreEnvironment,
-  originalTransactionId: string
+  originalTransactionId: string,
 ): Promise<{ status: StatusResponse; pairs: SignedSubscriptionPair[] }> {
   const client = getAppStoreServerAPIClient(cfg, environment);
   const status = await client.getAllSubscriptionStatuses(originalTransactionId);
@@ -123,7 +123,7 @@ export async function fetchLiveSubscriptionStatus(
 export async function fetchLatestTransactionInfo(
   cfg: AppStoreConfig,
   environment: AppStoreEnvironment,
-  transactionId: string
+  transactionId: string,
 ): Promise<TransactionInfoResponse> {
   const client = getAppStoreServerAPIClient(cfg, environment);
   return client.getTransactionInfo(transactionId);

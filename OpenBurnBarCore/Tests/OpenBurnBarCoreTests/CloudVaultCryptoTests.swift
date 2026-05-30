@@ -35,6 +35,60 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertTrue(try CloudVaultCrypto.tokenHashes(for: "the and for", keyData: key).isEmpty)
     }
 
+    func test_searchTokenHashes_supportEncryptedPrefixRecall() throws {
+        let key = Data(repeating: 0x55, count: 32)
+
+        let indexHashes = try CloudVaultCrypto.searchIndexTokenHashes(
+            for: "/Users/emilionunezgarcia/Developer/LaHormigaDormida",
+            keyData: key
+        )
+        let queryHashes = try CloudVaultCrypto.searchQueryTokenHashes(
+            for: "emilio",
+            keyData: key
+        )
+        let shortQueryHashes = try CloudVaultCrypto.searchQueryTokenHashes(
+            for: "emi",
+            keyData: key
+        )
+        let unrelatedHashes = try CloudVaultCrypto.searchQueryTokenHashes(
+            for: "factory",
+            keyData: key
+        )
+
+        XCTAssertFalse(Set(indexHashes).intersection(queryHashes).isEmpty)
+        XCTAssertFalse(Set(indexHashes).intersection(shortQueryHashes).isEmpty)
+        XCTAssertTrue(Set(indexHashes).intersection(unrelatedHashes).isEmpty)
+        XCTAssertTrue(indexHashes.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
+        XCTAssertFalse(indexHashes.contains("emilio"))
+    }
+
+    func test_searchTokenHashes_supportEncryptedExactPhraseRecallWithSingleLetterSignals() throws {
+        let key = Data(repeating: 0x56, count: 32)
+
+        let indexHashes = try CloudVaultCrypto.searchIndexTokenHashes(
+            for: "Build the X Ads API integration for campaign reporting",
+            keyData: key
+        )
+        let exactQueryHashes = try CloudVaultCrypto.searchQueryTokenHashes(
+            for: "x ads api",
+            keyData: key
+        )
+        let partialQueryHashes = try CloudVaultCrypto.searchQueryTokenHashes(
+            for: "ads api",
+            keyData: key
+        )
+        let unrelatedHashes = try CloudVaultCrypto.searchQueryTokenHashes(
+            for: "transcript cache",
+            keyData: key
+        )
+
+        XCTAssertFalse(Set(indexHashes).intersection(exactQueryHashes).isEmpty)
+        XCTAssertFalse(Set(indexHashes).intersection(partialQueryHashes).isEmpty)
+        XCTAssertTrue(Set(indexHashes).intersection(unrelatedHashes).isEmpty)
+        XCTAssertTrue(indexHashes.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
+        XCTAssertFalse(indexHashes.contains("x_ads_api"))
+    }
+
     func test_semanticHashes_areKeyedStableBoundedAndPreserveEncryptedRecall() throws {
         let key = Data(repeating: 0x33, count: 32)
         let otherKey = Data(repeating: 0x44, count: 32)
@@ -59,6 +113,24 @@ final class CloudVaultCryptoTests: XCTestCase {
             Set(first).intersection(relatedHashes).count,
             Set(first).intersection(unrelatedHashes).count
         )
+    }
+
+    func test_semanticHashes_bridgeDomainSynonymsForMeaningSearch() throws {
+        let key = Data(repeating: 0x34, count: 32)
+        let indexed = "Twitter advertising endpoint integration and campaign reporting"
+        let meaningQuery = "x ads api"
+        let unrelated = "transcript cache storage setting"
+
+        let indexedHashes = try CloudVaultCrypto.semanticHashes(for: indexed, keyData: key)
+        let meaningHashes = try CloudVaultCrypto.semanticHashes(for: meaningQuery, keyData: key)
+        let unrelatedHashes = try CloudVaultCrypto.semanticHashes(for: unrelated, keyData: key)
+
+        XCTAssertFalse(Set(indexedHashes).intersection(meaningHashes).isEmpty)
+        XCTAssertGreaterThan(
+            Set(indexedHashes).intersection(meaningHashes).count,
+            Set(indexedHashes).intersection(unrelatedHashes).count
+        )
+        XCTAssertFalse(indexedHashes.contains("twitter"))
     }
 
     func test_wrappedVaultKeyRoundTrip_unwrapsAcrossGeneratedDeviceKeys() throws {

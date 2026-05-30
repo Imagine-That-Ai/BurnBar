@@ -404,6 +404,59 @@ public struct BurnBarModelAlias: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// A user-defined display-name override for an advertised model.
+///
+/// Unlike `BurnBarModelAlias`, this does **not** introduce a new wire id and
+/// does **not** change how the model is routed — the model keeps being called
+/// by its canonical `modelID`. It only relabels how the model *presents to
+/// humans*: the `display_name` emitted in `/v1/models`, every wired CLI's
+/// picker, and the BurnBar / Hermes / PI apps. This is "rename", not "alias".
+///
+/// The chosen name is honored **verbatim** end-to-end — free text (spaces,
+/// punctuation, mixed case allowed) emitted exactly as typed, without the
+/// provider / route / reasoning suffixes the gateway otherwise composes.
+public struct BurnBarModelDisplayOverride: Codable, Hashable, Identifiable, Sendable {
+    /// The canonical advertised wire id this override relabels. Stable: the
+    /// model keeps routing under this id; only its human label changes.
+    public var modelID: String
+    /// The verbatim, human-facing name. Free text emitted exactly as typed.
+    public var displayName: String
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    /// Keyed case-insensitively by `modelID` so a rename replaces the prior
+    /// override for the same model regardless of casing.
+    public var id: String { Self.normalizedModelID(modelID).lowercased() }
+
+    public init(
+        modelID: String,
+        displayName: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.modelID = modelID
+        self.displayName = displayName
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// A display name is usable once it carries at least one visible
+    /// character. Empty / whitespace-only input clears the override instead.
+    public static func isValidDisplayName(_ raw: String) -> Bool {
+        !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Trim a candidate model id for stable keying.
+    public static func normalizedModelID(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Trim a candidate display name to its emitted form.
+    public static func normalizedDisplayName(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable {
     public let providerID: String
     public var isEnabled: Bool
@@ -418,6 +471,8 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     public var modelVariants: [BurnBarModelVariant]
     /// User-defined proxy aliases with custom wire ids and optional hide-base behavior.
     public var modelAliases: [BurnBarModelAlias]
+    /// User-defined display name overrides.
+    public var modelDisplayOverrides: [BurnBarModelDisplayOverride]
 
     public var id: String { providerID }
 
@@ -430,7 +485,8 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         preferredCredentialSlotID: String? = nil,
         credentialSlots: [BurnBarProviderCredentialSlot] = [],
         modelVariants: [BurnBarModelVariant] = [],
-        modelAliases: [BurnBarModelAlias] = []
+        modelAliases: [BurnBarModelAlias] = [],
+        modelDisplayOverrides: [BurnBarModelDisplayOverride] = []
     ) {
         self.providerID = providerID
         self.isEnabled = isEnabled
@@ -441,6 +497,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         self.credentialSlots = credentialSlots
         self.modelVariants = Self.normalizedModelVariants(modelVariants)
         self.modelAliases = Self.normalizedModelAliases(modelAliases)
+        self.modelDisplayOverrides = Self.normalizedModelDisplayOverrides(modelDisplayOverrides)
     }
 
     public func isModelAdvertisementEnabled(_ modelID: String) -> Bool {
@@ -457,6 +514,24 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
             disabled.remove(normalized)
         } else {
             disabled.insert(normalized)
+        }
+        disabledAdvertisedModelIDs = disabled.sorted()
+    }
+
+
+    /// Bulk variant of `setModelAdvertisement`: flip every supplied model id in
+    /// a single mutation so an entire provider can be muted (or unmuted) at
+    /// once, after which individual models can be toggled back on selectively.
+    public mutating func setModelsAdvertisement(modelIDs: [String], isEnabled: Bool) {
+        var disabled = Set(disabledAdvertisedModelIDs.map(Self.normalizedAdvertisedModelID))
+        for modelID in modelIDs {
+            let normalized = Self.normalizedAdvertisedModelID(modelID)
+            guard !normalized.isEmpty else { continue }
+            if isEnabled {
+                disabled.remove(normalized)
+            } else {
+                disabled.insert(normalized)
+            }
         }
         disabledAdvertisedModelIDs = disabled.sorted()
     }
@@ -527,6 +602,45 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         }
     }
 
+    /// Insert or update an override, keyed by `modelID`. Touches `updatedAt`.
+    public mutating func upsertModelDisplayOverride(_ override: BurnBarModelDisplayOverride) {
+        var working = modelDisplayOverrides
+        var inserted = override
+        inserted.updatedAt = Date()
+        if let index = working.firstIndex(where: { $0.modelID.caseInsensitiveCompare(inserted.modelID) == .orderedSame }) {
+            inserted.createdAt = working[index].createdAt
+            working[index] = inserted
+        } else {
+            working.append(inserted)
+        }
+        modelDisplayOverrides = Self.normalizedModelDisplayOverrides(working)
+    }
+
+    /// Remove an override by model id. Returns `true` if a row was removed.
+    @discardableResult
+    public mutating func removeModelDisplayOverride(modelID: String) -> Bool {
+        let trimmed = BurnBarModelDisplayOverride.normalizedModelID(modelID)
+        guard !trimmed.isEmpty else { return false }
+        let before = modelDisplayOverrides.count
+        modelDisplayOverrides.removeAll { $0.modelID.caseInsensitiveCompare(trimmed) == .orderedSame }
+        return modelDisplayOverrides.count != before
+    }
+
+    /// Get the display override for a specific model id.
+    public func displayOverride(forModelID modelID: String) -> BurnBarModelDisplayOverride? {
+        let trimmed = BurnBarModelDisplayOverride.normalizedModelID(modelID)
+        guard !trimmed.isEmpty else { return nil }
+        return modelDisplayOverrides.first { $0.modelID.caseInsensitiveCompare(trimmed) == .orderedSame }
+    }
+
+    /// The verbatim override name for a model id, or `nil` when none applies.
+    /// Returns the trimmed, non-empty display string ready to emit as-is.
+    public func displayName(forModelID modelID: String) -> String? {
+        guard let override = displayOverride(forModelID: modelID) else { return nil }
+        let trimmed = BurnBarModelDisplayOverride.normalizedDisplayName(override.displayName)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private enum CodingKeys: String, CodingKey {
         case providerID
         case isEnabled
@@ -537,6 +651,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         case credentialSlots
         case modelVariants
         case modelAliases
+        case modelDisplayOverrides
     }
 
     public init(from decoder: Decoder) throws {
@@ -555,6 +670,9 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         )
         modelAliases = Self.normalizedModelAliases(
             try container.decodeIfPresent([BurnBarModelAlias].self, forKey: .modelAliases) ?? []
+        )
+        modelDisplayOverrides = Self.normalizedModelDisplayOverrides(
+            try container.decodeIfPresent([BurnBarModelDisplayOverride].self, forKey: .modelDisplayOverrides) ?? []
         )
     }
 
@@ -628,6 +746,28 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
                 return lhs.baseModelID.localizedCaseInsensitiveCompare(rhs.baseModelID) == .orderedAscending
             }
             return lhs.aliasID.localizedCaseInsensitiveCompare(rhs.aliasID) == .orderedAscending
+        }
+    }
+
+    private static func normalizedModelDisplayOverrides(_ overrides: [BurnBarModelDisplayOverride]) -> [BurnBarModelDisplayOverride] {
+        var seen = Set<String>()
+        return overrides.compactMap { raw in
+            let trimmedModelID = BurnBarModelDisplayOverride.normalizedModelID(raw.modelID)
+            let trimmedDisplayName = BurnBarModelDisplayOverride.normalizedDisplayName(raw.displayName)
+            guard !trimmedModelID.isEmpty,
+                  BurnBarModelDisplayOverride.isValidDisplayName(trimmedDisplayName),
+                  seen.insert(trimmedModelID.lowercased()).inserted else {
+                return nil
+            }
+            return BurnBarModelDisplayOverride(
+                modelID: trimmedModelID,
+                displayName: trimmedDisplayName,
+                createdAt: raw.createdAt,
+                updatedAt: raw.updatedAt
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.modelID.localizedCaseInsensitiveCompare(rhs.modelID) == .orderedAscending
         }
     }
 }
@@ -804,6 +944,39 @@ public struct BurnBarProviderModelAliasMutationResponse: Codable, Hashable, Send
     ) {
         self.snapshot = snapshot
         self.alias = alias
+    }
+}
+
+
+public struct BurnBarProviderModelDisplayNameSetRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let modelID: String
+    public let displayName: String
+
+    public init(providerID: String, modelID: String, displayName: String) {
+        self.providerID = providerID
+        self.modelID = modelID
+        self.displayName = displayName
+    }
+}
+
+public struct BurnBarProviderModelDisplayNameClearRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let modelID: String
+
+    public init(providerID: String, modelID: String) {
+        self.providerID = providerID
+        self.modelID = modelID
+    }
+}
+
+public struct BurnBarProviderModelDisplayNameMutationResponse: Codable, Hashable, Sendable {
+    public let override: BurnBarModelDisplayOverride?
+    public let snapshot: BurnBarProviderConfigurationSnapshot
+
+    public init(override: BurnBarModelDisplayOverride?, snapshot: BurnBarProviderConfigurationSnapshot) {
+        self.override = override
+        self.snapshot = snapshot
     }
 }
 

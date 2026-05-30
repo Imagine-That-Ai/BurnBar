@@ -89,6 +89,15 @@ public enum CLIQuotaExhaustionClassifier {
                 "supergrok limit",
                 "grok build limit",
             ]
+        case .cursorAgent:
+            cliSpecificPatterns = [
+                "cursor quota",
+                "cursor limit",
+                "cursor-agent quota",
+                "cursor-agent limit",
+                "cursor agent quota",
+                "cursor agent limit",
+            ]
         }
 
         if genericPatterns.contains(where: normalized.contains) {

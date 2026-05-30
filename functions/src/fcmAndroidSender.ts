@@ -125,9 +125,7 @@ export const sendFcmOutbound = onDocumentCreated(
 
     const payload = isRecord(data.payload)
       ? Object.fromEntries(
-          Object.entries(data.payload).flatMap(([key, value]) =>
-            typeof value === "string" ? [[key, value]] : []
-          )
+          Object.entries(data.payload).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
         )
       : {};
 
@@ -163,5 +161,5 @@ export const sendFcmOutbound = onDocumentCreated(
         });
         return;
     }
-  }
+  },
 );

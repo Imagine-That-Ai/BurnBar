@@ -29,11 +29,7 @@ import type {
   ModelBenchmarkSource,
   ModelBenchmarkTaskCategory,
 } from "./types.js";
-import {
-  isRecord,
-  parseModelBenchmarkSnapshotDoc,
-  parseModelBenchmarkSourceStatusDoc,
-} from "./guards.js";
+import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStatusDoc } from "./guards.js";
 import { logError, logWarn } from "./logging.js";
 
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
@@ -175,13 +171,19 @@ type FavoriteEntry = {
   preferredReasoningEffort: string | null;
 };
 const FAVORITE_BY_MODEL_ID: Map<string, FavoriteEntry> = new Map(
-  FAVORITE_LADDER.map((entry) => [entry.modelID, entry])
+  FAVORITE_LADDER.map((entry) => [entry.modelID, entry]),
 );
-const FAVORITE_BY_RANK: Map<number, FavoriteEntry> = new Map(
-  FAVORITE_LADDER.map((entry) => [entry.rank, entry])
-);
+const FAVORITE_BY_RANK: Map<number, FavoriteEntry> = new Map(FAVORITE_LADDER.map((entry) => [entry.rank, entry]));
 const BUILT_IN_ALIASES: Record<string, string[]> = {
-  "gpt-5-5": ["openai/gpt-5.5", "openai/gpt-5-5", "openai/gpt-5.5-xhigh", "openai/gpt-5-5-xhigh", "gpt-5.5", "gpt-5.5-xhigh", "gpt-5-5-xhigh"],
+  "gpt-5-5": [
+    "openai/gpt-5.5",
+    "openai/gpt-5-5",
+    "openai/gpt-5.5-xhigh",
+    "openai/gpt-5-5-xhigh",
+    "gpt-5.5",
+    "gpt-5.5-xhigh",
+    "gpt-5-5-xhigh",
+  ],
   "claude-opus-4-7": ["anthropic/claude-opus-4-7", "anthropic/claude-opus-4.7", "claude-opus-4.7"],
   "glm-5-1": ["zai-org/GLM-5.1", "zai/glm-5.1", "zai/glm-5-1", "z-ai/glm-5.1", "zhipuai/glm-5.1", "glm-5.1"],
 };
@@ -224,7 +226,13 @@ function parseModelTier(value: unknown): ModelMeta["tier"] | undefined {
 function parseModelMeta(raw: unknown): ModelMeta | undefined {
   if (!isRecord(raw) || typeof raw.modelID !== "string") return undefined;
   const tier = parseModelTier(raw.tier);
-  if (!tier || typeof raw.modelDisplay !== "string" || typeof raw.providerID !== "string" || typeof raw.providerDisplay !== "string" || typeof raw.providerFamily !== "string") {
+  if (
+    !tier ||
+    typeof raw.modelDisplay !== "string" ||
+    typeof raw.providerID !== "string" ||
+    typeof raw.providerDisplay !== "string" ||
+    typeof raw.providerFamily !== "string"
+  ) {
     return undefined;
   }
   return {
@@ -238,11 +246,14 @@ function parseModelMeta(raw: unknown): ModelMeta | undefined {
     tier,
     contextWindowTokens: typeof raw.contextWindowTokens === "number" ? raw.contextWindowTokens : undefined,
     costSignal: typeof raw.costSignal === "number" ? raw.costSignal : undefined,
-    aliases: Array.isArray(raw.aliases) ? raw.aliases.filter((item): item is string => typeof item === "string") : undefined,
+    aliases: Array.isArray(raw.aliases)
+      ? raw.aliases.filter((item): item is string => typeof item === "string")
+      : undefined,
     operatorPreferenceRank: typeof raw.operatorPreferenceRank === "number" ? raw.operatorPreferenceRank : undefined,
     operatorPreferencePrior: typeof raw.operatorPreferencePrior === "number" ? raw.operatorPreferencePrior : undefined,
     favoritePolicyVersion: typeof raw.favoritePolicyVersion === "string" ? raw.favoritePolicyVersion : undefined,
-    preferredReasoningEffort: typeof raw.preferredReasoningEffort === "string" ? raw.preferredReasoningEffort : undefined,
+    preferredReasoningEffort:
+      typeof raw.preferredReasoningEffort === "string" ? raw.preferredReasoningEffort : undefined,
   };
 }
 
@@ -251,9 +262,7 @@ function parseRuntimeMeta(raw: unknown): RuntimeMeta | undefined {
   const availability = raw.availability;
   return {
     availability:
-      availability === "common" || availability === "limited" || availability === "unknown"
-        ? availability
-        : undefined,
+      availability === "common" || availability === "limited" || availability === "unknown" ? availability : undefined,
     routable: typeof raw.routable === "boolean" ? raw.routable : undefined,
     reliability: typeof raw.reliability === "number" ? raw.reliability : undefined,
     latencySignal: typeof raw.latencySignal === "number" ? raw.latencySignal : undefined,
@@ -270,24 +279,40 @@ function parsePreviousRundown(raw: unknown): RundownInput["previousRundown"] | u
       recommendations: Array.isArray(task.recommendations)
         ? task.recommendations.flatMap((rec) => {
             if (!isRecord(rec) || typeof rec.modelID !== "string") return [];
-            return [{
-              modelID: rec.modelID,
-              score: typeof rec.score === "number" ? rec.score : undefined,
-              signals: isRecord(rec.signals)
-                ? { benchmarkScore: typeof rec.signals.benchmarkScore === "number" ? rec.signals.benchmarkScore : rec.signals.benchmarkScore === null ? null : undefined }
-                : undefined,
-            }];
+            return [
+              {
+                modelID: rec.modelID,
+                score: typeof rec.score === "number" ? rec.score : undefined,
+                signals: isRecord(rec.signals)
+                  ? {
+                      benchmarkScore:
+                        typeof rec.signals.benchmarkScore === "number"
+                          ? rec.signals.benchmarkScore
+                          : rec.signals.benchmarkScore === null
+                            ? null
+                            : undefined,
+                    }
+                  : undefined,
+              },
+            ];
           })
         : undefined,
       rejectedAlternatives: Array.isArray(task.rejectedAlternatives)
         ? task.rejectedAlternatives.flatMap((alt) => {
             if (!isRecord(alt) || typeof alt.modelID !== "string") return [];
-            return [{
-              modelID: alt.modelID,
-              score: typeof alt.score === "number" ? alt.score : undefined,
-              evidenceScore: typeof alt.evidenceScore === "number" ? alt.evidenceScore : undefined,
-              benchmarkScore: typeof alt.benchmarkScore === "number" ? alt.benchmarkScore : alt.benchmarkScore === null ? null : undefined,
-            }];
+            return [
+              {
+                modelID: alt.modelID,
+                score: typeof alt.score === "number" ? alt.score : undefined,
+                evidenceScore: typeof alt.evidenceScore === "number" ? alt.evidenceScore : undefined,
+                benchmarkScore:
+                  typeof alt.benchmarkScore === "number"
+                    ? alt.benchmarkScore
+                    : alt.benchmarkScore === null
+                      ? null
+                      : undefined,
+              },
+            ];
           })
         : undefined,
     });
@@ -421,7 +446,10 @@ function canonicalizeModelID(modelID: string | null | undefined, aliasIndex: Map
   return aliasIndex.get(normalized) ?? aliasIndex.get(tailModelID(normalized)) ?? null;
 }
 
-function canonicalizeSnapshots(snapshots: ModelBenchmarkSnapshotDoc[], models: ModelMeta[]): ModelBenchmarkSnapshotDoc[] {
+function canonicalizeSnapshots(
+  snapshots: ModelBenchmarkSnapshotDoc[],
+  models: ModelMeta[],
+): ModelBenchmarkSnapshotDoc[] {
   const aliasIndex = buildAliasIndex(models);
   return snapshots.map((snapshot) => {
     const canonical = canonicalizeModelID(snapshot.modelID, aliasIndex);
@@ -459,11 +487,13 @@ function favoriteSpecForModel(model: ModelMeta): FavoriteSpec | null {
 }
 
 function hasHardGateSignals(rec: BuiltRecommendation): boolean {
-  return rec.signals.routable !== false
-    && rec.tier === "flagship"
-    && rec.signals.benchmarkScore != null
-    && rec.signals.benchmarkFreshness != null
-    && rec.signals.benchmarkFreshness >= FAVORITE_MIN_FRESHNESS;
+  return (
+    rec.signals.routable !== false &&
+    rec.tier === "flagship" &&
+    rec.signals.benchmarkScore != null &&
+    rec.signals.benchmarkFreshness != null &&
+    rec.signals.benchmarkFreshness >= FAVORITE_MIN_FRESHNESS
+  );
 }
 
 function favoriteIsProtected(rec: BuiltRecommendation): boolean {
@@ -475,11 +505,16 @@ function currentMarginsClear(challenger: BuiltRecommendation, incumbent: BuiltRe
   if (incumbent.signals.benchmarkScore == null) return true;
   const challengerBenchmark = challenger.signals.benchmarkScore ?? -Infinity;
   const incumbentBenchmark = incumbent.signals.benchmarkScore ?? Infinity;
-  return challenger.score >= incumbent.score + EVIDENCE_DETHRONING_MARGIN
-    && challengerBenchmark >= incumbentBenchmark + BENCHMARK_DETHRONING_MARGIN;
+  return (
+    challenger.score >= incumbent.score + EVIDENCE_DETHRONING_MARGIN &&
+    challengerBenchmark >= incumbentBenchmark + BENCHMARK_DETHRONING_MARGIN
+  );
 }
 
-function previousCandidate(previousTaskRanking: PreviousTaskRanking | undefined, modelID: string): {
+function previousCandidate(
+  previousTaskRanking: PreviousTaskRanking | undefined,
+  modelID: string,
+): {
   score?: number;
   benchmarkScore?: number | null;
 } | null {
@@ -504,21 +539,23 @@ function previousCandidate(previousTaskRanking: PreviousTaskRanking | undefined,
 function previousMarginsClear(
   challenger: BuiltRecommendation,
   incumbent: BuiltRecommendation,
-  previousTaskRanking: PreviousTaskRanking | undefined
+  previousTaskRanking: PreviousTaskRanking | undefined,
 ): boolean {
   const previousChallenger = previousCandidate(previousTaskRanking, challenger.modelID);
   const previousIncumbent = previousCandidate(previousTaskRanking, incumbent.modelID);
   if (!previousChallenger || !previousIncumbent) return false;
   if (previousChallenger.score == null || previousIncumbent.score == null) return false;
   if (previousChallenger.benchmarkScore == null || previousIncumbent.benchmarkScore == null) return false;
-  return previousChallenger.score >= previousIncumbent.score + EVIDENCE_DETHRONING_MARGIN
-    && previousChallenger.benchmarkScore >= previousIncumbent.benchmarkScore + BENCHMARK_DETHRONING_MARGIN;
+  return (
+    previousChallenger.score >= previousIncumbent.score + EVIDENCE_DETHRONING_MARGIN &&
+    previousChallenger.benchmarkScore >= previousIncumbent.benchmarkScore + BENCHMARK_DETHRONING_MARGIN
+  );
 }
 
 function canDethrone(
   challenger: BuiltRecommendation,
   incumbent: BuiltRecommendation,
-  previousTaskRanking: PreviousTaskRanking | undefined
+  previousTaskRanking: PreviousTaskRanking | undefined,
 ): boolean {
   if (!currentMarginsClear(challenger, incumbent)) return false;
   if (!favoriteIsProtected(incumbent)) return true;
@@ -567,7 +604,7 @@ function compareEvidence(a: BuiltRecommendation, b: BuiltRecommendation): number
 function compareSelection(
   a: BuiltRecommendation,
   b: BuiltRecommendation,
-  previousTaskRanking: PreviousTaskRanking | undefined
+  previousTaskRanking: PreviousTaskRanking | undefined,
 ): number {
   const aProtected = favoriteIsProtected(a);
   const bProtected = favoriteIsProtected(b);
@@ -588,9 +625,7 @@ export function buildRouterRundown(input: RundownInput) {
   const now = generatedAt;
   const canonicalSnapshots = canonicalizeSnapshots(snapshots, models);
   const canonicalRuntime = canonicalizeRuntime(runtime, models);
-  const previousTaskRankings = new Map(
-    (previousRundown?.taskRankings ?? []).map((task) => [task.taskID, task])
-  );
+  const previousTaskRankings = new Map((previousRundown?.taskRankings ?? []).map((task) => [task.taskID, task]));
 
   const sourceStatuses = statuses.map((s) => {
     const meta = sourceMeta(s.source);
@@ -631,12 +666,14 @@ export function buildRouterRundown(input: RundownInput) {
 
     const recs = models
       .filter((m) => (taskSnapshotsByModel.get(m.modelID) ?? []).length > 0)
-      .map((m) => buildRecommendation({
-        model: m,
-        snapshots: taskSnapshotsByModel.get(m.modelID) ?? [],
-        runtime: canonicalRuntime[m.modelID],
-        now,
-      }));
+      .map((m) =>
+        buildRecommendation({
+          model: m,
+          snapshots: taskSnapshotsByModel.get(m.modelID) ?? [],
+          runtime: canonicalRuntime[m.modelID],
+          now,
+        }),
+      );
 
     if (recs.length === 0) {
       return {
@@ -651,10 +688,12 @@ export function buildRouterRundown(input: RundownInput) {
     }
 
     const previousTaskRanking = previousTaskRankings.get(task.id);
-    const ranked = finalizeSelectionScores(recs
-      .map(annotateSelection)
-      .sort((a, b) => compareSelection(a, b, previousTaskRanking))
-      .map((r, i) => ({ ...r, rank: i + 1 })));
+    const ranked = finalizeSelectionScores(
+      recs
+        .map(annotateSelection)
+        .sort((a, b) => compareSelection(a, b, previousTaskRanking))
+        .map((r, i) => ({ ...r, rank: i + 1 })),
+    );
 
     const top = ranked[0];
     const alternatives = ranked.slice(1, 3);
@@ -668,9 +707,10 @@ export function buildRouterRundown(input: RundownInput) {
       selectionScore: r.selectionScore,
       benchmarkScore: r.signals.benchmarkScore,
       reason: rejectionReason(r),
-      evidence: r.signals.benchmarkScore == null
-        ? "No benchmark score from any active source for this task."
-        : `Evidence ${(r.score * 100).toFixed(0)}/100; selection ${(r.selectionScore * 100).toFixed(0)}/100 vs. leader ${(top.selectionScore * 100).toFixed(0)}/100.`,
+      evidence:
+        r.signals.benchmarkScore == null
+          ? "No benchmark score from any active source for this task."
+          : `Evidence ${(r.score * 100).toFixed(0)}/100; selection ${(r.selectionScore * 100).toFixed(0)}/100 vs. leader ${(top.selectionScore * 100).toFixed(0)}/100.`,
     }));
 
     return {
@@ -782,16 +822,32 @@ function buildRecommendation({
 
   const explanation: string[] = [];
   if (signals.benchmarkScore != null) {
-    explanation.push(`Composite benchmark score ${(signals.benchmarkScore * 100).toFixed(0)}/100 across ${citations.length} source${citations.length === 1 ? "" : "s"}.`);
+    explanation.push(
+      `Composite benchmark score ${(signals.benchmarkScore * 100).toFixed(0)}/100 across ${citations.length} source${citations.length === 1 ? "" : "s"}.`,
+    );
   }
   if (signals.benchmarkFreshness != null) {
-    explanation.push(`Freshest evidence rated ${(signals.benchmarkFreshness * 100).toFixed(0)}/100 — older sources are weighted down, not dropped.`);
+    explanation.push(
+      `Freshest evidence rated ${(signals.benchmarkFreshness * 100).toFixed(0)}/100 — older sources are weighted down, not dropped.`,
+    );
   }
   if (signals.cost != null) {
-    explanation.push(signals.cost > 0.66 ? "Cost-efficient at typical blended pricing." : signals.cost > 0.33 ? "Mid-tier per-token cost." : "Premium-tier per-token cost.");
+    explanation.push(
+      signals.cost > 0.66
+        ? "Cost-efficient at typical blended pricing."
+        : signals.cost > 0.33
+          ? "Mid-tier per-token cost."
+          : "Premium-tier per-token cost.",
+    );
   }
   if (signals.latency != null) {
-    explanation.push(signals.latency > 0.66 ? "Latency profile is fast (high TPS, low TTFT)." : signals.latency > 0.33 ? "Latency is acceptable for non-interactive work." : "Latency is slow; consider for batch / nightly use.");
+    explanation.push(
+      signals.latency > 0.66
+        ? "Latency profile is fast (high TPS, low TTFT)."
+        : signals.latency > 0.33
+          ? "Latency is acceptable for non-interactive work."
+          : "Latency is slow; consider for batch / nightly use.",
+    );
   }
   if (model.contextWindowTokens != null) {
     explanation.push(`Context window: ${(model.contextWindowTokens / 1000).toFixed(0)}k tokens.`);
@@ -800,10 +856,14 @@ function buildRecommendation({
     explanation.push(`Wire-format family: ${model.providerFamily}.`);
   }
   if (!routable) {
-    explanation.push("Not currently routable through a BurnBar-connected account — shown for visibility, ranked behind routable peers, never auto-selected.");
+    explanation.push(
+      "Not currently routable through a BurnBar-connected account — shown for visibility, ranked behind routable peers, never auto-selected.",
+    );
   }
   if (tier === "mini" || tier === "mid") {
-    explanation.push(`Tier · ${tier}. Counted behind flagship siblings at equivalent benchmark; pin the tier explicitly to invert this.`);
+    explanation.push(
+      `Tier · ${tier}. Counted behind flagship siblings at equivalent benchmark; pin the tier explicitly to invert this.`,
+    );
   }
 
   return {
@@ -855,26 +915,40 @@ function pickFreshness(snapshots: ModelBenchmarkSnapshotDoc[]): string {
 
 function rejectionReason(rec: ReturnType<typeof buildRecommendation>): string {
   if (rec.signals.benchmarkScore == null) return "No benchmark evidence for this task category today.";
-  if (rec.signals.benchmarkFreshness != null && rec.signals.benchmarkFreshness < 0.4) return "Benchmark evidence is too old to outrank fresher peers.";
+  if (rec.signals.benchmarkFreshness != null && rec.signals.benchmarkFreshness < 0.4)
+    return "Benchmark evidence is too old to outrank fresher peers.";
   if (rec.signals.routable === false) return "Not routable through a connected BurnBar provider account.";
-  if (rec.signals.cost != null && rec.signals.cost < 0.2) return "Per-token cost is materially higher than the leader at comparable score.";
+  if (rec.signals.cost != null && rec.signals.cost < 0.2)
+    return "Per-token cost is materially higher than the leader at comparable score.";
   return "Selection policy did not clear the leader's margin for this task.";
 }
 
-function topPickRationale(top: ReturnType<typeof buildRecommendation> | undefined, runners: Array<ReturnType<typeof buildRecommendation>>): string {
+function topPickRationale(
+  top: ReturnType<typeof buildRecommendation> | undefined,
+  runners: Array<ReturnType<typeof buildRecommendation>>,
+): string {
   if (!top) return "No model met the floor today; routing falls back to user-pinned defaults.";
   const reasons: string[] = [];
-  if (top.favoriteRank != null && top.favoritePrior > 0) reasons.push(`stable favorite rank #${top.favoriteRank} under ${top.favoritePolicyVersion}`);
+  if (top.favoriteRank != null && top.favoritePrior > 0)
+    reasons.push(`stable favorite rank #${top.favoriteRank} under ${top.favoritePolicyVersion}`);
   if (top.preferredReasoningEffort) reasons.push(`preferred reasoning effort ${top.preferredReasoningEffort}`);
-  if (top.signals.benchmarkScore != null) reasons.push(`led the benchmark composite at ${(top.signals.benchmarkScore * 100).toFixed(0)}/100`);
-  if (top.signals.benchmarkFreshness != null && top.signals.benchmarkFreshness >= 0.8) reasons.push("evidence is fresh");
-  else if (top.signals.benchmarkFreshness != null) reasons.push("evidence is the freshest available, even though older than ideal");
+  if (top.signals.benchmarkScore != null)
+    reasons.push(`led the benchmark composite at ${(top.signals.benchmarkScore * 100).toFixed(0)}/100`);
+  if (top.signals.benchmarkFreshness != null && top.signals.benchmarkFreshness >= 0.8)
+    reasons.push("evidence is fresh");
+  else if (top.signals.benchmarkFreshness != null)
+    reasons.push("evidence is the freshest available, even though older than ideal");
   if (top.signals.cost != null && top.signals.cost > 0.5) reasons.push("cost is competitive");
-  if (top.signals.contextWindowTokens != null && top.signals.contextWindowTokens >= 200_000) reasons.push(`context window of ${(top.signals.contextWindowTokens / 1000).toFixed(0)}k clears typical large-context work`);
+  if (top.signals.contextWindowTokens != null && top.signals.contextWindowTokens >= 200_000)
+    reasons.push(
+      `context window of ${(top.signals.contextWindowTokens / 1000).toFixed(0)}k clears typical large-context work`,
+    );
   if (runners.length > 0) reasons.push(`runner-up ${runners[0].modelDisplay} is held in reserve for instant failover`);
-  return redact(reasons.length > 0
-    ? `Today's pick: ${top.modelDisplay} — ${reasons.join("; ")}.`
-    : `Today's pick: ${top.modelDisplay}.`);
+  return redact(
+    reasons.length > 0
+      ? `Today's pick: ${top.modelDisplay} — ${reasons.join("; ")}.`
+      : `Today's pick: ${top.modelDisplay}.`,
+  );
 }
 
 // ───────────────────────────── persistence ─────────────────────────────────
@@ -907,7 +981,7 @@ export async function loadRundownCatalog(db: Firestore): Promise<{
             Object.entries(data.runtime).flatMap(([modelID, value]) => {
               const parsed = parseRuntimeMeta(value);
               return parsed ? [[modelID, parsed]] : [];
-            })
+            }),
           )
         : {},
     };
@@ -942,9 +1016,10 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
     .map((d) => parseModelBenchmarkSourceStatusDoc(d.data()))
     .filter((status): status is ModelBenchmarkSourceStatusDoc => status != null);
   const previousLatest = previousLatestSnap.exists ? previousLatestSnap.data() : undefined;
-  const previousRundown = previousLatest && typeof previousLatest.date === "string" && previousLatest.date !== date
-    ? parsePreviousRundown(previousLatest)
-    : undefined;
+  const previousRundown =
+    previousLatest && typeof previousLatest.date === "string" && previousLatest.date !== date
+      ? parsePreviousRundown(previousLatest)
+      : undefined;
 
   if (catalog.models.length === 0) {
     logWarn({
@@ -992,9 +1067,7 @@ export const latestRouterRundown = onRequest(
       // Accept the date from either ?date=YYYY-MM-DD or the trailing path
       // segment (e.g. /api/router-rundown/2026-05-13).
       const pathSegment = (req.path ?? "").split("/").filter(Boolean).pop() ?? "";
-      const candidate = typeof req.query.date === "string"
-        ? req.query.date
-        : pathSegment;
+      const candidate = typeof req.query.date === "string" ? req.query.date : pathSegment;
       const date = /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : "latest";
       const docRef = db.doc(`router_rundowns/${date}`);
       const snap = await docRef.get();
@@ -1008,5 +1081,5 @@ export const latestRouterRundown = onRequest(
       logError({ event: "router_rundown.latest_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
-  }
+  },
 );

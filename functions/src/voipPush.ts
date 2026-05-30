@@ -74,9 +74,7 @@ export async function resolveFanOut(args: {
   let resolvedAndroidDeviceId = args.androidDeviceId?.trim();
   let fcmToken: string | undefined;
   if (resolvedAndroidDeviceId) {
-    const snap = await firestore
-      .doc(`users/${args.uid}/devices/${resolvedAndroidDeviceId}`)
-      .get();
+    const snap = await firestore.doc(`users/${args.uid}/devices/${resolvedAndroidDeviceId}`).get();
     const data = snap.exists ? snap.data() : undefined;
     fcmToken = isRecord(data) ? stringField(data, "fcm_token")?.trim() : undefined;
     const fcmUpdatedAt = isRecord(data) ? Number(data.updated_at_millis ?? 0) : 0;

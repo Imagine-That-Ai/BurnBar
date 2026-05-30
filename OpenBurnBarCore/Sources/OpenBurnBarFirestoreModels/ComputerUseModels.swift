@@ -3,6 +3,8 @@
 
 import Foundation
 
+
+
 public struct FirestoreComputerUsePhoneAuthorityDoc: Codable, Sendable, Equatable {
     public var deviceId: String
     public var publicKey: String

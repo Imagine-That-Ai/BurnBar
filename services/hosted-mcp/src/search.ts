@@ -3,8 +3,6 @@ import { verifyCursor, signCursor } from "./cursors.js";
 import { HttpError } from "./errors.js";
 
 const HEX_32_128 = /^[a-f0-9]{32,128}$/u;
-const ACTIVE_COMMIT_CACHE_TTL_MS = 30_000;
-const activeCommitCache = new Map<string, { activeCommitIDs: Set<string>; expiresAtMs: number }>();
 
 export interface SearchArgs {
   query?: string;
@@ -42,8 +40,6 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
 
   const offset = args.cursor ? verifyCursor(args.cursor, uid, "burnbar_search_conversations").offset : 0;
   let firestoreDocumentReads = 0;
-  const active = await activeCommitIDs(db, uid);
-  firestoreDocumentReads += active.firestoreDocumentReads;
   const candidates = new Map<string, { id: string; tokenMatches: number; semanticMatches: number; data: FirebaseFirestore.DocumentData }>();
   const remainingSearchReadBudget = Math.max(0, 150 - firestoreDocumentReads);
   const activePostingQueryCount = [tokenHashes, semanticHashes].filter((items) => items.length > 0).length;
@@ -52,8 +48,8 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
     Math.min(limit * 2, Math.floor(remainingSearchReadBudget / Math.max(1, activePostingQueryCount * 2)))
   );
   const postingReads = await Promise.all([
-    collectPostingMatches(db, uid, tokenHashes, "token", candidates, active, args.provider, candidateReadCap),
-    collectPostingMatches(db, uid, semanticHashes, "semantic", candidates, active, args.provider, candidateReadCap)
+    collectPostingMatches(db, uid, tokenHashes, "token", candidates, args.provider, candidateReadCap),
+    collectPostingMatches(db, uid, semanticHashes, "semantic", candidates, args.provider, candidateReadCap)
   ]);
   firestoreDocumentReads += postingReads.reduce((sum, reads) => sum + reads, 0);
 
@@ -109,39 +105,12 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
   };
 }
 
-async function activeCommitIDs(db: Firestore, uid: string): Promise<{ activeCommitIDs: Set<string>; firestoreDocumentReads: number }> {
-  const cached = activeCommitCache.get(uid);
-  if (cached && cached.expiresAtMs > Date.now()) {
-    return { activeCommitIDs: new Set(cached.activeCommitIDs), firestoreDocumentReads: 0 };
-  }
-  const manifest = await db.doc(`users/${uid}/cloud_search_index_manifest/current`).get();
-  const active = new Set<string>();
-  const byDevice = manifest.get("activeCommitIDsByDevice");
-  if (isRecord(byDevice)) {
-    for (const value of Object.values(byDevice)) {
-      if (typeof value === "string") active.add(value);
-    }
-  }
-  if (active.size > 0) {
-    activeCommitCache.set(uid, { activeCommitIDs: new Set(active), expiresAtMs: Date.now() + ACTIVE_COMMIT_CACHE_TTL_MS });
-    return { activeCommitIDs: active, firestoreDocumentReads: 1 };
-  }
-  const state = await db.collection(`users/${uid}/cloud_search_index_state`).limit(100).get();
-  for (const doc of state.docs) {
-    const commitID = doc.get("activeCommitID");
-    if (typeof commitID === "string") active.add(commitID);
-  }
-  activeCommitCache.set(uid, { activeCommitIDs: new Set(active), expiresAtMs: Date.now() + ACTIVE_COMMIT_CACHE_TTL_MS });
-  return { activeCommitIDs: active, firestoreDocumentReads: 1 + state.docs.length };
-}
-
 async function collectPostingMatches(
   db: Firestore,
   uid: string,
   inputHashes: string[],
   kind: "token" | "semantic",
   candidates: Map<string, { id: string; tokenMatches: number; semanticMatches: number; data: FirebaseFirestore.DocumentData }>,
-  active: { activeCommitIDs: Set<string>; firestoreDocumentReads: number },
   provider: string | undefined,
   candidateReadCap: number
 ): Promise<number> {
@@ -155,20 +124,10 @@ async function collectPostingMatches(
   let firestoreDocumentReads = postings.docs.length;
   const chunkIDs = new Set<string>();
   for (const posting of postings.docs) {
-    const postingData = posting.data() ?? {};
     const hash = posting.get("hash");
     const chunkID = posting.get("chunkID");
     if (posting.get("kind") === kind && typeof hash === "string" && requested.has(hash) && typeof chunkID === "string") {
-      if (postingHasChunkPayload(postingData)) {
-        const commitID = typeof postingData.commitID === "string" ? postingData.commitID : undefined;
-        if (active.activeCommitIDs.size > 0 && (!commitID || !active.activeCommitIDs.has(commitID))) continue;
-        const current = candidates.get(chunkID) ?? { id: chunkID, tokenMatches: 0, semanticMatches: 0, data: postingData };
-        if (kind === "token") current.tokenMatches += 1;
-        else current.semanticMatches += 1;
-        candidates.set(chunkID, current);
-      } else {
-        chunkIDs.add(chunkID);
-      }
+      chunkIDs.add(chunkID);
     }
   }
   const refs = Array.from(chunkIDs).slice(0, candidateReadCap).map((chunkID) => db.doc(`users/${uid}/cloud_search_chunks/${chunkID}`));
@@ -179,8 +138,6 @@ async function collectPostingMatches(
     if (!chunk.exists) continue;
     const data = chunk.data() ?? {};
     if (provider && data.provider !== provider) continue;
-    const commitID = typeof data.commitID === "string" ? data.commitID : undefined;
-    if (active.activeCommitIDs.size > 0 && (!commitID || !active.activeCommitIDs.has(commitID))) continue;
     const values = Array.isArray(data[kind === "token" ? "tokenHashes" : "semanticHashes"])
       ? data[kind === "token" ? "tokenHashes" : "semanticHashes"].filter((hash: unknown): hash is string => typeof hash === "string")
       : [];
@@ -192,15 +149,6 @@ async function collectPostingMatches(
     candidates.set(chunk.id, current);
   }
   return firestoreDocumentReads;
-}
-
-function postingHasChunkPayload(data: FirebaseFirestore.DocumentData): boolean {
-  return typeof data.documentID === "string"
-    && typeof data.sourceKind === "string"
-    && typeof data.sourceID === "string"
-    && typeof data.bodyHash === "string"
-    && typeof data.storagePath === "string"
-    && data.sealedSnippet !== undefined;
 }
 
 function timestampISO(value: unknown): string | undefined {

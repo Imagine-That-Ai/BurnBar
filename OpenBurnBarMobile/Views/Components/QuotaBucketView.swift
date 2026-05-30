@@ -22,20 +22,35 @@ struct QuotaBucketView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                if bucket.isCreditBalance {
+                    Image(systemName: "creditcard.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(bandColor)
+                }
                 Text(bucket.name)
                     .font(MobileTheme.Typography.body)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
+                if bucket.isCreditBalance {
+                    Text("Balance")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(bandColor))
+                }
                 Spacer()
-                Text(remainingPercentLabel)
+                Text(bucket.isCreditBalance ? balanceLabel : remainingPercentLabel)
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(bandColor)
             }
-            remainingQuotaBar
+            if !bucket.isCreditBalance {
+                remainingQuotaBar
+            }
             HStack(spacing: 6) {
                 Text(usageLine)
                     .font(MobileTheme.Typography.monoSmall)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
-                if let window = bucket.window, !window.isEmpty {
+                if !bucket.isCreditBalance, let window = bucket.window, !window.isEmpty {
                     Spacer()
                     Text(window.capitalized)
                         .font(MobileTheme.Typography.caption)
@@ -45,7 +60,15 @@ struct QuotaBucketView: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(bucket.name): \(usageLine), \(remainingPercentLabel) remaining"))
+        .accessibilityLabel(Text("\(bucket.name): \(usageLine), \(bucket.isCreditBalance ? balanceLabel : remainingPercentLabel) remaining"))
+    }
+
+    private var balanceLabel: String {
+        let remaining = bucket.remaining
+        if abs(remaining - floor(remaining)) < 0.01 {
+            return "$\(Int(remaining))"
+        }
+        return String(format: "$%.2f", remaining)
     }
 
     private var remainingQuotaBar: some View {

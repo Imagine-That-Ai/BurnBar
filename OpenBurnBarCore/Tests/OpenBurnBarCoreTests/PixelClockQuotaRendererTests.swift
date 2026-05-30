@@ -401,7 +401,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(litPixelCount, 14, provider.displayName)
             XCTAssertGreaterThanOrEqual(Set(litPixels).count, 2, provider.displayName)
             XCTAssertEqual(logo.sourceName, expectedLogoSourceName(for: provider), provider.displayName)
-            let allowsSharedOpenAIFamilyLogo = [.openAI, .codex, .openCode].contains(provider)
+            let allowsSharedOpenAIFamilyLogo = [.openAI, .codex, .openCode, .cursor, .cursorAgent].contains(provider)
             if !allowsSharedOpenAIFamilyLogo {
                 XCTAssertTrue(seenColorGrids.insert(colorGrid).inserted, provider.displayName)
             }
@@ -1250,7 +1250,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         case .mimo: return "MimoLogo"
         case .zai: return "ZaiLogo"
         case .factory: return "FactoryLogo"
-        case .cursor: return "CursorLogo"
+        case .cursor, .cursorAgent: return "CursorLogo"
         case .warp: return "WarpLogo"
         case .ollama: return "OllamaLogo"
         case .kimi: return "KimiLogo"

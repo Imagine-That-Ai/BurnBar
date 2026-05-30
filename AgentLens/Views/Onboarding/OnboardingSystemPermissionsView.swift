@@ -105,6 +105,7 @@ struct OnboardingSystemPermissionsView: View {
 private struct PermissionsCard: View {
     let step: PermissionsOnboardingCoordinator.Step
     @ObservedObject var coordinator: PermissionsOnboardingCoordinator
+    @ObservedObject private var virtualHIDInstaller = RemoteUnlockVirtualHIDBridgeInstaller.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -185,27 +186,55 @@ private struct PermissionsCard: View {
     private var statusRow: some View {
         let liveStatus = coordinator.liveStatus(for: step)
         let summary: String
-        switch liveStatus {
-        case .granted:
-            summary = "Granted. Auto-advancing…"
-        case .needsAccess, .unknown, .timeout:
-            if step.kind == .automation {
-                summary = "Click Request Access. If macOS does not show a prompt, open Automation and enable \(step.targetDisplayName) under OpenBurnBar."
-            } else {
-                summary = "Allow on your Mac. We'll trigger the system prompt and open System Settings for you."
-            }
-        case .requesting:
-            summary = "Watching for the system prompt…"
-        case .denied:
-            if step.kind == .automation {
-                summary = "Denied. Open Automation, expand OpenBurnBar, and enable \(step.targetDisplayName)."
-            } else {
-                summary = "Denied. You can still toggle it manually in System Settings."
+        if step.kind == .systemExtension {
+            // Locked-screen input reads as a normal setup step in every state —
+            // never "Denied"/fault, never "virtual HID" or Apple approval.
+            summary = virtualHIDInputSummary(for: liveStatus)
+        } else {
+            switch liveStatus {
+            case .granted:
+                summary = "Granted. Auto-advancing…"
+            case .needsAccess, .unknown, .timeout:
+                if step.kind == .automation {
+                    summary = "Click Request Access. If macOS does not show a prompt, open Automation and enable \(step.targetDisplayName) under OpenBurnBar."
+                } else {
+                    summary = "Allow on your Mac. We'll trigger the system prompt and open System Settings for you."
+                }
+            case .requesting:
+                summary = "Watching for the system prompt…"
+            case .denied:
+                if step.kind == .automation {
+                    summary = "Denied. Open Automation, expand OpenBurnBar, and enable \(step.targetDisplayName)."
+                } else {
+                    summary = "Denied. You can still toggle it manually in System Settings."
+                }
             }
         }
         return Text(summary)
             .font(DesignSystem.Typography.caption)
             .foregroundStyle(DesignSystem.Colors.textSecondary)
+    }
+
+    /// Status copy for the locked-screen input card. Surfaces the installer's
+    /// product-ready message when present, otherwise describes the next setup
+    /// step. Stays action-oriented and never blames the user.
+    private func virtualHIDInputSummary(for status: SystemPermissionStatus) -> String {
+        if virtualHIDInstaller.isInstalling {
+            return "Setting up locked-screen input. Approve the macOS administrator prompt when it appears."
+        }
+        if let message = virtualHIDInstaller.lastError {
+            return message
+        }
+        switch status {
+        case .granted:
+            return "Locked-screen input is ready. Auto-advancing…"
+        case .requesting:
+            return "Setting up locked-screen input…"
+        case .denied:
+            return "Locked-screen input needs one more approval. Choose Set Up Input, then approve OpenBurnBar in Privacy & Security if macOS asks."
+        case .needsAccess, .unknown, .timeout:
+            return "Choose Set Up Input to turn on locked-screen typing. Approve the macOS administrator prompt when it appears."
+        }
     }
 
     private var controls: some View {
@@ -245,13 +274,16 @@ private struct PermissionsCard: View {
         switch coordinator.liveStatus(for: step) {
         case .granted: return "Granted"
         case .requesting: return "Watching…"
-        default:
-            switch step.kind {
-            case .camera, .microphone: return "Allow now"
-            case .screenRecording, .accessibility: return "Prompt and open Settings"
-            case .fullDiskAccess: return "Open Settings"
-            case .automation: return "Request Access"
-            }
+            default:
+                switch step.kind {
+                case .camera, .microphone: return "Allow now"
+                case .screenRecording, .accessibility, .remoteDesktop: return "Prompt and open Settings"
+                case .systemExtension: return virtualHIDInstaller.isInstalling
+                    ? "Setting up…"
+                    : "Set Up Input"
+                case .fullDiskAccess: return "Open Settings"
+                case .automation: return "Request Access"
+                }
         }
     }
 
@@ -294,6 +326,8 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
             Step(id: "camera", kind: .camera, bundleId: nil, titleForCard: "Camera"),
             Step(id: "screen", kind: .screenRecording, bundleId: nil, titleForCard: "Screen Recording"),
             Step(id: "accessibility", kind: .accessibility, bundleId: nil, titleForCard: "Accessibility"),
+            Step(id: "remoteDesktop", kind: .remoteDesktop, bundleId: nil, titleForCard: "Remote Desktop"),
+            Step(id: "systemExtension", kind: .systemExtension, bundleId: nil, titleForCard: "Locked-Screen Input"),
             Step(id: "fda", kind: .fullDiskAccess, bundleId: nil, titleForCard: "Full Disk Access")
         ]
         for target in OnboardingAutomationTargets.preflightTargets {
@@ -369,6 +403,13 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
             openSystemSettings(for: step)
         case .accessibility:
             _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
+        case .remoteDesktop:
+            openSystemSettings(for: step)
+        case .systemExtension:
+            await RemoteUnlockVirtualHIDBridgeInstaller.shared.installOrRepair()
+            if RemoteUnlockVirtualHIDBridgeInstaller.shared.lastError != nil {
+                openSystemSettings(for: step)
+            }
         case .fullDiskAccess:
             openSystemSettings(for: step)
         case .automation:

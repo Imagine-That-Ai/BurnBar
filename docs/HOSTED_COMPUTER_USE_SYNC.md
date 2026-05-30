@@ -27,9 +27,10 @@ Clients never receive raw selectors, typed secrets, screenshots, or full audit-c
 - `users/{uid}/computer_use_sessions/{sessionId}`
 - `users/{uid}/computer_use_actions/{actionId}`
 - `users/{uid}/computer_use_quota_usage/{dayKey}`
-- `ops/computer_use_budget_status/current`
+- `ops/computer_use_budget_status/state/current` (public envelope)
+- `ops/computer_use_budget_status/metrics/current` (operator metrics)
 
-Rules enforce active entitlement before client writes. `ops/computer_use_budget_status` is read-only for clients.
+Rules enforce active entitlement before client writes. The public budget envelope at `state/current` is readable by signed-in users; operator metrics and rollups remain operator-only (see [ADR 006](architecture/006-budget-envelope-visibility.md)).
 
 ## Verification
 

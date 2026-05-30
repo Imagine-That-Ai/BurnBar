@@ -18,6 +18,9 @@ struct MercuryDevicePersonalization: Codable, Equatable, Sendable {
     var showHermesSquareTile: Bool
     var mimicLoginBackground: Bool
     var usePremiumSOTAUX: Bool?
+    /// Glass Trackpad pointer-move speed multiplier. `nil` → 1.0 (default).
+    /// Range: 0.3 (slow/precise) to 3.0 (fast/snappy).
+    var trackpadSensitivity: Double?
 
     /// Settings used on the first appearance for any device that has no
     /// stored snapshot yet. Accent defaults to `.autoFromWallpaper` so
@@ -33,7 +36,8 @@ struct MercuryDevicePersonalization: Codable, Equatable, Sendable {
         haptics: .gentle,
         showHermesSquareTile: true,
         mimicLoginBackground: true,
-        usePremiumSOTAUX: false
+        usePremiumSOTAUX: false,
+        trackpadSensitivity: nil
     )
 
     /// Returns a copy with `actionOrder` normalized: ordering preserved,

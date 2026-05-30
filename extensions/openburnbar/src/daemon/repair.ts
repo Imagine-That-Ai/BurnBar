@@ -30,12 +30,7 @@ export const OPENBURNBAR_DAEMON_LAUNCH_AGENT_LABEL = 'com.openburnbar.daemon';
 
 export function defaultOpenBurnBarRuntimePaths(): OpenBurnBarDaemonRuntimePaths {
   return {
-    launchAgentPlistPath: join(
-      homedir(),
-      'Library',
-      'LaunchAgents',
-      `${OPENBURNBAR_DAEMON_LAUNCH_AGENT_LABEL}.plist`
-    )
+    launchAgentPlistPath: join(homedir(), 'Library', 'LaunchAgents', `${OPENBURNBAR_DAEMON_LAUNCH_AGENT_LABEL}.plist`)
   };
 }
 

@@ -46,6 +46,7 @@ extension AgentIdentity {
         case .forge:    return .forgeDev
         case .antigravity: return .antigravity
         case .grok: return .xAI
+        case .cursorAgent: return .cursorAgent
         }
     }
 }

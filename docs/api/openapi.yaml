@@ -1,0 +1,228 @@
+openapi: "3.1.0"
+info:
+  title: OpenBurnBar Cloud Functions API
+  description: |
+    HTTP-accessible Firebase Cloud Functions v2 endpoints for OpenBurnBar.
+
+    **Authentication:** Most endpoints require Firebase Auth Bearer token.
+    Exception: `/health*` endpoints are public.
+
+    **Base URL:** `https://us-central1-openburnbar.cloudfunctions.net`
+
+    **Callable functions** (not listed here) use the Firebase callable protocol
+    at `POST /[functionName]` with `{ data: {...} }` body and require App Check.
+  version: "1.0.0"
+  contact:
+    name: OpenBurnBar Engineering
+    url: https://github.com/Imagine-That-Ai/BurnBar
+  license:
+    name: MIT
+    url: https://github.com/Imagine-That-Ai/BurnBar/blob/main/LICENSE
+
+servers:
+  - url: https://us-central1-openburnbar.cloudfunctions.net
+    description: Production (Firebase Cloud Functions)
+  - url: http://localhost:5001/openburnbar/us-central1
+    description: Local Firebase Emulator
+
+tags:
+  - name: health
+    description: Health and liveness probes for monitoring and deployment verification
+  - name: callables
+    description: Firebase callable functions (invoked by client SDKs, not raw HTTP)
+  - name: quota
+    description: Quota evaluation and management
+  - name: usage
+    description: Usage rollups and statistics
+
+paths:
+  /healthCheck:
+    get:
+      tags: [health]
+      summary: Full health check
+      description: |
+        Returns the overall health status of the Cloud Functions deployment,
+        including Firestore connectivity and version information.
+        Used by monitoring dashboards and post-deployment verification.
+      operationId: healthCheck
+      security: []
+      responses:
+        "200":
+          description: All systems healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: "ok"
+                timestamp: "2026-05-30T12:00:00.000Z"
+                version: "0.1.2-beta.12"
+                uptime_ms: 3600000
+                checks:
+                  firestore: "ok"
+        "503":
+          description: One or more dependencies degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: "degraded"
+                timestamp: "2026-05-30T12:00:00.000Z"
+                checks:
+                  firestore: "error"
+                error: "Firestore connectivity check failed"
+
+  /healthLive:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: Returns 200 if the Cloud Functions process is alive. Used by load balancers.
+      operationId: healthLive
+      security: []
+      responses:
+        "200":
+          description: Process alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [alive]
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /healthReady:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: Returns 200 if Firebase Admin and Firestore are ready to serve requests.
+      operationId: healthReady
+      security: []
+      responses:
+        "200":
+          description: Ready to serve
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Not ready — Firestore unavailable or timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /evaluateComputerUseBudget:
+    post:
+      tags: [quota]
+      summary: Evaluate Computer Use budget (scheduled)
+      description: |
+        Scheduled function — evaluates per-user Computer Use budget against
+        soft/hard caps and writes quota snapshots. Also triggers Remote Config
+        kill switch when hard cap is reached.
+
+        Runs hourly. Not intended for direct client invocation.
+      operationId: evaluateComputerUseBudget
+      security:
+        - firebaseAuth: []
+      responses:
+        "200":
+          description: Budget evaluation complete
+
+  /rollupUsageDaily:
+    post:
+      tags: [usage]
+      summary: Roll up daily usage (scheduled)
+      description: |
+        Scheduled function — aggregates per-user token usage events into
+        daily/weekly/monthly rollup documents in Firestore.
+      operationId: rollupUsageDaily
+      security:
+        - firebaseAuth: []
+      responses:
+        "200":
+          description: Rollup complete
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, alive, ready]
+          description: Overall health status
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the health check
+        version:
+          type: string
+          description: Deployed function version (from git tag)
+          example: "0.1.2-beta.12"
+        uptime_ms:
+          type: number
+          description: Process uptime in milliseconds
+        latency_ms:
+          type: number
+          description: Time taken to complete dependency checks (ms)
+        checks:
+          type: object
+          description: Per-dependency health status
+          properties:
+            firestore:
+              type: string
+              enum: [ok, error]
+        error:
+          type: string
+          description: Human-readable error message when degraded
+
+    CallableRequest:
+      type: object
+      description: Firebase callable function request envelope
+      required: [data]
+      properties:
+        data:
+          type: object
+          description: Function-specific payload
+
+    CallableResponse:
+      type: object
+      description: Firebase callable function response envelope
+      required: [result]
+      properties:
+        result:
+          type: object
+          description: Function-specific response
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Firebase error code (e.g., "functions/unauthenticated")
+            message:
+              type: string
+
+  securitySchemes:
+    firebaseAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase JWT
+      description: Firebase Auth ID token. Obtain via `firebase.auth().currentUser.getIdToken()`.
+
+    appCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+      description: Firebase App Check attestation token. Required for callable functions in production.

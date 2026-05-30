@@ -54,6 +54,60 @@ final class SpellCheckService {
         return Array(filtered.prefix(3))
     }
 
+    /// Checks if a word is misspelled and returns the best correction guess.
+    func bestCorrection(for word: String) -> String? {
+        guard word.count >= 2 else { return nil }
+
+        let nsWord = word as NSString
+        let fullRange = NSRange(location: 0, length: nsWord.length)
+
+        let misspelledRange = textChecker.rangeOfMisspelledWord(
+            in: word,
+            range: fullRange,
+            startingAt: 0,
+            wrap: false,
+            language: language
+        )
+
+        if misspelledRange.location != NSNotFound {
+            let guesses = textChecker.guesses(
+                forWordRange: misspelledRange,
+                in: word,
+                language: language
+            ) ?? []
+            return guesses.first
+        }
+
+        return nil
+    }
+
+    /// Preserves capitalization style of the original word onto the correction.
+    static func preserveCapitalization(original: String, correction: String) -> String {
+        guard !original.isEmpty && !correction.isEmpty else { return correction }
+        
+        let firstChar = original.first!
+        if firstChar.isUppercase {
+            let isAllUppercase = original.allSatisfy { !$0.isLetter || $0.isUppercase }
+            if isAllUppercase {
+                return correction.uppercased()
+            } else {
+                return correction.prefix(1).uppercased() + correction.dropFirst()
+            }
+        }
+        return correction
+    }
+
+    /// Extracts the last word typed in the context.
+    func extractLastWord(from context: String) -> String? {
+        guard !context.isEmpty else { return nil }
+        
+        let components = context.components(separatedBy: .whitespacesAndNewlines)
+        guard let lastWord = components.last, !lastWord.isEmpty else { return nil }
+        
+        let isWord = lastWord.allSatisfy { $0.isLetter || $0 == "'" || $0 == "-" }
+        return isWord ? lastWord : nil
+    }
+
     /// Extracts the word currently being typed from the text context
     /// before the cursor (i.e., `documentContextBeforeInput`).
     ///

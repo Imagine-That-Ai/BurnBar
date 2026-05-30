@@ -19,20 +19,12 @@
  * extended to populate real usage numbers.
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "kimi" as const;
 
-const HOSTS = [
-  "https://api.kimi.ai",
-  "https://api.moonshot.cn",
-] as const;
+const HOSTS = ["https://api.kimi.ai", "https://api.moonshot.cn"] as const;
 
 const VALIDATE_PATH = "/v1/models";
 
@@ -53,10 +45,7 @@ interface KimiFetchResult {
   errorCode?: string;
 }
 
-async function kimiFetch(
-  url: string,
-  token: string
-): Promise<KimiFetchResult> {
+async function kimiFetch(url: string, token: string): Promise<KimiFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -118,10 +107,7 @@ function inlineErrorMessage(payload: unknown): string | undefined {
 // Multi-host fallback (mirrors zai adapter pattern)
 // ---------------------------------------------------------------------------
 
-async function tryEachHost(
-  path: string,
-  token: string
-): Promise<KimiFetchResult> {
+async function tryEachHost(path: string, token: string): Promise<KimiFetchResult> {
   let lastFailure: KimiFetchResult | undefined;
   for (const host of HOSTS) {
     const url = `${host}${path}`;
@@ -131,11 +117,13 @@ async function tryEachHost(
     // Auth failures mean the key is bad — no point trying another host.
     if (result.errorCode === "auth_failed") return result;
   }
-  return lastFailure ?? {
-    ok: false,
-    error: "Kimi request failed against all candidate hosts.",
-    errorCode: "fetch_failed",
-  };
+  return (
+    lastFailure ?? {
+      ok: false,
+      error: "Kimi request failed against all candidate hosts.",
+      errorCode: "fetch_failed",
+    }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -192,10 +180,7 @@ export const kimiAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
 
     // Validate the credential via /v1/models first.
@@ -222,47 +207,43 @@ export const kimiAdapter: ProviderAdapter = {
     // must be on the same host that accepted the key.
     let confidence: "high" | "medium" | "low" = "low";
     let source = "Kimi /v1/models";
-    let statusMessage =
-      "Kimi credential validated; balance endpoint unavailable — usage limits are unknown.";
+    let statusMessage = "Kimi credential validated; balance endpoint unavailable — usage limits are unknown.";
 
-    const balanceResult = await tryEachHost(
-      "/v1/users/me/balance",
-      trimmed
-    );
+    const balanceResult = await tryEachHost("/v1/users/me/balance", trimmed);
 
     if (balanceResult.ok && balanceResult.data) {
       const balance = recordOrUndefined(balanceResult.data);
       if (balance) {
-      const available = finiteNumber(balance.available_balance ?? balance.availableBalance ?? balance.balance);
-      const used = finiteNumber(balance.used_balance ?? balance.usedBalance ?? balance.used);
-      const total = finiteNumber(balance.total_balance ?? balance.totalBalance ?? balance.total);
+        const available = finiteNumber(balance.available_balance ?? balance.availableBalance ?? balance.balance);
+        const used = finiteNumber(balance.used_balance ?? balance.usedBalance ?? balance.used);
+        const total = finiteNumber(balance.total_balance ?? balance.totalBalance ?? balance.total);
 
-      if (available != null && total != null && total > 0) {
-        const usedAmount = used != null ? used : Math.max(0, total - available);
-        buckets.push({
-          name: "account_balance",
-          used: usedAmount,
-          limit: total,
-          remaining: available,
-          window: "monthly",
-          meta: { currency: balance.currency ?? "CNY" },
-        });
-        confidence = "high";
-        source = "Kimi balance API";
-        statusMessage = "Fetched account balance from Kimi.";
-      } else if (available != null && available > 0) {
-        buckets.push({
-          name: "remaining_balance",
-          used: 0,
-          limit: available,
-          remaining: available,
-          window: "monthly",
-          meta: { currency: balance.currency ?? "CNY" },
-        });
-        confidence = "medium";
-        source = "Kimi balance API";
-        statusMessage = "Fetched remaining balance from Kimi; total limit unavailable.";
-      }
+        if (available != null && total != null && total > 0) {
+          const usedAmount = used != null ? used : Math.max(0, total - available);
+          buckets.push({
+            name: "account_balance",
+            used: usedAmount,
+            limit: total,
+            remaining: available,
+            window: "monthly",
+            meta: { currency: balance.currency ?? "CNY" },
+          });
+          confidence = "high";
+          source = "Kimi balance API";
+          statusMessage = "Fetched account balance from Kimi.";
+        } else if (available != null && available > 0) {
+          buckets.push({
+            name: "remaining_balance",
+            used: 0,
+            limit: available,
+            remaining: available,
+            window: "monthly",
+            meta: { currency: balance.currency ?? "CNY" },
+          });
+          confidence = "medium";
+          source = "Kimi balance API";
+          statusMessage = "Fetched remaining balance from Kimi; total limit unavailable.";
+        }
       }
     }
 
@@ -270,9 +251,7 @@ export const kimiAdapter: ProviderAdapter = {
     // data. A synthetic `used: 0` bucket alongside real balance data
     // pollutes the primary display bucket selection and makes the gauge
     // show 100% remaining regardless of actual usage.
-    const hasRealQuotaData = buckets.some(
-      (b) => b.name !== "models" && b.name !== "connected"
-    );
+    const hasRealQuotaData = buckets.some((b) => b.name !== "models" && b.name !== "connected");
 
     if (modelCount > 0 && !hasRealQuotaData) {
       buckets.push({

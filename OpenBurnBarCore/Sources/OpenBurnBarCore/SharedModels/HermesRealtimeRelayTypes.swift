@@ -299,19 +299,23 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
     public var timestamp: Date
     public var intentHashBlake3: String
     public var signatureEd25519: String
+    /// Optional App Attest / Play Integrity digest bound into capability-token minting (WS2).
+    public var attestationHashBlake3: String?
 
     public init(
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
         intentHashBlake3: String,
-        signatureEd25519: String
+        signatureEd25519: String,
+        attestationHashBlake3: String? = nil
     ) {
         self.peerNodeId = peerNodeId
         self.counter = counter
         self.timestamp = timestamp
         self.intentHashBlake3 = intentHashBlake3
         self.signatureEd25519 = signatureEd25519
+        self.attestationHashBlake3 = attestationHashBlake3
     }
 }
 
@@ -607,6 +611,7 @@ public enum HermesRealtimeRelayRemoteUnlockBackend: String, Codable, CaseIterabl
     case screenCaptureKit = "screen_capture_kit"
     case persistentScreenCaptureKit = "persistent_screen_capture_kit"
     case appleScreenSharingLoopback = "apple_screen_sharing_loopback"
+    case openBurnBarVirtualHID = "openburnbar_virtual_hid"
     case fileVaultSSH = "filevault_ssh"
     case unavailable
 }
@@ -1161,6 +1166,8 @@ public struct HermesRealtimeRelayRemoteUnlockResult: Codable, Sendable, Equatabl
 public enum HermesRealtimeRelaySystemPermissionKind: String, Codable, CaseIterable, Sendable, Equatable {
     case screenRecording = "screen_recording"
     case accessibility
+    case remoteDesktop = "remote_desktop"
+    case systemExtension = "system_extension"
     case camera
     case microphone
     case fullDiskAccess = "full_disk_access"

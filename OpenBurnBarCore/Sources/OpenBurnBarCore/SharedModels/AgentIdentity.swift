@@ -463,6 +463,11 @@ extension AgentIdentity {
             tagline = "xAI Grok Build via your Mac."
             capabilities = [.fullCLI, .codeExecution, .mcpUI]
             dispatchTransport = .macRelay(runtime: "grok")
+        case .cursorAgent:
+            paletteHex = "00E5FF"
+            tagline = "Cursor Agent via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "cursoragent")
         }
 
         return AgentIdentity(

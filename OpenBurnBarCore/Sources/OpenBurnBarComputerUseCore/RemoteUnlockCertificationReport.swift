@@ -76,6 +76,9 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
     public var fileVaultSSHSupported: Bool
     public var loopbackOnlyFirewallActive: Bool
     public var generatedCredentialInSystemKeychain: Bool
+    public var remoteDesktopPermissionGranted: Bool
+    public var virtualHIDDriverInstalled: Bool
+    public var virtualHIDDriverActive: Bool
     public var probes: RemoteUnlockCertificationProbes
     public var evidence: RemoteUnlockCertificationEvidence
 
@@ -91,6 +94,9 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
         fileVaultSSHSupported: Bool,
         loopbackOnlyFirewallActive: Bool,
         generatedCredentialInSystemKeychain: Bool,
+        remoteDesktopPermissionGranted: Bool = false,
+        virtualHIDDriverInstalled: Bool = false,
+        virtualHIDDriverActive: Bool = false,
         probes: RemoteUnlockCertificationProbes,
         evidence: RemoteUnlockCertificationEvidence
     ) {
@@ -105,6 +111,9 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
         self.fileVaultSSHSupported = fileVaultSSHSupported
         self.loopbackOnlyFirewallActive = loopbackOnlyFirewallActive
         self.generatedCredentialInSystemKeychain = generatedCredentialInSystemKeychain
+        self.remoteDesktopPermissionGranted = remoteDesktopPermissionGranted
+        self.virtualHIDDriverInstalled = virtualHIDDriverInstalled
+        self.virtualHIDDriverActive = virtualHIDDriverActive
         self.probes = probes
         self.evidence = evidence
     }
@@ -120,7 +129,7 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
         notes: String? = nil
     ) -> RemoteUnlockCertificationReport {
         RemoteUnlockCertificationReport(
-            backend: .appleScreenSharingLoopback,
+            backend: .openBurnBarVirtualHID,
             generatedAt: generatedAt,
             expiresAt: generatedAt.addingTimeInterval(validitySeconds),
             currentOSBuild: currentOSBuild,
@@ -128,7 +137,10 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
             credentialRecipientPublicKeyBase64: credentialRecipientPublicKeyBase64,
             fileVaultSSHSupported: fileVaultSSHSupported,
             loopbackOnlyFirewallActive: true,
-            generatedCredentialInSystemKeychain: true,
+            generatedCredentialInSystemKeychain: false,
+            remoteDesktopPermissionGranted: true,
+            virtualHIDDriverInstalled: true,
+            virtualHIDDriverActive: true,
             probes: .passed(at: generatedAt),
             evidence: RemoteUnlockCertificationEvidence(
                 operatorConfirmedHardware: true,
@@ -149,16 +161,28 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
         credentialRecipientPublicKeyBase64 expectedPublicKeyBase64: String?,
         directDownloadBuild: Bool,
         daemonInstalled: Bool,
-        systemScreenSharingAvailable: Bool
+        systemScreenSharingAvailable: Bool,
+        remoteDesktopPermissionGranted: Bool = true,
+        virtualHIDDriverInstalled: Bool = true,
+        virtualHIDDriverActive: Bool = true
     ) -> [String] {
         var blockers: [String] = []
         if schemaVersion != Self.currentSchemaVersion { blockers.append("remote_unlock_report_schema_unsupported") }
         if reportId.trimmedForRemoteUnlockReport.isEmpty { blockers.append("remote_unlock_report_id_missing") }
         if evidence.proofNonce.trimmedForRemoteUnlockReport.isEmpty { blockers.append("remote_unlock_report_nonce_missing") }
-        if backend != .appleScreenSharingLoopback { blockers.append("remote_unlock_report_backend_unsupported") }
+        if backend != .openBurnBarVirtualHID { blockers.append("remote_unlock_report_backend_unsupported") }
         if !directDownloadBuild { blockers.append("direct_download_build_required") }
         if !daemonInstalled { blockers.append("remote_access_daemon_missing") }
         if !systemScreenSharingAvailable { blockers.append("apple_screen_sharing_unavailable") }
+        if !remoteDesktopPermissionGranted || !self.remoteDesktopPermissionGranted {
+            blockers.append("remote_desktop_permission_missing")
+        }
+        if !virtualHIDDriverInstalled || !self.virtualHIDDriverInstalled {
+            blockers.append("virtual_hid_driver_missing")
+        }
+        if !virtualHIDDriverActive || !self.virtualHIDDriverActive {
+            blockers.append("virtual_hid_driver_inactive")
+        }
         if generatedAt > now.addingTimeInterval(Self.futureClockSkewSeconds) { blockers.append("remote_unlock_report_generated_in_future") }
         if expiresAt <= now { blockers.append("remote_unlock_report_expired") }
         if expiresAt.timeIntervalSince(generatedAt) > Self.defaultValiditySeconds { blockers.append("remote_unlock_report_ttl_exceeded") }
@@ -176,7 +200,6 @@ public struct RemoteUnlockCertificationReport: Codable, Hashable, Sendable {
             blockers.append("remote_unlock_recipient_public_key_invalid")
         }
         if !loopbackOnlyFirewallActive { blockers.append("loopback_firewall_guard_missing") }
-        if !generatedCredentialInSystemKeychain { blockers.append("generated_vnc_credential_missing") }
         if !probes.lockScreenCapture.succeeded { blockers.append("lock_screen_capture_probe_missing") }
         if !probes.credentialInput.succeeded { blockers.append("credential_input_probe_missing") }
         if !probes.unlockRoundTrip.succeeded { blockers.append("unlock_probe_missing") }

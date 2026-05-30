@@ -82,9 +82,11 @@ private func argumentValue(_ name: String, in args: [String] = CommandLine.argum
 private final class RemoteAccessAgentServer {
     private let socketPath: String
     private let socketFD: Int32
+    private let peerAuthenticator: PrivilegedPeerAuthenticator
 
     init(socketPath: String) throws {
         self.socketPath = socketPath
+        self.peerAuthenticator = PrivilegedPeerAuthenticator(socketLabel: socketPath)
         self.socketFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard socketFD >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
         try bindSocket()
@@ -196,7 +198,10 @@ private final class RemoteAccessAgentServer {
 
     private func handle(_ client: Int32) {
         do {
-            try validatePeer(client)
+            try peerAuthenticator.validateUnixSocketPeer(
+                socketFD: client,
+                consoleUser: resolveConsoleUser()
+            )
             let requestData = try readRequest(from: client)
             let request = try JSONDecoder().decode(AgentRequest.self, from: requestData)
             switch request.operation {
@@ -219,27 +224,35 @@ private final class RemoteAccessAgentServer {
                 agentLog("focusProbe request accepted")
                 try RemoteAccessCredentialWorker.launchFocusProbe()
                 try write(AgentResponse(ok: true, error: nil), to: client)
+            case "requestCapabilityToken":
+                // WS2: mint domain-tagged capability tokens offline. Stub keeps the socket contract stable.
+                try write(
+                    AgentResponse(ok: false, error: AgentError.capabilityTokenNotYetAvailable.rawValue),
+                    to: client
+                )
             default:
                 try write(AgentResponse(ok: false, error: "unsupported_operation"), to: client)
             }
         } catch {
-            let detail = (error as? AgentError)?.rawValue ?? "request_failed"
+            let detail = agentErrorDetail(for: error)
             try? write(AgentResponse(ok: false, error: detail), to: client)
         }
     }
 
-    private func validatePeer(_ client: Int32) throws {
-        var peerUID = uid_t()
-        var peerGID = gid_t()
-        guard getpeereid(client, &peerUID, &peerGID) == 0 else {
-            throw AgentError.peerIdentityUnavailable
+    private func agentErrorDetail(for error: Error) -> String {
+        if let agentError = error as? AgentError {
+            return agentError.rawValue
         }
-        guard let consoleUser = resolveConsoleUser() else {
-            throw AgentError.consoleUserUnavailable
+        if let authFailure = error as? PrivilegedPeerAuthenticationFailure {
+            switch authFailure {
+            case .peerIdentityUnavailable: return AgentError.peerIdentityUnavailable.rawValue
+            case .consoleUserUnavailable: return AgentError.consoleUserUnavailable.rawValue
+            case .peerNotConsoleUser: return AgentError.peerNotConsoleUser.rawValue
+            case .auditTokenUnavailable: return AgentError.peerIdentityUnavailable.rawValue
+            case .codeSignatureInvalid: return AgentError.peerCodeSignatureInvalid.rawValue
+            }
         }
-        guard peerUID == consoleUser.uid else {
-            throw AgentError.peerNotConsoleUser
-        }
+        return "request_failed"
     }
 
     private func readRequest(from client: Int32) throws -> Data {
@@ -820,6 +833,7 @@ private enum RemoteAccessTyper {
 }
 
 private enum AgentError: String, Error {
+    case capabilityTokenNotYetAvailable = "capability_token_not_yet_available"
     case consoleUserUnavailable = "console_user_unavailable"
     case credentialInvalid = "credential_invalid"
     case credentialMissing = "credential_missing"
@@ -829,6 +843,7 @@ private enum AgentError: String, Error {
     case eventSourceUnavailable = "event_source_unavailable"
     case peerIdentityUnavailable = "peer_identity_unavailable"
     case peerNotConsoleUser = "peer_not_console_user"
+    case peerCodeSignatureInvalid = "peer_code_signature_invalid"
     case requestTooLarge = "request_too_large"
     case requestTimedOut = "request_timed_out"
     case socketPathTooLong = "socket_path_too_long"

@@ -17,7 +17,7 @@ export function readFileResultToJSON(result: BurnBarReadFileResult): BurnBarJSON
 
 export function searchWorkspaceResultToJSON(result: BurnBarSearchWorkspaceResult): BurnBarJSONValue {
   return {
-    matches: result.matches.map(match => ({
+    matches: result.matches.map((match) => ({
       path: match.path,
       line: match.line,
       character: match.character,
@@ -30,7 +30,7 @@ export function searchBurnbarIndexResultToJSON(result: BurnBarSearchBurnbarIndex
   return {
     plan: result.plan,
     aggregateOccurrenceCount: result.aggregateOccurrenceCount ?? null,
-    hits: result.hits.map(hit => ({
+    hits: result.hits.map((hit) => ({
       chunkID: hit.chunkID,
       sourceKind: hit.sourceKind,
       sourceID: hit.sourceID,

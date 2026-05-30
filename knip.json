@@ -1,0 +1,44 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+
+  "workspaces": {
+    "functions": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"],
+      "ignore": ["lib/**", "scripts/**", "node_modules/**"]
+    },
+    "extensions/openburnbar": {
+      "entry": ["src/extension.ts"],
+      "project": ["src/**/*.ts"],
+      "ignore": ["dist/**", ".vscode-test/**", "node_modules/**"]
+    }
+  },
+
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/lib/**",
+    "**/.build/**",
+    "**/.derived-data/**",
+    "**/.spm-cache**/**",
+    "build/**",
+    "android/**",
+    "crates/**",
+    "scripts/**",
+    "tools/**",
+    "website/**",
+    "services/**",
+    "firestore-rules-tests/**",
+    "quota-runner/**",
+    "*.config.*",
+    "**/*.d.ts"
+  ],
+
+  "ignoreDependencies": [
+    "firebase-tools",
+    "@types/node",
+    "typescript",
+    "@typescript-eslint/eslint-plugin",
+    "@typescript-eslint/parser"
+  ]
+}

@@ -191,20 +191,25 @@ function parseOpenRouterResponse(raw: unknown): OpenRouterResponse | undefined {
     choices: choices?.flatMap((choice, index): OpenRouterChoice[] => {
       if (!isRecord(choice)) return [];
       const message = isRecord(choice.message) ? choice.message : undefined;
-      return [{
-        index: typeof choice.index === "number" ? choice.index : index,
-        message: message && typeof message.content === "string"
-          ? {
-              role: message.role === "system" || message.role === "user" || message.role === "assistant"
-                ? message.role
-                : "assistant",
-              content: message.content,
-            }
-          : undefined,
-        finish_reason: typeof choice.finish_reason === "string" || choice.finish_reason === null
-          ? choice.finish_reason
-          : undefined,
-      }];
+      return [
+        {
+          index: typeof choice.index === "number" ? choice.index : index,
+          message:
+            message && typeof message.content === "string"
+              ? {
+                  role:
+                    message.role === "system" || message.role === "user" || message.role === "assistant"
+                      ? message.role
+                      : "assistant",
+                  content: message.content,
+                }
+              : undefined,
+          finish_reason:
+            typeof choice.finish_reason === "string" || choice.finish_reason === null
+              ? choice.finish_reason
+              : undefined,
+        },
+      ];
     }),
     error: error
       ? {
@@ -266,7 +271,7 @@ function digestSummaryFor(request: Record<string, unknown> | null): string {
       contentHash: asString(digest.contentHash),
     },
     null,
-    0
+    0,
   );
 }
 
@@ -280,10 +285,7 @@ function systemPromptText(): string {
   ].join(" ");
 }
 
-function userPromptText(args: {
-  prompt: string;
-  digestSummary: string;
-}): string {
+function userPromptText(args: { prompt: string; digestSummary: string }): string {
   return [
     `User question:\n${args.prompt}`,
     "",
@@ -339,10 +341,7 @@ async function callOpenRouter(args: {
       signal: args.signal,
     });
   } catch (error) {
-    throw new HttpsError(
-      "unavailable",
-      `OpenRouter transport failed: ${errorMessage(error)}`
-    );
+    throw new HttpsError("unavailable", `OpenRouter transport failed: ${errorMessage(error)}`);
   }
 
   const text = await response.text();
@@ -350,17 +349,11 @@ async function callOpenRouter(args: {
   try {
     parsed = parseOpenRouterResponse(JSON.parse(text));
   } catch {
-    throw new HttpsError(
-      "internal",
-      `OpenRouter returned non-JSON (${response.status}): ${clip(text, 240)}`
-    );
+    throw new HttpsError("internal", `OpenRouter returned non-JSON (${response.status}): ${clip(text, 240)}`);
   }
 
   if (!parsed) {
-    throw new HttpsError(
-      "internal",
-      `OpenRouter returned non-JSON (${response.status}): ${clip(text, 240)}`
-    );
+    throw new HttpsError("internal", `OpenRouter returned non-JSON (${response.status}): ${clip(text, 240)}`);
   }
 
   if (!response.ok) {
@@ -412,20 +405,14 @@ function sanitizeEnvelope(rawContent: string): string {
   try {
     parsed = JSON.parse(trimmed);
   } catch (error) {
-    throw new HttpsError(
-      "internal",
-      `Model emitted invalid JSON: ${errorMessage(error)}`
-    );
+    throw new HttpsError("internal", `Model emitted invalid JSON: ${errorMessage(error)}`);
   }
   const obj = asObject(parsed);
   if (!obj) {
     throw new HttpsError("internal", "Model emitted a non-object JSON document.");
   }
   if (typeof obj.executiveSummary !== "string" || obj.executiveSummary.trim().length === 0) {
-    throw new HttpsError(
-      "internal",
-      "Model envelope missing executiveSummary — refusing to forward an empty brief."
-    );
+    throw new HttpsError("internal", "Model envelope missing executiveSummary — refusing to forward an empty brief.");
   }
 
   const clean: Record<string, unknown> = {};
@@ -457,122 +444,117 @@ export const insightsHostedAnswer = onCall(
     timeoutSeconds: 60,
     secrets: [OPENROUTER_API_KEY],
   },
-  wrapCallableHandler("insightsHostedAnswer", async (
-    request: CallableRequest<HostedAnswerRequest>
-  ): Promise<Record<string, unknown>> => {
-    assertAppCheck(request);
-    // The hosted Intelligence Brief is paywalled behind the same
-    // BurnBar Pro SKU as Hosted Quota Sync. Anonymous + free-tier
-    // callers see `permission-denied` with `{ code: "subscription-required" }`
-    // so the iOS / macOS / Android adapters can route directly to
-    // the upgrade CTA without round-tripping a generic error.
-    assertAuth(request);
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError("unauthenticated", "Request must be authenticated with Firebase Auth.");
-    }
-    await assertActiveBurnBarProEntitlement(uid);
+  wrapCallableHandler(
+    "insightsHostedAnswer",
+    async (request: CallableRequest<HostedAnswerRequest>): Promise<Record<string, unknown>> => {
+      assertAppCheck(request);
+      // The hosted Intelligence Brief is paywalled behind the same
+      // BurnBar Pro SKU as Hosted Quota Sync. Anonymous + free-tier
+      // callers see `permission-denied` with `{ code: "subscription-required" }`
+      // so the iOS / macOS / Android adapters can route directly to
+      // the upgrade CTA without round-tripping a generic error.
+      assertAuth(request);
+      const uid = request.auth?.uid;
+      if (!uid) {
+        throw new HttpsError("unauthenticated", "Request must be authenticated with Firebase Auth.");
+      }
+      await assertActiveBurnBarProEntitlement(uid);
 
-    const startedAtISO = isoNow();
-    const data = request.data ?? {};
-    const rawRequest = asObject(data.request);
-    const instruction = asString(data.instruction, "answerFollowUp");
-    const promptPreview = asString(data.promptPreview);
-    const promptFromBody = asString(rawRequest?.prompt);
-    const prompt = (promptFromBody || promptPreview).trim();
+      const startedAtISO = isoNow();
+      const data = request.data ?? {};
+      const rawRequest = asObject(data.request);
+      const instruction = asString(data.instruction, "answerFollowUp");
+      const promptPreview = asString(data.promptPreview);
+      const promptFromBody = asString(rawRequest?.prompt);
+      const prompt = (promptFromBody || promptPreview).trim();
 
-    if (!prompt) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Hosted fallback requires a non-empty prompt in request.prompt or promptPreview."
+      if (!prompt) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Hosted fallback requires a non-empty prompt in request.prompt or promptPreview.",
+        );
+      }
+      if (instruction !== "answerFollowUp" && instruction !== "generateReport") {
+        // We don't gate the request, but we *do* limit hosted-budget
+        // burn to actual Q&A turns. The Swift/Kotlin orchestrator
+        // already gates on `.answerFollowUp` before reaching here;
+        // surface the invariant explicitly so future callers can't
+        // accidentally burn hosted quota on canvas refreshes.
+        throw new HttpsError(
+          "failed-precondition",
+          `Hosted fallback only handles answerFollowUp / generateReport (got "${instruction}").`,
+        );
+      }
+
+      const apiKey = OPENROUTER_API_KEY.value().trim();
+      if (!apiKey) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Hosted fallback is unconfigured: OPENROUTER_API_KEY secret is empty.",
+        );
+      }
+
+      const modelSlug = (process.env.INSIGHTS_HOSTED_FALLBACK_MODEL ?? "").trim() || DEFAULT_MODEL_SLUG;
+      const baseURL = (process.env.INSIGHTS_HOSTED_FALLBACK_BASE_URL ?? "").trim() || DEFAULT_BASE_URL;
+      const modelDisplayName = (process.env.INSIGHTS_HOSTED_FALLBACK_DISPLAY_NAME ?? "").trim() || DEFAULT_DISPLAY_NAME;
+
+      const digestSummary = digestSummaryFor(rawRequest);
+      const systemPrompt = systemPromptText();
+      const userPrompt = userPromptText({ prompt, digestSummary });
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45_000);
+      let openRouterContent: string;
+      let openRouterRaw: OpenRouterResponse;
+      try {
+        const result = await callOpenRouter({
+          apiKey,
+          baseURL,
+          modelSlug,
+          systemPrompt,
+          userPrompt,
+          signal: controller.signal,
+        });
+        openRouterContent = result.content;
+        openRouterRaw = result.raw;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const envelope = sanitizeEnvelope(openRouterContent);
+      const completedAtISO = isoNow();
+      const inputTokens = openRouterRaw.usage?.prompt_tokens ?? 0;
+      const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
+      const inputPrice = parseNumericEnv(
+        "INSIGHTS_HOSTED_FALLBACK_INPUT_PRICE_PER_MTOKEN",
+        DEFAULT_INPUT_PRICE_PER_MTOKEN,
       );
-    }
-    if (instruction !== "answerFollowUp" && instruction !== "generateReport") {
-      // We don't gate the request, but we *do* limit hosted-budget
-      // burn to actual Q&A turns. The Swift/Kotlin orchestrator
-      // already gates on `.answerFollowUp` before reaching here;
-      // surface the invariant explicitly so future callers can't
-      // accidentally burn hosted quota on canvas refreshes.
-      throw new HttpsError(
-        "failed-precondition",
-        `Hosted fallback only handles answerFollowUp / generateReport (got "${instruction}").`
+      const outputPrice = parseNumericEnv(
+        "INSIGHTS_HOSTED_FALLBACK_OUTPUT_PRICE_PER_MTOKEN",
+        DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
       );
-    }
+      const estimatedCostUSD = (inputTokens / 1_000_000) * inputPrice + (outputTokens / 1_000_000) * outputPrice;
 
-    const apiKey = OPENROUTER_API_KEY.value().trim();
-    if (!apiKey) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Hosted fallback is unconfigured: OPENROUTER_API_KEY secret is empty."
-      );
-    }
-
-    const modelSlug =
-      (process.env.INSIGHTS_HOSTED_FALLBACK_MODEL ?? "").trim() || DEFAULT_MODEL_SLUG;
-    const baseURL =
-      (process.env.INSIGHTS_HOSTED_FALLBACK_BASE_URL ?? "").trim() || DEFAULT_BASE_URL;
-    const modelDisplayName =
-      (process.env.INSIGHTS_HOSTED_FALLBACK_DISPLAY_NAME ?? "").trim() ||
-      DEFAULT_DISPLAY_NAME;
-
-    const digestSummary = digestSummaryFor(rawRequest);
-    const systemPrompt = systemPromptText();
-    const userPrompt = userPromptText({ prompt, digestSummary });
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 45_000);
-    let openRouterContent: string;
-    let openRouterRaw: OpenRouterResponse;
-    try {
-      const result = await callOpenRouter({
-        apiKey,
-        baseURL,
-        modelSlug,
-        systemPrompt,
-        userPrompt,
-        signal: controller.signal,
-      });
-      openRouterContent = result.content;
-      openRouterRaw = result.raw;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    const envelope = sanitizeEnvelope(openRouterContent);
-    const completedAtISO = isoNow();
-    const inputTokens = openRouterRaw.usage?.prompt_tokens ?? 0;
-    const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
-    const inputPrice = parseNumericEnv(
-      "INSIGHTS_HOSTED_FALLBACK_INPUT_PRICE_PER_MTOKEN",
-      DEFAULT_INPUT_PRICE_PER_MTOKEN
-    );
-    const outputPrice = parseNumericEnv(
-      "INSIGHTS_HOSTED_FALLBACK_OUTPUT_PRICE_PER_MTOKEN",
-      DEFAULT_OUTPUT_PRICE_PER_MTOKEN
-    );
-    const estimatedCostUSD =
-      (inputTokens / 1_000_000) * inputPrice +
-      (outputTokens / 1_000_000) * outputPrice;
-
-    return {
-      envelope,
-      providerKey: "burnbar-hosted",
-      modelSlug,
-      modelDisplayName,
-      egressTier: "hosted",
-      tokenUsage: {
+      return {
+        envelope,
         providerKey: "burnbar-hosted",
-        modelID: modelSlug,
-        inputTokens,
-        outputTokens,
-        estimatedCostUSD,
-        startedAt: startedAtISO,
-        completedAt: completedAtISO,
-      },
-      ranAt: completedAtISO,
-    };
-  }
-));
+        modelSlug,
+        modelDisplayName,
+        egressTier: "hosted",
+        tokenUsage: {
+          providerKey: "burnbar-hosted",
+          modelID: modelSlug,
+          inputTokens,
+          outputTokens,
+          estimatedCostUSD,
+          startedAt: startedAtISO,
+          completedAt: completedAtISO,
+        },
+        ranAt: completedAtISO,
+      };
+    },
+  ),
+);
 
 /**
  * Parse an env var as a non-negative float. Returns `fallback` when
@@ -612,13 +594,11 @@ async function assertActiveBurnBarProEntitlement(uid: string): Promise<void> {
     });
   };
   if (!proSnap.exists && !hostedSnap.exists) {
-    failWithSubscriptionRequired(
-      "Active BurnBar Pro subscription required for hosted Intelligence Brief answers."
-    );
+    failWithSubscriptionRequired("Active BurnBar Pro subscription required for hosted Intelligence Brief answers.");
   }
   if (!isActiveBurnBarProEntitlement(proSnap.data()) && !isActiveBurnBarProEntitlement(hostedSnap.data())) {
     failWithSubscriptionRequired(
-      "BurnBar Pro subscription is inactive — restore your purchase or resubscribe to use hosted Intelligence Brief answers."
+      "BurnBar Pro subscription is inactive — restore your purchase or resubscribe to use hosted Intelligence Brief answers.",
     );
   }
 }

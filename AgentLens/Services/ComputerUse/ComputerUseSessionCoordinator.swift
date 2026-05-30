@@ -375,6 +375,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     public func endSession(reason: ComputerUseEndReason = .completed) async {
         guard activeSessionId != nil else { return }
         cancelPendingApprovals(decision: .reject, note: "session ended")
+        finalizeAuditSignedHeadIfPossible()
         activeSessionId = nil
         phoneReceiver = nil
         systemPermissionReceiver = nil
@@ -395,6 +396,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     public func panicHalt(source: ComputerUsePanicSource) async {
         guard let sessionId = activeSessionId else { return }
+        PrivilegedInputKillSwitch.activate(reason: source.rawValue)
         cancelPendingApprovals(decision: .rejectAndHalt, note: "panic halt")
         if let logger = auditLogger {
             let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
@@ -408,6 +410,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 _ = try? logger.append(entry)
                 state?.auditChainHeadHashHex = logger.headHashHex
             }
+            finalizeAuditSignedHeadIfPossible()
         }
         activeSessionId = nil
         phoneReceiver = nil
@@ -428,8 +431,21 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         _ = sessionId
     }
 
+    private func finalizeAuditSignedHeadIfPossible() {
+        guard let logger = auditLogger else { return }
+        let legacyKey = OpenBurnBarAppPaths.live().supportDirectory
+            .appendingPathComponent("computer-use-audit", isDirectory: true)
+            .appendingPathComponent("keys", isDirectory: true)
+            .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)
+        guard let signer = try? ComputerUseKeychainAuditExportSignerProvider(legacyRawKeyURL: legacyKey).signer() else {
+            return
+        }
+        try? ComputerUseAuditHeadFinalizer.finalize(logger: logger, signer: signer)
+    }
+
     private func haltForBudgetHardCap() {
         guard activeSessionId != nil else { return }
+        PrivilegedInputKillSwitch.activate(reason: ComputerUseDenyReason.hardCap.rawValue)
         cancelPendingApprovals(decision: .rejectAndHalt, note: "budget hard cap")
         if let logger = auditLogger {
             let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
@@ -732,7 +748,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             guard let browserDispatcher else { throw CoordinatorError.missingBrowserDispatcher }
             output = try await browserDispatcher(browser)
         case .macInput(let input):
-            output = try macDispatcher.dispatch(input)
+            if shouldUseVirtualHIDForLockedInput() {
+                Self.log.info("mac_phone_action_virtual_hid_dispatch kind=\(input.kind.rawValue, privacy: .public)")
+                Self.debugTrace("mac_phone_action_virtual_hid_dispatch kind=\(input.kind.rawValue)")
+                let token = try await mintVirtualHIDCapabilityToken(actionKind: input.kind.rawValue)
+                output = try await RemoteUnlockVirtualHIDInputClient().dispatch(input, capabilityToken: token)
+            } else {
+                output = try macDispatcher.dispatch(input)
+            }
         case .macInspect(let inspect):
             output = try macDispatcher.inspect(inspect)
         case .remoteClipboard:
@@ -752,6 +775,36 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             output: output,
             completedAt: Date()
         )
+    }
+
+    private func shouldUseVirtualHIDForLockedInput() -> Bool {
+        let readiness = MacRemoteUnlockReadinessService.shared
+        let snapshot = readiness.snapshot()
+        guard snapshot.virtualHIDDriverActive else { return false }
+        switch readiness.currentState(sessionId: nil, controlOwnerViewerId: nil).lockState {
+        case .unlocked, .unknown:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func mintVirtualHIDCapabilityToken(actionKind: String) async throws -> CapabilityToken {
+        let peerNodeId = phoneControlAuthorizedPeerNodeProvider?()
+        let sessionId = activeSessionId?.rawValue ?? latestControlConnectionID
+        let scopeHash = SHA256.hash(data: Data("remote_unlock:\(sessionId ?? "none")".utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        guard let token = try await RemoteUnlockCapabilityTokenBroker.shared.mintInputToken(
+            actionKind: actionKind,
+            scopeHash: scopeHash,
+            attestationHashBlake3: nil,
+            sessionId: sessionId,
+            peerNodeId: peerNodeId
+        ) else {
+            throw CoordinatorError.noActiveSession
+        }
+        return token
     }
 
     private func handleControlFrame(

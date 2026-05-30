@@ -390,6 +390,23 @@ data class FirestorePiAgentConnectionDoc(
   },
   "computer-use": {
     models: {
+      CapabilityToken: {
+        ts: `export interface CapabilityToken {
+  schemaVersion: number;
+  domain: "remote_unlock" | "computer_use";
+  nonce: string;
+  issuedAt: string;
+  expiresAt: string;
+  allowedActionKinds: string[];
+  scopeHash: string;
+  actionBudget: number;
+  boundEscrowDeviceId?: string;
+  attestationHashBlake3?: string;
+  signatureEd25519Base64?: string;
+}`,
+        swift: null,
+        kotlin: null,
+      },
       ComputerUsePhoneAuthorityDoc: {
         ts: `export interface ComputerUsePhoneAuthorityDoc {
   deviceId: string;

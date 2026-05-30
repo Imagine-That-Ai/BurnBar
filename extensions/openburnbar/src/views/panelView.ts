@@ -86,61 +86,61 @@ export class OpenBurnBarPanelView implements vscode.WebviewViewProvider {
   private async handleWebviewMessage(message: OpenBurnBarPanelWebviewMessage): Promise<void> {
     try {
       switch (message.type) {
-      case 'startRun': {
-        const metadata: Record<string, BurnBarJSONValue> = { mode: message.mode };
-        const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor?.document) {
-          const document = activeEditor.document;
-          const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-          metadata.activeFilePath = workspaceFolder
-            ? vscode.workspace.asRelativePath(document.uri, false)
-            : document.uri.fsPath;
+        case 'startRun': {
+          const metadata: Record<string, BurnBarJSONValue> = { mode: message.mode };
+          const activeEditor = vscode.window.activeTextEditor;
+          if (activeEditor?.document) {
+            const document = activeEditor.document;
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+            metadata.activeFilePath = workspaceFolder
+              ? vscode.workspace.asRelativePath(document.uri, false)
+              : document.uri.fsPath;
 
-          const selectedText = document.getText(activeEditor.selection).trim();
-          if (selectedText) {
-            metadata.activeSelectionText = selectedText;
+            const selectedText = document.getText(activeEditor.selection).trim();
+            if (selectedText) {
+              metadata.activeSelectionText = selectedText;
+            }
           }
-        }
 
-        await this.controller.startRun({
-          prompt: message.prompt,
-          modelID: message.modelID,
-          metadata
-        });
-        break;
-      }
-      case 'refresh':
-        await this.controller.refresh();
-        break;
-      case 'repair':
-        await this.controller.repairDaemon();
-        break;
-      case 'selectRun':
-        await this.controller.selectRun(message.runId);
-        break;
-      case 'cancelRun':
-        await this.controller.cancelRun(message.runId);
-        break;
-      case 'retryRun':
-        await this.controller.retryRun(message.runId);
-        break;
-      case 'approveRun':
-        await this.controller.respondToApproval(message.runId, 'approve');
-        break;
-      case 'rejectRun':
-        await this.controller.respondToApproval(message.runId, 'reject');
-        break;
-      case 'openApp':
-        await openBurnBarAppOrWarn(
-          'dashboard',
-          'Could not open OpenBurnBar. Install the OpenBurnBar app, then try again.'
-        );
-        break;
-      case 'openWorkspace':
-        OpenBurnBarWorkspacePanel.open(this.controller, this.extensionUri);
-        break;
-      default:
-        break;
+          await this.controller.startRun({
+            prompt: message.prompt,
+            modelID: message.modelID,
+            metadata
+          });
+          break;
+        }
+        case 'refresh':
+          await this.controller.refresh();
+          break;
+        case 'repair':
+          await this.controller.repairDaemon();
+          break;
+        case 'selectRun':
+          await this.controller.selectRun(message.runId);
+          break;
+        case 'cancelRun':
+          await this.controller.cancelRun(message.runId);
+          break;
+        case 'retryRun':
+          await this.controller.retryRun(message.runId);
+          break;
+        case 'approveRun':
+          await this.controller.respondToApproval(message.runId, 'approve');
+          break;
+        case 'rejectRun':
+          await this.controller.respondToApproval(message.runId, 'reject');
+          break;
+        case 'openApp':
+          await openBurnBarAppOrWarn(
+            'dashboard',
+            'Could not open OpenBurnBar. Install the OpenBurnBar app, then try again.'
+          );
+          break;
+        case 'openWorkspace':
+          OpenBurnBarWorkspacePanel.open(this.controller, this.extensionUri);
+          break;
+        default:
+          break;
       }
     } catch (error) {
       if (this.view) {
@@ -157,26 +157,18 @@ function generateNonce(): string {
   return randomBytes(16).toString('hex');
 }
 
-function readSidebarStatusLineMode():
-  | 'smart'
-  | 'workspace'
-  | 'models'
-  | 'activeRun'
-  | 'socket'
-  | 'off' {
-  const value = vscode.workspace
-    .getConfiguration('openburnbar')
-    .get<string>('sidebar.statusLine', 'smart');
+function readSidebarStatusLineMode(): 'smart' | 'workspace' | 'models' | 'activeRun' | 'socket' | 'off' {
+  const value = vscode.workspace.getConfiguration('openburnbar').get<string>('sidebar.statusLine', 'smart');
 
   switch (value) {
-  case 'workspace':
-  case 'models':
-  case 'activeRun':
-  case 'socket':
-  case 'off':
-    return value;
-  case 'smart':
-  default:
-    return 'smart';
+    case 'workspace':
+    case 'models':
+    case 'activeRun':
+    case 'socket':
+    case 'off':
+      return value;
+    case 'smart':
+    default:
+      return 'smart';
   }
 }

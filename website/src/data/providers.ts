@@ -84,6 +84,19 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     shippedToday: true
   },
   {
+    id: "cursor-agent",
+    name: "Cursor Agent (CLI)",
+    blurb: "Cursor's terminal agent — distinct from the editor",
+    source: "Local session logs",
+    cost: "exact",
+    quota: "no",
+    cred: "none (local)",
+    notes:
+      "Separate from the Cursor editor row above — this tracks the standalone cursor-agent CLI. Exact tokens, models, and transcripts read straight from disk.",
+    category: "agent",
+    shippedToday: true
+  },
+  {
     id: "factory",
     name: "Factory (Droid)",
     blurb: "Plan tier + rolling 5h/7d/30d windows, lane-aware",
@@ -300,7 +313,6 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     shippedToday: true
   }
 ];
-
 
 export const PROVIDERS_DETECTED: ProviderRow[] = [
   {

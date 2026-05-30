@@ -30,13 +30,11 @@ const APNS_TEAM_ID = defineSecret("APNS_TEAM_ID");
 const APNS_KEY_P8 = defineSecret("APNS_KEY_P8");
 const APNS_VOIP_TOPIC = defineString("APNS_VOIP_TOPIC", {
   default: "com.openburnbar.mobile.voip",
-  description:
-    "APNs topic for VoIP pushes. Must match the bundle id + .voip suffix.",
+  description: "APNs topic for VoIP pushes. Must match the bundle id + .voip suffix.",
 });
 const APNS_HOST = defineString("APNS_HOST", {
   default: "https://api.push.apple.com",
-  description:
-    "APNs HTTP/2 host. Override to https://api.sandbox.push.apple.com for the development environment.",
+  description: "APNs HTTP/2 host. Override to https://api.sandbox.push.apple.com for the development environment.",
 });
 
 const JWT_LIFETIME_MS = 50 * 60 * 1000; // Apple recommends < 60 min
@@ -50,11 +48,7 @@ let cachedJWT: CachedJWT | undefined;
 
 function base64UrlEncode(input: Buffer | string): string {
   const buf = typeof input === "string" ? Buffer.from(input, "utf8") : input;
-  return buf
-    .toString("base64")
-    .replace(/=+$/, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+  return buf.toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 function mintJWT(): string {
@@ -67,9 +61,7 @@ function mintJWT(): string {
   const teamId = APNS_TEAM_ID.value().trim();
   const keyP8 = APNS_KEY_P8.value();
   if (!keyId || !teamId || !keyP8) {
-    throw new Error(
-      "APNS_KEY_ID, APNS_TEAM_ID, and APNS_KEY_P8 must be configured"
-    );
+    throw new Error("APNS_KEY_ID, APNS_TEAM_ID, and APNS_KEY_P8 must be configured");
   }
 
   const header = {
@@ -263,5 +255,5 @@ export const sendVoIPOutbound = onDocumentCreated(
         });
         return;
     }
-  }
+  },
 );

@@ -55,6 +55,14 @@ public struct ComputerUseAuditExportWriter {
         guard fileManager.fileExists(atPath: manifestURL.path) else { throw WriterError.manifestMissing }
         guard fileManager.fileExists(atPath: chainURL.path) else { throw WriterError.chainFileMissing }
 
+        if let signer {
+            try ComputerUseAuditHeadFinalizer.finalizeSessionDirectory(
+                sessionDirectory,
+                signer: signer,
+                fileManager: fileManager
+            )
+        }
+
         let entries = try collectEntries(
             sessionDirectory: sessionDirectory,
             manifestURL: manifestURL,
@@ -149,6 +157,10 @@ public struct ComputerUseAuditExportWriter {
         entries.append(("chain.jsonl", try Data(contentsOf: chainURL)))
         if fileManager.fileExists(atPath: headURL.path) {
             entries.append(("head.json", try Data(contentsOf: headURL)))
+        }
+        let signedHeadURL = sessionDirectory.appendingPathComponent(ComputerUseAuditHeadFinalizer.signedHeadFilename)
+        if fileManager.fileExists(atPath: signedHeadURL.path) {
+            entries.append((ComputerUseAuditHeadFinalizer.signedHeadFilename, try Data(contentsOf: signedHeadURL)))
         }
         if includeScreenshots {
             let screenshotsDir = sessionDirectory.appendingPathComponent("screenshots", isDirectory: true)
@@ -442,6 +454,8 @@ public protocol ComputerUseAuditExportSigning: Sendable {
     var publicKeyBase64: String? { get }
     var publicKeySHA256Hex: String? { get }
     func sign(_ data: Data) throws -> Data
+    /// Signs an already-canonical payload (used for WS3 `signed_head.json`).
+    func signCanonicalPayload(_ payload: Data) throws -> Data
 }
 
 public enum ComputerUseAuditExportSignatureTrust: Sendable, Equatable {
@@ -576,6 +590,10 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
 
     public func sign(_ data: Data) throws -> Data {
         try privateKey.signature(for: data)
+    }
+
+    public func signCanonicalPayload(_ payload: Data) throws -> Data {
+        try privateKey.signature(for: payload)
     }
 }
 

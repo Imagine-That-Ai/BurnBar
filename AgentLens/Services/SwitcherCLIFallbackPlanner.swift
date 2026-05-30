@@ -91,6 +91,8 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return .cursorAgent
         }
     }
 

@@ -150,6 +150,7 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
     case openBurnBarProxy
     case forgeAgent
     case antigravityProfile
+    case cursorAgentProfile
 
     public var displayLabel: String {
         switch self {
@@ -167,6 +168,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Forge agent"
         case .antigravityProfile:
             return "Antigravity CLI profile"
+        case .cursorAgentProfile:
+            return "Cursor Agent CLI profile"
         }
     }
 
@@ -186,6 +189,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Runs the selected Forge agent."
         case .antigravityProfile:
             return "Uses this Mac's Google Antigravity CLI auth and quota."
+        case .cursorAgentProfile:
+            return "Uses this Mac's Cursor Agent CLI auth and quota."
         }
     }
 
@@ -299,6 +304,19 @@ public enum CLIRuntimeModelCatalog {
                 ),
                 "xai",
                 "xAI via Grok Build CLI"
+            )
+        case .cursorAgent:
+            return option(
+                "",
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: "Cursor Agent default",
+                    providerName: "Cursor",
+                    providerID: "cursor",
+                    reasoningLevel: "CLI default"
+                ),
+                "cursor",
+                "Cursor via Cursor Agent CLI",
+                source: .cursorAgentProfile
             )
         case .droid, .forge, .hermes, .pi, .openClaw:
             return nil

@@ -21,6 +21,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case providerModelVariantRemove = "daemon.provider.model_variant.remove"
     case providerModelAliasUpsert = "daemon.provider.model_alias.upsert"
     case providerModelAliasRemove = "daemon.provider.model_alias.remove"
+    case providerModelDisplayNameSet = "daemon.provider.model_display_name.set"
+    case providerModelDisplayNameClear = "daemon.provider.model_display_name.clear"
     case usageRecord = "daemon.usage.record"
     case usageRecent = "daemon.usage.recent"
     case connectorPlaneGet = "daemon.connector.plane.get"

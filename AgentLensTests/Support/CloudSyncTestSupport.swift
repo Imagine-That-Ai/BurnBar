@@ -27,15 +27,21 @@ final class FakeAccountManager: AccountManaging {
 
 @MainActor
 final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
+    private(set) var uploadRequests: [(documentID: String, bodyHash: String, byteCount: Int)] = []
     private(set) var uploadedBodies: [(data: Data, ticket: EncryptedSessionBlobUploadTicket)] = []
     private(set) var searchIndexCommits: [(deviceId: String, indexVersion: Int, document: [String: Any], chunks: [[String: Any]])] = []
+    var onBeginUpload: (() async -> Void)?
 
     func beginEncryptedSessionBlobUpload(
         documentID: String,
         bodyHash: String,
         byteCount: Int
     ) async throws -> EncryptedSessionBlobUploadTicket {
-        EncryptedSessionBlobUploadTicket(
+        if let onBeginUpload {
+            await onBeginUpload()
+        }
+        uploadRequests.append((documentID: documentID, bodyHash: bodyHash, byteCount: byteCount))
+        return EncryptedSessionBlobUploadTicket(
             storagePath: "session-logs/\(documentID).json",
             uploadURL: URL(string: "https://upload.invalid/\(documentID)")!
         )

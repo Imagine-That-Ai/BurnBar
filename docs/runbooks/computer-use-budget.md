@@ -14,7 +14,7 @@ This runbook fires when the hourly `evaluateComputerUseBudget` Cloud Function fl
 
 ## On soft cap fire
 
-1. Confirm the firing in BigQuery: `SELECT level, projectedMonthEndUSD, monthToDateUSD FROM ops.computer_use_budget_status_history ORDER BY updatedAt DESC LIMIT 5`
+1. Confirm the firing in Firestore: read `ops/computer_use_budget_status/events/` (newest docs by `updatedAt`) and operator metrics at `ops/computer_use_budget_status/metrics/current`.
 2. Read `ops/computer_use_daily_rollups/days/<yesterday>` for the per-tool counts that drove the projection.
 3. Identify any abusive user(s) via `users/*/computer_use_actions/*` aggregation.
 4. If the projection is driven by genuine demand, expand the SKU price or add an `additional_computer_use_actions` IAP. If it is driven by a single user, downgrade their entitlement to inactive and contact them.

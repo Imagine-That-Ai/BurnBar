@@ -729,7 +729,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       updatedAt: serverTimestamp(),
     })
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, "users/ivy/escrow_devices/mac-1"),
       {
@@ -740,6 +740,17 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "users/ivy/escrow_devices/mac-1"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
   const importJobPath = "users/ivy/agent_import_jobs/import-1";
   await assertSucceeds(
     setDoc(doc(phoneDb, importJobPath), {
@@ -931,7 +942,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       updatedAt: serverTimestamp(),
     })
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, "users/ivy/escrow_devices/phone-1"),
       {
@@ -942,6 +953,17 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "users/ivy/escrow_devices/phone-1"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
   await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
@@ -1551,7 +1573,7 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       updatedAt: serverTimestamp(),
     })
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(db, "users/pro-user/escrow_devices/device"),
       {
@@ -1571,7 +1593,7 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       updatedAt: serverTimestamp(),
     })
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(db, "users/pro-user/escrow_devices/mac"),
       {
@@ -1582,6 +1604,26 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       { merge: true }
     )
   );
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "users/pro-user/escrow_devices/device"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    await setDoc(
+      doc(context.firestore(), "users/pro-user/escrow_devices/mac"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
 
   await assertSucceeds(
     setDoc(doc(db, wrapperPath), {

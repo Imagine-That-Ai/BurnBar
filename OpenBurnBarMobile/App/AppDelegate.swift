@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         configureFirebase()
+        Task { @MainActor in
+            MobileMediaBudgetStatusStore.shared.start()
+        }
         configureMercuryFileTransfer()
         AgentReplyNotificationService.shared.configure(application: application)
         return true

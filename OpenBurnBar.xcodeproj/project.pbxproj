@@ -373,7 +373,6 @@
 		3E56A357BD6E2E502AAAFF80 /* MobileInsightDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02A613E74975DC3CF96BFEF /* MobileInsightDataSource.swift */; };
 		3EB4F281C68D777D744331A3 /* MissionControlError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6670711854A2CBD675BCFD8B /* MissionControlError.swift */; };
 		3EB9D959742DF8AE2AD3B5AC /* AgentInsightsTabScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB176E1C91B453D3FA06258 /* AgentInsightsTabScreen.swift */; };
-		3EBB92712995EFBC154A8558 /* ProjectionPipelineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */; };
 		3EC581ACF0EE0E57935BAABB /* PiAgentRedisDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA3DA5EB43692AB2982A2B6 /* PiAgentRedisDiscovery.swift */; };
 		3ED45A456917E418345EEBD4 /* ProviderSetupGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F6671C14612743415759A5 /* ProviderSetupGuide.swift */; };
 		3F033DD3DBBD9DBAD0675A6D /* OpenBurnBarDaemonNotificationRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E549BF1628E73803F93158 /* OpenBurnBarDaemonNotificationRelay.swift */; };
@@ -764,7 +763,6 @@
 		8488AD2C9CB26F96504052EF /* OpenBurnBarDaemonServerTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6623DDB231233436128FA75 /* OpenBurnBarDaemonServerTypes.swift */; };
 		848EA231EEA32C3C08E94632 /* TokenUsageProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */; };
 		85000631768936EF76E7976E /* CLIAgentConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53EB72C0A8409F2E73CF56A2 /* CLIAgentConversationListView.swift */; };
-		85579002D62BFDE58AF4A9A2 /* SearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0BC832DD4F6C22F0FC801C /* SearchService.swift */; };
 		855B1F80198BE3F7E20CDDA6 /* ProviderQuotaBucketViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49CBE50D36034E1258B452F8 /* ProviderQuotaBucketViews.swift */; };
 		855C01A952699CBF0367C985 /* CastReconnectStrategy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E848179FCF0180CCB84281D9 /* CastReconnectStrategy.swift */; };
 		858556D97AD3117131DA07D9 /* HermesToolCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FCD41DCB625940ACE1D28CD /* HermesToolCard.swift */; };
@@ -1460,6 +1458,32 @@
 		FF1D30F01FE7203306CBF757 /* OpenAICompatibleChatGatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */; };
 		FF2193EC287F315EF5B4959B /* DataStoreCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1332856DEA3C1BE127FCBC /* DataStoreCoordinator.swift */; };
 		FFA7903A67AE17FD933C644C /* CursorLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A6AD6AE1CB3C1474E6099D /* CursorLoginHelper.swift */; };
+		17B71CCA2EFC959542660B34 /* ProjectionPipelineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A619183ACC85066DE655FA2 /* ProjectionPipelineService.swift */; };
+		7898EF1630C0645019A523C0 /* ProjectionPipelineService+Jobs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34F7E9BD8DEF2B50B1A63D31 /* ProjectionPipelineService+Jobs.swift */; };
+		EAA85A6964D830D20DC4FEB3 /* ProjectionPipelineService+Projection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69C149751367F4EC4645F0F4 /* ProjectionPipelineService+Projection.swift */; };
+		FAA1F0CD111BEB1F75668988 /* ProjectionPipelineService+Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = 071FAE9AF3323E47C96D4DCB /* ProjectionPipelineService+Health.swift */; };
+		6065BB2D1E1093821BEDE97E /* SearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CEAE7EC578E7BB5838246C3 /* SearchService.swift */; };
+		24836CAEAD630742FF14CE82 /* SearchService+Factory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14D02EBA2D56CEF00DDDB54 /* SearchService+Factory.swift */; };
+		DD114A177F753852FC8B3A50 /* SearchService+Retrieval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 881FC89E19BE9DD5D72142F7 /* SearchService+Retrieval.swift */; };
+		A13F1B837362E3EA00DD798C /* SearchService+Ranking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A4B481C82BC3AA702EBDD4 /* SearchService+Ranking.swift */; };
+		F4ABBEBD6E0D54D2E46ECCBB /* SearchService+Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = 198F21B2881DB3C1D5C1EA7D /* SearchService+Health.swift */; };
+		71D8A85F4F66100470275235 /* ConversationStore+CRUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9804894BD47223E4CEAFB8D /* ConversationStore+CRUD.swift */; };
+		79D8FC159EF896BD2C64F8FA /* ConversationStore+CloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62612615FD29E024144A6104 /* ConversationStore+CloudSync.swift */; };
+		EA6F36435FF09A349F05CEC6 /* ConversationStore+Chat.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE1096E353372626A98821B9 /* ConversationStore+Chat.swift */; };
+		9AA8B70DD0DEEA4C792E9FEF /* ConversationStore+FTS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41315DD8D8D46A8E2F7136AB /* ConversationStore+FTS.swift */; };
+		2FE9D06A638CC3639EC367CA /* ConversationStore+TranscriptScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83A336A644DF3F99F4D9CB9 /* ConversationStore+TranscriptScan.swift */; };
+		A2DE68D6A6A2A0559E1F2D24 /* BurnBarCLIAuditVerify.swift in Sources */ = {isa = PBXBuildFile; fileRef = 431E8B640968FAD965AA9219 /* BurnBarCLIAuditVerify.swift */; };
+		5A72E0E513046F6056EB3A8B /* BurnBarDaemonServer+RPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FC09CE4E9744DB3FA5A167 /* BurnBarDaemonServer+RPCClient.swift */; };
+		971D44C268736FDB460A26C9 /* BurnBarDaemonServer+RPCComputerUse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995374555891B371F3FD0B78 /* BurnBarDaemonServer+RPCComputerUse.swift */; };
+		439CC102D202C81506F98857 /* BurnBarDaemonServer+RPCConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCA248FA1DFC7947DDBE13C /* BurnBarDaemonServer+RPCConfig.swift */; };
+		AD7FB7D85BE70A3D45A383E8 /* BurnBarDaemonServer+RPCEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AFA5DE4B05705243D953A1 /* BurnBarDaemonServer+RPCEncoding.swift */; };
+		1068A1D07402E7744BA35855 /* BurnBarDaemonServer+RPCLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2DF72DAE6FAC4235BC8B4D /* BurnBarDaemonServer+RPCLifecycle.swift */; };
+		3284E024903F41F7BC0FB8B5 /* BurnBarDaemonServer+RPCMissionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EDCBAD92EC11F39676B3343 /* BurnBarDaemonServer+RPCMissionControl.swift */; };
+		517E7B809FA32DBF5B50F76D /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AABCE6787F135B0BA2EAAB9 /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift */; };
+		94AD56C8E0A769C2B4964CE5 /* BurnBarDaemonServer+RPCSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA175A770E0E70D515B9435 /* BurnBarDaemonServer+RPCSearch.swift */; };
+		2B333B29F9F92767057784CF /* BurnBarDaemonServer+RPCTooling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211627971F7887BF216037D4 /* BurnBarDaemonServer+RPCTooling.swift */; };
+		C8A791A2EC3014D2BB909501 /* BurnBarDaemonServer+RPCUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A705EADDB1C6C66E88A4529 /* BurnBarDaemonServer+RPCUsage.swift */; };
+		392DA0092D4D5B374DA5D218 /* BurnBarDaemonSocketRPCCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979604A54B71D853D4595C42 /* BurnBarDaemonSocketRPCCoverage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2125,7 +2149,6 @@
 		63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexStore.swift; sourceTree = "<group>"; };
 		63CFFEC082B70D98E9517853 /* SystemPermissionMonitorRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPermissionMonitorRefreshTests.swift; sourceTree = "<group>"; };
 		6414EE49FC62988ADCED0063 /* AnthropicUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicUsageAPI.swift; sourceTree = "<group>"; };
-		6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineService.swift; sourceTree = "<group>"; };
 		6482B2A0AD06363EDB38A182 /* ModelDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDashboardView.swift; sourceTree = "<group>"; };
 		648F6C6EBBAE144BB8031DB2 /* FlowLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayoutTests.swift; sourceTree = "<group>"; };
 		64D05D67E3960DD750AAB417 /* OllamaCloudScraper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaCloudScraper.swift; sourceTree = "<group>"; };
@@ -2975,12 +2998,37 @@
 		FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleChatGatewayClient.swift; sourceTree = "<group>"; };
 		FEA36D992B1CB9D62BCCC3B4 /* AppleRemoteDesktopRFBClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleRemoteDesktopRFBClientTests.swift; sourceTree = "<group>"; };
 		FEBE5A477DD3E2656A3D83B9 /* PixelClockSettingsCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockSettingsCardTests.swift; sourceTree = "<group>"; };
-		FF0BC832DD4F6C22F0FC801C /* SearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchService.swift; sourceTree = "<group>"; };
 		FF12A5398D79F59A74E07A4B /* MobileAgentInsightsProducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAgentInsightsProducer.swift; sourceTree = "<group>"; };
 		FF32767ACBECDC438098C51A /* AssistantModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelPickerSheet.swift; sourceTree = "<group>"; };
 		FF3C2FB3F574C07FF79E1B37 /* DashboardProjectSpendLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProjectSpendLaneView.swift; sourceTree = "<group>"; };
 		FFB4C714340AB5C7EF8AB2BE /* MobileInsightAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInsightAggregator.swift; sourceTree = "<group>"; };
 		FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesLiveGlyph.swift; sourceTree = "<group>"; };
+		8A619183ACC85066DE655FA2 /* ProjectionPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProjectionPipelineService.swift"; path = "AgentLens/Services/ProjectionPipeline/ProjectionPipelineService.swift"; sourceTree = SOURCE_ROOT; };
+		34F7E9BD8DEF2B50B1A63D31 /* ProjectionPipelineService+Jobs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProjectionPipelineService+Jobs.swift"; path = "AgentLens/Services/ProjectionPipeline/ProjectionPipelineService+Jobs.swift"; sourceTree = SOURCE_ROOT; };
+		69C149751367F4EC4645F0F4 /* ProjectionPipelineService+Projection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProjectionPipelineService+Projection.swift"; path = "AgentLens/Services/ProjectionPipeline/ProjectionPipelineService+Projection.swift"; sourceTree = SOURCE_ROOT; };
+		071FAE9AF3323E47C96D4DCB /* ProjectionPipelineService+Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProjectionPipelineService+Health.swift"; path = "AgentLens/Services/ProjectionPipeline/ProjectionPipelineService+Health.swift"; sourceTree = SOURCE_ROOT; };
+		9CEAE7EC578E7BB5838246C3 /* SearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SearchService.swift"; path = "AgentLens/Services/Search/SearchService.swift"; sourceTree = SOURCE_ROOT; };
+		B14D02EBA2D56CEF00DDDB54 /* SearchService+Factory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SearchService+Factory.swift"; path = "AgentLens/Services/Search/SearchService+Factory.swift"; sourceTree = SOURCE_ROOT; };
+		881FC89E19BE9DD5D72142F7 /* SearchService+Retrieval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SearchService+Retrieval.swift"; path = "AgentLens/Services/Search/SearchService+Retrieval.swift"; sourceTree = SOURCE_ROOT; };
+		94A4B481C82BC3AA702EBDD4 /* SearchService+Ranking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SearchService+Ranking.swift"; path = "AgentLens/Services/Search/SearchService+Ranking.swift"; sourceTree = SOURCE_ROOT; };
+		198F21B2881DB3C1D5C1EA7D /* SearchService+Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SearchService+Health.swift"; path = "AgentLens/Services/Search/SearchService+Health.swift"; sourceTree = SOURCE_ROOT; };
+		C9804894BD47223E4CEAFB8D /* ConversationStore+CRUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+CRUD.swift"; path = "AgentLens/Services/DataStore/ConversationStore+CRUD.swift"; sourceTree = SOURCE_ROOT; };
+		62612615FD29E024144A6104 /* ConversationStore+CloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+CloudSync.swift"; path = "AgentLens/Services/DataStore/ConversationStore+CloudSync.swift"; sourceTree = SOURCE_ROOT; };
+		FE1096E353372626A98821B9 /* ConversationStore+Chat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+Chat.swift"; path = "AgentLens/Services/DataStore/ConversationStore+Chat.swift"; sourceTree = SOURCE_ROOT; };
+		41315DD8D8D46A8E2F7136AB /* ConversationStore+FTS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+FTS.swift"; path = "AgentLens/Services/DataStore/ConversationStore+FTS.swift"; sourceTree = SOURCE_ROOT; };
+		E83A336A644DF3F99F4D9CB9 /* ConversationStore+TranscriptScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConversationStore+TranscriptScan.swift"; path = "AgentLens/Services/DataStore/ConversationStore+TranscriptScan.swift"; sourceTree = SOURCE_ROOT; };
+		431E8B640968FAD965AA9219 /* BurnBarCLIAuditVerify.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUse/BurnBarCLIAuditVerify.swift; sourceTree = "<group>"; };
+		05FC09CE4E9744DB3FA5A167 /* BurnBarDaemonServer+RPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCClient.swift; sourceTree = "<group>"; };
+		995374555891B371F3FD0B78 /* BurnBarDaemonServer+RPCComputerUse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCComputerUse.swift; sourceTree = "<group>"; };
+		7DCA248FA1DFC7947DDBE13C /* BurnBarDaemonServer+RPCConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCConfig.swift; sourceTree = "<group>"; };
+		38AFA5DE4B05705243D953A1 /* BurnBarDaemonServer+RPCEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCEncoding.swift; sourceTree = "<group>"; };
+		BB2DF72DAE6FAC4235BC8B4D /* BurnBarDaemonServer+RPCLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCLifecycle.swift; sourceTree = "<group>"; };
+		8EDCBAD92EC11F39676B3343 /* BurnBarDaemonServer+RPCMissionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCMissionControl.swift; sourceTree = "<group>"; };
+		7AABCE6787F135B0BA2EAAB9 /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift; sourceTree = "<group>"; };
+		2BA175A770E0E70D515B9435 /* BurnBarDaemonServer+RPCSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCSearch.swift; sourceTree = "<group>"; };
+		211627971F7887BF216037D4 /* BurnBarDaemonServer+RPCTooling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCTooling.swift; sourceTree = "<group>"; };
+		4A705EADDB1C6C66E88A4529 /* BurnBarDaemonServer+RPCUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonServer+RPCUsage.swift; sourceTree = "<group>"; };
+		979604A54B71D853D4595C42 /* BurnBarDaemonSocketRPCCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPC/BurnBarDaemonSocketRPCCoverage.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -4167,6 +4215,18 @@
 				1B239189C81956B658413D54 /* OpenBurnBarWorkspaceBridgeBroker.swift */,
 				51D506CC529E5A51217012BD /* PTYInteractiveSession.swift */,
 				68B813B1B6CA55D1EC1FB14A /* SecKeychainInteractionGate.swift */,
+				431E8B640968FAD965AA9219 /* BurnBarCLIAuditVerify.swift */,
+				05FC09CE4E9744DB3FA5A167 /* BurnBarDaemonServer+RPCClient.swift */,
+				995374555891B371F3FD0B78 /* BurnBarDaemonServer+RPCComputerUse.swift */,
+				7DCA248FA1DFC7947DDBE13C /* BurnBarDaemonServer+RPCConfig.swift */,
+				38AFA5DE4B05705243D953A1 /* BurnBarDaemonServer+RPCEncoding.swift */,
+				BB2DF72DAE6FAC4235BC8B4D /* BurnBarDaemonServer+RPCLifecycle.swift */,
+				8EDCBAD92EC11F39676B3343 /* BurnBarDaemonServer+RPCMissionControl.swift */,
+				7AABCE6787F135B0BA2EAAB9 /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift */,
+				2BA175A770E0E70D515B9435 /* BurnBarDaemonServer+RPCSearch.swift */,
+				211627971F7887BF216037D4 /* BurnBarDaemonServer+RPCTooling.swift */,
+				4A705EADDB1C6C66E88A4529 /* BurnBarDaemonServer+RPCUsage.swift */,
+				979604A54B71D853D4595C42 /* BurnBarDaemonSocketRPCCoverage.swift */,
 			);
 			name = OpenBurnBarDaemon;
 			path = OpenBurnBarDaemon/Sources/OpenBurnBarDaemon;
@@ -5247,11 +5307,9 @@
 				874A44FF202854D1EC3838F8 /* OpenBurnBarChatWorkspaceConfigurator.swift */,
 				19DB6649FEAB8468DFB56B91 /* OpenBurnBarIdentity.swift */,
 				C206ECEB0A5B79995FEFE1BD /* OpenBurnBarStartupRecovery.swift */,
-				6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */,
 				E06A51B6CCC12389C69A9463 /* RefreshOrchestrator.swift */,
 				727BD88DC606043C6D5045BA /* RestrictedLogPathValidator.swift */,
 				87257456442C649DD6D55372 /* SearchQueryCache.swift */,
-				FF0BC832DD4F6C22F0FC801C /* SearchService.swift */,
 				85BC762B488DDB41A77183EB /* SessionLogMarkdownFormatter.swift */,
 				51F28E56250CF502142A5EB0 /* SettingsManager.swift */,
 				032E2B5030DEC33495D2A06B /* SwitcherAuthStore.swift */,
@@ -6368,6 +6426,18 @@
 				623DED4A892656C9B18B9794 /* PTYInteractiveSession.swift in Sources */,
 				E7AB73D876052D8A44D8D6D2 /* SecKeychainInteractionGate.swift in Sources */,
 				80292A85645869D81D50A2BB /* TelegramBotBridge.swift in Sources */,
+				A2DE68D6A6A2A0559E1F2D24 /* BurnBarCLIAuditVerify.swift in Sources */,
+				5A72E0E513046F6056EB3A8B /* BurnBarDaemonServer+RPCClient.swift in Sources */,
+				971D44C268736FDB460A26C9 /* BurnBarDaemonServer+RPCComputerUse.swift in Sources */,
+				439CC102D202C81506F98857 /* BurnBarDaemonServer+RPCConfig.swift in Sources */,
+				AD7FB7D85BE70A3D45A383E8 /* BurnBarDaemonServer+RPCEncoding.swift in Sources */,
+				1068A1D07402E7744BA35855 /* BurnBarDaemonServer+RPCLifecycle.swift in Sources */,
+				3284E024903F41F7BC0FB8B5 /* BurnBarDaemonServer+RPCMissionControl.swift in Sources */,
+				517E7B809FA32DBF5B50F76D /* BurnBarDaemonServer+RPCRunWorkspaceApproval.swift in Sources */,
+				94AD56C8E0A769C2B4964CE5 /* BurnBarDaemonServer+RPCSearch.swift in Sources */,
+				2B333B29F9F92767057784CF /* BurnBarDaemonServer+RPCTooling.swift in Sources */,
+				C8A791A2EC3014D2BB909501 /* BurnBarDaemonServer+RPCUsage.swift in Sources */,
+				392DA0092D4D5B374DA5D218 /* BurnBarDaemonSocketRPCCoverage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7538,7 +7608,6 @@
 				28699894CC7212DB3C5A67EE /* ProjectionJobLatencyAnalytics.swift in Sources */,
 				DCB2C73CEBD1A6467D0F4411 /* ProjectionPipelineCore.swift in Sources */,
 				FD522E5006518ABCA322869D /* ProjectionPipelineHealthModels.swift in Sources */,
-				3EBB92712995EFBC154A8558 /* ProjectionPipelineService.swift in Sources */,
 				41B2C17A62BE394E594BA9E2 /* ProjectionStore.swift in Sources */,
 				07E94113995028745BD31F1A /* ProjectsModels.swift in Sources */,
 				D0384BB6E199C0A083A732FD /* ProjectsView.swift in Sources */,
@@ -7595,7 +7664,6 @@
 				8882053A0BB0475D416C896D /* ScreenShareViewer.swift in Sources */,
 				58EB44C0AB495E5DB5651749 /* SearchIndexStore.swift in Sources */,
 				0C0D8DBEE9FE573E3DF9B1D1 /* SearchQueryCache.swift in Sources */,
-				85579002D62BFDE58AF4A9A2 /* SearchService.swift in Sources */,
 				D25E2B8866F5216D32B9DE26 /* SearchTypes.swift in Sources */,
 				0E871E01C5E13D4DDFCE497E /* SessionDetailView.swift in Sources */,
 				661C1664A3791C4BD1926BEF /* SessionLedgerSection.swift in Sources */,
@@ -7681,6 +7749,20 @@
 				579B268F557F1221B812E993 /* XAISuperGrokUsageLog.swift in Sources */,
 				0B33BE9575B9D43F27E23CC1 /* ZAIQuotaAdapter.swift in Sources */,
 				E615B11154069B8CC0274FFB /* ZaiMiniMaxUsageProbe.swift in Sources */,
+				17B71CCA2EFC959542660B34 /* ProjectionPipelineService.swift in Sources */,
+				7898EF1630C0645019A523C0 /* ProjectionPipelineService+Jobs.swift in Sources */,
+				EAA85A6964D830D20DC4FEB3 /* ProjectionPipelineService+Projection.swift in Sources */,
+				FAA1F0CD111BEB1F75668988 /* ProjectionPipelineService+Health.swift in Sources */,
+				6065BB2D1E1093821BEDE97E /* SearchService.swift in Sources */,
+				24836CAEAD630742FF14CE82 /* SearchService+Factory.swift in Sources */,
+				DD114A177F753852FC8B3A50 /* SearchService+Retrieval.swift in Sources */,
+				A13F1B837362E3EA00DD798C /* SearchService+Ranking.swift in Sources */,
+				F4ABBEBD6E0D54D2E46ECCBB /* SearchService+Health.swift in Sources */,
+				71D8A85F4F66100470275235 /* ConversationStore+CRUD.swift in Sources */,
+				79D8FC159EF896BD2C64F8FA /* ConversationStore+CloudSync.swift in Sources */,
+				EA6F36435FF09A349F05CEC6 /* ConversationStore+Chat.swift in Sources */,
+				9AA8B70DD0DEEA4C792E9FEF /* ConversationStore+FTS.swift in Sources */,
+				2FE9D06A638CC3639EC367CA /* ConversationStore+TranscriptScan.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

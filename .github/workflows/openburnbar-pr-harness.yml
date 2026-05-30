@@ -51,8 +51,33 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c6158d # v4
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
       - name: Check unsafe cast debt budget
         run: ./scripts/debt/check-unsafe-cast-budget.sh
+
+      - name: Check empty catch debt budget
+        run: ./scripts/debt/check-empty-catch-budget.sh
+
+      - name: Check try? debt budget
+        run: ./scripts/debt/check-try-optional-budget.sh
+
+      - name: SwiftLint (informational)
+        continue-on-error: true
+        run: |
+          if command -v swiftlint >/dev/null 2>&1; then
+            swiftlint lint --quiet
+          else
+            echo "swiftlint not installed; skipping informational lint."
+          fi
 
       - name: Refresh tech debt metrics snapshot
         run: |
@@ -63,6 +88,22 @@ jobs:
             git diff -- docs/TECH_DEBT_METRICS.md >&2 || true
             exit 1
           fi
+
+      - name: Check version drift across packages (syncpack)
+        run: |
+          set -euo pipefail
+          echo "==> Checking dependency version drift across all packages..."
+          npx syncpack@13 list-mismatches --config .syncpackrc.json 2>&1 | tee /tmp/syncpack-output.txt || true
+          if grep -qE "^✘" /tmp/syncpack-output.txt 2>/dev/null; then
+            echo "::warning::Version drift detected in package dependencies. Run 'npx syncpack fix-mismatches' to resolve."
+          else
+            echo "No version drift detected."
+          fi
+
+      - name: Detect dead feature flags
+        run: |
+          set -euo pipefail
+          ./scripts/detect-dead-feature-flags.sh || true
 
       - name: Inject Firebase config
         if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
@@ -88,17 +129,42 @@ jobs:
       - name: Install OpenBurnBar extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
+      - name: Lint OpenBurnBar extension
+        run: npm --prefix extensions/openburnbar run lint
+
+      - name: Check format (extension)
+        run: npm --prefix extensions/openburnbar run format:check
+
       - name: Install OpenBurnBar Functions dependencies
         run: npm ci --prefix functions
 
       - name: Lint OpenBurnBar Functions
         run: npm --prefix functions run lint
 
+      - name: Check format (functions)
+        run: npm --prefix functions run format:check
+
       - name: Build OpenBurnBar Functions
-        run: npm --prefix functions run build
+        run: |
+          START=$(date +%s%3N)
+          npm --prefix functions run build
+          END=$(date +%s%3N)
+          echo "functions_build_ms=$((END - START))" >> "$GITHUB_ENV"
+          echo "Functions build: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run OpenBurnBar Functions unit tests (pure, no emulator)
+        run: |
+          START=$(date +%s%3N)
+          npm --prefix functions run test:unit
+          END=$(date +%s%3N)
+          echo "Functions unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions tests
-        run: npm --prefix functions test
+        run: |
+          START=$(date +%s%3N)
+          npm --prefix functions test
+          END=$(date +%s%3N)
+          echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Swift tests
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
@@ -181,7 +247,11 @@ jobs:
         run: ./scripts/test-openburnbar-retrieval-evals.sh
 
       - name: Run OpenBurnBar TypeScript unit tests
-        run: ./scripts/test-openburnbar-ts.sh
+        run: |
+          START=$(date +%s%3N)
+          ./scripts/test-openburnbar-ts.sh
+          END=$(date +%s%3N)
+          echo "TypeScript unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar replay evals
         run: ./scripts/test-openburnbar-replay-evals.sh
@@ -192,21 +262,25 @@ jobs:
       - name: Run Firestore rules emulator tests
         run: npm --prefix functions run test:firestore-rules
 
-      # CodeQL analysis is enforced by the separate .github/workflows/codeql.yml
-      # workflow which runs security-extended scans for Swift, JavaScript/TypeScript,
-      # and Python on every push and PR. Cross-workflow status gates require branch
-      # protection rules (Settings → Branches → Add rule → Require status checks).
-      - name: Verify CodeQL workflow reference
+      # Security: fast gates run in security-pr.yml (gitleaks, dependency-review,
+      # npm audit, OSV-Scanner) — all complete in < 3 minutes.
+      # Deep CodeQL analysis (Swift + JS/TS + Python, security-extended) runs
+      # nightly and on push to main via codeql.yml. Removing it from the PR
+      # harness eliminates the 60-90 min Swift CodeQL job that was the primary
+      # driver of the ~49 min average PR CI time.
+      - name: Confirm fast security gate is active
         run: |
-          echo "CodeQL security analysis is tracked by .github/workflows/codeql.yml"
-          echo "Languages: Swift, JavaScript/TypeScript, Python"
-          echo "Queries: security-extended"
-          if [ -f .github/workflows/codeql.yml ]; then
-            echo "Status: CodeQL workflow file present"
-          else
-            echo "Status: CodeQL workflow file MISSING"
+          set -euo pipefail
+          if [[ ! -f .github/workflows/security-pr.yml ]]; then
+            echo "::error::security-pr.yml is missing. Fast PR security gate must exist." >&2
             exit 1
           fi
+          echo "security-pr.yml: present (gitleaks + dependency-review + npm-audit + OSV-scanner)"
+          if [[ ! -f .github/workflows/codeql.yml ]]; then
+            echo "::error::codeql.yml is missing. Nightly CodeQL scan must exist." >&2
+            exit 1
+          fi
+          echo "codeql.yml: present (Swift + JS/TS + Python, security-extended, nightly)"
 
 
       # ── Android ──────────────────────────────────────────────────────
@@ -214,6 +288,18 @@ jobs:
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
         with:
           java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - name: Cache Gradle wrapper and dependencies
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c6158d # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
           distribution: temurin
 
       - name: Set up Android SDK
@@ -252,11 +338,37 @@ jobs:
       - name: Build Android APK
         run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Lint Kotlin (ktlint)
+        run: |
+          set -euo pipefail
+          START=$(date +%s%3N)
+          # ktlint exits non-zero when violations are found.
+          # Run ktlintCheck on all modules; output is printed to stdout by Gradle.
+          cd android && ./gradlew ktlintCheck --no-daemon
+          END=$(date +%s%3N)
+          echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
 
-      - name: Run supply chain audit
-        run: ./scripts/supply-chain-audit.sh
+      - name: Run supply chain audit (SBOM + VEX + ecosystem deny)
+        run: |
+          set -euo pipefail
+          PR_SBOM="$RUNNER_TEMP/openburnbar-pr.sbom.spdx.json"
+          python3 scripts/generate-sbom.py \
+            --version "pr-${GITHUB_SHA::7}" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$PR_SBOM"
+          python3 scripts/supply-chain/generate-vex.py \
+            --sbom "$PR_SBOM" \
+            --output "$RUNNER_TEMP/openburnbar-pr.vex.json" \
+            --product-version "pr-${GITHUB_SHA::7}"
+          bash scripts/supply-chain/run-ecosystem-deny-checks.sh
+
+      - name: Computer Use safety invariant harness (WS6 gate)
+        run: |
+          cd OpenBurnBarCore
+          swift test --filter 'ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests'
 
       - name: Commercial launch gate (internal)
         if: env.INTERNAL_RUN == 'true'
@@ -279,7 +391,7 @@ jobs:
             echo ""
             echo "| Surface | Status |"
             echo "|---------|--------|"
-            for step in "Shell syntax" "Version consistency" "Functions lint" "Functions build" "Swift tests" "App tests" "Mobile iOS tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests" "Firestore rules" "Android unit tests" "Supply chain audit" "CodeQL"; do
+            for step in "Shell syntax" "Version consistency" "Functions lint" "Functions unit tests" "Functions build" "Swift tests" "App tests" "Mobile iOS tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests" "Firestore rules" "Android unit tests" "Supply chain audit" "Security gate (fast)"; do
               echo "| $step | ran |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
@@ -349,6 +461,35 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
       - name: Android iroh-relay JVM tests
         run: cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon
+
+  android-hermes-smoke:
+    needs: [openburnbar-pr, path-filter]
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.path-filter.outputs.hermes_iroh == 'true' &&
+      vars.ANDROID_E2E_ENABLED == 'true' &&
+      secrets.GOOGLE_SERVICES_JSON_BASE64 != ''
+    runs-on: macos-26
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Inject Android Firebase config
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
+      - name: Android Hermes instrumented smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: arm64-v8a
+          script: ./scripts/e2e/android-iroh-chat.sh
 
   computer-use-e2e:
     needs: [openburnbar-pr, path-filter]

@@ -14,6 +14,7 @@ enum DiscoverySource: Equatable {
     case grok(executablePath: String?, configDirectory: String?)
     case forge(executablePath: String?, configDirectory: String?)
     case antigravity(executablePath: String?, configDirectory: String?)
+    case cursorAgent(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -175,6 +176,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .forge(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .antigravity:
                 source = .antigravity(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .cursorAgent:
+                source = .cursorAgent(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -338,6 +341,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "Antigravity",
                     configDirectory: configDirectory,
                     accountDescription: "Google Antigravity local profile"
+                ),
+                sortKey: 0
+            )
+        case .cursorAgent(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .cursorAgent,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Cursor Agent",
+                    configDirectory: configDirectory,
+                    accountDescription: "Cursor Agent local profile"
                 ),
                 sortKey: 0
             )
@@ -777,6 +792,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .antigravity(executablePath: CLILaunchAdapter.executablePath(for: .antigravity), configDirectory: nil)
         case .grok:
             return .grok(executablePath: CLILaunchAdapter.executablePath(for: .grok), configDirectory: nil)
+        case .cursorAgent:
+            return .cursorAgent(executablePath: CLILaunchAdapter.executablePath(for: .cursorAgent), configDirectory: nil)
         }
     }
 
@@ -801,7 +818,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -812,6 +829,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .forge: cliType = .forge
             case .antigravity: cliType = .antigravity
             case .grok: cliType = .grok
+            case .cursorAgent: cliType = .cursorAgent
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -880,6 +898,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return .cursorAgent
         }
     }
 
@@ -961,6 +981,9 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.opencode, .openCodeCLI): return true
         case (.droid, .droidCLI): return true
         case (.forge, .forgeCLI): return true
+        case (.antigravity, .antigravityCLI): return true
+        case (.grok, .grokCLI): return true
+        case (.cursorAgent, .cursorAgentCLI): return true
         default: return false
         }
     }
@@ -978,6 +1001,7 @@ extension DiscoverySource {
         case .forge: return .forge
         case .antigravity: return .antigravity
         case .grok: return .grok
+        case .cursorAgent: return .cursorAgent
         default: return nil
         }
     }

@@ -24,4 +24,7 @@ fi
 echo "==> Checking hand-maintained schema mirrors…"
 node tools/schema-sync/check-hand-mirror.mjs
 
+echo "==> Checking hand-maintained TS surface budget…"
+node tools/schema-sync/check-legacy-budget.mjs
+
 echo "==> Schema sync check passed ==="

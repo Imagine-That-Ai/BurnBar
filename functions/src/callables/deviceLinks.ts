@@ -29,45 +29,48 @@ export const adoptProviderAccountForDevice = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
-  wrapCallableHandler("adoptProviderAccountForDevice", async (
-    request: CallableRequest<{
-      accountID: string;
-      deviceID: string;
-      deviceDisplayName?: string;
-      capability?: string;
-    }>
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError("unauthenticated", "Sign in before adopting a provider account.");
-    }
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "adoptProviderAccountForDevice",
+    async (
+      request: CallableRequest<{
+        accountID: string;
+        deviceID: string;
+        deviceDisplayName?: string;
+        capability?: string;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) {
+        throw new HttpsError("unauthenticated", "Sign in before adopting a provider account.");
+      }
+      enforceAuthAndAppCheck(request, uid);
 
-    const accountID = String(request.data.accountID ?? "").trim();
-    const deviceID = String(request.data.deviceID ?? "").trim();
-    if (!accountID) {
-      throw new HttpsError("invalid-argument", "accountID is required.");
-    }
-    if (!deviceID) {
-      throw new HttpsError("invalid-argument", "deviceID is required.");
-    }
+      const accountID = String(request.data.accountID ?? "").trim();
+      const deviceID = String(request.data.deviceID ?? "").trim();
+      if (!accountID) {
+        throw new HttpsError("invalid-argument", "accountID is required.");
+      }
+      if (!deviceID) {
+        throw new HttpsError("invalid-argument", "deviceID is required.");
+      }
 
-    const requestedCap = request.data.capability;
-    if (requestedCap !== undefined && !isDeviceLinkCapability(requestedCap)) {
-      throw new HttpsError("invalid-argument", "capability must be one of owner/use/add.");
-    }
+      const requestedCap = request.data.capability;
+      if (requestedCap !== undefined && !isDeviceLinkCapability(requestedCap)) {
+        throw new HttpsError("invalid-argument", "capability must be one of owner/use/add.");
+      }
 
-    const doc = await adoptDeviceLink({
-      db,
-      uid,
-      accountID,
-      deviceID,
-      deviceDisplayName: request.data.deviceDisplayName,
-      capability: requestedCap,
-    });
-    return { success: true, link: doc };
-  }
-));
+      const doc = await adoptDeviceLink({
+        db,
+        uid,
+        accountID,
+        deviceID,
+        deviceDisplayName: request.data.deviceDisplayName,
+        capability: requestedCap,
+      });
+      return { success: true, link: doc };
+    },
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Callable: revokeProviderAccountDeviceLink
@@ -81,24 +84,25 @@ export const revokeProviderAccountDeviceLink = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
-  wrapCallableHandler("revokeProviderAccountDeviceLink", async (
-    request: CallableRequest<{ accountID: string; deviceID: string }>
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError("unauthenticated", "Sign in before revoking device links.");
-    }
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "revokeProviderAccountDeviceLink",
+    async (request: CallableRequest<{ accountID: string; deviceID: string }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) {
+        throw new HttpsError("unauthenticated", "Sign in before revoking device links.");
+      }
+      enforceAuthAndAppCheck(request, uid);
 
-    const accountID = String(request.data.accountID ?? "").trim();
-    const deviceID = String(request.data.deviceID ?? "").trim();
-    if (!accountID || !deviceID) {
-      throw new HttpsError("invalid-argument", "accountID and deviceID are required.");
-    }
-    await revokeDeviceLink({ db, uid, accountID, deviceID });
-    return { success: true };
-  }
-));
+      const accountID = String(request.data.accountID ?? "").trim();
+      const deviceID = String(request.data.deviceID ?? "").trim();
+      if (!accountID || !deviceID) {
+        throw new HttpsError("invalid-argument", "accountID and deviceID are required.");
+      }
+      await revokeDeviceLink({ db, uid, accountID, deviceID });
+      return { success: true };
+    },
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Callable: backfillProviderAccountDeviceLinks
@@ -115,31 +119,28 @@ export const backfillProviderAccountDeviceLinks = onCall(
     maxInstances: 20,
     timeoutSeconds: 300,
   },
-  wrapCallableHandler("backfillProviderAccountDeviceLinks", async (
-    request: CallableRequest<{
-      callerDeviceID?: string;
-      callerDeviceDisplayName?: string;
-    }>
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError("unauthenticated", "Sign in before running backfill.");
-    }
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "backfillProviderAccountDeviceLinks",
+    async (
+      request: CallableRequest<{
+        callerDeviceID?: string;
+        callerDeviceDisplayName?: string;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) {
+        throw new HttpsError("unauthenticated", "Sign in before running backfill.");
+      }
+      enforceAuthAndAppCheck(request, uid);
 
-    const callerDeviceID = String(request.data.callerDeviceID ?? "").trim() || undefined;
-    const callerDeviceDisplayName =
-      String(request.data.callerDeviceDisplayName ?? "").trim() || undefined;
+      const callerDeviceID = String(request.data.callerDeviceID ?? "").trim() || undefined;
+      const callerDeviceDisplayName = String(request.data.callerDeviceDisplayName ?? "").trim() || undefined;
 
-    const writes = await backfillUserDeviceLinks(
-      db,
-      uid,
-      callerDeviceID,
-      callerDeviceDisplayName
-    );
-    return { success: true, writes };
-  }
-));
+      const writes = await backfillUserDeviceLinks(db, uid, callerDeviceID, callerDeviceDisplayName);
+      return { success: true, writes };
+    },
+  ),
+);
 
 export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
   {
@@ -156,6 +157,10 @@ export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
       usersScanned += 1;
       writes += await backfillUserDeviceLinks(db, user.id, undefined, undefined);
     }
-    logInfo({ event: "callable_info", message: "provider_account_device_links scheduled backfill", ...{ usersScanned, writes } });
-  }
+    logInfo({
+      event: "callable_info",
+      message: "provider_account_device_links scheduled backfill",
+      ...{ usersScanned, writes },
+    });
+  },
 );

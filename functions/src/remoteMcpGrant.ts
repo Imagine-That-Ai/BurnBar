@@ -59,7 +59,7 @@ export async function upsertRemoteMcpClient(
     installFingerprint?: string;
     allowedScopes: RemoteMcpScope[];
     grantMode: RemoteMcpGrantMode;
-  }
+  },
 ): Promise<RemoteMcpClientDoc> {
   const now = Timestamp.now();
   const doc: RemoteMcpClientDoc = {
@@ -71,7 +71,7 @@ export async function upsertRemoteMcpClient(
     grantMode: input.grantMode,
     createdAt: now,
     updatedAt: now,
-    schemaVersion: 1
+    schemaVersion: 1,
   };
   await db.doc(`users/${uid}/remote_mcp_clients/${input.clientId}`).set(doc, { merge: true });
   return doc;
@@ -85,7 +85,7 @@ export async function createRemoteMcpGrant(
     scopes: RemoteMcpScope[];
     entitlementFamily: "burnbar_pro" | "hosted_quota_sync";
     entitlementExpiresAt?: string;
-  }
+  },
 ): Promise<{ grant: RemoteMcpGrantDoc; refreshToken: string }> {
   const now = Timestamp.now();
   const grantId = `rmg_${randomBytes(16).toString("hex")}`;
@@ -99,11 +99,11 @@ export async function createRemoteMcpGrant(
     expiresAt: Timestamp.fromMillis(Date.now() + 90 * 24 * 60 * 60 * 1000),
     entitlementSnapshot: {
       family: input.entitlementFamily,
-      expiresAt: input.entitlementExpiresAt
+      expiresAt: input.entitlementExpiresAt,
     },
     createdAt: now,
     updatedAt: now,
-    schemaVersion: 1
+    schemaVersion: 1,
   };
   await db.doc(`users/${uid}/remote_mcp_grants/${grantId}`).set(grant);
   return { grant, refreshToken };
@@ -112,7 +112,11 @@ export async function createRemoteMcpGrant(
 export async function revokeRemoteMcpClient(db: Firestore, uid: string, clientId: string): Promise<void> {
   const now = Timestamp.now();
   await db.doc(`users/${uid}/remote_mcp_clients/${clientId}`).set({ revokedAt: now, updatedAt: now }, { merge: true });
-  const grants = await db.collection(`users/${uid}/remote_mcp_grants`).where("clientId", "==", clientId).limit(100).get();
+  const grants = await db
+    .collection(`users/${uid}/remote_mcp_grants`)
+    .where("clientId", "==", clientId)
+    .limit(100)
+    .get();
   const batch = db.batch();
   for (const grant of grants.docs) {
     batch.set(grant.ref, { revokedAt: now, updatedAt: now }, { merge: true });

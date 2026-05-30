@@ -1,0 +1,107 @@
+# GitHub Labels — OpenBurnBar
+# Synced by .github/workflows/sync-labels.yml
+# Format: name, color (no #), description
+
+- name: "P0 - Critical"
+  color: "d73a4a"
+  description: "Blocker: production down or data loss risk. Fix immediately."
+
+- name: "P1 - High"
+  color: "e4503f"
+  description: "Major impact. Fix within 24 hours."
+
+- name: "P2 - Medium"
+  color: "f4c430"
+  description: "Significant issue. Fix within this sprint."
+
+- name: "P3 - Low"
+  color: "0075ca"
+  description: "Nice to have. Fix when capacity allows."
+
+- name: "type: bug"
+  color: "d73a4a"
+  description: "Something isn't working as expected."
+
+- name: "type: feature"
+  color: "a2eeef"
+  description: "New feature or enhancement request."
+
+- name: "type: chore"
+  color: "e4e669"
+  description: "Maintenance, refactoring, or tooling updates."
+
+- name: "type: docs"
+  color: "0075ca"
+  description: "Documentation improvements."
+
+- name: "type: security"
+  color: "d73a4a"
+  description: "Security vulnerability or hardening."
+
+- name: "type: perf"
+  color: "e4e669"
+  description: "Performance improvement."
+
+- name: "area: macOS"
+  color: "c5def5"
+  description: "macOS menu bar app and daemon."
+
+- name: "area: iOS"
+  color: "bfd4f2"
+  description: "iOS mobile companion app."
+
+- name: "area: Android"
+  color: "d4edda"
+  description: "Android app."
+
+- name: "area: extension"
+  color: "f1d5e8"
+  description: "VS Code / Cursor extension."
+
+- name: "area: functions"
+  color: "ffdaab"
+  description: "Firebase Cloud Functions backend."
+
+- name: "area: website"
+  color: "e8e8e8"
+  description: "burnbar.ai website."
+
+- name: "area: infra"
+  color: "d0e0ff"
+  description: "CI/CD, build, deployment infrastructure."
+
+- name: "area: hermes"
+  color: "c2d5ff"
+  description: "Hermes chat, iroh transport, relay."
+
+- name: "area: computer-use"
+  color: "ffe4b5"
+  description: "Computer Use phases and agent orchestration."
+
+- name: "area: mercury"
+  color: "e8f4fd"
+  description: "Mercury media: file transfer, calls, screen share."
+
+- name: "area: providers"
+  color: "dce8d4"
+  description: "AI provider parsers, routing, credentials."
+
+- name: "dependencies"
+  color: "0366d6"
+  description: "Dependency update (Dependabot / Renovate)."
+
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers."
+
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed."
+
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on."
+
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "This issue or pull request already exists."
