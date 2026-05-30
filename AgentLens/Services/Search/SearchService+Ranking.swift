@@ -2,12 +2,12 @@ import Foundation
 import OpenBurnBarCore
 
 extension SearchService {
-        private func normalizedSourceKinds(_ kinds: Set<SearchSourceKind>?) -> [SearchSourceKind]? {
+        func normalizedSourceKinds(_ kinds: Set<SearchSourceKind>?) -> [SearchSourceKind]? {
             guard let kinds, kinds.isEmpty == false else { return nil }
             return kinds.sorted { $0.rawValue < $1.rawValue }
         }
 
-        private func normalizedSourceIDs(_ ids: Set<String>?) -> [String]? {
+        func normalizedSourceIDs(_ ids: Set<String>?) -> [String]? {
             guard let ids else { return nil }
             let cleaned = ids
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -16,7 +16,7 @@ extension SearchService {
             return cleaned.isEmpty ? nil : cleaned
         }
 
-        private func matchesFilters(
+        func matchesFilters(
             document: SearchDocumentRecord,
             conversation: ConversationRecord?,
             filters: RetrievalFilters,
@@ -75,7 +75,7 @@ extension SearchService {
             return true
         }
 
-        private func shouldEnforceSharedArtifactAccess(
+        func shouldEnforceSharedArtifactAccess(
             filters: RetrievalFilters,
             sourceKinds: [SearchSourceKind]?
         ) -> Bool {
@@ -96,18 +96,18 @@ extension SearchService {
             return true
         }
 
-        private func recencyScore(_ date: Date) -> Double {
+        func recencyScore(_ date: Date) -> Double {
             let ageSeconds = max(0, nowProvider().timeIntervalSince(date))
             let ageDays = ageSeconds / 86_400
             return 1.0 / (1.0 + (ageDays / 30.0))
         }
 
-        private func preliminaryScore(for candidate: CandidateAccumulator) -> Double {
+        func preliminaryScore(for candidate: CandidateAccumulator) -> Double {
             (Self.normalizedLexicalScore(candidate.lexicalRank) * 0.7) + (max(0, candidate.semanticScore ?? 0) * 0.3)
         }
 
         /// Reciprocal rank fusion across sparse (lexical) and dense (semantic) orderings.
-        private static func reciprocalRankFusion(
+        static func reciprocalRankFusion(
             lexicalRank: Int?,
             semanticRank: Int?,
             k: Double
@@ -119,7 +119,7 @@ extension SearchService {
         }
 
         /// Maps RRF raw score to \[0, 1\] given how many retrievers matched this chunk (at rank 1 each would contribute `1/(k+1)`).
-        private static func normalizedRRFForRerank(
+        static func normalizedRRFForRerank(
             _ raw: Double,
             lexicalRank: Int?,
             semanticRank: Int?,
@@ -132,12 +132,12 @@ extension SearchService {
             return min(1.0, raw / maxPossible)
         }
 
-        private static func normalizedLexicalScore(_ lexicalRank: Double?) -> Double {
+        static func normalizedLexicalScore(_ lexicalRank: Double?) -> Double {
             guard let lexicalRank else { return 0 }
             return 1.0 / (1.0 + abs(lexicalRank))
         }
 
-        private static func queryTokens(from query: String) -> [String] {
+        static func queryTokens(from query: String) -> [String] {
             query
                 .lowercased()
                 .split(whereSeparator: { $0.isWhitespace || $0.isNewline || $0.isPunctuation })
@@ -145,7 +145,7 @@ extension SearchService {
                 .filter { $0.count >= 2 }
         }
 
-        private static func exactTokenCoverageScore(tokens: [String], title: String, chunkText: String) -> Double {
+        static func exactTokenCoverageScore(tokens: [String], title: String, chunkText: String) -> Double {
             guard tokens.isEmpty == false else { return 0 }
             let loweredTitle = title.lowercased()
             let loweredChunk = chunkText.lowercased()
@@ -164,7 +164,7 @@ extension SearchService {
             return min(1.0, weightedMatches / denominator)
         }
 
-        private static func makeSnippet(lexicalSnippet: String?, chunkText: String, fallback: String) -> String {
+        static func makeSnippet(lexicalSnippet: String?, chunkText: String, fallback: String) -> String {
             let cleanedLexical = lexicalSnippet?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if cleanedLexical.isEmpty == false {
                 return cleanedLexical
@@ -194,7 +194,7 @@ extension SearchService {
         }
 }
 
-private struct CandidateAccumulator {
+struct CandidateAccumulator {
     var lexicalRank: Double?
     var semanticScore: Double?
     var lexicalSnippet: String?

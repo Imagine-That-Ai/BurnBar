@@ -451,14 +451,7 @@ public final class RemoteClipboardController {
     }
 
     private func validationDetail(for error: PhoneControlAuthorityValidator.ValidationError) -> String {
-        switch error {
-        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch:
-            return "signature_failure"
-        case .counterReplay:
-            return "counter_replay"
-        case .staleTimestamp:
-            return "stale_timestamp"
-        }
+        error.auditDetailToken
     }
 }
 
@@ -696,14 +689,7 @@ final class RemoteUnlockCredentialController {
     }
 
     private func validationDetail(for error: PhoneControlAuthorityValidator.ValidationError) -> String {
-        switch error {
-        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch:
-            return "signature_failure"
-        case .counterReplay:
-            return "counter_replay"
-        case .staleTimestamp:
-            return "stale_timestamp"
-        }
+        error.auditDetailToken
     }
 
     private func remoteUnlockInputDetail(for error: Error) -> String {

@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
+import { SUPPORT_MACROS } from "@data/supportMacros";
 ---
 
 <BaseLayout
@@ -12,8 +13,8 @@ import { SITE } from "@data/site";
       <span class="eyebrow eyebrow--ember">Support</span>
       <h1>OpenBurnBar support</h1>
       <p class="lead">
-        Get help with the macOS app, iPhone and iPad companion app, Hosted Quota Sync subscription,
-        provider connections, account deletion, or privacy requests.
+        Get help with the macOS app, iPhone and iPad companion app, BurnBar Cloud, BurnBar Cloud
+        Pro, provider connections, account deletion, or privacy requests.
       </p>
 
       <div class="supportgrid">
@@ -33,9 +34,9 @@ import { SITE } from "@data/site";
         <article class="supportcard">
           <h2>Subscription help</h2>
           <p>
-            OpenBurnBar Cloud is an auto-renewable monthly App Store subscription. Billing is
-            handled by Apple. You can manage, cancel, or request refunds from your Apple ID
-            subscription settings.
+            BurnBar Cloud and BurnBar Cloud Pro are auto-renewable subscriptions. Billing is handled
+            by the purchase platform: Apple App Store, Google Play, or Stripe. Manage, cancel, or
+            request refunds from the platform where you purchased.
           </p>
           <a
             class="textlink"
@@ -45,6 +46,15 @@ import { SITE } from "@data/site";
           >
             Manage Apple subscriptions
           </a>
+        </article>
+
+        <article class="supportcard">
+          <h2>Cloud Pro allowance</h2>
+          <p>
+            Cloud Pro includes 500 hosted Agent Control actions and 50 relay-accounting GB each
+            month. Extra hosted actions and relay are prepaid top-ups. If allowance or caps are
+            exhausted, hosted Agent Control and Floo relay pause instead of silently spending more.
+          </p>
         </article>
 
         <article class="supportcard">
@@ -68,6 +78,20 @@ import { SITE } from "@data/site";
           </div>
         </article>
       </div>
+
+      <section class="macros" aria-labelledby="support-macros-h">
+        <h2 id="support-macros-h">Support macros</h2>
+        <div class="supportgrid">
+          {
+            SUPPORT_MACROS.map((macro) => (
+              <article class="supportcard supportcard--compact">
+                <h3>{macro.title}</h3>
+                <p>{macro.summary}</p>
+              </article>
+            ))
+          }
+        </div>
+      </section>
     </div>
   </section>
 </BaseLayout>
@@ -101,6 +125,14 @@ import { SITE } from "@data/site";
       "opsz" 80,
       "wght" 520;
   }
+  .supportcard h3 {
+    margin-bottom: var(--s-2);
+    font-size: 1rem;
+    color: var(--text-bright);
+  }
+  .supportcard--compact {
+    padding: var(--s-4);
+  }
   .supportcard p {
     color: var(--text-base);
     max-width: 64ch;
@@ -120,5 +152,11 @@ import { SITE } from "@data/site";
     gap: var(--s-4);
     flex-wrap: wrap;
     margin-top: var(--s-3);
+  }
+  .macros {
+    margin-top: var(--s-7);
+  }
+  .macros > h2 {
+    margin-bottom: var(--s-4);
   }
 </style>

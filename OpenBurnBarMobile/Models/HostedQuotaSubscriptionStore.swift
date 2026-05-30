@@ -21,6 +21,11 @@ protocol HostedQuotaEntitlementServicing: AnyObject {
         productID: String?,
         signedTransactionJWS: String?
     ) async throws -> HostedQuotaEntitlementResponse
+
+    func verifyCloudProTopUp(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws -> CloudProTopUpCreditResponse
 }
 
 extension FunctionsRepository: HostedQuotaEntitlementServicing {}
@@ -41,13 +46,151 @@ enum HostedQuotaPurchaseOutcome {
     case userCancelled
 }
 
+enum OpenBurnBarStoreProductRole: String, Sendable {
+    case subscription
+    case topUp
+}
+
+struct OpenBurnBarStoreProduct: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let cadence: String
+    let fallbackDisplayPrice: String
+    let entitlementID: String?
+    let role: OpenBurnBarStoreProductRole
+    let included: String
+    let disclosure: String
+    let topUpKind: String?
+}
+
+enum OpenBurnBarProductCatalog {
+    static let cloudMonthlyProductID = "com.openburnbar.pro.monthly"
+    static let cloudAnnualProductID = "com.openburnbar.pro.annual"
+    static let cloudProMonthlyProductID = "com.openburnbar.proMax.monthly"
+    static let cloudProAnnualProductID = "com.openburnbar.proMax.annual"
+    static let agentControl100ActionsProductID = "com.openburnbar.agentControl.actions100"
+    static let flooRelay50GBProductID = "com.openburnbar.floo.relay50gb"
+    static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
+    static let legacyHostedQuotaOriginalProductID = "com.openburnbar.hostedQuotaSync.monthly"
+    static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
+    static let legacyComputerUseProductID = "com.openburnbar.computerUse.monthly"
+    static let legacyProMaxProductID = "com.openburnbar.proMax.monthly"
+    static let legacyProMaxBundleProductID = "com.openburnbar.proMax.bundle.monthly"
+
+    static let subscriptions: [OpenBurnBarStoreProduct] = [
+        OpenBurnBarStoreProduct(
+            id: cloudMonthlyProductID,
+            title: "BurnBar Cloud",
+            cadence: "Monthly",
+            fallbackDisplayPrice: "$7.99",
+            entitlementID: "burnbar_pro",
+            role: .subscription,
+            included: "Sync, encrypted session backup, cloud search, Intelligence Brief fallback, remote relay, and Hosted Remote MCP.",
+            disclosure: "1 month, auto-renews monthly after a 14-day free trial for new subscribers.",
+            topUpKind: nil
+        ),
+        OpenBurnBarStoreProduct(
+            id: cloudAnnualProductID,
+            title: "BurnBar Cloud",
+            cadence: "Annual",
+            fallbackDisplayPrice: "$79",
+            entitlementID: "burnbar_pro",
+            role: .subscription,
+            included: "Everything in BurnBar Cloud monthly with annual billing.",
+            disclosure: "1 year, auto-renews annually after a 14-day free trial for new subscribers.",
+            topUpKind: nil
+        ),
+        OpenBurnBarStoreProduct(
+            id: cloudProMonthlyProductID,
+            title: "BurnBar Cloud Pro",
+            cadence: "Monthly",
+            fallbackDisplayPrice: "$24.99",
+            entitlementID: "burnbar_pro_max",
+            role: .subscription,
+            included: "BurnBar Cloud plus Floo live phone-to-Mac control, file transfer, calls, shared clipboard, supervised Agent Control, 500 hosted actions, and 50 relay GB.",
+            disclosure: "1 month, auto-renews monthly. No introductory trial.",
+            topUpKind: nil
+        ),
+        OpenBurnBarStoreProduct(
+            id: cloudProAnnualProductID,
+            title: "BurnBar Cloud Pro",
+            cadence: "Annual",
+            fallbackDisplayPrice: "$249",
+            entitlementID: "burnbar_pro_max",
+            role: .subscription,
+            included: "Everything in BurnBar Cloud Pro monthly with annual billing.",
+            disclosure: "1 year, auto-renews annually. No introductory trial.",
+            topUpKind: nil
+        )
+    ]
+
+    static let topUps: [OpenBurnBarStoreProduct] = [
+        OpenBurnBarStoreProduct(
+            id: agentControl100ActionsProductID,
+            title: "Agent Control actions",
+            cadence: "100 hosted actions",
+            fallbackDisplayPrice: "$4.99",
+            entitlementID: nil,
+            role: .topUp,
+            included: "Adds 100 prepaid hosted Agent Control actions to the current Cloud Pro month.",
+            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro subscription.",
+            topUpKind: "agent_control_actions_100"
+        ),
+        OpenBurnBarStoreProduct(
+            id: flooRelay50GBProductID,
+            title: "Floo relay data",
+            cadence: "50 relay GB",
+            fallbackDisplayPrice: "$4.99",
+            entitlementID: nil,
+            role: .topUp,
+            included: "Adds 50 prepaid Floo relay GB to the current Cloud Pro month.",
+            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro subscription.",
+            topUpKind: "floo_relay_50gb"
+        )
+    ]
+
+    static let visibleProducts = subscriptions + topUps
+    static let visibleProductIDs = visibleProducts.map(\.id)
+    static let entitlementProductIDs: Set<String> = Set(subscriptions.map(\.id)).union([
+        legacyHostedQuotaProductID,
+        legacyHostedQuotaOriginalProductID,
+        legacyComputerUseProductID,
+        legacyProMaxBundleProductID,
+        legacyHostedComputerUseProductID,
+        legacyProMaxProductID
+    ])
+
+    static func product(for id: String) -> OpenBurnBarStoreProduct? {
+        visibleProducts.first(where: { $0.id == id })
+    }
+}
+
+struct CloudProTopUpCreditResponse: Equatable, Sendable {
+    let credited: Bool
+    let monthKey: String
+    let units: Int
+    let kind: String
+}
+
+struct HostedQuotaStoreProduct: Identifiable, Sendable {
+    let id: String
+    let displayPrice: String
+    fileprivate let storeKitProduct: Product?
+
+    init(id: String, displayPrice: String, storeKitProduct: Product? = nil) {
+        self.id = id
+        self.displayPrice = displayPrice
+        self.storeKitProduct = storeKitProduct
+    }
+}
+
 typealias HostedQuotaProductPurchaseExecutor = @MainActor (
-    Product,
+    HostedQuotaStoreProduct,
     Set<Product.PurchaseOption>
 ) async throws -> HostedQuotaPurchaseOutcome
 
 typealias HostedQuotaAppStoreSync = @MainActor () async throws -> Void
-typealias HostedQuotaProductCatalogFetcher = @MainActor ([String]) async throws -> [Product]
+typealias HostedQuotaProductCatalogFetcher = @MainActor ([String]) async throws -> [HostedQuotaStoreProduct]
 typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
@@ -70,31 +213,24 @@ typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 @Observable
 @MainActor
 final class HostedQuotaSubscriptionStore {
-    static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
-    static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.monthly"
-    static let hostedComputerUseProductID = "com.openburnbar.computerUse.monthly"
-    static let proMaxProductID = "com.openburnbar.proMax.bundle.monthly"
-    static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
-    static let legacyProMaxProductID = "com.openburnbar.proMax.monthly"
+    static let productID = OpenBurnBarProductCatalog.cloudMonthlyProductID
+    static let legacyHostedQuotaProductID = OpenBurnBarProductCatalog.legacyHostedQuotaProductID
+    static let legacyHostedQuotaOriginalProductID = OpenBurnBarProductCatalog.legacyHostedQuotaOriginalProductID
+    static let hostedComputerUseProductID = OpenBurnBarProductCatalog.legacyComputerUseProductID
+    static let proMaxProductID = OpenBurnBarProductCatalog.legacyProMaxBundleProductID
+    static let legacyHostedComputerUseProductID = OpenBurnBarProductCatalog.legacyHostedComputerUseProductID
+    static let legacyProMaxProductID = OpenBurnBarProductCatalog.legacyProMaxProductID
+    static let cloudAnnualProductID = OpenBurnBarProductCatalog.cloudAnnualProductID
+    static let cloudProMonthlyProductID = OpenBurnBarProductCatalog.cloudProMonthlyProductID
+    static let cloudProAnnualProductID = OpenBurnBarProductCatalog.cloudProAnnualProductID
+    static let agentControl100ActionsProductID = OpenBurnBarProductCatalog.agentControl100ActionsProductID
+    static let flooRelay50GBProductID = OpenBurnBarProductCatalog.flooRelay50GBProductID
 
-    /// Every App Store-reviewable auto-renewable subscription that this build
-    /// presents in StoreKit. Draft products stay out of this list until App
-    /// Store Connect reports them as review-includable, which prevents the
-    /// paywall from referencing product IDs Apple will omit from review.
-    static let appStoreReviewVisibleProductIDs = [
-        productID,
-        legacyHostedQuotaProductID
-    ]
+    /// Every App Store-reviewable auto-renewable subscription and consumable
+    /// top-up this build presents in StoreKit.
+    static let appStoreReviewVisibleProductIDs = OpenBurnBarProductCatalog.visibleProductIDs
 
-    private static let entitlementProductIDs: Set<String> = [
-        productID,
-        legacyHostedQuotaProductID,
-        hostedComputerUseProductID,
-        proMaxProductID,
-        legacyHostedComputerUseProductID,
-        legacyProMaxProductID,
-        "com.openburnbar.pro.monthly"
-    ]
+    private static let entitlementProductIDs = OpenBurnBarProductCatalog.entitlementProductIDs
 
     private let functions: any HostedQuotaEntitlementServicing
     private let directReader: (any HostedQuotaEntitlementDirectReading)?
@@ -103,8 +239,10 @@ final class HostedQuotaSubscriptionStore {
     private let fetchProducts: HostedQuotaProductCatalogFetcher
     private let isSignedIn: HostedQuotaAuthStateReader
 
-    private(set) var product: Product?
+    private(set) var product: HostedQuotaStoreProduct?
+    private(set) var productsByID: [String: HostedQuotaStoreProduct] = [:]
     private(set) var isActive = false
+    private(set) var activeProductID: String?
     private(set) var expirationDate: Date?
     private(set) var isLoading = false
     private(set) var isPurchasing = false
@@ -120,6 +258,7 @@ final class HostedQuotaSubscriptionStore {
     /// Surfaced for diagnostics in the member card footer; not used for any
     /// trust decision.
     private(set) var latestTransactionID: UInt64?
+    private(set) var lastTopUpCredit: CloudProTopUpCreditResponse?
 
     @ObservationIgnored private nonisolated(unsafe) var transactionUpdatesTask: Task<Void, Never>?
 
@@ -156,6 +295,7 @@ final class HostedQuotaSubscriptionStore {
         startObservingTransactionUpdates()
         guard isSignedIn() else {
             isActive = false
+            activeProductID = nil
             expirationDate = nil
             purchaseDate = nil
             latestTransactionID = nil
@@ -176,22 +316,26 @@ final class HostedQuotaSubscriptionStore {
     /// `beginEntitlementBinding` call is what allows the server to
     /// attribute the resulting JWS back to this Firebase UID without
     /// trusting any client-supplied identifier.
-    func purchase() async {
+    func purchase(productID: String = HostedQuotaSubscriptionStore.productID) async {
         guard !isPurchasing else { return }
+        let catalogProduct = OpenBurnBarProductCatalog.product(for: productID)
+        let isTopUp = catalogProduct?.role == .topUp
+        if isTopUp, !isSignedIn() {
+            error = HostedQuotaSubscriptionError.signedOutConsumablePurchase.localizedDescription
+            return
+        }
         let canBindEntitlement = isSignedIn()
         isPurchasing = true
         error = nil
         defer { isPurchasing = false }
         do {
-            if product == nil {
-                product = try await fetchProducts([Self.productID]).first
-            }
-            guard let product else {
-                throw HostedQuotaSubscriptionError.productUnavailable
+            let product = try await productMetadata(for: productID)
+            if productID == Self.productID {
+                self.product = product
             }
             let purchaseOptions: Set<Product.PurchaseOption>
             if canBindEntitlement {
-                let token = try await mintAppAccountToken()
+                let token = try await mintAppAccountToken(productID: productID)
                 purchaseOptions = [.appAccountToken(token)]
             } else {
                 purchaseOptions = []
@@ -199,9 +343,15 @@ final class HostedQuotaSubscriptionStore {
             let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
             case .success(let signedTransactionJWS, let finish):
+                if isTopUp {
+                    try await verifyTopUpOnServer(jws: signedTransactionJWS, productID: productID)
+                    await finish()
+                    return
+                }
                 guard canBindEntitlement else {
                     await finish()
                     isActive = false
+                    activeProductID = nil
                     expirationDate = nil
                     purchaseDate = nil
                     latestTransactionID = nil
@@ -209,10 +359,10 @@ final class HostedQuotaSubscriptionStore {
                     return
                 }
                 do {
-                    try await verifyOnServer(jws: signedTransactionJWS)
+                    try await verifyOnServer(jws: signedTransactionJWS, productID: productID)
                     await finish()
                 } catch {
-                    if await recoverEntitlementAfterVerificationFailure(jws: signedTransactionJWS) {
+                    if await recoverEntitlementAfterVerificationFailure(jws: signedTransactionJWS, productID: productID) {
                         await finish()
                     } else {
                         throw error
@@ -284,6 +434,7 @@ final class HostedQuotaSubscriptionStore {
     func refreshEntitlement() async throws {
         guard isSignedIn() else {
             isActive = false
+            activeProductID = nil
             expirationDate = nil
             purchaseDate = nil
             latestTransactionID = nil
@@ -323,6 +474,7 @@ final class HostedQuotaSubscriptionStore {
                 // entitlement doc the Firestore rules use to gate the relay.
                 if !(await applyDirectReadIfActive()) {
                     isActive = false
+                    activeProductID = nil
                     expirationDate = nil
                 }
             }
@@ -411,9 +563,9 @@ final class HostedQuotaSubscriptionStore {
         }
     }
 
-    private func mintAppAccountToken() async throws -> UUID {
+    private func mintAppAccountToken(productID: String = HostedQuotaSubscriptionStore.productID) async throws -> UUID {
         let raw = try await functions.beginEntitlementBinding(
-            productID: Self.productID,
+            productID: productID,
             clientPlatform: HostedQuotaSubscriptionStore.platformIdentifier
         )
         guard let uuid = UUID(uuidString: raw) else {
@@ -462,7 +614,29 @@ final class HostedQuotaSubscriptionStore {
 
     private func apply(response: HostedQuotaEntitlementResponse) {
         isActive = response.active
+        activeProductID = response.active ? response.productID : nil
         expirationDate = response.expiresAt
+    }
+
+    var isActivePro: Bool {
+        activeProductID == Self.cloudProMonthlyProductID ||
+            activeProductID == Self.cloudProAnnualProductID ||
+            activeProductID == Self.legacyProMaxProductID ||
+            activeProductID == Self.proMaxProductID ||
+            activeProductID == Self.legacyHostedComputerUseProductID ||
+            activeProductID == Self.hostedComputerUseProductID
+    }
+
+    func storeProduct(for productID: String) -> HostedQuotaStoreProduct? {
+        productsByID[productID]
+    }
+
+    func displayPrice(for catalogProduct: OpenBurnBarStoreProduct) -> String {
+        storeProduct(for: catalogProduct.id)?.displayPrice ?? catalogProduct.fallbackDisplayPrice
+    }
+
+    func subscriptionPlan(for productID: String) -> OpenBurnBarStoreProduct? {
+        OpenBurnBarProductCatalog.subscriptions.first(where: { $0.id == productID })
     }
 
     private struct CurrentEntitlement {
@@ -471,16 +645,19 @@ final class HostedQuotaSubscriptionStore {
     }
 
     private static func purchaseProduct(
-        _ product: Product,
+        _ product: HostedQuotaStoreProduct,
         options: Set<Product.PurchaseOption>
     ) async throws -> HostedQuotaPurchaseOutcome {
+        guard let storeKitProduct = product.storeKitProduct else {
+            throw HostedQuotaSubscriptionError.productUnavailable
+        }
         #if os(iOS)
         guard let scene = activePurchaseScene() else {
             throw HostedQuotaSubscriptionError.purchasePresentationUnavailable
         }
-        let result = try await product.purchase(confirmIn: scene, options: options)
+        let result = try await storeKitProduct.purchase(confirmIn: scene, options: options)
         #else
-        let result = try await product.purchase(options: options)
+        let result = try await storeKitProduct.purchase(options: options)
         #endif
         switch result {
         case .success(let verification):
@@ -512,19 +689,53 @@ final class HostedQuotaSubscriptionStore {
         try await AppStore.sync()
     }
 
-    private static func fetchProducts(for identifiers: [String]) async throws -> [Product] {
-        try await Product.products(for: identifiers)
+    private static func fetchProducts(for identifiers: [String]) async throws -> [HostedQuotaStoreProduct] {
+        let products = try await Product.products(for: identifiers)
+        return products.map { HostedQuotaStoreProduct(id: $0.id, displayPrice: $0.displayPrice, storeKitProduct: $0) }
     }
 
     private func loadProductMetadataIfAvailable() async {
         do {
-            product = try await fetchProducts(Self.appStoreReviewVisibleProductIDs)
-                .first(where: { $0.id == Self.productID })
+            let fetched = try await fetchProducts(Self.appStoreReviewVisibleProductIDs)
+            productsByID = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
+            fillMissingCatalogProducts()
+            product = productsByID[Self.productID]
         } catch {
             if self.error == nil {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    private func productMetadata(for productID: String) async throws -> HostedQuotaStoreProduct {
+        if let product = productsByID[productID] {
+            return product
+        }
+        let fetched = try await fetchProducts([productID])
+        for product in fetched {
+            productsByID[product.id] = product
+        }
+        fillMissingCatalogProducts()
+        guard let product = productsByID[productID] else {
+            throw HostedQuotaSubscriptionError.productUnavailable
+        }
+        return product
+    }
+
+    private func fillMissingCatalogProducts() {
+        for catalogProduct in OpenBurnBarProductCatalog.visibleProducts where productsByID[catalogProduct.id] == nil {
+            productsByID[catalogProduct.id] = HostedQuotaStoreProduct(
+                id: catalogProduct.id,
+                displayPrice: catalogProduct.fallbackDisplayPrice
+            )
+        }
+    }
+
+    private func verifyTopUpOnServer(jws: String, productID: String) async throws {
+        lastTopUpCredit = try await functions.verifyCloudProTopUp(
+            signedTransactionJWS: jws,
+            productID: productID
+        )
     }
 
     private static func checked<T>(_ result: VerificationResult<T>) throws -> T {
@@ -562,6 +773,7 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
     case productUnavailable
     case invalidBindingToken
     case purchasePresentationUnavailable
+    case signedOutConsumablePurchase
 
     var errorDescription: String? {
         switch self {
@@ -571,6 +783,8 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
             return "Could not initialize the entitlement binding token. Please try again."
         case .purchasePresentationUnavailable:
             return "Could not open the App Store purchase sheet. Please keep OpenBurnBar in the foreground and tap Subscribe again."
+        case .signedOutConsumablePurchase:
+            return "Sign in to OpenBurnBar before buying Cloud Pro top-ups so the prepaid allowance can be credited to your account."
         }
     }
 }

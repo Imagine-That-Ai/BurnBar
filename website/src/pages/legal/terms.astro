@@ -2,6 +2,7 @@
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
 const updated = "May 12, 2026";
+const paidTiers = SITE.pricing.tiers.filter((tier) => tier.priceMonthlyUSD !== "0");
 ---
 
 <BaseLayout
@@ -16,8 +17,9 @@ const updated = "May 12, 2026";
 
       <p class="lead">
         OpenBurnBar is open-source software offered under the MIT License, plus an optional in-app
-        subscription billed through the Apple App Store. By installing or using OpenBurnBar, you
-        agree to the terms below. If you don't, please don't install the software.
+        subscriptions and prepaid top-ups billed through Apple, Google Play, or Stripe. By
+        installing or using OpenBurnBar, you agree to the terms below. If you don't, please don't
+        install the software.
       </p>
 
       <h2>1. License — the app</h2>
@@ -37,37 +39,40 @@ const updated = "May 12, 2026";
         use it to imply endorsement.
       </p>
 
-      <h2>3. Subscription terms (Hosted Quota Sync)</h2>
+      <h2>3. Subscription and top-up terms</h2>
       <ul>
         <li>
-          The OpenBurnBar Cloud subscription (product id <code>{SITE.iapProductId}</code>) is
-          offered as an in-app purchase through the Apple App Store at an intended price of US ${
-            SITE.iapPriceUSD
-          } per {SITE.iapPeriod}.
+          OpenBurnBar offers paid tiers: {
+            paidTiers
+              .map(
+                (tier) =>
+                  `${tier.name} at US $${tier.priceMonthlyUSD}/month or $${tier.priceAnnualUSD}/year`
+              )
+              .join(", ")
+          }. Exact taxes and local currency pricing are set by the purchase platform.
         </li>
         <li>
-          Billing, taxes, and currency conversion are handled by Apple under the terms of the App
-          Store. We do not see or store payment cards.
+          Billing, taxes, and currency conversion are handled by Apple, Google Play, or Stripe,
+          depending on where you purchase. We do not see or store payment cards.
         </li>
         <li>
-          The subscription auto-renews monthly unless canceled. Manage or cancel in <em
-            >Settings → Apple ID → Subscriptions</em
-          > on iPhone or iPad.
+          Subscriptions auto-renew unless canceled. Manage or cancel in the billing platform where
+          you purchased.
         </li>
         <li>
-          Refunds are governed by Apple's standard App Store refund policy at
-          <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer"
-            >reportaproblem.apple.com</a
-          >.
+          Refunds are governed by the store or payment platform policy. Confirmed refunds,
+          chargebacks, expirations, and cancellations may revoke the matching entitlement.
         </li>
         <li>
-          The subscription is bound to your Firebase UID via a signed Apple
-          <code>appAccountToken</code> UUID and verified server-side against Apple's <em
-            >getAllSubscriptionStatuses</em
-          > endpoint.
+          Cloud Pro includes monthly hosted-action and relay-accounting allowances. Extra hosted
+          usage is prepaid through top-ups and remains subject to monthly caps.
         </li>
         <li>
-          We may rate-limit hosted refresh and relay capacity (see the
+          Purchases are bound to your Firebase UID and verified server-side before any hosted
+          capability turns on.
+        </li>
+        <li>
+          We may rate-limit hosted refresh, relay, and hosted agent capacity (see the
           <a href="/pricing">pricing page</a> for current caps).
         </li>
       </ul>

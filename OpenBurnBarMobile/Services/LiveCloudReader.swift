@@ -342,26 +342,19 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
                 "lastActiveAt": FieldValue.serverTimestamp()
             ], merge: true)
 
-        // Escrow device registry (pending by default)
-        let escrowDoc = try? await db.collection("users").document(uid)
-            .collection("escrow_devices").document(deviceId).getDocument()
-        if escrowDoc?.exists != true {
-            var escrowData: [String: Any] = [
-                "deviceId": deviceId,
-                "deviceName": name,
-                "platform": "iOS",
-                "appVersion": version,
-                "trustState": EscrowDeviceTrustState.pending.rawValue,
-                "createdAt": FieldValue.serverTimestamp(),
-                "updatedAt": FieldValue.serverTimestamp()
-            ]
-            if let keypair {
-                escrowData["publicKeyFingerprint"] = keypair.publicKeyFingerprint
-                escrowData["keyVersion"] = keypair.keyVersion
-            }
-            try? await db.collection("users").document(uid)
-                .collection("escrow_devices").document(deviceId)
-                .setData(escrowData, merge: true)
+        // Escrow device registry (pending by default) via server callable
+        let escrowPlatform = UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        do {
+            try await ComputerUseSecurityCallableClient.registerEscrowDevice(
+                deviceId: deviceId,
+                deviceName: name,
+                platform: escrowPlatform,
+                appVersion: version,
+                publicKeyFingerprint: keypair?.publicKeyFingerprint,
+                keyVersion: keypair?.keyVersion
+            )
+        } catch {
+            // Registration may already exist; ignore failed-precondition for trusted devices.
         }
         if let keypair {
             try? await db.collection("users").document(uid)
@@ -385,31 +378,20 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     }
 
     func bootstrapApproveSelf() async throws {
-        guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
+        guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
         await registerSelfIfNeeded()
-        let ref = db.collection("users").document(uid).collection("escrow_devices")
+        let ref = db.collection("users").document(uid!).collection("escrow_devices")
         let others = try await ref.whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue).getDocuments()
         guard others.documents.isEmpty else {
             throw CloudGatewayError.classified(.other(message: "Another trusted device already exists. Approve from that device."))
         }
-        try await ref.document(deviceId).setData([
-            "trustState": EscrowDeviceTrustState.trusted.rawValue,
-            "approvedAt": FieldValue.serverTimestamp(),
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(deviceId: deviceId)
     }
 
     func trustSelfForComputerUseControl() async throws {
-        guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
+        guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
         await registerSelfIfNeeded()
-        try await db.collection("users").document(uid)
-            .collection("escrow_devices")
-            .document(deviceId)
-            .updateData([
-                "trustState": EscrowDeviceTrustState.trusted.rawValue,
-                "approvedAt": FieldValue.serverTimestamp(),
-                "updatedAt": FieldValue.serverTimestamp()
-            ])
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(deviceId: deviceId)
     }
 
     func isSelfTrustedForComputerUseControl() async throws -> Bool {
@@ -431,17 +413,8 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     }
 
     func revoke(deviceID: String) async throws {
-        guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
-        try await db.collection("users").document(uid).collection("escrow_devices")
-            .document(deviceID).setData(["trustState": EscrowDeviceTrustState.revoked.rawValue,
-                                          "updatedAt": FieldValue.serverTimestamp()], merge: true)
-        let grants = try await db.collection("users").document(uid).collection("escrow_grants")
-            .whereField("targetDeviceId", isEqualTo: deviceID)
-            .whereField("status", isEqualTo: EscrowGrantStatus.granted.rawValue).getDocuments()
-        for doc in grants.documents {
-            try await doc.reference.setData(["status": EscrowGrantStatus.revoked.rawValue,
-                                              "revokedAt": FieldValue.serverTimestamp()], merge: true)
-        }
+        guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
+        try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(deviceId: deviceID)
     }
 
 }

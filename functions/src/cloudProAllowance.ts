@@ -12,15 +12,12 @@ import { wrapCallableHandler } from "./logging.js";
 import {
   allowanceDocPath,
   CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
-  CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
-  CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
-  CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
-  CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
   defaultsForAllowanceMeter,
   evaluateCloudProAllowanceReservation,
   monthKeyForDate,
   type CloudProAllowanceMeter,
 } from "./cloudProAllowanceCore.js";
+import { loadCloudProAllowanceConfig } from "./cloudProAllowanceRemoteConfig.js";
 import {
   assertActiveBurnBarCloudProEntitlement,
   boundedTrimmedString,
@@ -100,7 +97,8 @@ async function reserveCloudProAllowance(args: {
   const reservationDocID = reservationDocumentID(args.meter, args.sessionId, args.reservationId);
   const reservationRef = allowanceRef.collection("reservations").doc(reservationDocID);
   const fields = allowanceFieldNames(args.meter);
-  const defaults = defaultsForAllowanceMeter(args.meter);
+  const allowanceConfig = await loadCloudProAllowanceConfig();
+  const defaults = defaultsForAllowanceMeter(args.meter, allowanceConfig);
 
   return db.runTransaction(async (transaction) => {
     const existingReservation = await transaction.get(reservationRef);
@@ -153,15 +151,15 @@ async function reserveCloudProAllowance(args: {
     transaction.set(
       allowanceRef,
       {
-        includedHostedActions: CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
-        includedRelayGB: CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
+        includedHostedActions: allowanceConfig.includedHostedActionsMonthly,
+        includedRelayGB: allowanceConfig.includedRelayGBMonthly,
         hostedActionsUsed:
           args.meter === "hosted_actions" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
         relayGBUsed: args.meter === "relay_gb" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
         topupActionsPurchased: FieldValue.increment(0),
         topupRelayGBPurchased: FieldValue.increment(0),
-        monthlyHostedActionCap: CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
-        monthlyRelayGBCap: CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
+        monthlyHostedActionCap: allowanceConfig.monthlyHostedActionCap,
+        monthlyRelayGBCap: allowanceConfig.monthlyRelayGBCap,
         updatedAt: now,
         schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
       },

@@ -41,8 +41,9 @@ interface BudgetTunings {
  *
  * Remote Config parameters consumed:
  *   - `media_cost_per_gb_usd` — number, default 0.04
- *   - `media_budget_soft_cap_usd` — number, default 600
- *   - `media_budget_hard_cap_usd` — number, default 1000
+ *   - `media_budget_soft_usd` — number, default 600
+ *   - `media_budget_hard_usd` — number, default 1000
+ * Legacy `_cap_usd` names remain accepted during rollout.
  */
 async function loadBudgetTunings(): Promise<BudgetTunings> {
   let costPerGB = DEFAULT_COST_PER_GB_USD;
@@ -51,17 +52,19 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
   try {
     const template = await getRemoteConfig().getTemplate();
     const params = template.parameters ?? {};
-    const tryNumber = (key: string, fallback: number): number => {
-      const raw = params[key]?.defaultValue;
-      if (raw && "value" in raw) {
-        const parsed = Number(raw.value);
-        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const tryNumber = (keys: string[], fallback: number): number => {
+      for (const key of keys) {
+        const raw = params[key]?.defaultValue;
+        if (raw && "value" in raw) {
+          const parsed = Number(raw.value);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
       }
       return fallback;
     };
-    costPerGB = tryNumber("media_cost_per_gb_usd", DEFAULT_COST_PER_GB_USD);
-    softCap = tryNumber("media_budget_soft_cap_usd", SOFT_CAP_USD);
-    hardCap = tryNumber("media_budget_hard_cap_usd", HARD_CAP_USD);
+    costPerGB = tryNumber(["media_cost_per_gb_usd"], DEFAULT_COST_PER_GB_USD);
+    softCap = tryNumber(["media_budget_soft_usd", "media_budget_soft_cap_usd"], SOFT_CAP_USD);
+    hardCap = tryNumber(["media_budget_hard_usd", "media_budget_hard_cap_usd"], HARD_CAP_USD);
     if (hardCap <= softCap) {
       // Configuration sanity — refuse to set a hard cap below or equal
       // to the soft cap, since that would skip the soft-cap level

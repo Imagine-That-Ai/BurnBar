@@ -197,19 +197,42 @@ final class SettingsManager {
 
     private static let cadenceIDRemoteConfig = "settings-remote-config"
 
+    private static let commercialRemoteConfigDefaults: [String: NSObject] = [
+        "computer_use_watch_enabled": NSNumber(value: false),
+        "computer_use_browser_enabled": NSNumber(value: false),
+        "computer_use_system_enabled": NSNumber(value: false),
+        "computer_use_phone_control_enabled": NSNumber(value: false),
+        "computer_use_trust_modes_enabled": NSNumber(value: false),
+        "computer_use_polish_enabled": NSNumber(value: false),
+        "computer_use_kill_switch": NSNumber(value: false),
+        "media_kill_switch": NSNumber(value: false),
+        "media_budget_soft_usd": NSNumber(value: 600),
+        "media_budget_hard_usd": NSNumber(value: 1_000),
+        "media_normal_file_gb_per_day": NSNumber(value: 5),
+        "media_soft_file_gb_per_day": NSNumber(value: 2),
+        "media_normal_screen_share_min_per_day": NSNumber(value: 120),
+        "media_soft_screen_share_min_per_day": NSNumber(value: 30),
+        "computer_use_budget_soft_usd": NSNumber(value: 1_500),
+        "computer_use_budget_hard_usd": NSNumber(value: 2_500),
+        "computer_use_actions_per_run_normal": NSNumber(value: 50),
+        "computer_use_actions_per_day_normal": NSNumber(value: 200),
+        "computer_use_usd_per_user_day_normal": NSNumber(value: 5),
+        "computer_use_actions_per_run_soft": NSNumber(value: 25),
+        "computer_use_actions_per_day_soft": NSNumber(value: 100),
+        "hosted_quota_daily_refresh_limit": NSNumber(value: 30),
+        "hosted_quota_monthly_refresh_limit": NSNumber(value: 300),
+        "cloud_pro_included_hosted_actions_monthly": NSNumber(value: 500),
+        "cloud_pro_action_topup_unit": NSNumber(value: 100),
+        "cloud_pro_monthly_hosted_action_cap": NSNumber(value: 2_000),
+        "cloud_pro_included_relay_gb_monthly": NSNumber(value: 50),
+        "cloud_pro_relay_topup_unit_gb": NSNumber(value: 50),
+        "cloud_pro_monthly_relay_gb_cap": NSNumber(value: 300)
+    ]
+
     private func refreshComputerUseRemoteConfigOnce() async {
         guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
-        remoteConfig.setDefaults([
-            "computer_use_watch_enabled": false as NSObject,
-            "computer_use_browser_enabled": false as NSObject,
-            "computer_use_system_enabled": false as NSObject,
-            "computer_use_phone_control_enabled": false as NSObject,
-            "computer_use_trust_modes_enabled": false as NSObject,
-            "computer_use_polish_enabled": false as NSObject,
-            "computer_use_kill_switch": false as NSObject,
-            "media_kill_switch": false as NSObject
-        ])
+        remoteConfig.setDefaults(Self.commercialRemoteConfigDefaults)
 
         _ = await withCheckedContinuation { continuation in
             remoteConfig.fetchAndActivate { status, error in

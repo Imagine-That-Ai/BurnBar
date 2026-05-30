@@ -182,6 +182,14 @@ class FunctionsRepository {
         mapOf("purchaseToken" to purchaseToken, "productID" to productID)
     )
 
+    suspend fun verifyGooglePlayCloudProTopUp(
+        purchaseToken: String,
+        productID: String
+    ): Map<String, Any> = callMap(
+        "verifyGooglePlayCloudProTopUp",
+        mapOf("purchaseToken" to purchaseToken, "productID" to productID)
+    )
+
     suspend fun rebuildUsageRollups() {
         functions.getHttpsCallable("rebuildUsageRollups").call().await()
     }

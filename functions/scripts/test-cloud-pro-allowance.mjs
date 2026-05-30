@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   allowanceDocPath,
@@ -8,11 +11,13 @@ import {
   CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
   CLOUD_PRO_RELAY_TOP_UP_UNIT_GB,
   evaluateCloudProAllowanceReservation,
+  normalizeCloudProAllowanceConfig,
   monthKeyForDate,
   unitsForCloudProTopUp,
 } from "../lib/cloudProAllowanceCore.js";
 
 const monthKey = monthKeyForDate(new Date("2026-05-30T12:00:00Z"));
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 assert.equal(monthKey, "2026-05");
 assert.equal(allowanceDocPath("user_123", monthKey), "users/user_123/billing/allowances/months/2026-05");
 
@@ -56,5 +61,30 @@ assert.deepEqual(unitsForCloudProTopUp("floo_relay_50gb", 2), {
   meter: "relay_gb",
   units: CLOUD_PRO_RELAY_TOP_UP_UNIT_GB * 2,
 });
+
+const tunedConfig = normalizeCloudProAllowanceConfig({
+  includedHostedActionsMonthly: "250",
+  actionTopUpUnit: "50",
+  monthlyHostedActionCap: "1000",
+  includedRelayGBMonthly: "25",
+  relayTopUpUnitGB: "25",
+  monthlyRelayGBCap: "150",
+});
+assert.deepEqual(unitsForCloudProTopUp("agent_control_actions_100", 2, tunedConfig), {
+  meter: "hosted_actions",
+  units: 100,
+});
+
+const invalidConfig = normalizeCloudProAllowanceConfig({
+  includedHostedActionsMonthly: "500",
+  monthlyHostedActionCap: "100",
+});
+assert.equal(invalidConfig.monthlyHostedActionCap, CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP);
+
+const stripeCallableSource = readFileSync(join(root, "src/callables/stripe.ts"), "utf8");
+assert.match(stripeCallableSource, /verifyGooglePlayCloudProTopUp/);
+assert.match(stripeCallableSource, /purchases\.products\.get/);
+assert.match(stripeCallableSource, /purchases\.products\.consume/);
+assert.match(stripeCallableSource, /creditCloudProTopUp/);
 
 console.log("Cloud Pro allowance accounting fixtures passed.");

@@ -1013,9 +1013,14 @@ struct OpenBurnBarApp: App {
                 postAppCheckWarning("App Check returned an empty token.")
                 return
             }
-            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
         } catch {
             postAppCheckWarning("App Check token fetch failed: \(error.localizedDescription)")
+            return
+        }
+        do {
+            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
+        } catch {
+            postAppCheckWarning("App Check attestation bind failed: \(error.localizedDescription)")
         }
     }
 

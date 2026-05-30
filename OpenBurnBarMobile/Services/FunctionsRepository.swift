@@ -704,6 +704,19 @@ final class FunctionsRepository {
         return try decodeHostedQuotaEntitlement(result.data)
     }
 
+    @discardableResult
+    func verifyCloudProTopUp(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws -> CloudProTopUpCreditResponse {
+        let callable = functions.httpsCallable("verifyCloudProTopUp")
+        let result = try await callable.call([
+            "signedTransactionJWS": signedTransactionJWS,
+            "productID": productID
+        ])
+        return try decodeCloudProTopUpCredit(result.data)
+    }
+
     private func decodeHostedQuotaEntitlement(_ raw: Any?) throws -> HostedQuotaEntitlementResponse {
         guard let dict = raw as? [String: Any] else {
             throw FunctionsError.decodingFailed
@@ -725,6 +738,22 @@ final class FunctionsRepository {
             expiresAt: expiresAt,
             revokedAt: revokedAt,
             revocationReason: revocationReason
+        )
+    }
+
+    private func decodeCloudProTopUpCredit(_ raw: Any?) throws -> CloudProTopUpCreditResponse {
+        guard let dict = raw as? [String: Any],
+              let monthKey = dict["monthKey"] as? String,
+              let kind = dict["kind"] as? String else {
+            throw FunctionsError.decodingFailed
+        }
+        let credited = dict["credited"] as? Bool ?? false
+        let units = (dict["units"] as? Int) ?? Int(dict["units"] as? Double ?? 0)
+        return CloudProTopUpCreditResponse(
+            credited: credited,
+            monthKey: monthKey,
+            units: units,
+            kind: kind
         )
     }
 

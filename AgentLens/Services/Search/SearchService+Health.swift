@@ -41,7 +41,7 @@ extension SearchService {
             }
         }
 
-        private func lexicalHealthStatus(indexStale: Bool, semanticFallbackUsed: Bool) -> RetrievalHealthStatus {
+        func lexicalHealthStatus(indexStale: Bool, semanticFallbackUsed: Bool) -> RetrievalHealthStatus {
             if indexStale {
                 return .degraded
             }
@@ -51,7 +51,7 @@ extension SearchService {
             return .healthy
         }
 
-        private func lexicalHealthError(
+        func lexicalHealthError(
             indexStale: Bool,
             semanticFallbackUsed: Bool,
             lexicalSkippedEmptyQuery: Bool = false,
@@ -78,7 +78,7 @@ extension SearchService {
             return (nil, nil)
         }
 
-        private func persistLexicalHealth(
+        func persistLexicalHealth(
             status: RetrievalHealthStatus,
             query: String,
             lexicalCandidateCount: Int,
@@ -135,7 +135,7 @@ extension SearchService {
             }
         }
 
-        private func persistSemanticFallbackHealth(
+        func persistSemanticFallbackHealth(
             query: String,
             lexicalCandidateCount: Int,
             error: Error
