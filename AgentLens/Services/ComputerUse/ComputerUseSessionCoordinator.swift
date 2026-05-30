@@ -1164,7 +1164,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 payload: HermesRealtimeRelayControlPayload(
                     streamClass: "control.input",
                     sessionId: sessionId.rawValue,
-                    denied: HermesRealtimeRelayControlDenied(reason: .entitlement)
+                    denied: HermesRealtimeRelayControlDenied(
+                        reason: .entitlement,
+                        detail: ComputerUseDenyReason.entitlement.rawValue
+                    )
                 )
             )
             return

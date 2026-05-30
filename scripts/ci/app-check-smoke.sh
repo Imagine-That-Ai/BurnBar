@@ -26,20 +26,32 @@ if [[ -z "$PROJECT" ]]; then
 fi
 
 if ! command -v gcloud >/dev/null 2>&1; then
-  echo "ERROR: gcloud is required for App Check ENFORCED verification on internal runs." >&2
-  exit 1
+  if [[ "${OPENBURNBAR_APP_CHECK_SMOKE_REQUIRED:-0}" == "1" ]]; then
+    echo "ERROR: gcloud is required for App Check ENFORCED verification on required internal runs." >&2
+    exit 1
+  fi
+  echo "Skipping App Check smoke — gcloud is not installed and the live smoke is not required."
+  exit 0
 fi
 
 project_number="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)' 2>/dev/null || true)"
 if [[ -z "$project_number" ]]; then
-  echo "ERROR: Could not resolve Firebase project number for ${PROJECT}." >&2
-  exit 1
+  if [[ "${OPENBURNBAR_APP_CHECK_SMOKE_REQUIRED:-0}" == "1" ]]; then
+    echo "ERROR: Could not resolve Firebase project number for ${PROJECT}." >&2
+    exit 1
+  fi
+  echo "Skipping App Check smoke — gcloud is not authenticated for ${PROJECT} and the live smoke is not required."
+  exit 0
 fi
 
 access_token="$(gcloud auth print-access-token 2>/dev/null || true)"
 if [[ -z "$access_token" ]]; then
-  echo "ERROR: gcloud auth print-access-token failed; App Check probe requires credentials." >&2
-  exit 1
+  if [[ "${OPENBURNBAR_APP_CHECK_SMOKE_REQUIRED:-0}" == "1" ]]; then
+    echo "ERROR: gcloud auth print-access-token failed; App Check probe requires credentials." >&2
+    exit 1
+  fi
+  echo "Skipping App Check smoke — gcloud auth is unavailable and the live smoke is not required."
+  exit 0
 fi
 
 service_name="projects/${project_number}/services/firestore.googleapis.com"

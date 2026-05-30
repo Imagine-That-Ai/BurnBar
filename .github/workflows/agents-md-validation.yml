@@ -84,29 +84,27 @@ jobs:
         run: |
           set -euo pipefail
           echo "==> Checking internal file links in AGENTS.md..."
-          ERRORS=0
-
-          # Extract markdown links that reference local files (not URLs)
-          while IFS= read -r line; do
-            # Match [text](path) where path doesn't start with http
-            while [[ "$line" =~ \[([^\]]+)\]\(([^)http][^)]*)\) ]]; do
-              path="${BASH_REMATCH[2]}"
-              # Remove anchor fragments
-              path="${path%%#*}"
-              line="${line#*${BASH_REMATCH[0]}}"
-              if [[ -n "$path" && ! -e "$path" ]]; then
-                echo "FAIL: Broken link target: '$path'" >&2
-                ERRORS=$((ERRORS + 1))
-              elif [[ -n "$path" ]]; then
-                echo "OK: $path"
-              fi
-            done
-          done < AGENTS.md
-
-          if [[ $ERRORS -gt 0 ]]; then
-            echo "::warning::$ERRORS broken internal link(s) found in AGENTS.md."
-            # Warn, don't fail, because some links may be intentionally forward-referencing
-          fi
+          node <<'NODE'
+          const fs = require("fs");
+          const text = fs.readFileSync("AGENTS.md", "utf8");
+          const linkRe = /\[[^\]]+\]\(([^)]+)\)/g;
+          let errors = 0;
+          for (const match of text.matchAll(linkRe)) {
+            const raw = match[1].trim();
+            if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw)) continue;
+            const target = raw.split("#", 1)[0];
+            if (!target) continue;
+            if (fs.existsSync(target)) {
+              console.log(`OK: ${target}`);
+            } else {
+              console.error(`FAIL: Broken link target: '${target}'`);
+              errors += 1;
+            }
+          }
+          if (errors > 0) {
+            console.log(`::warning::${errors} broken internal link(s) found in AGENTS.md.`);
+          }
+          NODE
 
       - name: Check AGENTS.md freshness relative to key scripts
         run: |
@@ -114,7 +112,6 @@ jobs:
           echo "==> Checking AGENTS.md was updated alongside key scripts..."
 
           # Get the last-modified commit for AGENTS.md
-          AGENTS_COMMIT=$(git log -1 --format="%H" -- AGENTS.md)
           AGENTS_DATE=$(git log -1 --format="%ct" -- AGENTS.md)
 
           # Check if key scripts are newer than AGENTS.md by more than 30 days

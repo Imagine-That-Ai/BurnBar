@@ -1548,6 +1548,9 @@ final class MercuryRouterTests: XCTestCase {
                     systemScreenSharingAvailable: true,
                     loopbackOnlyFirewallActive: true,
                     generatedCredentialInSystemKeychain: true,
+                    remoteDesktopPermissionGranted: true,
+                    virtualHIDDriverInstalled: true,
+                    virtualHIDDriverActive: true,
                     backendCertificationFresh: true,
                     currentOSBuild: "test-os-build",
                     certifiedOSBuild: "test-os-build",
@@ -1561,7 +1564,8 @@ final class MercuryRouterTests: XCTestCase {
                     credentialRecipientPublicKeyBase64: "test-recipient-public-key"
                 )
             },
-            lockStateProvider: lockStateProvider
+            lockStateProvider: lockStateProvider,
+            revokePublishedTrust: {}
         )
     }
 
@@ -1581,7 +1585,7 @@ final class MercuryRouterTests: XCTestCase {
             expiresAt: issuedAt.addingTimeInterval(RemoteUnlockPolicy.default.sessionTTLSeconds),
             localAuthenticationSatisfied: true,
             requestedLockState: nil,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             authority: HermesRealtimeRelayAuthorityEnvelope(
                 peerNodeId: peerNodeId,
                 counter: 1,

@@ -1563,6 +1563,7 @@ final class MercuryRouter: ObservableObject {
                     Self.log.error("router_locked_mirror_display_wake_failed requestID=\(viewer.requestID, privacy: .public) error=\(String(describing: error), privacy: .public)")
                     Self.debugTrace("router_locked_mirror_display_wake_failed requestID=\(viewer.requestID) error=\(String(describing: error))")
                 }
+                return
             }
 
             // Phase 12 — interactive single-window CLI. Launch the agent's CLI

@@ -15,7 +15,7 @@ MOBILE_APP_SOURCES = "989FB439884BAD69F857287F"
 MAC_COMPUTER_USE_GROUP = "807EA2A44840AE8817195B5C"
 MOBILE_COMPUTER_USE_GROUP = "8606CDB4AC37DF143210CC5B"
 MAC_SERVICES_GROUP = "CAE317316D164FEB48D73BB8"
-MOBILE_SERVICES_GROUP = "C72135BF239EDFD1288EDB35"  # placeholder, discovered below
+MOBILE_SERVICES_GROUP = "A1F07B613D17D4ACDE2921A3"
 
 ENTRIES: list[tuple[str, str, str | None, str | None]] = [
     ("AgentLens/Services/AppCheckAttestationMonitor.swift", MAC_APP_SOURCES, MAC_SERVICES_GROUP, None),
@@ -29,7 +29,7 @@ ENTRIES: list[tuple[str, str, str | None, str | None]] = [
         "OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift",
         MOBILE_APP_SOURCES,
         None,
-        "OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift",
+        None,
     ),
 ]
 
@@ -46,15 +46,14 @@ def pbx_quote(value: str) -> str:
     return f'"{escaped}"'
 
 
-def find_mobile_services_group(text: str) -> str:
-    m = re.search(
-        r"([0-9A-F]{24}) /\* Services \*/ = \{\s*isa = PBXGroup;\s*children = \(\n(?:.*?\n)*?\s*path = OpenBurnBarMobile/Services;",
-        text,
-        re.DOTALL,
-    )
-    if not m:
-        raise RuntimeError("OpenBurnBarMobile/Services group not found")
-    return m.group(1)
+def entry_exists(text: str, path: str, name: str, source_root_path: str | None) -> bool:
+    if source_root_path:
+        return (
+            f"/* {name} */ = {{isa = PBXFileReference" in text
+            and f"path = {pbx_quote(source_root_path)};" in text
+            and "sourceTree = SOURCE_ROOT;" in text
+        )
+    return f"/* {name} */ = {{isa = PBXFileReference" in text and f"path = {pbx_quote(name)};" in text
 
 
 def insert_into_group(text: str, group_id: str, file_ref_line: str, file_name: str) -> str:
@@ -91,16 +90,15 @@ def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str)
 
 def main() -> int:
     text = PROJ.read_text(encoding="utf-8")
-    mobile_services = find_mobile_services_group(text)
     changed = False
 
     for path, phase_id, group_hint, source_root_path in ENTRIES:
         name = Path(path).name
-        if f"/* {name} */ = {{isa = PBXFileReference" in text:
+        if entry_exists(text, path, name, source_root_path):
             print(f"skip existing: {path}")
             continue
 
-        group_id = mobile_services if group_hint is None else group_hint
+        group_id = MOBILE_SERVICES_GROUP if group_hint is None else group_hint
         file_id = stable_id(path, "fileref")
         build_id = stable_id(path, "buildfile")
         if source_root_path:

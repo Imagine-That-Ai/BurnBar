@@ -5,7 +5,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 metrics_doc="${repo_root}/docs/TECH_DEBT_METRICS.md"
-generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+existing_generated_at="$(sed -n 's/^\*\*Generated at (UTC):\*\* //p' "${metrics_doc}" 2>/dev/null | head -n 1 || true)"
+if [[ "${TECH_DEBT_METRICS_REFRESH_TIMESTAMP:-0}" == "1" || -z "${existing_generated_at}" ]]; then
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+else
+  generated_at="${existing_generated_at}"
+fi
 
 count_swift_lines() {
   local path="$1"
@@ -16,23 +22,29 @@ count_swift_lines() {
   fi
 }
 
-count_swift_glob_lines() {
-  local pattern="$1"
+count_swift_find_lines() {
+  local dir="$1"
+  local name="$2"
   local total=0
   local file
-  shopt -s nullglob
-  for file in ${pattern}; do
+
+  while IFS= read -r -d '' file; do
     total=$((total + $(wc -l < "${file}" | tr -d ' ')))
-  done
-  shopt -u nullglob
+  done < <(find "${dir}" -maxdepth 1 -name "${name}" -type f -print0 2>/dev/null)
+
   echo "${total}"
 }
 
 count_rg() {
   local pattern="$1"
   shift
-  rg -c "${pattern}" "$@" --glob '*.swift' 2>/dev/null \
-    | awk -F: '{sum += $NF} END {print sum + 0}'
+  if command -v rg >/dev/null 2>&1; then
+    rg -c "${pattern}" "$@" --glob '*.swift' 2>/dev/null \
+      | awk -F: '{sum += $NF} END {print sum + 0}'
+  else
+    find "$@" -name '*.swift' -type f -exec grep -E -c "${pattern}" {} + 2>/dev/null \
+      | awk -F: '{sum += $NF} END {print sum + 0}'
+  fi
 }
 
 quarantine_files="$(find "${repo_root}/AgentLensTests/Archive" -name '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
@@ -44,14 +56,18 @@ types_legacy_lines="$(count_swift_lines "${repo_root}/functions/src/types/legacy
 index_ts_lines="$(count_swift_lines "${repo_root}/functions/src/index.ts")"
 
 cloud_sync_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/CloudSyncService.swift")"
-search_lines="$(count_swift_glob_lines "${repo_root}/AgentLens/Services/Search/SearchService"*.swift)"
+search_lines="$(count_swift_find_lines "${repo_root}/AgentLens/Services/Search" 'SearchService*.swift')"
 usage_agg_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/UsageAggregator.swift")"
-projection_lines="$(count_swift_glob_lines "${repo_root}/AgentLens/Services/ProjectionPipeline/"*.swift)"
+projection_lines="$(count_swift_find_lines "${repo_root}/AgentLens/Services/ProjectionPipeline" '*.swift')"
 top_four_total=$((cloud_sync_lines + search_lines + usage_agg_lines + projection_lines))
 
 task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Services")"
 
-swiftui_services="$(rg -l 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore" --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
+if command -v rg >/dev/null 2>&1; then
+  swiftui_services="$(rg -l 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore" --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
+else
+  swiftui_services="$(find "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore" -name '*.swift' -type f -exec grep -E -l 'import SwiftUI' {} + 2>/dev/null | wc -l | tr -d ' ')"
+fi
 
 try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 

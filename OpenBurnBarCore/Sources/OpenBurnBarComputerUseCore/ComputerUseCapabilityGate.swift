@@ -253,9 +253,9 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         //    entitlement bit, concurrency, and action-cap checks.
         if directPhoneControl {
             switch action {
-            case .macInput, .phoneIntent, .remoteClipboard:
+            case .macInput, .phoneIntent:
                 return .allowed(approvedBy: .phone)
-            case .browser, .macInspect:
+            case .browser, .macInspect, .remoteClipboard:
                 break
             }
         }

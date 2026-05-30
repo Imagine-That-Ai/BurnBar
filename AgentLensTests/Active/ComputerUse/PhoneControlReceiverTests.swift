@@ -614,7 +614,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             isActive: false,
             productId: "hosted_computer_use_sync",
             allowsSystem: true,
-            allowsPhoneControl: true
+            allowsPhoneControl: false
         ))
 
         let placeholder = emptyAuthority()

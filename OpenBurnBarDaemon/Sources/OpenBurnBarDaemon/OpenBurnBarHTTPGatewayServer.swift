@@ -31,6 +31,7 @@ public actor BurnBarHTTPGatewayServer {
     private let crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy
     private let modelHealthStore: BurnBarGatewayModelHealthStore
     private let modelCatalogSession: URLSession
+    private let modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
     private var listener: NWListener?
@@ -46,6 +47,7 @@ public actor BurnBarHTTPGatewayServer {
         crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .fromEnvironment(),
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogSession: URLSession = .shared,
+        modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
@@ -59,6 +61,7 @@ public actor BurnBarHTTPGatewayServer {
         self.crossVendorDegradePolicy = crossVendorDegradePolicy
         self.modelHealthStore = modelHealthStore
         self.modelCatalogSession = modelCatalogSession
+        self.modelCatalogDroidProcessRunner = modelCatalogDroidProcessRunner
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -398,7 +401,8 @@ public actor BurnBarHTTPGatewayServer {
                 : suppressedBaseModelIDs(from: configSnapshot)
             let snapshot = try await BurnBarLiveModelCatalog(
                 configStore: configStore,
-                session: modelCatalogSession
+                session: modelCatalogSession,
+                droidProcessRunner: modelCatalogDroidProcessRunner
             ).snapshot()
             var entries: [GatewayModelCatalogEntry] = []
             for model in snapshot.models {
@@ -593,7 +597,8 @@ public actor BurnBarHTTPGatewayServer {
         let catalog = configStore.catalogSupport.catalog
         let snapshot = try await BurnBarLiveModelCatalog(
             configStore: configStore,
-            session: modelCatalogSession
+            session: modelCatalogSession,
+            droidProcessRunner: modelCatalogDroidProcessRunner
         ).snapshot()
 
         var routeKeysByFamily: [BurnBarProviderFormatFamily: Set<String>] = [:]

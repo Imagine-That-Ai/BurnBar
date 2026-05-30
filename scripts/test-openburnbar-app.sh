@@ -288,19 +288,47 @@ is_xcode_false_negative_pass() {
     if grep -Eq "Test Case '-\\[[^]]+\\]' failed" "$log_path"; then
         return 1
     fi
-    # Ignore stale "Failing tests:" banners from earlier XCTest relaunches when the final summary is green.
-    if grep -Fq "Test Suite 'Selected tests' passed" "$log_path"; then
-        if ! awk '
-            /^\*\* TEST FAILED \*\*$/ { failed=1 }
-            /^Test Suite '\''Selected tests'\'' passed/ { failed=0 }
-            END { exit failed ? 1 : 0 }
-        ' "$log_path"; then
-            return 1
-        fi
-    elif grep -A20 "^Failing tests:" "$log_path" | tail -n +2 | grep -qE '^[[:space:]]+[^[:space:]]'; then
-        return 1
-    fi
-    if awk "/Test Suite 'Selected tests'/{found=1} found && /Executed [0-9]+ tests/ && /with .*[^0] failures/" "$log_path" | grep -q .; then
+    # Xcode's top-level "** TEST FAILED **" trailer is not a concrete XCTest
+    # failure by itself. Accept the known false-negative shape only when no
+    # failing suite summary, failing test list, or non-zero failure count appears
+    # after the final clean Selected-tests summary.
+    if ! python3 - "$log_path" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8", errors="replace") as handle:
+    lines = handle.readlines()
+
+last_selected_pass = -1
+for index, line in enumerate(lines):
+    if "Test Suite 'Selected tests' passed" in line:
+        last_selected_pass = index
+
+if last_selected_pass < 0:
+    sys.exit(1)
+
+tail = lines[last_selected_pass + 1 :]
+for line in tail:
+    if re.search(r"Test Suite '.+' failed", line):
+        sys.exit(1)
+    summary_match = re.search(r"Executed \d+ tests, with .*?(\d+) failures", line)
+    if summary_match and int(summary_match.group(1)) != 0:
+        sys.exit(1)
+
+for index, line in enumerate(tail):
+    if line.rstrip() == "Failing tests:":
+        for following in tail[index + 1 : index + 21]:
+            stripped = following.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("** "):
+                break
+            sys.exit(1)
+
+sys.exit(0)
+PY
+    then
         return 1
     fi
 

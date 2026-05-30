@@ -298,6 +298,7 @@ final class MacRemoteUnlockReadinessService {
     private let certificationStore: RemoteUnlockCertificationReportStore
     private let snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)?
     private let lockStateProvider: @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+    private let revokePublishedTrust: @Sendable () -> Void
     private var activeRemoteUnlockSessions: [String: ActiveRemoteUnlockSession] = [:]
 
     init(
@@ -307,6 +308,9 @@ final class MacRemoteUnlockReadinessService {
         snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)? = nil,
         lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState = {
             MacRemoteUnlockReadinessService.currentHostLockState()
+        },
+        revokePublishedTrust: @escaping @Sendable () -> Void = {
+            try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
         }
     ) {
         self.defaults = defaults
@@ -314,6 +318,7 @@ final class MacRemoteUnlockReadinessService {
         self.certificationStore = certificationStore
         self.snapshotProvider = snapshotProvider
         self.lockStateProvider = lockStateProvider
+        self.revokePublishedTrust = revokePublishedTrust
     }
 
     func capabilities() -> HermesRealtimeRelayRemoteUnlockCapabilities {
@@ -389,7 +394,7 @@ final class MacRemoteUnlockReadinessService {
 
     func revokeAllRemoteUnlockSessions() {
         activeRemoteUnlockSessions.removeAll()
-        try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
+        revokePublishedTrust()
     }
 
     func snapshot() -> RemoteUnlockReadinessSnapshot {

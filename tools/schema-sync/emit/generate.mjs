@@ -741,7 +741,8 @@ function emitTypeScript(domainId, models) {
     header +
     Object.values(models)
       .map((m) => m.ts)
-      .join("\n\n")
+      .join("\n\n") +
+    "\n"
   );
 }
 

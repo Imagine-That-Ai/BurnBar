@@ -409,7 +409,18 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelsAdvertisesFactoryDroidHonestly() async throws {
-        let harness = try GatewayHarness()
+        let runner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(
+                exitCode: 0,
+                stdout: """
+                Available Models:
+                  gpt-5.5                                                   GPT-5.5
+                  glm-5.1                                                   Droid Core (GLM-5.1)
+                """,
+                stderr: ""
+            )
+        )
+        let harness = try GatewayHarness(modelCatalogDroidProcessRunner: runner)
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()
         defer { Task { await harness.stop() } }
@@ -735,7 +746,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             status: 200,
             body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM-5 Turbo Live"},{"id":"glm-5-live-new","display_name":"GLM-5 Live New"}]}"#
         )
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
@@ -770,7 +781,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             status: 200,
             body: #"{"object":"list","data":[{"id":"glm-5-lite"}]}"#
         )
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
@@ -798,7 +809,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             status: 401,
             body: #"{"error":{"message":"invalid key"}}"#
         )
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
@@ -820,7 +831,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelsDoesNotAdvertiseMissingCredentialCatalogRows() async throws {
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "moonshot",
@@ -856,7 +867,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             "deepseek-v3.2",
             "minimax-m2.1"
         ])
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureOllamaProviderForGateway()
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -911,7 +922,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
     func testGatewayModelAdvertisementToggleHidesPublicCatalogButKeepsSettingsCatalog() async throws {
         enqueueOllamaCloudCatalog(["kimi-k2.6", "glm-5.1"], times: 3)
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureOllamaProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
 
@@ -965,7 +976,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelsListsCustomAliasWireID() async throws {
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureAnthropicProviderForGateway()
         _ = try await harness.configStore.upsertModelAlias(
             providerID: "anthropic",
@@ -1241,7 +1252,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
     func testGatewayModelsUsesOllamaCloudCatalogPageWhenBaseURLOmitsAPIPath() async throws {
         enqueueOllamaCloudCatalog(["kimi-k2.6"])
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "ollama",
@@ -1305,7 +1316,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelsAdvertisesAnthropicRoutesWithRealBridgeEndpoints() async throws {
-        let harness = try GatewayHarness()
+        let harness = try GatewayHarness(modelCatalogSession: GatewayHarness.makeUpstreamSession())
         try await harness.configureAnthropicProviderForGateway()
         enqueueAnthropicModelCatalog(["claude-sonnet-4-6-20250514"], times: 2)
         try await harness.start()
@@ -3860,6 +3871,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.count, 2, clientName)
+        guard upstreamRequests.count == 2 else {
+            XCTFail("Expected two upstream Anthropic attempts for \(clientName), got \(upstreamRequests.map(\.path))")
+            return
+        }
         XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-api03-primary-key", clientName)
         XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-api03-backup-key", clientName)
 
@@ -4434,7 +4449,8 @@ private final class GatewayHarness: @unchecked Sendable {
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
         crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .disabled,
-        modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession()
+        modelCatalogSession: URLSession = GatewayHarness.makeDefaultModelCatalogSession(),
+        modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner()
     ) throws {
         self.port = try Self.reservePort()
 
@@ -4472,6 +4488,7 @@ private final class GatewayHarness: @unchecked Sendable {
             crossVendorDegradePolicy: crossVendorDegradePolicy,
             modelHealthStore: modelHealthStore,
             modelCatalogSession: modelCatalogSession,
+            modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
     }
@@ -4479,6 +4496,12 @@ private final class GatewayHarness: @unchecked Sendable {
     static func makeUpstreamSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    static func makeDefaultModelCatalogSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [GatewayDefaultModelCatalogURLProtocol.self]
         return URLSession(configuration: configuration)
     }
 
@@ -4615,6 +4638,43 @@ private final class GatewayHarness: @unchecked Sendable {
 
         return Int(UInt16(bigEndian: address.sin_port))
     }
+}
+
+private final class GatewayDefaultModelCatalogURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let host = request.url?.host else { return false }
+        return host == "gateway-upstream.test" || host == "ollama.com"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        let path = request.url?.path ?? ""
+        let body: String
+        switch path {
+        case "/anthropic/v1/models":
+            body = #"{"error":"default Anthropic model catalog fixture unavailable"}"#
+        case "/v1/models":
+            body = #"{"error":"default OpenAI-compatible model catalog fixture unavailable"}"#
+        case "/search":
+            body = "default Ollama model catalog fixture unavailable"
+        default:
+            body = #"{"error":"default model catalog fixture unavailable"}"#
+        }
+        let httpResponse = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 404,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 private struct GatewayUpstreamRequest: Hashable {
