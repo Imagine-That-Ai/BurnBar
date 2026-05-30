@@ -62,6 +62,184 @@ public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Se
     }
 }
 
+public enum BurnBarProviderCredentialSlotRoutingPolicy {
+    public static let defaultExhaustionRetryInterval: TimeInterval = 30 * 60
+
+    public static func canAttemptRoute(
+        status: BurnBarProviderCredentialSlotStatus,
+        isEnabled: Bool,
+        hasCredential: Bool,
+        cooldownUntil: Date?,
+        lastQuotaRemainingPercent: Double?,
+        lastQuotaResetsAt: Date?,
+        lastStatusMessage: String?,
+        updatedAt: Date,
+        now: Date = Date(),
+        exhaustionRetryInterval: TimeInterval = defaultExhaustionRetryInterval
+    ) -> Bool {
+        guard isEnabled, hasCredential else { return false }
+        return effectiveStatus(
+            status: status,
+            isEnabled: isEnabled,
+            cooldownUntil: cooldownUntil,
+            lastQuotaRemainingPercent: lastQuotaRemainingPercent,
+            lastQuotaResetsAt: lastQuotaResetsAt,
+            lastStatusMessage: lastStatusMessage,
+            updatedAt: updatedAt,
+            now: now,
+            exhaustionRetryInterval: exhaustionRetryInterval
+        ) == .ready
+    }
+
+    public static func canAttemptRoute(
+        slot: BurnBarProviderCredentialSlot,
+        hasCredential: Bool,
+        providerEnabled: Bool = true,
+        now: Date = Date(),
+        exhaustionRetryInterval: TimeInterval = defaultExhaustionRetryInterval
+    ) -> Bool {
+        canAttemptRoute(
+            status: slot.status,
+            isEnabled: providerEnabled && slot.isEnabled,
+            hasCredential: hasCredential,
+            cooldownUntil: slot.cooldownUntil,
+            lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
+            lastQuotaResetsAt: slot.lastQuotaResetsAt,
+            lastStatusMessage: slot.lastStatusMessage,
+            updatedAt: slot.updatedAt,
+            now: now,
+            exhaustionRetryInterval: exhaustionRetryInterval
+        )
+    }
+
+    public static func effectiveStatus(
+        for slot: BurnBarProviderCredentialSlot,
+        providerEnabled: Bool = true,
+        now: Date = Date(),
+        exhaustionRetryInterval: TimeInterval = defaultExhaustionRetryInterval
+    ) -> BurnBarProviderCredentialSlotStatus {
+        effectiveStatus(
+            status: slot.status,
+            isEnabled: providerEnabled && slot.isEnabled,
+            cooldownUntil: slot.cooldownUntil,
+            lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
+            lastQuotaResetsAt: slot.lastQuotaResetsAt,
+            lastStatusMessage: slot.lastStatusMessage,
+            updatedAt: slot.updatedAt,
+            now: now,
+            exhaustionRetryInterval: exhaustionRetryInterval
+        )
+    }
+
+    public static func effectiveStatus(
+        status: BurnBarProviderCredentialSlotStatus,
+        isEnabled: Bool,
+        cooldownUntil: Date?,
+        lastQuotaRemainingPercent: Double?,
+        lastQuotaResetsAt: Date?,
+        lastStatusMessage: String?,
+        updatedAt: Date,
+        now: Date = Date(),
+        exhaustionRetryInterval: TimeInterval = defaultExhaustionRetryInterval
+    ) -> BurnBarProviderCredentialSlotStatus {
+        guard isEnabled else { return .disabled }
+        switch status {
+        case .disabled, .missingSecret:
+            return status
+        case .ready:
+            if let remaining = lastQuotaRemainingPercent, remaining <= 0 {
+                return isStale(updatedAt: updatedAt, now: now, interval: exhaustionRetryInterval) ? .ready : .exhausted
+            }
+            return .ready
+        case .coolingDown:
+            let resetDates = resetBlockDates(
+                cooldownUntil: cooldownUntil,
+                lastQuotaResetsAt: lastQuotaResetsAt,
+                lastStatusMessage: lastStatusMessage
+            )
+            if resetDates.contains(where: { $0 > now }) {
+                return .coolingDown
+            }
+            if !resetDates.isEmpty {
+                return .ready
+            }
+            return .ready
+        case .exhausted:
+            let resetDates = resetBlockDates(
+                cooldownUntil: cooldownUntil,
+                lastQuotaResetsAt: lastQuotaResetsAt,
+                lastStatusMessage: lastStatusMessage
+            )
+            if resetDates.contains(where: { $0 > now }) {
+                return .coolingDown
+            }
+            if !resetDates.isEmpty {
+                return .ready
+            }
+            if let remaining = lastQuotaRemainingPercent, remaining > 0 {
+                return .ready
+            }
+            return isStale(updatedAt: updatedAt, now: now, interval: exhaustionRetryInterval) ? .ready : .exhausted
+        }
+    }
+
+    public static func resetDate(from message: String?) -> Date? {
+        guard let message, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let pattern = #"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\s*(Z|[+-]\d{2}:?\d{2}))?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(message.startIndex..<message.endIndex, in: message)
+        guard let match = regex.firstMatch(in: message, range: range),
+              let dateRange = Range(match.range(at: 1), in: message),
+              let timeRange = Range(match.range(at: 2), in: message) else {
+            return nil
+        }
+        let timezoneRange = match.range(at: 3).location == NSNotFound
+            ? nil
+            : Range(match.range(at: 3), in: message)
+        let datePart = String(message[dateRange])
+        let timePart = String(message[timeRange])
+        let timezonePart = timezoneRange.map { String(message[$0]) } ?? ""
+        return parseResetDate("\(datePart) \(timePart)\(timezonePart)")
+    }
+
+    private static func resetBlockDates(
+        cooldownUntil: Date?,
+        lastQuotaResetsAt: Date?,
+        lastStatusMessage: String?
+    ) -> [Date] {
+        [cooldownUntil, lastQuotaResetsAt, resetDate(from: lastStatusMessage)]
+            .compactMap { $0 }
+            .sorted()
+    }
+
+    private static func isStale(updatedAt: Date, now: Date, interval: TimeInterval) -> Bool {
+        now.timeIntervalSince(updatedAt) >= interval
+    }
+
+    private static func parseResetDate(_ value: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+
+        let hasTimezone = value.hasSuffix("Z")
+            || value.range(of: #"[+-]\d{2}:?\d{2}$"#, options: .regularExpression) != nil
+        if hasTimezone {
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ssXXXXX"
+            if let parsed = formatter.date(from: value) {
+                return parsed
+            }
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ssZ"
+            return formatter.date(from: value)
+        }
+
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.date(from: value)
+    }
+}
+
 /// Thinking-level ladder shared across providers.
 ///
 /// Anthropic maps each level to a `thinking.budget_tokens` budget (and the new

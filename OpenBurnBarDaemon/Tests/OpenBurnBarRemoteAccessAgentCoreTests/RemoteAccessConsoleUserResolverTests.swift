@@ -89,4 +89,105 @@ final class RemoteAccessConsoleUserResolverTests: XCTestCase {
             RemoteAccessDisplayWakePolicy.settleDelayMicroseconds(displayWasAsleep: false)
         )
     }
+
+    func testCredentialWorkerLaunchPlanUsesConsoleUserInsideLoginwindowBootstrap() {
+        XCTAssertEqual(
+            RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
+                executablePath: "/agent",
+                consoleUserUID: 501,
+                loginWindowPID: 415,
+                credentialFilePath: "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+            ),
+            [
+                "asuser",
+                "501",
+                "/bin/launchctl",
+                "bsexec",
+                "415",
+                "/agent",
+                "--type-credential-worker",
+                "--credential-file",
+                "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+            ]
+        )
+    }
+
+    func testCredentialWorkerLaunchPlanFallsBackToConsoleUserSession() {
+        XCTAssertEqual(
+            RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
+                executablePath: "/agent",
+                consoleUserUID: 501,
+                loginWindowPID: nil,
+                credentialFilePath: "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+            ),
+            [
+                "asuser",
+                "501",
+                "/agent",
+                "--type-credential-worker",
+                "--credential-file",
+                "/var/run/openburnbar-remote-access-agent.credential.ABC123"
+            ]
+        )
+    }
+
+    func testCredentialWorkerUsesSessionScopedKeyboardEventSource() {
+        XCTAssertEqual(
+            RemoteAccessCredentialEventSourcePolicy.keyboardEventSource,
+            .combinedSessionState
+        )
+        XCTAssertEqual(
+            RemoteAccessCredentialEventSourcePolicy.keyboardEventTap,
+            .sessionEventTap
+        )
+    }
+
+    func testCredentialWorkerDoesNotSubmitEmptyPasswordBeforeTyping() {
+        XCTAssertEqual(RemoteAccessCredentialEventSourcePolicy.preCredentialSubmitKeyPresses, 0)
+    }
+
+    func testFocusSequenceIsFastDeterministicAndDoesNotClick() {
+        let policy = RemoteAccessCredentialEventSourcePolicy.self
+        // The pointer nudge is a center *move*, never a click — a mis-aimed click can collapse the
+        // password lane.
+        XCTAssertEqual(policy.pointerNudgePoint, RemoteAccessNormalizedPoint(x: 0.5, y: 0.5))
+        // At least one focus/clear backspace, with cheap settles so the full sequence fits the
+        // worker budget (the old reveal loop ran ~5.35s and was killed before typing).
+        XCTAssertGreaterThanOrEqual(policy.focusClearKeyPresses, 1)
+        XCTAssertLessThanOrEqual(policy.escapeSettleMicroseconds, 300_000)
+        XCTAssertLessThanOrEqual(policy.focusKeySettleMicroseconds, 150_000)
+        XCTAssertLessThanOrEqual(policy.preTypeSettleMicroseconds, 300_000)
+        // No Return is ever sent before the password.
+        XCTAssertEqual(policy.preCredentialSubmitKeyPresses, 0)
+    }
+
+    func testCredentialWorkerTimeoutBudgetNestsFromWorkerToPhone() {
+        let policy = RemoteAccessCredentialTimeoutPolicy.self
+
+        // Worst-case worker work (μs → ns) must fit inside the helper's kill backstop — the core
+        // regression was the inverse (worker ~6.3s > 5s backstop), which killed the worker
+        // mid-focus before a single password key was posted.
+        let worstCaseNanoseconds = policy.worstCaseWorkerMicroseconds() * 1_000
+        XCTAssertLessThan(worstCaseNanoseconds, policy.workerExitTimeoutNanoseconds)
+        // Demand real margin so future delay tuning that erodes it trips this test instead of
+        // silently re-introducing the timeout.
+        XCTAssertGreaterThan(
+            policy.workerExitTimeoutNanoseconds,
+            worstCaseNanoseconds + worstCaseNanoseconds / 4
+        )
+
+        // worker backstop < Mac client socket timeout < iPhone ack timeout.
+        let macClientNanoseconds = UInt64(policy.macClientSocketTimeoutSeconds) * 1_000_000_000
+        XCTAssertLessThan(policy.workerExitTimeoutNanoseconds, macClientNanoseconds)
+        XCTAssertLessThan(macClientNanoseconds, policy.iOSCredentialAckTimeoutNanoseconds)
+    }
+
+    func testCredentialWorkerSingleAttemptGrowsWithCredentialLength() {
+        let policy = RemoteAccessCredentialTimeoutPolicy.self
+        XCTAssertGreaterThan(
+            policy.singleAttemptMicroseconds(keyCount: 64),
+            policy.singleAttemptMicroseconds(keyCount: 8)
+        )
+        XCTAssertGreaterThanOrEqual(policy.maximumUnlockAttempts, 1)
+    }
 }

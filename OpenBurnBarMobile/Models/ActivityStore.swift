@@ -21,6 +21,7 @@ final class ActivityStore {
     private(set) var hasMore = true
     private var lastDoc: DocumentSnapshot?
     private var liveUsageListener: ListenerRegistration?
+    private static let serverSearchLimit = 50
     private let targetSessionPageSize = 25
     private let rawPageSize = 100
     private let maxRawPagesPerBatch = 6
@@ -164,21 +165,30 @@ final class ActivityStore {
         }
 
         isSearching = true
+        searchHits = []
+        cloudSearchHits = []
+        defer {
+            if lastSearchQuery == trimmed {
+                isSearching = false
+            }
+        }
         do {
             try await Task.sleep(for: .milliseconds(250))
             try Task.checkCancellation()
             guard lastSearchQuery == trimmed else { return }
-            async let streamHits = functions.searchStreams(query: trimmed)
+            async let streamHits = functions.searchStreams(query: trimmed, limit: Self.serverSearchLimit)
             async let cloudHits = searchEncryptedCloudIndex(query: trimmed)
-            searchHits = (try? await streamHits) ?? []
-            cloudSearchHits = (try? await cloudHits) ?? []
+            let resolvedStreamHits = (try? await streamHits) ?? []
+            let resolvedCloudHits = (try? await cloudHits) ?? []
+            guard lastSearchQuery == trimmed else { return }
+            searchHits = resolvedStreamHits
+            cloudSearchHits = resolvedCloudHits
         } catch is CancellationError {
             return
         } catch {
             searchHits = []
             cloudSearchHits = []
         }
-        isSearching = false
     }
 
     private func searchEncryptedCloudIndex(query: String) async throws -> [CloudConversationSearchRow] {
@@ -188,7 +198,8 @@ final class ActivityStore {
         guard tokenHashes.isEmpty == false || semanticHashes.isEmpty == false else { return [] }
         let hits = try await functions.searchEncryptedConversationIndex(
             tokenHashes: tokenHashes,
-            semanticHashes: semanticHashes
+            semanticHashes: semanticHashes,
+            limit: Self.serverSearchLimit
         )
         return hits.compactMap { hit in
             guard let title = try? CloudVaultCrypto.openText(hit.sealedTitle, keyData: vaultKey),
@@ -407,6 +418,282 @@ enum CloudConversationSearchError: LocalizedError {
     }
 }
 
+// MARK: - Cloud Transcript Cache
+
+struct CloudTranscriptCacheSettings: Sendable {
+    static let defaultMaxMegabytes = 250
+    static let maximumMegabytes = 2_048
+    static let bytesPerMegabyte: Int64 = 1_024 * 1_024
+    static let shared = CloudTranscriptCacheSettings()
+
+    private static let maxMegabytesKey = "streams.transcriptCache.maxMegabytes.v1"
+    private let defaultsSuiteName: String?
+
+    init(defaultsSuiteName: String? = nil) {
+        self.defaultsSuiteName = defaultsSuiteName
+    }
+
+    var maxMegabytes: Int {
+        get {
+            let stored = defaults.object(forKey: Self.maxMegabytesKey) as? NSNumber
+            return Self.clampedMegabytes(stored?.intValue ?? Self.defaultMaxMegabytes)
+        }
+        nonmutating set {
+            defaults.set(Self.clampedMegabytes(newValue), forKey: Self.maxMegabytesKey)
+        }
+    }
+
+    var maxBytes: Int64 {
+        get { Int64(maxMegabytes) * Self.bytesPerMegabyte }
+        nonmutating set {
+            maxMegabytes = Int(newValue / Self.bytesPerMegabyte)
+        }
+    }
+
+    private var defaults: UserDefaults {
+        if let defaultsSuiteName, let suite = UserDefaults(suiteName: defaultsSuiteName) {
+            return suite
+        }
+        return .standard
+    }
+
+    static func clampedMegabytes(_ value: Int) -> Int {
+        min(max(0, value), maximumMegabytes)
+    }
+
+    static func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        formatter.includesActualByteCount = false
+        return formatter.string(fromByteCount: max(0, bytes))
+    }
+}
+
+struct CloudTranscriptCacheSnapshot: Equatable, Sendable {
+    let usageBytes: Int64
+    let maxBytes: Int64
+
+    var isDisabled: Bool { maxBytes <= 0 }
+    var isFull: Bool { !isDisabled && usageBytes >= maxBytes }
+}
+
+struct CloudTranscriptCacheWarmupResult: Equatable, Sendable {
+    var available = 0
+    var skipped = 0
+    var failed = 0
+    var limitReached = false
+}
+
+actor CloudTranscriptCache {
+    static let shared = CloudTranscriptCache()
+
+    private struct CacheIndex: Codable, Sendable {
+        var entries: [String: CacheEntry] = [:]
+    }
+
+    private struct CacheEntry: Codable, Sendable {
+        let key: String
+        let storagePath: String
+        let bodyHash: String
+        var byteCount: Int64
+        let cachedAt: Date
+        var lastAccessedAt: Date
+    }
+
+    private let directory: URL
+    private let settings: CloudTranscriptCacheSettings
+
+    init(
+        directory: URL? = nil,
+        settings: CloudTranscriptCacheSettings = .shared
+    ) {
+        self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("OpenBurnBarCloudTranscripts", isDirectory: true)
+        self.settings = settings
+    }
+
+    func cachedTranscript(storagePath: String, bodyHash: String, vaultKey: Data) -> String? {
+        guard settings.maxBytes > 0 else { return nil }
+        let key = Self.cacheKey(storagePath: storagePath, bodyHash: bodyHash)
+        do {
+            var index = try loadIndex()
+            guard var entry = index.entries[key],
+                  entry.storagePath == storagePath,
+                  entry.bodyHash == bodyHash else {
+                return nil
+            }
+            let data = try Data(contentsOf: blobURL(for: key))
+            let envelope = try JSONDecoder().decode(CloudVaultBlobEnvelope.self, from: data)
+            let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
+            guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash,
+                  let transcript = String(data: plaintext, encoding: .utf8) else {
+                try removeEntry(key, from: &index)
+                try writeIndex(index)
+                return nil
+            }
+            entry.byteCount = Int64(data.count)
+            entry.lastAccessedAt = Date()
+            index.entries[key] = entry
+            try writeIndex(index)
+            return transcript
+        } catch {
+            try? removeCachedKey(key)
+            return nil
+        }
+    }
+
+    func storeTranscript(_ transcript: String, storagePath: String, bodyHash: String, vaultKey: Data) throws {
+        let maxBytes = settings.maxBytes
+        guard maxBytes > 0 else {
+            try? clear()
+            return
+        }
+
+        let plaintext = Data(transcript.utf8)
+        guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash else {
+            throw CloudConversationSearchError.bodyHashMismatch
+        }
+        let envelope = try CloudVaultCrypto.sealBlob(plaintext, keyData: vaultKey)
+        let encoded = try JSONEncoder().encode(envelope)
+        guard Int64(encoded.count) <= maxBytes else { return }
+
+        try ensureDirectory()
+        let key = Self.cacheKey(storagePath: storagePath, bodyHash: bodyHash)
+        try encoded.write(to: blobURL(for: key), options: .atomic)
+
+        var index = try loadIndex()
+        let now = Date()
+        index.entries[key] = CacheEntry(
+            key: key,
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            byteCount: Int64(encoded.count),
+            cachedAt: now,
+            lastAccessedAt: now
+        )
+        try trim(&index, maxBytes: maxBytes)
+        try writeIndex(index)
+    }
+
+    func snapshot() -> CloudTranscriptCacheSnapshot {
+        let usage = (try? currentUsageBytes()) ?? 0
+        return CloudTranscriptCacheSnapshot(usageBytes: usage, maxBytes: settings.maxBytes)
+    }
+
+    func trimToLimit() {
+        do {
+            var index = try loadIndex()
+            try trim(&index, maxBytes: settings.maxBytes)
+            try writeIndex(index)
+        } catch {
+            // Cache trimming is opportunistic; transcript loading should not fail because
+            // the local cache index is temporarily unavailable.
+        }
+    }
+
+    func clear() throws {
+        if FileManager.default.fileExists(atPath: directory.path) {
+            try FileManager.default.removeItem(at: directory)
+        }
+        try ensureDirectory()
+        try writeIndex(CacheIndex())
+    }
+
+    private static func cacheKey(storagePath: String, bodyHash: String) -> String {
+        CloudVaultCrypto.sha256Hex("\(storagePath)\n\(bodyHash)")
+    }
+
+    private var indexURL: URL {
+        directory.appendingPathComponent("index.json", isDirectory: false)
+    }
+
+    private func blobURL(for key: String) -> URL {
+        directory.appendingPathComponent("\(key).json", isDirectory: false)
+    }
+
+    private func ensureDirectory() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    private func loadIndex() throws -> CacheIndex {
+        guard FileManager.default.fileExists(atPath: indexURL.path) else { return CacheIndex() }
+        let data = try Data(contentsOf: indexURL)
+        return try JSONDecoder().decode(CacheIndex.self, from: data)
+    }
+
+    private func writeIndex(_ index: CacheIndex) throws {
+        try ensureDirectory()
+        let data = try JSONEncoder().encode(index)
+        try data.write(to: indexURL, options: .atomic)
+    }
+
+    private func currentUsageBytes() throws -> Int64 {
+        var index = try loadIndex()
+        var total: Int64 = 0
+        for (key, entry) in index.entries {
+            let url = blobURL(for: key)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                index.entries.removeValue(forKey: key)
+                continue
+            }
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let byteCount = (attributes?[.size] as? NSNumber)?.int64Value ?? entry.byteCount
+            var updated = entry
+            updated.byteCount = byteCount
+            index.entries[key] = updated
+            total += byteCount
+        }
+        try writeIndex(index)
+        return total
+    }
+
+    private func trim(_ index: inout CacheIndex, maxBytes: Int64) throws {
+        guard maxBytes > 0 else {
+            for key in Array(index.entries.keys) {
+                try? FileManager.default.removeItem(at: blobURL(for: key))
+            }
+            index.entries = [:]
+            return
+        }
+
+        var total: Int64 = 0
+        for (key, entry) in index.entries {
+            let url = blobURL(for: key)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                index.entries.removeValue(forKey: key)
+                continue
+            }
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let byteCount = (attributes?[.size] as? NSNumber)?.int64Value ?? entry.byteCount
+            var updated = entry
+            updated.byteCount = byteCount
+            index.entries[key] = updated
+            total += byteCount
+        }
+
+        let oldestFirst = index.entries.values.sorted { lhs, rhs in
+            lhs.lastAccessedAt < rhs.lastAccessedAt
+        }
+        for entry in oldestFirst where total > maxBytes {
+            try? FileManager.default.removeItem(at: blobURL(for: entry.key))
+            index.entries.removeValue(forKey: entry.key)
+            total -= entry.byteCount
+        }
+    }
+
+    private func removeEntry(_ key: String, from index: inout CacheIndex) throws {
+        try? FileManager.default.removeItem(at: blobURL(for: key))
+        index.entries.removeValue(forKey: key)
+    }
+
+    private func removeCachedKey(_ key: String) throws {
+        var index = try loadIndex()
+        try removeEntry(key, from: &index)
+        try writeIndex(index)
+    }
+}
+
 // MARK: - Cloud Vault Gateway
 
 /// Shared on-device vault-key unlock + encrypted-body retrieval used by every cloud conversation
@@ -461,20 +748,40 @@ struct CloudVaultGateway {
     /// verifies the plaintext SHA-256 matches the indexed `bodyHash` before returning the UTF-8
     /// transcript.
     func downloadBody(storagePath: String, bodyHash: String, vaultKey: Data) async throws -> String {
-        let url = try await functions.encryptedSessionBlobDownloadURL(storagePath: storagePath)
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+        if let cached = await CloudTranscriptCache.shared.cachedTranscript(
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            vaultKey: vaultKey
+        ) {
+            return cached
+        }
+
+        do {
+            let url = try await functions.encryptedSessionBlobDownloadURL(storagePath: storagePath)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                throw CloudConversationSearchError.downloadFailed
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let envelope = try decoder.decode(CloudVaultBlobEnvelope.self, from: data)
+            let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
+            guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash,
+                  let body = String(data: plaintext, encoding: .utf8) else {
+                throw CloudConversationSearchError.bodyHashMismatch
+            }
+            try? await CloudTranscriptCache.shared.storeTranscript(
+                body,
+                storagePath: storagePath,
+                bodyHash: bodyHash,
+                vaultKey: vaultKey
+            )
+            return body
+        } catch let error as CloudConversationSearchError {
+            throw error
+        } catch {
             throw CloudConversationSearchError.downloadFailed
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let envelope = try decoder.decode(CloudVaultBlobEnvelope.self, from: data)
-        let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
-        guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash,
-              let body = String(data: plaintext, encoding: .utf8) else {
-            throw CloudConversationSearchError.bodyHashMismatch
-        }
-        return body
     }
 }
 
@@ -579,6 +886,54 @@ struct CockpitConversationRow: Identifiable, Hashable, Sendable {
 
 // MARK: - Conversation Cockpit Store
 
+@MainActor
+protocol ConversationQueryClient {
+    func queryConversations(
+        providers: [String],
+        models: [String],
+        projectName: String?,
+        deviceId: String?,
+        sourceType: String?,
+        dateFrom: Date?,
+        dateTo: Date?,
+        sort: String,
+        direction: String,
+        limit: Int,
+        cursorDocId: String?,
+        includeAggregates: Bool
+    ) async throws -> ConversationQueryResponse
+}
+
+extension FunctionsRepository: ConversationQueryClient {}
+
+@MainActor
+struct CloudConversationAuthGate {
+    var currentUID: @MainActor () -> String?
+    var prepareIDToken: @MainActor (_ forcingRefresh: Bool) async -> Bool
+
+    static let live = CloudConversationAuthGate(
+        currentUID: { Auth.auth().currentUser?.uid },
+        prepareIDToken: { forcingRefresh in
+            guard let user = Auth.auth().currentUser else { return false }
+            return await withCheckedContinuation { continuation in
+                user.getIDTokenResult(forcingRefresh: forcingRefresh) { result, error in
+                    continuation.resume(returning: error == nil && (result?.token.isEmpty == false))
+                }
+            }
+        }
+    )
+
+    func prepareForCallable() async -> Bool {
+        guard currentUID()?.isEmpty == false else { return false }
+        return await prepareIDToken(false)
+    }
+
+    func refreshForCallable() async -> Bool {
+        guard currentUID()?.isEmpty == false else { return false }
+        return await prepareIDToken(true)
+    }
+}
+
 /// Drives the Streams "Cockpit" — a faceted, paginated database view over the user's encrypted
 /// session-log manifests. Filtering and sorting run server-side on plaintext facets via the
 /// `queryConversations` callable; titles, previews, and full transcripts are opened locally with
@@ -610,17 +965,25 @@ final class ConversationCockpitStore {
     private(set) var discoveredModels: [String] = []
 
     private let functions: FunctionsRepository
+    private let queryClient: any ConversationQueryClient
     private let vault: CloudVaultGateway
+    private let authGate: CloudConversationAuthGate
     private var nextCursor: String?
     private var vaultKey: Data?
     private var queryToken = 0
 
-    private static let pageSize = 30
+    private static let pageSize = 100
     private static let savedQueriesKey = "cockpit.savedQueries.v1"
 
-    init(functions: FunctionsRepository = FunctionsRepository()) {
+    init(
+        functions: FunctionsRepository = FunctionsRepository(),
+        queryClient: (any ConversationQueryClient)? = nil,
+        authGate: CloudConversationAuthGate = .live
+    ) {
         self.functions = functions
+        self.queryClient = queryClient ?? functions
         self.vault = CloudVaultGateway(functions: functions)
+        self.authGate = authGate
         loadSavedQueries()
     }
 
@@ -661,6 +1024,17 @@ final class ConversationCockpitStore {
             }
         }
 
+        guard await authGate.prepareForCallable() else {
+            if reset {
+                rows = []
+                aggregates = nil
+            }
+            vaultLocked = false
+            hasMore = false
+            error = "Sign in to load cloud conversations."
+            return
+        }
+
         do {
             if vaultKey == nil {
                 vaultKey = try? await vault.unlockKey()
@@ -668,44 +1042,74 @@ final class ConversationCockpitStore {
             guard token == queryToken else { return }
             vaultLocked = (vaultKey == nil)
 
-            let response = try await functions.queryConversations(
-                providers: Array(selectedProviders),
-                models: selectedModel.map { [$0] } ?? [],
-                projectName: projectQuery.isEmpty ? nil : projectQuery,
-                dateFrom: dateFrom,
-                dateTo: dateTo,
-                sort: sortField.rawValue,
-                direction: sortDirection.rawValue,
-                limit: Self.pageSize,
-                cursorDocId: reset ? nil : nextCursor,
-                includeAggregates: reset
-            )
+            let response = try await queryConversationsPage(reset: reset)
             guard token == queryToken else { return }
 
-            let mapped = response.rows.map(decodeRow)
-            if reset {
-                rows = mapped
-            } else {
-                rows.append(contentsOf: mapped)
-            }
-            if let aggregates = response.aggregates {
-                self.aggregates = aggregates
-            }
-            nextCursor = response.nextCursor
-            hasMore = response.nextCursor != nil
-            error = nil
-            refreshFacetOptions()
+            apply(response: response, reset: reset)
         } catch is CancellationError {
             return
         } catch {
             guard token == queryToken else { return }
-            if reset {
-                rows = []
-                aggregates = nil
+            if Self.isUnauthenticated(error),
+               await authGate.refreshForCallable(),
+               token == queryToken {
+                do {
+                    let response = try await queryConversationsPage(reset: reset)
+                    guard token == queryToken else { return }
+                    apply(response: response, reset: reset)
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard token == queryToken else { return }
+                    handleQueryFailure(error, reset: reset)
+                    return
+                }
             }
-            hasMore = false
-            self.error = error.localizedDescription
+            handleQueryFailure(error, reset: reset)
         }
+    }
+
+    private func queryConversationsPage(reset: Bool) async throws -> ConversationQueryResponse {
+        try await queryClient.queryConversations(
+            providers: Array(selectedProviders),
+            models: selectedModel.map { [$0] } ?? [],
+            projectName: projectQuery.isEmpty ? nil : projectQuery,
+            deviceId: nil,
+            sourceType: nil,
+            dateFrom: dateFrom,
+            dateTo: dateTo,
+            sort: sortField.rawValue,
+            direction: sortDirection.rawValue,
+            limit: Self.pageSize,
+            cursorDocId: reset ? nil : nextCursor,
+            includeAggregates: reset
+        )
+    }
+
+    private func apply(response: ConversationQueryResponse, reset: Bool) {
+        let mapped = response.rows.map(decodeRow)
+        if reset {
+            rows = mapped
+        } else {
+            rows.append(contentsOf: mapped)
+        }
+        if let aggregates = response.aggregates {
+            self.aggregates = aggregates
+        }
+        nextCursor = response.nextCursor
+        hasMore = response.nextCursor != nil
+        error = nil
+        refreshFacetOptions()
+    }
+
+    private func handleQueryFailure(_ error: Error, reset: Bool) {
+        if reset {
+            rows = []
+            aggregates = nil
+        }
+        hasMore = false
+        self.error = Self.presentableQueryError(error)
     }
 
     func loadNextPage() async {
@@ -733,6 +1137,60 @@ final class ConversationCockpitStore {
             throw CloudConversationSearchError.vaultKeyUnavailable
         }
         return try await vault.downloadBody(storagePath: storagePath, bodyHash: bodyHash, vaultKey: key)
+    }
+
+    func cacheLoadedTranscripts() async -> CloudTranscriptCacheWarmupResult {
+        var result = CloudTranscriptCacheWarmupResult()
+        guard rows.isEmpty == false else { return result }
+
+        let key: Data
+        if let vaultKey {
+            key = vaultKey
+        } else if let unlocked = try? await vault.unlockKey() {
+            vaultKey = unlocked
+            vaultLocked = false
+            key = unlocked
+        } else {
+            result.failed = rows.count
+            return result
+        }
+
+        for row in rows {
+            guard let storagePath = row.storagePath, !storagePath.isEmpty,
+                  let bodyHash = row.bodyHash, !bodyHash.isEmpty else {
+                result.skipped += 1
+                continue
+            }
+            let snapshot = await CloudTranscriptCache.shared.snapshot()
+            if snapshot.isDisabled || snapshot.isFull {
+                result.limitReached = true
+                break
+            }
+            do {
+                _ = try await vault.downloadBody(storagePath: storagePath, bodyHash: bodyHash, vaultKey: key)
+                result.available += 1
+            } catch {
+                result.failed += 1
+            }
+        }
+        await CloudTranscriptCache.shared.trimToLimit()
+        return result
+    }
+
+    private static func presentableQueryError(_ error: Error) -> String {
+        let description = error.localizedDescription
+        if isUnauthenticated(error) {
+            #if DEBUG
+            return "Sign in again, or reinstall this debug build with a registered App Check token."
+            #else
+            return "Sign in again to load cloud conversations."
+            #endif
+        }
+        return description
+    }
+
+    private static func isUnauthenticated(_ error: Error) -> Bool {
+        error.localizedDescription.localizedCaseInsensitiveContains("unauthenticated")
     }
 
     // MARK: Filter mutation

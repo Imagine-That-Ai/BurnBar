@@ -176,6 +176,7 @@ private fun breadcrumb(item: SettingsItem): String {
         SettingsPageRoute.QUOTA_PREFS -> "Quota Customisation"
         SettingsPageRoute.BUDGET_PREFS -> "Budgeting & Rules"
         SettingsPageRoute.TEXT_EXPANSION -> "Text Expansion"
+        SettingsPageRoute.TRANSCRIPT_CACHE -> "Transcript Cache"
     }
     return if (pageLabel.isEmpty()) sectionTitle else "$sectionTitle › $pageLabel"
 }

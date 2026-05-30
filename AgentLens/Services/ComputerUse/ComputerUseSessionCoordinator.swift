@@ -19,6 +19,9 @@ import OpenBurnBarMedia
 public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked Sendable {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
     private static let phoneControlActionCap = 10_000
+    private static func debugTrace(_ message: String) {
+        NSLog("OpenBurnBarMercury \(message)")
+    }
 
     public struct Configuration: Sendable {
         public var userId: String
@@ -58,6 +61,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         case invalidTrustMode(String)
         case missingEntitlementProduct
         case missingBrowserDispatcher
+        case missingControlReplySender
     }
 
     public typealias ApprovalPresenter = @MainActor (
@@ -100,6 +104,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var phoneValidator = PhoneControlAuthorityValidator()
     private var phoneReceiver: PhoneControlReceiver?
     var phoneControlAuthorizedPeerNodeProvider: (@MainActor @Sendable () -> String?)?
+    var phoneControlKeyboardTargetWindowProvider: (@MainActor @Sendable () -> CGWindowID?)?
+    var phoneControlKeyboardTargetFocuser: (@MainActor @Sendable (CGWindowID) throws -> Void)?
     var remoteUnlockResultHandler: (@MainActor @Sendable (HermesRealtimeRelayRemoteUnlockResult) async -> Void)?
     weak var chatController: ChatSessionController?
     private var agentContextReceiver: AgentContextTargetReceiver?
@@ -755,6 +761,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         latestReplySender = replySender
         latestControlUID = frame.uid
         latestControlConnectionID = frame.connectionId
+        Self.debugTrace("computer_use_control_frame_received type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
         switch frame.type {
         case .controlClassify:
             guard let peerNodeId = frame.control?.authorityPeerNodeId else { return }
@@ -903,6 +910,36 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         case .remoteUnlockCredential:
             guard let credential = frame.control?.remoteUnlockCredential else { return }
             let credentialPeerNodeId = credential.authority.peerNodeId
+            Self.log.info(
+                "remote_unlock_credential_frame_received requestID=\(credential.requestId, privacy: .public) sessionID=\(credential.sessionId, privacy: .public) peerNodeID=\(credentialPeerNodeId, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)"
+            )
+            Self.debugTrace("remote_unlock_credential_frame_received requestID=\(credential.requestId) sessionID=\(credential.sessionId) peerNodeID=\(credentialPeerNodeId) connectionID=\(frame.connectionId)")
+            do {
+                let receivedResult = HermesRealtimeRelayRemoteUnlockResult(
+                    requestId: credential.requestId,
+                    sessionId: credential.sessionId,
+                    status: .accepted,
+                    detail: "credential_received",
+                    completedAt: Date()
+                )
+                try await sendControlFrame(
+                    type: .remoteUnlockResult,
+                    payload: HermesRealtimeRelayControlPayload(
+                        streamClass: "remote_unlock",
+                        sessionId: credential.sessionId,
+                        remoteUnlockResult: receivedResult
+                    )
+                )
+                Self.log.info(
+                    "remote_unlock_credential_received_ack_sent requestID=\(credential.requestId, privacy: .public)"
+                )
+                Self.debugTrace("remote_unlock_credential_received_ack_sent requestID=\(credential.requestId)")
+            } catch {
+                Self.log.error(
+                    "remote_unlock_credential_received_ack_failed requestID=\(credential.requestId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+                Self.debugTrace("remote_unlock_credential_received_ack_failed requestID=\(credential.requestId) error=\(error.localizedDescription)")
+            }
             if !phoneValidator.hasPeer(nodeId: credentialPeerNodeId) {
                 do {
                     let publicKey = try await authorityProvider.fetchPublicKey(
@@ -936,15 +973,30 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     authorizedPeerNodeId: authorizedPeerNode
                 )
             )
-            await remoteUnlockResultHandler?(result)
-            emitControlFrame(
-                type: result.status == .denied ? .remoteUnlockDenied : .remoteUnlockResult,
-                payload: HermesRealtimeRelayControlPayload(
-                    streamClass: "remote_unlock",
-                    sessionId: credential.sessionId,
-                    remoteUnlockResult: result
-                )
+            Self.log.info(
+                "remote_unlock_credential_result requestID=\(credential.requestId, privacy: .public) status=\(result.status.rawValue, privacy: .public) detail=\(result.detail ?? "", privacy: .public) lockState=\(result.lockState?.rawValue ?? "", privacy: .public)"
             )
+            Self.debugTrace("remote_unlock_credential_result requestID=\(credential.requestId) status=\(result.status.rawValue) detail=\(result.detail ?? "") lockState=\(result.lockState?.rawValue ?? "")")
+            do {
+                try await sendControlFrame(
+                    type: result.status == .denied ? .remoteUnlockDenied : .remoteUnlockResult,
+                    payload: HermesRealtimeRelayControlPayload(
+                        streamClass: "remote_unlock",
+                        sessionId: credential.sessionId,
+                        remoteUnlockResult: result
+                    )
+                )
+                Self.log.info(
+                    "remote_unlock_credential_result_sent requestID=\(credential.requestId, privacy: .public) status=\(result.status.rawValue, privacy: .public)"
+                )
+                Self.debugTrace("remote_unlock_credential_result_sent requestID=\(credential.requestId) status=\(result.status.rawValue)")
+            } catch {
+                Self.log.error(
+                    "remote_unlock_credential_result_send_failed requestID=\(credential.requestId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+                Self.debugTrace("remote_unlock_credential_result_send_failed requestID=\(credential.requestId) error=\(error.localizedDescription)")
+            }
+            await remoteUnlockResultHandler?(result)
         case .remoteUnlockSession,
              .remoteUnlockInput:
             let requestId = frame.requestId
@@ -1081,6 +1133,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             return
         }
         let invocation = invocationFromPhoneAction(action, sessionId: sessionId)
+        refocusPhoneKeyboardTargetIfNeeded(for: action)
         recordE2EProofEvent([
             "event": "mac_phone_action_dispatching",
             "tool": invocation.tool.rawValue,
@@ -1114,6 +1167,39 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var activeSessionIsDirectPhoneControl: Bool {
         guard let manifest = state?.manifest else { return false }
         return manifest.mode == .system && manifest.phoneViewerNodeId?.isEmpty == false
+    }
+
+    nonisolated static func shouldRetargetPhoneKeyboardAction(_ action: ComputerUseAction) -> Bool {
+        guard case .macInput(let input) = action else { return false }
+        switch input.kind {
+        case .type, .key, .shortcut:
+            return true
+        case .click, .dragDrop, .scroll, .pointerMove:
+            return false
+        }
+    }
+
+    private func refocusPhoneKeyboardTargetIfNeeded(for action: ComputerUseAction) {
+        guard Self.shouldRetargetPhoneKeyboardAction(action),
+              let windowID = phoneControlKeyboardTargetWindowProvider?() else { return }
+        do {
+            if let phoneControlKeyboardTargetFocuser {
+                try phoneControlKeyboardTargetFocuser(windowID)
+            } else {
+                try inputController.focusWindow(windowID: windowID)
+            }
+            recordE2EProofEvent([
+                "event": "mac_phone_keyboard_target_refocused",
+                "windowId": String(windowID)
+            ])
+        } catch {
+            recordE2EProofEvent([
+                "event": "mac_phone_keyboard_target_refocus_failed",
+                "windowId": String(windowID),
+                "error": String(describing: error)
+            ])
+            Self.log.warning("mac_phone_keyboard_target_refocus_failed windowID=\(windowID, privacy: .public) error=\(String(describing: error), privacy: .public)")
+        }
     }
 
     private func emitPhoneControlDeniedFrameIfNeeded(_ response: ComputerUseInvokeResponse) {
@@ -1537,6 +1623,24 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         Task {
             try? await latestReplySender(frame)
         }
+    }
+
+    private func sendControlFrame(
+        type: HermesRealtimeRelayFrameType,
+        payload: HermesRealtimeRelayControlPayload
+    ) async throws {
+        guard let latestReplySender,
+              let latestControlUID,
+              let latestControlConnectionID else {
+            throw CoordinatorError.missingControlReplySender
+        }
+        let frame = HermesRealtimeRelayFrame(
+            type: type,
+            uid: latestControlUID,
+            connectionId: latestControlConnectionID,
+            control: payload
+        )
+        try await latestReplySender(frame)
     }
 
     func emitFocusContext(_ context: HermesRealtimeRelayFocusContext) {

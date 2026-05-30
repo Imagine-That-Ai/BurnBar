@@ -136,10 +136,11 @@ enum InteractiveTerminalLauncher {
 
         // Snapshot existing Terminal windows so we can identify the new one by
         // diffing — robust even when the launched TUI overwrites its title.
-        let existingWindowIDs = Set(
-            (await ScreenCapturePipeline.availableWindows())
-                .filter { $0.bundleIdentifier == terminalBundleIdentifier }
-                .map { $0.windowID }
+        let existingTerminalWindows = (await ScreenCapturePipeline.availableWindows())
+            .filter { $0.bundleIdentifier == terminalBundleIdentifier }
+        let existingWindowIDs = Set(existingTerminalWindows.map(\.windowID))
+        let existingTitlesByID = Dictionary(
+            uniqueKeysWithValues: existingTerminalWindows.map { ($0.windowID, $0.title ?? "") }
         )
 
         let launched = try await Task.detached(priority: .userInitiated) { () -> (pidFilePath: String, sessionDirectory: String) in
@@ -197,6 +198,7 @@ enum InteractiveTerminalLauncher {
 
         let windowID = await resolveNewTerminalWindowID(
             excluding: existingWindowIDs,
+            existingTitlesByID: existingTitlesByID,
             titleToken: titleToken
         )
         if windowID == nil {
@@ -220,20 +222,61 @@ enum InteractiveTerminalLauncher {
     /// window that was not present in the pre-launch snapshot.
     static func resolveNewTerminalWindowID(
         excluding existing: Set<CGWindowID>,
+        existingTitlesByID: [CGWindowID: String] = [:],
         titleToken: String,
         attempts: Int = 24,
         intervalNanoseconds: UInt64 = 250_000_000
     ) async -> CGWindowID? {
+        var lastTerminalWindows: [ScreenCapturePipeline.WindowDescriptor] = []
         for _ in 0..<max(1, attempts) {
             let terminalWindows = (await ScreenCapturePipeline.availableWindows())
                 .filter { $0.bundleIdentifier == terminalBundleIdentifier }
-            if let tokenMatch = terminalWindows.first(where: { ($0.title ?? "").contains(titleToken) }) {
-                return tokenMatch.windowID
-            }
-            if let fresh = terminalWindows.first(where: { !existing.contains($0.windowID) }) {
-                return fresh.windowID
+            lastTerminalWindows = terminalWindows
+            if let resolved = resolvedTerminalWindowID(
+                from: terminalWindows,
+                excluding: existing,
+                existingTitlesByID: existingTitlesByID,
+                titleToken: titleToken,
+                allowFrontmostFallback: false
+            ) {
+                return resolved
             }
             try? await Task.sleep(nanoseconds: intervalNanoseconds)
+        }
+        return resolvedTerminalWindowID(
+            from: lastTerminalWindows,
+            excluding: existing,
+            existingTitlesByID: existingTitlesByID,
+            titleToken: titleToken,
+            allowFrontmostFallback: true
+        )
+    }
+
+    static func resolvedTerminalWindowID(
+        from terminalWindows: [ScreenCapturePipeline.WindowDescriptor],
+        excluding existing: Set<CGWindowID>,
+        existingTitlesByID: [CGWindowID: String] = [:],
+        titleToken: String,
+        allowFrontmostFallback: Bool
+    ) -> CGWindowID? {
+        if let tokenMatch = terminalWindows.first(where: { ($0.title ?? "").contains(titleToken) }) {
+            return tokenMatch.windowID
+        }
+        if let fresh = terminalWindows.first(where: { !existing.contains($0.windowID) }) {
+            return fresh.windowID
+        }
+        if let retitled = terminalWindows.first(where: { window in
+            guard existing.contains(window.windowID),
+                  let previousTitle = existingTitlesByID[window.windowID] else {
+                return false
+            }
+            let currentTitle = window.title ?? ""
+            return !currentTitle.isEmpty && currentTitle != previousTitle
+        }) {
+            return retitled.windowID
+        }
+        if allowFrontmostFallback {
+            return terminalWindows.first?.windowID
         }
         return nil
     }

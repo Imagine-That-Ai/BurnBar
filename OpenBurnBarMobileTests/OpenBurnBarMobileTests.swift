@@ -85,6 +85,21 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
     }
 
+    func testRemoteUnlockCredentialSenderIsAlwaysRebuilt() {
+        XCTAssertFalse(
+            RemoteUnlockCredentialSenderReusePolicy.shouldReuseExistingSender(
+                phoneControlConnectionID: "same-control-route",
+                currentConnectionID: "same-control-route"
+            )
+        )
+        XCTAssertFalse(
+            RemoteUnlockCredentialSenderReusePolicy.shouldReuseExistingSender(
+                phoneControlConnectionID: nil,
+                currentConnectionID: "new-control-route"
+            )
+        )
+    }
+
     func testMercuryReceiverInstallIsRetainedByRelayTransport() {
         let transport = HermesIrohRelayTransport(
             directory: InMemoryIrohPairingDirectory(),
@@ -268,6 +283,129 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let summaries = ActivityStore.summarizeSessions([older, newer])
 
         XCTAssertEqual(summaries.map(\.sessionId), ["newer", "older"])
+    }
+
+    func testStreamsSearchStatePrefersEncryptedCloudHits() {
+        let state = StreamsSearchResultState(
+            query: " session cache ",
+            isSearching: false,
+            cloudConversationHitCount: 2,
+            streamHitCount: 4
+        )
+
+        XCTAssertEqual(state.mode, .cloudConversationHits)
+    }
+
+    func testStreamsSearchStateFallsBackToLegacyStreamHits() {
+        let state = StreamsSearchResultState(
+            query: "session cache",
+            isSearching: false,
+            cloudConversationHitCount: 0,
+            streamHitCount: 3
+        )
+
+        XCTAssertEqual(state.mode, .streamHits)
+    }
+
+    func testStreamsSearchStateShowsSearchingBeforeEmpty() {
+        let state = StreamsSearchResultState(
+            query: "session cache",
+            isSearching: true,
+            cloudConversationHitCount: 0,
+            streamHitCount: 0
+        )
+
+        XCTAssertEqual(state.mode, .searching)
+    }
+
+    func testStreamsSearchStateRequiresTwoCharactersForRemoteSearch() {
+        let state = StreamsSearchResultState(
+            query: "s",
+            isSearching: true,
+            cloudConversationHitCount: 0,
+            streamHitCount: 0
+        )
+
+        XCTAssertEqual(state.mode, .inactive)
+    }
+
+    func testCloudTranscriptCacheDefaultsTo250Megabytes() {
+        let suite = "cloud-transcript-cache-settings-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)
+        defaults?.removePersistentDomain(forName: suite)
+        defer { defaults?.removePersistentDomain(forName: suite) }
+
+        let settings = CloudTranscriptCacheSettings(defaultsSuiteName: suite)
+
+        XCTAssertEqual(settings.maxMegabytes, 250)
+        XCTAssertEqual(settings.maxBytes, 250 * 1_024 * 1_024)
+
+        settings.maxMegabytes = 500
+        XCTAssertEqual(settings.maxMegabytes, 500)
+
+        settings.maxMegabytes = -20
+        XCTAssertEqual(settings.maxMegabytes, 0)
+
+        settings.maxMegabytes = 9_999
+        XCTAssertEqual(settings.maxMegabytes, CloudTranscriptCacheSettings.maximumMegabytes)
+    }
+
+    func testCloudTranscriptCacheStoresEncryptedTranscript() async throws {
+        let suite = "cloud-transcript-cache-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)
+        defaults?.removePersistentDomain(forName: suite)
+        defer { defaults?.removePersistentDomain(forName: suite) }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-transcript-cache-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let settings = CloudTranscriptCacheSettings(defaultsSuiteName: suite)
+        settings.maxMegabytes = 1
+        let cache = CloudTranscriptCache(directory: directory, settings: settings)
+        let vaultKey = Data(repeating: 7, count: 32)
+        let transcript = "session body with private prompt text"
+        let bodyHash = CloudVaultCrypto.sha256Hex(transcript)
+        let storagePath = "users/test-user/session_logs/test-doc/bodies/\(bodyHash).json.aesgcm"
+
+        try await cache.storeTranscript(transcript, storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+        let loaded = await cache.cachedTranscript(storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+
+        XCTAssertEqual(loaded, transcript)
+        let cacheFiles = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent != "index.json" }
+        XCTAssertEqual(cacheFiles.count, 1)
+        let cachedPayload = try String(contentsOf: cacheFiles[0], encoding: .utf8)
+        XCTAssertFalse(cachedPayload.contains(transcript))
+    }
+
+    func testCloudTranscriptCacheCanBeDisabled() async throws {
+        let suite = "cloud-transcript-cache-disabled-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)
+        defaults?.removePersistentDomain(forName: suite)
+        defer { defaults?.removePersistentDomain(forName: suite) }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-transcript-cache-disabled-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let settings = CloudTranscriptCacheSettings(defaultsSuiteName: suite)
+        settings.maxMegabytes = 0
+        let cache = CloudTranscriptCache(directory: directory, settings: settings)
+        let vaultKey = Data(repeating: 8, count: 32)
+        let transcript = "do not cache this body"
+        let bodyHash = CloudVaultCrypto.sha256Hex(transcript)
+        let storagePath = "users/test-user/session_logs/test-doc/bodies/\(bodyHash).json.aesgcm"
+
+        try await cache.storeTranscript(transcript, storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+
+        let loaded = await cache.cachedTranscript(storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+        let snapshot = await cache.snapshot()
+        XCTAssertNil(loaded)
+        XCTAssertTrue(snapshot.isDisabled)
+        XCTAssertEqual(snapshot.usageBytes, 0)
     }
 
     func testProviderQuotaBucketProgress() {
@@ -956,6 +1094,42 @@ final class ScreenShareControlInputPolicyTests: XCTestCase {
     }
 }
 
+final class ScreenShareStreamStateOverlayPolicyTests: XCTestCase {
+    func testRemoteUnlockSuppressesNoFrameRestartOverlay() {
+        XCTAssertFalse(
+            ScreenShareStreamStateOverlayPolicy.shouldShow(
+                displayAspectRatioKnown: false,
+                streamIsLive: true,
+                remoteUnlockActive: true
+            )
+        )
+        XCTAssertFalse(
+            ScreenShareStreamStateOverlayPolicy.shouldStartAwaitingFrameWatchdog(
+                streamIsLive: true,
+                isAwaitingFrame: true,
+                remoteUnlockActive: true
+            )
+        )
+    }
+
+    func testUnlockedAwaitingFrameStillShowsRecoverableRestartOverlay() {
+        XCTAssertTrue(
+            ScreenShareStreamStateOverlayPolicy.shouldShow(
+                displayAspectRatioKnown: false,
+                streamIsLive: true,
+                remoteUnlockActive: false
+            )
+        )
+        XCTAssertTrue(
+            ScreenShareStreamStateOverlayPolicy.shouldStartAwaitingFrameWatchdog(
+                streamIsLive: true,
+                isAwaitingFrame: true,
+                remoteUnlockActive: false
+            )
+        )
+    }
+}
+
 final class ScreenShareViewerStatsMeterTests: XCTestCase {
     func testRecordsInboundBitrateOverRollingWindow() {
         var meter = ScreenShareViewerStatsMeter(minimumSampleInterval: 0.5)
@@ -1066,6 +1240,29 @@ final class ScreenShareViewportStateTests: XCTestCase {
         viewport.toggleQuickZoom(in: CGSize(width: 400, height: 800))
         XCTAssertEqual(viewport.scale, ScreenShareViewportState.minimumScale)
         XCTAssertEqual(viewport.offset, .zero)
+    }
+
+    func testInlineTerminalInitialZoomOnlyAddsSmallReadabilityNudge() {
+        let viewport = CGSize(width: 390, height: 844)
+        let content = CGRect(x: 0, y: 312, width: 390, height: 219)
+        let heightFillScale = viewport.height / content.height
+
+        let scale = InlineAgentMirrorView.terminalInitialZoomScale(
+            viewportSize: viewport,
+            contentRect: content
+        )
+
+        XCTAssertLessThan(scale, heightFillScale)
+        XCTAssertEqual(scale, 1.18, accuracy: 0.0001)
+    }
+
+    func testInlineTerminalInitialZoomKeepsAlreadyFitContentAtMinimumScale() {
+        let scale = InlineAgentMirrorView.terminalInitialZoomScale(
+            viewportSize: CGSize(width: 400, height: 800),
+            contentRect: CGRect(x: 0, y: 0, width: 400, height: 800)
+        )
+
+        XCTAssertEqual(scale, ScreenShareViewportState.minimumScale)
     }
 
     func testNormalizedTapMappingAtDefaultScale() {

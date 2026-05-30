@@ -171,17 +171,23 @@ public struct BurnBarLiveModelCatalogSnapshot: Codable, Hashable, Sendable {
 public struct BurnBarLiveModelCatalog: Sendable {
     private static let ollamaCloudCatalogURL = URL(string: "https://ollama.com/search?c=cloud")!
 
+    /// Anthropic's API version header value for the Messages models endpoint.
+    private static let anthropicVersion = "2023-06-01"
+
     private let configStore: BurnBarConfigStore
     private let session: URLSession
+    private let droidProcessRunner: any FactoryDroidProcessRunning
     private let refreshTimeoutSeconds: TimeInterval
 
     public init(
         configStore: BurnBarConfigStore,
         session: URLSession = .shared,
+        droidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         refreshTimeoutSeconds: TimeInterval = 1.5
     ) {
         self.configStore = configStore
         self.session = session
+        self.droidProcessRunner = droidProcessRunner
         self.refreshTimeoutSeconds = refreshTimeoutSeconds
     }
 
@@ -523,7 +529,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         let blocksRouting: Bool
     }
 
-    private struct DiscoveredModel: Sendable {
+    struct DiscoveredModel: Sendable {
         let id: String
         let displayName: String
     }
@@ -573,21 +579,63 @@ public struct BurnBarLiveModelCatalog: Sendable {
               account.enabled,
               account.hasCredential,
               isEligibleQuotaState(account.quotaState),
-              configuration.provider.formatFamily == .openaiCompat,
-              configuration.provider.id.caseInsensitiveCompare("factory") != .orderedSame,
               let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !key.isEmpty,
-              let baseURL = URL(string: configuration.settings.baseURL) else {
+              !key.isEmpty else {
             return nil
         }
 
+        let formatFamily = configuration.provider.formatFamily
+        let providerID = configuration.provider.id
+
+        // OpenAI-compatible providers (including Ollama) use GET /models or /search?c=cloud.
+        if formatFamily == .openaiCompat && providerID.caseInsensitiveCompare("factory") != .orderedSame {
+            guard let baseURL = URL(string: configuration.settings.baseURL) else { return nil }
+            return await openAICompatLiveModels(
+                configuration: configuration,
+                account: account,
+                apiKey: key,
+                baseURL: baseURL
+            )
+        }
+
+        // Factory Droid uses `droid exec --help` CLI discovery.
+        if providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return await factoryDroidLiveModels(
+                configuration: configuration,
+                account: account,
+                apiKey: key
+            )
+        }
+
+        // Anthropic uses GET /v1/models with Anthropic-specific headers.
+        if formatFamily == .anthropic {
+            guard let baseURL = URL(string: configuration.settings.baseURL) else { return nil }
+            return await anthropicLiveModels(
+                configuration: configuration,
+                account: account,
+                apiKey: key,
+                baseURL: baseURL
+            )
+        }
+
+        return nil
+    }
+
+    // MARK: - OpenAI-Compatible Discovery
+
+    private func openAICompatLiveModels(
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor,
+        apiKey: String,
+        baseURL: URL
+    ) async -> LiveRefreshResult {
         let endpoint = liveModelEndpoint(for: configuration.provider, baseURL: baseURL)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = refreshTimeoutSeconds
         if configuration.provider.id.lowercased() != "ollama" {
-            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         let endpointLabel = liveModelEndpointLabel(for: configuration.provider)
         let sourceKind = liveModelSourceKind(for: configuration.provider)
@@ -720,6 +768,234 @@ public struct BurnBarLiveModelCatalog: Sendable {
         return "\(trimmed):cloud"
     }
 
+    // MARK: - Anthropic Messages Discovery
+
+    /// Discover models from Anthropic's `/v1/models` endpoint with pagination.
+    ///
+    /// Anthropic exposes a list endpoint at `{baseURL}/models` that returns model
+    /// IDs like `claude-opus-4-8-20260514` (dated snapshots). We normalize these
+    /// dated IDs to their family ID (e.g. `claude-opus-4-8`) using the same
+    /// pattern the router uses for wire model resolution.
+    ///
+    /// The Anthropic API paginates with `has_more` / `last_id` cursors and a
+    /// default limit of 20. We fetch all pages to ensure complete coverage.
+    private func anthropicLiveModels(
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor,
+        apiKey: String,
+        baseURL: URL
+    ) async -> LiveRefreshResult {
+        // Anthropic accepts two credential shapes:
+        //   1. Console API keys via `x-api-key` header (sk-ant-api*).
+        //   2. OAuth bearer tokens via `Authorization: Bearer` (sk-ant-oat*).
+        let usesOAuth = apiKey.hasPrefix("sk-ant-oat")
+        let authHeader: (field: String, value: String) = usesOAuth
+            ? ("Authorization", "Bearer \(apiKey)")
+            : ("x-api-key", apiKey)
+
+        var allDiscovered: [DiscoveredModel] = []
+        var seenIDs = Set<String>()
+        var cursor: String? = nil
+        var pagesRemaining = 10  // Safety limit: max 10 pages (1000 models)
+        var lastError: String? = nil
+
+        repeat {
+            var endpoint = baseURL.appending(path: "models")
+            if let afterID = cursor {
+                endpoint = endpoint.appending(queryItems: [URLQueryItem(name: "after_id", value: afterID)])
+            }
+
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "GET"
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = refreshTimeoutSeconds
+            request.setValue(authHeader.value, forHTTPHeaderField: authHeader.field)
+            request.setValue(Self.anthropicVersion, forHTTPHeaderField: "anthropic-version")
+
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    return LiveRefreshResult(
+                        advertisedModels: allDiscovered,
+                        sourceKind: "daemon_provider_config",
+                        refreshedAt: Date(),
+                        error: "Anthropic /v1/models refresh returned an invalid response.",
+                        isAuthoritative: false,
+                        blocksRouting: false
+                    )
+                }
+                let blocksRouting = httpResponse.statusCode == 401 || httpResponse.statusCode == 403
+                guard (200..<300).contains(httpResponse.statusCode) else {
+                    return LiveRefreshResult(
+                        advertisedModels: allDiscovered,
+                        sourceKind: "daemon_provider_config",
+                        refreshedAt: Date(),
+                        error: "Anthropic /v1/models refresh failed with HTTP \(httpResponse.statusCode).",
+                        isAuthoritative: false,
+                        blocksRouting: blocksRouting
+                    )
+                }
+
+                let pageResult = try Self.parseAnthropicModelsResponse(data)
+                for model in pageResult.models {
+                    let normalized = model.id.lowercased()
+                    guard seenIDs.insert(normalized).inserted else { continue }
+                    allDiscovered.append(model)
+                }
+
+                if pageResult.hasMore, let lastID = pageResult.lastID {
+                    cursor = lastID
+                } else {
+                    cursor = nil
+                }
+            } catch {
+                // If we already have partial results, return them as non-authoritative.
+                // If this is the first page, return the error.
+                lastError = "Anthropic /v1/models refresh failed: \(error.localizedDescription)"
+                if allDiscovered.isEmpty {
+                    return LiveRefreshResult(
+                        advertisedModels: [],
+                        sourceKind: "daemon_provider_config",
+                        refreshedAt: Date(),
+                        error: lastError,
+                        isAuthoritative: false,
+                        blocksRouting: false
+                    )
+                }
+                break
+            }
+
+            pagesRemaining -= 1
+        } while cursor != nil && pagesRemaining > 0
+
+        return LiveRefreshResult(
+            advertisedModels: allDiscovered,
+            sourceKind: "anthropic_messages_models",
+            refreshedAt: Date(),
+            error: lastError,
+            isAuthoritative: true,
+            blocksRouting: false
+        )
+    }
+
+    /// Paginated result from Anthropic's `/v1/models` endpoint.
+    struct AnthropicModelsPage: Sendable {
+        let models: [DiscoveredModel]
+        let hasMore: Bool
+        let lastID: String?
+    }
+
+    /// Parse the Anthropic `/v1/models` response and normalize dated model IDs
+    /// to their family equivalents.
+    ///
+    /// Anthropic returns model objects with an `id` field containing IDs like
+    /// `claude-opus-4-8-20260514`, `claude-sonnet-4-6-20250514`, etc.
+    /// We strip the dated suffix (`-YYYYMMDD`) to get the canonical family ID
+    /// (`claude-opus-4-8`, `claude-sonnet-4-6`) so the catalog's matchers and
+    /// aliases can resolve them.
+    ///
+    /// The response includes `has_more` and `last_id` for cursor-based pagination.
+    static func parseAnthropicModelsResponse(_ data: Data) throws -> AnthropicModelsPage {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return AnthropicModelsPage(models: [], hasMore: false, lastID: nil)
+        }
+        let rows = object["data"] as? [[String: Any]] ?? []
+        let hasMore = object["has_more"] as? Bool ?? false
+        let lastID = object["last_id"] as? String
+
+        var seen = Set<String>()
+        var models: [DiscoveredModel] = []
+        for row in rows {
+            guard let rawID = row["id"] as? String else { continue }
+            let id = Self.normalizeAnthropicModelID(rawID.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard !id.isEmpty else { continue }
+            let normalized = id.lowercased()
+            guard seen.insert(normalized).inserted else { continue }
+            let displayName = ((row["display_name"] as? String)
+                ?? (row["name"] as? String)
+                ?? id)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            models.append(DiscoveredModel(id: id, displayName: displayName.isEmpty ? id : displayName))
+        }
+        return AnthropicModelsPage(models: models, hasMore: hasMore, lastID: lastID)
+    }
+
+    /// Normalize an Anthropic model ID by stripping the dated snapshot suffix.
+    ///
+    /// Anthropic model IDs follow the pattern `claude-{tier}-{major}-{minor}-YYYYMMDD`
+    /// (e.g. `claude-opus-4-8-20260514`). We strip the `-YYYYMMDD` suffix to
+    /// get the family ID that matches our catalog entries (e.g. `claude-opus-4-8`).
+    ///
+    /// IDs without a dated suffix are returned as-is.
+    static func normalizeAnthropicModelID(_ rawID: String) -> String {
+        // Match a trailing `-YYYYMMDD` (8 digits after the last hyphen).
+        // Anthropic uses this pattern for all their dated snapshot IDs.
+        let pattern = "-\\d{8,8}$"
+        guard let range = rawID.range(of: pattern, options: .regularExpression) else {
+            return rawID
+        }
+        return String(rawID[..<range.lowerBound])
+    }
+
+    // MARK: - Factory Droid CLI Discovery
+
+    /// Discover models from the Factory Droid CLI by running `droid exec --help`
+    /// and parsing the output with `CLIRuntimeModelCatalog.parseDroidExecHelp`.
+    private func factoryDroidLiveModels(
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor,
+        apiKey: String
+    ) async -> LiveRefreshResult {
+        do {
+            let result = try await droidProcessRunner.runDroid(
+                arguments: ["exec", "--help"],
+                environment: ["FACTORY_API_KEY": apiKey, "HOME": NSHomeDirectory(), "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"],
+                timeout: 12
+            )
+            guard result.exitCode == 0 else {
+                return LiveRefreshResult(
+                    advertisedModels: [],
+                    sourceKind: "factory_droid_cli",
+                    refreshedAt: Date(),
+                    error: "Factory Droid CLI exited with code \(result.exitCode).",
+                    isAuthoritative: false,
+                    blocksRouting: false
+                )
+            }
+            let options = CLIRuntimeModelCatalog.parseDroidExecHelp(result.stdout)
+            guard !options.isEmpty else {
+                return LiveRefreshResult(
+                    advertisedModels: [],
+                    sourceKind: "factory_droid_cli",
+                    refreshedAt: Date(),
+                    error: "Factory Droid CLI returned no models.",
+                    isAuthoritative: false,
+                    blocksRouting: false
+                )
+            }
+            let discovered = options.map { option in
+                DiscoveredModel(id: option.modelID, displayName: option.displayName)
+            }
+            return LiveRefreshResult(
+                advertisedModels: discovered,
+                sourceKind: "factory_droid_cli",
+                refreshedAt: Date(),
+                error: nil,
+                isAuthoritative: true,
+                blocksRouting: false
+            )
+        } catch {
+            return LiveRefreshResult(
+                advertisedModels: [],
+                sourceKind: "factory_droid_cli",
+                refreshedAt: Date(),
+                error: "Factory Droid CLI discovery failed: \(error.localizedDescription)",
+                isAuthoritative: false,
+                blocksRouting: false
+            )
+        }
+    }
+
     private func quotaState(
         for slot: BurnBarProviderCredentialSlot,
         providerEnabled: Bool,
@@ -728,13 +1004,15 @@ public struct BurnBarLiveModelCatalog: Sendable {
     ) -> BurnBarLiveModelQuotaState {
         guard providerEnabled, slot.isEnabled else { return .disabled }
         guard hasCredential else { return .missingCredential }
-        if let cooldownUntil = slot.cooldownUntil, cooldownUntil > now {
-            return .coolingDown
-        }
-        switch slot.status {
+        let effectiveStatus = BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(
+            for: slot,
+            providerEnabled: providerEnabled,
+            now: now
+        )
+        switch effectiveStatus {
         case .ready:
             if let remaining = slot.lastQuotaRemainingPercent {
-                if remaining <= 0 { return .exhausted }
+                if remaining <= 0 { return .unknown }
                 if remaining <= 20 { return .coolingDown }
             }
             return .healthy

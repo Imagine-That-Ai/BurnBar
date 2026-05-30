@@ -1327,7 +1327,7 @@ enum ConnectionsRouteReadiness {
         configuration.isEnabled
             && configuration.hasRoutingCapability
             && configuration.credentialSlots.contains { slot in
-                slot.isEnabled && slot.status == .ready
+                slot.canAttemptRoute()
             }
     }
 

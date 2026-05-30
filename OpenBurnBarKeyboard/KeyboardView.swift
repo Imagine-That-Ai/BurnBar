@@ -2,17 +2,21 @@ import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - Keyboard View
-/// A state-of-the-art custom SwiftUI keyboard view.
+/// A custom SwiftUI keyboard that precisely mirrors the native Apple iOS
+/// keyboard aesthetic: system font, standard key geometry, inset ASDF row,
+/// and correct shadow/color treatment in both light and dark modes.
 ///
-/// Features a horizontal scrolling snippet bar at the top with the BurnBar logo
-/// and a '+' button to add new snippets inline, a standard QWERTY layout with
-/// Shift support, and a fully functional inline composer.
+/// Additions over stock iOS: a horizontal snippet bar at the top with the
+/// BurnBar logo & a '+' button for inline snippet composition.
 struct KeyboardView: View {
     let snippets: [TextExpansionSnippet]
+    let suggestions: [String]
     let onInsertText: (String) -> Void
     let onDeleteBackward: () -> Void
     let onAdvanceToNextInputMode: () -> Void
     let onSnippetUsed: (TextExpansionSnippet) -> Void
+    let onSuggestionSelected: (String) -> Void
+    let onComposeStateChanged: (Bool) -> Void
     let onReload: () -> Void
 
     @State private var isShifted = false
@@ -22,7 +26,29 @@ struct KeyboardView: View {
     @State private var composeFocus: ComposeField = .trigger
     @State private var composeError: String? = nil
 
+    // Repeat-delete state
+    @State private var isDeletePressed = false
+    @State private var deleteTimer: Timer?
+    @State private var deleteCount = 0
+
+    // Swipe typing state
+    @State private var isSwiping = false
+    @State private var swipeWord: String = ""
+    private let swipeEngine = SwipeTypingEngine()
+
     @Environment(\.colorScheme) private var colorScheme
+
+    // MARK: - Constants (matches native iOS keyboard metrics)
+    private enum Metrics {
+        static let keyHeight: CGFloat = 42
+        static let keyCornerRadius: CGFloat = 5
+        static let rowSpacing: CGFloat = 10
+        static let keySpacing: CGFloat = 6
+        static let horizontalPadding: CGFloat = 3
+        static let topPadding: CGFloat = 8
+        static let bottomPadding: CGFloat = 4
+        static let snippetBarHeight: CGFloat = 42
+    }
 
     enum ComposeField {
         case trigger
@@ -31,30 +57,19 @@ struct KeyboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 1. Horizontally scrollable snippet bar
-            HorizontalSnippetBar(
-                snippets: snippets,
-                onInsert: { snippet in
-                    onInsertText(snippet.body)
-                    onSnippetUsed(snippet)
-                },
-                onAddSnippet: {
-                    withAnimation(UnifiedDesignSystem.Animation.standard) {
-                        composeTrigger = "&&"
-                        composeBody = ""
-                        composeFocus = .trigger
-                        composeError = nil
-                        isComposing = true
-                    }
-                }
-            )
-            .frame(height: 46)
-            .background(blurBackground)
+            // 1. Snippet bar or Autocorrect suggestion bar
+            if !suggestions.isEmpty && !isComposing {
+                suggestionBar
+                    .frame(height: Metrics.snippetBarHeight)
+            } else {
+                snippetBar
+                    .frame(height: Metrics.snippetBarHeight)
+            }
 
             Divider()
-                .background(UnifiedDesignSystem.Colors.border.opacity(0.3))
+                .background(separatorColor)
 
-            // 2. Main content area: standard keyboard or composer overlay
+            // 2. Keyboard body
             ZStack {
                 if isComposing {
                     composeOverlay
@@ -63,78 +78,95 @@ struct KeyboardView: View {
                     keyboardGrid
                 }
             }
-            .padding(.top, 4)
-            .padding(.bottom, 6)
-            .padding(.horizontal, 4)
+            .padding(.top, Metrics.topPadding)
+            .padding(.bottom, Metrics.bottomPadding)
+            .padding(.horizontal, Metrics.horizontalPadding)
+
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
         .background(keyboardBackground)
+        .onChange(of: isComposing) { _, newValue in
+            onComposeStateChanged(newValue)
+        }
     }
 
-    // MARK: - Keyboards Grid
+    // MARK: - QWERTY Grid
 
     private var keyboardGrid: some View {
-        VStack(spacing: 6) {
-            // Row 1: qwertyuiop
-            keyRow(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])
+        GeometryReader { geometry in
+            VStack(spacing: Metrics.rowSpacing) {
+                // Row 1: Q W E R T Y U I O P
+                letterRow(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])
 
-            // Row 2: asdfghjkl
-            keyRow(["a", "s", "d", "f", "g", "h", "j", "k", "l"])
+            // Row 2: A S D F G H J K L (inset by half-key)
+            letterRow(["a", "s", "d", "f", "g", "h", "j", "k", "l"])
+                .padding(.horizontal, 18)
 
-            // Row 3: shift, zxcvbnm, delete
-            HStack(spacing: 5) {
-                specialKey(
-                    systemImage: isShifted ? "shift.fill" : "shift",
-                    action: { isShifted.toggle() },
-                    isAccent: isShifted
+            // Row 3: Shift + Z X C V B N M + Delete
+            HStack(spacing: Metrics.keySpacing) {
+                // Shift
+                actionKey(
+                    content: AnyView(
+                        Image(systemName: isShifted ? "shift.fill" : "shift")
+                            .font(.system(size: 16, weight: .medium))
+                    ),
+                    width: 42,
+                    isHighlighted: isShifted,
+                    action: { isShifted.toggle() }
                 )
-                .frame(width: 42)
 
+                // Z through M
                 ForEach(["z", "x", "c", "v", "b", "n", "m"], id: \.self) { char in
-                    letterKey(char)
+                    characterKey(char)
                 }
 
-                specialKey(
-                    systemImage: "delete.left",
+                // Delete — supports press-and-hold with accelerating repeat
+                repeatDeleteKey
+            }
+
+            // Row 4: Globe + && + Space + Return
+            HStack(spacing: Metrics.keySpacing) {
+                // Globe / Next Keyboard
+                actionKey(
+                    content: AnyView(
+                        Image(systemName: "globe")
+                            .font(.system(size: 16, weight: .medium))
+                    ),
+                    width: 42,
+                    action: onAdvanceToNextInputMode
+                )
+
+                // && trigger key
+                actionKey(
+                    content: AnyView(
+                        Text("&&")
+                            .font(.system(size: 15, weight: .medium))
+                    ),
+                    width: 42,
                     action: {
                         if isComposing {
-                            handleComposeDelete()
+                            handleComposeInput("&&")
                         } else {
-                            onDeleteBackward()
+                            onInsertText("&&")
                         }
                     }
                 )
-                .frame(width: 42)
-            }
 
-            // Row 4: globe/next, &&, space, return
-            HStack(spacing: 5) {
-                specialKey(
-                    systemImage: "globe",
-                    action: onAdvanceToNextInputMode
-                )
-                .frame(width: 42)
+                // Space bar — takes the lion's share of remaining width
+                spaceBar
+                    .layoutPriority(1)
 
-                letterKey("&&")
-                    .frame(width: 48)
-
-                keyButton(
-                    title: "space",
+                // Return — fixed width to match Apple keyboard (~88pt)
+                actionKey(
+                    content: AnyView(
+                        Text("return")
+                            .font(.system(size: 15, weight: .medium))
+                    ),
+                    width: 88,
+                    isHighlighted: isComposing && composeFocus == .body,
                     action: {
                         if isComposing {
-                            handleComposeInput(" ")
-                        } else {
-                            onInsertText(" ")
-                        }
-                    },
-                    backgroundColor: keyColor(isSpecial: false)
-                )
-
-                specialKey(
-                    systemImage: "arrow.turn.down.left",
-                    action: {
-                        if isComposing {
-                            // Saving snippet or changing field
                             if composeFocus == .trigger {
                                 composeFocus = .body
                             } else {
@@ -143,91 +175,319 @@ struct KeyboardView: View {
                         } else {
                             onInsertText("\n")
                         }
-                    },
-                    isAccent: true
+                    }
                 )
-                .frame(width: 58)
             }
-        }
-    }
-
-    // MARK: - Subviews & Layouts
-
-    private func keyRow(_ keys: [String]) -> some View {
-        HStack(spacing: 5) {
-            ForEach(keys, id: \.self) { key in
-                letterKey(key)
             }
+            .simultaneousGesture(swipeTypingGesture(gridSize: geometry.size))
         }
+        .frame(height: Metrics.keyHeight * 4 + Metrics.rowSpacing * 3)
     }
 
-    private func letterKey(_ char: String) -> some View {
-        let title = isShifted ? char.uppercased() : char
-        return keyButton(
-            title: title,
-            action: {
-                if isComposing {
-                    handleComposeInput(title)
-                } else {
-                    onInsertText(title)
-                }
-            },
-            backgroundColor: keyColor(isSpecial: false)
-        )
-    }
+    // MARK: - Key Components
 
-    private func keyButton(
-        title: String,
-        action: @escaping () -> Void,
-        backgroundColor: Color
-    ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 19, weight: .regular, design: .rounded))
+    /// Standard letter key — white in light mode, dark gray in dark mode.
+    private func characterKey(_ char: String) -> some View {
+        let label = isShifted ? char.uppercased() : char
+        return Button {
+            KeyboardHaptics.keyPress()
+            if isComposing {
+                handleComposeInput(label)
+            } else {
+                onInsertText(label)
+            }
+        } label: {
+            Text(label)
+                .font(.system(size: 22.5, weight: .light))
                 .foregroundColor(textColor)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .frame(height: Metrics.keyHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(backgroundColor)
-                        .shadow(color: Color.black.opacity(0.12), radius: 0.5, x: 0, y: 1)
+                    RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                        .fill(letterKeyColor)
+                        .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
                 )
         }
-        .buttonStyle(KeyboardKeyButtonStyle())
+        .buttonStyle(AppleKeyButtonStyle())
     }
 
-    private func specialKey(
-        systemImage: String,
-        action: @escaping () -> Void,
-        isAccent: Bool = false
+    /// Row of equally-spaced letter keys.
+    private func letterRow(_ keys: [String]) -> some View {
+        HStack(spacing: Metrics.keySpacing) {
+            ForEach(keys, id: \.self) { key in
+                characterKey(key)
+            }
+        }
+    }
+
+    /// Action key — darker background (shift, delete, globe, return, etc.).
+    private func actionKey(
+        content: AnyView,
+        width: CGFloat?,
+        isHighlighted: Bool = false,
+        action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(isAccent ? .white : textColor)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Button(action: {
+            KeyboardHaptics.specialKeyPress()
+            action()
+        }) {
+            content
+                .foregroundColor(isHighlighted ? .white : textColor)
+                .frame(height: Metrics.keyHeight)
+                .frame(width: width)
+                .frame(maxWidth: width == nil ? .infinity : nil)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isAccent ? UnifiedDesignSystem.Colors.ember : keyColor(isSpecial: true))
-                        .shadow(color: Color.black.opacity(0.12), radius: 0.5, x: 0, y: 1)
+                    RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                        .fill(isHighlighted ? Color.accentColor : specialKeyBackground)
+                        .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
                 )
         }
-        .buttonStyle(KeyboardKeyButtonStyle())
+        .buttonStyle(AppleKeyButtonStyle())
     }
 
-    // MARK: - Inline Composer Overlay
+    /// Space bar — wider, letter-key color.
+    private var spaceBar: some View {
+        Button {
+            KeyboardHaptics.keyPress()
+            if isComposing {
+                handleComposeInput(" ")
+            } else {
+                onInsertText(" ")
+            }
+        } label: {
+            Text("space")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(textColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: Metrics.keyHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                        .fill(letterKeyColor)
+                        .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
+                )
+        }
+        .buttonStyle(AppleKeyButtonStyle())
+    }
+
+    // MARK: - Repeat-Press Delete Key
+
+    /// Delete key that supports press-and-hold with accelerating repeat rate.
+    /// Starts at 150ms/delete, accelerates to 20ms/delete over ~30 deletions.
+    private var repeatDeleteKey: some View {
+        Image(systemName: "delete.left")
+            .font(.system(size: 16, weight: .medium))
+            .foregroundColor(textColor)
+            .frame(width: 42, height: Metrics.keyHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                    .fill(specialKeyBackground)
+                    .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous))
+            .brightness(isDeletePressed ? -0.1 : 0)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !isDeletePressed else { return }
+                        isDeletePressed = true
+                        performDelete()
+                        startRepeatDelete()
+                    }
+                    .onEnded { _ in
+                        isDeletePressed = false
+                        stopRepeatDelete()
+                    }
+            )
+    }
+
+    private func performDelete() {
+        KeyboardHaptics.specialKeyPress()
+        if isComposing {
+            handleComposeDelete()
+        } else {
+            onDeleteBackward()
+        }
+    }
+
+    private func startRepeatDelete() {
+        deleteCount = 0
+        // Initial delay before repeating starts (like Apple: ~0.4s)
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [self] _ in
+            scheduleNextDelete()
+        }
+    }
+
+    private func scheduleNextDelete() {
+        guard isDeletePressed else { return }
+        deleteCount += 1
+        performDelete()
+
+        // Accelerating rate
+        let interval: TimeInterval
+        switch deleteCount {
+        case 0..<5:   interval = 0.12
+        case 5..<15:  interval = 0.07
+        case 15..<30: interval = 0.04
+        default:      interval = 0.02  // Max speed
+        }
+
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [self] _ in
+            scheduleNextDelete()
+        }
+    }
+
+    private func stopRepeatDelete() {
+        deleteTimer?.invalidate()
+        deleteTimer = nil
+        deleteCount = 0
+    }
+
+    // MARK: - Swipe Typing Gesture
+
+    /// Creates a drag gesture that tracks finger movement across the keyboard
+    /// grid and resolves the swipe path into a word when released.
+    private func swipeTypingGesture(gridSize: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                if !isSwiping {
+                    isSwiping = true
+                    swipeEngine.beginSwipe()
+                }
+                swipeEngine.trackPoint(value.location, in: gridSize)
+            }
+            .onEnded { _ in
+                guard isSwiping else { return }
+                isSwiping = false
+                let results = swipeEngine.resolve()
+                if let bestMatch = results.first {
+                    KeyboardHaptics.selectionPress()
+                    onInsertText(bestMatch + " ")
+                }
+            }
+    }
+
+
+    // MARK: - Snippet Bar
+
+    private var snippetBar: some View {
+        HStack(spacing: 0) {
+            // BurnBar logo
+            Image("KeyboardLogo")
+                .resizable()
+                .renderingMode(.template)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 20, height: 20)
+                .foregroundColor(UnifiedDesignSystem.Colors.ember)
+                .padding(.horizontal, 10)
+
+            Divider()
+                .frame(height: 22)
+                .background(separatorColor)
+
+            // Scrollable snippet pills
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(snippets) { snippet in
+                        Button {
+                            KeyboardHaptics.selectionPress()
+                            onInsertText(snippet.body)
+                            onSnippetUsed(snippet)
+                        } label: {
+                            HStack(spacing: 3) {
+                                Text("&&")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(UnifiedDesignSystem.Colors.ember)
+                                Text(snippet.trigger)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(textColor)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(snippetChipBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(separatorColor, lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Add snippet button
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            composeTrigger = "&&"
+                            composeBody = ""
+                            composeFocus = .trigger
+                            composeError = nil
+                            isComposing = true
+                        }
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                Circle()
+                                    .fill(UnifiedDesignSystem.Colors.ember)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 2)
+                }
+                .padding(.horizontal, 8)
+            }
+        }
+        .background(snippetBarBackground)
+    }
+
+    // MARK: - Autocorrect Suggestion Bar
+
+    /// Native Apple-style autocorrect bar with up to 3 suggestions
+    /// separated by thin dividers.
+    private var suggestionBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
+                if index > 0 {
+                    Divider()
+                        .frame(height: 24)
+                        .background(separatorColor)
+                }
+
+                Button {
+                    KeyboardHaptics.selectionPress()
+                    onSuggestionSelected(suggestion)
+                } label: {
+                    Text(suggestion)
+                        .font(.system(size: 15, weight: index == 0 ? .semibold : .regular))
+                        .foregroundColor(textColor)
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(snippetBarBackground)
+    }
+
+    // MARK: - Compose Overlay
 
     private var composeOverlay: some View {
         VStack(spacing: 8) {
+            // Header
             HStack {
                 Text("New Snippet")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(textColor)
 
                 Spacer()
 
                 if let composeError {
                     Text(composeError)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(UnifiedDesignSystem.Colors.error)
                         .lineLimit(1)
                 }
@@ -235,114 +495,161 @@ struct KeyboardView: View {
             .padding(.horizontal, 8)
             .padding(.top, 2)
 
-            // Dynamic Form fields
+            // Fields
             HStack(spacing: 8) {
-                // Trigger Field
-                Button { composeFocus = .trigger } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("TRIGGER")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(UnifiedDesignSystem.Colors.textMuted)
-                        Text(composeTrigger.isEmpty ? "&&" : composeTrigger)
-                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                            .foregroundColor(composeTrigger.isEmpty ? .gray : textColor)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .frame(width: 90, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                composeFocus == .trigger ? UnifiedDesignSystem.Colors.ember : Color.clear,
-                                lineWidth: 1.5
-                            )
-                            .background(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.4))
-                    )
-                    .cornerRadius(8)
+                composeField(
+                    label: "TRIGGER",
+                    value: composeTrigger.isEmpty ? "&&" : composeTrigger,
+                    isEmpty: composeTrigger.isEmpty,
+                    isFocused: composeFocus == .trigger,
+                    width: 90
+                ) {
+                    composeFocus = .trigger
                 }
-                .buttonStyle(.plain)
 
-                // Body Field
-                Button { composeFocus = .body } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("EXPANDS TO")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(UnifiedDesignSystem.Colors.textMuted)
-                        Text(composeBody.isEmpty ? "Enter expansion text..." : composeBody)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(composeBody.isEmpty ? .gray : textColor)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                composeFocus == .body ? UnifiedDesignSystem.Colors.ember : Color.clear,
-                                lineWidth: 1.5
-                            )
-                            .background(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.4))
-                    )
-                    .cornerRadius(8)
+                composeField(
+                    label: "EXPANDS TO",
+                    value: composeBody.isEmpty ? "Enter text…" : composeBody,
+                    isEmpty: composeBody.isEmpty,
+                    isFocused: composeFocus == .body,
+                    width: nil
+                ) {
+                    composeFocus = .body
                 }
-                .buttonStyle(.plain)
             }
 
-            // Keyboard and Actions
-            ZStack(alignment: .bottom) {
-                keyboardGrid
-                    .opacity(0.9)
+            // Reduced keyboard (3 letter rows) + dedicated action row
+            VStack(spacing: Metrics.rowSpacing) {
+                // Row 1: Q W E R T Y U I O P
+                letterRow(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])
 
-                // Inline footer buttons overlaying row 4 slightly
-                HStack(spacing: 8) {
+                // Row 2: A S D F G H J K L
+                letterRow(["a", "s", "d", "f", "g", "h", "j", "k", "l"])
+                    .padding(.horizontal, 18)
+
+                // Row 3: Shift + Z X C V B N M + Delete
+                HStack(spacing: Metrics.keySpacing) {
+                    actionKey(
+                        content: AnyView(
+                            Image(systemName: isShifted ? "shift.fill" : "shift")
+                                .font(.system(size: 16, weight: .medium))
+                        ),
+                        width: 42,
+                        isHighlighted: isShifted,
+                        action: { isShifted.toggle() }
+                    )
+
+                    ForEach(["z", "x", "c", "v", "b", "n", "m"], id: \.self) { char in
+                        characterKey(char)
+                    }
+
+                    actionKey(
+                        content: AnyView(
+                            Image(systemName: "delete.left")
+                                .font(.system(size: 16, weight: .medium))
+                        ),
+                        width: 42,
+                        action: { handleComposeDelete() }
+                    )
+                }
+
+                // Row 4: Cancel + Space + Save (replaces bottom row)
+                HStack(spacing: Metrics.keySpacing) {
                     Button {
-                        withAnimation(UnifiedDesignSystem.Animation.standard) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             isComposing = false
                         }
                     } label: {
                         Text("Cancel")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(textColor)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .frame(width: 80)
+                            .frame(height: Metrics.keyHeight)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(keyColor(isSpecial: true))
+                                RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                                    .fill(specialKeyBackground)
+                                    .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AppleKeyButtonStyle())
+
+                    // Space bar for typing
+                    Button {
+                        handleComposeInput(" ")
+                    } label: {
+                        Text("space")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(textColor)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: Metrics.keyHeight)
+                            .background(
+                                RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                                    .fill(letterKeyColor)
+                                    .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
+                            )
+                    }
+                    .buttonStyle(AppleKeyButtonStyle())
+                    .layoutPriority(1)
 
                     Button(action: handleSaveSnippet) {
                         Text("Save")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .frame(width: 80)
+                            .frame(height: Metrics.keyHeight)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [UnifiedDesignSystem.Colors.ember, UnifiedDesignSystem.Colors.blaze],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
+                                RoundedRectangle(cornerRadius: Metrics.keyCornerRadius, style: .continuous)
+                                    .fill(UnifiedDesignSystem.Colors.ember)
+                                    .shadow(color: keyShadowColor, radius: 0, x: 0, y: 1)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AppleKeyButtonStyle())
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 2)
             }
         }
+    }
+
+    private func composeField(
+        label: String,
+        value: String,
+        isEmpty: Bool,
+        isFocused: Bool,
+        width: CGFloat?,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(UnifiedDesignSystem.Colors.textMuted)
+                Text(value)
+                    .font(.system(size: 13, weight: isEmpty ? .regular : .medium, design: label == "TRIGGER" ? .monospaced : .default))
+                    .foregroundColor(isEmpty ? .gray : textColor)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(width: width, alignment: .leading)
+            .frame(maxWidth: width == nil ? .infinity : nil)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(composeFieldBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        isFocused ? UnifiedDesignSystem.Colors.ember : Color.clear,
+                        lineWidth: 1.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Handlers
 
     private func handleComposeInput(_ text: String) {
         if composeFocus == .trigger {
-            // Keep trigger formatted starting with &&
             if composeTrigger == "&&" && text == "&&" { return }
             composeTrigger += text
         } else {
@@ -353,7 +660,7 @@ struct KeyboardView: View {
 
     private func handleComposeDelete() {
         if composeFocus == .trigger {
-            guard composeTrigger.count > 2 else { return } // Keep leading &&
+            guard composeTrigger.count > 2 else { return }
             composeTrigger.removeLast()
         } else {
             guard !composeBody.isEmpty else { return }
@@ -371,7 +678,7 @@ struct KeyboardView: View {
         switch result {
         case .success:
             onReload()
-            withAnimation(UnifiedDesignSystem.Animation.standard) {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 isComposing = false
             }
         case .failure(let error):
@@ -379,136 +686,73 @@ struct KeyboardView: View {
         }
     }
 
-    // MARK: - Color adaptors
+    // MARK: - Native iOS Keyboard Colors
 
+    /// Main keyboard background — matches iOS system keyboard exactly.
     private var keyboardBackground: Color {
         colorScheme == .dark
-            ? Color(red: 0.08, green: 0.08, blue: 0.10) // Rich dark charcoal
-            : Color(red: 0.94, green: 0.95, blue: 0.96) // Apple light keyboard gray
+            ? Color(red: 0.11, green: 0.11, blue: 0.12)
+            : Color(red: 0.82, green: 0.84, blue: 0.86)
     }
 
-    private var blurBackground: Color {
+    /// Letter key fill — white in light, medium gray in dark.
+    private var letterKeyColor: Color {
         colorScheme == .dark
-            ? Color.black.opacity(0.24)
-            : Color.white.opacity(0.6)
+            ? Color(red: 0.40, green: 0.40, blue: 0.43)
+            : Color.white
     }
 
-    private func keyColor(isSpecial: Bool) -> Color {
-        if colorScheme == .dark {
-            return isSpecial
-                ? Color(red: 0.16, green: 0.16, blue: 0.19) // Dark special key
-                : Color(red: 0.26, green: 0.26, blue: 0.31) // Dark letter key
-        } else {
-            return isSpecial
-                ? Color(red: 0.81, green: 0.83, blue: 0.86) // Light special key
-                : Color.white // Light letter key
-        }
+    /// Special key fill — darker gray in both modes.
+    private var specialKeyBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.26, green: 0.26, blue: 0.28)
+            : Color(red: 0.68, green: 0.71, blue: 0.74)
     }
 
-    private var textColor: Color {
-        colorScheme == .dark ? .white : .black
-    }
-}
-
-// MARK: - Horizontal Snippet Bar
-
-struct HorizontalSnippetBar: View {
-    let snippets: [TextExpansionSnippet]
-    let onInsert: (TextExpansionSnippet) -> Void
-    let onAddSnippet: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // Brand Logo on the left
-            Image("KeyboardLogo")
-                .resizable()
-                .renderingMode(.template)
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 22, height: 22)
-                .foregroundColor(UnifiedDesignSystem.Colors.ember)
-                .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(colorScheme == .dark ? 0.8 : 0.2), radius: 4)
-                .padding(.horizontal, 10)
-
-            Divider()
-                .frame(height: 24)
-                .background(UnifiedDesignSystem.Colors.border.opacity(0.3))
-
-            // Horizontally scrollable snippets
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(snippets) { snippet in
-                        Button {
-                            onInsert(snippet)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("&&")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(UnifiedDesignSystem.Colors.ember)
-                                Text(snippet.trigger)
-                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                    .foregroundColor(textColor)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                Capsule()
-                                    .stroke(
-                                        UnifiedDesignSystem.Colors.ember.opacity(0.35),
-                                        lineWidth: 1
-                                    )
-                                    .background(Capsule().fill(chipBackground))
-                                    .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(colorScheme == .dark ? 0.12 : 0), radius: 2)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Plus button at the end
-                    Button(action: onAddSnippet) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 26, height: 26)
-                            .background(
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [UnifiedDesignSystem.Colors.ember, UnifiedDesignSystem.Colors.blaze],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(0.4), radius: 3)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 2)
-                }
-                .padding(.horizontal, 8)
-            }
-        }
+    /// Key bottom shadow — subtle 1pt drop matching native keys.
+    private var keyShadowColor: Color {
+        colorScheme == .dark
+            ? Color.black.opacity(0.5)
+            : Color.black.opacity(0.3)
     }
 
     private var textColor: Color {
         colorScheme == .dark ? .white : .black
     }
 
-    private var chipBackground: Color {
+    private var separatorColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.15, green: 0.15, blue: 0.18).opacity(0.8)
+            ? Color.white.opacity(0.12)
+            : Color.black.opacity(0.12)
+    }
+
+    private var snippetBarBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.13, green: 0.13, blue: 0.14)
+            : Color(red: 0.87, green: 0.88, blue: 0.90)
+    }
+
+    private var snippetChipBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.22, green: 0.22, blue: 0.24)
             : Color.white.opacity(0.9)
     }
+
+    private var composeFieldBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.18, green: 0.18, blue: 0.20)
+            : Color.white.opacity(0.7)
+    }
 }
 
-// MARK: - Key Button Style
-
-struct KeyboardKeyButtonStyle: ButtonStyle {
+// MARK: - Apple-Native Key Button Style
+/// Mimics the native iOS keyboard press behavior: slight brightness shift,
+/// no scale transform, instant feedback.
+struct AppleKeyButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
-            .animation(.interactiveSpring(response: 0.15, dampingFraction: 0.86), value: configuration.isPressed)
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .brightness(configuration.isPressed ? -0.1 : 0)
+            .animation(.easeOut(duration: 0.05), value: configuration.isPressed)
     }
 }

@@ -57,8 +57,10 @@ Locked mirror admission is intentionally two-phase:
 5. The password field sends `remote_unlock.credential`, HPKE-sealed to the Mac's
    advertised recipient key and signed by the same trusted phone-control key.
 6. The Mac validates signature freshness, counter monotonicity, active session
-   binding, recipient key id, credential TTL, and lock-state readiness before the
-   privileged local agent types the credential into loginwindow.
+   binding, recipient key id, credential TTL, and lock-state readiness before it
+   sends the credential through the local Apple Screen Sharing / ARD loopback
+   keyboard lane. If that system lane is unavailable, the direct-download
+   remote-access agent remains a local fallback.
 
 The Mac also attaches `remoteUnlockCapabilities` and `remoteUnlockState` to
 mirror acks and presence heartbeats. Unsupported peers ignore these fields.
@@ -99,7 +101,8 @@ The Mac readiness policy fails closed until all certification probes pass:
 
 - direct-download build, not MAS;
 - remote-access daemon installed;
-- Apple Screen Sharing / Remote Management available;
+- Apple Screen Sharing / Remote Management available and listening on
+  `127.0.0.1:5900`;
 - loopback firewall guard active;
 - generated VNC credential stored in System Keychain;
 - HPKE recipient key ID and public key available from the daemon;
@@ -168,6 +171,10 @@ This change lands the permanent contract and fail-closed runtime seams:
   `remote_unlock.credential` lane directly. It does not run normal phone-control
   probe/classify traffic first, so a stale presence heartbeat cannot stall or
   reset the password flow;
+- locked credential entry now uses Apple Screen Sharing / ARD security type 30
+  over `127.0.0.1:5900` before falling back to the local helper. This is the
+  same system-level lane that can see and control `loginwindow`, unlike normal
+  user-session ScreenCaptureKit/CGEvent input;
 - iPhone, iPad, and Android support both typed-per-unlock submission and
   optional one-tap saved credential submission, guarded by local device
   authentication and encoded on the wire as `credentialKind=saved_password`;
@@ -177,13 +184,15 @@ This change lands the permanent contract and fail-closed runtime seams:
 - tests for policy, certification report validation, Swift relay round-trip, and
   Android relay round-trip.
 
-The direct-download remote-access daemon owns the privileged locked-screen
-credential-entry bridge. Runtime readiness and certification are deliberately
+Apple Screen Sharing owns the primary privileged locked-screen credential-entry
+bridge. The direct-download remote-access daemon remains installed as a local
+health/wake/fallback lane. Runtime readiness and certification are deliberately
 separate:
 
 - Runtime ready: direct-download Mac app, healthy local remote-access agent,
-  Apple Screen Sharing availability, and HPKE recipient key material. Mobile
-  apps may present password entry in this state.
+  a live Apple Screen Sharing / Remote Management listener on `127.0.0.1:5900`,
+  and HPKE recipient key material. Mobile apps may present password entry in
+  this state.
 - Certified: a real locked-screen round trip has succeeded on this hardware and
   the Mac recorded a fresh `RemoteUnlockCertification-v1.json` proof. Future
   sessions advertise `certified`; stale or missing proof does not deadlock the
@@ -194,6 +203,21 @@ Wire compatibility note: current mobile clients show the password field when
 still means a durable hardware proof exists; runtime-ready-but-not-yet-certified
 Macs may accept the first real locked unlock and record certification afterward.
 
+## Locked-Screen Input Backends
+
+OpenBurnBar prefers Apple Screen Sharing / Remote Management on loopback for
+locked-screen input. The Mac app authenticates locally to the system RFB service
+with ARD security type 30, wakes/reveals the selected login password lane with
+non-printing input, types the validated credential, and submits it. This avoids
+the brittle failure mode where a user-session CGEvent helper wakes the lock
+screen but loginwindow ignores the password keystrokes.
+
+The product direction for account picker support is the same backend: relay the
+system RFB framebuffer and pointer/keyboard events while locked, then switch
+back to normal ScreenCaptureKit after unlock. That is the path that lets a
+viewer choose a different account at loginwindow; normal ScreenCaptureKit cannot
+capture outside the logged-in user session.
+
 ## Local Direct-Download Agent
 
 Install or repair the local privileged credential-entry agent with:
@@ -201,6 +225,12 @@ Install or repair the local privileged credential-entry agent with:
 ```bash
 ./scripts/install-remote-access-agent.sh
 ```
+
+Keep the direct-download Mac app running as the Mercury relay host. The
+Settings → Appearance → Launch at Login toggle registers the app with macOS
+login items; the fallback privileged helper can type credentials only after the
+Mac app has received and validated a Remote Unlock request from the
+phone/tablet.
 
 The installer builds `OpenBurnBarRemoteAccessAgent`, installs it as
 `/Library/Application Support/OpenBurnBar/RemoteAccess/openburnbar-remote-access-agent`,
@@ -213,7 +243,29 @@ before handling a request. It accepts health checks and the single
 validated a human Remote Unlock credential. Before typing, the agent explicitly
 declares remote user activity, holds a short no-display-sleep assertion, and
 waits for loginwindow to redraw when the display was asleep so the first
-synthetic key press is not consumed merely waking the display. The agent does
+credential key press is not consumed merely waking the display. The worker does
+not press Return before typing: on the real lock screen Return submits the
+currently focused password field, so a pre-submit focus probe can send an empty
+password first and make the login window flicker before the real credential
+arrives. Touch ID-first lock screens may also hide the password input behind a
+"Touch ID or type password" prompt, so the worker first clicks the selected
+login/password area and sends a safe backspace/space/backspace reveal sequence;
+that sequence opens the password lane without submitting an empty credential.
+The credential worker uses the session-scoped CoreGraphics event source and
+session event tap inside the loginwindow bootstrap; macOS 26.5 can deadlock
+before posting a key when the worker uses the HID-system event source from that
+bootstrap, and the locked login window ignores root-owned keystroke workers even
+when the local helper request itself succeeds. The root LaunchDaemon writes the
+credential into a short-lived `0600` file under `/var/run`, passes only that
+random path to the worker, and deletes the file from both the daemon and worker
+sides so credential delivery does not depend on `launchctl` stdin inheritance.
+It enters the loginwindow bootstrap with `launchctl bsexec`, then the worker
+explicitly drops to the logged-in console uid/gid before posting password
+events. The launch is performed with `posix_spawn` and a hard `waitpid` timeout;
+Foundation `Process` can leave the daemon-side request waiting even though
+direct probes complete. The agent also ignores `SIGPIPE`, bounds
+per-client socket I/O, and handles clients on separate threads so stale or
+abandoned requests cannot make the helper appear unreachable. The agent does
 not log the credential.
 
 Verify the installed agent with:

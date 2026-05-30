@@ -1,9 +1,79 @@
 import XCTest
+#if canImport(ScreenCaptureKit)
+import ScreenCaptureKit
+#endif
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
 @MainActor
 final class MediaSessionCoordinatorTests: XCTestCase {
+    #if canImport(ScreenCaptureKit)
+    func testIndependentWindowCaptureScalesToFillConfiguredCanvas() {
+        let configuration = ScreenCapturePipeline.Configuration(windowID: 42)
+        let streamConfiguration = ScreenCapturePipeline.makeStreamConfiguration(
+            for: configuration,
+            isIndependentWindowCapture: true
+        )
+
+        XCTAssertTrue(streamConfiguration.scalesToFit)
+        XCTAssertEqual(streamConfiguration.width, 1920)
+        XCTAssertEqual(streamConfiguration.height, 1080)
+    }
+
+    func testDisplayCaptureDoesNotUpscaleToFillConfiguredCanvas() {
+        let configuration = ScreenCapturePipeline.Configuration(displayId: "main")
+        let streamConfiguration = ScreenCapturePipeline.makeStreamConfiguration(
+            for: configuration,
+            isIndependentWindowCapture: false
+        )
+
+        XCTAssertFalse(streamConfiguration.scalesToFit)
+        XCTAssertEqual(streamConfiguration.width, 1920)
+        XCTAssertEqual(streamConfiguration.height, 1080)
+    }
+
+    func testDisplayWindowFallbackCropsSourceToTerminalWindow() {
+        let sourceRect = CGRect(x: 120, y: 80, width: 900, height: 620)
+        let configuration = ScreenCapturePipeline.Configuration(windowID: 42)
+        let streamConfiguration = ScreenCapturePipeline.makeStreamConfiguration(
+            for: configuration,
+            isIndependentWindowCapture: false,
+            sourceRect: sourceRect
+        )
+
+        XCTAssertFalse(streamConfiguration.scalesToFit)
+        XCTAssertEqual(streamConfiguration.sourceRect, sourceRect)
+    }
+
+    func testStaleWindowFallbackDoesNotEnableWindowScaleToFit() {
+        let configuration = ScreenCapturePipeline.Configuration(windowID: 42)
+        let streamConfiguration = ScreenCapturePipeline.makeStreamConfiguration(
+            for: configuration,
+            isIndependentWindowCapture: false
+        )
+
+        XCTAssertFalse(streamConfiguration.scalesToFit)
+    }
+
+    func testSourceRectClampsWindowFrameToDisplayCoordinates() {
+        let rect = ScreenCapturePipeline.sourceRect(
+            forWindowFrame: CGRect(x: -80, y: 120, width: 620, height: 460),
+            displayFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+        )
+
+        XCTAssertEqual(rect, CGRect(x: 0, y: 120, width: 540, height: 460))
+    }
+
+    func testSourceRectReturnsNilForOffDisplayWindow() {
+        let rect = ScreenCapturePipeline.sourceRect(
+            forWindowFrame: CGRect(x: 1600, y: 120, width: 620, height: 460),
+            displayFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+        )
+
+        XCTAssertNil(rect)
+    }
+    #endif
+
     func testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry() async throws {
         var starts = 0
         let coordinator = MediaSessionCoordinator(

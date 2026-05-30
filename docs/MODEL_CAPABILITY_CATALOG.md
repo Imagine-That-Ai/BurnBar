@@ -39,3 +39,43 @@ npm --prefix website run model-capabilities:check
 When adding a new provider route, only mark a model as accepting images, audio, video, PDFs,
 or files after the capability row has a source reference and the route preserves the matching
 OpenAI-compatible content part through the gateway.
+
+## Live model discovery
+
+OpenBurnBar automatically discovers available models from each routing provider's live catalog
+at runtime, supplementing the static `catalog.json` entries with real-time availability data.
+
+### Discovery strategies
+
+| Provider family | Method | Endpoint / Command | Auth |
+|---|---|---|---|
+| OpenAI-compatible | `GET /models` | `{baseURL}/models` | `Authorization: Bearer {key}` |
+| Ollama Cloud | `GET /search?c=cloud` | `https://ollama.com/search?c=cloud` | None |
+| Anthropic | `GET /v1/models` | `{baseURL}/models` | Console: `x-api-key`; OAuth: `Authorization: Bearer` |
+| Factory Droid | CLI discovery | `droid exec --help` | `FACTORY_API_KEY` env var |
+
+### Anthropic discovery details
+
+- Anthropic's `/v1/models` endpoint returns model objects with `id`, `display_name`, `type`, and capability fields.
+- The endpoint paginates with `has_more` / `last_id` / `after_id` cursors (default limit: 20). OpenBurnBar fetches all pages.
+- Dated snapshot IDs (e.g. `claude-opus-4-8-20260514`) are normalized to their family ID (`claude-opus-4-8`) so the catalog's matchers and aliases can resolve them.
+- Console API keys (`sk-ant-api*`) use the `x-api-key` header; OAuth tokens (`sk-ant-oat*`) use `Authorization: Bearer`.
+
+### Factory Droid discovery details
+
+- Runs `droid exec --help` via the injectable `FactoryDroidProcessRunning` protocol (defaults to `FactoryDroidSystemProcessRunner`).
+- Output is parsed by `CLIRuntimeModelCatalog.parseDroidExecHelp`, which extracts model IDs and display names from the `Available Models:` and `Custom Models:` sections.
+- Exit code 0 is required for authoritative discovery; non-zero exits produce a non-authoritative result that doesn't block routing.
+
+### Dated ID normalization
+
+`BurnBarLiveModelCatalog.normalizeAnthropicModelID(_:)` strips trailing `-YYYYMMDD` suffixes from Anthropic model IDs:
+
+```
+claude-opus-4-8-20260514 → claude-opus-4-8
+claude-sonnet-4-6-20250514 → claude-sonnet-4-6
+claude-3-5-sonnet-20241022 → claude-3-5-sonnet
+claude-opus-4-8 → claude-opus-4-8 (unchanged)
+```
+
+This ensures that live-discovered models match against catalog families regardless of whether Anthropic returns dated or undated IDs.

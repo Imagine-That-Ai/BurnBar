@@ -180,6 +180,14 @@ class SettingsSearchEngineTest {
     }
 
     @Test
+    fun manifestFindsTranscriptCacheSetting() {
+        val result = SettingsSearchEngine.search("transcript cache", SettingsManifest.all).first()
+        assertEquals("root.transcriptCache", result.id)
+        assertEquals(SettingsPageRoute.TRANSCRIPT_CACHE, result.pageRoute)
+        assertEquals(SettingsAnchor.TRANSCRIPT_CACHE, result.anchorId)
+    }
+
+    @Test
     fun manifestFindsEveryProviderWithExactProviderAnchor() {
         for (provider in AgentProvider.entries) {
             val expectedId = "root.provider.${provider.key}"

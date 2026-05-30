@@ -20,6 +20,11 @@ XCODE_DESTINATION="${XCODE_DESTINATION:-generic/platform=iOS}"
 
 cd "$(dirname "$0")/.."
 
+if [[ -x "tools/qa/inject-app-check-debug-token.sh" ]]; then
+  echo "▶ Ensuring local App Check debug token is stamped…"
+  tools/qa/inject-app-check-debug-token.sh >/dev/null
+fi
+
 echo "▶ Building ${SCHEME} for ${XCODE_DESTINATION}…"
 xcodebuild \
   -project OpenBurnBar.xcodeproj \

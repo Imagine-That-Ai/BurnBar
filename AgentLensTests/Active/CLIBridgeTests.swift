@@ -1,4 +1,5 @@
 import XCTest
+import CoreGraphics
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -72,6 +73,43 @@ final class CLIBridgeTests: XCTestCase {
         )
         XCTAssertEqual(agy?.arguments, ["--add-dir", "/tmp/ws"])
         XCTAssertFalse(agy?.arguments.contains("--print") ?? true)
+    }
+
+    func test_resolvedTerminalWindowIDDetectsRetitledExistingTerminalWindow() {
+        let reused = terminalWindow(id: 42, title: "OBBCLI-ABCD1234 - grok")
+
+        let resolved = InteractiveTerminalLauncher.resolvedTerminalWindowID(
+            from: [reused],
+            excluding: [42],
+            existingTitlesByID: [42: "zsh"],
+            titleToken: "missing-token",
+            allowFrontmostFallback: false
+        )
+
+        XCTAssertEqual(resolved, 42)
+    }
+
+    func test_resolvedTerminalWindowIDFallsBackToFrontmostTerminalAfterPolling() {
+        let frontmost = terminalWindow(id: 7, title: "grok")
+
+        let resolved = InteractiveTerminalLauncher.resolvedTerminalWindowID(
+            from: [frontmost],
+            excluding: [7],
+            existingTitlesByID: [7: "grok"],
+            titleToken: "missing-token",
+            allowFrontmostFallback: true
+        )
+
+        XCTAssertEqual(resolved, 7)
+    }
+
+    private func terminalWindow(id: CGWindowID, title: String?) -> ScreenCapturePipeline.WindowDescriptor {
+        ScreenCapturePipeline.WindowDescriptor(
+            windowID: id,
+            title: title,
+            appName: "Terminal",
+            bundleIdentifier: InteractiveTerminalLauncher.terminalBundleIdentifier
+        )
     }
 
     // MARK: - Executable Path Parsing Tests

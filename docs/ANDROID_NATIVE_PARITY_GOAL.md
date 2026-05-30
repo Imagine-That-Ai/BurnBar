@@ -43,7 +43,8 @@ The visual identity is "Aurora" — warm gradient-driven glass-morphism. Key des
 
 ## Streams
 - Chip rail (sessions/projects/activity segments) with AuroraChipRail
-- Searchable list with filters
+- Searchable list with filters, hosted encrypted index lookup, and faceted conversation cockpit pagination
+- Opened cloud transcripts are cached as encrypted blob envelopes under the Android cache directory, governed by Settings → Transcript Cache (default 250 MB, usage readout, clear cache)
 - Each segment shows filtered TokenUsage items with model, provider, cost, timestamp
 - SearchDebounced with provider/model/project/session/device filtering
 
@@ -71,6 +72,7 @@ The visual identity is "Aurora" — warm gradient-driven glass-morphism. Key des
 - IdentityHero card with user avatar, display name, email
 - ConnectedDevicesRow
 - SettingsHubView: account management, sync health, credential transfer
+- Transcript Cache settings for the encrypted Streams cache size, usage, and clearing
 - CloudStoreView for subscription management with StoreKit
 - iPad-specific settings views
 

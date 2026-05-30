@@ -2,11 +2,13 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.openburnbar.BuildConfig
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.firebase.ConversationFacetRow
 import com.openburnbar.data.firebase.ConversationQueryAggregates
+import com.openburnbar.data.firebase.ConversationQueryResponse
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.AgentProvider
 import kotlinx.coroutines.CancellationException
@@ -198,43 +200,46 @@ class ConversationCockpitStore(
         val token = queryToken
         viewModelScope.launch {
             try {
+                if (!searchService.prepareCallableAuth()) {
+                    if (reset) {
+                        _rows.value = emptyList()
+                        _aggregates.value = null
+                    }
+                    _vaultLocked.value = false
+                    _hasMore.value = false
+                    _error.value = "Sign in to load cloud conversations."
+                    return@launch
+                }
+
                 if (vaultKey == null) {
                     vaultKey = runCatching { searchService.unlockVaultKeyOrNull() }.getOrNull()
                 }
                 if (token != queryToken) return@launch
                 _vaultLocked.value = vaultKey == null
 
-                val response = functions.queryConversations(
-                    providers = _selectedProviders.value.toList(),
-                    models = _selectedModel.value?.let { listOf(it) } ?: emptyList(),
-                    projectName = _projectQuery.value.ifBlank { null },
-                    dateFromIso = _dateFromMs.value?.isoString(),
-                    dateToIso = _dateToMs.value?.isoString(),
-                    sort = _sortField.value.field,
-                    direction = _sortDirection.value.token,
-                    limit = PAGE_SIZE,
-                    cursorDocId = if (reset) null else nextCursor,
-                    includeAggregates = reset
-                )
+                val response = queryConversationsPage(reset)
                 if (token != queryToken) return@launch
 
-                val mapped = response.rows.map(::decodeRow)
-                _rows.value = if (reset) mapped else _rows.value + mapped
-                response.aggregates?.let { _aggregates.value = it }
-                nextCursor = response.nextCursor
-                _hasMore.value = response.nextCursor != null
-                _error.value = null
-                refreshFacetOptions()
+                applyResponse(response, reset)
             } catch (_: CancellationException) {
                 // Cooperative cancellation — leave state as-is for the next query.
             } catch (e: Exception) {
                 if (token != queryToken) return@launch
-                if (reset) {
-                    _rows.value = emptyList()
-                    _aggregates.value = null
+                if (isUnauthenticated(e) && searchService.prepareCallableAuth(forceRefresh = true)) {
+                    try {
+                        val response = queryConversationsPage(reset)
+                        if (token != queryToken) return@launch
+                        applyResponse(response, reset)
+                        return@launch
+                    } catch (_: CancellationException) {
+                        return@launch
+                    } catch (retryError: Exception) {
+                        if (token != queryToken) return@launch
+                        handleQueryFailure(retryError, reset)
+                        return@launch
+                    }
                 }
-                _hasMore.value = false
-                _error.value = e.localizedMessage ?: "Could not load conversations."
+                handleQueryFailure(e, reset)
             } finally {
                 if (token == queryToken) {
                     if (reset) {
@@ -246,6 +251,39 @@ class ConversationCockpitStore(
                 }
             }
         }
+    }
+
+    private suspend fun queryConversationsPage(reset: Boolean) =
+        functions.queryConversations(
+            providers = _selectedProviders.value.toList(),
+            models = _selectedModel.value?.let { listOf(it) } ?: emptyList(),
+            projectName = _projectQuery.value.ifBlank { null },
+            dateFromIso = _dateFromMs.value?.isoString(),
+            dateToIso = _dateToMs.value?.isoString(),
+            sort = _sortField.value.field,
+            direction = _sortDirection.value.token,
+            limit = PAGE_SIZE,
+            cursorDocId = if (reset) null else nextCursor,
+            includeAggregates = reset
+        )
+
+    private fun applyResponse(response: ConversationQueryResponse, reset: Boolean) {
+        val mapped = response.rows.map(::decodeRow)
+        _rows.value = if (reset) mapped else _rows.value + mapped
+        response.aggregates?.let { _aggregates.value = it }
+        nextCursor = response.nextCursor
+        _hasMore.value = response.nextCursor != null
+        _error.value = null
+        refreshFacetOptions()
+    }
+
+    private fun handleQueryFailure(error: Exception, reset: Boolean) {
+        if (reset) {
+            _rows.value = emptyList()
+            _aggregates.value = null
+        }
+        _hasMore.value = false
+        _error.value = presentableQueryError(error)
     }
 
     fun loadNextPage() = runQuery(reset = false)
@@ -391,6 +429,24 @@ class ConversationCockpitStore(
 
     private fun bumpSignature() {
         _signature.value = computeSignature()
+    }
+
+    private fun presentableQueryError(error: Exception): String {
+        val message = error.localizedMessage ?: "Could not load conversations."
+        return if (isUnauthenticated(error)) {
+            if (BuildConfig.DEBUG) {
+                "Sign in again, or reinstall this debug build with a registered App Check token."
+            } else {
+                "Sign in again to load cloud conversations."
+            }
+        } else {
+            message
+        }
+    }
+
+    private fun isUnauthenticated(error: Exception): Boolean {
+        val message = error.localizedMessage ?: return false
+        return message.contains("unauthenticated", ignoreCase = true)
     }
 
     private fun loadSavedQueries() {

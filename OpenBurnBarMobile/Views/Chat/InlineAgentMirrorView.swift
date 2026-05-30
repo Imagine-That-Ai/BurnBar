@@ -24,8 +24,16 @@ struct InlineAgentMirrorView: View {
     @State private var smartZoomManualOverrideUntil: Date?
     @State private var smartZoomAutoFollowing: Bool = false
     @State private var lastLayoutSize: CGSize = .zero
+    /// Tracks whether the initial auto-zoom has been applied for this
+    /// mirror session so we only zoom once on first frame.
+    @State private var didApplyInitialZoom: Bool = false
     /// Drives the hidden keyboard capture that types into the live TUI.
     @State private var isTyping = false
+    /// Keeps the special-key controls collapsed until the user asks for them.
+    @State private var terminalControlsExpanded = false
+    @State private var singletonDisplayAspectRatio: CGFloat?
+
+    private static let fallbackTerminalAspectRatio: CGFloat = 16.0 / 9.0
 
     init(singleton: AgentWatchOverlaySingleton,
          hermesService: HermesService = HermesService.shared,
@@ -45,6 +53,18 @@ struct InlineAgentMirrorView: View {
     /// controller's mirror-request pipeline.
     private var usingSingleton: Bool {
         singleton.state.sessionId != nil
+    }
+
+    private var activeDisplayAspectRatio: CGFloat? {
+        if usingSingleton {
+            return singletonDisplayAspectRatio
+        }
+        return controller.viewer.displayAspectRatio
+    }
+
+    private var liveTerminalAspectRatio: CGFloat? {
+        guard isShowingFrames else { return nil }
+        return activeDisplayAspectRatio ?? Self.fallbackTerminalAspectRatio
     }
 
     var body: some View {
@@ -102,6 +122,7 @@ struct InlineAgentMirrorView: View {
                 }
                 if controller.phase.isLive && controller.controlInputReady {
                     terminalControlBar
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.horizontal, 8)
                         .padding(.bottom, 8)
                 }
@@ -111,6 +132,7 @@ struct InlineAgentMirrorView: View {
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                 .strokeBorder(MobileTheme.mercuryGradient, lineWidth: 0.75)
         )
+        .aspectRatio(liveTerminalAspectRatio, contentMode: .fit)
         .background(keyboardCaptureLayer)
         .task {
             if smartZoomMode == .off {
@@ -120,6 +142,8 @@ struct InlineAgentMirrorView: View {
         }
         .onDisappear {
             controller.stop()
+            didApplyInitialZoom = false
+            terminalControlsExpanded = false
         }
         .onChange(of: singleton.state.currentFocus) { _, context in
             guard let context, smartZoomMode != .off, usingSingleton else { return }
@@ -136,6 +160,31 @@ struct InlineAgentMirrorView: View {
                 applySmartZoom(context: context)
             }
         }
+        .onReceive(singleton.videoCoordinator.$displayAspectRatio) { aspectRatio in
+            singletonDisplayAspectRatio = aspectRatio
+            guard usingSingleton,
+                  aspectRatio != nil,
+                  !didApplyInitialZoom else { return }
+            applyInitialZoomToFillWidth()
+        }
+        .onChange(of: controller.viewer.displayAspectRatio) { _, newAspect in
+            guard newAspect != nil, !didApplyInitialZoom else { return }
+            applyInitialZoomToFillWidth()
+        }
+        .onChange(of: controller.phase) { oldPhase, newPhase in
+            // Reset the initial-zoom flag when the session ends or errors
+            // so that a retry correctly re-zooms on the next first frame.
+            if oldPhase.canShowFrames, !newPhase.canShowFrames {
+                didApplyInitialZoom = false
+            }
+            if case .live = newPhase, !didApplyInitialZoom {
+                applyInitialZoomToFillWidth()
+            }
+        }
+        .onChange(of: controller.controlInputReady) { _, ready in
+            guard ready, controller.phase.isLive else { return }
+            isTyping = true
+        }
         .gesture(
             MagnificationGesture()
                 .onChanged { value in
@@ -151,6 +200,13 @@ struct InlineAgentMirrorView: View {
                         width: viewport.offset.width + value.translation.width * 0.5,
                         height: viewport.offset.height + value.translation.height * 0.5
                     )
+                }
+        )
+        .simultaneousGesture(
+            TapGesture()
+                .onEnded {
+                    guard controller.controlInputReady else { return }
+                    isTyping = true
                 }
         )
         .onTapGesture(count: 2) {
@@ -187,7 +243,8 @@ struct InlineAgentMirrorView: View {
             RemoteKeyboardCaptureView(
                 isActive: $isTyping,
                 onText: { controller.sendText($0) },
-                onKey: { controller.sendKey($0) }
+                onKey: { controller.sendKey($0) },
+                keepsFocus: true
             )
             .frame(width: 1, height: 1)
             .opacity(0.01)
@@ -199,29 +256,53 @@ struct InlineAgentMirrorView: View {
         #endif
     }
 
-    /// Floating bar over the live terminal: a keyboard toggle plus the special
-    /// keys a TUI needs (Esc, Tab, Ctrl-C, arrows, Return).
+    /// Floating command button over the live terminal. It stays collapsed by
+    /// default so it does not cover the terminal prompt; tapping it opens the
+    /// special keys upward.
     private var terminalControlBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                terminalKeyButton(systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard") {
-                    isTyping.toggle()
+        VStack(alignment: .trailing, spacing: 8) {
+            if terminalControlsExpanded {
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 6) {
+                        terminalKeyButton(systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard") {
+                            isTyping.toggle()
+                        }
+                        terminalKeyButton(label: "esc") { controller.sendKey("escape") }
+                        terminalKeyButton(label: "tab") { controller.sendKey("tab") }
+                        terminalKeyButton(label: "⌃C") { controller.sendKey("c", modifiers: ["control"]) }
+                    }
+                    HStack(spacing: 6) {
+                        terminalKeyButton(systemImage: "arrow.up") { controller.sendKey("up") }
+                        terminalKeyButton(systemImage: "arrow.down") { controller.sendKey("down") }
+                        terminalKeyButton(systemImage: "arrow.left") { controller.sendKey("left") }
+                        terminalKeyButton(systemImage: "arrow.right") { controller.sendKey("right") }
+                        terminalKeyButton(systemImage: "return") { controller.sendKey("return") }
+                    }
                 }
-                Divider().frame(height: 18).overlay(MobileTheme.Colors.border.opacity(0.4))
-                terminalKeyButton(label: "esc") { controller.sendKey("escape") }
-                terminalKeyButton(label: "tab") { controller.sendKey("tab") }
-                terminalKeyButton(label: "⌃C") { controller.sendKey("c", modifiers: ["control"]) }
-                terminalKeyButton(systemImage: "arrow.up") { controller.sendKey("up") }
-                terminalKeyButton(systemImage: "arrow.down") { controller.sendKey("down") }
-                terminalKeyButton(systemImage: "arrow.left") { controller.sendKey("left") }
-                terminalKeyButton(systemImage: "arrow.right") { controller.sendKey("right") }
-                terminalKeyButton(systemImage: "return") { controller.sendKey("return") }
+                .padding(8)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5)
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+
+            Button {
+                withAnimation(MobileTheme.Animation.snappy) {
+                    terminalControlsExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: terminalControlsExpanded ? "chevron.down" : "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .frame(width: 44, height: 36)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(terminalControlsExpanded ? "Hide Terminal Controls" : "Show Terminal Controls")
         }
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5))
     }
 
     private func terminalKeyButton(
@@ -240,7 +321,7 @@ struct InlineAgentMirrorView: View {
                 }
             }
             .foregroundStyle(MobileTheme.Colors.textPrimary)
-            .frame(minWidth: 30, minHeight: 26)
+            .frame(minWidth: 32, minHeight: 28)
             .background(MobileTheme.Colors.surfaceElevated.opacity(0.6), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -632,14 +713,95 @@ struct InlineAgentMirrorView: View {
 
     // MARK: - Smart Zoom logic
 
+    /// Computes the actual letterboxed rect where the video renders within
+    /// the view, accounting for the Mac screen's aspect ratio. Without this,
+    /// the zoom reducer thinks the video fills the entire view — causing
+    /// misaligned framing on portrait phones.
+    private func renderedContentRect(in size: CGSize) -> CGRect {
+        guard let aspectRatio = activeDisplayAspectRatio,
+              aspectRatio.isFinite,
+              aspectRatio > 0,
+              size.width > 0,
+              size.height > 0 else {
+            return CGRect(origin: .zero, size: size)
+        }
+
+        let containerAspect = size.width / size.height
+        if containerAspect > aspectRatio {
+            // Pillarboxed (unlikely on phone in portrait, but handles landscape)
+            let width = size.height * aspectRatio
+            return CGRect(
+                x: (size.width - width) / 2,
+                y: 0,
+                width: width,
+                height: size.height
+            )
+        }
+
+        // Letterboxed: video is full-width, shorter than the view.
+        let height = size.width / aspectRatio
+        return CGRect(
+            x: 0,
+            y: (size.height - height) / 2,
+            width: size.width,
+            height: height
+        )
+    }
+
+    /// On first frame, add a small readability nudge while preserving almost
+    /// the full Terminal width. Height-fill zoom is too aggressive for
+    /// landscape TUI windows inside a portrait phone viewport.
+    private func applyInitialZoomToFillWidth() {
+        guard lastLayoutSize.width > 0, lastLayoutSize.height > 0 else { return }
+        let contentRect = renderedContentRect(in: lastLayoutSize)
+        guard contentRect.width > 0, contentRect.height > 0 else { return }
+
+        didApplyInitialZoom = true
+
+        // If a focus context already exists, let the normal smart zoom
+        // path handle it — it will produce a more precise framing.
+        if let ctx = controller.latestFocusContext, smartZoomMode != .off {
+            applySmartZoomContext(ctx)
+            return
+        }
+
+        let scale = Self.terminalInitialZoomScale(
+            viewportSize: lastLayoutSize,
+            contentRect: contentRect
+        )
+        withAnimation(MobileTheme.Animation.snappy) {
+            viewport.scale = scale
+            viewport.offset = ScreenShareViewportState.clamp(
+                offset: .zero,
+                scale: scale,
+                in: lastLayoutSize
+            )
+        }
+        smartZoomAutoFollowing = false
+    }
+
     private func applySmartZoom(context: HermesRealtimeRelayFocusContext) {
         guard let zoomContext = ScreenShareSmartZoomContext.from(context) else { return }
         applySmartZoomContext(zoomContext)
     }
 
+    static func terminalInitialZoomScale(viewportSize: CGSize, contentRect: CGRect) -> CGFloat {
+        guard viewportSize.width > 0,
+              viewportSize.height > 0,
+              contentRect.width > 0,
+              contentRect.height > 0 else {
+            return ScreenShareViewportState.minimumScale
+        }
+
+        let heightFillScale = viewportSize.height / max(contentRect.height, 1)
+        let readabilityLift = max(0, heightFillScale - 1) * 0.10
+        let softenedScale = min(1.0 + readabilityLift, 1.18)
+        return ScreenShareViewportState.clampScale(softenedScale)
+    }
+
     private func applySmartZoomContext(_ zoomContext: ScreenShareSmartZoomContext) {
         guard lastLayoutSize.width > 0, lastLayoutSize.height > 0 else { return }
-        let contentRect = CGRect(origin: .zero, size: lastLayoutSize)
+        let contentRect = renderedContentRect(in: lastLayoutSize)
         let decision = ScreenShareSmartZoomReducer.reduce(
             viewportSize: lastLayoutSize,
             contentRect: contentRect,
@@ -651,9 +813,18 @@ struct InlineAgentMirrorView: View {
             now: Date()
         )
         if decision.isAutoFollowing {
+            let targetScale = min(
+                decision.scale,
+                Self.terminalInitialZoomScale(viewportSize: lastLayoutSize, contentRect: contentRect)
+            )
+            let targetOffset = ScreenShareViewportState.clamp(
+                offset: decision.offset,
+                scale: targetScale,
+                in: lastLayoutSize
+            )
             withAnimation(MobileTheme.Animation.snappy) {
-                viewport.scale = decision.scale
-                viewport.offset = decision.offset
+                viewport.scale = targetScale
+                viewport.offset = targetOffset
             }
             if !smartZoomAutoFollowing { smartZoomAutoFollowing = true }
         }

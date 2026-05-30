@@ -500,7 +500,9 @@ public struct BurnBarProviderRouter: Sendable {
                 return .missingCredential(configuration.provider.id)
             }
 
-            if slotsWithSecret.allSatisfy({ $0.slot.status == .exhausted }) {
+            if slotsWithSecret.allSatisfy({
+                BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .exhausted
+            }) {
                 return .credentialsUnavailable(
                     providerID: configuration.provider.id,
                     reason: unavailableCredentialReason(
@@ -511,12 +513,15 @@ public struct BurnBarProviderRouter: Sendable {
             }
 
             let coolingSlots = slotsWithSecret.filter { resolvedSlot in
-                guard let cooldownUntil = resolvedSlot.slot.cooldownUntil else { return false }
-                return cooldownUntil > now
+                BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: resolvedSlot.slot, now: now) == .coolingDown
             }
             if coolingSlots.count == slotsWithSecret.count {
                 let nextRetry = coolingSlots
-                    .compactMap(\.slot.cooldownUntil)
+                    .compactMap { slot in
+                        slot.slot.cooldownUntil
+                            ?? slot.slot.lastQuotaResetsAt
+                            ?? BurnBarProviderCredentialSlotRoutingPolicy.resetDate(from: slot.slot.lastStatusMessage)
+                    }
                     .sorted()
                     .first
                 let suffix = nextRetry.map { " Retry after \($0.formatted(date: .abbreviated, time: .standard))." } ?? ""
@@ -526,7 +531,9 @@ public struct BurnBarProviderRouter: Sendable {
                 )
             }
 
-            if slotsWithSecret.allSatisfy({ $0.slot.status == .missingSecret }) {
+            if slotsWithSecret.allSatisfy({
+                BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0.slot, now: now) == .missingSecret
+            }) {
                 return .missingCredential(configuration.provider.id)
             }
 
@@ -671,16 +678,15 @@ public struct BurnBarProviderRouter: Sendable {
 
             let now = Date()
             let activeSlots = configuration.credentialSlots.filter { resolvedSlot in
-                guard resolvedSlot.slot.isEnabled else { return false }
                 guard let key = resolvedSlot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
                     return false
                 }
-                if let cooldown = resolvedSlot.slot.cooldownUntil, cooldown > now {
-                    return false
-                }
-                return resolvedSlot.slot.status != .disabled
-                    && resolvedSlot.slot.status != .exhausted
-                    && resolvedSlot.slot.status != .missingSecret
+                return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
+                    slot: resolvedSlot.slot,
+                    hasCredential: true,
+                    providerEnabled: configuration.settings.isEnabled,
+                    now: now
+                )
             }
 
             if activeSlots.isEmpty == false {
