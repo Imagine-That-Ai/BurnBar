@@ -64,9 +64,15 @@ public struct PrivilegedInputDispatchResponse: Codable, Sendable, Equatable {
 public struct PrivilegedInputDispatchEnvelope: Codable, Sendable, Equatable {
     public var request: PrivilegedInputDispatchRequest
     public var peerAuditToken: Data?
+    public var capabilityToken: CapabilityToken?
 
-    public init(request: PrivilegedInputDispatchRequest, peerAuditToken: Data? = nil) {
+    public init(
+        request: PrivilegedInputDispatchRequest,
+        peerAuditToken: Data? = nil,
+        capabilityToken: CapabilityToken? = nil
+    ) {
         self.request = request
         self.peerAuditToken = peerAuditToken
+        self.capabilityToken = capabilityToken
     }
 }

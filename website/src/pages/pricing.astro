@@ -1,11 +1,18 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
+
+const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
+const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
+const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
+const cloudProAllowance = cloudPro.allowance!;
+const actionTopUp = SITE.pricing.topUps[0]!;
+const relayTopUp = SITE.pricing.topUps[1]!;
 ---
 
 <BaseLayout
   title="Pricing"
-  description="OpenBurnBar pricing — free local-first tier plus an optional Hosted Quota Sync subscription. $4.99/month, billed by Apple, cancel anytime."
+  description="OpenBurnBar pricing — Free Local, BurnBar Cloud at $7.99/month or $79/year, and BurnBar Cloud Pro at $24.99/month or $249/year."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -13,8 +20,9 @@ import { SITE } from "@data/site";
       <h1 class="pagehead__h">Free where it should be. Paid where it costs us money.</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          The local product is free. There's one optional subscription —
-          <strong>OpenBurnBar Cloud</strong> — for the features that run infrastructure on our side.
+          The local product is free. Cloud is for sync and encrypted history. Cloud Pro adds live
+          phone-to-Mac workflows and supervised agent work, with prepaid allowance controls for the
+          hosted resources that cost real money.
         </p>
       </div>
     </div>
@@ -23,16 +31,15 @@ import { SITE } from "@data/site";
   <section class="plans">
     <div class="container container--wide">
       <div class="plans__grid">
-        <!-- FREE -->
         <article class="plan glass-pane">
           <header class="plan__head">
             <span class="tag tag--exact tag--plain mono">Free, local-first</span>
-            <h2 class="plan__name">Local</h2>
+            <h2 class="plan__name">{free.shortName}</h2>
             <div class="plan__price">
               <span class="plan__amount mono">$0</span>
               <span class="plan__period">forever · no account</span>
             </div>
-            <p class="plan__sub">The full developer-side product. Works offline.</p>
+            <p class="plan__sub">{free.summary}</p>
           </header>
           <ul class="plan__list">
             <li>Local SQLite tracking, no telemetry</li>
@@ -51,45 +58,85 @@ import { SITE } from "@data/site";
           <a class="btn btn--ghost" href="/download">Get OpenBurnBar</a>
         </article>
 
-        <!-- PAID -->
         <article class="plan plan--ember glass-pane glass-pane--elevated">
           <header class="plan__head">
-            <span class="tag tag--ember tag--plain mono">OpenBurnBar Cloud</span>
-            <h2 class="plan__name">Cloud</h2>
+            <span class="tag tag--ember tag--plain mono">{cloud.name}</span>
+            <h2 class="plan__name">{cloud.shortName}</h2>
             <div class="plan__price">
-              <span class="plan__amount mono">${SITE.iapPriceUSD}</span>
-              <span class="plan__period">/{SITE.iapPeriod} · billed by Apple</span>
+              <span class="plan__amount mono">${cloud.priceMonthlyUSD}</span>
+              <span class="plan__period">/month · ${cloud.priceAnnualUSD}/year</span>
             </div>
-            <p class="plan__sub">The hosted side — sync, backup, and remote relay.</p>
+            <p class="plan__sub">{cloud.summary}</p>
           </header>
           <ul class="plan__list">
             <li>
-              <strong>Hosted Codex quota refresh</strong> — refresh quota from any signed-in device. OpenBurnBar
-              runs the runner. Rate-limited to 30/day, 300/month per account.
+              <strong>Hosted quota refresh</strong> — refresh supported quota from any signed-in device.
+              OpenBurnBar runs the hosted runner with account-level rate limits.
             </li>
             <li>
-              <strong>Conversation backup &amp; resume</strong> — chat titles, previews, and message bodies,
-              encrypted in transit, restored across iPhone, iPad, and Mac.
+              <strong>Conversation backup &amp; resume</strong> — chat titles, previews, and message bodies
+              restored across iPhone, iPad, and Mac.
             </li>
             <li>
-              <strong>Full session-log sync</strong> — complete agent runs mirrored to cloud, searchable
+              <strong>Encrypted session history</strong> — complete agent runs mirrored to cloud, searchable
               across devices.
             </li>
             <li>
-              <strong>Hermes Remote Relay</strong> — reach the Mac's local Hermes from anywhere over a
-              verified WebSocket. App Check, JWS end-to-end.
+              <strong>Agent memory sync</strong> — keep project context and assistant history available
+              on every signed-in device.
             </li>
             <li>
-              <strong>Apple-verified entitlement</strong> — server checks every JWS against pinned Apple
-              root CAs.
+              <strong>Verified entitlement</strong> — purchases are checked server-side before any hosted
+              capability turns on.
             </li>
-            <li><strong>Bound to your account</strong> via a signed appAccountToken UUID.</li>
           </ul>
-          <a class="btn btn--ember" href="/download#ios">
-            Subscribe through iOS app <span class="btn-arrow" aria-hidden="true">→</span>
+          <a class="btn btn--ember" href="/download">
+            {cloud.cta}
+            <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
           <p class="plan__small mono">
-            product · <code>{SITE.iapProductId}</code>
+            products · <code>{cloud.productIds.join(" · ")}</code>
+          </p>
+        </article>
+
+        <article class="plan plan--pro glass-pane glass-pane--elevated">
+          <header class="plan__head">
+            <span class="tag tag--estimated tag--plain mono">{cloudPro.name}</span>
+            <h2 class="plan__name">{cloudPro.shortName}</h2>
+            <div class="plan__price">
+              <span class="plan__amount mono">${cloudPro.priceMonthlyUSD}</span>
+              <span class="plan__period">/month · ${cloudPro.priceAnnualUSD}/year</span>
+            </div>
+            <p class="plan__sub">{cloudPro.summary}</p>
+          </header>
+          <ul class="plan__list">
+            <li>
+              <strong>Everything in BurnBar Cloud</strong> — sync, backup, and encrypted history.
+            </li>
+            <li>
+              <strong>Floo</strong> — see and use your Mac from your phone, send files, call, share clipboard,
+              and use remote unlock where shipped.
+            </li>
+            <li>
+              <strong>Agent Control</strong> — let agents work under your grant with approval boundaries,
+              off-limits zones, and an action record.
+            </li>
+            <li>
+              <strong>Included allowance</strong> — {cloudProAllowance.hostedAgentActionsMonthly}
+              hosted Agent Control actions and {cloudProAllowance.relayGBMonthly} relay-accounting GB
+              each month.
+            </li>
+            <li>
+              <strong>Prepaid overage only</strong> — extra hosted actions and relay are purchased before
+              use; BYOK actions do not consume hosted action credits.
+            </li>
+          </ul>
+          <a class="btn btn--ember" href="/download">
+            {cloudPro.cta}
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+          <p class="plan__small mono">
+            products · <code>{cloudPro.productIds.join(" · ")}</code>
           </p>
         </article>
       </div>
@@ -107,9 +154,9 @@ import { SITE } from "@data/site";
         <div>
           <dt>How am I billed?</dt>
           <dd>
-            Apple bills you monthly as an auto-renewing in-app subscription through the App Store.
-            We never see your card. Manage or cancel anytime from Settings → Apple ID on iPhone or
-            iPad.
+            Billing runs through the platform where you buy: Apple App Store, Google Play, or Stripe
+            Checkout. We never see your card. Manage or cancel from that platform's billing
+            settings.
           </dd>
         </div>
         <div>
@@ -120,28 +167,37 @@ import { SITE } from "@data/site";
           </dd>
         </div>
         <div>
-          <dt>What about refunds?</dt>
+          <dt>What about refunds and chargebacks?</dt>
           <dd>
-            Refunds are handled by Apple under the standard App Store policy. Request one at <a
-              href="https://reportaproblem.apple.com"
-              target="_blank"
-              rel="noopener noreferrer">reportaproblem.apple.com</a
-            >.
+            Apple and Google purchases follow their store refund policies. Stripe purchases can be
+            handled through support. When a refund or chargeback is confirmed, the matching
+            entitlement is revoked during reconciliation. Consumed top-ups are non-refundable except
+            where store policy or law requires it.
           </dd>
         </div>
         <div>
-          <dt>Why not a yearly plan?</dt>
+          <dt>How do top-ups work?</dt>
           <dd>
-            A yearly tier is on the roadmap. We won't ship a discount we don't yet honor, so for now
-            there's only the monthly plan.
+            Cloud Pro includes {cloudProAllowance.hostedAgentActionsMonthly} hosted Agent Control actions
+            and {cloudProAllowance.relayGBMonthly} relay-accounting GB each month. Extra hosted actions
+            are ${actionTopUp.priceUSD} for {actionTopUp.unit}; extra relay is ${
+              relayTopUp.priceUSD
+            } for {relayTopUp.unit}. Monthly caps still apply.
           </dd>
         </div>
         <div>
           <dt>Who needs the subscription?</dt>
           <dd>
-            If you're happy reading your burn on the Mac you sit at every day, you don't. The
-            subscription pays for features that have to run on OpenBurnBar's infrastructure — hosted
-            quota refresh, cross-device backup, the relay. Local-first stays free.
+            If you're happy reading your burn on the Mac you sit at every day, you don't. The paid
+            tiers cover features that have to run on OpenBurnBar's infrastructure. Local-first stays
+            free.
+          </dd>
+        </div>
+        <div>
+          <dt>What happens to the old $4.99 subscription?</dt>
+          <dd>
+            Existing Hosted Quota Sync subscribers are grandfathered for Group A cloud features. It
+            is not sold as a new purchase tier, and it does not unlock Cloud Pro features.
           </dd>
         </div>
         <div>
@@ -154,16 +210,17 @@ import { SITE } from "@data/site";
         <div>
           <dt>Sign-in requirement?</dt>
           <dd>
-            A Firebase account (Apple or Google sign-in) is required so the entitlement document can
-            be bound to your UID, plus an Apple ID signed into the App Store on the device used to
-            purchase.
+            A Firebase account is required so the entitlement document can be bound to your UID.
+            Store purchases also require the matching Apple ID or Google Play account; Stripe uses
+            the signed-in OpenBurnBar account.
           </dd>
         </div>
         <div>
           <dt>What can be cancelled later?</dt>
           <dd>
             All of it. Subscription, individual sync toggles, hosted credentials, iCloud mirroring,
-            and Sentry diagnostics — each one is a separate switch with a clear cancellation path.
+            phone-to-Mac capabilities, hosted Agent Control allowance, and diagnostics — each one
+            has a cancellation or disable path.
           </dd>
         </div>
       </dl>
@@ -205,7 +262,7 @@ import { SITE } from "@data/site";
   }
   .plans__grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--s-5);
   }
   .plan {
@@ -227,6 +284,14 @@ import { SITE } from "@data/site";
     background: rgba(20, 12, 10, 0.82);
     box-shadow:
       0 0 60px -20px rgba(255, 106, 26, 0.3),
+      0 12px 40px 0 rgba(0, 0, 0, 0.55);
+  }
+  .plan--pro {
+    border-color: color-mix(in oklab, var(--mercury-core) 28%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--mercury-core) 42%, rgba(255, 255, 255, 0.16));
+    background: rgba(8, 18, 18, 0.82);
+    box-shadow:
+      0 0 60px -20px rgba(60, 214, 192, 0.24),
       0 12px 40px 0 rgba(0, 0, 0, 0.55);
   }
   .plan__head {
@@ -291,7 +356,7 @@ import { SITE } from "@data/site";
     color: var(--text-dim);
     letter-spacing: 0.04em;
   }
-  @media (max-width: 880px) {
+  @media (max-width: 980px) {
     .plans__grid {
       grid-template-columns: 1fr;
     }

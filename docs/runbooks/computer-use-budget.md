@@ -12,6 +12,8 @@ This runbook fires when the hourly `evaluateComputerUseBudget` Cloud Function fl
 | Soft cap | ≥ $1500 | 25 actions/run · 100/day · 2 sessions/day · $2.50/user/day |
 | Hard cap | ≥ $2500 | 0 (active sessions terminate within 60 s) |
 
+The live Remote Config keys are `computer_use_budget_soft_usd=1500`, `computer_use_budget_hard_usd=2500`, and `computer_use_kill_switch=false`. Older `_soft_cap_usd` / `_hard_cap_usd` parameter names are still accepted as compatibility aliases, but the commercial launch gate requires the shorter `*_usd` names.
+
 ## On soft cap fire
 
 1. Confirm the firing in Firestore: read `ops/computer_use_budget_status/events/` (newest docs by `updatedAt`) and operator metrics at `ops/computer_use_budget_status/metrics/current`.

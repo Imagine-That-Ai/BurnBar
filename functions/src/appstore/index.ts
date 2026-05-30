@@ -5,7 +5,12 @@
  * and webhooks; everything else is internal to this directory.
  */
 
-export { beginEntitlementBinding, verifyHostedQuotaEntitlement, restoreHostedQuotaEntitlement } from "./callable.js";
+export {
+  beginEntitlementBinding,
+  verifyHostedQuotaEntitlement,
+  verifyCloudProTopUp,
+  restoreHostedQuotaEntitlement,
+} from "./callable.js";
 
 export { appStoreServerNotificationsV2 } from "./notifications.js";
 

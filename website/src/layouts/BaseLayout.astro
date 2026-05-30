@@ -75,20 +75,12 @@ const fullTitle =
         operatingSystem: "macOS 14+, iOS 17+",
         description,
         url: SITE.url,
-        offers: [
-          {
-            "@type": "Offer",
-            price: "0",
-            priceCurrency: "USD",
-            name: "Local-first (free)"
-          },
-          {
-            "@type": "Offer",
-            price: SITE.iapPriceUSD,
-            priceCurrency: "USD",
-            name: "Hosted Quota Sync (monthly)"
-          }
-        ]
+        offers: SITE.pricing.tiers.map((tier) => ({
+          "@type": "Offer",
+          price: tier.priceMonthlyUSD,
+          priceCurrency: "USD",
+          name: tier.priceMonthlyUSD === "0" ? tier.name : `${tier.name} monthly`
+        }))
       })}
     />
   </head>

@@ -15,9 +15,67 @@ export const SITE = {
   entity: "Imagine That AI LLC",
   license: "MIT",
   bundleId: "com.openburnbar.app",
-  iapProductId: "com.openburnbar.hostedQuotaSync.cloud.monthly",
-  iapPriceUSD: "4.99",
-  iapPeriod: "month",
+  pricing: {
+    tiers: [
+      {
+        id: "free",
+        name: "Free Local",
+        shortName: "Local",
+        priceMonthlyUSD: "0",
+        period: "forever",
+        productIds: [],
+        summary: "Local-first cost and quota tracking. No account. No cloud.",
+        cta: "Get OpenBurnBar"
+      },
+      {
+        id: "cloud",
+        name: "BurnBar Cloud",
+        shortName: "Cloud",
+        priceMonthlyUSD: "7.99",
+        priceAnnualUSD: "79",
+        period: "month",
+        productIds: ["com.openburnbar.pro.monthly", "com.openburnbar.pro.annual"],
+        entitlementId: "burnbar_pro",
+        summary: "Sync your quota, encrypted history, and agent memory across devices.",
+        cta: "Choose Cloud"
+      },
+      {
+        id: "cloud_pro",
+        name: "BurnBar Cloud Pro",
+        shortName: "Cloud Pro",
+        priceMonthlyUSD: "24.99",
+        priceAnnualUSD: "249",
+        period: "month",
+        productIds: ["com.openburnbar.proMax.monthly", "com.openburnbar.proMax.annual"],
+        entitlementId: "burnbar_pro_max",
+        summary: "Use your Mac from your phone and let agents work under your grant.",
+        cta: "Choose Cloud Pro",
+        allowance: {
+          hostedAgentActionsMonthly: 500,
+          relayGBMonthly: 50,
+          hostedAgentActionMonthlyCap: 2000,
+          relayGBMonthlyCap: 300
+        }
+      }
+    ],
+    topUps: [
+      {
+        id: "agent_control_actions_100",
+        name: "100 hosted Agent Control actions",
+        priceUSD: "4.99",
+        productId: "com.openburnbar.agentControl.actions100",
+        unit: "100 hosted actions"
+      },
+      {
+        id: "floo_relay_50gb",
+        name: "50 relay-accounting GB",
+        priceUSD: "4.99",
+        productId: "com.openburnbar.floo.relay50gb",
+        unit: "50 relay-accounting GB"
+      }
+    ],
+    legacyProductIds: ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
+  },
   macReleaseLatest: "1.0",
   macReleaseFile: "OpenBurnBar-1.0-macOS.dmg",
   macDownloadBaseUrl: "https://pub-aa5c2dab05e3407ba0813655d58a810a.r2.dev",

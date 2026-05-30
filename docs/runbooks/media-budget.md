@@ -16,8 +16,10 @@ Operator runbook for the n0 hosted-relay budget guardrail. Plan of record: `plan
 | Remote Config parameter | Default | Purpose |
 |---|---|---|
 | `media_cost_per_gb_usd` | `0.04` | USD billed per GB of relayed media. Tune from n0 monthly invoice ÷ total relayed bytes (see `ops/media_session_daily_rollups`). |
-| `media_budget_soft_cap_usd` | `600` | Projected month-end at which envelope tightens. Decision 4 of the master plan. |
-| `media_budget_hard_cap_usd` | `1000` | Projected month-end at which the kill-switch flips. Must be strictly greater than the soft cap — if not, both fall back to defaults. |
+| `media_budget_soft_usd` | `600` | Projected month-end at which envelope tightens. Decision 4 of the master plan. |
+| `media_budget_hard_usd` | `1000` | Projected month-end at which the kill-switch flips. Must be strictly greater than the soft cap — if not, both fall back to defaults. |
+
+`media_budget_soft_cap_usd` and `media_budget_hard_cap_usd` remain accepted as legacy aliases while older templates drain out. The commercial launch gate requires the shorter `*_usd` names above.
 
 ### Tuning loop
 

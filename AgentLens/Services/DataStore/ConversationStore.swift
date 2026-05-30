@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 /// Conversations, chat messages, FTS search, session logs, and CLI conversation helpers.
 final class ConversationStore: Sendable {
-    private let dbQueue: any DatabaseWriter
+    let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
@@ -103,7 +103,7 @@ final class ConversationStore: Sendable {
 
     // MARK: - Private Helpers
 
-    private static func upsertChatThread(_ threadID: String, at timestamp: Date, db: Database) throws {
+    static func upsertChatThread(_ threadID: String, at timestamp: Date, db: Database) throws {
         try db.execute(
             sql: """
             INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt)
@@ -146,7 +146,7 @@ final class ConversationStore: Sendable {
         return prefix + compact + suffix
     }
 
-    private static func shouldPreserveConversationSyncedAt(
+    static func shouldPreserveConversationSyncedAt(
         existing: ConversationRecord,
         incoming: ConversationRecord,
         resolvedSummary: String?,

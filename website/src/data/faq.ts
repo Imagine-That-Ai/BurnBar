@@ -57,13 +57,13 @@ export const FAQ: FAQItem[] = [
     id: "account",
     question: "Do I need an account?",
     answer:
-      "No account is needed for the core product. OpenBurnBar reads logs your agents already drop on disk and works fully offline.\n\nYou'll only sign in (Apple or Google, via Firebase Auth) if you want optional cloud sync, multi-device chat resume, or the paid Hosted Quota Sync subscription."
+      "No account is needed for the core product. OpenBurnBar reads logs your agents already drop on disk and works fully offline.\n\nYou'll only sign in (Apple or Google, via Firebase Auth) if you want optional cloud sync, multi-device chat resume, BurnBar Cloud, or BurnBar Cloud Pro."
   },
   {
     id: "api-keys",
     question: "Does OpenBurnBar read my API keys?",
     answer:
-      "Not by default. Local usage tracking reads usage logs, not credentials. If you choose to enable provider routing or quota polling, you may provide an API key for that specific provider — stored in the macOS Keychain with device-local accessibility.\n\nIf you enable Hosted Quota Sync, credential material you explicitly hand over is stored in Google Cloud Secret Manager; Firestore only holds a redacted label."
+      "Not by default. Local usage tracking reads usage logs, not credentials. If you choose to enable provider routing or quota polling, you may provide an API key for that specific provider — stored in the macOS Keychain with device-local accessibility.\n\nIf you enable hosted quota refresh through BurnBar Cloud, credential material you explicitly hand over is stored in Google Cloud Secret Manager; Firestore only holds a redacted label."
   },
   {
     id: "cost-accuracy",
@@ -78,10 +78,34 @@ export const FAQ: FAQItem[] = [
       "Exact today (counted from the vendor's own API or from local logs): Claude Code, Codex, OpenAI, Cursor, Cursor Agent, Factory, MiniMax, Xiaomi MiMo, Z.ai, Warp, Ollama, Kimi, OpenRouter, Aider, Antigravity, DeepSeek, OpenCode, Hermes, and Pi Agent.\n\nEstimated (counted, then priced from a public table): GitHub Copilot, Anthropic Console (daily lag), Forge, and xAI (Grok).\n\nDetection-only (the vendor exposes nothing, so we show only Installed / Not installed): Gemini CLI, Cline, Roo Code, Kilo Code, Augment, Windsurf, Goose, and OpenClaw.\n\nThe full matrix is on the Providers page."
   },
   {
-    id: "hosted-quota",
-    question: "What is Hosted Quota Sync?",
+    id: "burnbar-cloud",
+    question: "What is BurnBar Cloud?",
     answer:
-      "Hosted Quota Sync is the paid tier. It adds four capabilities to the free local product:\n\n1. Hosted Codex quota refresh from any signed-in device, with OpenBurnBar running the runner. Rate-limited to 30/day and 300/month per account.\n\n2. Conversation backup and resume — chat titles, previews, and message bodies, encrypted in transit, restored across iPhone, iPad, and Mac.\n\n3. Full session-log sync — complete agent runs mirrored to cloud and searchable across devices.\n\n4. Hermes Remote Relay — reach the Mac's local Hermes from anywhere over a verified WebSocket, with App Check attestation and Apple JWS end-to-end.\n\nProduct id com.openburnbar.hostedQuotaSync.cloud.monthly. Intended price $4.99/month via the App Store. Apple handles billing."
+      "BurnBar Cloud is the first paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Product IDs are com.openburnbar.pro.monthly and com.openburnbar.pro.annual. Purchases are verified server-side before hosted features turn on."
+  },
+  {
+    id: "burnbar-cloud-pro",
+    question: "What is BurnBar Cloud Pro?",
+    answer:
+      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Product IDs are com.openburnbar.proMax.monthly and com.openburnbar.proMax.annual. Cloud Pro uses the burnbar_pro_max entitlement."
+  },
+  {
+    id: "cloud-pro-allowance",
+    question: "How do Cloud Pro allowances and top-ups work?",
+    answer:
+      "Cloud Pro includes 500 hosted Agent Control actions and 50 relay-accounting GB each month. Extra hosted usage is prepaid before use: $4.99 buys 100 hosted actions, and $4.99 buys 50 relay-accounting GB.\n\nMonthly caps still apply: 2,000 hosted actions and 300 relay-accounting GB. If allowance plus top-ups are exhausted, hosted Agent Control or Floo relay pauses instead of silently spending more. BYOK actions do not consume hosted action credits."
+  },
+  {
+    id: "grandfathered-hosted-quota",
+    question: "What happens to the old Hosted Quota Sync subscription?",
+    answer:
+      "Existing $4.99 Hosted Quota Sync subscribers are grandfathered for Group A cloud features. It is not sold as a new purchase tier, and it does not unlock Cloud Pro features such as Floo or Agent Control."
+  },
+  {
+    id: "billing-cancellation-refunds",
+    question: "How do cancellation and refunds work?",
+    answer:
+      "Cancel from the platform where you purchased: Apple App Store, Google Play, or Stripe. Access remains until the paid period expires unless the platform reports a refund, chargeback, or revocation.\n\nApple and Google refunds follow store policy. Stripe purchases can be handled through support. Consumed top-ups are non-refundable except where store policy or law requires it."
   },
   {
     id: "claude-code-self-hosted",
