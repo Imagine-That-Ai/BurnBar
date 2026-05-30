@@ -150,6 +150,7 @@ enum SettingsAnchor {
     static let sessionPings = "hub.notifications.sessionPings"
     static let openSystemNotifications = "hub.notifications.system"
     static let cloudRow = "hub.cloud.row"
+    static let transcriptCache = "hub.cloud.transcriptCache"
     static let accountRow = "hub.account.row"
     static let deleteAccount = "hub.account.deleteAccount"
     static let providersRow = "hub.providers.row"

@@ -78,6 +78,13 @@ final class ScreenShareSmartTextDoubleTapTests: XCTestCase {
         XCTAssertFalse(isDoubleTap)
     }
 
+    func testViewerQuickZoomOnlyRunsInViewMode() {
+        XCTAssertTrue(ScreenShareViewportGesturePolicy.allowsQuickZoom(interactionMode: .view))
+        XCTAssertFalse(ScreenShareViewportGesturePolicy.allowsQuickZoom(interactionMode: .control))
+        XCTAssertFalse(ScreenShareViewportGesturePolicy.allowsQuickZoom(interactionMode: .trackpad))
+        XCTAssertFalse(ScreenShareViewportGesturePolicy.allowsQuickZoom(interactionMode: .coPilot))
+    }
+
     // MARK: - Coach-mark visibility
 
     func testCoachShowsWhenTextFieldFocusedAndKeyboardDown() {
@@ -148,6 +155,101 @@ final class ScreenShareSmartTextDoubleTapTests: XCTestCase {
                 isTyping: false,
                 isCoPilotMode: false,
                 hasActiveTextFocus: false
+            )
+        )
+    }
+
+    func testFocusedRectWinsOverTappedPointForRefinement() {
+        let tapped = CGPoint(x: 0.18, y: 0.72)
+        let focusedRect = HermesRealtimeRelayNormalizedRect(x: 0.45, y: 0.5, width: 0.2, height: 0.04)
+        XCTAssertEqual(
+            ScreenShareSmartTextTargetPolicy.preferredTarget(
+                focusedRect: focusedRect,
+                tappedPoint: tapped
+            ),
+            .focusedRect(focusedRect)
+        )
+    }
+
+    func testTappedPointUsedUntilFocusRectArrives() {
+        let tapped = CGPoint(x: 0.18, y: 0.72)
+        XCTAssertEqual(
+            ScreenShareSmartTextTargetPolicy.preferredTarget(
+                focusedRect: nil,
+                tappedPoint: tapped
+            ),
+            .tappedPoint(tapped)
+        )
+    }
+
+    func testFocusContextBeforeGestureGraceIsIgnored() {
+        let gestureStartedAt = now
+        XCTAssertTrue(
+            ScreenShareSmartTextTargetPolicy.acceptsFocusContext(
+                receivedAt: gestureStartedAt.addingTimeInterval(-0.04),
+                gestureStartedAt: gestureStartedAt
+            )
+        )
+        XCTAssertFalse(
+            ScreenShareSmartTextTargetPolicy.acceptsFocusContext(
+                receivedAt: gestureStartedAt.addingTimeInterval(-0.5),
+                gestureStartedAt: gestureStartedAt
+            )
+        )
+    }
+
+    func testGenericSmartZoomDefersDuringDoubleTapWindowInControlMode() {
+        XCTAssertTrue(
+            ScreenShareSmartTextTargetPolicy.shouldDeferGenericSmartZoom(
+                interactionMode: .control,
+                lastControlClickAt: now,
+                now: now.addingTimeInterval(0.12)
+            )
+        )
+        XCTAssertFalse(
+            ScreenShareSmartTextTargetPolicy.shouldDeferGenericSmartZoom(
+                interactionMode: .control,
+                lastControlClickAt: now,
+                now: now.addingTimeInterval(ScreenShareSmartTextTargetPolicy.genericSmartZoomDelay + 0.01)
+            )
+        )
+        XCTAssertFalse(
+            ScreenShareSmartTextTargetPolicy.shouldDeferGenericSmartZoom(
+                interactionMode: .view,
+                lastControlClickAt: now,
+                now: now.addingTimeInterval(0.12)
+            )
+        )
+    }
+
+    func testExistingFocusedRectKeepsSecondTapFromRetargetingMovingViewport() {
+        let focusedRect = HermesRealtimeRelayNormalizedRect(x: 0.1, y: 0.4, width: 0.3, height: 0.05)
+        let secondTapMappedAfterFirstZoom = CGPoint(x: 0.5, y: 0.5)
+
+        XCTAssertEqual(
+            ScreenShareSmartTextTargetPolicy.preferredTarget(
+                focusedRect: focusedRect,
+                tappedPoint: secondTapMappedAfterFirstZoom
+            ),
+            .focusedRect(focusedRect)
+        )
+    }
+
+    func testTinyRepeatedFramingDeltasAreIgnored() {
+        XCTAssertFalse(
+            ScreenShareSmartTextTargetPolicy.shouldApply(
+                currentScale: 2.4,
+                currentOffset: CGSize(width: 10, height: -20),
+                nextScale: 2.4005,
+                nextOffset: CGSize(width: 10.2, height: -20.2)
+            )
+        )
+        XCTAssertTrue(
+            ScreenShareSmartTextTargetPolicy.shouldApply(
+                currentScale: 2.4,
+                currentOffset: CGSize(width: 10, height: -20),
+                nextScale: 3.2,
+                nextOffset: CGSize(width: 18, height: -80)
             )
         )
     }

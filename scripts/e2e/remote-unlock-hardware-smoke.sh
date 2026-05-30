@@ -48,8 +48,14 @@ lock_mac() {
   exit 1
 }
 
-if [[ ! -e "/System/Library/CoreServices/RemoteManagement/ARDAgent.app" && ! -e "/System/Library/CoreServices/Applications/Screen Sharing.app" ]]; then
+if [[ ! -e "/System/Library/CoreServices/RemoteManagement/ARDAgent.app" && ! -e "/System/Applications/Utilities/Screen Sharing.app" && ! -e "/System/Library/CoreServices/Applications/Screen Sharing.app" ]]; then
   printf 'error: Apple Screen Sharing / Remote Management is not available on this Mac.\n' >&2
+  exit 1
+fi
+
+if ! nc -z -G 1 127.0.0.1 5900 >/dev/null 2>&1; then
+  printf 'error: Apple Screen Sharing / Remote Management is installed but not listening on 127.0.0.1:5900.\n' >&2
+  printf 'Enable Remote Management / Screen Sharing for this Mac, then rerun this smoke.\n' >&2
   exit 1
 fi
 

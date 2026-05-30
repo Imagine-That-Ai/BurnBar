@@ -80,6 +80,14 @@ A request for a model not advertised for that local endpoint returns `503`
 with `No eligible route for <model>. Add or enable an account/provider that
 serves this model.` before BurnBar contacts upstream.
 
+Provider credential status is recoverable. A missing secret, disabled slot, or
+future cooldown keeps the row blocked. A stale quota failure, a past
+provider-reset timestamp, or an expired cooldown is treated as eligible again so
+DeepSeek, Z.ai, MiniMax, MiMo token-plan, and other connected OpenAI-compatible
+accounts do not disappear forever after one temporary quota or balance error.
+The next real upstream call either succeeds and clears the status, or records a
+fresh block with a new timestamp.
+
 Anthropic `-family` catalog rows can list multiple CLI wire IDs as aliases.
 `OpenBurnBarLiveModelCatalog` publishes every alias in `/v1/models`, and the
 gateway treats aliases on the same family row as mutually routable. When

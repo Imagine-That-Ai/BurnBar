@@ -188,6 +188,11 @@ final class MercuryRouter: ObservableObject {
         return activeMirrorViewers[activeControlViewerID]?.controlAuthorityPeerNodeID
     }
 
+    var activeMirrorControlTerminalWindowID: CGWindowID? {
+        guard let activeControlViewerID else { return nil }
+        return activeMirrorViewers[activeControlViewerID]?.interactiveTerminalSession?.windowID
+    }
+
     deinit {
         remoteUnlockResumeTask?.cancel()
         mirrorStartupTasks.values.forEach { $0.cancel() }

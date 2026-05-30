@@ -1,4 +1,5 @@
 import Foundation
+import ServiceManagement
 
 // MARK: - Behavior Settings
 
@@ -16,7 +17,10 @@ final class BehaviorSettings {
     }
 
     var launchAtLogin: Bool = false {
-        didSet { persistence.set(launchAtLogin, forKey: "launchAtLogin") }
+        didSet {
+            persistence.set(launchAtLogin, forKey: "launchAtLogin")
+            LaunchAtLoginController.apply(enabled: launchAtLogin)
+        }
     }
 
     var usageDisplayMode: UsageDisplayMode = .currency {
@@ -39,11 +43,30 @@ final class BehaviorSettings {
             self.defaultTimeRange = .today
         }
         self.launchAtLogin = persistence.bool(forKey: "launchAtLogin")
+        LaunchAtLoginController.apply(enabled: launchAtLogin)
         if let modeRaw = persistence.optionalString(forKey: "usageDisplayMode"),
            let mode = UsageDisplayMode(rawValue: modeRaw) {
             self.usageDisplayMode = mode
         } else {
             self.usageDisplayMode = .currency
+        }
+    }
+}
+
+@MainActor
+private enum LaunchAtLoginController {
+    static func apply(enabled: Bool) {
+        do {
+            let service = SMAppService.mainApp
+            if enabled {
+                if service.status != .enabled {
+                    try service.register()
+                }
+            } else if service.status == .enabled {
+                try service.unregister()
+            }
+        } catch {
+            NSLog("OpenBurnBar launch-at-login update failed: %@", String(describing: error))
         }
     }
 }

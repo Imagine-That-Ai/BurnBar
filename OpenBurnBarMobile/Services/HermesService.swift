@@ -721,6 +721,23 @@ final class HermesService {
         }.first
     }
 
+    func preferredRelayConnection(refreshIfMissing: Bool = false) async -> HermesConnectionRecord? {
+        if refreshIfMissing, relayConnections.isEmpty {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+
+        if selectedConnection.mode == .relayLink,
+           let selectedRelay = relayConnections.first(where: { $0.id == selectedConnection.id }) {
+            return selectedRelay
+        }
+        if selectedConnection.mode == .relayLink,
+           Self.canAttemptRelayConnection(selectedConnection) {
+            return selectedConnection
+        }
+
+        return suggestedRelayConnection ?? relayConnections.first
+    }
+
     var hasPendingRelaySuggestion: Bool {
         guard let relay = suggestedRelayConnection else { return false }
         return selectedConnection.id != relay.id

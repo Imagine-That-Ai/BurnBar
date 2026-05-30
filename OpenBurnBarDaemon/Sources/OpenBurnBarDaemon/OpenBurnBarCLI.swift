@@ -825,8 +825,7 @@ public struct BurnBarCLIRunner {
     }
 
     private static var systemScreenSharingAvailable: Bool {
-        FileManager.default.fileExists(atPath: "/System/Library/CoreServices/RemoteManagement/ARDAgent.app")
-            || FileManager.default.fileExists(atPath: "/System/Library/CoreServices/Applications/Screen Sharing.app")
+        RemoteUnlockSystemScreenSharingProbe().status().isAvailable
     }
 
     private static func formatDate(_ date: Date) -> String {

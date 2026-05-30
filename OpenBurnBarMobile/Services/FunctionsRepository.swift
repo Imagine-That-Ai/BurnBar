@@ -406,14 +406,16 @@ final class FunctionsRepository {
         if let cursorDocId, !cursorDocId.isEmpty { payload["cursorDocId"] = cursorDocId }
 
         let result = try await callable.call(payload)
-        guard let dict = result.data as? [String: Any] else {
+        return try Self.decodeConversationQueryResponse(result.data)
+    }
+
+    static func decodeConversationQueryResponse(_ raw: Any?) throws -> ConversationQueryResponse {
+        guard let dict = raw as? [String: Any] else {
             throw FunctionsError.decodingFailed
         }
         let sanitized = FirestoreRepository.shared.sanitizeForJSON(dict)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(ConversationQueryResponse.self, from: data)
+        return try JSONDecoder().decode(ConversationQueryResponse.self, from: data)
     }
 
     func encryptedSessionBlobDownloadURL(storagePath: String) async throws -> URL {

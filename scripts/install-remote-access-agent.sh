@@ -76,6 +76,7 @@ chown root:wheel '$PLIST_PATH'
 chmod 644 '$PLIST_PATH'
 launchctl bootout system '$PLIST_PATH' >/dev/null 2>&1 || true
 rm -f '$SOCKET_PATH'
+rm -f /var/run/openburnbar-remote-access-agent.credential.*
 launchctl bootstrap system '$PLIST_PATH'
 launchctl enable system/$LABEL
 launchctl kickstart -k system/$LABEL

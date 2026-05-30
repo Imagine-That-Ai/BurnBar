@@ -4,6 +4,38 @@ import OpenBurnBarCore
 @testable import OpenBurnBarComputerUseCore
 
 final class RemoteUnlockPolicyTests: XCTestCase {
+    func test_screenSharingProbeRequiresLiveLoopbackListener() {
+        let probe = RemoteUnlockSystemScreenSharingProbe(
+            applicationPaths: ["/System/Applications/Utilities/Screen Sharing.app"],
+            fileExists: { $0 == "/System/Applications/Utilities/Screen Sharing.app" },
+            canConnectLoopback: { _, _ in false }
+        )
+
+        let status = probe.status()
+
+        XCTAssertTrue(status.applicationAvailable)
+        XCTAssertFalse(status.loopbackListenerAvailable)
+        XCTAssertFalse(status.isAvailable)
+    }
+
+    func test_screenSharingProbeAcceptsCurrentAppPathAndLiveLoopbackListener() {
+        let probe = RemoteUnlockSystemScreenSharingProbe(
+            applicationPaths: ["/System/Applications/Utilities/Screen Sharing.app"],
+            fileExists: { $0 == "/System/Applications/Utilities/Screen Sharing.app" },
+            canConnectLoopback: { port, timeout in
+                XCTAssertEqual(port, RemoteUnlockSystemScreenSharingProbe.defaultLoopbackPort)
+                XCTAssertGreaterThan(timeout, 0)
+                return true
+            }
+        )
+
+        let status = probe.status()
+
+        XCTAssertTrue(status.applicationAvailable)
+        XCTAssertTrue(status.loopbackListenerAvailable)
+        XCTAssertTrue(status.isAvailable)
+    }
+
     func test_capabilitiesAllowFirstHardwareProofWhenRuntimeLaneIsReady() {
         let policy = RemoteUnlockPolicy.default
         let snapshot = RemoteUnlockReadinessSnapshot(
@@ -30,7 +62,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         XCTAssertTrue(capabilities.enabled)
         XCTAssertEqual(capabilities.activeBackend, .appleScreenSharingLoopback)
-        XCTAssertEqual(capabilities.certificationStatus, .certified)
+        XCTAssertEqual(capabilities.certificationStatus, .failed)
         XCTAssertTrue(capabilities.blockers.isEmpty)
         XCTAssertTrue(capabilities.allowsCredentialPaste)
         XCTAssertTrue(capabilities.allowsSavedCredentialUnlock)
@@ -38,6 +70,37 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         XCTAssertEqual(capabilities.credentialRecipientPublicKeyBase64, "cHVibGljLWtleQ==")
         XCTAssertEqual(capabilities.credentialEnvelopeAlgorithm, RemoteUnlockPolicy.credentialEnvelopeAlgorithm)
         XCTAssertFalse(capabilities.fileVaultSSHSupported)
+    }
+
+    func test_runtimeReadyWithoutHardwareProofIsNotCertified() {
+        let policy = RemoteUnlockPolicy.default
+        let snapshot = RemoteUnlockReadinessSnapshot(
+            featureFlagEnabled: true,
+            directDownloadBuild: true,
+            daemonInstalled: true,
+            systemScreenSharingAvailable: true,
+            loopbackOnlyFirewallActive: false,
+            generatedCredentialInSystemKeychain: true,
+            backendCertificationFresh: false,
+            currentOSBuild: "23G93",
+            certifiedOSBuild: nil,
+            certifiedAt: nil,
+            fileVaultEnabled: true,
+            fileVaultSSHSupported: false,
+            lastLockScreenProbeSucceeded: false,
+            lastCredentialInputProbeSucceeded: false,
+            lastUnlockProbeSucceeded: false,
+            credentialRecipientKeyId: "mac-remote-unlock-key",
+            credentialRecipientPublicKeyBase64: "cHVibGljLWtleQ=="
+        )
+
+        let capabilities = policy.capabilities(for: snapshot)
+
+        XCTAssertTrue(capabilities.enabled)
+        XCTAssertEqual(capabilities.activeBackend, .appleScreenSharingLoopback)
+        XCTAssertEqual(capabilities.certificationStatus, .uncertified)
+        XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertEqual(capabilities.credentialRecipientKeyId, "mac-remote-unlock-key")
     }
 
     func test_capabilitiesAdvertiseAppleScreenSharingLoopbackOnlyAfterCertification() {
@@ -100,7 +163,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         XCTAssertTrue(capabilities.enabled)
         XCTAssertTrue(capabilities.allowsCredentialPaste)
-        XCTAssertEqual(capabilities.certificationStatus, .certified)
+        XCTAssertEqual(capabilities.certificationStatus, .stale)
         XCTAssertFalse(capabilities.blockers.contains("os_build_changed_recertification_required"))
     }
 
