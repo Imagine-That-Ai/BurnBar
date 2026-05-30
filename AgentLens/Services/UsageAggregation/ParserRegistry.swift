@@ -32,6 +32,7 @@ enum ParserRegistry {
         parsers[.windsurf] = WindsurfParser()
         parsers[.warp] = WarpParser()
         parsers[.ollama] = ModelFilterParser(modelPattern: "ollama", provider: .ollama)
+        parsers[.mimo] = ModelFilterParser(modelPattern: "mimo", provider: .mimo)
         return parsers
     }
 
