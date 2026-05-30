@@ -52,6 +52,15 @@ struct AgentsModelsView: View {
                         },
                         onRemoveModelAlias: { aliasModel in
                             removeModelAlias(aliasModel)
+                        },
+                        onSetDisplayName: { model, name in
+                            await setModelDisplayName(model, name: name)
+                        },
+                        onClearDisplayName: { model in
+                            removeModelDisplayName(model)
+                        },
+                        onSetProviderAdvertisement: { providerID, modelIDs, isEnabled in
+                            setProviderAdvertisement(providerID, modelIDs: modelIDs, isEnabled: isEnabled)
                         }
                     )
                     .settingsAnchor(SettingsAnchor.agentsModels)
@@ -208,6 +217,19 @@ struct AgentsModelsView: View {
         }
     }
 
+
+    private func setProviderAdvertisement(_ providerID: String, modelIDs: [String], isEnabled: Bool) {
+        Task {
+            await daemonManager.setProviderModelsAdvertisement(
+                providerID: providerID,
+                modelIDs: modelIDs,
+                isEnabled: isEnabled
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
     private func upsertThinkingVariant(_ model: ProxyAdvertisedModel, level: BurnBarThinkingLevel) {
         let now = Date()
         let variant = BurnBarModelVariant(
@@ -258,6 +280,31 @@ struct AgentsModelsView: View {
             await daemonManager.removeProviderModelAlias(
                 providerID: aliasModel.providerID,
                 aliasID: aliasModel.modelID
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func setModelDisplayName(_ model: ProxyAdvertisedModel, name: String) async -> String? {
+        let saved = await daemonManager.setProviderModelDisplayName(
+            providerID: model.providerID,
+            modelID: model.modelID,
+            displayName: name
+        )
+        guard saved else {
+            return daemonManager.lastError ?? "Could not save the display name override."
+        }
+        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+        await viewModel.refreshWiringState(settings: settingsManager)
+        return nil
+    }
+
+    private func removeModelDisplayName(_ model: ProxyAdvertisedModel) {
+        Task {
+            await daemonManager.removeProviderModelDisplayName(
+                providerID: model.providerID,
+                modelID: model.modelID
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)

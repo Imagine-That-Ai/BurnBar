@@ -90,7 +90,7 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
         case .ollama:
             return "Local Ollama server. Ensure `ollama serve` is running on the configured host."
         case .hermes:
-            return "Hermes gateway on `http://localhost:8642` — enable API_SERVER_ENABLED in ~/.hermes/.env, run hermes gateway run. Token in OpenBurnBar only if you set API_SERVER_KEY in that file."
+            return "Hermes gateway on `http://localhost:8642`. OpenBurnBar can enable API_SERVER_ENABLED and start `hermes gateway run` for you."
         }
     }
 }

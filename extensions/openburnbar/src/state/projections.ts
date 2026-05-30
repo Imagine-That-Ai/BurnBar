@@ -142,12 +142,14 @@ export function buildHealthRows(state: OpenBurnBarState): BurnBarHealthRow[] {
       id: 'status',
       label: 'Status',
       value: healthStatusLabel(state),
-      icon: state.connectionStatus === 'connected' ? 'pass' : state.connectionStatus === 'repairing' ? 'pulse' : 'warning'
+      icon:
+        state.connectionStatus === 'connected' ? 'pass' : state.connectionStatus === 'repairing' ? 'pulse' : 'warning'
     },
     {
       id: 'session',
       label: 'Session',
-      value: state.connectionStatus === 'connected' ? (state.clientAttached ? 'Attached' : 'Not attached') : 'Unavailable',
+      value:
+        state.connectionStatus === 'connected' ? (state.clientAttached ? 'Attached' : 'Not attached') : 'Unavailable',
       icon: state.connectionStatus !== 'connected' ? 'warning' : state.clientAttached ? 'pass' : 'warning'
     },
     {
@@ -231,7 +233,7 @@ export function buildHealthRows(state: OpenBurnBarState): BurnBarHealthRow[] {
     id: 'workspace-tools',
     label: 'Workspace tools',
     value: describeWorkspaceTools(state.workspace),
-    icon: state.workspace ? state.workspace.hasWorkspace ? 'note' : 'pulse' : 'pulse'
+    icon: state.workspace ? (state.workspace.hasWorkspace ? 'note' : 'pulse') : 'pulse'
   });
 
   if (state.workspace?.explanation) {
@@ -470,31 +472,31 @@ export interface BurnBarScheduledReviewIntent {
  */
 export function readinessDisplayMessage(failure: BurnBarReadinessFailure): string {
   switch (failure.code) {
-  case 'missing_credential':
-    return `Credential missing: ${failure.detail}`;
-  case 'invalid_repo_branch':
-    return `Repository unavailable: ${failure.detail}`;
-  case 'runtime_unavailable':
-    return `Runtime unavailable: ${failure.detail}`;
-  case 'insufficient_credential_permissions':
-    return `Insufficient permissions: ${failure.detail}`;
-  default:
-    return `Readiness check failed: ${failure.detail}`;
+    case 'missing_credential':
+      return `Credential missing: ${failure.detail}`;
+    case 'invalid_repo_branch':
+      return `Repository unavailable: ${failure.detail}`;
+    case 'runtime_unavailable':
+      return `Runtime unavailable: ${failure.detail}`;
+    case 'insufficient_credential_permissions':
+      return `Insufficient permissions: ${failure.detail}`;
+    default:
+      return `Readiness check failed: ${failure.detail}`;
   }
 }
 
 export function enterprisePolicyDisplayMessage(block: BurnBarEnterprisePolicyBlock): string {
   switch (block.reasonCode) {
-  case 'policy_budget_hard_cap_blocked':
-    return `Budget hard cap reached: ${block.detail}`;
-  case 'policy_approval_required_by_mode':
-    return `Explicit approval required: ${block.detail}`;
-  case 'policy_real_integration_required':
-    return `Real integration required: ${block.detail}`;
-  case 'policy_configuration_invalid':
-    return `Enterprise policy configuration invalid: ${block.detail}`;
-  default:
-    return `Enterprise policy blocked mission dispatch: ${block.detail}`;
+    case 'policy_budget_hard_cap_blocked':
+      return `Budget hard cap reached: ${block.detail}`;
+    case 'policy_approval_required_by_mode':
+      return `Explicit approval required: ${block.detail}`;
+    case 'policy_real_integration_required':
+      return `Real integration required: ${block.detail}`;
+    case 'policy_configuration_invalid':
+      return `Enterprise policy configuration invalid: ${block.detail}`;
+    default:
+      return `Enterprise policy blocked mission dispatch: ${block.detail}`;
   }
 }
 
@@ -582,22 +584,20 @@ export function buildMissionNextActions(state: OpenBurnBarState): BurnBarMission
     return [];
   }
 
-  return [...state.daemonMissions]
-    .sort(nextActionMissionComparator)
-    .map((mission) => {
-      const trimmedSummary = mission.summary.trim();
-      return {
-        id: `next-action-${mission.id}`,
-        missionId: mission.id,
-        projectSlug: mission.projectSlug,
-        title: nextActionTitle(mission.status),
-        summary: trimmedSummary.length > 0 ? trimmedSummary : nextActionSummaryFallback(mission.status),
-        bucket: nextActionBucket(mission.status),
-        status: mission.status,
-        recommendation: mission.recommendation,
-        updatedAt: mission.updatedAt
-      };
-    });
+  return [...state.daemonMissions].sort(nextActionMissionComparator).map((mission) => {
+    const trimmedSummary = mission.summary.trim();
+    return {
+      id: `next-action-${mission.id}`,
+      missionId: mission.id,
+      projectSlug: mission.projectSlug,
+      title: nextActionTitle(mission.status),
+      summary: trimmedSummary.length > 0 ? trimmedSummary : nextActionSummaryFallback(mission.status),
+      bucket: nextActionBucket(mission.status),
+      status: mission.status,
+      recommendation: mission.recommendation,
+      updatedAt: mission.updatedAt
+    };
+  });
 }
 
 export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
@@ -734,9 +734,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
  * Extracts readiness failure information from mission metadata.
  * Matches the BurnBarReadinessFailure structure for cross-surface parity.
  */
-function extractReadinessFailure(
-  metadata?: Record<string, unknown>
-): BurnBarReadinessFailure | undefined {
+function extractReadinessFailure(metadata?: Record<string, unknown>): BurnBarReadinessFailure | undefined {
   if (!metadata) {
     return undefined;
   }
@@ -755,17 +753,13 @@ function extractReadinessFailure(
   };
 }
 
-function extractEnterprisePolicyBlock(
-  metadata?: Record<string, unknown>
-): BurnBarEnterprisePolicyBlock | undefined {
+function extractEnterprisePolicyBlock(metadata?: Record<string, unknown>): BurnBarEnterprisePolicyBlock | undefined {
   if (!metadata) {
     return undefined;
   }
 
   const blockSource =
-    asObject(metadata.enterprisePolicyBlock)
-    ?? asObject(metadata.enterprise_policy_block)
-    ?? undefined;
+    asObject(metadata.enterprisePolicyBlock) ?? asObject(metadata.enterprise_policy_block) ?? undefined;
   if (!blockSource) {
     return undefined;
   }
@@ -786,29 +780,24 @@ function extractEnterprisePolicyBlock(
   };
 }
 
-function extractScheduledReviewIntent(
-  metadata?: Record<string, unknown>
-): BurnBarScheduledReviewIntent | undefined {
+function extractScheduledReviewIntent(metadata?: Record<string, unknown>): BurnBarScheduledReviewIntent | undefined {
   if (!metadata) {
     return undefined;
   }
 
-  const source =
-    asObject(metadata.scheduledReviewIntent)
-    ?? asObject(metadata.scheduled_review_intent)
-    ?? undefined;
+  const source = asObject(metadata.scheduledReviewIntent) ?? asObject(metadata.scheduled_review_intent) ?? undefined;
   const taskID = asString(source?.taskID) ?? asString(source?.task_id) ?? asString(metadata.scheduled_review_task_id);
   const projectSlug = asString(source?.projectSlug) ?? asString(source?.project_slug);
   const dueAt = asString(source?.dueAt) ?? asString(source?.due_at) ?? asString(metadata.scheduled_review_due_at);
   const notificationIntentID =
-    asString(source?.notificationIntentID)
-    ?? asString(source?.notification_intent_id)
-    ?? asString(metadata.notification_intent_id);
+    asString(source?.notificationIntentID) ??
+    asString(source?.notification_intent_id) ??
+    asString(metadata.notification_intent_id);
   const notificationChannels =
-    asStringArray(source?.notificationChannels)
-    ?? asStringArray(source?.notification_channels)
-    ?? asStringArray(metadata.notification_intent_channels)
-    ?? [];
+    asStringArray(source?.notificationChannels) ??
+    asStringArray(source?.notification_channels) ??
+    asStringArray(metadata.notification_intent_channels) ??
+    [];
 
   if (!taskID || !projectSlug || !dueAt || !notificationIntentID) {
     return undefined;
@@ -841,14 +830,12 @@ function extractTeamCollaborationFields(
 
   const roleEligibility: BurnBarMissionRoleEligibility = {
     canApprove:
-      metadataBoolean(metadata, 'role_can_approve')
-      ?? (!(mission.approval?.approved ?? false) && mission.status === 'awaiting_approval'),
+      metadataBoolean(metadata, 'role_can_approve') ??
+      (!(mission.approval?.approved ?? false) && mission.status === 'awaiting_approval'),
     canTransferOwnership:
-      metadataBoolean(metadata, 'role_can_transfer')
-      ?? !['completed', 'failed', 'cancelled'].includes(mission.status),
+      metadataBoolean(metadata, 'role_can_transfer') ?? !['completed', 'failed', 'cancelled'].includes(mission.status),
     canAnswerClosureQuestion:
-      metadataBoolean(metadata, 'role_can_answer_closure')
-      ?? mission.status === 'awaiting_approval'
+      metadataBoolean(metadata, 'role_can_answer_closure') ?? mission.status === 'awaiting_approval'
   };
 
   return {
@@ -860,10 +847,7 @@ function extractTeamCollaborationFields(
   };
 }
 
-function metadataString(
-  metadata: Record<string, unknown>,
-  ...keys: string[]
-): string | undefined {
+function metadataString(metadata: Record<string, unknown>, ...keys: string[]): string | undefined {
   for (const key of keys) {
     const value = metadata[key];
     if (typeof value === 'string') {
@@ -876,10 +860,7 @@ function metadataString(
   return undefined;
 }
 
-function metadataBoolean(
-  metadata: Record<string, unknown>,
-  key: string
-): boolean | undefined {
+function metadataBoolean(metadata: Record<string, unknown>, key: string): boolean | undefined {
   const value = metadata[key];
   return typeof value === 'boolean' ? value : undefined;
 }
@@ -1045,34 +1026,32 @@ export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: stri
 
 function missionPhaseFromStatus(status: BurnBarMissionStatus): BurnBarRunPhase {
   switch (status) {
-  case 'in_progress':
-    return 'executing_tool';
-  case 'dispatching':
-    return 'executing_tool';
-  case 'awaiting_approval':
-    return 'awaiting_approval';
-  case 'completed':
-    return 'completed';
-  case 'failed':
-    return 'failed';
-  case 'cancelled':
-    return 'cancelled';
-  case 'partially_completed':
-    return 'model_streaming';
-  case 'approved':
-    return 'planning';
-  case 'draft':
-    return 'planning';
-  default:
-    return 'idle';
+    case 'in_progress':
+      return 'executing_tool';
+    case 'dispatching':
+      return 'executing_tool';
+    case 'awaiting_approval':
+      return 'awaiting_approval';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    case 'partially_completed':
+      return 'model_streaming';
+    case 'approved':
+      return 'planning';
+    case 'draft':
+      return 'planning';
+    default:
+      return 'idle';
   }
 }
 
-function nextActionMissionComparator(
-  lhs: BurnBarMissionSnapshot,
-  rhs: BurnBarMissionSnapshot
-): number {
-  const bucketDelta = nextActionBucketRank(nextActionBucket(lhs.status)) - nextActionBucketRank(nextActionBucket(rhs.status));
+function nextActionMissionComparator(lhs: BurnBarMissionSnapshot, rhs: BurnBarMissionSnapshot): number {
+  const bucketDelta =
+    nextActionBucketRank(nextActionBucket(lhs.status)) - nextActionBucketRank(nextActionBucket(rhs.status));
   if (bucketDelta !== 0) {
     return bucketDelta;
   }
@@ -1093,86 +1072,103 @@ function nextActionMissionComparator(
 
 function nextActionBucket(status: BurnBarMissionStatus): BurnBarMissionNextActionBucket {
   switch (status) {
-  case 'failed':
-    return 'blockage';
-  case 'completed':
-  case 'cancelled':
-    return 'completion';
-  case 'draft':
-  case 'awaiting_approval':
-  case 'approved':
-  case 'dispatching':
-  case 'in_progress':
-  case 'partially_completed':
-  default:
-    return 'interruption';
+    case 'failed':
+      return 'blockage';
+    case 'completed':
+    case 'cancelled':
+      return 'completion';
+    case 'draft':
+    case 'awaiting_approval':
+    case 'approved':
+    case 'dispatching':
+    case 'in_progress':
+    case 'partially_completed':
+    default:
+      return 'interruption';
   }
 }
 
 function nextActionBucketRank(bucket: BurnBarMissionNextActionBucket): number {
   switch (bucket) {
-  case 'blockage': return 0;
-  case 'interruption': return 1;
-  case 'completion': return 2;
-  default: return 3;
+    case 'blockage':
+      return 0;
+    case 'interruption':
+      return 1;
+    case 'completion':
+      return 2;
+    default:
+      return 3;
   }
 }
 
 function nextActionStatusRank(status: BurnBarMissionStatus): number {
   switch (status) {
-  case 'failed': return 0;
-  case 'awaiting_approval': return 1;
-  case 'partially_completed': return 2;
-  case 'in_progress': return 3;
-  case 'dispatching': return 4;
-  case 'approved': return 5;
-  case 'draft': return 6;
-  case 'completed': return 7;
-  case 'cancelled': return 8;
-  default: return 9;
+    case 'failed':
+      return 0;
+    case 'awaiting_approval':
+      return 1;
+    case 'partially_completed':
+      return 2;
+    case 'in_progress':
+      return 3;
+    case 'dispatching':
+      return 4;
+    case 'approved':
+      return 5;
+    case 'draft':
+      return 6;
+    case 'completed':
+      return 7;
+    case 'cancelled':
+      return 8;
+    default:
+      return 9;
   }
 }
 
 function nextActionTitle(status: BurnBarMissionStatus): string {
   switch (status) {
-  case 'failed': return 'Resolve blocker';
-  case 'awaiting_approval': return 'Approve mission';
-  case 'partially_completed': return 'Resume interrupted mission';
-  case 'in_progress':
-  case 'dispatching':
-    return 'Monitor active mission';
-  case 'approved':
-  case 'draft':
-    return 'Start mission execution';
-  case 'completed':
-    return 'Review completion';
-  case 'cancelled':
-    return 'Review cancellation';
-  default:
-    return 'Review mission state';
+    case 'failed':
+      return 'Resolve blocker';
+    case 'awaiting_approval':
+      return 'Approve mission';
+    case 'partially_completed':
+      return 'Resume interrupted mission';
+    case 'in_progress':
+    case 'dispatching':
+      return 'Monitor active mission';
+    case 'approved':
+    case 'draft':
+      return 'Start mission execution';
+    case 'completed':
+      return 'Review completion';
+    case 'cancelled':
+      return 'Review cancellation';
+    default:
+      return 'Review mission state';
   }
 }
 
 function nextActionSummaryFallback(status: BurnBarMissionStatus): string {
   switch (status) {
-  case 'failed':
-    return 'Clear the blocker and resume execution.';
-  case 'awaiting_approval':
-    return 'Operator approval is required before dispatch can continue.';
-  case 'partially_completed':
-    return 'Mission work was interrupted and still needs closure.';
-  case 'in_progress':
-  case 'dispatching':
-    return 'Mission is active; watch for the next checkpoint.';
-  case 'approved':
-  case 'draft':
-    return 'Mission is ready to begin execution.';
-  case 'completed':
-    return 'Mission closed successfully; review closure evidence.';
-  case 'cancelled':
-    return 'Mission was cancelled; confirm whether it should be reopened.';
-  default:
-    return 'Review current mission status.';
+    case 'failed':
+      return 'Clear the blocker and resume execution.';
+    case 'awaiting_approval':
+      return 'Operator approval is required before dispatch can continue.';
+    case 'partially_completed':
+      return 'Mission work was interrupted and still needs closure.';
+    case 'in_progress':
+    case 'dispatching':
+      return 'Mission is active; watch for the next checkpoint.';
+    case 'approved':
+    case 'draft':
+      return 'Mission is ready to begin execution.';
+    case 'completed':
+      return 'Mission closed successfully; review closure evidence.';
+    case 'cancelled':
+      return 'Mission was cancelled; confirm whether it should be reopened.';
+    default:
+      return 'Review current mission status.';
   }
 }
 
@@ -1220,20 +1216,20 @@ function describeMissionNote(
 
 function closureQuestionStateForStatus(status: BurnBarMissionStatus): string {
   switch (status) {
-  case 'awaiting_approval':
-    return 'Pending closure approval question';
-  case 'completed':
-    return 'No closure question pending';
-  case 'failed':
-  case 'cancelled':
-    return 'Closure unresolved';
-  case 'draft':
-  case 'approved':
-  case 'dispatching':
-  case 'in_progress':
-  case 'partially_completed':
-  default:
-    return 'Closure in progress';
+    case 'awaiting_approval':
+      return 'Pending closure approval question';
+    case 'completed':
+      return 'No closure question pending';
+    case 'failed':
+    case 'cancelled':
+      return 'Closure unresolved';
+    case 'draft':
+    case 'approved':
+    case 'dispatching':
+    case 'in_progress':
+    case 'partially_completed':
+    default:
+      return 'Closure in progress';
   }
 }
 
@@ -1242,8 +1238,9 @@ function resolveMissionPRLinkage(mission: BurnBarMissionSnapshot): BurnBarPRLink
     return mission.prLinkage;
   }
 
-  const latestResult = [...mission.results]
-    .sort((lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt))[0];
+  const latestResult = [...mission.results].sort(
+    (lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt)
+  )[0];
   if (latestResult?.prLinkage) {
     return latestResult.prLinkage;
   }
@@ -1251,9 +1248,7 @@ function resolveMissionPRLinkage(mission: BurnBarMissionSnapshot): BurnBarPRLink
   return parsePRLinkageFromMetadata(mission.metadata);
 }
 
-function parsePRLinkageFromMetadata(
-  metadata?: Record<string, unknown>
-): BurnBarPRLinkageSnapshot | undefined {
+function parsePRLinkageFromMetadata(metadata?: Record<string, unknown>): BurnBarPRLinkageSnapshot | undefined {
   if (!metadata) {
     return undefined;
   }
@@ -1272,14 +1267,10 @@ function parsePRLinkageFromMetadata(
   const mergedAt = asString(source.mergedAt) ?? asString(source.pr_merged_at);
   const closedAt = asString(source.closedAt) ?? asString(source.pr_closed_at);
   const mergedSignal =
-    (asBoolean(source.isMerged) ?? asBoolean(source.pr_is_merged) ?? false)
-    || Boolean(mergeCommitSHA)
-    || Boolean(mergedAt);
-  const state = normalizePRState(
-    asString(source.state) ?? asString(source.pr_state),
-    mergedSignal,
-    Boolean(closedAt)
-  );
+    (asBoolean(source.isMerged) ?? asBoolean(source.pr_is_merged) ?? false) ||
+    Boolean(mergeCommitSHA) ||
+    Boolean(mergedAt);
+  const state = normalizePRState(asString(source.state) ?? asString(source.pr_state), mergedSignal, Boolean(closedAt));
 
   return {
     schemaVersion: asNumber(source.schemaVersion) ?? 1,
@@ -1375,9 +1366,7 @@ function asNumber(value: unknown): number | undefined {
 
 function visibleModels(catalog?: BurnBarCatalog): Array<{ id: string }> {
   return (
-    catalog?.providers.flatMap((provider) =>
-      provider.models.filter((model) => model.visibility === 'public')
-    ) ?? []
+    catalog?.providers.flatMap((provider) => provider.models.filter((model) => model.visibility === 'public')) ?? []
   );
 }
 
@@ -1429,45 +1418,45 @@ function describeRunNote(
   }
 
   switch (run.phase) {
-  case 'idle':
-    return 'Run is queued and waiting for OpenBurnBar to begin.';
-  case 'planning':
-    return 'OpenBurnBar is planning the next step.';
-  case 'executing_tool':
-    if (pendingToolCall) {
-      return toolStatusLabel(pendingToolCall.tool);
-    }
-    return 'OpenBurnBar is executing a workspace tool step.';
-  case 'waiting_on_companion':
-    if (pendingToolCall) {
-      return toolStatusLabel(pendingToolCall.tool);
-    }
-    return 'OpenBurnBar is waiting for the workspace companion.';
-  case 'model_streaming':
-    return 'OpenBurnBar is streaming model output.';
-  case 'completed':
-    return 'Run completed successfully.';
-  case 'failed':
-    return 'Run failed. Retry from the OpenBurnBar runs view once the daemon is healthy.';
-  case 'cancelled':
-    return 'Run was cancelled.';
-  default:
-    return `Unknown phase: ${run.phase}`;
+    case 'idle':
+      return 'Run is queued and waiting for OpenBurnBar to begin.';
+    case 'planning':
+      return 'OpenBurnBar is planning the next step.';
+    case 'executing_tool':
+      if (pendingToolCall) {
+        return toolStatusLabel(pendingToolCall.tool);
+      }
+      return 'OpenBurnBar is executing a workspace tool step.';
+    case 'waiting_on_companion':
+      if (pendingToolCall) {
+        return toolStatusLabel(pendingToolCall.tool);
+      }
+      return 'OpenBurnBar is waiting for the workspace companion.';
+    case 'model_streaming':
+      return 'OpenBurnBar is streaming model output.';
+    case 'completed':
+      return 'Run completed successfully.';
+    case 'failed':
+      return 'Run failed. Retry from the OpenBurnBar runs view once the daemon is healthy.';
+    case 'cancelled':
+      return 'Run was cancelled.';
+    default:
+      return `Unknown phase: ${run.phase}`;
   }
 }
 
 function toolStatusLabel(tool: OpenBurnBarState['pendingToolCalls'][number]['tool']): string {
   switch (tool) {
-  case 'read_file':
-    return 'Reading file';
-  case 'search_workspace':
-    return 'Searching workspace';
-  case 'apply_patch':
-    return 'Applying patch';
-  case 'run_terminal':
-    return 'Running terminal';
-  default:
-    return `Unknown tool: ${tool}`;
+    case 'read_file':
+      return 'Reading file';
+    case 'search_workspace':
+      return 'Searching workspace';
+    case 'apply_patch':
+      return 'Applying patch';
+    case 'run_terminal':
+      return 'Running terminal';
+    default:
+      return `Unknown tool: ${tool}`;
   }
 }
 
@@ -1523,16 +1512,16 @@ function describeWorkspaceTools(workspace?: BurnBarWorkspaceCapabilities): strin
 
 function healthStatusLabel(state: OpenBurnBarState): string {
   switch (state.connectionStatus) {
-  case 'connecting':
-    return 'Connecting';
-  case 'connected':
-    return 'Connected';
-  case 'repairing':
-    return 'Repairing';
-  case 'disconnected':
-    return 'Disconnected';
-  default:
-    return `Unknown status: ${state.connectionStatus}`;
+    case 'connecting':
+      return 'Connecting';
+    case 'connected':
+      return 'Connected';
+    case 'repairing':
+      return 'Repairing';
+    case 'disconnected':
+      return 'Disconnected';
+    default:
+      return `Unknown status: ${state.connectionStatus}`;
   }
 }
 
@@ -1598,36 +1587,36 @@ function recommendedNextStep(state: OpenBurnBarState): string | undefined {
 
 function runRecoveryStep(runId: string, state: OpenBurnBarState): string | undefined {
   switch (runId) {
-  case 'daemon-unavailable':
-    return daemonRecoveryStep(state.lastError);
-  case 'client-session-unavailable':
-    return clientSessionRecoveryNote();
-  case 'run-state-unavailable':
-    return 'Refresh the OpenBurnBar runs view. If the daemon stays healthy but run state does not load, reconnect.';
-  case 'empty-run-list':
-    return recommendedNextStep(state);
-  case 'repairing-daemon':
-    return 'Keep Cursor open while OpenBurnBar restarts the LaunchAgent.';
-  default: {
-    const selectedRun = state.runs.find((run) => run.id === runId);
-    if (!selectedRun || selectedRun.source !== 'daemon') {
+    case 'daemon-unavailable':
+      return daemonRecoveryStep(state.lastError);
+    case 'client-session-unavailable':
+      return clientSessionRecoveryNote();
+    case 'run-state-unavailable':
+      return 'Refresh the OpenBurnBar runs view. If the daemon stays healthy but run state does not load, reconnect.';
+    case 'empty-run-list':
+      return recommendedNextStep(state);
+    case 'repairing-daemon':
+      return 'Keep Cursor open while OpenBurnBar restarts the LaunchAgent.';
+    default: {
+      const selectedRun = state.runs.find((run) => run.id === runId);
+      if (!selectedRun || selectedRun.source !== 'daemon') {
+        return undefined;
+      }
+
+      if (selectedRun.phase === 'awaiting_approval') {
+        return 'Approve or reject this run from the OpenBurnBar runs view.';
+      }
+
+      if (selectedRun.phase === 'failed') {
+        return 'Retry this run from the OpenBurnBar runs view after confirming daemon health and provider settings.';
+      }
+
+      if (selectedRun.phase === 'cancelled') {
+        return 'Retry this run from the OpenBurnBar runs view if you want OpenBurnBar to start a new attempt.';
+      }
+
       return undefined;
     }
-
-    if (selectedRun.phase === 'awaiting_approval') {
-      return 'Approve or reject this run from the OpenBurnBar runs view.';
-    }
-
-    if (selectedRun.phase === 'failed') {
-      return 'Retry this run from the OpenBurnBar runs view after confirming daemon health and provider settings.';
-    }
-
-    if (selectedRun.phase === 'cancelled') {
-      return 'Retry this run from the OpenBurnBar runs view if you want OpenBurnBar to start a new attempt.';
-    }
-
-    return undefined;
-  }
   }
 }
 

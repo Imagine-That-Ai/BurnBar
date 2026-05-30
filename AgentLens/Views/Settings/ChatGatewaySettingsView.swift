@@ -328,6 +328,7 @@ struct ChatEnginesDetailView: View {
         case .droid: return "Local Droid CLI session"
         case .forge: return "Local Forge CLI session"
         case .antigravity: return "Local Antigravity CLI session"
+        case .cursorAgent: return "Local Cursor Agent CLI session"
         }
     }
 }

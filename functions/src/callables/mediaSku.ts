@@ -52,10 +52,7 @@ export const grantMediaGrandfather = onCall(
     }
 
     const firestore = getFirestore();
-    const subs = await firestore
-      .collectionGroup("entitlements")
-      .where("active", "==", true)
-      .get();
+    const subs = await firestore.collectionGroup("entitlements").where("active", "==", true).get();
 
     let granted = 0;
     let skipped = 0;
@@ -101,8 +98,8 @@ export const grantMediaGrandfather = onCall(
       skipped,
     });
     return { granted, skipped };
-  }
-));
+  }),
+);
 
 interface ValidateRequest {
   productID: string;
@@ -159,5 +156,5 @@ export const validateMediaPurchase = onCall(
       product_id: data.productID,
     });
     return { active: true, productID: data.productID };
-  }
-));
+  }),
+);

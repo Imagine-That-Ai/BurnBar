@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openburnbar.privileged-input-killswitch-watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Application Support/OpenBurnBar/RemoteUnlock/openburnbar-killswitch-watchdog</string>
+    <string>--socket</string>
+    <string>/var/run/openburnbar-killswitch-watch.sock</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/openburnbar-killswitch-watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/openburnbar-killswitch-watchdog.err.log</string>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>

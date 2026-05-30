@@ -13,8 +13,7 @@ export async function publishComputerUseKillSwitch(enabled: boolean, reason: str
   const template: RemoteConfigTemplate = await rc.getTemplate();
   const parameters = template.parameters ?? {};
 
-  const current =
-    remoteConfigStringValue(parameters[KILL_SWITCH_PARAM]?.defaultValue) ?? "false";
+  const current = remoteConfigStringValue(parameters[KILL_SWITCH_PARAM]?.defaultValue) ?? "false";
   const next = enabled ? "true" : "false";
   if (current === next) {
     return;
@@ -40,9 +39,7 @@ export async function publishComputerUseKillSwitch(enabled: boolean, reason: str
     });
 }
 
-export async function syncKillSwitchForBudgetLevel(
-  level: "normal" | "soft_cap" | "hard_cap",
-): Promise<void> {
+export async function syncKillSwitchForBudgetLevel(level: "normal" | "soft_cap" | "hard_cap"): Promise<void> {
   if (level === "hard_cap") {
     await publishComputerUseKillSwitch(true, "budget_hard_cap");
     return;

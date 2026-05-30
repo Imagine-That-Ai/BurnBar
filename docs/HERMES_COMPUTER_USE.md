@@ -99,7 +99,8 @@ Built-in deny defaults live in `ComputerUseDenyRegistry.builtInRules`. Cannot be
 |---|---|---|
 | Session manifest | `~/Library/Application Support/com.openburnbar.AgentLens/computer-use-audit/{sessionId}/manifest.json` | Canonical JSON |
 | Chain entries | `chain.jsonl` | One canonical-JSON entry per line, parent-hash linked |
-| Head marker | `head.json` | `{index, hashHex, updatedAt, sessionId, schemaVersion}` |
+| Head marker | `head.json` | `{index, hashHex, updatedAt, sessionId, schemaVersion}` (live; updated per append) |
+| Signed head (WS3) | `signed_head.json` | Ed25519 over `{sessionId, lastEntryIndex, headHashHex, closedAt}` — written at close/panic/export |
 | Screenshots | `screenshots/{entryIndex}_{before|after}.png` | PNG by content hash reference |
 
 **Hash function:** SHA-256 (`ComputerUseAuditHasher.Algorithm.sha256`). The wire field names retain "Blake3" because the long-term intent is to swap to BLAKE3 once `iroh-blobs` exposes a Swift binding; the on-disk format is hash-agnostic — the validator re-hashes with whatever algorithm `ComputerUseAuditHasher.current` reports. The chain format never changes when the algorithm does.
@@ -116,13 +117,16 @@ The walker `ComputerUseAuditChain.validate(at:sessionManifestHashHex:expectedHea
 | `unsupported_schema` | `schemaVersion` field higher than `ComputerUseAuditEntry.schemaVersion` |
 | `head_hash_mismatch` | Recomputed terminal head differs from `expectedHeadHashHex` (catches terminal-entry tamper) |
 
-Always pass `expectedHeadHashHex` from `head.json` when invoking the validator — otherwise a tampered last entry passes the parent-chain walk.
+Pass `expectedHeadHashHex` from `head.json` or `signed_head.json` when invoking the validator — otherwise a tampered last entry passes the parent-chain walk.
+
+**Offline verifier (WS3):** `openburnbar-cli audit-verify <session-directory> [--max-entry-index P] [--skip-opentimestamps]` runs `ComputerUseAuditVerifier` — chain walk, signed-head signature check, optional `ots verify`, and completeness given panic index **P**. See [`docs/runbooks/computer-use-audit-disputes.md`](runbooks/computer-use-audit-disputes.md).
 
 ### 5.2 Export format
 
 `ComputerUseAuditExportWriter` exports Phase 13 audit bundles as a real `.tar.gz`:
 
-- POSIX ustar entries for `manifest.json`, `chain.jsonl`, optional `head.json`, and optional `screenshots/*.png`.
+- POSIX ustar entries for `manifest.json`, `chain.jsonl`, optional `head.json`, optional `signed_head.json`, and optional `screenshots/*.png`.
+- `ComputerUseAuditExportRequest.anchorOpenTimestamps` mints `chain.jsonl.ots` before packaging when enabled.
 - Gzip compression via zlib.
 - Detached JSON signature sidecar at `{archive}.sig.json`.
 - Signature algorithm today: `ed25519`, signed by an OpenBurnBar trusted-device export key stored in the local Keychain as `WhenUnlockedThisDeviceOnly`.

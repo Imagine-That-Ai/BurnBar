@@ -1,0 +1,114 @@
+# WS5: SLSA build provenance + cosign attestations for OpenBurnBar release artifacts.
+name: Supply chain provenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (v*) to attest — must match an existing GitHub Release"
+        required: true
+        type: string
+  workflow_run:
+    workflows: ["OpenBurnBar Release"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  attest-release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RUN_HEAD: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="${RUN_HEAD}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
+            echo "::error::Invalid tag: $TAG"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/release-artifacts
+        if: github.event_name == 'workflow_run'
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Generate SBOM (PR-style fallback when artifacts missing)
+        id: sbom
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          SBOM="${{ runner.temp }}/openburnbar-${VERSION}.spdx.json"
+          python3 scripts/generate-sbom.py \
+            --version "$VERSION" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$SBOM"
+          echo "path=$SBOM" >> "$GITHUB_OUTPUT"
+
+      - name: Generate OpenVEX sidecar
+        id: vex
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          SBOM_PATH: ${{ steps.sbom.outputs.path }}
+        run: |
+          VEX="${{ runner.temp }}/openburnbar-${VERSION}.vex.json"
+          python3 scripts/supply-chain/generate-vex.py \
+            --sbom "$SBOM_PATH" \
+            --output "$VEX" \
+            --product-version "$VERSION"
+          echo "path=$VEX" >> "$GITHUB_OUTPUT"
+
+      - name: Attest SBOM and VEX (cosign / GitHub attestations)
+        env:
+          SBOM_PATH: ${{ steps.sbom.outputs.path }}
+          VEX_PATH: ${{ steps.vex.outputs.path }}
+        run: |
+          cosign attest --yes \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --type slsaprovenance \
+            "$SBOM_PATH" || cosign attest --yes "$SBOM_PATH"
+          cosign attest --yes "$VEX_PATH"
+
+      - name: Upload provenance bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-provenance-${{ steps.tag.outputs.version }}
+          path: |
+            ${{ steps.sbom.outputs.path }}
+            ${{ steps.vex.outputs.path }}
+
+      - name: Ecosystem deny checks
+        run: bash scripts/supply-chain/run-ecosystem-deny-checks.sh
+
+      - name: Provenance summary
+        run: |
+          {
+            echo "### Supply chain provenance"
+            echo ""
+            echo "- Tag: \`${{ steps.tag.outputs.tag }}\`"
+            echo "- SBOM + OpenVEX generated and cosign-attested"
+            echo "- Bit-reproducible **notarized** builds: de-scoped (see docs/security/SUPPLY_CHAIN_PROVENANCE.md)"
+          } >> "$GITHUB_STEP_SUMMARY"

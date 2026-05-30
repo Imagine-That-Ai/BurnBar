@@ -130,6 +130,7 @@ final class ThreadInboxStore {
             case .forge:    runtime = .forge
             case .antigravity: runtime = .antigravity
             case .grok: runtime = .grok
+            case .cursorAgent: runtime = .cursorAgent
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",
@@ -174,6 +175,7 @@ final class ThreadInboxStore {
         case "forge", "forge-dev", "forgedev": return .forge
         case "antigravity", "agy", "google-antigravity", "googleantigravity": return .antigravity
         case "grok", "grok-build", "xai", "grok-agent": return .grok
+        case "cursor", "cursor-agent", "cursoragent": return .cursorAgent
         default: return nil
         }
     }

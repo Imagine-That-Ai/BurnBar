@@ -2,6 +2,8 @@ import Foundation
 
 extension Notification.Name {
     static let textExpansionMacGlobalExpansionEnabledDidChange = Notification.Name("textExpansion.macGlobalExpansionEnabled.didChange")
+    /// Posted when snippets are created/edited/deleted to trigger immediate Firestore upload.
+    static let textExpansionSnippetsDidChange = Notification.Name("textExpansion.snippets.didChange")
 }
 
 @Observable

@@ -10,6 +10,7 @@ import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
+  BURNBAR_PRO_MAX_ENTITLEMENT_ID,
   STRIPE_API_SECRETS,
   STRIPE_WEBHOOK_SECRETS,
   GOOGLE_PLAY_ACTIVE_STATES,
@@ -34,6 +35,100 @@ import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefin
 // Callable / HTTP: BurnBar Pro billing bridges
 // ---------------------------------------------------------------------------
 
+type StripeCheckoutTier = "cloud" | "cloud_pro";
+type StripeCheckoutCadence = "monthly" | "annual";
+type StripeTopUpKind = "agent_control_actions_100" | "floo_relay_50gb";
+
+function optionalChoice<T extends string>(raw: unknown, allowed: readonly T[], fieldName: string): T | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  if (typeof raw !== "string" || !allowed.includes(raw as T)) {
+    throw new HttpsError("invalid-argument", `${fieldName} is not supported.`);
+  }
+  return raw as T;
+}
+
+function requireConfiguredPriceID(priceID: string, label: string): string {
+  if (!priceID) throw new HttpsError("failed-precondition", `${label} Stripe price is not configured.`);
+  return priceID;
+}
+
+function subscriptionCheckoutSelection(data: {
+  tier?: unknown;
+  cadence?: unknown;
+}): {
+  priceID: string;
+  entitlementID: string;
+  tier: StripeCheckoutTier;
+  cadence: StripeCheckoutCadence;
+} {
+  const cfg = getConfig();
+  const tier = optionalChoice(data.tier, ["cloud", "cloud_pro"] as const, "tier") ?? "cloud";
+  const cadence = optionalChoice(data.cadence, ["monthly", "annual"] as const, "cadence") ?? "monthly";
+  if (tier === "cloud_pro") {
+    const priceID =
+      cadence === "annual" ? cfg.stripeBurnBarCloudProAnnualPriceID : cfg.stripeBurnBarCloudProMonthlyPriceID;
+    return {
+      priceID: requireConfiguredPriceID(priceID, `BurnBar Cloud Pro ${cadence}`),
+      entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+      tier,
+      cadence,
+    };
+  }
+  const priceID =
+    cadence === "annual"
+      ? cfg.stripeBurnBarCloudAnnualPriceID
+      : cfg.stripeBurnBarCloudMonthlyPriceID || cfg.stripeBurnBarProPriceID;
+  return {
+    priceID: requireConfiguredPriceID(priceID, `BurnBar Cloud ${cadence}`),
+    entitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+    tier,
+    cadence,
+  };
+}
+
+function topUpCheckoutSelection(kind: StripeTopUpKind): { priceID: string; kind: StripeTopUpKind } {
+  const cfg = getConfig();
+  switch (kind) {
+    case "agent_control_actions_100":
+      return {
+        kind,
+        priceID: requireConfiguredPriceID(
+          cfg.stripeAgentControl100ActionsPriceID,
+          "Agent Control 100 hosted actions",
+        ),
+      };
+    case "floo_relay_50gb":
+      return {
+        kind,
+        priceID: requireConfiguredPriceID(cfg.stripeFlooRelay50GBPriceID, "Floo relay 50 GB"),
+      };
+  }
+}
+
+function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: string; canonicalProductID: string } {
+  const cfg = getConfig();
+  const cloudProductIDs = new Set([
+    cfg.googlePlaySubscriptionProductID,
+    cfg.googlePlayCloudMonthlyProductID,
+    cfg.googlePlayCloudAnnualProductID,
+    cfg.burnBarProProductID,
+    cfg.burnBarProAnnualProductID,
+  ]);
+  const cloudProProductIDs = new Set([
+    cfg.googlePlayCloudProMonthlyProductID,
+    cfg.googlePlayCloudProAnnualProductID,
+    cfg.burnBarProMaxProductID,
+    cfg.burnBarProMaxAnnualProductID,
+  ]);
+  if (cloudProductIDs.has(productID)) {
+    return { entitlementID: BURNBAR_PRO_ENTITLEMENT_ID, canonicalProductID: productID };
+  }
+  if (cloudProProductIDs.has(productID)) {
+    return { entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID, canonicalProductID: productID };
+  }
+  throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
+}
+
 export const createStripeBurnBarProCheckoutSession = onCall(
   {
     region: "us-central1",
@@ -41,45 +136,78 @@ export const createStripeBurnBarProCheckoutSession = onCall(
     maxInstances: 50,
     secrets: STRIPE_API_SECRETS,
   },
-  wrapCallableHandler("createStripeBurnBarProCheckoutSession", async (
-    request: CallableRequest<{
-      successUrl?: unknown;
-      cancelUrl?: unknown;
-    }>
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before starting checkout.");
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "createStripeBurnBarProCheckoutSession",
+    async (
+      request: CallableRequest<{
+        successUrl?: unknown;
+        cancelUrl?: unknown;
+        tier?: unknown;
+        cadence?: unknown;
+        topUpKind?: unknown;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before starting checkout.");
+      enforceAuthAndAppCheck(request, uid);
 
-    const cfg = getConfig();
-    const stripe = requireConfiguredStripe();
-    const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
-    const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
-    const customerID = await getOrCreateStripeCustomer(uid, stripe);
+      const stripe = requireConfiguredStripe();
+      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
+      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
+      const customerID = await getOrCreateStripeCustomer(uid, stripe);
+      const topUpKind = optionalChoice(
+        request.data.topUpKind,
+        ["agent_control_actions_100", "floo_relay_50gb"] as const,
+        "topUpKind",
+      );
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerID,
-      client_reference_id: uid,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      allow_promotion_codes: true,
-      line_items: [{ price: cfg.stripeBurnBarProPriceID, quantity: 1 }],
-      metadata: {
-        firebaseUID: uid,
-        entitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
-      },
-      subscription_data: {
+      if (topUpKind) {
+        const topUp = topUpCheckoutSelection(topUpKind);
+        const session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          customer: customerID,
+          client_reference_id: uid,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          line_items: [{ price: topUp.priceID, quantity: 1 }],
+          metadata: {
+            firebaseUID: uid,
+            topUpKind: topUp.kind,
+          },
+        });
+        return { sessionId: session.id, url: session.url };
+      }
+
+      const selection = subscriptionCheckoutSelection(request.data);
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        customer: customerID,
+        client_reference_id: uid,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        allow_promotion_codes: true,
+        line_items: [{ price: selection.priceID, quantity: 1 }],
         metadata: {
           firebaseUID: uid,
-          entitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+          entitlementID: selection.entitlementID,
+          tier: selection.tier,
+          cadence: selection.cadence,
         },
-      },
-    });
+        subscription_data: {
+          metadata: {
+            firebaseUID: uid,
+            entitlementID: selection.entitlementID,
+            tier: selection.tier,
+            cadence: selection.cadence,
+          },
+        },
+      });
 
-    return { sessionId: session.id, url: session.url };
-  }
-));
+      return { sessionId: session.id, url: session.url };
+    },
+  ),
+);
 
 export const createStripeBurnBarProPortalSession = onCall(
   {
@@ -88,25 +216,28 @@ export const createStripeBurnBarProPortalSession = onCall(
     maxInstances: 50,
     secrets: STRIPE_API_SECRETS,
   },
-  wrapCallableHandler("createStripeBurnBarProPortalSession", async (
-    request: CallableRequest<{
-      returnUrl?: unknown;
-    }>
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before opening the billing portal.");
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "createStripeBurnBarProPortalSession",
+    async (
+      request: CallableRequest<{
+        returnUrl?: unknown;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before opening the billing portal.");
+      enforceAuthAndAppCheck(request, uid);
 
-    const stripe = requireConfiguredStripe();
-    const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
-    const customerID = await getOrCreateStripeCustomer(uid, stripe);
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerID,
-      return_url: returnUrl,
-    });
-    return { url: session.url };
-  }
-));
+      const stripe = requireConfiguredStripe();
+      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
+      const customerID = await getOrCreateStripeCustomer(uid, stripe);
+      const session = await stripe.billingPortal.sessions.create({
+        customer: customerID,
+        return_url: returnUrl,
+      });
+      return { url: session.url };
+    },
+  ),
+);
 
 export const verifyGooglePlayBurnBarProSubscription = onCall(
   {
@@ -114,72 +245,72 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  wrapCallableHandler("verifyGooglePlayBurnBarProSubscription", async (
-    request: CallableRequest<{
-      purchaseToken?: unknown;
-      productID?: unknown;
-    }>
-  ) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before verifying Google Play billing.");
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "verifyGooglePlayBurnBarProSubscription",
+    async (
+      request: CallableRequest<{
+        purchaseToken?: unknown;
+        productID?: unknown;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before verifying Google Play billing.");
+      enforceAuthAndAppCheck(request, uid);
 
-    const cfg = getConfig();
-    const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true);
-    const productID =
-      boundedTrimmedString(request.data.productID, "productID", 256, false) ??
-      cfg.googlePlaySubscriptionProductID;
-    if (productID !== cfg.googlePlaySubscriptionProductID && productID !== cfg.burnBarProProductID) {
-      throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
-    }
+      const cfg = getConfig();
+      const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true);
+      const productID =
+        boundedTrimmedString(request.data.productID, "productID", 256, false) ?? cfg.googlePlaySubscriptionProductID;
+      const entitlementTarget = googlePlaySubscriptionEntitlement(productID);
 
-    const authClient = await google.auth.getClient({
-      scopes: ["https://www.googleapis.com/auth/androidpublisher"],
-    });
-    const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
-    const response = await androidpublisher.purchases.subscriptionsv2.get({
-      packageName: cfg.googlePlayPackageName,
-      token: purchaseToken,
-    });
+      const authClient = await google.auth.getClient({
+        scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+      });
+      const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
+      const response = await androidpublisher.purchases.subscriptionsv2.get({
+        packageName: cfg.googlePlayPackageName,
+        token: purchaseToken,
+      });
 
-    const purchase = jsonObject(response.data);
-    const subscriptionState =
-      typeof purchase.subscriptionState === "string"
-        ? purchase.subscriptionState
-        : "SUBSCRIPTION_STATE_UNSPECIFIED";
-    const lineItem = googlePlayLineItemForProduct(purchase, productID);
-    const expiresAtMillis = googlePlayExpiryMillis(lineItem);
-    const active = GOOGLE_PLAY_ACTIVE_STATES.has(subscriptionState) && expiresAtMillis > Date.now();
-    const tokenHash = sha256Hex(purchaseToken);
-    const entitlement = await writeBurnBarProEntitlement({
-      uid,
-      productID: cfg.googlePlaySubscriptionProductID,
-      expiresAtMillis,
-      source: "google_play_verified",
-      platform: "android",
-      purchaseTokenHash: tokenHash,
-      rawStatus: subscriptionState,
-      environment: "Production",
-      activeOverride: active,
-    });
-
-    await db.doc(`users/${uid}/billing/google_play_purchases/${tokenHash}`).set(
-      stripUndefinedObject({
+      const purchase = jsonObject(response.data);
+      const subscriptionState =
+        typeof purchase.subscriptionState === "string" ? purchase.subscriptionState : "SUBSCRIPTION_STATE_UNSPECIFIED";
+      const lineItem = googlePlayLineItemForProduct(purchase, productID);
+      const expiresAtMillis = googlePlayExpiryMillis(lineItem);
+      const active = GOOGLE_PLAY_ACTIVE_STATES.has(subscriptionState) && expiresAtMillis > Date.now();
+      const tokenHash = sha256Hex(purchaseToken);
+      const entitlement = await writeBurnBarProEntitlement({
         uid,
-        productID: cfg.googlePlaySubscriptionProductID,
+        productID: entitlementTarget.canonicalProductID,
+        expiresAtMillis,
+        source: "google_play_verified",
+        platform: "android",
+        entitlementID: entitlementTarget.entitlementID,
         purchaseTokenHash: tokenHash,
-        subscriptionState,
-        expiresAt: new Date(expiresAtMillis).toISOString(),
-        lineItemProductID: lineItem && typeof lineItem.productId === "string" ? lineItem.productId : undefined,
-        lastVerifiedAt: nowISO(),
-        schemaVersion: 1,
-      }),
-      { merge: true }
-    );
+        rawStatus: subscriptionState,
+        environment: "Production",
+        activeOverride: active,
+      });
 
-    return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };
-  }
-));
+      await db.doc(`users/${uid}/billing/google_play_purchases/${tokenHash}`).set(
+        stripUndefinedObject({
+          uid,
+          productID: entitlementTarget.canonicalProductID,
+          entitlementID: entitlementTarget.entitlementID,
+          purchaseTokenHash: tokenHash,
+          subscriptionState,
+          expiresAt: new Date(expiresAtMillis).toISOString(),
+          lineItemProductID: lineItem && typeof lineItem.productId === "string" ? lineItem.productId : undefined,
+          lastVerifiedAt: nowISO(),
+          schemaVersion: 1,
+        }),
+        { merge: true },
+      );
+
+      return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };
+    },
+  ),
+);
 
 export const stripeBurnBarProWebhook = onRequest(
   {
@@ -234,6 +365,5 @@ export const stripeBurnBarProWebhook = onRequest(
       logError({ event: "callable_error", message: "Stripe webhook handling failed", detail: String(err) });
       res.status(500).send("Stripe webhook handling failed.");
     }
-  }
+  },
 );
-

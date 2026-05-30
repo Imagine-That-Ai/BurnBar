@@ -1,0 +1,37 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.kt]
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+# ktlint 1.x code style — android_studio follows Google Android Kotlin Style Guide.
+# Options: android_studio | intellij_idea | ktlint_official
+ktlint_code_style = android_studio
+# Allow longer lines for Compose lambdas and preview annotations
+max_line_length = 160
+# Disable wildcard import enforcement — the project uses explicit imports
+ktlint_standard_no-wildcard-imports = disabled
+
+[*.kts]
+ij_kotlin_allow_trailing_comma = true
+max_line_length = 160
+ktlint_code_style = android_studio
+
+[*.json]
+indent_size = 2
+
+[*.yml]
+indent_size = 2
+
+[*.yaml]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

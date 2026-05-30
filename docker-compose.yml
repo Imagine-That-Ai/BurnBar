@@ -1,0 +1,49 @@
+version: "3.8"
+
+# Local development services for OpenBurnBar
+# Provides Firebase emulators (Firestore, Functions, Auth) for local dev
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose down           # Stop all services
+#   docker compose logs -f        # Follow logs
+#
+# After starting, run: npm --prefix functions run test:firestore-rules
+
+services:
+  firebase-emulators:
+    image: node:22-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+      - firebase-emulator-data:/emulator-data
+    ports:
+      - "4000:4000"   # Firebase Emulator UI
+      - "5001:5001"   # Cloud Functions
+      - "8080:8080"   # Firestore
+      - "9099:9099"   # Firebase Auth
+      - "9199:9199"   # Firebase Storage
+    environment:
+      - FIRESTORE_EMULATOR_HOST=localhost:8080
+      - FIREBASE_AUTH_EMULATOR_HOST=localhost:9099
+      - FUNCTIONS_EMULATOR=true
+    command: >
+      sh -c "
+        npm install -g firebase-tools &&
+        firebase emulators:start
+          --project openburnbar-dev
+          --config /app/firebase.json
+          --only firestore,functions,auth,storage
+          --import /emulator-data
+          --export-on-exit /emulator-data
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  firebase-emulator-data:
+    driver: local

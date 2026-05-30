@@ -187,8 +187,10 @@ lint: ## Run SwiftLint
 		echo "WARNING: swiftlint not found; skipping lint."; \
 	fi
 
-debt-check: ## Enforce unsafe cast debt budget + refresh tech-debt metrics
+debt-check: ## Enforce debt budgets + refresh tech-debt metrics
 	@./scripts/debt/check-unsafe-cast-budget.sh
+	@./scripts/debt/check-empty-catch-budget.sh
+	@./scripts/debt/check-try-optional-budget.sh
 	@./scripts/ci/update-tech-debt-metrics.sh
 
 ci: debt-check lint test-full ## Full CI check (matches GitHub PR harness intent)

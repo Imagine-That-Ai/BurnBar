@@ -340,3 +340,101 @@ The current architecture is well-suited to the beta phase (hundreds of sessions,
 - **Concurrency hygiene:** C+
 
 The codebase shows strong engineering discipline, but several `@MainActor` misplacements and missing caching layers are ticking time bombs for scale. Fix the P0 items and the system can comfortably grow to 10k+ conversations. Without them, users will see beachballs during refresh and retrieval latency will degrade past the point of usability.
+
+---
+
+## 2026-05-30 Sub-agent 5: Performance & Scalability Diligence Addendum (Full-Stack Technical Review)
+
+**Reviewer:** Sub-agent 5 (Performance and Scalability)  
+**Context:** Full-stack diligence for OpenBurnBar. Inspected HNSW (668 LOC), SearchService (1297 LOC), ProjectionPipelineService (1095 LOC), rate limiter, 5D router, DAG scheduler, caches, projection jobs, parsers, UI versioned caching, daemon accept/gateway, Playwright bridge, Firestore patterns (via refactored services + runbooks), iroh/Android parity artifacts, retrieval_health SLOs, and hot paths across AgentLens, OpenBurnBarCore, OpenBurnBarDaemon.  
+**Method:** Read existing self-assessment + macos-performance.md + TECH_DEBT* + slos.md + architecture ADRs; source inspection of impls (no reliance on summaries); sampling of timers/health paths vs. assumptions; cross-reference to metrics snapshots (2026-05-28) and test artifacts. Prioritized measured signals (retrieval_health, ProjectionSweepPerformanceDetails, OpenBurnBar*PerformanceTimer, SLO playbooks) over claims.
+
+### Performance/Scalability Score: **6.5 / 10**
+
+**Rationale:** Solid desktop-single-user engineering with measurable progress since Apr 2026 self-review (actor-isolated SearchService + ProjectionPipelineService, usagesVersion dashboard caching, chunk diff + embedding reuse, 5D router + rate limiter, bounded DAG concurrency=4, small-batch projection). However, hard ceilings remain in custom HNSW (per-search O(N) meta parse + full materialization or mmap pressure), parser unbounded accumulators, still-present N+1 hydration roundtrips (even post-conversation batching), JSON parser cache, unbounded per-connection Tasks in daemon accept loop (rate limiter helps but does not bound FDs), and lack of sharding/incremental vector index or cross-device scaling story. Current beta (~hundreds–low thousands sessions) is comfortable; 10k+ conversations or multi-user/team/shared artifacts will surface frame drops, high memory, and refresh latency without the P0/P1 items from §8 + new findings below.
+
+### Impressive Performance Engineering (Specific Evidence)
+- **5-dimensional provider router** (`OpenBurnBarProviderRouter.swift:8`): `BurnBarRouteScore` with capability/cost/latency/trust/policyFit (weights 0.20/0.25/0.15/0.25/0.15), historical slot latency, normalization, benchmark snapshot integration, cross-vendor degrade path. Raw values preserved in `BurnBarRouteScoreBreakdown` for audit determinism. Beats naive round-robin or single-metric routing at scale.
+- **Projection diffing + reuse** (`ProjectionPipelineService.swift:789,795`): `applySearchChunkDiff` + `fetchEmbeddingByContentHash` reuse + `chunksNeedingEmbedding` filter. Combined with batchSize=24 + 20ms inter-batch pause + yield every 4 jobs (ProjectionPipelineRuntimeTuning in Core.swift). Rebuilds paginate at 1000 rows to bound memory.
+- **Dashboard version ticker + static compute** (per `macos-performance.md` + `DataStoreCoordinator.usagesVersion`): Migrated 10+ views (DashboardLiveCostCurve, ProjectsView, etc.) from O(N) array diffs on every mutation to O(1) Int + pure `compute(usages:)` cached in @State. + TimelineView + SwarmCanvas bucketed fills (600→12 ctx.fill) + pointer 30Hz coalescing.
+- **Actor isolation + lease model** in ProjectionPipelineService (now actor, not @MainActor) and SearchService (gate removed); job leasing prevents double-work across sweeps.
+- **BurnBarRateLimiter** (actor token-bucket per clientKey + 5min idle prune) wired to both Unix socket and HTTPGatewayServer.
+- **Mission DAG scheduler** (`BurnBarParallelDAGScheduler.swift`): maxConcurrency=4 default, dependency gating, critical path, terminal sequence determinism (VAL-EXEC-010), Locked registry.
+- **retrieval_health + LocalMetricsAggregator + signpost timers**: Pervasive (SearchService:persistQueryHealth, Projection:upsert*Health, SLO playbooks reference `retrieval_health.totalQueryLatencyMs`). Enables p50/p95 tracking vs. targets (<120ms hybrid p50, <2s dashboard p50).
+- **SIMD + quantization in HNSW** (`BurnBarHNSWVectorIndex.swift:653`): `BurnBarVectorMath.simd*` (vDSP), scalarUInt8 path, unsafe buffer distances, prepared vectors. v2 binary format with quantizer.
+- **Iroh transport + Android parity** (crates/openburnbar-iroh + runbooks): QUIC + blobs, same wire format ALPN, extensive device-matrix smoke artifacts (2026-05-16 gates), FFI for media streaming/calls. Fallback Firestore shim.
+- **Computer Use budget governance** (`evaluateComputerUseBudget` hourly + per-user daily ceilings + Remote Config kill-switch + rollups): Hard/soft caps documented with concrete numbers ($1500/$2500 projections, 50→0 actions/run). Playwright per-session fresh chromium (actor JSON-RPC stdio bridge).
+
+### Bottlenecks & Scaling Risks (Evidence + User Scale at Which They Bite)
+1. **HNSW vector index (core ceiling)**: 
+   - `BurnBarHNSWReadableIndex.search` (lines 457–646): On *every* query, `data.withUnsafeBytes` → allocates `nodeMetas: [NodeMeta]` of size `header.count` (O(N) time + heap for keys/offsets/levels + layerInfo arrays), then walks graph. `load()` = full `Data(contentsOf)`; `view()` = mmap but meta still materialized. No paging, no persistent graph cache, no incremental add/delete (full O(n log n) rebuild on `markVectorIndexSnapshotStale`).
+   - Evidence: Self-review §4.1/6.3/7.1; no perf counters inside HNSW itself (only outer timers).
+   - Bites at: ~50k–200k chunks (300MB+ for 100k×768 float; consumer Mac swap or 1–5s parse latency on queries). No sharding story for 10x users or team artifacts. Quantization helps (v2) but does not solve parse.
+
+2. **SearchService hydration + per-query maps**:
+   - Still 2 extra DB roundtrips for missing chunks/docs after lexical FTS (`retrieveInGate:675–714`: `fetchSearchChunks(ids:)`, `fetchSearchDocuments(ids:)`). Conversation batch preload added (good, comment at 729), but chunk/doc not collapsed to JOIN.
+   - Builds 8+ temporary dicts/sets per query (candidates, maps, ranks). SearchQueryCache (30s TTL, NSLock dict, no size bound) helps repeated identical queries but evicts nothing proactively.
+   - Bites at: rerankLimit>200 + concurrent UI surfaces (chat + dashboard + popover) or 10k+ docs. Cache hit rate unknown (no metrics emitted).
+
+3. **Parser hot paths (unbounded materialization)**:
+   - Multiple `Data(contentsOf)` for sidecar JSON + `readAllUTF8Lines()` + accumulator growth in CursorAgentParser, GrokParser, GooseParser, ClaudeCodeParser etc. (fullText built in-memory).
+   - ParserDiskCache still `.prettyPrinted + .sortedKeys` JSON per parser (monolithic, encode latency linear in entries).
+   - Bites at: 50k+ line sessions or thousands of files on first parse/refresh. ParserDiskCache mitigates repeats but first-hit and cache rebuild are painful.
+
+4. **Daemon accept loop (no connection back-pressure)**:
+   - `runAcceptLoop:1353` + `Task.detached(.utility)` per FD (no semaphore/pool, even with rateLimiter on RPC). Max request 64KB.
+   - Rate limiter + HTTP gateway help abuse, but FD exhaustion or memory from thousands of half-open conns possible (malicious extension/CLI).
+   - Bites at: >100–few hundred concurrent clients (e.g., team + multiple devices + CI).
+
+5. **Cloud/sync volume & N+1 remnants**:
+   - Refactored (CloudSyncService now 230 LOC per 2026-05-28 metrics; many small *SyncService files), but older patterns (hard LIMITs, per-artifact ops) referenced in debt. Usage rollups (5 docs/user), callable costs, Firestore for conversations/chunks/artifacts.
+   - Computer Use: hourly budget eval + vision spend docs per user/day. No sharding/partitioning story.
+   - Bites at: paid multi-user scale (hundreds users) or high computer-use volume (Playwright + OCR + injection latency compounds).
+
+6. **Other observed waste**:
+   - Projection full reembed still paginates docs then per-doc chunk fetches (potential amplification).
+   - No evidence of production p99 numbers or flamegraphs attached to review; SLOs are targets, not current telemetry.
+   - Widgets/Live Activities + Mercury viewer: many observers; screen-share paths add bandwidth/latency (iroh helps but not quantified here).
+
+**Hard ceilings identified**: Single-machine per-user HNSW (no sharding/partition-by-embedding-version), no incremental vector updates, parser caches not scalable, daemon connection model, Firestore as primary for high-volume artifacts without clear fan-out story.
+
+### Concurrency & Memory Safety Observations
+- **Progress**: Major wins — SearchService/Projection now proper actors (removed serializing gate, @MainActor pollution reduced per metrics: 2 I/O facades left). Lease + actor for projection jobs. DAG scheduler actor + Locked registry. Rate limiter actor. @unchecked Sendable with AUDIT comments in HNSW (build single-threaded, read-only after load).
+- **Risks remaining**: 
+  - Daemon: unbounded detached Tasks per accept (no structured cancellation/back-pressure beyond I/O deadlines in debt register).
+  - SearchQueryCache: NSLock + dict (not actor); unbounded until 30s TTL + get-side eviction.
+  - HNSW: @unchecked Sendable relies on call-site discipline; every search allocates O(N) NodeMeta + visited Sets + binary-search temp work.
+  - Projection gap-repair/rebuild: full-corpus pagination loops (correct but long-running; yields only at job granularity).
+  - Many `try?` / silentFailure (745 in Services per metrics) can mask perf pathologies.
+  - No weak-self noted in some older services (debt item).
+- **Memory**: fullText in conversations still loaded for scans/credential; parser accumulators; HNSW meta per query. GRDB writer serialization is the main guard (DataStoreActor exposes nonisolated stores).
+
+### 10x–100x Growth: Accelerates or Requires Major Re-Architecture?
+**Current architecture accelerates happy-path single-user desktop scaling to ~5–10k conversations** (with P0 fixes from original review + chunk reuse + actor work + caching). Bounded work (sweep 24 jobs, embed batch 24, DAG concurrency 4, rate limits, yields, pagination everywhere) + observability (health tables + timers) + smart reuse (diffs, embedding hash) show real thought for low-impact background work.
+
+**Requires major re-architecture for 100x (multi-user, shared team artifacts, high computer-use volume, 100k+ chunks, mobile+desktop parity under load)**:
+- Vector index: must move to incremental HNSW (or external like SQLite-Vec / LanceDB / pgvector shard) + sharding by user/embedding-version + persistent in-memory graph or paged loading. Full rebuilds + O(N) parse per query are non-starters.
+- Retrieval: collapse to single JOIN or covering FTS + proper result cache with size/priority eviction (beyond 30s dict); make semantic optional with circuit breaker.
+- Storage/parsers: stream parsers (incremental JSON), separate fullText blobs or FTS-only, binary/SQLite parser cache.
+- Daemon/cloud: connection pool + back-pressure (semaphore + max conns), sharded Firestore or secondary index tier for artifacts, true multi-tenant usage rollups with aggregation pipelines.
+- Computer Use: Playwright bridge overhead (per-session node + chromium) will dominate at volume; needs pooling, snapshot reuse, or lighter injection paths + measured end-to-end latency budgets.
+- Cross-platform: iroh is a strong foundation (parity work visible in artifacts), but media streaming/OCR/screenshot paths need explicit perf budgets + fallback degradation.
+- Overall: No "scale out" story (everything per-device + optional Firestore replication). For team/shared + hosted computer-use, this becomes a distributed systems problem (consistency for projection jobs, vector index replication, budget coordination already partially addressed via callables/Remote Config).
+
+**Recommended immediate (high-ROI) additions beyond original P0/P1**:
+- Emit cache hit/miss + size metrics from SearchQueryCache + HNSW parse latency.
+- Add connection limit + semaphore to daemon accept (pair with existing rate limiter).
+- Binary (or SQLite) parser cache + streaming parser pilot on one high-volume format (e.g. Claude JSONL).
+- HNSW: at minimum, cache the parsed nodeMetas + graph in the ReadableIndex (invalidate on snapshot change) instead of re-parsing bytes every search.
+- Measure & publish actual p95s from production telemetry into slos.md.
+
+**Updated grades (post-2026-05 remediation visible in code/metrics)**:
+- Correctness: A
+- Performance (current ~beta scale): A−
+- Scalability (future growth): C (up from C+ due to actor/refactor progress, still held back by vector index and daemon model)
+- Memory safety: B+
+- Concurrency hygiene: B (major gains on services; daemon + caches lag)
+
+The team has executed disciplined, measurable optimizations (especially UI frame budget + dashboard + projection reuse + routing sophistication). The foundation is stronger than the April self-assessment suggested. The remaining "holy shit" work is the vector index and connection/scale-out model — exactly the areas that will determine whether OpenBurnBar stays a delightful personal power tool or becomes the backbone for team/agent swarms.
+
+**References for follow-up**: HNSW lines 431–646 (load/view/search), SearchService 675–714 (hydration), ProjectionPipelineCore 17–32 (tuning), TECH_DEBT_METRICS 2026-05-28, runbooks/slos.md + computer-use-budget.md, crates/openburnbar-iroh, artifacts/*-iroh-*.log summaries.

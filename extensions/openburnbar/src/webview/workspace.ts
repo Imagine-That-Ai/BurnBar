@@ -33,48 +33,48 @@ export function requestInitialState(): void {
  */
 export function handleMessage(message: { type: string; payload?: unknown }): void {
   switch (message.type) {
-  case 'workspace.stateUpdated': {
-    const payload = workspaceStatePayload(message.payload);
-    if (payload.runs !== undefined) {
-      state.runs = payload.runs;
+    case 'workspace.stateUpdated': {
+      const payload = workspaceStatePayload(message.payload);
+      if (payload.runs !== undefined) {
+        state.runs = payload.runs;
+      }
+      if (payload.selectedRunId !== undefined) {
+        state.selectedRunId = payload.selectedRunId;
+      }
+      render();
+      break;
     }
-    if (payload.selectedRunId !== undefined) {
-      state.selectedRunId = payload.selectedRunId;
-    }
-    render();
-    break;
-  }
 
-  case 'workspace.runSelected': {
-    const payload = runIDPayload(message.payload);
-    if (!payload) {
-      return;
+    case 'workspace.runSelected': {
+      const payload = runIDPayload(message.payload);
+      if (!payload) {
+        return;
+      }
+      state.selectedRunId = payload.runId;
+      render();
+      break;
     }
-    state.selectedRunId = payload.runId;
-    render();
-    break;
-  }
 
-  case 'workspace.toolCallUpdated': {
-    const payload = toolCallPayload(message.payload);
-    if (!payload) {
-      return;
+    case 'workspace.toolCallUpdated': {
+      const payload = toolCallPayload(message.payload);
+      if (!payload) {
+        return;
+      }
+      updateToolCall(payload.runId, payload.toolCall);
+      break;
     }
-    updateToolCall(payload.runId, payload.toolCall);
-    break;
-  }
 
-  case 'workspace.runDeleted': {
-    const payload = runIDPayload(message.payload);
-    if (!payload) {
-      return;
+    case 'workspace.runDeleted': {
+      const payload = runIDPayload(message.payload);
+      if (!payload) {
+        return;
+      }
+      deleteRun(payload.runId);
+      break;
     }
-    deleteRun(payload.runId);
-    break;
-  }
 
-  default:
-    console.warn('Unknown message type:', message.type);
+    default:
+      console.warn('Unknown message type:', message.type);
   }
 }
 
@@ -281,24 +281,28 @@ function eventMessageData(data: unknown): { type: string; payload?: unknown } | 
 }
 
 function isRunProjection(value: unknown): value is BurnBarRunProjection {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.title === 'string'
-    && typeof value.phase === 'string'
-    && typeof value.note === 'string'
-    && typeof value.updatedAt === 'string'
-    && typeof value.source === 'string';
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.phase === 'string' &&
+    typeof value.note === 'string' &&
+    typeof value.updatedAt === 'string' &&
+    typeof value.source === 'string'
+  );
 }
 
 function isToolCallSnapshot(value: unknown): value is BurnBarToolCallSnapshot {
-  return isRecord(value)
-    && typeof value.callID === 'string'
-    && typeof value.runID === 'string'
-    && typeof value.tool === 'string'
-    && value.arguments !== undefined
-    && typeof value.status === 'string'
-    && typeof value.requestedBy === 'string'
-    && typeof value.requestedAt === 'string';
+  return (
+    isRecord(value) &&
+    typeof value.callID === 'string' &&
+    typeof value.runID === 'string' &&
+    typeof value.tool === 'string' &&
+    value.arguments !== undefined &&
+    typeof value.status === 'string' &&
+    typeof value.requestedBy === 'string' &&
+    typeof value.requestedAt === 'string'
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

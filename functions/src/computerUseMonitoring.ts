@@ -16,9 +16,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
-import type {
-  ComputerUseSessionDailyRollupDoc,
-} from "./types.js";
+import type { ComputerUseSessionDailyRollupDoc } from "./types.js";
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -26,10 +24,7 @@ function dayKeyUTC(date: Date): string {
 
 function percentile(sortedAscending: number[], p: number): number {
   if (sortedAscending.length === 0) return 0;
-  const rank = Math.min(
-    sortedAscending.length - 1,
-    Math.floor(p * sortedAscending.length),
-  );
+  const rank = Math.min(sortedAscending.length - 1, Math.floor(p * sortedAscending.length));
   return sortedAscending[rank];
 }
 
@@ -82,31 +77,26 @@ export const rollupComputerUseDaily = onSchedule(
       .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
       .sort((a, b) => a - b);
 
-    const scopeViolations = actions.filter(
-      (a) => a.status === "denied" && a.denyReason === "scope_denied",
-    ).length;
+    const scopeViolations = actions.filter((a) => a.status === "denied" && a.denyReason === "scope_denied").length;
     const panicHalts = sessions.filter((s) => (s.endReason ?? "").startsWith("panic_")).length;
-    const visionSpend = actions.reduce(
-      (acc, a) => acc + (a.visionTokensCostUSD ?? 0),
-      0,
-    );
+    const visionSpend = actions.reduce((acc, a) => acc + (a.visionTokensCostUSD ?? 0), 0);
 
     const rollup: ComputerUseSessionDailyRollupDoc = {
       dayKey,
       sessionsStarted: sessions.length,
       sessionsCompleted: sessions.filter((s) => s.endReason === "completed").length,
-      browserActionsExecuted: actions.filter(
-        (a) => a.toolKind.startsWith("browser_") && a.status === "executed",
-      ).length,
-      browserActionsRejected: actions.filter(
-        (a) => a.toolKind.startsWith("browser_") && a.status !== "executed",
-      ).length,
+      browserActionsExecuted: actions.filter((a) => a.toolKind.startsWith("browser_") && a.status === "executed")
+        .length,
+      browserActionsRejected: actions.filter((a) => a.toolKind.startsWith("browser_") && a.status !== "executed")
+        .length,
       systemActionsExecuted: actions.filter(
-        (a) => (a.toolKind.startsWith("mac_input_") || a.toolKind === "mac_inspect_accessibility") &&
+        (a) =>
+          (a.toolKind.startsWith("mac_input_") || a.toolKind === "mac_inspect_accessibility") &&
           a.status === "executed",
       ).length,
       systemActionsRejected: actions.filter(
-        (a) => (a.toolKind.startsWith("mac_input_") || a.toolKind === "mac_inspect_accessibility") &&
+        (a) =>
+          (a.toolKind.startsWith("mac_input_") || a.toolKind === "mac_inspect_accessibility") &&
           a.status !== "executed",
       ).length,
       phoneControlIntents: actions.filter((a) => a.approvedBy === "phone").length,
@@ -119,8 +109,6 @@ export const rollupComputerUseDaily = onSchedule(
       updatedAt: Timestamp.fromDate(now),
     };
 
-    await firestore
-      .doc(`ops/computer_use_session_daily_rollups/days/${dayKey}`)
-      .set(rollup, { merge: true });
+    await firestore.doc(`ops/computer_use_session_daily_rollups/days/${dayKey}`).set(rollup, { merge: true });
   },
 );

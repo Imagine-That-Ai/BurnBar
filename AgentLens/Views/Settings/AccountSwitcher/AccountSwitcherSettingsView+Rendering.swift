@@ -534,6 +534,7 @@ extension AccountSwitcherSettingsView {
             (.forge, "Forge", "flame.fill", Color(hex: "F97316")),
             (.antigravity, "Antigravity", "terminal.fill", Color(hex: "6C63FF")),
             (.grok, "Grok Build", "terminal.fill", Color(hex: "111111")),
+            (.cursorAgent, "Cursor Agent", "terminal.fill", Color(hex: "00E5FF")),
         ]
 
         var groups: [ProfileGroup] = []
@@ -549,6 +550,7 @@ extension AccountSwitcherSettingsView {
                 case .forge: "ForgeLogo"
                 case .antigravity: "AntigravityLogo"
                 case .grok: "GrokLogo"
+                case .cursorAgent: "CursorLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,

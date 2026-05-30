@@ -11,14 +11,8 @@ import { createHash, randomBytes } from "node:crypto";
 import Stripe from "stripe";
 
 import { getConfig } from "../config.js";
-import {
-  storeCredential,
-} from "../secrets.js";
-import {
-  providerAccountSecretRefPath,
-  refreshUserProviderAccountQuota,
-  refreshUserProviderQuota,
-} from "../quota.js";
+import { storeCredential } from "../secrets.js";
+import { providerAccountSecretRefPath, refreshUserProviderAccountQuota, refreshUserProviderQuota } from "../quota.js";
 import { upsertDeviceLink } from "../domains/device-links/index.js";
 import { minimaxAdapter } from "../providers/minimax.js";
 import { zaiAdapter } from "../providers/zai.js";
@@ -57,15 +51,24 @@ import { auth, db } from "../adminRuntime.js";
 // ---------------------------------------------------------------------------
 export function backendAdapterFor(provider: Provider) {
   switch (provider) {
-    case "openai": return openaiAdapter;
-    case "minimax": return minimaxAdapter;
-    case "zai": return zaiAdapter;
-    case "factory": return factoryAdapter;
-    case "cursor": return cursorAdapter;
-    case "xai": return xaiAdapter;
-    case "mimo": return mimoAdapter;
-    case "kimi": return kimiAdapter;
-    default: return undefined;
+    case "openai":
+      return openaiAdapter;
+    case "minimax":
+      return minimaxAdapter;
+    case "zai":
+      return zaiAdapter;
+    case "factory":
+      return factoryAdapter;
+    case "cursor":
+      return cursorAdapter;
+    case "xai":
+      return xaiAdapter;
+    case "mimo":
+      return mimoAdapter;
+    case "kimi":
+      return kimiAdapter;
+    default:
+      return undefined;
   }
 }
 
@@ -97,6 +100,7 @@ export const PI_AGENT_MAX_FAILED_PAIRING_ATTEMPTS = 5;
 export const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
 export const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode", "antigravity"]);
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
+export const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 export const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 export const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 export const REMOTE_MCP_TOKEN_HMAC_SECRET = defineSecret("REMOTE_MCP_TOKEN_HMAC_SECRET");
@@ -116,7 +120,7 @@ export function assertProvider(provider: unknown): asserts provider is Provider 
   if (typeof provider !== "string" || !ALLOWED_PROVIDERS.has(provider)) {
     throw new HttpsError(
       "invalid-argument",
-      `Unsupported provider "${String(provider)}". Backend connections only support: ${[...ALLOWED_PROVIDERS].join(", ")}.`
+      `Unsupported provider "${String(provider)}". Backend connections only support: ${[...ALLOWED_PROVIDERS].join(", ")}.`,
     );
   }
 }
@@ -159,23 +163,18 @@ export function optionalTrimmedString(raw: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
+export function boundedTrimmedString(raw: unknown, fieldName: string, maxLength: number, required: true): string;
 export function boundedTrimmedString(
   raw: unknown,
   fieldName: string,
   maxLength: number,
-  required: true
-): string;
-export function boundedTrimmedString(
-  raw: unknown,
-  fieldName: string,
-  maxLength: number,
-  required?: false
+  required?: false,
 ): string | undefined;
 export function boundedTrimmedString(
   raw: unknown,
   fieldName: string,
   maxLength: number,
-  required = false
+  required = false,
 ): string | undefined {
   const value = optionalTrimmedString(raw);
   if (!value) {
@@ -191,15 +190,30 @@ export function boundedTrimmedString(
 }
 
 export function normalizedSearchTerms(raw: string): string[] {
-  const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "how", "what", "where", "when", "why", "are", "was"]);
+  const stopwords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "how",
+    "what",
+    "where",
+    "when",
+    "why",
+    "are",
+    "was",
+  ]);
   return Array.from(
     new Set(
       raw
         .toLowerCase()
         .split(/[^a-z0-9]+/u)
         .map((part) => part.trim())
-        .filter((part) => part.length >= 2 && !stopwords.has(part))
-    )
+        .filter((part) => part.length >= 2 && !stopwords.has(part)),
+    ),
   ).slice(0, 8);
 }
 
@@ -215,6 +229,20 @@ export function sha256Hex(text: string): string {
 export function safeCloudDocumentID(raw: unknown, fieldName: string): string {
   const value = boundedTrimmedString(raw, fieldName, 512, true);
   if (!/^[A-Za-z0-9_.:-]+$/u.test(value) || value.includes("..") || value.includes("/")) {
+    throw new HttpsError("invalid-argument", `${fieldName} contains unsupported characters.`);
+  }
+  return value;
+}
+
+function safeStoragePathDocumentSegment(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 512, true);
+  if (
+    value === "." ||
+    value === ".." ||
+    value.includes("/") ||
+    value.includes("\\") ||
+    /[\u0000-\u001F\u007F]/u.test(value)
+  ) {
     throw new HttpsError("invalid-argument", `${fieldName} contains unsupported characters.`);
   }
   return value;
@@ -257,7 +285,7 @@ export function requireRecordArray(raw: unknown, fieldName: string, maxLength: n
 
 export async function commitBatchedWrites(
   writes: Array<(batch: WriteBatch) => void>,
-  maxWritesPerBatch = 450
+  maxWritesPerBatch = 450,
 ): Promise<void> {
   for (let start = 0; start < writes.length; start += maxWritesPerBatch) {
     const batch = db.batch();
@@ -282,8 +310,11 @@ export function requireSearchHashes(raw: unknown, fieldName: string, required: b
     throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
   }
   const unique = Array.from(new Set(raw.filter((item): item is string => typeof item === "string")));
-  if ((required && unique.length === 0) || unique.length > 250) {
-    throw new HttpsError("invalid-argument", `${fieldName} must contain ${required ? "between 1 and" : "at most"} 250 hashes.`);
+  if ((required && unique.length === 0) || unique.length > 1024) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} must contain ${required ? "between 1 and" : "at most"} 1024 hashes.`,
+    );
   }
   for (const hash of unique) {
     if (!/^[a-f0-9]{32}$/u.test(hash)) {
@@ -330,7 +361,7 @@ export function requireBoundedStringArray(
   raw: unknown,
   fieldName: string,
   maxLength: number,
-  itemMaxLength: number
+  itemMaxLength: number,
 ): string[] {
   if (!Array.isArray(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
@@ -338,9 +369,7 @@ export function requireBoundedStringArray(
   if (raw.length > maxLength) {
     throw new HttpsError("invalid-argument", `${fieldName} can contain at most ${maxLength} items.`);
   }
-  const values = raw.map((item, idx) =>
-    boundedTrimmedString(item, `${fieldName}[${idx}]`, itemMaxLength, true)
-  );
+  const values = raw.map((item, idx) => boundedTrimmedString(item, `${fieldName}[${idx}]`, itemMaxLength, true));
   return Array.from(new Set(values));
 }
 
@@ -366,7 +395,7 @@ export function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): 
     envelope.sealedBoxBase64,
     `${fieldName}.sealedBoxBase64`,
     1_500_000,
-    true
+    true,
   );
   if (!/^[A-Za-z0-9+/=]+$/u.test(sealedBoxBase64)) {
     throw new HttpsError("invalid-argument", `${fieldName}.sealedBoxBase64 must be base64.`);
@@ -386,7 +415,7 @@ export function assertUserStoragePath(
   uid: string,
   storagePath: string,
   expectedBodyHash?: string,
-  expectedDocumentID?: string
+  expectedDocumentID?: string,
 ): void {
   const parts = storagePath.split("/");
   if (
@@ -399,7 +428,9 @@ export function assertUserStoragePath(
   ) {
     throw new HttpsError("permission-denied", "Invalid encrypted session storage path.");
   }
-  const pathDocumentID = safeCloudDocumentID(parts[3], "storagePath.documentID");
+  const pathDocumentID = expectedDocumentID
+    ? safeCloudDocumentID(parts[3], "storagePath.documentID")
+    : safeStoragePathDocumentSegment(parts[3], "storagePath.documentID");
   if (expectedDocumentID && pathDocumentID !== expectedDocumentID) {
     throw new HttpsError("invalid-argument", "Encrypted session storage path does not match documentID.");
   }
@@ -415,7 +446,7 @@ export async function assertEncryptedSessionBlobObject(args: {
   documentID: string;
   bodyHash: string;
   encryptedByteCount: number;
-}): Promise<void> {
+}): Promise<number> {
   assertUserStoragePath(args.uid, args.storagePath, args.bodyHash, args.documentID);
   let metadata: Record<string, unknown>;
   try {
@@ -423,19 +454,31 @@ export async function assertEncryptedSessionBlobObject(args: {
   } catch {
     throw new HttpsError(
       "failed-precondition",
-      "Encrypted session body must be uploaded before committing the search index."
+      "Encrypted session body must be uploaded before committing the search index.",
     );
   }
+  return resolveEncryptedSessionBlobByteCount({
+    metadata,
+    maxBytes: getConfig().encryptedSessionBlobMaxBytes,
+  });
+}
+
+export function resolveEncryptedSessionBlobByteCount(args: {
+  metadata: Record<string, unknown>;
+  maxBytes: number;
+}): number {
+  const { metadata, maxBytes } = args;
   const size = Number(metadata.size);
-  if (!Number.isFinite(size) || size !== args.encryptedByteCount) {
-    throw new HttpsError("failed-precondition", "Encrypted session body size does not match the upload ticket.");
+  if (!Number.isFinite(size) || !Number.isInteger(size)) {
+    throw new HttpsError("failed-precondition", "Encrypted session body has an invalid size.");
   }
-  if (size < 1 || size > getConfig().encryptedSessionBlobMaxBytes) {
+  if (size < 1 || size > maxBytes) {
     throw new HttpsError("resource-exhausted", "Encrypted session body exceeds the configured upload limit.");
   }
   if (metadata.contentType !== "application/octet-stream") {
     throw new HttpsError("failed-precondition", "Encrypted session body has an invalid content type.");
   }
+  return size;
 }
 
 export function callableDate(value: unknown): string | undefined {
@@ -451,7 +494,10 @@ export function callableDate(value: unknown): string | undefined {
   return undefined;
 }
 
-export function serializeUsageForCallable(documentID: string, data: FirebaseFirestore.DocumentData): Record<string, unknown> {
+export function serializeUsageForCallable(
+  documentID: string,
+  data: FirebaseFirestore.DocumentData,
+): Record<string, unknown> {
   const provider = typeof data.provider === "string" ? data.provider : "unknown";
   const startTime = callableDate(data.startTime) ?? new Date(0).toISOString();
   const endTime = callableDate(data.endTime) ?? startTime;
@@ -487,7 +533,7 @@ export function serializeUsageForCallable(documentID: string, data: FirebaseFire
 
 export async function writeHermesAuditEvent(
   uid: string,
-  event: Omit<HermesConnectionAuditEventDoc, "id" | "observedAt" | "schemaVersion" | "expireAt">
+  event: Omit<HermesConnectionAuditEventDoc, "id" | "observedAt" | "schemaVersion" | "expireAt">,
 ): Promise<void> {
   const id = `${Date.now()}_${randomBytes(6).toString("hex")}`;
   const expireAt = Timestamp.fromMillis(Date.now() + HERMES_PAIRING_AUDIT_TTL_MS);
@@ -503,7 +549,7 @@ export async function writeHermesAuditEvent(
 
 export async function writePiAgentAuditEvent(
   uid: string,
-  event: Omit<PiAgentConnectionAuditEventDoc, "id" | "observedAt" | "schemaVersion" | "expireAt">
+  event: Omit<PiAgentConnectionAuditEventDoc, "id" | "observedAt" | "schemaVersion" | "expireAt">,
 ): Promise<void> {
   const id = `${Date.now()}_${randomBytes(6).toString("hex")}`;
   const expireAt = Timestamp.fromMillis(Date.now() + PI_AGENT_PAIRING_AUDIT_TTL_MS);
@@ -534,10 +580,7 @@ export function connectionDocFromAccount(account: ProviderAccountDoc): ProviderC
   assertProvider(account.providerID);
   return {
     provider: account.providerID,
-    status:
-      account.status === "disabled" || account.status === "deleted"
-        ? "disconnected"
-        : account.status,
+    status: account.status === "disabled" || account.status === "deleted" ? "disconnected" : account.status,
     lastValidatedAt: account.lastValidatedAt,
     lastRefreshAt: account.lastRefreshAt,
     lastErrorCode: account.lastErrorCode,
@@ -552,18 +595,23 @@ export function assertHostedProvider(provider: string): asserts provider is Prov
   if (!HOSTED_QUOTA_PROVIDERS.has(provider)) {
     throw new HttpsError(
       "invalid-argument",
-      `Hosted quota sync is currently available for ${Array.from(HOSTED_QUOTA_PROVIDERS).join(", ")} only.`
+      `Hosted quota sync is currently available for ${Array.from(HOSTED_QUOTA_PROVIDERS).join(", ")} only.`,
     );
   }
 }
 
 export function hostedProviderLabel(provider: string): string {
   switch (provider) {
-    case "codex": return "Codex";
-    case "claude-code": return "Claude Code";
-    case "kimi": return "Kimi";
-    case "antigravity": return "Antigravity";
-    default: return provider;
+    case "codex":
+      return "Codex";
+    case "claude-code":
+      return "Claude Code";
+    case "kimi":
+      return "Kimi";
+    case "antigravity":
+      return "Antigravity";
+    default:
+      return provider;
   }
 }
 
@@ -583,7 +631,7 @@ export function assertSelfHostedProvider(provider: string): asserts provider is 
   if (!SELF_HOSTED_QUOTA_PROVIDERS.has(provider)) {
     throw new HttpsError(
       "invalid-argument",
-      `Self-hosted quota sync is available for ${Array.from(SELF_HOSTED_QUOTA_PROVIDERS).join(", ")}.`
+      `Self-hosted quota sync is available for ${Array.from(SELF_HOSTED_QUOTA_PROVIDERS).join(", ")}.`,
     );
   }
 }
@@ -607,7 +655,7 @@ export async function assertActiveBurnBarProEntitlement(uid: string): Promise<vo
   if (isActivePremiumEntitlement(hostedSnap.data())) return;
   throw new HttpsError(
     "permission-denied",
-    "BurnBar Pro is required for hosted LLM, encrypted session-log backup, and cloud search."
+    "BurnBar Pro is required for hosted LLM, encrypted session-log backup, and cloud search.",
   );
 }
 
@@ -656,12 +704,21 @@ export function burnBarProFeatures(): Record<string, boolean> {
   };
 }
 
+export function burnBarProMaxFeatures(): Record<string, boolean> {
+  return {
+    ...burnBarProFeatures(),
+    floo: true,
+    agentControl: true,
+  };
+}
+
 export async function writeBurnBarProEntitlement(args: {
   uid: string;
   productID: string;
   expiresAtMillis: number;
   source: string;
   platform: "ios" | "android" | "macos" | "web" | "stripe";
+  entitlementID?: string;
   externalSubscriptionID?: string;
   externalCustomerID?: string;
   purchaseTokenHash?: string;
@@ -672,12 +729,13 @@ export async function writeBurnBarProEntitlement(args: {
   const now = nowISO();
   const active = args.activeOverride ?? (Number.isFinite(args.expiresAtMillis) && args.expiresAtMillis > Date.now());
   const expiresAt = new Date(args.expiresAtMillis).toISOString();
+  const entitlementID = args.entitlementID || BURNBAR_PRO_ENTITLEMENT_ID;
   const doc = stripUndefinedObject({
-    id: BURNBAR_PRO_ENTITLEMENT_ID,
+    id: entitlementID,
     active,
     productID: args.productID,
-    entitlementFamily: "burnbar_pro",
-    features: burnBarProFeatures(),
+    entitlementFamily: entitlementID,
+    features: entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID ? burnBarProMaxFeatures() : burnBarProFeatures(),
     expiresAt,
     expireAt: Timestamp.fromMillis(args.expiresAtMillis),
     source: args.source,
@@ -692,14 +750,14 @@ export async function writeBurnBarProEntitlement(args: {
     lastVerifiedAt: now,
     updatedAt: now,
   });
-  await db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).set(doc, { merge: true });
+  await db.doc(`users/${args.uid}/entitlements/${entitlementID}`).set(doc, { merge: true });
   return doc;
 }
 
 export function requireConfiguredStripe(): Stripe {
   const cfg = getConfig();
   const secretKey = STRIPE_SECRET_KEY.value() || cfg.stripeSecretKey;
-  if (!secretKey || !cfg.stripeBurnBarProPriceID) {
+  if (!secretKey || !(cfg.stripeBurnBarCloudMonthlyPriceID || cfg.stripeBurnBarProPriceID)) {
     throw new HttpsError("failed-precondition", "Stripe BurnBar Pro checkout is not configured.");
   }
   return new Stripe(secretKey);
@@ -749,7 +807,7 @@ export async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Pr
       updatedAt: Timestamp.now(),
       schemaVersion: 1,
     },
-    { merge: true }
+    { merge: true },
   );
   await db.doc(`stripe_customers/${customer.id}`).set(
     {
@@ -759,14 +817,14 @@ export async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Pr
       updatedAt: Timestamp.now(),
       schemaVersion: 1,
     },
-    { merge: true }
+    { merge: true },
   );
   return customer.id;
 }
 
 export function googlePlayLineItemForProduct(
   purchase: Record<string, unknown>,
-  productID: string
+  productID: string,
 ): Record<string, unknown> | undefined {
   const lineItems = Array.isArray(purchase.lineItems)
     ? purchase.lineItems.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
@@ -783,10 +841,7 @@ export function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undef
   throw new HttpsError("failed-precondition", "Google Play did not return an expiry for this subscription.");
 }
 
-export async function applyStripeCheckoutSession(
-  stripe: Stripe,
-  session: Stripe.Checkout.Session
-): Promise<void> {
+export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe.Checkout.Session): Promise<void> {
   const uid = session.metadata?.firebaseUID ?? session.client_reference_id ?? undefined;
   if (!uid) return;
   let subscription: Stripe.Subscription | undefined;
@@ -803,7 +858,7 @@ export async function applyStripeCheckoutSession(
 export async function applyStripeSubscription(
   stripe: Stripe,
   subscription: Stripe.Subscription,
-  uidOverride?: string
+  uidOverride?: string,
 ): Promise<void> {
   const uid = uidOverride ?? (await uidForStripeSubscription(subscription));
   if (!uid) return;
@@ -812,13 +867,19 @@ export async function applyStripeSubscription(
   const expiresAtMillis = stripeSubscriptionPeriodEndMillis(subscription);
   const status = String(subscription.status ?? "unknown");
   const active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
+  const entitlementID =
+    subscription.metadata?.entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID
+      ? BURNBAR_PRO_MAX_ENTITLEMENT_ID
+      : BURNBAR_PRO_ENTITLEMENT_ID;
+  const productID = stripeSubscriptionProductID(subscription, entitlementID);
 
   await writeBurnBarProEntitlement({
     uid,
-    productID: getConfig().burnBarProProductID,
+    productID,
     expiresAtMillis,
     source: "stripe_webhook_verified",
     platform: "stripe",
+    entitlementID,
     externalSubscriptionID: subscription.id,
     externalCustomerID: customerID,
     rawStatus: status,
@@ -837,7 +898,7 @@ export async function applyStripeSubscription(
         updatedAt: Timestamp.now(),
         schemaVersion: 1,
       },
-      { merge: true }
+      { merge: true },
     );
     await db.doc(`stripe_customers/${customerID}`).set(
       {
@@ -848,9 +909,28 @@ export async function applyStripeSubscription(
         updatedAt: Timestamp.now(),
         schemaVersion: 1,
       },
-      { merge: true }
+      { merge: true },
     );
   }
+}
+
+function stripeSubscriptionProductID(subscription: Stripe.Subscription, entitlementID: string): string {
+  const cfg = getConfig();
+  const priceIDs = new Set(
+    subscription.items?.data
+      ?.map((item) => item.price?.id)
+      .filter((priceID): priceID is string => typeof priceID === "string") || [],
+  );
+  if (cfg.stripeBurnBarCloudAnnualPriceID && priceIDs.has(cfg.stripeBurnBarCloudAnnualPriceID)) {
+    return cfg.burnBarProAnnualProductID;
+  }
+  if (cfg.stripeBurnBarCloudProMonthlyPriceID && priceIDs.has(cfg.stripeBurnBarCloudProMonthlyPriceID)) {
+    return cfg.burnBarProMaxProductID;
+  }
+  if (cfg.stripeBurnBarCloudProAnnualPriceID && priceIDs.has(cfg.stripeBurnBarCloudProAnnualPriceID)) {
+    return cfg.burnBarProMaxAnnualProductID;
+  }
+  return entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID ? cfg.burnBarProMaxProductID : cfg.burnBarProProductID;
 }
 
 export async function uidForStripeSubscription(subscription: Stripe.Subscription): Promise<string | undefined> {
@@ -888,30 +968,30 @@ export function normalizeHostedCredential(provider: string, raw: unknown): strin
     throw new HttpsError("invalid-argument", "credential is required.");
   }
   try {
-    const candidate = credential.startsWith("{")
-      ? credential
-      : Buffer.from(credential, "base64").toString("utf8");
+    const candidate = credential.startsWith("{") ? credential : Buffer.from(credential, "base64").toString("utf8");
     JSON.parse(candidate);
     return credential;
   } catch {
     throw new HttpsError(
       "invalid-argument",
-      "Codex hosted credentials must be ~/.codex/auth.json JSON or base64 JSON."
+      "Codex hosted credentials must be ~/.codex/auth.json JSON or base64 JSON.",
     );
   }
 }
 
 export function safeSnapshotSourceID(raw: unknown): string {
-  return (typeof raw === "string" ? raw : "self-hosted-runner")
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "self-hosted-runner";
+  return (
+    (typeof raw === "string" ? raw : "self-hosted-runner")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "self-hosted-runner"
+  );
 }
 
 export function sanitizeUploadedQuotaSnapshot(
   account: ProviderAccountDoc,
-  raw: Record<string, unknown>
+  raw: Record<string, unknown>,
 ): QuotaSnapshotDoc {
   const now = nowISO();
   const bucketsRaw = Array.isArray(raw.buckets) ? raw.buckets : [];
@@ -938,14 +1018,13 @@ export function sanitizeUploadedQuotaSnapshot(
         ? {
             meta: Object.fromEntries(
               Object.entries(recordOrUndefined(b.meta) ?? {})
-                .filter(([key, value]) =>
-                  /^[a-zA-Z0-9_.-]{1,64}$/.test(key) &&
-                  !isSecretLikeMetadataKey(key) &&
-                  (typeof value === "string" ||
-                    typeof value === "number" ||
-                    typeof value === "boolean")
+                .filter(
+                  ([key, value]) =>
+                    /^[a-zA-Z0-9_.-]{1,64}$/.test(key) &&
+                    !isSecretLikeMetadataKey(key) &&
+                    (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
                 )
-                .slice(0, 16)
+                .slice(0, 16),
             ),
           }
         : {}),
@@ -955,12 +1034,10 @@ export function sanitizeUploadedQuotaSnapshot(
   if (buckets.length === 0) {
     throw new HttpsError("invalid-argument", "At least one quota bucket is required.");
   }
-  const confidence = raw.confidence === "high" ||
-    raw.confidence === "medium" ||
-    raw.confidence === "low" ||
-    raw.confidence === "stale"
-    ? raw.confidence
-    : "high";
+  const confidence =
+    raw.confidence === "high" || raw.confidence === "medium" || raw.confidence === "low" || raw.confidence === "stale"
+      ? raw.confidence
+      : "high";
   assertProvider(account.providerID);
   const snapshot: QuotaSnapshotDoc = {
     sourceKind: "provider",
@@ -990,12 +1067,14 @@ export function sanitizeUploadedQuotaSnapshot(
 
 export function isSecretLikeMetadataKey(key: string): boolean {
   const lower = key.toLowerCase();
-  return lower.includes("token")
-    || lower.includes("secret")
-    || lower.includes("authorization")
-    || lower.includes("credential")
-    || lower.includes("cookie")
-    || lower.includes("password");
+  return (
+    lower.includes("token") ||
+    lower.includes("secret") ||
+    lower.includes("authorization") ||
+    lower.includes("credential") ||
+    lower.includes("cookie") ||
+    lower.includes("password")
+  );
 }
 
 export async function writePrivateSecretRef(
@@ -1004,7 +1083,7 @@ export async function writePrivateSecretRef(
   provider: Provider,
   secretVersionName: string,
   createdAt: string,
-  updatedAt: string
+  updatedAt: string,
 ): Promise<void> {
   const refDoc: ProviderAccountSecretRefDoc = {
     uid,
@@ -1048,12 +1127,12 @@ export async function connectProviderAccountInternal(params: {
     if (provider === "codex") {
       throw new HttpsError(
         "failed-precondition",
-        "Codex is a runner-based provider and doesn't support backend credential connections. Connect it through hosted quota sync or the OpenBurnBar Mac app instead."
+        "Codex is a runner-based provider and doesn't support backend credential connections. Connect it through hosted quota sync or the OpenBurnBar Mac app instead.",
       );
     }
     throw new HttpsError(
       "unimplemented",
-      `OpenBurnBar doesn't have a server-side connector for ${provider} yet. Connect it on the macOS app, or pick a supported provider (OpenAI, Factory, Cursor, Z.ai, MiniMax, Kimi).`
+      `OpenBurnBar doesn't have a server-side connector for ${provider} yet. Connect it on the macOS app, or pick a supported provider (OpenAI, Factory, Cursor, Z.ai, MiniMax, Kimi).`,
     );
   }
 
@@ -1075,8 +1154,8 @@ export async function connectProviderAccountInternal(params: {
     accountID,
     provider,
     secretVersionName,
-    existing.exists ? optionalStringField(existing.get("createdAt")) ?? now : now,
-    now
+    existing.exists ? (optionalStringField(existing.get("createdAt")) ?? now) : now,
+    now,
   );
 
   const accountDoc: ProviderAccountDoc = {
@@ -1101,7 +1180,7 @@ export async function connectProviderAccountInternal(params: {
     lastRefreshAt: now,
     lastErrorCode: undefined,
     schemaVersion: ACCOUNT_SCHEMA_VERSION,
-    createdAt: existing.exists ? optionalStringField(existing.get("createdAt")) ?? now : now,
+    createdAt: existing.exists ? (optionalStringField(existing.get("createdAt")) ?? now) : now,
     updatedAt: now,
   };
 
@@ -1132,7 +1211,11 @@ export async function connectProviderAccountInternal(params: {
       await refreshUserProviderQuota(db, uid, provider);
     }
   } catch (quotaErr) {
-    logError({ event: "callable_warn", message: `Initial quota refresh failed for ${uid}/${accountID}:`, detail: String(quotaErr) });
+    logError({
+      event: "callable_warn",
+      message: `Initial quota refresh failed for ${uid}/${accountID}:`,
+      detail: String(quotaErr),
+    });
   }
 
   return accountDoc;
@@ -1142,11 +1225,7 @@ export async function connectProviderAccountInternal(params: {
  * Enforce rate limit for refreshProviderQuota per user+provider.
  * Uses Firestore as a lightweight TTL store.
  */
-export async function checkRefreshRateLimit(
-  db: Firestore,
-  uid: string,
-  provider: string
-): Promise<void> {
+export async function checkRefreshRateLimit(db: Firestore, uid: string, provider: string): Promise<void> {
   const { refreshRateLimitSeconds } = getConfig();
   const ref = db.doc(`users/${uid}/_rate_limits/refresh_${provider}`);
   const snap = await ref.get();
@@ -1157,8 +1236,8 @@ export async function checkRefreshRateLimit(
       if (elapsed < refreshRateLimitSeconds * 1000) {
         throw new Error(
           `Rate limited: wait ${Math.ceil(
-            (refreshRateLimitSeconds * 1000 - elapsed) / 1000
-          )}s before refreshing ${provider}.`
+            (refreshRateLimitSeconds * 1000 - elapsed) / 1000,
+          )}s before refreshing ${provider}.`,
         );
       }
     }
@@ -1166,11 +1245,7 @@ export async function checkRefreshRateLimit(
   await ref.set({ lastRefreshAt: Timestamp.now() }, { merge: true });
 }
 
-export async function checkHermesRateLimit(
-  uid: string,
-  action: string,
-  windowSeconds: number
-): Promise<void> {
+export async function checkHermesRateLimit(uid: string, action: string, windowSeconds: number): Promise<void> {
   const ref = db.doc(`users/${uid}/_rate_limits/hermes_${action}`);
   const snap = await ref.get();
   if (snap.exists) {
@@ -1180,7 +1255,7 @@ export async function checkHermesRateLimit(
       if (elapsed < windowSeconds * 1000) {
         throw new HttpsError(
           "resource-exhausted",
-          `Please wait ${Math.ceil((windowSeconds * 1000 - elapsed) / 1000)}s before retrying.`
+          `Please wait ${Math.ceil((windowSeconds * 1000 - elapsed) / 1000)}s before retrying.`,
         );
       }
     }
@@ -1188,11 +1263,7 @@ export async function checkHermesRateLimit(
   await ref.set({ lastAt: Timestamp.now() }, { merge: true });
 }
 
-export async function checkPiAgentRateLimit(
-  uid: string,
-  action: string,
-  windowSeconds: number
-): Promise<void> {
+export async function checkPiAgentRateLimit(uid: string, action: string, windowSeconds: number): Promise<void> {
   const ref = db.doc(`users/${uid}/_rate_limits/pi_agent_${action}`);
   const snap = await ref.get();
   if (snap.exists) {
@@ -1202,13 +1273,12 @@ export async function checkPiAgentRateLimit(
       if (elapsed < windowSeconds * 1000) {
         throw new HttpsError(
           "resource-exhausted",
-          `Please wait ${Math.ceil((windowSeconds * 1000 - elapsed) / 1000)}s before retrying.`
+          `Please wait ${Math.ceil((windowSeconds * 1000 - elapsed) / 1000)}s before retrying.`,
         );
       }
     }
   }
   await ref.set({ lastAt: Timestamp.now() }, { merge: true });
 }
-
 
 HOSTED_QUOTA_PROVIDERS.add("claude-code");

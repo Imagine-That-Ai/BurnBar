@@ -58,6 +58,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
     public let providerName: String
     public let accountID: String
     public let accountLabel: String
+    public let displayNameIsCustom: Bool?
     public let sourceID: String
     public let sourceKind: String
     public let capabilities: [String]
@@ -86,6 +87,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         providerName: String,
         accountID: String,
         accountLabel: String,
+        displayNameIsCustom: Bool = false,
         sourceID: String,
         sourceKind: String,
         capabilities: [String],
@@ -106,6 +108,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         self.providerName = providerName
         self.accountID = accountID
         self.accountLabel = accountLabel
+        self.displayNameIsCustom = displayNameIsCustom
         self.sourceID = sourceID
         self.sourceKind = sourceKind
         self.capabilities = capabilities
@@ -123,6 +126,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, displayName, providerID, providerName, accountID, accountLabel
+        case displayNameIsCustom
         case sourceID, sourceKind, capabilities, modelCapabilities, quotaState, enabled
         case advertisementEnabled, routeEligible, lastRefreshAt, lastError
         case baseModelID, thinkingLevel, hidesBaseModel
@@ -136,6 +140,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         providerName = try container.decode(String.self, forKey: .providerName)
         accountID = try container.decode(String.self, forKey: .accountID)
         accountLabel = try container.decode(String.self, forKey: .accountLabel)
+        displayNameIsCustom = try container.decodeIfPresent(Bool.self, forKey: .displayNameIsCustom)
         sourceID = try container.decode(String.self, forKey: .sourceID)
         sourceKind = try container.decode(String.self, forKey: .sourceKind)
         capabilities = try container.decode([String].self, forKey: .capabilities)
@@ -313,8 +318,17 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 providerID: configuration.provider.id,
                 formatFamily: configuration.provider.formatFamily
             ) {
-                let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
-                let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
+                let liveCompatibleIDs = compatibleLiveModelIDs(for: wireModelID, model: model)
+                let liveModel = liveRefresh?.advertisedModels.first { liveModel in
+                    liveCompatibleIDs.contains { compatibleID in
+                        compatibleID.caseInsensitiveCompare(liveModel.id) == .orderedSame
+                    }
+                }
+                let liveConfirmed = liveIDSet.map { advertisedIDs in
+                    liveCompatibleIDs.contains { compatibleID in
+                        advertisedIDs.contains(compatibleID.lowercased())
+                    }
+                }
                 let liveBlocksRouting = liveRefresh?.blocksRouting == true
                 let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
                 let liveError: String? = {
@@ -326,13 +340,18 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     }
                     return account.lastError
                 }()
+                let displayOverride = configuration.settings.displayOverride(forModelID: wireModelID)
+                let hasCustomDisplayName = displayOverride != nil
+                let resolvedDisplayName = displayOverride?.displayName ?? liveModel?.displayName ?? model.displayName
+
                 let baseRow = BurnBarLiveAdvertisedModel(
                     id: wireModelID,
-                    displayName: liveModel?.displayName ?? model.displayName,
+                    displayName: resolvedDisplayName,
                     providerID: configuration.provider.id,
                     providerName: configuration.provider.displayName,
                     accountID: account.accountID,
                     accountLabel: account.accountLabel,
+                    displayNameIsCustom: hasCustomDisplayName,
                     sourceID: "\(configuration.provider.id)#\(account.accountID)",
                     sourceKind: liveRefresh?.sourceKind ?? configuredModelSourceKind(for: configuration.provider.id),
                     capabilities: capabilities,
@@ -370,13 +389,18 @@ public struct BurnBarLiveModelCatalog: Sendable {
         for liveModel in liveRefresh?.advertisedModels ?? [] {
             guard seenIDs.insert(liveModel.id.lowercased()).inserted else { continue }
             let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(liveModel.id)
+            let displayOverride = configuration.settings.displayOverride(forModelID: liveModel.id)
+            let hasCustomDisplayName = displayOverride != nil
+            let resolvedDisplayName = displayOverride?.displayName ?? liveModel.displayName
+
             let liveRow = BurnBarLiveAdvertisedModel(
                 id: liveModel.id,
-                displayName: liveModel.displayName,
+                displayName: resolvedDisplayName,
                 providerID: configuration.provider.id,
                 providerName: configuration.provider.displayName,
                 accountID: account.accountID,
                 accountLabel: account.accountLabel,
+                displayNameIsCustom: hasCustomDisplayName,
                 sourceID: "\(configuration.provider.id)#\(account.accountID)",
                 sourceKind: liveRefresh?.sourceKind ?? "upstream_models_endpoint",
                 capabilities: capabilities,
@@ -433,6 +457,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 providerName: baseRow.providerName,
                 accountID: baseRow.accountID,
                 accountLabel: baseRow.accountLabel,
+                displayNameIsCustom: baseRow.displayNameIsCustom ?? false,
                 sourceID: "\(baseRow.sourceID)::variant::\(variantID)",
                 sourceKind: "thinking_level_variant",
                 capabilities: baseRow.capabilities,
@@ -466,6 +491,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 providerName: baseRow.providerName,
                 accountID: baseRow.accountID,
                 accountLabel: baseRow.accountLabel,
+                displayNameIsCustom: false,
                 sourceID: "\(baseRow.sourceID)::alias::\(alias.aliasID)",
                 sourceKind: "user_model_alias",
                 capabilities: baseRow.capabilities,
@@ -503,6 +529,16 @@ public struct BurnBarLiveModelCatalog: Sendable {
         }
 
         return [advertisedModelID(for: model, providerID: providerID)]
+    }
+
+    private func compatibleLiveModelIDs(for wireModelID: String, model: BurnBarCatalogModel) -> [String] {
+        var seen = Set<String>()
+        return ([wireModelID] + model.aliases).compactMap { rawID in
+            let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty else { return nil }
+            guard seen.insert(id.lowercased()).inserted else { return nil }
+            return id
+        }
     }
 
     private func advertisedModelID(for model: BurnBarCatalogModel, providerID: String) -> String {

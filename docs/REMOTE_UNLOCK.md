@@ -16,14 +16,19 @@ only after a local certification flow proves the exact machine can:
 - enter a credential without exposing the password to logs, audit records,
   Firestore, analytics, or agent surfaces;
 - unlock and reconnect the Mercury mirror afterward;
-- keep Apple Screen Sharing/VNC access loopback-only with a firewall guard.
+- keep Apple Screen Sharing/ARD loopback-only for diagnostics, never as the
+  certified physical-console unlock backend.
 
 The durable backend order is:
 
-1. Apple Screen Sharing / Remote Management loopback bridge for lock/loginwindow.
-2. Persistent ScreenCaptureKit only when provisioned and live-certified.
-3. Normal ScreenCaptureKit after the user session is unlocked.
-4. FileVault preboot via Apple-supported SSH unlock where available; this is not
+1. OpenBurnBar Virtual HID + macOS Remote Desktop shared-display lane for
+   lock/loginwindow.
+2. Apple Screen Sharing / Remote Management loopback bridge as a diagnostic
+   transport only; account-auth ARD can land in a virtual desktop and must not
+   be treated as proof of physical-console unlock.
+3. Persistent ScreenCaptureKit only when provisioned and live-certified.
+4. Normal ScreenCaptureKit after the user session is unlocked.
+5. FileVault preboot via Apple-supported SSH unlock where available; this is not
    a screen-mirroring state.
 
 ## Wire Contract
@@ -58,9 +63,10 @@ Locked mirror admission is intentionally two-phase:
    advertised recipient key and signed by the same trusted phone-control key.
 6. The Mac validates signature freshness, counter monotonicity, active session
    binding, recipient key id, credential TTL, and lock-state readiness before it
-   sends the credential through the local Apple Screen Sharing / ARD loopback
-   keyboard lane. If that system lane is unavailable, the direct-download
-   remote-access agent remains a local fallback.
+   sends the credential through the OpenBurnBar Virtual HID bridge. If the
+   bridge is unavailable, the Mac may run the Apple Screen Sharing / ARD path as
+   a diagnostic only and then report a precise setup blocker; ARD account auth
+   is not treated as physical-console unlock proof.
 
 The Mac also attaches `remoteUnlockCapabilities` and `remoteUnlockState` to
 mirror acks and presence heartbeats. Unsupported peers ignore these fields.
@@ -103,8 +109,9 @@ The Mac readiness policy fails closed until all certification probes pass:
 - remote-access daemon installed;
 - Apple Screen Sharing / Remote Management available and listening on
   `127.0.0.1:5900`;
+- macOS Remote Desktop privacy permission granted to OpenBurnBar;
+- OpenBurnBar virtual HID bridge installed and active;
 - loopback firewall guard active;
-- generated VNC credential stored in System Keychain;
 - HPKE recipient key ID and public key available from the daemon;
 - backend certification fresh for the current OS build;
 - lock-screen capture, credential input, and unlock probes succeeded.
@@ -120,6 +127,47 @@ The report is machine-bound by macOS build string, HPKE recipient key ID, HPKE
 recipient public key, backend, expiry, and three successful hardware probes. The
 Mac readiness service ignores stale `UserDefaults` booleans; a valid report is
 the durable source of truth for advertising `remote_unlock.host`.
+
+## User-facing setup copy
+
+Readiness produces raw blocker identifiers (`virtual_hid_driver_missing`,
+`remote_desktop_permission_missing`, `lock_screen_capture_probe_missing`, …).
+**These identifiers never reach the UI.** A normal user only ever sees
+action-oriented setup copy.
+
+There is exactly one translator:
+`RemoteUnlockBlockerPresentationMap` in
+`OpenBurnBarComputerUseCore/RemoteUnlockBlockerPresentation.swift`. It takes a
+capability's `blockers` array, picks the earliest actionable step by a fixed
+priority order, and returns a `RemoteUnlockBlockerPresentation`
+(`title`, `message`, `primaryActionTitle`, `recommendedAction`, `symbolName`).
+Any unknown or future blocker falls through to a safe generic "finish setup on
+your Mac" presentation — it is structurally impossible to leak a raw string.
+
+Consumers:
+
+- iPhone overlay (`ScreenShareViewerView.RemoteUnlockStatusOverlay`) resolves
+  every not-ready state through the map and drives its button from
+  `recommendedAction`.
+- Mac onboarding (`OnboardingSystemPermissionsView`) gives the locked-screen
+  input card its own action-oriented status copy and surfaces the installer's
+  product-ready message.
+
+**Copy rules** (enforced by `RemoteUnlockBlockerPresentationTests`):
+
+- ✅ "Set up locked-screen input", "Approve OpenBurnBar in Privacy & Security",
+  "Input driver installed but not active", "Remote Desktop permission needed",
+  "Reconnect after setup".
+- ❌ "virtual HID" / "DriverKit" / entitlement / signing in primary UI.
+- ❌ raw blocker strings (e.g. `virtual_hid_driver_missing`).
+- ❌ "waiting for Apple approval" / "rejected by Apple".
+- ❌ framing entitlement/signing as the user's fault.
+
+**Diagnostics.** Exact blocker identifiers stay available for developers, never
+users: the iPhone logs them through `MercuryLiveSheet.setRemoteUnlockState`
+(os.Logger), the overlay shows them only behind `#if DEBUG`, and the Mac
+installer logs the raw failure and persists it as the virtual-HID rejection
+reason in `UserDefaults` while showing the user only product-ready copy.
 
 ## Hardware Certification
 
@@ -147,7 +195,7 @@ tool, the certification must not be recorded.
 
 ## Current Implementation State
 
-This change lands the permanent contract and fail-closed runtime seams:
+The permanent contract is fail-closed:
 
 - shared Swift/Kotlin relay models;
 - Mac readiness policy and advertised capabilities;
@@ -171,10 +219,14 @@ This change lands the permanent contract and fail-closed runtime seams:
   `remote_unlock.credential` lane directly. It does not run normal phone-control
   probe/classify traffic first, so a stale presence heartbeat cannot stall or
   reset the password flow;
-- locked credential entry now uses Apple Screen Sharing / ARD security type 30
-  over `127.0.0.1:5900` before falling back to the local helper. This is the
-  same system-level lane that can see and control `loginwindow`, unlike normal
-  user-session ScreenCaptureKit/CGEvent input;
+- locked credential entry uses the certified OpenBurnBar virtual HID bridge.
+  The bridge presents physical-style keyboard input to the login window and is
+  paired with macOS Remote Desktop/shared-display readiness so the phone sees
+  the physical console. It does not require a separate VNC password;
+- Apple Screen Sharing / ARD security type 30 over `127.0.0.1:5900` remains a
+  diagnostic path because modern macOS can authenticate it into a virtual
+  desktop; ARD submission alone is never success unless lock-state readback
+  becomes positively unlocked;
 - iPhone, iPad, and Android support both typed-per-unlock submission and
   optional one-tap saved credential submission, guarded by local device
   authentication and encoded on the wire as `credentialKind=saved_password`;
@@ -184,33 +236,68 @@ This change lands the permanent contract and fail-closed runtime seams:
 - tests for policy, certification report validation, Swift relay round-trip, and
   Android relay round-trip.
 
-Apple Screen Sharing owns the primary privileged locked-screen credential-entry
-bridge. The direct-download remote-access daemon remains installed as a local
-health/wake/fallback lane. Runtime readiness and certification are deliberately
-separate:
+The OpenBurnBar virtual HID bridge owns the primary privileged locked-screen
+credential-entry path. The direct-download remote-access daemon remains
+installed for health, display wake, setup, and local diagnostics. Runtime setup
+and certification are deliberately separate:
 
-- Runtime ready: direct-download Mac app, healthy local remote-access agent,
-  a live Apple Screen Sharing / Remote Management listener on `127.0.0.1:5900`,
-  and HPKE recipient key material. Mobile apps may present password entry in
-  this state.
+- Setup ready: direct-download Mac app, healthy local remote-access agent,
+  Remote Desktop permission, active virtual HID bridge, a live locked-screen
+  visual lane, and HPKE recipient key material.
 - Certified: a real locked-screen round trip has succeeded on this hardware and
-  the Mac recorded a fresh `RemoteUnlockCertification-v1.json` proof. Future
-  sessions advertise `certified`; stale or missing proof does not deadlock the
-  first hardware proof attempt.
+  the Mac recorded a fresh `RemoteUnlockCertification-v1.json` proof. Only
+  certified Macs advertise credential paste / saved one-tap unlock. Stale or
+  missing proof fails closed instead of claiming a virtual-session unlock.
 
 Wire compatibility note: current mobile clients show the password field when
 `remoteUnlockCapabilities.allowsCredentialPaste` is true. A `certified` status
 still means a durable hardware proof exists; runtime-ready-but-not-yet-certified
 Macs may accept the first real locked unlock and record certification afterward.
 
+### Virtual HID Bridge
+
+The bridge lives at:
+
+- binary: `/Library/Application Support/OpenBurnBar/RemoteUnlock/openburnbar-virtual-hid-bridge`
+- socket: `/var/run/openburnbar-virtual-hid.sock`
+- installer: bundled Mac app setup (`OpenBurnBar.app/Contents/Helpers/OpenBurnBarVirtualHIDBridge`)
+- logs: `/var/log/openburnbar-virtual-hid-bridge.log`
+
+It exposes the same local JSON socket shape as the remote-access helper:
+
+- `{"operation":"health"}`
+- `{"operation":"typeCredential","password":"..."}`
+- `{"operation":"input","kind":"click" | "type" | "key" | "shortcut" | "pointer_move" | "scroll", ...}`
+
+The bridge creates a virtual boot keyboard and pointing device with
+`IOHIDUserDevice` and emits USB HID reports directly. The Mac app owns setup:
+when a locked mirror reports `virtual_hid_driver_missing` or
+`virtual_hid_driver_inactive`, the phone can send a signed system-permission
+request and the Mac runs the same install/repair path with the standard macOS
+administrator prompt. If macOS rejects the helper before launch, readiness uses
+the more specific `virtual_hid_driver_rejected` blocker so the phone and Mac
+setup UI can explain that the input driver is installed but not accepted by
+macOS. Users must not run Terminal scripts for normal setup.
+
+macOS protects the virtual-HID API with the restricted
+`com.apple.developer.hid.virtual.device` entitlement. Production builds must be
+signed with a provisioning profile that actually grants that entitlement (or a
+future DriverKit system extension replacement). If AMFI rejects the helper
+signature, the bridge is killed before it can bind the socket; OpenBurnBar must
+surface setup/signing failure instead of falling back to CGEvents or
+account-auth ARD.
+
 ## Locked-Screen Input Backends
 
-OpenBurnBar prefers Apple Screen Sharing / Remote Management on loopback for
-locked-screen input. The Mac app authenticates locally to the system RFB service
-with ARD security type 30, wakes/reveals the selected login password lane with
-non-printing input, types the validated credential, and submits it. This avoids
-the brittle failure mode where a user-session CGEvent helper wakes the lock
-screen but loginwindow ignores the password keystrokes.
+OpenBurnBar prefers its own virtual HID bridge for locked-screen input. The
+bridge is installed as a direct-download-only system component and accepts
+credential-entry commands only for an active, signed Remote Unlock session. It
+wakes/reveals the selected login password lane with non-printing input, types
+the validated credential as physical-style keyboard events, and submits it.
+This avoids two brittle failure modes observed on hardware: user-session
+CGEvents waking the lock screen while `loginwindow` ignores the password, and
+Apple account-auth ARD unlocking a hidden virtual desktop while the physical
+display stays locked.
 
 The product direction for account picker support is the same backend: relay the
 system RFB framebuffer and pointer/keyboard events while locked, then switch

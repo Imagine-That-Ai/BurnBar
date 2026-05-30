@@ -195,7 +195,15 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         if context.killSwitch { return .denied(.killSwitch) }
 
         // 1. Entitlement.
-        if !context.entitlement.isActive { return .denied(.entitlement) }
+        //
+        // Direct phone control is a local, paired-device lane. It still has its
+        // own feature bit, signed authority, action cap, and kill switch, but
+        // it must not depend on the
+        // hosted Computer Use subscription being active. Otherwise a paired
+        // iPhone can connect and stream the Mac, then every tap is denied as an
+        // entitlement failure before dispatch.
+        let directPhoneControl = context.originatedFromPhone && context.entitlement.allowsPhoneControl
+        if !context.entitlement.isActive && !directPhoneControl { return .denied(.entitlement) }
         switch action {
         case .browser:
             if !context.entitlement.allowsBrowser { return .denied(.entitlement) }
@@ -236,11 +244,28 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
         }
 
-        // 6. Accessibility deny region beats scope outcome — even an
-        //    allow rule cannot override a password field click.
+        // 6. A verified phone-control intent is already the operator action in
+        //    a live mirror. Do not apply agent-oriented AX deny-region or scope
+        //    rules here: those rules protect autonomous agent runs from typing
+        //    into passwords or out-of-scope apps, but they also block the user
+        //    from clicking/typing on their own locked login screen. The phone
+        //    path has already passed signed-authority validation, kill switch,
+        //    entitlement bit, concurrency, and action-cap checks.
+        if directPhoneControl {
+            switch action {
+            case .macInput, .phoneIntent, .remoteClipboard:
+                return .allowed(approvedBy: .phone)
+            case .browser, .macInspect:
+                break
+            }
+        }
+
+        // 7. Accessibility deny region beats scope outcome for agent/mac
+        //    approval paths — even an allow rule cannot override a password
+        //    field click.
         if accessibilityDeny != nil { return .denied(.denyRegion) }
 
-        // 7. Scope rules (deny precedence enforced by matcher).
+        // 8. Scope rules (deny precedence enforced by matcher).
         switch scopeOutcome {
         case .denied: return .denied(.scopeDenied)
         case .allowed:

@@ -8,7 +8,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { randomBytes, createHash } from "node:crypto";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { enforceAuthAndAppCheck } from "../auth.js";
+import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
 import { assertActiveBurnBarProEntitlement, REMOTE_MCP_TOKEN_HMAC_SECRET } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
@@ -55,7 +55,7 @@ export const startCliLink = onRequest(
         clientType: clientType || "cli",
         displayName: displayName || "CLI Session",
         expiresAt: Timestamp.fromDate(expiresAt),
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
       });
 
       const domain = process.env.BURNBAR_WEBSITE_DOMAIN ?? "https://burnbar.ai";
@@ -66,13 +66,13 @@ export const startCliLink = onRequest(
         userCode,
         verificationUriComplete,
         interval: 5,
-        expiresIn: 600
+        expiresIn: 600,
       });
     } catch (err) {
       logError({ event: "cli_link.start_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
-  }
+  },
 );
 
 /**
@@ -127,7 +127,7 @@ export const pollCliLink = onRequest(
           expiresIn: data.expiresIn,
           clientId: data.clientId,
           scopes: data.scopes,
-          grantMode: data.grantMode
+          grantMode: data.grantMode,
         });
         await sessionRef.delete();
         return;
@@ -144,7 +144,7 @@ export const pollCliLink = onRequest(
       logError({ event: "cli_link.poll_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
-  }
+  },
 );
 
 /**
@@ -160,7 +160,7 @@ export const completeCliLink = onCall(
   wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before completing CLI link.");
-    enforceAuthAndAppCheck(request, uid);
+    enforceHighRiskComputerUseCallable(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
 
     const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
@@ -174,7 +174,8 @@ export const completeCliLink = onCall(
     }
 
     // Find the session in Firestore where userCode === userCode and status === "pending"
-    const sessionsQuery = await db.collection("cli_link_sessions")
+    const sessionsQuery = await db
+      .collection("cli_link_sessions")
       .where("userCode", "==", userCode)
       .where("status", "==", "pending")
       .limit(1)
@@ -201,7 +202,7 @@ export const completeCliLink = onCall(
       displayName: sessionData.displayName,
       entitlementFamily: "burnbar_pro",
       tokenSecret,
-      audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp"
+      audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp",
     });
 
     // Write resulting token and status to session doc
@@ -211,13 +212,13 @@ export const completeCliLink = onCall(
       expiresIn: grantResult.expiresIn,
       clientId: grantResult.clientId,
       scopes: grantResult.scopes,
-      grantMode: grantResult.grantMode
+      grantMode: grantResult.grantMode,
     });
 
     return {
       ok: true,
       displayName: sessionData.displayName,
-      scopes: grantResult.scopes
+      scopes: grantResult.scopes,
     };
-  })
+  }),
 );

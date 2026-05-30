@@ -31,6 +31,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         case forgeCLI
         case antigravityCLI
         case grokCLI
+        case cursorAgentCLI
     }
 
     static let defaultOrder: [OnboardingProvider] = [
@@ -45,6 +46,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "forgecli",  label: "Forge CLI",       icon: "terminal.fill", bundledLogoName: "ForgeLogo",      color: Color(hex: "F97316"), kind: .forgeCLI),
         OnboardingProvider(id: "antigravitycli", label: "Antigravity CLI", icon: "terminal.fill", bundledLogoName: "AntigravityLogo", color: Color(hex: "6C63FF"), kind: .antigravityCLI),
         OnboardingProvider(id: "grokcli", label: "Grok Build CLI", icon: "terminal.fill", bundledLogoName: "GrokLogo", color: Color(hex: "111111"), kind: .grokCLI),
+        OnboardingProvider(id: "cursoragentcli", label: "Cursor Agent CLI", icon: "terminal.fill", bundledLogoName: "CursorLogo", color: Color(hex: "00E5FF"), kind: .cursorAgentCLI),
     ]
 }
 

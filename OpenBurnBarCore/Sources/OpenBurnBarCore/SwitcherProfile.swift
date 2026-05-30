@@ -51,6 +51,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case forge
     case antigravity
     case grok
+    case cursorAgent = "cursoragent"
 
     public var displayName: String {
         switch self {
@@ -61,6 +62,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .forge: return "Forge"
         case .antigravity: return "Antigravity"
         case .grok: return "Grok Build"
+        case .cursorAgent: return "Cursor Agent"
         }
     }
 
@@ -74,6 +76,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .forge: return "ForgeLogo"
         case .antigravity: return "AntigravityLogo"
         case .grok: return "GrokLogo"
+        case .cursorAgent: return "CursorLogo"
         }
     }
 
@@ -87,6 +90,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .forge: return "forge"
         case .antigravity: return "agy"
         case .grok: return "grok"
+        case .cursorAgent: return "cursor-agent"
         }
     }
 
@@ -142,6 +146,12 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "$HOME/.grok/bin/grok",
                 "$HOME/.local/bin/grok"
             ]
+        case .cursorAgent:
+            return [
+                "/usr/local/bin/cursor-agent",
+                "/opt/homebrew/bin/cursor-agent",
+                "$HOME/.cursor-agent/bin/cursor-agent"
+            ]
         }
     }
 
@@ -166,6 +176,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .forge: return .forgeDev
         case .antigravity: return .antigravity
         case .grok: return .xAI
+        case .cursorAgent: return .cursorAgent
         }
     }
 

@@ -19,6 +19,18 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
         self.context = context
         self.vaultKeyStore = vaultKeyStore
         self.vaultKeyPublisher = vaultKeyPublisher
+
+        // Observe immediate sync requests from the settings UI
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSnippetChangeNotification),
+            name: .textExpansionSnippetsDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func handleSnippetChangeNotification() {
+        Task { await sync() }
     }
 
     func sync() async {

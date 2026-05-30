@@ -20,6 +20,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { numberField } from "./guards.js";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { MediaBudgetStatusDoc } from "./types.js";
+import { syncKillSwitchForMediaBudgetLevel } from "./mediaRemoteConfig.js";
 
 const SOFT_CAP_USD = 600;
 const HARD_CAP_USD = 1000;
@@ -166,24 +167,34 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
     envelope = NORMAL_ENVELOPE;
   }
 
-  const status: MediaBudgetStatusDoc = {
+  const publicEnvelope = {
     level,
-    projectedMonthEndUSD,
-    monthToDateUSD,
     lastEvaluatedAt: Timestamp.now(),
     activeEnvelope: envelope,
     schemaVersion: 1,
   };
+  const operatorMetrics = {
+    level,
+    projectedMonthEndUSD,
+    monthToDateUSD,
+    lastEvaluatedAt: Timestamp.now(),
+  };
 
   // Path note: Firestore document paths must have an even number of
-  // segments. The original master plan documented this as
-  // `ops/media_budget_status/current` (3 segments — a collection path,
-  // not a doc). The real path uses the canonical
-  // `ops/<topic>/<sub>/<id>` shape that mirrors
-  // `ops/iroh_transport_daily_rollups/days/<date>`.
-  await firestore
-    .doc("ops/media_budget_status/state/current")
-    .set(status, { merge: true });
+  // segments. The canonical shape is `ops/<topic>/<sub>/<id>` — see ADR 006
+  // for the public envelope vs operator metrics split.
+  await firestore.doc("ops/media_budget_status/state/current").set(publicEnvelope, { merge: true });
+  await firestore.doc("ops/media_budget_status/metrics/current").set(operatorMetrics, { merge: true });
+  await syncKillSwitchForMediaBudgetLevel(level);
+
+  const status: MediaBudgetStatusDoc = {
+    level,
+    projectedMonthEndUSD,
+    monthToDateUSD,
+    lastEvaluatedAt: publicEnvelope.lastEvaluatedAt,
+    activeEnvelope: envelope,
+    schemaVersion: 1,
+  };
   return status;
 }
 
@@ -195,5 +206,5 @@ export const evaluateMediaBudget = onSchedule(
   },
   async () => {
     await evaluateBudget(new Date());
-  }
+  },
 );

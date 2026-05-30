@@ -110,7 +110,11 @@ let package = Package(
         ),
         .target(
             name: "OpenBurnBarComputerUseCore",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia"]
+            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia"],
+            linkerSettings: [
+                .linkedFramework("Security", .when(platforms: [.macOS])),
+                .linkedFramework("LocalAuthentication", .when(platforms: [.macOS]))
+            ]
         ),
         .target(
             name: "OpenBurnBarFirestoreModels",

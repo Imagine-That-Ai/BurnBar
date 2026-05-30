@@ -1,6 +1,7 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
+import os
 import Security
 
 #if canImport(Darwin)
@@ -37,6 +38,8 @@ final class AppleRemoteDesktopRFBClient: Sendable {
             self.password = password
         }
     }
+
+    static let log = Logger(subsystem: "com.openburnbar.app", category: "RemoteUnlock")
 
     private let host: String
     private let port: UInt16
@@ -82,10 +85,11 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         }
 
         let securityTypes = [UInt8](try stream.readExact(byteCount: Int(securityCount)))
+
         guard securityTypes.contains(RFBSecurityType.appleARD) else {
             throw Failure.appleARDAuthUnavailable(securityTypes)
         }
-
+        Self.log.info("remote_unlock_ard_auth method=apple_ard offered=\(securityTypes.map(String.init).joined(separator: ","), privacy: .public)")
         try stream.write(Data([RFBSecurityType.appleARD]))
         try authenticateAppleARD(stream: &stream, credentials: credentials)
     }
@@ -246,10 +250,11 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         return data
     }
 
-    private static func sendPointerClick(stream: inout RFBStream, x: Int, y: Int) throws {
+    private static func sendPointerClick(stream: inout RFBStream, x: Int, y: Int, button: Int = 0) throws {
         let clampedX = UInt16(max(0, min(Int(UInt16.max), x)))
         let clampedY = UInt16(max(0, min(Int(UInt16.max), y)))
-        try stream.write(makePointerEventMessage(buttonMask: 1, x: clampedX, y: clampedY))
+        let mask: UInt8 = button == 1 ? 4 : button == 2 ? 2 : 1
+        try stream.write(makePointerEventMessage(buttonMask: mask, x: clampedX, y: clampedY))
         try stream.write(makePointerEventMessage(buttonMask: 0, x: clampedX, y: clampedY))
     }
 
@@ -410,13 +415,13 @@ struct RemoteUnlockBigUInt: Equatable, Sendable {
     static func powMod(base: RemoteUnlockBigUInt, exponent: RemoteUnlockBigUInt, modulus: RemoteUnlockBigUInt) -> RemoteUnlockBigUInt {
         guard !modulus.isZero else { return RemoteUnlockBigUInt(0) }
         var result = RemoteUnlockBigUInt(1)
-        let base = base.reduced(modulus: modulus)
+        let base = modReduce(base, modulus: modulus)
         let exponentBytes = exponent.bigEndianData(byteCount: max(1, exponent.limbs.count * 4))
         for byte in exponentBytes {
             for bit in stride(from: 7, through: 0, by: -1) {
-                result = multiplyMod(result, result, modulus: modulus)
+                result = mulMod(result, result, modulus: modulus)
                 if ((byte >> UInt8(bit)) & 1) == 1 {
-                    result = multiplyMod(result, base, modulus: modulus)
+                    result = mulMod(result, base, modulus: modulus)
                 }
             }
         }
@@ -431,72 +436,81 @@ struct RemoteUnlockBigUInt: Equatable, Sendable {
         }
     }
 
-    private func reduced(modulus: RemoteUnlockBigUInt) -> RemoteUnlockBigUInt {
-        var value = self
-        while value >= modulus {
-            value = Self.subtract(value, modulus)
+    private var bitLength: Int {
+        guard let top = limbs.last else { return 0 }
+        return (limbs.count - 1) * 32 + (32 - top.leadingZeroBitCount)
+    }
+
+    private func shiftedLeft(byBits n: Int) -> RemoteUnlockBigUInt {
+        if isZero || n == 0 { return self }
+        let limbShift = n / 32
+        let bitShift = n % 32
+        var output = [UInt32](repeating: 0, count: limbs.count + limbShift + 1)
+        for index in 0..<limbs.count {
+            let value = UInt64(limbs[index]) << UInt64(bitShift)
+            output[index + limbShift] |= UInt32(value & 0xffff_ffff)
+            output[index + limbShift + 1] |= UInt32(value >> 32)
         }
-        return value
+        return RemoteUnlockBigUInt(limbs: output)
     }
 
-    private static func multiplyMod(
-        _ lhs: RemoteUnlockBigUInt,
-        _ rhs: RemoteUnlockBigUInt,
-        modulus: RemoteUnlockBigUInt
-    ) -> RemoteUnlockBigUInt {
-        var result = RemoteUnlockBigUInt(0)
-        var addend = lhs.reduced(modulus: modulus)
-        var multiplier = rhs
-        while !multiplier.isZero {
-            if multiplier.isOdd {
-                result = addMod(result, addend, modulus: modulus)
-            }
-            multiplier.shiftRightOne()
-            if !multiplier.isZero {
-                addend = addMod(addend, addend, modulus: modulus)
-            }
-        }
-        return result
-    }
-
-    private var isOdd: Bool {
-        (limbs.first ?? 0) & 1 == 1
-    }
-
-    private mutating func shiftRightOne() {
-        guard !limbs.isEmpty else { return }
+    private func shiftedRightOne() -> RemoteUnlockBigUInt {
+        guard !limbs.isEmpty else { return self }
+        var output = limbs
         var carry: UInt32 = 0
-        for index in stride(from: limbs.count - 1, through: 0, by: -1) {
-            let nextCarry = limbs[index] & 1
-            limbs[index] = (limbs[index] >> 1) | (carry << 31)
+        for index in stride(from: output.count - 1, through: 0, by: -1) {
+            let nextCarry = output[index] & 1
+            output[index] = (output[index] >> 1) | (carry << 31)
             carry = nextCarry
         }
-        normalize()
+        return RemoteUnlockBigUInt(limbs: output)
     }
 
-    private static func addMod(
+    /// Full (non-modular) product via schoolbook word multiplication — O(n²) limb multiplies
+    /// instead of the previous O(bits) shift-and-add, which made the 1024-bit ARD Diffie-Hellman
+    /// take ~13s per `powMod` (~27s total) and miss the login-window's wake/timing window.
+    private static func multiplyFull(_ lhs: RemoteUnlockBigUInt, _ rhs: RemoteUnlockBigUInt) -> RemoteUnlockBigUInt {
+        if lhs.isZero || rhs.isZero { return RemoteUnlockBigUInt(0) }
+        var output = [UInt32](repeating: 0, count: lhs.limbs.count + rhs.limbs.count)
+        for i in 0..<lhs.limbs.count {
+            var carry: UInt64 = 0
+            let lhsLimb = UInt64(lhs.limbs[i])
+            for j in 0..<rhs.limbs.count {
+                let term = lhsLimb * UInt64(rhs.limbs[j]) + UInt64(output[i + j]) + carry
+                output[i + j] = UInt32(term & 0xffff_ffff)
+                carry = term >> 32
+            }
+            output[i + rhs.limbs.count] = UInt32(carry)
+        }
+        return RemoteUnlockBigUInt(limbs: output)
+    }
+
+    /// `value mod modulus` via binary long division. `modulus` must be non-zero. One conditional
+    /// subtraction per bit position keeps each step O(limbs); never the unbounded subtract loop.
+    private static func modReduce(_ value: RemoteUnlockBigUInt, modulus: RemoteUnlockBigUInt) -> RemoteUnlockBigUInt {
+        if value < modulus { return value }
+        let modulusBits = modulus.bitLength
+        var remainder = value
+        var shift = remainder.bitLength - modulusBits
+        if shift < 0 { return remainder }
+        var shifted = modulus.shiftedLeft(byBits: shift)
+        while true {
+            if !(remainder < shifted) {
+                remainder = subtract(remainder, shifted)
+            }
+            if shift == 0 { break }
+            shifted = shifted.shiftedRightOne()
+            shift -= 1
+        }
+        return remainder
+    }
+
+    private static func mulMod(
         _ lhs: RemoteUnlockBigUInt,
         _ rhs: RemoteUnlockBigUInt,
         modulus: RemoteUnlockBigUInt
     ) -> RemoteUnlockBigUInt {
-        let count = max(lhs.limbs.count, rhs.limbs.count)
-        var limbs = [UInt32](repeating: 0, count: count)
-        var carry: UInt64 = 0
-        for index in 0..<count {
-            let sum = UInt64(lhs.limbs[safe: index] ?? 0)
-                + UInt64(rhs.limbs[safe: index] ?? 0)
-                + carry
-            limbs[index] = UInt32(sum & 0xffff_ffff)
-            carry = sum >> 32
-        }
-        if carry > 0 {
-            limbs.append(UInt32(carry))
-        }
-        var result = RemoteUnlockBigUInt(limbs: limbs)
-        while result >= modulus {
-            result = Self.subtract(result, modulus)
-        }
-        return result
+        modReduce(multiplyFull(lhs, rhs), modulus: modulus)
     }
 
     private init(limbs: [UInt32]) {

@@ -63,6 +63,7 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
     case duplicateModelAlias(aliasID: String)
     case modelAliasConflictsWithVariant(aliasID: String)
     case modelAliasConflictsWithCatalogModel(aliasID: String, baseModelID: String)
+    case invalidModelDisplayName(modelID: String)
 
     public var errorDescription: String? {
         switch self {
@@ -84,6 +85,8 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
             return "Model alias '\(aliasID)' conflicts with an existing thinking-level variant."
         case .modelAliasConflictsWithCatalogModel(let aliasID, let baseModelID):
             return "Model alias '\(aliasID)' conflicts with a catalog model and cannot route to '\(baseModelID)'."
+        case .invalidModelDisplayName(let modelID):
+            return "Display name for model '\(modelID)' is invalid. It must contain at least one non-whitespace character."
         }
     }
 }
@@ -453,6 +456,55 @@ public actor BurnBarConfigStore {
         }
     }
 
+
+    /// Set (or replace) a verbatim display-name override for a model. The
+    /// model keeps its canonical wire id and routing; only its human label
+    /// changes. Forgiving by design: the override applies to whatever
+    /// advertised row matches `modelID`, so renaming a live-discovered model
+    /// (one not present in the static catalog) works too. An empty/whitespace
+    /// `displayName` is rejected — use `clearModelDisplayName` to reset.
+    @discardableResult
+    public func setModelDisplayName(
+        providerID: String,
+        modelID: String,
+        displayName: String
+    ) throws -> BurnBarModelDisplayOverride {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmedModelID = BurnBarModelDisplayOverride.normalizedModelID(modelID)
+        let trimmedDisplayName = BurnBarModelDisplayOverride.normalizedDisplayName(displayName)
+
+        guard !trimmedModelID.isEmpty,
+              BurnBarModelDisplayOverride.isValidDisplayName(trimmedDisplayName) else {
+            throw BurnBarConfigStoreError.invalidModelDisplayName(modelID: trimmedModelID)
+        }
+
+        let override = BurnBarModelDisplayOverride(
+            modelID: trimmedModelID,
+            displayName: trimmedDisplayName
+        )
+
+        let updated = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            mutable.upsertModelDisplayOverride(override)
+            return mutable
+        }
+        return updated.displayOverride(forModelID: trimmedModelID) ?? override
+    }
+
+    /// Clear a display-name override so the model returns to its default
+    /// composed name. No-op if no override was registered.
+    public func clearModelDisplayName(
+        providerID: String,
+        modelID: String
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            _ = mutable.removeModelDisplayOverride(modelID: modelID)
+            return mutable
+        }
+    }
+
     /// Seed default thinking-level variants for known reasoning-capable models
     /// the first time the daemon boots after this feature ships. Idempotent —
     /// re-seeding never runs once the marker file exists. The seed only touches
@@ -469,13 +521,8 @@ public actor BurnBarConfigStore {
             return
         }
 
-        let defaults: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
-            ("anthropic", "claude-opus-4-8", [.high, .xhigh, .max]),
-            ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh])
-        ]
-
         var didMutate = false
-        for entry in defaults {
+        for entry in Self.defaultModelVariantSeeds {
             guard catalogSupport.isSupported(providerID: entry.providerID),
                   catalogSupport.supportsModelID(entry.baseModelID, providerID: entry.providerID) else {
                 continue
@@ -797,7 +844,10 @@ public actor BurnBarConfigStore {
         }
 
         let fallbackModels = defaultSnapshot.providerSettings(id: settings.providerID)?.preferredModelIDs ?? []
-        let preferredModelIDs = settings.preferredModelIDs.isEmpty ? fallbackModels : settings.preferredModelIDs
+        let preferredModelIDs = Self.mergedPreferredModelIDs(
+            configured: settings.preferredModelIDs,
+            defaults: fallbackModels
+        )
         let normalizedSlots = settings.credentialSlots.map { slot in
             BurnBarProviderCredentialSlot(
                 slotID: slot.slotID.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -854,6 +904,11 @@ public actor BurnBarConfigStore {
         let supportedVariants = settings.modelVariants.filter { variant in
             catalogSupport.supportsModelID(variant.baseModelID, providerID: settings.providerID)
         }
+        let modelVariants = Self.mergedDefaultModelVariants(
+            configured: supportedVariants,
+            providerID: settings.providerID,
+            catalogSupport: catalogSupport
+        )
         let supportedAliases = settings.modelAliases.filter { alias in
             catalogSupport.supportsModelID(alias.baseModelID, providerID: settings.providerID)
         }
@@ -866,9 +921,58 @@ public actor BurnBarConfigStore {
             disabledAdvertisedModelIDs: settings.disabledAdvertisedModelIDs,
             preferredCredentialSlotID: preferredSlotID,
             credentialSlots: normalizedSlots,
-            modelVariants: supportedVariants,
-            modelAliases: supportedAliases
+            modelVariants: modelVariants,
+            modelAliases: supportedAliases,
+            modelDisplayOverrides: settings.modelDisplayOverrides
         )
+    }
+
+    private static let defaultModelVariantSeeds: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
+        ("anthropic", "claude-opus-4-8", [.high, .xhigh, .max]),
+        ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh])
+    ]
+
+    private static func mergedPreferredModelIDs(configured: [String], defaults: [String]) -> [String] {
+        guard configured.isEmpty == false else { return defaults }
+
+        var seen = Set(configured.map { $0.lowercased() })
+        var merged = configured
+        for modelID in defaults where seen.insert(modelID.lowercased()).inserted {
+            merged.append(modelID)
+        }
+        return merged
+    }
+
+    private static func mergedDefaultModelVariants(
+        configured: [BurnBarModelVariant],
+        providerID: String,
+        catalogSupport: BurnBarProviderCatalogSupport
+    ) -> [BurnBarModelVariant] {
+        var variants = configured
+        var seen = Set(configured.map { $0.variantID.lowercased() })
+
+        for entry in defaultModelVariantSeeds where entry.providerID.caseInsensitiveCompare(providerID) == .orderedSame {
+            guard catalogSupport.supportsModelID(entry.baseModelID, providerID: providerID) else {
+                continue
+            }
+            for level in entry.levels {
+                let variantID = BurnBarModelVariant.defaultVariantID(
+                    baseModelID: entry.baseModelID,
+                    level: level
+                )
+                guard seen.insert(variantID.lowercased()).inserted else {
+                    continue
+                }
+                variants.append(BurnBarModelVariant(
+                    variantID: variantID,
+                    label: BurnBarModelVariant.defaultLabel(for: level),
+                    baseModelID: entry.baseModelID,
+                    thinkingLevel: level
+                ))
+            }
+        }
+
+        return variants
     }
 
     private func validateModelAlias(

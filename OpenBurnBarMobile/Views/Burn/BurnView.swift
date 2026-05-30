@@ -20,7 +20,18 @@ struct BurnView: View {
     @State private var isEditing = false
     @State private var draggingKey: String? = nil
 
+    /// Persisted per-device choice of how the Burn tab is visualized.
+    @AppStorage("burnLayoutStyle") private var layoutRaw: String = BurnLayoutStyle.cards.rawValue
+    /// Backs the `.timeline` view; only loaded when that view is first shown.
+    @State private var activityStore = ActivityStore()
+    @State private var activityLoaded = false
+
     @Environment(\.scenePhase) private var scenePhase
+
+    private var layoutStyle: BurnLayoutStyle { BurnLayoutStyle.resolve(layoutRaw) }
+    private var layoutStyleBinding: Binding<BurnLayoutStyle> {
+        Binding(get: { BurnLayoutStyle.resolve(layoutRaw) }, set: { layoutRaw = $0.rawValue })
+    }
 
     var body: some View {
         ZStack {
@@ -38,10 +49,8 @@ struct BurnView: View {
                             urgentBanner
                         }
                         periodSelector
-                        providerStack
-                        if !dashboard.dailyPoints.isEmpty {
-                            chartCard
-                        }
+                        BurnLayoutSwitcher(selection: layoutStyleBinding)
+                        styledBody
                     }
                 }
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
@@ -72,6 +81,7 @@ struct BurnView: View {
         .task {
             if let initialFocus { expandedProvider = initialFocus }
             await initialLoad()
+            loadActivityIfNeeded()
         }
         .onDisappear {
             quotaStore.stopListening()
@@ -90,6 +100,10 @@ struct BurnView: View {
             HapticBus.toggle()
             dashboard.setDisplayMode(mode)
             Task { await dashboard.refresh() }
+        }
+        .onChange(of: layoutRaw) { _, _ in
+            HapticBus.chipChange()
+            loadActivityIfNeeded()
         }
         .sheet(isPresented: Binding(
             get: { sheetProvider != nil },
@@ -309,6 +323,63 @@ struct BurnView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Toggle currency or tokens")
+    }
+
+    // MARK: - Styled Body (view switcher)
+
+    @ViewBuilder
+    private var styledBody: some View {
+        switch layoutStyle {
+        case .cards:
+            providerStack
+            if !dashboard.dailyPoints.isEmpty {
+                chartCard
+            }
+        case .constellation:
+            BurnConstellationBody(items: quotaItems, onSelect: openProviderSheet)
+        case .grid:
+            BurnGaugeGridBody(items: quotaItems, onSelect: openProviderSheet)
+        case .leaderboard:
+            BurnLeaderboardBody(
+                providers: dashboard.topProviders,
+                quotaItems: quotaItems,
+                displayMode: displayMode,
+                windowLabel: selectedWindow.displayLabel,
+                onSelect: openProviderSheet
+            )
+        case .timeline:
+            BurnTimelineBody(
+                digest: trendDigest,
+                quotaItems: quotaItems,
+                displayMode: displayMode,
+                onSelect: openProviderSheet
+            )
+        }
+    }
+
+    private func openProviderSheet(_ key: String) {
+        sheetProvider = key
+    }
+
+    /// The per-provider daily digest used by the `.timeline` view, built from
+    /// the same data the Pulse Atlas card uses.
+    private var trendDigest: TrendDataDigest {
+        TrendDataDigest.build(
+            windowTotals: dashboard.windowTotals,
+            providerSummaries: dashboard.topProviders,
+            modelSummaries: dashboard.topModels,
+            deviceSummaries: dashboard.topDevices,
+            dailyPoints: dashboard.dailyPoints,
+            recentUsages: activityStore.rawUsages.isEmpty ? activityStore.usages : activityStore.rawUsages,
+            displayMode: displayMode
+        )
+    }
+
+    /// Lazily loads recent usage the first time the timeline view is shown.
+    private func loadActivityIfNeeded() {
+        guard layoutStyle == .timeline, !activityLoaded else { return }
+        activityLoaded = true
+        Task { await activityStore.load() }
     }
 
     // MARK: - Hero derivations

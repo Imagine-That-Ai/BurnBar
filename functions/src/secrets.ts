@@ -33,10 +33,7 @@ let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | undefined;
 async function getAuthClient() {
   if (!authClient) {
     authClient = await google.auth.getClient({
-      scopes: [
-        "https://www.googleapis.com/auth/cloudkms",
-        "https://www.googleapis.com/auth/cloud-platform",
-      ],
+      scopes: ["https://www.googleapis.com/auth/cloudkms", "https://www.googleapis.com/auth/cloud-platform"],
     });
   }
   return authClient;
@@ -61,12 +58,7 @@ async function getSecretManager() {
  *
  * Layout: [4-byte BE len(encryptedDek)][encryptedDek][12-byte IV][ciphertext][16-byte tag]
  */
-function packEnvelope(
-  encryptedDek: Buffer,
-  iv: Buffer,
-  ciphertext: Buffer,
-  tag: Buffer
-): string {
+function packEnvelope(encryptedDek: Buffer, iv: Buffer, ciphertext: Buffer, tag: Buffer): string {
   const lenBuf = Buffer.alloc(4);
   lenBuf.writeUInt32BE(encryptedDek.length, 0);
   return Buffer.concat([lenBuf, encryptedDek, iv, ciphertext, tag]).toString("base64");
@@ -151,10 +143,7 @@ async function decryptEnvelope(envelope: string): Promise<string> {
 
   const decipher = createDecipheriv(AES_ALG, dek, iv);
   decipher.setAuthTag(tag);
-  const plaintext = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]).toString("utf8");
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
   return plaintext;
 }
 
@@ -171,9 +160,7 @@ function secretIdFor(uid: string, provider: string, accountID?: string): string 
   // UIDs from Firebase Auth are typically alphanumeric; we sanitize just in case.
   const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "-");
   const safeAccountID = accountID?.replace(/[^a-zA-Z0-9_-]/g, "-");
-  return safeAccountID
-    ? `obb-${safeUid}-${provider}-${safeAccountID}`
-    : `obb-${safeUid}-${provider}`;
+  return safeAccountID ? `obb-${safeUid}-${provider}-${safeAccountID}` : `obb-${safeUid}-${provider}`;
 }
 
 /**
@@ -189,7 +176,7 @@ export async function storeCredential(
   uid: string,
   provider: string,
   plaintext: string,
-  accountID?: string
+  accountID?: string,
 ): Promise<string> {
   const { projectId } = getConfig();
   const sm = await getSecretManager();
@@ -279,15 +266,7 @@ export async function destroyCredential(secretVersionName: string): Promise<void
  * @param accountID - Optional provider account ID for multi-account secrets.
  * @returns Secret version resource name.
  */
-export function initialSecretVersionName(
-  uid: string,
-  provider: string,
-  accountID?: string
-): string {
+export function initialSecretVersionName(uid: string, provider: string, accountID?: string): string {
   const { projectId } = getConfig();
-  return `projects/${projectId}/secrets/${secretIdFor(
-    uid,
-    provider,
-    accountID
-  )}/versions/1`;
+  return `projects/${projectId}/secrets/${secretIdFor(uid, provider, accountID)}/versions/1`;
 }

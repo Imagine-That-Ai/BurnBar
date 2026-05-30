@@ -11,12 +11,7 @@
  * fail entirely if Cursor changes their internal endpoints.
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "cursor" as const;
@@ -27,10 +22,7 @@ function redact(token: string): string {
   return `cursor_${token.slice(0, 3)}***${token.slice(-4)}`;
 }
 
-async function cursorFetch(
-  url: string,
-  cookie: string
-): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+async function cursorFetch(url: string, cookie: string): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -84,8 +76,7 @@ export const cursorAdapter: ProviderAdapter = {
         redactedLabel: redact(credential),
         credentialKind: "cookie",
         errorCode: "validation_failed",
-        errorMessage:
-          result.error || "Cursor dashboard request failed (session may be expired).",
+        errorMessage: result.error || "Cursor dashboard request failed (session may be expired).",
       };
     }
 
@@ -98,17 +89,13 @@ export const cursorAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const result = await cursorFetch(DASHBOARD_URL, credential);
     if (!result.ok || !result.data) {
       return {
         ok: false,
         errorCode: "fetch_failed",
-        errorMessage:
-          result.error || "Cursor dashboard request failed (session may be expired).",
+        errorMessage: result.error || "Cursor dashboard request failed (session may be expired).",
       };
     }
 

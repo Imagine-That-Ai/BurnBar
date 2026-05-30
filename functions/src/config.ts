@@ -48,15 +48,9 @@ function buildConfig(): EnvConfig {
   const appstore = configBucket(cfg, "appstore");
 
   const projectId =
-    process.env.GCLOUD_PROJECT ||
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    configString(project, "id") ||
-    "demo-project";
+    process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || configString(project, "id") || "demo-project";
 
-  const kmsKeyName =
-    process.env.KMS_KEY_NAME ||
-    configString(openburnbar, "kms_key_name") ||
-    "";
+  const kmsKeyName = process.env.KMS_KEY_NAME || configString(openburnbar, "kms_key_name") || "";
 
   const toBool = (v: unknown, def: boolean): boolean => {
     if (v === undefined || v === null) return def;
@@ -73,27 +67,19 @@ function buildConfig(): EnvConfig {
   return {
     projectId,
     kmsKeyName,
-    enforceAppCheck: toBool(
-      process.env.ENFORCE_APP_CHECK ?? configString(openburnbar, "enforce_app_check"),
-      true
-    ),
+    enforceAppCheck: toBool(process.env.ENFORCE_APP_CHECK ?? configString(openburnbar, "enforce_app_check"), true),
     maxCredentialLength: toNum(
       process.env.MAX_CREDENTIAL_LENGTH ?? configString(openburnbar, "max_credential_length"),
-      8192
+      8192,
     ),
     refreshRateLimitSeconds: toNum(
-      process.env.REFRESH_RATE_LIMIT_SECONDS ??
-        configString(openburnbar, "refresh_rate_limit_seconds"),
-      60
+      process.env.REFRESH_RATE_LIMIT_SECONDS ?? configString(openburnbar, "refresh_rate_limit_seconds"),
+      60,
     ),
-    rollupBatchSize: toNum(
-      process.env.ROLLUP_BATCH_SIZE ?? configString(openburnbar, "rollup_batch_size"),
-      50
-    ),
+    rollupBatchSize: toNum(process.env.ROLLUP_BATCH_SIZE ?? configString(openburnbar, "rollup_batch_size"), 50),
     quotaRefreshBatchSize: toNum(
-      process.env.QUOTA_REFRESH_BATCH_SIZE ??
-        configString(openburnbar, "quota_refresh_batch_size"),
-      20
+      process.env.QUOTA_REFRESH_BATCH_SIZE ?? configString(openburnbar, "quota_refresh_batch_size"),
+      20,
     ),
     hostedQuotaProductID:
       process.env.HOSTED_QUOTA_PRODUCT_ID ??
@@ -103,74 +89,119 @@ function buildConfig(): EnvConfig {
       process.env.BURNBAR_PRO_PRODUCT_ID ??
       configString(openburnbar, "burnbar_pro_product_id") ??
       "com.openburnbar.pro.monthly",
+    burnBarProAnnualProductID:
+      process.env.BURNBAR_PRO_ANNUAL_PRODUCT_ID ??
+      configString(openburnbar, "burnbar_pro_annual_product_id") ??
+      "com.openburnbar.pro.annual",
+    burnBarProMaxProductID:
+      process.env.BURNBAR_PRO_MAX_PRODUCT_ID ??
+      configString(openburnbar, "burnbar_pro_max_product_id") ??
+      "com.openburnbar.proMax.monthly",
+    burnBarProMaxAnnualProductID:
+      process.env.BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID ??
+      configString(openburnbar, "burnbar_pro_max_annual_product_id") ??
+      "com.openburnbar.proMax.annual",
+    agentControl100ActionsProductID:
+      process.env.AGENT_CONTROL_100_ACTIONS_PRODUCT_ID ??
+      configString(openburnbar, "agent_control_100_actions_product_id") ??
+      "com.openburnbar.agentControl.actions100",
+    flooRelay50GBProductID:
+      process.env.FLOO_RELAY_50GB_PRODUCT_ID ??
+      configString(openburnbar, "floo_relay_50gb_product_id") ??
+      "com.openburnbar.floo.relay50gb",
     stripeBurnBarProPriceID:
+      process.env.STRIPE_BURNBAR_PRO_PRICE_ID ?? configString(stripe, "burnbar_pro_price_id") ?? "",
+    stripeBurnBarCloudMonthlyPriceID:
+      process.env.STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID ??
+      configString(stripe, "burnbar_cloud_monthly_price_id") ??
       process.env.STRIPE_BURNBAR_PRO_PRICE_ID ??
       configString(stripe, "burnbar_pro_price_id") ??
       "",
-    stripeSecretKey:
-      process.env.STRIPE_SECRET_KEY ??
-      configString(stripe, "secret_key") ??
+    stripeBurnBarCloudAnnualPriceID:
+      process.env.STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID ??
+      configString(stripe, "burnbar_cloud_annual_price_id") ??
       "",
-    stripeWebhookSecret:
-      process.env.STRIPE_WEBHOOK_SECRET ??
-      configString(stripe, "webhook_secret") ??
+    stripeBurnBarCloudProMonthlyPriceID:
+      process.env.STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID ??
+      configString(stripe, "burnbar_cloud_pro_monthly_price_id") ??
       "",
+    stripeBurnBarCloudProAnnualPriceID:
+      process.env.STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID ??
+      configString(stripe, "burnbar_cloud_pro_annual_price_id") ??
+      "",
+    stripeAgentControl100ActionsPriceID:
+      process.env.STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID ??
+      configString(stripe, "agent_control_100_actions_price_id") ??
+      "",
+    stripeFlooRelay50GBPriceID:
+      process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID ??
+      configString(stripe, "floo_relay_50gb_price_id") ??
+      "",
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? configString(stripe, "secret_key") ?? "",
+    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? configString(stripe, "webhook_secret") ?? "",
     googlePlayPackageName:
-      process.env.GOOGLE_PLAY_PACKAGE_NAME ??
-      configString(googleplay, "package_name") ??
-      "com.openburnbar",
+      process.env.GOOGLE_PLAY_PACKAGE_NAME ?? configString(googleplay, "package_name") ?? "com.openburnbar",
     googlePlaySubscriptionProductID:
       process.env.GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID ??
       configString(googleplay, "subscription_product_id") ??
       "com.openburnbar.pro.monthly",
+    googlePlayCloudMonthlyProductID:
+      process.env.GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID ??
+      configString(googleplay, "cloud_monthly_product_id") ??
+      "com.openburnbar.pro.monthly",
+    googlePlayCloudAnnualProductID:
+      process.env.GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID ??
+      configString(googleplay, "cloud_annual_product_id") ??
+      "com.openburnbar.pro.annual",
+    googlePlayCloudProMonthlyProductID:
+      process.env.GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID ??
+      configString(googleplay, "cloud_pro_monthly_product_id") ??
+      "com.openburnbar.proMax.monthly",
+    googlePlayCloudProAnnualProductID:
+      process.env.GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID ??
+      configString(googleplay, "cloud_pro_annual_product_id") ??
+      "com.openburnbar.proMax.annual",
+    googlePlayAgentControl100ActionsProductID:
+      process.env.GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID ??
+      configString(googleplay, "agent_control_100_actions_product_id") ??
+      "com.openburnbar.agentControl.actions100",
+    googlePlayFlooRelay50GBProductID:
+      process.env.GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID ??
+      configString(googleplay, "floo_relay_50gb_product_id") ??
+      "com.openburnbar.floo.relay50gb",
     encryptedSessionBlobMaxBytes: toNum(
-      process.env.ENCRYPTED_SESSION_BLOB_MAX_BYTES ??
-        configString(openburnbar, "encrypted_session_blob_max_bytes"),
-      10 * 1024 * 1024
+      process.env.ENCRYPTED_SESSION_BLOB_MAX_BYTES ?? configString(openburnbar, "encrypted_session_blob_max_bytes"),
+      10 * 1024 * 1024,
     ),
     hostedQuotaRunnerURL:
-      process.env.HOSTED_QUOTA_RUNNER_URL ??
-      configString(openburnbar, "hosted_quota_runner_url") ??
-      "",
+      process.env.HOSTED_QUOTA_RUNNER_URL ?? configString(openburnbar, "hosted_quota_runner_url") ?? "",
     hostedQuotaRunnerToken:
-      process.env.HOSTED_QUOTA_RUNNER_TOKEN ??
-      configString(openburnbar, "hosted_quota_runner_token") ??
-      "",
+      process.env.HOSTED_QUOTA_RUNNER_TOKEN ?? configString(openburnbar, "hosted_quota_runner_token") ?? "",
     hostedQuotaDailyRefreshLimit: toNum(
-      process.env.HOSTED_QUOTA_DAILY_REFRESH_LIMIT ??
-        configString(openburnbar, "hosted_quota_daily_refresh_limit"),
-      30
+      process.env.HOSTED_QUOTA_DAILY_REFRESH_LIMIT ?? configString(openburnbar, "hosted_quota_daily_refresh_limit"),
+      30,
     ),
     hostedQuotaMonthlyRefreshLimit: toNum(
-      process.env.HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT ??
-        configString(openburnbar, "hosted_quota_monthly_refresh_limit"),
-      300
+      process.env.HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT ?? configString(openburnbar, "hosted_quota_monthly_refresh_limit"),
+      300,
     ),
     appStore: {
-      bundleId:
-        process.env.APP_STORE_BUNDLE_ID ??
-        configString(appstore, "bundle_id") ??
-        "com.openburnbar.app",
+      bundleId: process.env.APP_STORE_BUNDLE_ID ?? configString(appstore, "bundle_id") ?? "com.openburnbar.app",
       // `appAppleId` MUST be `undefined` in Sandbox (library v1.1.0+
       // forbids passing 0 for non-production). The numeric is required
       // for Production-environment notification verification.
-      appAppleId: parseAppleId(
-        process.env.APP_STORE_APPLE_APP_ID ?? configString(appstore, "apple_app_id")
-      ),
+      appAppleId: parseAppleId(process.env.APP_STORE_APPLE_APP_ID ?? configString(appstore, "apple_app_id")),
       environment: parseAppStoreEnvironmentValue(
-        process.env.APP_STORE_ENV ?? configString(appstore, "environment") ?? "Sandbox"
+        process.env.APP_STORE_ENV ?? configString(appstore, "environment") ?? "Sandbox",
       ),
       enableOnlineChecks: toBool(
-        process.env.APP_STORE_ENABLE_ONLINE_CHECKS ??
-          configString(appstore, "enable_online_checks"),
-        true
+        process.env.APP_STORE_ENABLE_ONLINE_CHECKS ?? configString(appstore, "enable_online_checks"),
+        true,
       ),
-      autoFallbackEnvironment:
-        toBool(
-          process.env.APP_STORE_AUTO_FALLBACK_ENV ??
-            configString(appstore, "auto_fallback_environment"),
-          true
-        ),
+      autoFallbackEnvironment: toBool(
+        process.env.APP_STORE_AUTO_FALLBACK_ENV ?? configString(appstore, "auto_fallback_environment"),
+        true,
+      ),
       // ASC credentials are populated at runtime by
       // `appstore/config.ts:readAscCredentials()` because secrets are
       // only injected into `process.env` *inside* the handler that

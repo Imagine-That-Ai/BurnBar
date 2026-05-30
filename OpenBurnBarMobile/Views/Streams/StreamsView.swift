@@ -514,8 +514,14 @@ private struct CloudConversationSearchResultRow: View {
         AuroraGlassCard(variant: .standard, cornerRadius: 14, interactive: true, padding: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "lock.doc")
-                        .foregroundStyle(MobileTheme.ember)
+                    if let provider = hit.providerEnum {
+                        UnifiedProviderLogoView(provider: provider, size: 22)
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: "lock.doc")
+                            .foregroundStyle(MobileTheme.ember)
+                            .accessibilityHidden(true)
+                    }
                     Text(hit.title.isEmpty ? "Encrypted session" : hit.title)
                         .font(MobileTheme.Typography.body)
                         .fontWeight(.semibold)
@@ -1176,144 +1182,465 @@ private struct CockpitFacetBar: View {
     let onOpenFilters: () -> Void
     let onSaveQuery: () -> Void
 
+    @State private var isExpanded = false
+
     var body: some View {
         VStack(spacing: 8) {
-            controlRow
-            if !store.discoveredProviders.isEmpty {
-                providerChips
+            // Main Tray Card
+            VStack(spacing: 0) {
+                collapsedBar
+
+                if isExpanded {
+                    expandedPanel
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(MobileTheme.Colors.surface.opacity(0.65))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(MobileTheme.Colors.borderSubtle.opacity(0.7), lineWidth: 0.75)
+            )
+            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 3)
+            .padding(.vertical, 2)
+
             if !store.savedQueries.isEmpty {
                 savedQueryRail
             }
         }
     }
 
-    private var controlRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                sortMenu
-                modelMenu
-                facetButton(title: "Filters", systemImage: "slider.horizontal.3", active: store.hasActiveFilters, action: onOpenFilters)
-                facetButton(title: "Save", systemImage: "bookmark", active: false, action: onSaveQuery)
-                if store.hasActiveFilters {
-                    facetButton(title: "Clear", systemImage: "xmark.circle", active: false) {
-                        store.clearFilters()
-                    }
-                }
-            }
-            .padding(.vertical, 2)
-        }
-        .scrollClipDisabled()
-    }
-
-    private var sortMenu: some View {
-        Menu {
-            Picker("Sort by", selection: Binding(get: { store.sortField }, set: { store.sortField = $0 })) {
-                ForEach(ConversationSortField.allCases) { field in
-                    Label(field.label, systemImage: field.systemImage).tag(field)
-                }
-            }
-            Divider()
-            Picker("Direction", selection: Binding(get: { store.sortDirection }, set: { store.sortDirection = $0 })) {
-                ForEach(ConversationSortDirection.allCases) { dir in
-                    Label(dir.label, systemImage: dir.systemImage).tag(dir)
-                }
-            }
-        } label: {
-            facetChipLabel(title: store.sortField.label, systemImage: store.sortField.systemImage, trailing: store.sortDirection.systemImage, active: true)
-        }
-    }
-
-    private var modelMenu: some View {
-        Menu {
+    private var collapsedBar: some View {
+        HStack(spacing: 0) {
+            // Expand / Collapse Trigger
             Button {
-                store.selectedModel = nil
-            } label: {
-                Label("Any model", systemImage: store.selectedModel == nil ? "checkmark" : "circle")
-            }
-            ForEach(store.discoveredModels, id: \.self) { model in
-                Button {
-                    store.selectedModel = model
-                } label: {
-                    Label(model, systemImage: store.selectedModel == model ? "checkmark" : "cpu")
+                HapticBus.toggle()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isExpanded.toggle()
                 }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(isExpanded ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
+                    Text(isExpanded ? "Collapse" : "Sort & Filter")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.bold)
+                        .foregroundStyle(isExpanded ? MobileTheme.ember : MobileTheme.Colors.textPrimary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isExpanded ? MobileTheme.ember.opacity(0.12) : Color.clear)
+                )
             }
-        } label: {
-            facetChipLabel(title: store.selectedModel ?? "Model", systemImage: "cpu", trailing: nil, active: store.selectedModel != nil)
-        }
-        .disabled(store.discoveredModels.isEmpty)
-    }
+            .buttonStyle(.plain)
+            .padding(.leading, 8)
+            .padding(.vertical, 6)
 
-    private func facetButton(title: String, systemImage: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            facetChipLabel(title: title, systemImage: systemImage, trailing: nil, active: active)
-        }
-        .buttonStyle(.plain)
-    }
+            // Vertical Separator
+            Rectangle()
+                .fill(MobileTheme.Colors.borderSubtle.opacity(0.5))
+                .frame(width: 1, height: 22)
+                .padding(.horizontal, 8)
 
-    private func facetChipLabel(title: String, systemImage: String, trailing: String?, active: Bool) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-            Text(title)
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-            if let trailing {
-                Image(systemName: trailing)
-                    .font(.system(size: 9, weight: .bold))
-            }
-        }
-        .foregroundStyle(active ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(
-            Capsule(style: .continuous)
-                .fill(active ? MobileTheme.ember.opacity(0.16) : MobileTheme.Colors.surface.opacity(0.6))
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(active ? MobileTheme.ember.opacity(0.5) : MobileTheme.Colors.borderSubtle.opacity(0.6), lineWidth: 0.75)
-        )
-    }
-
-    private var providerChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(store.discoveredProviders, id: \.self) { provider in
-                    let active = store.selectedProviders.contains(provider)
+            // Scrollable Quick Filters
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Sort Chip (compact)
                     Button {
-                        store.toggleProvider(provider)
+                        HapticBus.toggle()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            isExpanded = true
+                        }
                     } label: {
-                        HStack(spacing: 5) {
-                            if let p = AgentProvider.fromPersistedToken(provider) {
-                                Circle()
-                                    .fill(MobileTheme.Colors.primary(for: p))
-                                    .frame(width: 7, height: 7)
-                            }
-                            Text(providerDisplayName(provider))
+                        HStack(spacing: 4) {
+                            Image(systemName: store.sortField.systemImage)
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(store.sortField.label)
                                 .font(MobileTheme.Typography.tiny)
                                 .fontWeight(.semibold)
-                                .lineLimit(1)
+                            Image(systemName: store.sortDirection.systemImage)
+                                .font(.system(size: 8, weight: .bold))
                         }
-                        .foregroundStyle(active ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 6)
+                        .foregroundStyle(MobileTheme.ember)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(active ? MobileTheme.ember.opacity(0.16) : MobileTheme.Colors.surface.opacity(0.6))
+                                .fill(MobileTheme.ember.opacity(0.12))
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(active ? MobileTheme.ember.opacity(0.5) : MobileTheme.Colors.borderSubtle.opacity(0.6), lineWidth: 0.75)
+                                .stroke(MobileTheme.ember.opacity(0.5), lineWidth: 0.75)
                         )
                     }
                     .buttonStyle(.plain)
+
+                    // Model Chip (if selected)
+                    if let model = store.selectedModel {
+                        Button {
+                            HapticBus.toggle()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isExpanded = true
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "cpu")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text(model)
+                                    .font(MobileTheme.Typography.tiny)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundStyle(MobileTheme.ember)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(MobileTheme.ember.opacity(0.12))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(MobileTheme.ember.opacity(0.5), lineWidth: 0.75)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Quick Provider Toggles
+                    if !store.discoveredProviders.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(store.discoveredProviders, id: \.self) { provider in
+                                let active = store.selectedProviders.contains(provider)
+                                Button {
+                                    HapticBus.chipChange()
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                        store.toggleProvider(provider)
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        if let p = AgentProvider.fromPersistedToken(provider) {
+                                            ProviderAvatar(provider: p, mode: .plain, size: 12)
+                                        }
+                                        Text(providerDisplayName(provider))
+                                            .font(MobileTheme.Typography.tiny)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .foregroundStyle(active ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(active ? MobileTheme.ember.opacity(0.15) : MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                                    )
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .stroke(active ? MobileTheme.ember.opacity(0.5) : MobileTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.75)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 6)
+                .padding(.trailing, 12)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var expandedPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Divider()
+                .background(MobileTheme.Colors.borderSubtle.opacity(0.4))
+                .padding(.horizontal, 12)
+
+            // SORT BY SECTION
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("SORT BY")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.bold)
+                        .tracking(1.2)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+
+                    Spacer()
+
+                    // Direction Selector
+                    HStack(spacing: 2) {
+                        Button {
+                            HapticBus.chipChange()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                store.sortDirection = .desc
+                            }
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(6)
+                                .background(store.sortDirection == .desc ? MobileTheme.ember : Color.clear)
+                                .foregroundStyle(store.sortDirection == .desc ? Color.white : MobileTheme.Colors.textSecondary)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            HapticBus.chipChange()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                store.sortDirection = .asc
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(6)
+                                .background(store.sortDirection == .asc ? MobileTheme.ember : Color.clear)
+                                .foregroundStyle(store.sortDirection == .asc ? Color.white : MobileTheme.Colors.textSecondary)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(2)
+                    .background(MobileTheme.Colors.surfaceElevated.opacity(0.8))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(MobileTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
+                    )
+                }
+                .padding(.horizontal, 14)
+
+                // Sort Options Grid (3 columns)
+                let columns = [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ]
+
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(ConversationSortField.allCases) { field in
+                        let active = store.sortField == field
+                        Button {
+                            HapticBus.chipChange()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                store.sortField = field
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: field.systemImage)
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text(field.label)
+                                    .font(.system(size: 10, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(active ? MobileTheme.ember.opacity(0.15) : MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                            .foregroundStyle(active ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(active ? MobileTheme.ember.opacity(0.6) : MobileTheme.Colors.borderSubtle.opacity(0.4), lineWidth: 0.75)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+            }
+
+            // PROVIDERS SECTION
+            if !store.discoveredProviders.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("PROVIDERS")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.bold)
+                        .tracking(1.2)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .padding(.horizontal, 14)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(store.discoveredProviders, id: \.self) { provider in
+                                let active = store.selectedProviders.contains(provider)
+                                let providerEnum = AgentProvider.fromPersistedToken(provider)
+                                Button {
+                                    HapticBus.chipChange()
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                        store.toggleProvider(provider)
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if let p = providerEnum {
+                                            ProviderAvatar(provider: p, mode: .plain, size: 14)
+                                        }
+                                        Text(providerDisplayName(provider))
+                                            .font(.system(size: 11, weight: .bold))
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(active ? MobileTheme.ember.opacity(0.15) : MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                                    .foregroundStyle(active ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
+                                    .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(active ? MobileTheme.ember.opacity(0.6) : MobileTheme.Colors.borderSubtle.opacity(0.4), lineWidth: 0.75)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                    }
+                    .scrollClipDisabled()
                 }
             }
-            .padding(.vertical, 2)
+
+            // MODELS SECTION
+            if !store.discoveredModels.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("MODEL")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.bold)
+                        .tracking(1.2)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .padding(.horizontal, 14)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            // Any model option
+                            let isAnyActive = store.selectedModel == nil
+                            Button {
+                                HapticBus.chipChange()
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                    store.selectedModel = nil
+                                }
+                            } label: {
+                                Text("Any model")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(isAnyActive ? MobileTheme.ember.opacity(0.15) : MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                                    .foregroundStyle(isAnyActive ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
+                                    .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(isAnyActive ? MobileTheme.ember.opacity(0.6) : MobileTheme.Colors.borderSubtle.opacity(0.4), lineWidth: 0.75)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+
+                            ForEach(store.discoveredModels, id: \.self) { model in
+                                let active = store.selectedModel == model
+                                Button {
+                                    HapticBus.chipChange()
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                        store.selectedModel = model
+                                    }
+                                } label: {
+                                    Text(model)
+                                        .font(.system(size: 11, weight: .bold))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(active ? MobileTheme.ember.opacity(0.15) : MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                                        .foregroundStyle(active ? MobileTheme.ember : MobileTheme.Colors.textSecondary)
+                                        .cornerRadius(10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(active ? MobileTheme.ember.opacity(0.6) : MobileTheme.Colors.borderSubtle.opacity(0.4), lineWidth: 0.75)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                    }
+                    .scrollClipDisabled()
+                }
+            }
+
+            // ACTIONS BAR
+            VStack(spacing: 0) {
+                Divider()
+                    .background(MobileTheme.Colors.borderSubtle.opacity(0.4))
+                    .padding(.bottom, 10)
+
+                HStack(spacing: 10) {
+                    // Advanced Filters Sheet
+                    Button {
+                        HapticBus.sheetOpen()
+                        onOpenFilters()
+                    } label: {
+                        Label("Advanced", systemImage: "slider.horizontal.3")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(MobileTheme.Colors.surfaceElevated.opacity(0.7))
+                            .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Save Query
+                    Button {
+                        HapticBus.sheetOpen()
+                        onSaveQuery()
+                    } label: {
+                        Label("Save Query", systemImage: "bookmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(MobileTheme.Colors.surfaceElevated.opacity(0.7))
+                            .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Clear button
+                    if store.hasActiveFilters {
+                        Button {
+                            HapticBus.destructive()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                store.clearFilters()
+                            }
+                        } label: {
+                            Label("Clear", systemImage: "xmark.circle")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(MobileTheme.warning)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(MobileTheme.warning.opacity(0.12))
+                                .cornerRadius(10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+
+                    // Done collapsing button
+                    Button {
+                        HapticBus.toggle()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            isExpanded = false
+                        }
+                    } label: {
+                        Text("Done")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(MobileTheme.ember)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(MobileTheme.ember.opacity(0.12))
+                            .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+            }
+            .padding(.bottom, 12)
         }
-        .scrollClipDisabled()
     }
 
     private var savedQueryRail: some View {
@@ -1321,6 +1648,7 @@ private struct CockpitFacetBar: View {
             HStack(spacing: 8) {
                 ForEach(store.savedQueries) { query in
                     Button {
+                        HapticBus.chipChange()
                         store.applySavedQuery(query)
                     } label: {
                         HStack(spacing: 5) {
@@ -1346,6 +1674,7 @@ private struct CockpitFacetBar: View {
                     .buttonStyle(.plain)
                     .contextMenu {
                         Button(role: .destructive) {
+                            HapticBus.destructive()
                             store.deleteSavedQuery(query)
                         } label: {
                             Label("Delete saved query", systemImage: "trash")

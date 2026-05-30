@@ -941,6 +941,67 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 75 }))
     }
 
+    func test_claudeRefresh_staleOAuthCacheDoesNotRenderExpiredOrContextWindowAsQuota() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        try writeContextWindowOnlyFixture(
+            home: home,
+            appPaths: appPaths,
+            usedPercentage: 19,
+            windowSize: 1_000_000,
+            inputTokens: 188_000,
+            outputTokens: 322
+        )
+
+        let credentials = ClaudeOAuthCredentials(
+            accessToken: "sk-ant-oat-stale-cache",
+            refreshToken: nil,
+            expiresAt: nil,
+            subscriptionType: "max",
+            rateLimitTier: "default_claude_max_20x",
+            organizationUuid: nil
+        )
+        let cacheURL = ClaudeOAuthUsageFetcher.scopedCacheURL(
+            baseURL: appPaths.claudeOAuthUsageCacheURL,
+            credentials: credentials
+        )
+        try FileManager.default.createDirectory(
+            at: cacheURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let oldReset = formatter.string(from: now.addingTimeInterval(-13 * 24 * 60 * 60))
+        let oldFetch = formatter.string(from: now.addingTimeInterval(-14 * 24 * 60 * 60))
+        let envelope: [String: Any] = [
+            "fetchedAt": oldFetch,
+            "fiveHourResetsAt": oldReset,
+            "sevenDayResetsAt": oldReset,
+            "payload": [
+                "five_hour": ["used_percentage": 100, "resets_at": oldReset],
+                "seven_day": ["used_percentage": 100, "resets_at": oldReset]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: envelope).write(to: cacheURL)
+
+        let session = makeStubSession { _ in throw URLError(.notConnectedToInternet) }
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: credentials)
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertTrue(snapshot.statusMessage.contains("did not return current quota buckets"))
+    }
+
     func test_claudeRefresh_oauthLiveCall_writesCacheAndReportsExactRateLimits() async throws {
         // No cache, no statusline bridge — env credentials drive the live
         // OAuth call. The stub session returns a canned `rate_limits`
@@ -957,6 +1018,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
             XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-ant-oat-live")
             XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertTrue((request.value(forHTTPHeaderField: "User-Agent") ?? "").hasPrefix("claude-code/"))
             return try self.httpResponse(
                 url: url,
                 statusCode: 200,
@@ -1006,6 +1070,102 @@ final class ProviderQuotaServiceTests: XCTestCase {
             )
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: cacheURL.path))
+    }
+
+    func test_claudeRefresh_oauthUsage401RefreshesTokenAndRetries() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let formatter = ISO8601DateFormatter()
+        let futureReset = formatter.string(from: Date().addingTimeInterval(4 * 60 * 60))
+        let observedUsageAuths = Locked<[String]>([])
+
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            if url.absoluteString == "https://platform.claude.com/v1/oauth/token" {
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded")
+                let rawBody: Data = request.httpBody ?? {
+                    guard let stream = request.httpBodyStream else { return Data() }
+                    stream.open()
+                    defer { stream.close() }
+                    var collected = Data()
+                    let bufferSize = 4096
+                    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+                    defer { buffer.deallocate() }
+                    while stream.hasBytesAvailable {
+                        let read = stream.read(buffer, maxLength: bufferSize)
+                        if read <= 0 { break }
+                        collected.append(buffer, count: read)
+                    }
+                    return collected
+                }()
+                let body = String(data: rawBody, encoding: .utf8) ?? ""
+                XCTAssertTrue(body.contains("grant_type=refresh_token"), "body=\(body)")
+                XCTAssertTrue(body.contains("refresh_token=refresh-token"), "body=\(body)")
+                return try self.httpResponse(
+                    url: url,
+                    statusCode: 200,
+                    body: """
+                    {
+                      "access_token": "sk-ant-oat-refreshed",
+                      "refresh_token": "refresh-token-next",
+                      "expires_in": 28800
+                    }
+                    """
+                )
+            }
+
+            XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
+            let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            observedUsageAuths.withLock { $0.append(authorization) }
+
+            if authorization == "Bearer sk-ant-oat-stale" {
+                return try self.httpResponse(
+                    url: url,
+                    statusCode: 401,
+                    body: #"{"type":"error","error":{"type":"authentication_error","message":"Invalid authentication credentials"}}"#
+                )
+            }
+
+            XCTAssertEqual(authorization, "Bearer sk-ant-oat-refreshed")
+            return try self.httpResponse(
+                url: url,
+                statusCode: 200,
+                body: """
+                {
+                  "rate_limits": {
+                    "five_hour": { "used_percentage": 7, "resets_at": "\(futureReset)" },
+                    "seven_day": { "used_percentage": 19, "resets_at": "\(futureReset)" }
+                  }
+                }
+                """
+            )
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-stale",
+                refreshToken: "refresh-token",
+                expiresAt: Date().addingTimeInterval(60 * 60),
+                subscriptionType: "max",
+                rateLimitTier: "default_claude_max_20x",
+                organizationUuid: nil
+            ))
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(
+            observedUsageAuths.read(),
+            ["Bearer sk-ant-oat-stale", "Bearer sk-ant-oat-refreshed"]
+        )
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 93 }))
     }
 
     func test_claudeRefresh_jsonlPlanCap_inferredMax20xCapPercent() async throws {
@@ -1341,6 +1501,139 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(accountSnapshot.statusMessage.contains("will not reuse another Claude account"))
     }
 
+    func test_claudeRefresh_switcherProfileDoesNotRenderPlanBadgeWhenOAuthUsageUnavailable() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let profileRoot = try makeTemporaryDirectory()
+        let expiresAt = Int(Date().addingTimeInterval(60 * 60).timeIntervalSince1970 * 1000)
+        let credentials = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "profile-token",
+            "expiresAt": \(expiresAt),
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          }
+        }
+        """
+        try Data(credentials.utf8).write(
+            to: profileRoot.appendingPathComponent(".credentials.json", isDirectory: false)
+        )
+        let profile = try dataStore.switcherStore.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Claude iCloud",
+                configDirectory: profileRoot.path,
+                accountDescription: "Claude iCloud",
+                providerID: .anthropic,
+                linkedHarnessIDs: ["claude"]
+            ),
+            sortKey: 0
+        ))
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: makeStubSession { _ in throw URLError(.notConnectedToInternet) },
+            refreshProviders: [.claudeCode]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: dataStore)
+
+        let accountSnapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
+        XCTAssertEqual(accountSnapshot.source, .officialAPI)
+        XCTAssertEqual(accountSnapshot.confidence, .unavailable)
+        XCTAssertTrue(accountSnapshot.buckets.isEmpty)
+        XCTAssertTrue(accountSnapshot.statusMessage.contains("did not return current quota buckets"))
+        XCTAssertTrue(accountSnapshot.statusMessage.contains("will not reuse another Claude account"))
+    }
+
+    func test_claudeRefresh_switcherProfileCanUseFreshStatuslineWhenItMatchesDefaultLogin() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+
+        let snapshotURL = appPaths.claudeStatuslineSnapshotURL
+        try FileManager.default.createDirectory(
+            at: snapshotURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let freshPayload = """
+        {
+          "rate_limits": {
+            "five_hour": {
+              "used_percentage": 39,
+              "resets_at": "2026-05-30T12:00:00Z"
+            },
+            "seven_day": {
+              "used_percentage": 12,
+              "resets_at": "2026-06-03T12:00:00Z"
+            }
+          }
+        }
+        """
+        try Data(freshPayload.utf8).write(to: snapshotURL)
+
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
+        let settings = """
+        {
+          "statusLine": {
+            "type": "command",
+            "command": "\(appPaths.claudeStatuslineBridgeScriptURL.path)"
+          }
+        }
+        """
+        try Data(settings.utf8).write(to: settingsURL)
+
+        let defaultState = """
+        {
+          "oauthAccount": {
+            "accountUuid": "acct-1",
+            "emailAddress": "alberto@example.com",
+            "organizationUuid": "org-1"
+          }
+        }
+        """
+        try Data(defaultState.utf8).write(to: home.appendingPathComponent(".claude.json"))
+
+        let profileRoot = try makeTemporaryDirectory()
+        try Data(defaultState.utf8).write(to: profileRoot.appendingPathComponent(".claude.json"))
+        let profile = try dataStore.switcherStore.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "alberto@example.com",
+                configDirectory: profileRoot.path,
+                accountDescription: "alberto@example.com",
+                providerID: .anthropic,
+                linkedHarnessIDs: ["claude"]
+            ),
+            sortKey: 0
+        ))
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: makeStubSession { _ in throw URLError(.notConnectedToInternet) },
+            refreshProviders: [.claudeCode]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: dataStore)
+
+        let accountSnapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
+        XCTAssertEqual(accountSnapshot.source, .localCLI)
+        XCTAssertEqual(accountSnapshot.confidence, .exact)
+        XCTAssertEqual(accountSnapshot.accountLabel, "alberto@example.com")
+        let bucket = try XCTUnwrap(accountSnapshot.buckets.first)
+        XCTAssertEqual(bucket.key, "claude-five_hour")
+        XCTAssertEqual(bucket.remainingPercent?.rounded(), 61)
+    }
+
     func test_codexRefresh_usesEachSwitcherProfileConfigForSeparateOAuthQuota() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -1548,11 +1841,10 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertNil(service.snapshot(for: .codex)?.accountID)
     }
 
-    func test_claudeRefresh_planOnlyBadge_renderedWhenNoUsageDataAvailable() async throws {
+    func test_claudeRefresh_planOnlyMetadataDoesNotRenderAsQuotaWhenNoUsageDataAvailable() async throws {
         // No bridge, no JSONL, OAuth network down — but Keychain (env
-        // override) reports a Pro plan. Adapter must render a plan-badge
-        // snapshot rather than "unavailable" so the user sees their plan
-        // tier in the popover.
+        // override) reports a Pro plan. The adapter may mention that in the
+        // message, but must not render it as a lifetime quota bucket.
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
 
@@ -1575,8 +1867,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.confidence, .estimated)
-        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "Plan: Pro" }))
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertTrue(snapshot.statusMessage.contains("Pro"))
     }
 
@@ -5496,5 +5788,120 @@ extension ProviderQuotaServiceTests {
             statusMessage: "ok",
             buckets: buckets
         )
+    }
+
+    // MARK: - Claude context-window quota-boundary tests
+
+    /// Writes a Claude statusline snapshot that contains `context_window`
+    /// data but NO `rate_limits` key, plus the Claude settings needed for
+    /// the bridge to report `.ready`.
+    private func writeContextWindowOnlyFixture(
+        home: URL,
+        appPaths: OpenBurnBarAppPaths,
+        usedPercentage: Int = 26,
+        windowSize: Int = 1_000_000,
+        inputTokens: Int = 264_134,
+        outputTokens: Int = 491,
+        sessionName: String = "Fix loginwindow keystroke delivery",
+        modelName: String = "Opus 4.8 (1M context)",
+        costUSD: Double = 79.66,
+        stale: Bool = false
+    ) throws {
+        let snapshotURL = appPaths.claudeStatuslineSnapshotURL
+        try FileManager.default.createDirectory(
+            at: snapshotURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let payload = """
+        {
+          "session_name": "\(sessionName)",
+          "model": { "id": "claude-opus-4-8", "display_name": "\(modelName)" },
+          "cost": { "total_cost_usd": \(costUSD) },
+          "context_window": {
+            "total_input_tokens": \(inputTokens),
+            "total_output_tokens": \(outputTokens),
+            "context_window_size": \(windowSize),
+            "used_percentage": \(usedPercentage),
+            "remaining_percentage": \(100 - usedPercentage)
+          }
+        }
+        """
+        try Data(payload.utf8).write(to: snapshotURL)
+
+        if stale {
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date().addingTimeInterval(-60 * 60)],
+                ofItemAtPath: snapshotURL.path
+            )
+        }
+
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
+        let settings = """
+        {
+          "statusLine": {
+            "type": "command",
+            "command": "\(appPaths.claudeStatuslineBridgeScriptURL.path)"
+          }
+        }
+        """
+        try Data(settings.utf8).write(to: settingsURL)
+    }
+
+    func test_claudeRefresh_contextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+
+        try writeContextWindowOnlyFixture(home: home, appPaths: appPaths)
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.provider, .claudeCode)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertFalse(snapshot.statusMessage.contains("Context window"))
+    }
+
+    func test_claudeRefresh_staleContextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+
+        try writeContextWindowOnlyFixture(home: home, appPaths: appPaths, stale: true)
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertFalse(snapshot.statusMessage.contains("context window"))
+    }
+
+    func test_claudeRefresh_statuslineRateLimitsWinEvenWhenContextWindowIsPresent() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+
+        // Write a fixture that has BOTH rate_limits and context_window
+        try writeFreshClaudeStatuslineFixture(
+            home: home,
+            appPaths: appPaths,
+            fiveHourUsedPercent: 42
+        )
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.key != "context-window" }),
+                       "When rate_limits is present, primary path should produce standard quota buckets")
+        XCTAssertFalse(snapshot.buckets.contains(where: { $0.key == "context-window" }),
+                        "Context-window telemetry must not render as quota")
     }
 }

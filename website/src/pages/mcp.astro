@@ -473,13 +473,17 @@ const slo = [
       </h1>
 
       <p class="lead mcp-hero__lead">
-        Thirty-four unique MCP tools point any agent that speaks the protocol — Codex, Claude Code, Cursor,
-        Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record. Free locally over SQLite.
-        Encrypted in the cloud for Pro. Never plaintext on the server.
+        Thirty-four unique MCP tools point any agent that speaks the protocol — Codex, Claude Code,
+        Cursor, Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record. Free locally over
+        SQLite. Encrypted in the cloud for Pro. Never plaintext on the server.
       </p>
 
       {/* signal-flow diagram — three sources converge into ANY CLIENT */}
-      <figure class="signalmap" role="img" aria-label="Three OpenBurnBar MCP channels — local SQLite, hosted encrypted memory, and the local stdio shim — converging into any MCP-capable client">
+      <figure
+        class="signalmap"
+        role="img"
+        aria-label="Three OpenBurnBar MCP channels — local SQLite, hosted encrypted memory, and the local stdio shim — converging into any MCP-capable client"
+      >
         <svg viewBox="0 0 920 320" class="signalmap__svg" aria-hidden="true">
           <defs>
             <linearGradient id="sigEmber" x1="0" y1="0" x2="1" y2="0">
@@ -506,13 +510,18 @@ const slo = [
 
           {/* horizontal grid lines for the radar feel */}
           <g stroke="rgba(255,255,255,0.045)" stroke-width="1">
-            <line x1="40" y1="60"  x2="880" y2="60"></line>
+            <line x1="40" y1="60" x2="880" y2="60"></line>
             <line x1="40" y1="160" x2="880" y2="160"></line>
             <line x1="40" y1="260" x2="880" y2="260"></line>
           </g>
 
           {/* three source labels (left) */}
-          <g class="signalmap__label" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="rgba(255,255,255,0.6)">
+          <g
+            class="signalmap__label"
+            font-family="JetBrains Mono Variable, monospace"
+            font-size="11"
+            fill="rgba(255,255,255,0.6)"
+          >
             <text x="64" y="56">01 · LOCAL · SQLite</text>
             <text x="64" y="156">02 · HOSTED · mcp.burnbar.ai</text>
             <text x="64" y="256">03 · BRIDGE · stdio shim</text>
@@ -520,29 +529,59 @@ const slo = [
 
           {/* source nodes (left) */}
           <g>
-            <circle cx="64" cy="80"  r="22" fill="url(#sigNode)"></circle>
-            <circle cx="64" cy="80"  r="5"  fill="#fdc42c"></circle>
+            <circle cx="64" cy="80" r="22" fill="url(#sigNode)"></circle>
+            <circle cx="64" cy="80" r="5" fill="#fdc42c"></circle>
             <circle cx="64" cy="180" r="22" fill="url(#sigNodeMerc)"></circle>
-            <circle cx="64" cy="180" r="5"  fill="#e8e8ff"></circle>
+            <circle cx="64" cy="180" r="5" fill="#e8e8ff"></circle>
             <circle cx="64" cy="280" r="22" fill="url(#sigNode)"></circle>
-            <circle cx="64" cy="280" r="5"  fill="#fa6b06"></circle>
+            <circle cx="64" cy="280" r="5" fill="#fa6b06"></circle>
           </g>
 
           {/* bezier channels */}
-          <path d="M 86,80  C 280,80,  500,200, 760,160" fill="none" stroke="url(#sigEmber)" stroke-width="1.5" class="signalmap__path signalmap__path--a"></path>
-          <path d="M 86,180 C 280,180, 500,160, 760,160" fill="none" stroke="url(#sigMerc)"  stroke-width="1.5" class="signalmap__path signalmap__path--b"></path>
-          <path d="M 86,280 C 280,280, 500,120, 760,160" fill="none" stroke="url(#sigEmber)" stroke-width="1.5" class="signalmap__path signalmap__path--c"></path>
+          <path
+            d="M 86,80  C 280,80,  500,200, 760,160"
+            fill="none"
+            stroke="url(#sigEmber)"
+            stroke-width="1.5"
+            class="signalmap__path signalmap__path--a"></path>
+          <path
+            d="M 86,180 C 280,180, 500,160, 760,160"
+            fill="none"
+            stroke="url(#sigMerc)"
+            stroke-width="1.5"
+            class="signalmap__path signalmap__path--b"></path>
+          <path
+            d="M 86,280 C 280,280, 500,120, 760,160"
+            fill="none"
+            stroke="url(#sigEmber)"
+            stroke-width="1.5"
+            class="signalmap__path signalmap__path--c"></path>
 
           {/* travelling packets (CSS animated dashes) */}
-          <path d="M 86,80  C 280,80,  500,200, 760,160" fill="none" stroke="#fdc42c" stroke-width="2" class="signalmap__packet signalmap__packet--a"></path>
-          <path d="M 86,180 C 280,180, 500,160, 760,160" fill="none" stroke="#e8e8ff" stroke-width="2" class="signalmap__packet signalmap__packet--b"></path>
-          <path d="M 86,280 C 280,280, 500,120, 760,160" fill="none" stroke="#fa6b06" stroke-width="2" class="signalmap__packet signalmap__packet--c"></path>
+          <path
+            d="M 86,80  C 280,80,  500,200, 760,160"
+            fill="none"
+            stroke="#fdc42c"
+            stroke-width="2"
+            class="signalmap__packet signalmap__packet--a"></path>
+          <path
+            d="M 86,180 C 280,180, 500,160, 760,160"
+            fill="none"
+            stroke="#e8e8ff"
+            stroke-width="2"
+            class="signalmap__packet signalmap__packet--b"></path>
+          <path
+            d="M 86,280 C 280,280, 500,120, 760,160"
+            fill="none"
+            stroke="#fa6b06"
+            stroke-width="2"
+            class="signalmap__packet signalmap__packet--c"></path>
 
           {/* convergence node (right) — ANY CLIENT */}
           <g>
             <circle cx="780" cy="160" r="42" fill="url(#sigNode)" opacity="0.55"></circle>
             <circle cx="780" cy="160" r="18" fill="#ee1803" opacity="0.9"></circle>
-            <circle cx="780" cy="160" r="6"  fill="#fdc42c"></circle>
+            <circle cx="780" cy="160" r="6" fill="#fdc42c"></circle>
           </g>
 
           {/* convergence bracket frame */}
@@ -553,10 +592,21 @@ const slo = [
             <path d="M 820,212 L 820,202 L 810,202"></path>
           </g>
 
-          <g font-family="Outfit, sans-serif" font-size="13" font-weight="600" fill="#ffffff" text-anchor="middle">
+          <g
+            font-family="Outfit, sans-serif"
+            font-size="13"
+            font-weight="600"
+            fill="#ffffff"
+            text-anchor="middle"
+          >
             <text x="780" y="232">ANY MCP CLIENT</text>
           </g>
-          <g font-family="JetBrains Mono Variable, monospace" font-size="10" fill="rgba(255,255,255,0.55)" text-anchor="middle">
+          <g
+            font-family="JetBrains Mono Variable, monospace"
+            font-size="10"
+            fill="rgba(255,255,255,0.55)"
+            text-anchor="middle"
+          >
             <text x="780" y="248">codex · claude · cursor · droid · kimi · forge · hermes</text>
           </g>
         </svg>
@@ -574,7 +624,9 @@ const slo = [
         </div>
         <div class="endplate__addr mono">https://mcp.burnbar.ai/mcp</div>
         <div class="endplate__row endplate__row--foot">
-          <span class="mono endplate__meta">audience-bound · HMAC bearer · burnbar_pro entitlement</span>
+          <span class="mono endplate__meta"
+            >audience-bound · HMAC bearer · burnbar_pro entitlement</span
+          >
           <span class="mono endplate__meta">since 2026-05-15</span>
         </div>
       </div>
@@ -607,33 +659,67 @@ const slo = [
         <h2 id="channels-h">Same tools. Three install paths. Pick the one your client speaks.</h2>
         <p class="lead">
           The local stdio server is free and reads your SQLite directly. The hosted Remote MCP is a
-          BurnBar Pro feature with encrypted, multi-device session memory. The stdio shim closes
-          the gap for clients that don't yet speak Streamable HTTP — and is the only path that
-          decrypts hosted bodies on-device.
+          BurnBar Pro feature with encrypted, multi-device session memory. The stdio shim closes the
+          gap for clients that don't yet speak Streamable HTTP — and is the only path that decrypts
+          hosted bodies on-device.
         </p>
       </header>
 
       <ol class="channels__grid">
-        {channels.map((c) => (
-          <li class={`channel channel--${c.accent}`}>
-            <div class="channel__head">
-              <span class="channel__sigil mono">{c.sigil}</span>
-              <span class="channel__band mono">{c.band}</span>
-            </div>
-            <h3 class="channel__name">{c.name}</h3>
-            <dl class="channel__spec mono">
-              <div><dt>runtime</dt><dd>{c.runtime}</dd></div>
-              <div><dt>transport</dt><dd>{c.transport}</dd></div>
-              <div><dt>auth</dt><dd>{c.auth}</dd></div>
-              <div><dt>audience</dt><dd>{c.audience}</dd></div>
-              <div><dt>source</dt><dd class="channel__src">{c.dataPath}</dd></div>
-              <div><dt>tools</dt><dd>{c.tools}</dd></div>
-            </dl>
-            <ul class="channel__bul">
-              {c.bullet.map((b) => <li>{b}</li>)}
-            </ul>
-          </li>
-        ))}
+        {
+          channels.map((c) => (
+            <li class={`channel channel--${c.accent}`}>
+              <div class="channel__head">
+                <span class="channel__sigil mono">{c.sigil}</span>
+                <span class="channel__band mono">{c.band}</span>
+              </div>
+              <h3 class="channel__name">{c.name}</h3>
+              <dl class="channel__spec mono">
+                <div>
+                  <>
+                    <dt>runtime</dt>
+                    <dd>{c.runtime}</dd>
+                  </>
+                </div>
+                <div>
+                  <>
+                    <dt>transport</dt>
+                    <dd>{c.transport}</dd>
+                  </>
+                </div>
+                <div>
+                  <>
+                    <dt>auth</dt>
+                    <dd>{c.auth}</dd>
+                  </>
+                </div>
+                <div>
+                  <>
+                    <dt>audience</dt>
+                    <dd>{c.audience}</dd>
+                  </>
+                </div>
+                <div>
+                  <>
+                    <dt>source</dt>
+                    <dd class="channel__src">{c.dataPath}</dd>
+                  </>
+                </div>
+                <div>
+                  <>
+                    <dt>tools</dt>
+                    <dd>{c.tools}</dd>
+                  </>
+                </div>
+              </dl>
+              <ul class="channel__bul">
+                {c.bullet.map((b) => (
+                  <li>{b}</li>
+                ))}
+              </ul>
+            </li>
+          ))
+        }
       </ol>
     </div>
   </section>
@@ -643,7 +729,9 @@ const slo = [
     <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Tool dossier</span>
-        <h2 id="dossier-h">Thirty-four unique tools. Read-by-default. Writes stay gated by the daemon.</h2>
+        <h2 id="dossier-h">
+          Thirty-four unique tools. Read-by-default. Writes stay gated by the daemon.
+        </h2>
         <p class="lead">
           Every tool is declared with a scope, a cost class, a rate-limit bucket, and an input
           schema. Names below are exact — copy them into a <code>tools/call</code> payload.
@@ -656,19 +744,28 @@ const slo = [
           <span class="dossier__count mono">{hostedTools.length} tools</span>
         </header>
         <ul class="dossier__grid">
-          {hostedTools.map((t) => (
-            <li class="tooltile">
-              <div class="tooltile__bracket" aria-hidden="true">
-                <span></span><span></span><span></span><span></span>
-              </div>
-              <code class="tooltile__name mono">{t.name}</code>
-              <div class="tooltile__meta mono">
-                <span class={`tooltile__scope ${t.scope.startsWith("WRITE") ? "is-write" : ""}`}>{t.scope}</span>
-                <span class="tooltile__cost">cost · {t.cost}</span>
-              </div>
-              <p class="tooltile__desc">{t.desc}</p>
-            </li>
-          ))}
+          {
+            hostedTools.map((t) => (
+              <li class="tooltile">
+                <div class="tooltile__bracket" aria-hidden="true">
+                  <>
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </>
+                </div>
+                <code class="tooltile__name mono">{t.name}</code>
+                <div class="tooltile__meta mono">
+                  <span class={`tooltile__scope ${t.scope.startsWith("WRITE") ? "is-write" : ""}`}>
+                    {t.scope}
+                  </span>
+                  <span class="tooltile__cost">cost · {t.cost}</span>
+                </div>
+                <p class="tooltile__desc">{t.desc}</p>
+              </li>
+            ))
+          }
         </ul>
       </div>
 
@@ -678,19 +775,28 @@ const slo = [
           <span class="dossier__count mono">{localTools.length} tools</span>
         </header>
         <ul class="dossier__grid">
-          {localTools.map((t) => (
-            <li class="tooltile">
-              <div class="tooltile__bracket" aria-hidden="true">
-                <span></span><span></span><span></span><span></span>
-              </div>
-              <code class="tooltile__name mono">{t.name}</code>
-              <div class="tooltile__meta mono">
-                <span class={`tooltile__scope ${t.scope.startsWith("WRITE") ? "is-write" : ""}`}>{t.scope}</span>
-                <span class="tooltile__cost">cost · {t.cost}</span>
-              </div>
-              <p class="tooltile__desc">{t.desc}</p>
-            </li>
-          ))}
+          {
+            localTools.map((t) => (
+              <li class="tooltile">
+                <div class="tooltile__bracket" aria-hidden="true">
+                  <>
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </>
+                </div>
+                <code class="tooltile__name mono">{t.name}</code>
+                <div class="tooltile__meta mono">
+                  <span class={`tooltile__scope ${t.scope.startsWith("WRITE") ? "is-write" : ""}`}>
+                    {t.scope}
+                  </span>
+                  <span class="tooltile__cost">cost · {t.cost}</span>
+                </div>
+                <p class="tooltile__desc">{t.desc}</p>
+              </li>
+            ))
+          }
         </ul>
       </div>
     </div>
@@ -703,86 +809,105 @@ const slo = [
         <span class="eyebrow eyebrow--ember">Install</span>
         <h2 id="install-h">Drop into any client in under a minute.</h2>
         <p class="lead">
-          The hosted path uses the <code>openburnbar-mcp-remote</code> stdio shim (or direct HTTP
-          for clients that speak the 2025-11-25 spec). The local path is one shell script and a
-          JSON snippet.
+          The hosted path uses the <code>openburnbar-mcp-remote</code> stdio shim (or direct HTTP for
+          clients that speak the 2025-11-25 spec). The local path is one shell script and a JSON snippet.
         </p>
       </header>
 
       <div class="termmux" data-mux="hosted">
         <header class="termmux__head">
           <h3 class="termmux__title">Hosted · <span class="ember">mcp.burnbar.ai</span></h3>
-          <p class="termmux__sub mono">requires BurnBar Pro · openburnbar mcp login &lt;bearer&gt;</p>
+          <p class="termmux__sub mono">
+            requires BurnBar Pro · openburnbar mcp login &lt;bearer&gt;
+          </p>
         </header>
         <div class="termmux__tabs" role="tablist" aria-label="Hosted MCP install targets">
-          {hostedSnippets.map((s, i) => (
-            <button
-              type="button"
-              role="tab"
-              class="termmux__tab"
-              aria-selected={i === 0 ? "true" : "false"}
-              aria-controls={`hosted-panel-${s.id}`}
-              id={`hosted-tab-${s.id}`}
-              data-target={s.id}
-            >
-              {s.label}
-            </button>
-          ))}
+          {
+            hostedSnippets.map((s, i) => (
+              <button
+                type="button"
+                role="tab"
+                class="termmux__tab"
+                aria-selected={i === 0 ? "true" : "false"}
+                aria-controls={`hosted-panel-${s.id}`}
+                id={`hosted-tab-${s.id}`}
+                data-target={s.id}
+              >
+                {s.label}
+              </button>
+            ))
+          }
         </div>
-        {hostedSnippets.map((s, i) => (
-          <section
-            role="tabpanel"
-            id={`hosted-panel-${s.id}`}
-            aria-labelledby={`hosted-tab-${s.id}`}
-            class="termmux__panel"
-            data-panel={s.id}
-            hidden={i !== 0}
-          >
-            <div class="termmux__strip">
-              <span class="mono termmux__strip-meta">{s.meta}</span>
-              <button class="termmux__copy mono" type="button" data-copy>copy</button>
-            </div>
-            <pre class="termmux__pre mono"><code>{s.lines.join("\n")}</code></pre>
-          </section>
-        ))}
+        {
+          hostedSnippets.map((s, i) => (
+            <section
+              role="tabpanel"
+              id={`hosted-panel-${s.id}`}
+              aria-labelledby={`hosted-tab-${s.id}`}
+              class="termmux__panel"
+              data-panel={s.id}
+              hidden={i !== 0}
+            >
+              <div class="termmux__strip">
+                <span class="mono termmux__strip-meta">{s.meta}</span>
+                <button class="termmux__copy mono" type="button" data-copy>
+                  copy
+                </button>
+              </div>
+              <pre class="termmux__pre mono">
+                <code>{s.lines.join("\n")}</code>
+              </pre>
+            </section>
+          ))
+        }
       </div>
 
       <div class="termmux" data-mux="local">
         <header class="termmux__head">
-          <h3 class="termmux__title">Local · <span class="ember">SQLite, free, no account</span></h3>
+          <h3 class="termmux__title">
+            Local · <span class="ember">SQLite, free, no account</span>
+          </h3>
           <p class="termmux__sub mono">tools/openburnbar-mcp · Python 3 venv</p>
         </header>
         <div class="termmux__tabs" role="tablist" aria-label="Local MCP install targets">
-          {localSnippets.map((s, i) => (
-            <button
-              type="button"
-              role="tab"
-              class="termmux__tab"
-              aria-selected={i === 0 ? "true" : "false"}
-              aria-controls={`local-panel-${s.id}`}
-              id={`local-tab-${s.id}`}
-              data-target={s.id}
-            >
-              {s.label}
-            </button>
-          ))}
+          {
+            localSnippets.map((s, i) => (
+              <button
+                type="button"
+                role="tab"
+                class="termmux__tab"
+                aria-selected={i === 0 ? "true" : "false"}
+                aria-controls={`local-panel-${s.id}`}
+                id={`local-tab-${s.id}`}
+                data-target={s.id}
+              >
+                {s.label}
+              </button>
+            ))
+          }
         </div>
-        {localSnippets.map((s, i) => (
-          <section
-            role="tabpanel"
-            id={`local-panel-${s.id}`}
-            aria-labelledby={`local-tab-${s.id}`}
-            class="termmux__panel"
-            data-panel={s.id}
-            hidden={i !== 0}
-          >
-            <div class="termmux__strip">
-              <span class="mono termmux__strip-meta">{s.meta}</span>
-              <button class="termmux__copy mono" type="button" data-copy>copy</button>
-            </div>
-            <pre class="termmux__pre mono"><code>{s.lines.join("\n")}</code></pre>
-          </section>
-        ))}
+        {
+          localSnippets.map((s, i) => (
+            <section
+              role="tabpanel"
+              id={`local-panel-${s.id}`}
+              aria-labelledby={`local-tab-${s.id}`}
+              class="termmux__panel"
+              data-panel={s.id}
+              hidden={i !== 0}
+            >
+              <div class="termmux__strip">
+                <span class="mono termmux__strip-meta">{s.meta}</span>
+                <button class="termmux__copy mono" type="button" data-copy>
+                  copy
+                </button>
+              </div>
+              <pre class="termmux__pre mono">
+                <code>{s.lines.join("\n")}</code>
+              </pre>
+            </section>
+          ))
+        }
       </div>
     </div>
   </section>
@@ -805,7 +930,11 @@ const slo = [
             <li><code>semantic_hashes[]</code> — opaque keyed digests</li>
             <li>encrypted title / snippet / body-preview envelopes</li>
             <li>provider · model · project · harness facets</li>
-            <li>audience-bound bearer (<code>sub</code>, <code>scopes</code>, <code>exp</code>, <code>jti</code>)</li>
+            <li>
+              audience-bound bearer (<code>sub</code>, <code>scopes</code>, <code>exp</code>, <code
+                >jti</code
+              >)
+            </li>
           </ul>
         </article>
 
@@ -841,28 +970,37 @@ const slo = [
         <span class="eyebrow eyebrow--ember">Production SLO</span>
         <h2 id="scoreboard-h">Live numbers from the 1,000-document corpus proof.</h2>
         <p class="lead">
-          Captured on 2026-05-15 from Cloud Build against the branded endpoint —
-          20 iterations · 100 matching candidates · audited and reproducible.
+          Captured on 2026-05-15 from Cloud Build against the branded endpoint — 20 iterations · 100
+          matching candidates · audited and reproducible.
         </p>
       </header>
 
       <ol class="scoreboard__grid">
-        {slo.map((s) => (
-          <li class="scoretile">
-            <div class="scoretile__bracket" aria-hidden="true">
-              <span></span><span></span><span></span><span></span>
-            </div>
-            <div class="scoretile__num display">
-              {s.value}<span class="scoretile__unit mono">{s.unit}</span>
-            </div>
-            <div class="scoretile__lbl mono">{s.label}</div>
-          </li>
-        ))}
+        {
+          slo.map((s) => (
+            <li class="scoretile">
+              <div class="scoretile__bracket" aria-hidden="true">
+                <>
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </>
+              </div>
+              <div class="scoretile__num display">
+                {s.value}
+                <span class="scoretile__unit mono">{s.unit}</span>
+              </div>
+              <div class="scoretile__lbl mono">{s.label}</div>
+            </li>
+          ))
+        }
       </ol>
 
       <details class="scoreboard__verify">
         <summary class="mono">verify it yourself · three commands</summary>
-        <pre class="mono"><code>{`$ curl -fsS https://mcp.burnbar.ai/readyz
+        <pre
+          class="mono"><code>{`$ curl -fsS https://mcp.burnbar.ai/readyz
 { "ok": true, "service": "openburnbar-hosted-mcp" }
 
 $ curl -fsS https://mcp.burnbar.ai/.well-known/oauth-protected-resource
@@ -882,27 +1020,37 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
         <h2 id="ccmirror-h">Connect, list, revoke — from inside the app.</h2>
         <p>
           The macOS app and the iPhone/iPad app both ship a Remote MCP card. It pulls the live
-          <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the
-          stdio shim and doctor commands, and lets you revoke any connected agent with one
-          confirmation.
+          <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the stdio shim
+          and doctor commands, and lets you revoke any connected agent with one confirmation.
         </p>
         <p>
-          Revocation hits the <code>revokeRemoteMcpClient</code> callable; the next bearer-token
-          refresh fails closed with <code>403 client_revoked</code>. The signed-in flow was
-          proved live on iPhone 17 Pro Max and iPad Pro 13" (M4) on 2026-05-15.
+          Revocation hits the <code>revokeRemoteMcpClient</code> callable; the next bearer-token refresh
+          fails closed with <code>403 client_revoked</code>. The signed-in flow was proved live on
+          iPhone 17 Pro Max and iPad Pro 13" (M4) on 2026-05-15.
         </p>
         <p class="muted mono">
-          AgentLens/Views/Settings/CloudStoreSettingsView.swift · OpenBurnBarMobile/Views/Store/CloudStoreView.swift
+          AgentLens/Views/Settings/CloudStoreSettingsView.swift ·
+          OpenBurnBarMobile/Views/Store/CloudStoreView.swift
         </p>
       </div>
 
       {/* App-card mirror — looks like the real Cloud Store card */}
-      <aside class="ccmirror__card" aria-label="Mirror of the OpenBurnBar Cloud Store Remote MCP card">
+      <aside
+        class="ccmirror__card"
+        aria-label="Mirror of the OpenBurnBar Cloud Store Remote MCP card"
+      >
         <header class="ccmirror__cardhead">
           <span class="ccmirror__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6">
-              <circle cx="5"  cy="6"  r="2"></circle>
-              <circle cx="5"  cy="18" r="2"></circle>
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+            >
+              <circle cx="5" cy="6" r="2"></circle>
+              <circle cx="5" cy="18" r="2"></circle>
               <circle cx="19" cy="12" r="2"></circle>
               <path d="M7 6 L17 11"></path>
               <path d="M7 18 L17 13"></path>
@@ -953,15 +1101,28 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
     <div class="container container--wide compstrip__inner">
       <div class="compstrip__col">
         <span class="eyebrow eyebrow--ember">Spec</span>
-        <p>MCP Streamable HTTP · protocolVersion <code>2025-11-25</code> · methods <code>initialize</code>, <code>tools/list</code>, <code>tools/call</code>, <code>resources/list</code>, <code>resources/read</code>.</p>
+        <p>
+          MCP Streamable HTTP · protocolVersion <code>2025-11-25</code> · methods <code
+            >initialize</code
+          >, <code>tools/list</code>, <code>tools/call</code>, <code>resources/list</code>, <code
+            >resources/read</code
+          >.
+        </p>
       </div>
       <div class="compstrip__col">
         <span class="eyebrow eyebrow--ember">Posture</span>
-        <p>Origin validated · oversized inputs bounded · missing bearer returns <code>401</code> with <code>WWW-Authenticate</code> · cross-tenant URI returns <code>404</code>.</p>
+        <p>
+          Origin validated · oversized inputs bounded · missing bearer returns <code>401</code> with <code
+            >WWW-Authenticate</code
+          > · cross-tenant URI returns <code>404</code>.
+        </p>
       </div>
       <div class="compstrip__col">
         <span class="eyebrow eyebrow--ember">Auth</span>
-        <p>Short-lived HMAC bearer with <code>aud=https://mcp.burnbar.ai/mcp</code>. Every tool call re-checks scope + active client + active <code>burnbar_pro</code> entitlement + rate limit.</p>
+        <p>
+          Short-lived HMAC bearer with <code>aud=https://mcp.burnbar.ai/mcp</code>. Every tool call
+          re-checks scope + active client + active <code>burnbar_pro</code> entitlement + rate limit.
+        </p>
       </div>
     </div>
   </section>
@@ -979,9 +1140,15 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
             <span class="mono mcp-end__tag">FREE · LOCAL · NO ACCOUNT</span>
             <h3>Run the local MCP in 30 seconds.</h3>
           </header>
-          <pre class="mono"><code>{`$ cd BurnBar/tools/openburnbar-mcp && ./setup.sh
+          <pre
+            class="mono"><code>{`$ cd BurnBar/tools/openburnbar-mcp && ./setup.sh
 $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
-          <a class="btn btn--ghost" href={`${SITE.github}/tree/main/tools/openburnbar-mcp`} target="_blank" rel="noopener noreferrer">
+          <a
+            class="btn btn--ghost"
+            href={`${SITE.github}/tree/main/tools/openburnbar-mcp`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             View tools/openburnbar-mcp <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
         </article>
@@ -1017,9 +1184,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => {
         const target = tab.dataset.target;
-        tabs.forEach((t) =>
-          t.setAttribute("aria-selected", t === tab ? "true" : "false")
-        );
+        tabs.forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
         panels.forEach((p) => {
           if (p.dataset.panel === target) p.removeAttribute("hidden");
           else p.setAttribute("hidden", "");
@@ -1180,8 +1345,12 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     animation-duration: 5s;
   }
   @keyframes packetGlide {
-    0%   { stroke-dashoffset: 600; }
-    100% { stroke-dashoffset: -600; }
+    0% {
+      stroke-dashoffset: 600;
+    }
+    100% {
+      stroke-dashoffset: -600;
+    }
   }
 
   .signalmap__cap {
@@ -1271,8 +1440,15 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     animation: liveBlink 1.6s ease-in-out infinite;
   }
   @keyframes liveBlink {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%      { opacity: 0.4; transform: scale(0.85); }
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.4;
+      transform: scale(0.85);
+    }
   }
   .endplate__addr {
     margin-top: var(--s-3);
@@ -1303,18 +1479,20 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   @media (max-width: 960px) {
-    .channels__grid { grid-template-columns: 1fr; }
+    .channels__grid {
+      grid-template-columns: 1fr;
+    }
   }
   .channel {
     position: relative;
     padding: var(--s-5) var(--s-5) var(--s-6);
     border-radius: var(--r-lg);
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.3) 100%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.3) 100%);
     border: 1px solid var(--ink-line);
-    transition: border-color var(--dur-base) var(--ease),
-                transform var(--dur-base) var(--ease),
-                box-shadow var(--dur-base) var(--ease);
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease),
+      box-shadow var(--dur-base) var(--ease);
     isolation: isolate;
   }
   .channel::before {
@@ -1324,33 +1502,39 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg,
+    background: linear-gradient(
+      90deg,
       transparent,
       var(--ember-core) 30%,
       var(--ember-bright) 50%,
       var(--ember-core) 70%,
-      transparent);
+      transparent
+    );
     opacity: 0.5;
   }
   .channel--mercury::before {
-    background: linear-gradient(90deg,
+    background: linear-gradient(
+      90deg,
       transparent,
       rgba(128, 128, 255, 0.6) 30%,
       #ffffff 50%,
       rgba(128, 128, 255, 0.6) 70%,
-      transparent);
+      transparent
+    );
     opacity: 0.6;
   }
   .channel:hover {
     transform: translateY(-3px);
     border-color: rgba(250, 107, 6, 0.35);
-    box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.6),
-                0 0 30px 0 rgba(250, 107, 6, 0.08);
+    box-shadow:
+      0 24px 60px -16px rgba(0, 0, 0, 0.6),
+      0 0 30px 0 rgba(250, 107, 6, 0.08);
   }
   .channel--mercury:hover {
     border-color: rgba(128, 128, 255, 0.35);
-    box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.6),
-                0 0 30px 0 rgba(128, 128, 255, 0.1);
+    box-shadow:
+      0 24px 60px -16px rgba(0, 0, 0, 0.6),
+      0 0 30px 0 rgba(128, 128, 255, 0.1);
   }
   .channel__head {
     display: flex;
@@ -1474,9 +1658,10 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--ink-line);
     border-radius: var(--r-md);
-    transition: border-color var(--dur-base) var(--ease),
-                background var(--dur-base) var(--ease),
-                transform var(--dur-base) var(--ease);
+    transition:
+      border-color var(--dur-base) var(--ease),
+      background var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease);
   }
   .tooltile:hover {
     border-color: rgba(250, 107, 6, 0.35);
@@ -1492,10 +1677,30 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     opacity: 0;
     transition: opacity var(--dur-base) var(--ease);
   }
-  .tooltile__bracket > span:nth-child(1) { top: -1px; left: -1px;  border-right: 0; border-bottom: 0; }
-  .tooltile__bracket > span:nth-child(2) { top: -1px; right: -1px; border-left: 0;  border-bottom: 0; }
-  .tooltile__bracket > span:nth-child(3) { bottom: -1px; left: -1px;  border-right: 0; border-top: 0; }
-  .tooltile__bracket > span:nth-child(4) { bottom: -1px; right: -1px; border-left: 0;  border-top: 0; }
+  .tooltile__bracket > span:nth-child(1) {
+    top: -1px;
+    left: -1px;
+    border-right: 0;
+    border-bottom: 0;
+  }
+  .tooltile__bracket > span:nth-child(2) {
+    top: -1px;
+    right: -1px;
+    border-left: 0;
+    border-bottom: 0;
+  }
+  .tooltile__bracket > span:nth-child(3) {
+    bottom: -1px;
+    left: -1px;
+    border-right: 0;
+    border-top: 0;
+  }
+  .tooltile__bracket > span:nth-child(4) {
+    bottom: -1px;
+    right: -1px;
+    border-left: 0;
+    border-top: 0;
+  }
   .tooltile:hover .tooltile__bracket > span {
     opacity: 1;
   }
@@ -1546,8 +1751,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     margin-top: var(--s-6);
     border: 1px solid var(--ink-line);
     border-radius: var(--r-lg);
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(0, 0, 0, 0.5) 100%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(0, 0, 0, 0.5) 100%);
     overflow: hidden;
   }
   .termmux + .termmux {
@@ -1586,9 +1790,10 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     padding: 0.45rem 0.85rem;
     border-radius: var(--r-sm);
     cursor: pointer;
-    transition: color var(--dur-base) var(--ease),
-                background var(--dur-base) var(--ease),
-                border-color var(--dur-base) var(--ease);
+    transition:
+      color var(--dur-base) var(--ease),
+      background var(--dur-base) var(--ease),
+      border-color var(--dur-base) var(--ease);
   }
   .termmux__tab:hover {
     color: var(--text-bright);
@@ -1624,9 +1829,10 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     text-transform: uppercase;
     letter-spacing: 0.14em;
     cursor: pointer;
-    transition: color var(--dur-base) var(--ease),
-                border-color var(--dur-base) var(--ease),
-                background var(--dur-base) var(--ease);
+    transition:
+      color var(--dur-base) var(--ease),
+      border-color var(--dur-base) var(--ease),
+      background var(--dur-base) var(--ease);
   }
   .termmux__copy:hover {
     color: var(--ember-bright);
@@ -1669,7 +1875,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     margin-top: var(--s-6);
   }
   @media (max-width: 880px) {
-    .priv__grid { grid-template-columns: 1fr; }
+    .priv__grid {
+      grid-template-columns: 1fr;
+    }
   }
   .priv__col {
     padding: var(--s-5);
@@ -1678,8 +1886,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     background: rgba(0, 0, 0, 0.25);
   }
   .priv__col--never {
-    background:
-      linear-gradient(180deg, rgba(250, 107, 6, 0.04) 0%, rgba(0, 0, 0, 0.4) 100%);
+    background: linear-gradient(180deg, rgba(250, 107, 6, 0.04) 0%, rgba(0, 0, 0, 0.4) 100%);
     border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
   }
   .priv__tag {
@@ -1687,8 +1894,12 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     text-transform: uppercase;
     letter-spacing: 0.18em;
   }
-  .priv__tag--mute { color: var(--text-mute); }
-  .priv__tag--ember { color: var(--ember-bright); }
+  .priv__tag--mute {
+    color: var(--text-mute);
+  }
+  .priv__tag--ember {
+    color: var(--ember-bright);
+  }
   .priv__list {
     display: grid;
     gap: var(--s-3);
@@ -1728,7 +1939,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     opacity: 0.6;
   }
   @media (max-width: 880px) {
-    .priv__divider { display: none; }
+    .priv__divider {
+      display: none;
+    }
   }
   .priv__note {
     margin-top: var(--s-5);
@@ -1752,10 +1965,14 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     margin-top: var(--s-3);
   }
   @media (max-width: 1100px) {
-    .scoreboard__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .scoreboard__grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
   }
   @media (max-width: 560px) {
-    .scoreboard__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .scoreboard__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
   .scoretile {
     position: relative;
@@ -1771,10 +1988,30 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     height: 8px;
     border: 1px solid color-mix(in oklab, var(--ember-core) 50%, var(--ink-line));
   }
-  .scoretile__bracket > span:nth-child(1) { top: 6px; left: 6px;  border-right: 0; border-bottom: 0; }
-  .scoretile__bracket > span:nth-child(2) { top: 6px; right: 6px; border-left: 0;  border-bottom: 0; }
-  .scoretile__bracket > span:nth-child(3) { bottom: 6px; left: 6px;  border-right: 0; border-top: 0; }
-  .scoretile__bracket > span:nth-child(4) { bottom: 6px; right: 6px; border-left: 0;  border-top: 0; }
+  .scoretile__bracket > span:nth-child(1) {
+    top: 6px;
+    left: 6px;
+    border-right: 0;
+    border-bottom: 0;
+  }
+  .scoretile__bracket > span:nth-child(2) {
+    top: 6px;
+    right: 6px;
+    border-left: 0;
+    border-bottom: 0;
+  }
+  .scoretile__bracket > span:nth-child(3) {
+    bottom: 6px;
+    left: 6px;
+    border-right: 0;
+    border-top: 0;
+  }
+  .scoretile__bracket > span:nth-child(4) {
+    bottom: 6px;
+    right: 6px;
+    border-left: 0;
+    border-top: 0;
+  }
   .scoretile__num {
     display: flex;
     align-items: baseline;
@@ -1783,7 +2020,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     line-height: 1;
     color: var(--text-bright);
     letter-spacing: -0.04em;
-    font-variation-settings: "wght" 600, "opsz" 144;
+    font-variation-settings:
+      "wght" 600,
+      "opsz" 144;
   }
   .scoretile__unit {
     font-size: 0.8rem;
@@ -1845,7 +2084,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     align-items: start;
   }
   @media (max-width: 960px) {
-    .ccmirror__inner { grid-template-columns: 1fr; }
+    .ccmirror__inner {
+      grid-template-columns: 1fr;
+    }
   }
   .ccmirror__copy h2 {
     margin-top: var(--s-3);
@@ -1862,8 +2103,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     border-radius: var(--r-lg);
     border: 1px solid var(--ink-line);
     border-top: 1px solid var(--ink-line-bright);
-    background:
-      linear-gradient(180deg, rgba(20, 18, 26, 0.6) 0%, rgba(8, 6, 12, 0.7) 100%);
+    background: linear-gradient(180deg, rgba(20, 18, 26, 0.6) 0%, rgba(8, 6, 12, 0.7) 100%);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     box-shadow:
@@ -1994,7 +2234,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     gap: var(--s-5);
   }
   @media (max-width: 880px) {
-    .compstrip__inner { grid-template-columns: 1fr; }
+    .compstrip__inner {
+      grid-template-columns: 1fr;
+    }
   }
   .compstrip__col p {
     margin-top: var(--s-3);
@@ -2017,21 +2259,21 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     margin-top: var(--s-6);
   }
   @media (max-width: 880px) {
-    .mcp-end__grid { grid-template-columns: 1fr; }
+    .mcp-end__grid {
+      grid-template-columns: 1fr;
+    }
   }
   .mcp-end__card {
     padding: var(--s-6);
     border: 1px solid var(--ink-line);
     border-radius: var(--r-lg);
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(0, 0, 0, 0.4) 100%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(0, 0, 0, 0.4) 100%);
     display: grid;
     gap: var(--s-4);
     align-content: start;
   }
   .mcp-end__card--pro {
-    background:
-      linear-gradient(180deg, rgba(250, 107, 6, 0.06) 0%, rgba(0, 0, 0, 0.4) 100%);
+    background: linear-gradient(180deg, rgba(250, 107, 6, 0.06) 0%, rgba(0, 0, 0, 0.4) 100%);
     border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
   }
   .mcp-end__tag {
@@ -2041,7 +2283,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     letter-spacing: 0.18em;
     display: inline-block;
   }
-  .mcp-end__tag--ember { color: var(--ember-bright); }
+  .mcp-end__tag--ember {
+    color: var(--ember-bright);
+  }
   .mcp-end__card h3 {
     margin-top: var(--s-2);
     font-size: 1.6rem;
@@ -2078,17 +2322,39 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     .mcp-end__card {
       animation: fadeUp 0.6s var(--ease) backwards;
     }
-    .channels__grid .channel:nth-child(2) { animation-delay: 0.08s; }
-    .channels__grid .channel:nth-child(3) { animation-delay: 0.16s; }
-    .dossier__grid .tooltile:nth-child(n)  { animation-delay: calc(var(--i, 0) * 0.04s); }
-    .scoreboard__grid .scoretile:nth-child(2) { animation-delay: 0.06s; }
-    .scoreboard__grid .scoretile:nth-child(3) { animation-delay: 0.12s; }
-    .scoreboard__grid .scoretile:nth-child(4) { animation-delay: 0.18s; }
-    .scoreboard__grid .scoretile:nth-child(5) { animation-delay: 0.24s; }
-    .scoreboard__grid .scoretile:nth-child(6) { animation-delay: 0.30s; }
+    .channels__grid .channel:nth-child(2) {
+      animation-delay: 0.08s;
+    }
+    .channels__grid .channel:nth-child(3) {
+      animation-delay: 0.16s;
+    }
+    .dossier__grid .tooltile:nth-child(n) {
+      animation-delay: calc(var(--i, 0) * 0.04s);
+    }
+    .scoreboard__grid .scoretile:nth-child(2) {
+      animation-delay: 0.06s;
+    }
+    .scoreboard__grid .scoretile:nth-child(3) {
+      animation-delay: 0.12s;
+    }
+    .scoreboard__grid .scoretile:nth-child(4) {
+      animation-delay: 0.18s;
+    }
+    .scoreboard__grid .scoretile:nth-child(5) {
+      animation-delay: 0.24s;
+    }
+    .scoreboard__grid .scoretile:nth-child(6) {
+      animation-delay: 0.3s;
+    }
   }
   @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 </style>

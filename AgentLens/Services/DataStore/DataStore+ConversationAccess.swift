@@ -106,6 +106,12 @@ extension DataStore {
         try conversationStore.approximateConversationStorageBytes()
     }
 
+    nonisolated func backupUsageSnapshot(
+        limits: CloudBackupPlanLimits = .standard
+    ) throws -> CloudBackupUsageSnapshot {
+        try conversationStore.backupUsageSnapshot(limits: limits)
+    }
+
     nonisolated func saveChatMessage(_ message: ChatMessageRecord) throws {
         try conversationStore.saveChatMessage(message, threadID: Self.legacyChatThreadID)
     }

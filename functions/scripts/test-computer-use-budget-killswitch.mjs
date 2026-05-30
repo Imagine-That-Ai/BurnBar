@@ -15,6 +15,8 @@ const rcSrc = readFileSync(join(root, "src/computerUseRemoteConfig.ts"), "utf8")
 assert.match(budgetSrc, /syncKillSwitchForBudgetLevel/);
 assert.match(rcSrc, /computer_use_kill_switch/);
 assert.match(rcSrc, /budget_hard_cap/);
-assert.match(rcSrc, /publishComputerUseKillSwitch\(true/);
+assert.match(rcSrc, /ops\/computer_use_budget_status\/events/);
+assert.match(budgetSrc, /metrics\/current/);
+assert.match(budgetSrc, /state\/current/);
 
 console.log("test-computer-use-budget-killswitch: ok");

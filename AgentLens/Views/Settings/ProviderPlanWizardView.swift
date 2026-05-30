@@ -3320,6 +3320,8 @@ struct ProviderPlanWizardView: View {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return ProviderID(rawValue: "cursor-agent")
         }
     }
 
@@ -3340,7 +3342,7 @@ struct ProviderPlanWizardView: View {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
             candidates = []
         }
 

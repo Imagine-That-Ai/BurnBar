@@ -140,6 +140,7 @@ enum DesignSystem {
             case .warp:       return Color(hex: "DDE4EA")
             case .xAI:        return Color(hex: "1A1A1A")
             case .mimo:       return Color(hex: "FF6900")
+            case .cursorAgent: return Color(hex: "00E5FF")
             }
         }
 
@@ -173,6 +174,7 @@ enum DesignSystem {
             case .warp:       return Color(hex: "111111")
             case .xAI:        return Color(hex: "4A4A4A")
             case .mimo:       return Color(hex: "FF8533")
+            case .cursorAgent: return Color(hex: "33ECFF")
             }
         }
 

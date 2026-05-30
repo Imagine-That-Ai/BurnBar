@@ -15,13 +15,7 @@ import type { Query } from "firebase-admin/firestore";
 import { stripUndefinedObject } from "../guards.js";
 
 /** Sort fields the cockpit may order by; each is a plaintext facet stored on the manifest. */
-export const QUERY_CONVERSATION_SORT_FIELDS = [
-  "updatedAt",
-  "startTime",
-  "endTime",
-  "costUSD",
-  "totalTokens",
-] as const;
+export const QUERY_CONVERSATION_SORT_FIELDS = ["updatedAt", "startTime", "endTime", "costUSD", "totalTokens"] as const;
 export type QueryConversationSortField = (typeof QUERY_CONVERSATION_SORT_FIELDS)[number];
 
 /** Normalizes a Firestore Timestamp or stored ISO string to an ISO string for transport. */
@@ -48,12 +42,13 @@ export interface ConversationSortPlan {
 export function resolveConversationSort(
   requestedSort: string | undefined,
   hasDateRange: boolean,
-  requestedDirection: unknown
+  requestedDirection: unknown,
 ): ConversationSortPlan {
-  let sortField: QueryConversationSortField =
-    QUERY_CONVERSATION_SORT_FIELDS.includes(requestedSort as QueryConversationSortField)
-      ? (requestedSort as QueryConversationSortField)
-      : "updatedAt";
+  let sortField: QueryConversationSortField = QUERY_CONVERSATION_SORT_FIELDS.includes(
+    requestedSort as QueryConversationSortField,
+  )
+    ? (requestedSort as QueryConversationSortField)
+    : "updatedAt";
   if (hasDateRange) sortField = "startTime";
   const direction: "asc" | "desc" = requestedDirection === "asc" ? "asc" : "desc";
   return { sortField, direction };
@@ -71,15 +66,12 @@ export interface ConversationFacetInClauseFlags {
  */
 export function assertConversationFacetCombination(
   providers: readonly string[],
-  models: readonly string[]
+  models: readonly string[],
 ): ConversationFacetInClauseFlags {
   const providerInClause = providers.length > 1;
   const modelInClause = models.length > 1;
   if (providerInClause && modelInClause) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Filter by multiple providers or multiple models, but not both at once."
-    );
+    throw new HttpsError("invalid-argument", "Filter by multiple providers or multiple models, but not both at once.");
   }
   return { providerInClause, modelInClause };
 }

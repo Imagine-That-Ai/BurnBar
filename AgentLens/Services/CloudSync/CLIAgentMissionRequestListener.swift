@@ -77,6 +77,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .forge)
             case "antigravity", "agy", "google-antigravity", "googleantigravity":
                 return CLIAgentMissionBackend(chatBackend: .antigravity)
+            case "cursoragent", "cursor-agent":
+                return CLIAgentMissionBackend(chatBackend: .cursorAgent)
             case "grok", "grok-build", "xai", "grok-agent":
                 return CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build")
             case "opencode":
@@ -96,11 +98,11 @@ enum CLIAgentMissionRuntimePlanner {
 
         switch missionKind {
         case "diligence", "security":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
         case "creative", "accretive", "ui_improvement", "custom":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .codex, .hermes, .piAgent, .claude, .forge, .droid]) ?? .hermes)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
         default:
             return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
         }
@@ -286,6 +288,12 @@ enum CLIAgentMissionRuntimePlanner {
                 arguments: CLIArgumentBuilder.antigravityArguments(prompt: hostPrompt),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.cursorAgent.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "cursor-agent",
+                arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt),
+                extraEnvironment: [:]
+            )
         case "opencode":
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "zsh",
@@ -399,6 +407,16 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.cursorAgent.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "cursor-agent",
+                arguments: CLIArgumentBuilder.cursorAgentArguments(
+                    prompt: hostPrompt,
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.openclaw.rawValue,
             ChatBackendID.hermes.rawValue,
             ChatBackendID.piAgent.rawValue,
@@ -442,6 +460,7 @@ enum CLIAgentMissionRuntimePlanner {
             case .droid: return .droid
             case .forge: return .forge
             case .antigravity: return .antigravity
+            case .cursorAgent: return .cursorAgent
             case .hermes: return .hermes
             case .piAgent: return .pi
             }
@@ -451,6 +470,7 @@ enum CLIAgentMissionRuntimePlanner {
         case "droid", "factory": return .droid
         case "forge": return .forge
         case "antigravity", "agy", "google-antigravity": return .antigravity
+        case "cursor-agent", "cursoragent": return .cursorAgent
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
         default: return .codex

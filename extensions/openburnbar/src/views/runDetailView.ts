@@ -14,7 +14,8 @@ class OpenBurnBarRunDetailTreeItem extends vscode.TreeItem {
 }
 
 export class OpenBurnBarRunDetailTreeDataProvider
-implements vscode.TreeDataProvider<OpenBurnBarRunDetailTreeItem>, vscode.Disposable {
+  implements vscode.TreeDataProvider<OpenBurnBarRunDetailTreeItem>, vscode.Disposable
+{
   private readonly eventEmitter = new vscode.EventEmitter<OpenBurnBarRunDetailTreeItem | undefined | null | void>();
   private readonly stateSubscription: vscode.Disposable;
 

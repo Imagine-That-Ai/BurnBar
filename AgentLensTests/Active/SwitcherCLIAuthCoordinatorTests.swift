@@ -1413,6 +1413,57 @@ final class SwitcherAuthStoreTests: XCTestCase {
         XCTAssertEqual(fallbackRequests.first?.1, "test-user")
     }
 
+    func test_claudeCodeOAuthImporter_nonInteractiveProfileLoadCanUseExternalSecurityFallback() throws {
+        let backend = try XCTUnwrap(testBackend)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-noninteractive-profile-keychain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let profileService = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
+            configDirectory: root.path
+        )
+        backend.readErrors[profileService] = KeychainStoreError.unhandled(-25337)
+
+        let fallbackPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "security-tool-background-token",
+            "refreshToken": "security-tool-background-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "security-tool-background-org"
+        }
+        """
+        var fallbackRequests: [(String, String)] = []
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: backend
+            ),
+            profileKeychainStore: { service in
+                KeychainStore(service: service, legacyServices: [], backend: backend)
+            },
+            externalKeychainPasswordReader: { service, account in
+                fallbackRequests.append((service, account))
+                return service == profileService && account == "test-user" ? fallbackPayload : nil
+            },
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "security-tool-background-token")
+        XCTAssertEqual(credentials.organizationUuid, "security-tool-background-org")
+        XCTAssertEqual(fallbackRequests.count, 1)
+        XCTAssertEqual(fallbackRequests.first?.0, profileService)
+        XCTAssertEqual(fallbackRequests.first?.1, "test-user")
+    }
+
     func test_claudeCodeOAuthImporter_usesSecurityToolFallbackWhenProfileKeychainReturnsNil() throws {
         let backend = try XCTUnwrap(testBackend)
         let root = FileManager.default.temporaryDirectory

@@ -17,10 +17,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getRemoteConfig } from "firebase-admin/remote-config";
-import type {
-  ComputerUseBudgetStatusDoc,
-  ComputerUseSessionDailyRollupDoc,
-} from "./types.js";
+import type { ComputerUseBudgetStatusDoc, ComputerUseSessionDailyRollupDoc } from "./types.js";
 import { syncKillSwitchForBudgetLevel } from "./computerUseRemoteConfig.js";
 import { numberField } from "./guards.js";
 import { logError, logInfo } from "./logging.js";
@@ -38,12 +35,8 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
   try {
     const template = await getRemoteConfig().getTemplate();
     const params = template.parameters ?? {};
-    const soft = parseFloat(
-      remoteConfigStringValue(params.computer_use_budget_soft_cap_usd?.defaultValue) ?? "",
-    );
-    const hard = parseFloat(
-      remoteConfigStringValue(params.computer_use_budget_hard_cap_usd?.defaultValue) ?? "",
-    );
+    const soft = parseFloat(remoteConfigStringValue(params.computer_use_budget_soft_cap_usd?.defaultValue) ?? "");
+    const hard = parseFloat(remoteConfigStringValue(params.computer_use_budget_hard_cap_usd?.defaultValue) ?? "");
     return {
       softCapUSD: Number.isFinite(soft) ? soft : SOFT_CAP_USD,
       hardCapUSD: Number.isFinite(hard) ? hard : HARD_CAP_USD,
@@ -86,17 +79,13 @@ async function sumMonthToDate(now: Date): Promise<MonthSpend> {
     const data = doc.data();
     total += numberField(data, "visionModelSpendUSD") ?? 0;
   }
-  const elapsed = Math.max(
-    1,
-    Math.min(now.getUTCDate(), daysTotal),
-  );
+  const elapsed = Math.max(1, Math.min(now.getUTCDate(), daysTotal));
   return { monthToDateUSD: total, daysElapsed: elapsed, daysInMonth: daysTotal };
 }
 
-function envelope(level: ComputerUseBudgetStatusDoc["level"]): Omit<
-  ComputerUseBudgetStatusDoc,
-  "level" | "monthToDateUSD" | "projectedMonthEndUSD" | "updatedAt"
-> {
+function envelope(
+  level: ComputerUseBudgetStatusDoc["level"],
+): Omit<ComputerUseBudgetStatusDoc, "level" | "monthToDateUSD" | "projectedMonthEndUSD" | "updatedAt"> {
   switch (level) {
     case "normal":
       return {
@@ -140,27 +129,31 @@ export const evaluateComputerUseBudget = onSchedule(
       const tunings = await loadBudgetTunings();
       const now = new Date();
       const { monthToDateUSD, daysElapsed, daysInMonth: total } = await sumMonthToDate(now);
-      const projected =
-        monthToDateUSD * (total / Math.max(daysElapsed, 1));
+      const projected = monthToDateUSD * (total / Math.max(daysElapsed, 1));
       const level = pickLevel(projected, tunings);
       const env = envelope(level);
 
-      const doc: ComputerUseBudgetStatusDoc = {
+      const publicEnvelope = {
         level,
-        projectedMonthEndUSD: Math.round(projected * 100) / 100,
-        monthToDateUSD: Math.round(monthToDateUSD * 100) / 100,
         ...env,
         updatedAt: Timestamp.fromDate(now),
       };
-      await getFirestore()
-        .doc("ops/computer_use_budget_status/state/current")
-        .set(doc, { merge: true });
+      const operatorMetrics = {
+        level,
+        projectedMonthEndUSD: Math.round(projected * 100) / 100,
+        monthToDateUSD: Math.round(monthToDateUSD * 100) / 100,
+        updatedAt: Timestamp.fromDate(now),
+      };
+
+      const firestore = getFirestore();
+      await firestore.doc("ops/computer_use_budget_status/state/current").set(publicEnvelope, { merge: true });
+      await firestore.doc("ops/computer_use_budget_status/metrics/current").set(operatorMetrics, { merge: true });
       await syncKillSwitchForBudgetLevel(level);
       logInfo({
         event: "computer_use_budget_evaluated",
         level,
-        month_to_date_usd: doc.monthToDateUSD,
-        projected_month_end_usd: doc.projectedMonthEndUSD,
+        month_to_date_usd: operatorMetrics.monthToDateUSD,
+        projected_month_end_usd: operatorMetrics.projectedMonthEndUSD,
       });
     } catch (err) {
       logError({

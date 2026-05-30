@@ -7,12 +7,7 @@
  * limits. Admin API keys are required for the usage endpoint.
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 
 const PROVIDER = "openai" as const;
 const MODELS_URL = "https://api.openai.com/v1/models";
@@ -25,7 +20,7 @@ function redact(token: string): string {
 
 async function openAIFetch(
   url: string,
-  token: string
+  token: string,
 ): Promise<{ ok: boolean; data?: unknown; status?: number; error?: string }> {
   try {
     const res = await fetch(url, {
@@ -96,8 +91,7 @@ export const openaiAdapter: ProviderAdapter = {
         redactedLabel: redact(credential),
         credentialKind: "bearer",
         errorCode: "validation_failed",
-        errorMessage:
-          result.error || "OpenAI credential validation failed.",
+        errorMessage: result.error || "OpenAI credential validation failed.",
       };
     }
 
@@ -110,10 +104,7 @@ export const openaiAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const result = await openAIFetch(usageURL(30), credential);
     if (!result.ok) {
       return {
@@ -132,20 +123,22 @@ export const openaiAdapter: ProviderAdapter = {
     let requests = 0;
 
     const payload = result.data;
-    const dataRows = payload && typeof payload === "object" && "data" in payload && Array.isArray(payload.data)
-      ? payload.data
-      : [];
+    const dataRows =
+      payload && typeof payload === "object" && "data" in payload && Array.isArray(payload.data) ? payload.data : [];
 
     for (const bucket of dataRows) {
-      const results = bucket && typeof bucket === "object" && "results" in bucket && Array.isArray(bucket.results)
-        ? bucket.results
-        : [];
+      const results =
+        bucket && typeof bucket === "object" && "results" in bucket && Array.isArray(bucket.results)
+          ? bucket.results
+          : [];
       for (const row of results) {
         if (!row || typeof row !== "object") continue;
         inputTokens += "input_tokens" in row && typeof row.input_tokens === "number" ? row.input_tokens : 0;
         outputTokens += "output_tokens" in row && typeof row.output_tokens === "number" ? row.output_tokens : 0;
-        cachedTokens += "input_cached_tokens" in row && typeof row.input_cached_tokens === "number" ? row.input_cached_tokens : 0;
-        requests += "num_model_requests" in row && typeof row.num_model_requests === "number" ? row.num_model_requests : 0;
+        cachedTokens +=
+          "input_cached_tokens" in row && typeof row.input_cached_tokens === "number" ? row.input_cached_tokens : 0;
+        requests +=
+          "num_model_requests" in row && typeof row.num_model_requests === "number" ? row.num_model_requests : 0;
       }
     }
 

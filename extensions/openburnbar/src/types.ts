@@ -41,11 +41,7 @@ export type BurnBarRPCMethod =
   | 'daemon.controller.project.list'
   | 'daemon.controller.project.get'
   | 'daemon.controller.project.upsert';
-export type BurnBarConnectionStatus =
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'repairing';
+export type BurnBarConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'repairing';
 export type BurnBarRunPhase =
   | 'idle'
   | 'planning'

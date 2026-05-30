@@ -63,13 +63,13 @@ export function isTimestampWithToMillis(value: unknown): value is TimestampWithT
   return isRecord(value) && typeof value.toMillis === "function";
 }
 
-export function isFirestoreTimestamp(
-  value: unknown,
-): value is import("firebase-admin/firestore").Timestamp {
-  return isRecord(value) &&
+export function isFirestoreTimestamp(value: unknown): value is import("firebase-admin/firestore").Timestamp {
+  return (
+    isRecord(value) &&
     typeof value.toMillis === "function" &&
     typeof value.seconds === "number" &&
-    typeof value.nanoseconds === "number";
+    typeof value.nanoseconds === "number"
+  );
 }
 
 export function isTimestampWithToDate(value: unknown): value is TimestampWithToDate {
@@ -77,9 +77,7 @@ export function isTimestampWithToDate(value: unknown): value is TimestampWithToD
 }
 
 export function errorCode(error: unknown): number | string | undefined {
-  return isRecord(error) && (typeof error.code === "number" || typeof error.code === "string")
-    ? error.code
-    : undefined;
+  return isRecord(error) && (typeof error.code === "number" || typeof error.code === "string") ? error.code : undefined;
 }
 
 export function errorMessage(error: unknown): string {
@@ -99,19 +97,20 @@ function isCredentialKind(value: unknown): value is ProviderAccountDoc["credenti
 }
 
 function isProviderAccountStatus(value: unknown): value is ProviderAccountDoc["status"] {
-  return value === "connected" ||
+  return (
+    value === "connected" ||
     value === "disconnected" ||
     value === "stale" ||
     value === "error" ||
     value === "disabled" ||
-    value === "deleted";
+    value === "deleted"
+  );
 }
 
 export function isProviderAccountStorageScope(value: unknown): value is ProviderAccountStorageScope {
-  return value === "cloud_refreshable" ||
-    value === "local_only" ||
-    value === "device_keychain" ||
-    value === "server_private";
+  return (
+    value === "cloud_refreshable" || value === "local_only" || value === "device_keychain" || value === "server_private"
+  );
 }
 
 export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | undefined {
@@ -147,8 +146,7 @@ export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | unde
     updatedAt: raw.updatedAt,
     identityHint: typeof raw.identityHint === "string" ? raw.identityHint : undefined,
     sourceDeviceID: typeof raw.sourceDeviceID === "string" ? raw.sourceDeviceID : undefined,
-    linkedSwitcherProfileID:
-      typeof raw.linkedSwitcherProfileID === "string" ? raw.linkedSwitcherProfileID : undefined,
+    linkedSwitcherProfileID: typeof raw.linkedSwitcherProfileID === "string" ? raw.linkedSwitcherProfileID : undefined,
     lastValidatedAt: typeof raw.lastValidatedAt === "string" ? raw.lastValidatedAt : undefined,
     lastRefreshAt: typeof raw.lastRefreshAt === "string" ? raw.lastRefreshAt : undefined,
     lastErrorCode: typeof raw.lastErrorCode === "string" ? raw.lastErrorCode : undefined,
@@ -500,13 +498,9 @@ export function stripUndefinedObject(value: object): DocumentData {
 }
 
 function parseAppStoreEnvironment(raw: unknown): AppStoreEnvironment | undefined {
-  return raw === "Production" || raw === "Sandbox" || raw === "Xcode" || raw === "LocalTesting"
-    ? raw
-    : undefined;
+  return raw === "Production" || raw === "Sandbox" || raw === "Xcode" || raw === "LocalTesting" ? raw : undefined;
 }
 
 function parseHostedQuotaEntitlementSource(raw: unknown): HostedQuotaEntitlementSource | undefined {
-  return raw === "apple_jws_verified" || raw === "apple_s2s" || raw === "scheduled_reconcile"
-    ? raw
-    : undefined;
+  return raw === "apple_jws_verified" || raw === "apple_s2s" || raw === "scheduled_reconcile" ? raw : undefined;
 }

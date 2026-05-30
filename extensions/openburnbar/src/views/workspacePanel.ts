@@ -35,10 +35,7 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
    * Open the workspace panel as a singleton. If it already exists,
    * reveal it and preserve the user's current section.
    */
-  static open(
-    controller: OpenBurnBarExtensionController,
-    extensionUri: vscode.Uri
-  ): OpenBurnBarWorkspacePanel {
+  static open(controller: OpenBurnBarExtensionController, extensionUri: vscode.Uri): OpenBurnBarWorkspacePanel {
     if (OpenBurnBarWorkspacePanel.instance?.panel) {
       OpenBurnBarWorkspacePanel.instance.panel.reveal(undefined, true);
       return OpenBurnBarWorkspacePanel.instance;
@@ -54,9 +51,7 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
    * Returns the current singleton instance, if one exists.
    */
   static current(): OpenBurnBarWorkspacePanel | undefined {
-    return OpenBurnBarWorkspacePanel.instance?.panel
-      ? OpenBurnBarWorkspacePanel.instance
-      : undefined;
+    return OpenBurnBarWorkspacePanel.instance?.panel ? OpenBurnBarWorkspacePanel.instance : undefined;
   }
 
   dispose(): void {
@@ -88,15 +83,9 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
 
     const webview = this.panel.webview;
 
-    const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'workspace.css')
-    );
-    const jsUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'workspace.js')
-    );
-    const logoUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'app-icon-128.png')
-    );
+    const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'workspace.css'));
+    const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'workspace.js'));
+    const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'app-icon-128.png'));
     const nonce = randomBytes(16).toString('hex');
 
     webview.html = buildWorkspaceHtml(webview, cssUri, jsUri, logoUri, nonce);
@@ -110,11 +99,9 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
     });
 
     // Handle incoming messages from webview
-    this.panel.webview.onDidReceiveMessage(
-      (message: OpenBurnBarWorkspaceWebviewMessage) => {
-        void this.handleWebviewMessage(message);
-      }
-    );
+    this.panel.webview.onDidReceiveMessage((message: OpenBurnBarWorkspaceWebviewMessage) => {
+      void this.handleWebviewMessage(message);
+    });
 
     // Clean up when the panel is closed
     this.panel.onDidDispose(() => {
@@ -141,87 +128,78 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
     void this.panel.webview.postMessage({ type: 'restoreSection', section: this.lastSection });
   }
 
-  private async handleWebviewMessage(
-    message: OpenBurnBarWorkspaceWebviewMessage
-  ): Promise<void> {
+  private async handleWebviewMessage(message: OpenBurnBarWorkspaceWebviewMessage): Promise<void> {
     try {
       switch (message.type) {
-      case 'startRun': {
-        const metadata: Record<string, BurnBarJSONValue> = {
-          mode: message.mode
-        };
-        const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor?.document) {
-          const document = activeEditor.document;
-          const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-            document.uri
-          );
-          metadata.activeFilePath = workspaceFolder
-            ? vscode.workspace.asRelativePath(document.uri, false)
-            : document.uri.fsPath;
+        case 'startRun': {
+          const metadata: Record<string, BurnBarJSONValue> = {
+            mode: message.mode
+          };
+          const activeEditor = vscode.window.activeTextEditor;
+          if (activeEditor?.document) {
+            const document = activeEditor.document;
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+            metadata.activeFilePath = workspaceFolder
+              ? vscode.workspace.asRelativePath(document.uri, false)
+              : document.uri.fsPath;
 
-          const selectedText = document
-            .getText(activeEditor.selection)
-            .trim();
-          if (selectedText) {
-            metadata.activeSelectionText = selectedText;
+            const selectedText = document.getText(activeEditor.selection).trim();
+            if (selectedText) {
+              metadata.activeSelectionText = selectedText;
+            }
           }
-        }
 
-        await this.controller.startRun({
-          prompt: message.prompt,
-          modelID: message.modelID,
-          metadata
-        });
-        break;
-      }
-      case 'refresh':
-        await this.controller.refresh();
-        break;
-      case 'repair':
-        await this.controller.repairDaemon();
-        break;
-      case 'selectRun':
-        await this.controller.selectRun(message.runId);
-        break;
-      case 'cancelRun':
-        await this.controller.cancelRun(message.runId);
-        break;
-      case 'retryRun':
-        await this.controller.retryRun(message.runId);
-        break;
-      case 'approveRun':
-        await this.controller.respondToApproval(message.runId, 'approve');
-        break;
-      case 'rejectRun':
-        await this.controller.respondToApproval(message.runId, 'reject');
-        break;
-      case 'openApp':
-        await openBurnBarAppOrWarn(
-          'dashboard',
-          'Could not open OpenBurnBar. Install the OpenBurnBar app, then try again.'
-        );
-        break;
-      case 'switchSection':
-        this.lastSection = message.section;
-        break;
-      case 'openConversationSearch':
-        await openBurnBarAppOrWarn(
-          'search',
-          'Could not open OpenBurnBar for conversation search. Install the OpenBurnBar app, then try again.'
-        );
-        break;
-      default:
-        break;
+          await this.controller.startRun({
+            prompt: message.prompt,
+            modelID: message.modelID,
+            metadata
+          });
+          break;
+        }
+        case 'refresh':
+          await this.controller.refresh();
+          break;
+        case 'repair':
+          await this.controller.repairDaemon();
+          break;
+        case 'selectRun':
+          await this.controller.selectRun(message.runId);
+          break;
+        case 'cancelRun':
+          await this.controller.cancelRun(message.runId);
+          break;
+        case 'retryRun':
+          await this.controller.retryRun(message.runId);
+          break;
+        case 'approveRun':
+          await this.controller.respondToApproval(message.runId, 'approve');
+          break;
+        case 'rejectRun':
+          await this.controller.respondToApproval(message.runId, 'reject');
+          break;
+        case 'openApp':
+          await openBurnBarAppOrWarn(
+            'dashboard',
+            'Could not open OpenBurnBar. Install the OpenBurnBar app, then try again.'
+          );
+          break;
+        case 'switchSection':
+          this.lastSection = message.section;
+          break;
+        case 'openConversationSearch':
+          await openBurnBarAppOrWarn(
+            'search',
+            'Could not open OpenBurnBar for conversation search. Install the OpenBurnBar app, then try again.'
+          );
+          break;
+        default:
+          break;
       }
     } catch (error) {
       if (this.panel) {
         void this.panel.webview.postMessage({
           type: 'error',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'OpenBurnBar encountered an unexpected error.'
+          message: error instanceof Error ? error.message : 'OpenBurnBar encountered an unexpected error.'
         });
       }
     }

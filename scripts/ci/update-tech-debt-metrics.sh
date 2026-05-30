@@ -16,6 +16,18 @@ count_swift_lines() {
   fi
 }
 
+count_swift_glob_lines() {
+  local pattern="$1"
+  local total=0
+  local file
+  shopt -s nullglob
+  for file in ${pattern}; do
+    total=$((total + $(wc -l < "${file}" | tr -d ' ')))
+  done
+  shopt -u nullglob
+  echo "${total}"
+}
+
 count_rg() {
   local pattern="$1"
   shift
@@ -32,44 +44,18 @@ types_legacy_lines="$(count_swift_lines "${repo_root}/functions/src/types/legacy
 index_ts_lines="$(count_swift_lines "${repo_root}/functions/src/index.ts")"
 
 cloud_sync_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/CloudSyncService.swift")"
-search_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/SearchService.swift")"
+search_lines="$(count_swift_glob_lines "${repo_root}/AgentLens/Services/Search/SearchService"*.swift)"
 usage_agg_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/UsageAggregator.swift")"
-projection_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/ProjectionPipelineService.swift")"
+projection_lines="$(count_swift_glob_lines "${repo_root}/AgentLens/Services/ProjectionPipeline/"*.swift)"
 top_four_total=$((cloud_sync_lines + search_lines + usage_agg_lines + projection_lines))
 
 task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Services")"
 
 swiftui_services="$(rg -l 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore" --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
 
-try_optional_services="$(count_rg 'try\?' "${repo_root}/AgentLens/Services")"
+try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
-empty_catch_blocks="$(python3 - <<'PY' "${repo_root}"
-import pathlib, re, sys
-root = pathlib.Path(sys.argv[1])
-count = 0
-for path in root.joinpath("AgentLens").rglob("*.swift"):
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        continue
-    for m in re.finditer(r"catch\s*\{([^}]*)\}", text):
-        body = m.group(1)
-        stripped = re.sub(r"//[^\n]*", "", body).strip()
-        if not stripped:
-            count += 1
-for path in root.joinpath("OpenBurnBarDaemon").rglob("*.swift"):
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        continue
-    for m in re.finditer(r"catch\s*\{([^}]*)\}", text):
-        body = m.group(1)
-        stripped = re.sub(r"//[^\n]*", "", body).strip()
-        if not stripped:
-            count += 1
-print(count)
-PY
-)"
+empty_catch_blocks="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric empty-catch --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).emptyCatch.total))")"
 
 main_actor_io_services=0
 for rel in \
@@ -129,9 +115,9 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | File | LOC |
 |------|-----|
 | \`AgentLens/Services/CloudSyncService.swift\` | ${cloud_sync_lines} |
-| \`AgentLens/Services/SearchService.swift\` | ${search_lines} |
+| \`AgentLens/Services/Search/\` (SearchService + extensions) | ${search_lines} |
 | \`AgentLens/Services/UsageAggregator.swift\` | ${usage_agg_lines} |
-| \`AgentLens/Services/ProjectionPipelineService.swift\` | ${projection_lines} |
+| \`AgentLens/Services/ProjectionPipeline/\` | ${projection_lines} |
 
 ## Remediation links
 

@@ -26,12 +26,7 @@
  * Reference: docs.x.ai/docs/management-api/billing (verified 2026-05-21).
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "xai" as const;
@@ -93,10 +88,7 @@ interface XAIFetchResult {
   errorCode?: string;
 }
 
-async function xaiGet(
-  url: string,
-  token: string
-): Promise<XAIFetchResult> {
+async function xaiGet(url: string, token: string): Promise<XAIFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -112,11 +104,7 @@ async function xaiGet(
   return parseResponse(response);
 }
 
-async function xaiPost(
-  url: string,
-  token: string,
-  body: unknown
-): Promise<XAIFetchResult> {
+async function xaiPost(url: string, token: string, body: unknown): Promise<XAIFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -218,10 +206,7 @@ export const xaiAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
     const teamResult = await resolveTeamID(trimmed);
     if (!teamResult.ok) {
@@ -241,15 +226,8 @@ export const xaiAdapter: ProviderAdapter = {
       };
     }
     const [balance, usage] = await Promise.all([
-      xaiGet(
-        `${MANAGEMENT_BASE_URL}/v1/billing/teams/${encodeURIComponent(teamID)}/prepaid/balance`,
-        trimmed
-      ),
-      xaiPost(
-        `${MANAGEMENT_BASE_URL}/v1/billing/teams/${encodeURIComponent(teamID)}/usage`,
-        trimmed,
-        buildUsageBody()
-      ),
+      xaiGet(`${MANAGEMENT_BASE_URL}/v1/billing/teams/${encodeURIComponent(teamID)}/prepaid/balance`, trimmed),
+      xaiPost(`${MANAGEMENT_BASE_URL}/v1/billing/teams/${encodeURIComponent(teamID)}/usage`, trimmed, buildUsageBody()),
     ]);
 
     const buckets: QuotaBucket[] = [];
@@ -260,10 +238,7 @@ export const xaiAdapter: ProviderAdapter = {
       return {
         ok: false,
         errorCode: balance.errorCode ?? usage.errorCode ?? "no_data",
-        errorMessage:
-          balance.error ||
-          usage.error ||
-          "xAI Management API returned no credit balance or usage data.",
+        errorMessage: balance.error || usage.error || "xAI Management API returned no credit balance or usage data.",
       };
     }
 
@@ -276,8 +251,7 @@ export const xaiAdapter: ProviderAdapter = {
         fetchedAt: new Date().toISOString(),
         source: "xAI Management API",
         confidence: "high",
-        statusMessage:
-          "Fetched prepaid credit balance and rolling usage from the xAI Management API.",
+        statusMessage: "Fetched prepaid credit balance and rolling usage from the xAI Management API.",
         buckets,
       },
     };
@@ -296,16 +270,12 @@ function buildUsageBody(): unknown {
         timezone: "UTC",
       },
       timeUnit: "TIME_UNIT_DAY",
-      values: [
-        { name: "usd", aggregation: "AGGREGATION_SUM" },
-      ],
+      values: [{ name: "usd", aggregation: "AGGREGATION_SUM" }],
     },
   };
 }
 
-export function extractBalanceBuckets(
-  payload: Record<string, unknown> | undefined
-): QuotaBucket[] {
+export function extractBalanceBuckets(payload: Record<string, unknown> | undefined): QuotaBucket[] {
   const total = recordOrUndefined(payload?.total);
   const raw = total?.val;
   if (raw === undefined || raw === null) return [];
@@ -324,9 +294,7 @@ export function extractBalanceBuckets(
   ];
 }
 
-export function extractUsageBuckets(
-  payload: Record<string, unknown> | undefined
-): QuotaBucket[] {
+export function extractUsageBuckets(payload: Record<string, unknown> | undefined): QuotaBucket[] {
   const timeSeries = Array.isArray(payload?.timeSeries) ? payload.timeSeries : [];
   const points = timeSeries.flatMap((series) => {
     const row = recordOrUndefined(series);

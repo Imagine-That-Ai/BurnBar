@@ -342,11 +342,36 @@ async function main() {
       await assertFails(deleteDoc(doc(aliceDB, path)));
     });
 
-    await step("ops/computer_use_budget_status is read-only for clients", async () => {
-      await assertFails(
-        setDoc(doc(aliceDB, `ops/computer_use_budget_status/state/current`), {
+    await step("ops/computer_use_budget_status split: public read, metrics operator-only", async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        const dbAdmin = ctx.firestore();
+        await setDoc(doc(dbAdmin, "ops/computer_use_budget_status/state/current"), {
           level: "normal",
-          projectedMonthEndUSD: 0,
+          activeActionsPerRun: 50,
+          activeActionsPerDay: 200,
+          activeSessionsPerDay: 4,
+          perUserDailySpendCeilingUSD: 5,
+          updatedAt: Timestamp.now(),
+        });
+        await setDoc(doc(dbAdmin, "ops/computer_use_budget_status/metrics/current"), {
+          level: "normal",
+          projectedMonthEndUSD: 100,
+          monthToDateUSD: 25,
+          updatedAt: Timestamp.now(),
+        });
+      });
+
+      const operatorDB = testEnv.authenticatedContext("operator-cu", { burnbarOperator: true }).firestore();
+      const unauthDB = testEnv.unauthenticatedContext().firestore();
+
+      await assertSucceeds(getDoc(doc(aliceDB, "ops/computer_use_budget_status/state/current")));
+      await assertFails(getDoc(doc(aliceDB, "ops/computer_use_budget_status/metrics/current")));
+      await assertFails(getDoc(doc(unauthDB, "ops/computer_use_budget_status/state/current")));
+      await assertSucceeds(getDoc(doc(operatorDB, "ops/computer_use_budget_status/metrics/current")));
+
+      await assertFails(
+        setDoc(doc(aliceDB, "ops/computer_use_budget_status/state/current"), {
+          level: "hard_cap",
         })
       );
     });

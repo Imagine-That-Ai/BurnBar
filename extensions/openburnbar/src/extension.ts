@@ -42,9 +42,9 @@ export interface OpenBurnBarActivationDependencies {
 /** Minimal host surface required for extension activation (tests + production). */
 export interface OpenBurnBarActivationHostContext {
   subscriptions: Array<{ dispose(): void }>;
-  globalState?: Pick<vscode.Memento, "get" | "update">;
+  globalState?: Pick<vscode.Memento, 'get' | 'update'>;
   extensionUri: vscode.Uri;
-  extension: Pick<vscode.Extension<unknown>, "extensionKind">;
+  extension: Pick<vscode.Extension<unknown>, 'extensionKind'>;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -61,10 +61,8 @@ export async function activateBurnBarExtension(
   const extensionKind = dependencies.extensionKind ?? context.extension.extensionKind;
   const remoteName = dependencies.remoteName ?? vscode.env.remoteName;
   const shouldActivateWorkspaceCompanion = extensionKind === vscode.ExtensionKind.Workspace || !remoteName;
-  const workspaceClient =
-    dependencies.controllerDependencies?.workspaceClient ?? new OpenBurnBarWorkspaceRpcClient();
-  const daemonClient =
-    dependencies.controllerDependencies?.client ?? new OpenBurnBarDaemonClient();
+  const workspaceClient = dependencies.controllerDependencies?.workspaceClient ?? new OpenBurnBarWorkspaceRpcClient();
+  const daemonClient = dependencies.controllerDependencies?.client ?? new OpenBurnBarDaemonClient();
 
   if (shouldActivateWorkspaceCompanion) {
     context.subscriptions.push(
@@ -89,29 +87,23 @@ export async function activateBurnBarExtension(
     return undefined;
   }
 
-  const controllerDependencies =
-    dependencies.controllerDependencies ?? {
-      client: daemonClient,
-      repairService: new OpenBurnBarRepairService(),
-      workspaceClient
-    };
+  const controllerDependencies = dependencies.controllerDependencies ?? {
+    client: daemonClient,
+    repairService: new OpenBurnBarRepairService(),
+    workspaceClient
+  };
 
-  const controller = new OpenBurnBarExtensionController(
-    controllerDependencies,
-    {
-      clientID: await resolveBurnBarClientID(context, dependencies.controllerOptions?.clientID),
-      sessionID: dependencies.controllerOptions?.sessionID ?? randomUUID(),
-      clientName: dependencies.controllerOptions?.clientName ?? 'OpenBurnBar VS Code Extension',
-      supportedProtocolVersions: dependencies.controllerOptions?.supportedProtocolVersions
-    }
-  );
+  const controller = new OpenBurnBarExtensionController(controllerDependencies, {
+    clientID: await resolveBurnBarClientID(context, dependencies.controllerOptions?.clientID),
+    sessionID: dependencies.controllerOptions?.sessionID ?? randomUUID(),
+    clientName: dependencies.controllerOptions?.clientName ?? 'OpenBurnBar VS Code Extension',
+    supportedProtocolVersions: dependencies.controllerOptions?.supportedProtocolVersions
+  });
 
   const panelView = new OpenBurnBarPanelView(controller, context.extensionUri);
-  const panelViewRegistration = vscode.window.registerWebviewViewProvider(
-    OpenBurnBarPanelView.viewType,
-    panelView,
-    { webviewOptions: { retainContextWhenHidden: true } }
-  );
+  const panelViewRegistration = vscode.window.registerWebviewViewProvider(OpenBurnBarPanelView.viewType, panelView, {
+    webviewOptions: { retainContextWhenHidden: true }
+  });
 
   const healthProvider = new OpenBurnBarHealthTreeDataProvider(controller);
   const runListProvider = new OpenBurnBarRunListTreeDataProvider(controller);
@@ -130,7 +122,17 @@ export async function activateBurnBarExtension(
     showCollapseAll: false
   });
 
-  context.subscriptions.push(controller, panelView, panelViewRegistration, healthProvider, runListProvider, runDetailProvider, healthView, runsView, runDetailView);
+  context.subscriptions.push(
+    controller,
+    panelView,
+    panelViewRegistration,
+    healthProvider,
+    runListProvider,
+    runDetailProvider,
+    healthView,
+    runsView,
+    runDetailView
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.reconnect', async () => {
@@ -187,7 +189,9 @@ export async function activateBurnBarExtension(
         });
         await vscode.window.showInformationMessage(`Started OpenBurnBar run ${result.runID}.`);
       } catch (error) {
-        await vscode.window.showWarningMessage(error instanceof Error ? error.message : 'OpenBurnBar could not start the run.');
+        await vscode.window.showWarningMessage(
+          error instanceof Error ? error.message : 'OpenBurnBar could not start the run.'
+        );
       }
     })
   );
@@ -212,7 +216,9 @@ export async function activateBurnBarExtension(
         await controller.cancelRun(run.id);
         await vscode.window.showInformationMessage(`Cancelled OpenBurnBar run ${run.id}.`);
       } catch (error) {
-        await vscode.window.showWarningMessage(error instanceof Error ? error.message : 'OpenBurnBar could not cancel the run.');
+        await vscode.window.showWarningMessage(
+          error instanceof Error ? error.message : 'OpenBurnBar could not cancel the run.'
+        );
       }
     })
   );
@@ -228,7 +234,9 @@ export async function activateBurnBarExtension(
         await controller.retryRun(run.id);
         await vscode.window.showInformationMessage(`Retried OpenBurnBar run ${run.id}.`);
       } catch (error) {
-        await vscode.window.showWarningMessage(error instanceof Error ? error.message : 'OpenBurnBar could not retry the run.');
+        await vscode.window.showWarningMessage(
+          error instanceof Error ? error.message : 'OpenBurnBar could not retry the run.'
+        );
       }
     })
   );
@@ -297,10 +305,9 @@ async function maybeRunCursorSmoke(
   daemonClient: OpenBurnBarControllerDependencies['client']
 ): Promise<void> {
   const smokeConfig =
-    typeof vscode.workspace.getConfiguration === 'function'
-      ? vscode.workspace.getConfiguration()
-      : undefined;
-  const outputPath = process.env.BURNBAR_CURSOR_SMOKE_OUTPUT ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath');
+    typeof vscode.workspace.getConfiguration === 'function' ? vscode.workspace.getConfiguration() : undefined;
+  const outputPath =
+    process.env.BURNBAR_CURSOR_SMOKE_OUTPUT ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath');
   if (!outputPath) {
     return;
   }
@@ -308,7 +315,8 @@ async function maybeRunCursorSmoke(
   try {
     await runCursorSmoke({
       outputPath,
-      filePath: process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath'),
+      filePath:
+        process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath'),
       modelID: process.env.BURNBAR_CURSOR_SMOKE_MODEL ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.modelID'),
       workspaceClient,
       daemonClient,
@@ -339,10 +347,9 @@ async function maybeRunCursorSmokeWithoutUI(
   workspaceClient: OpenBurnBarControllerDependencies['workspaceClient']
 ): Promise<void> {
   const smokeConfig =
-    typeof vscode.workspace.getConfiguration === 'function'
-      ? vscode.workspace.getConfiguration()
-      : undefined;
-  const outputPath = process.env.BURNBAR_CURSOR_SMOKE_OUTPUT ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath');
+    typeof vscode.workspace.getConfiguration === 'function' ? vscode.workspace.getConfiguration() : undefined;
+  const outputPath =
+    process.env.BURNBAR_CURSOR_SMOKE_OUTPUT ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath');
   if (!outputPath) {
     return;
   }
@@ -364,7 +371,8 @@ async function maybeRunCursorSmokeWithoutUI(
   try {
     await runCursorSmoke({
       outputPath,
-      filePath: process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath'),
+      filePath:
+        process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath'),
       modelID: process.env.BURNBAR_CURSOR_SMOKE_MODEL ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.modelID'),
       workspaceClient,
       daemonClient,
@@ -427,11 +435,7 @@ async function runCursorSmoke({
   workspaceClient: OpenBurnBarControllerDependencies['workspaceClient'];
   daemonClient: OpenBurnBarControllerDependencies['client'];
   getRunDetail?: (runID: string) => Promise<BurnBarRunDetailResponse | undefined>;
-  createRun: (
-    resolvedModelID: string,
-    prompt: string,
-    metadata: Record<string, BurnBarJSONValue>
-  ) => Promise<string>;
+  createRun: (resolvedModelID: string, prompt: string, metadata: Record<string, BurnBarJSONValue>) => Promise<string>;
   approveRun?: (runID: string, approvalID: string) => Promise<void>;
   getRunPhase: (runID: string) => Promise<string | undefined>;
 }): Promise<void> {
@@ -439,11 +443,7 @@ async function runCursorSmoke({
   const safeOutputPath = sanitizeSmokeOutputPath(outputPath);
 
   try {
-    await fs.writeFile(
-      safeOutputPath,
-      JSON.stringify({ ok: false, stage: 'starting' }, null, 2),
-      'utf8'
-    );
+    await fs.writeFile(safeOutputPath, JSON.stringify({ ok: false, stage: 'starting' }, null, 2), 'utf8');
 
     const capabilities = await workspaceClient.capabilities();
     if (!capabilities.hasWorkspace) {

@@ -46,8 +46,16 @@ export const FEATURES: Feature[] = [
     id: "insight-engine",
     title: "Insights that learn your rhythm",
     blurb:
-      "InsightEngine notices when spend spikes, a new model shows up, a cache lands, or a quota window is about to close. Daily digest at the time you choose.",
+      "OpenBurnBar notices when spend spikes, a new model shows up, or a quota window is about to close — and tells you, with a daily summary at the time you choose.",
     evidence: "AgentLens/Services/InsightEngine.swift, DailyDigestManager.swift",
+    category: "tracking"
+  },
+  {
+    id: "budget-guardrails",
+    title: "Set a limit it actually holds",
+    blurb:
+      "Give a project or an account a spending cap. When it's reached, agents stop — they don't quietly blow past it. A real brake, not just a warning light.",
+    evidence: "AgentLens/Services/UsageAggregation/Budget*; daemon spend gate",
     category: "tracking"
   },
   {
@@ -68,10 +76,18 @@ export const FEATURES: Feature[] = [
   },
   {
     id: "chart-studio",
-    title: "Chart Studio — answers as charts",
+    title: "Answers that draw themselves",
     blurb:
-      "Hermes streams JSON envelopes that render to 10 native Swift Charts kinds and sandboxed Mermaid diagrams on iOS and iPadOS.",
+      "Ask about your spend and the answer comes back as a chart you can read at a glance — built on the spot from your own numbers, on iPhone and iPad.",
     evidence: "docs/CHART_STUDIO.md; OpenBurnBarMobile/Views/ChartStudio/",
+    category: "assistant"
+  },
+  {
+    id: "intelligence-brief",
+    title: "A daily read on where the money went",
+    blurb:
+      "One clear briefing — what changed, what drove it, what's about to run out, and what to do next — in plain language, with the charts to back it up.",
+    evidence: "AgentLens/Views/Insights/ (Intelligence Brief + canvas); InsightEngine.swift",
     category: "assistant"
   },
   {
@@ -93,10 +109,50 @@ export const FEATURES: Feature[] = [
   },
   {
     id: "cli",
-    title: "openburnbar — a real CLI",
+    title: "openburnbar — a real command line",
     blurb:
-      "health · controller · questions · followups · missions · mission-approve · simulator-runs · simulator-replay. Scriptable from any agent, git hook, or operator console.",
+      "Everything the app does, scriptable from your terminal, a git hook, or another agent. Same brain as the menu bar, no extra account.",
     evidence: "OpenBurnBarDaemon/Sources/OpenBurnBarCLI/; README.md:76-86",
+    category: "control"
+  },
+  {
+    id: "self-healing",
+    title: "Connect once, stay connected",
+    blurb:
+      "Set up routing a single time. If another app resets your configuration, OpenBurnBar quietly puts it back — you never reconnect by hand.",
+    evidence: "AgentLens/Services/CLIBridge/RoutedClientWiringSentry.swift",
+    category: "control"
+  },
+  {
+    id: "one-tap-import",
+    title: "Bring in what you already use",
+    blurb:
+      "It finds the agents and accounts already set up on your Mac and pulls them in — no hunting for keys, no copy-paste.",
+    evidence: "AgentLens/Services/Switcher* discovery; ClaudeCodeOAuthCredentialImporter.swift",
+    category: "control"
+  },
+  {
+    id: "missions",
+    title: "Hand off a job, watch it land",
+    blurb:
+      "Give an agent a task, follow it from pending to done, and sign off on the big moves. Every job tracks its own cost so you always know what it spent.",
+    evidence: "AgentLens/Views/Missions/; daemon mission control",
+    category: "control"
+  },
+  {
+    id: "context-packs",
+    title: "Carry context to the next agent",
+    blurb:
+      "What one agent learned doesn't have to die with the session. One click bundles the history that matters in the format your next tool expects.",
+    evidence: "AgentLens/Services/ContextPackService.swift, ContextPackExporter.swift",
+    category: "control"
+  },
+  {
+    id: "text-expansion",
+    title: "Type a little, get the whole thing",
+    blurb:
+      "Save the prompts and snippets you retype all day. Type a short trigger and it expands to the full text — across your apps, synced to your other devices.",
+    evidence: "AgentLens/Services/TextExpansion/; TextExpansionSyncService.swift",
     category: "control"
   },
   {

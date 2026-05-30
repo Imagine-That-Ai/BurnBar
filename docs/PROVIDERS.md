@@ -14,6 +14,7 @@
 | **DeepSeek** | `DeepSeekQuotaAdapter` | `.exact` | `GET api.deepseek.com/v1` | Developer console credit balance and API usage |
 | **Copilot** | `CopilotQuotaAdapter.swift` | `.estimated` | `POST api.github.com/copilot_internal/user` | Premium interactions and chat limits |
 | **Cursor** | `CursorQuotaAdapter.swift` | `.estimated` | `GET cursor.com/api/usage-summary` | Included usage, limits, and USD spent |
+| **Cursor Agent CLI**| `CursorAgentParser.swift` | `.exact` | `~/.cursor-agent/sessions/` (`transcript.jsonl`, `summary.json`, `*.jsonl`) | Local session tokens; exact token limits |
 | **Factory** | `FactoryQuotaAdapter.swift` | `.exact` / `.estimated` | `POST app.factory.ai/api/...` | Plan tier, rolling usage, and lane metrics |
 | **MiniMax** | `MiniMaxQuotaAdapter.swift` | `.exact` | `GET minimax.io coding-plan remains` | Remaining quota counts per model |
 | **MiMo (Xiaomi)**| `MimoQuotaAdapter.swift` | `.exact` / `.estimated` | `GET token-plan-{cn,sgp,ams}.xiaomimimo.com` | Regional Token Plan remaining credits |
@@ -60,6 +61,7 @@
 | **DeepSeek** | API key | `sk-...` | `Authorization: Bearer {key}` | Created at platform.deepseek.com |
 | **Copilot** | GitHub OAuth / PAT | `ghp_...` or OAuth token | `Authorization: token {token}` | `read:user` scope required |
 | **Cursor** | Browser cookie | `WorkosCursorSessionToken={id}::{token}` | `Cookie: {cookieString}` | Extracted locally from database or Safari/Chrome |
+| **Cursor Agent** | None | N/A (local file) | N/A | Reads session logs from `~/.cursor-agent/sessions/` |
 | **Factory** | Browser cookie + Bearer | Session cookie + `access-token` | `Cookie: {cookie}` + `Authorization: Bearer {token}` | WorkOS-based auth |
 | **Warp** | API key | `wk-...` | `Authorization: Bearer {key}` | Created at warp.dev |
 | **MiniMax** | Coding Plan API key | `sk-cp-...` | `Authorization: Bearer {key}` | Standard API keys are rejected |
@@ -85,6 +87,7 @@
 | OpenAI | `GET https://api.openai.com/v1/organization/usage/completions` | HTTP | `{"data":[{"results":[{"input_tokens":...,"output_tokens":...}]}]}` |
 | Copilot | `POST https://api.github.com/copilot_internal/user` | HTTP | `{"copilot_plan":"pro","quota_snapshots":{"premium_interactions":{"remaining":180}}}` |
 | Cursor | `GET https://cursor.com/api/usage-summary` | HTTP | `{"individualUsage":{"plan":{"totalPercentUsed":...},"onDemand":{"used":...}}}` |
+| Cursor Agent | `~/.cursor-agent/sessions/` | File read | Offline session JSONL containing message role, content, and token details |
 | Factory | `POST https://api.factory.ai/api/organization/subscription/usage` | HTTP | `{"usage":{"standard":{"userTokens":...},"premium":{...}}}` |
 | Warp | `POST https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo` | GraphQL | `{"data":{"workspace":{"requestLimit":...,"requestsUsedSinceLastRefresh":...}}}` |
 | MiniMax | `GET https://www.minimax.io/v1/api/openplatform/coding_plan/remains` | HTTP | `{"model_remains":[{"model_name":"...","current_interval_usage_count":...}]}` |
@@ -110,6 +113,7 @@
 | Z.ai | On refresh (polled) | Yes |
 | Factory | On refresh (polled) | Yes |
 | Cursor | On refresh (polled) | Yes |
+| Cursor Agent | Real-time on prompt interaction | None |
 | Warp | On refresh (polled) | Yes |
 | Ollama | Real-time (local); Polled (cloud) | None (local) |
 | Kimi | On refresh (polled) | Yes |
@@ -148,6 +152,7 @@ to `LogParser` and are registered in `ParserRegistry.defaultParsers()`.
 | Provider | Parser | Source | Format | Test seam |
 |----------|--------|--------|--------|-----------|
 | **Goose** | `GooseParser.swift` | `~/.local/share/goose/sessions/sessions.db` (also `~/Library/Application Support/Block/goose/sessions`); legacy `*.jsonl` fallback | SQLite `sessions` + `messages` tables; `accumulated_*`/`total_tokens`; transcript turns flattened from `messages` | `init(sessionDirectoryOverride:)` |
+| **Cursor Agent** | `CursorAgentParser.swift` | `~/.cursor-agent/sessions/` | One JSONL file or nested folder per session; inline precise token counts | reads `provider.logDirectory` |
 | **OpenCode** | `OpenCodeParser` (`UsageAggregatorParsers.swift`) | `~/.local/share/opencode/opencode.db` (env: `OPENCODE_DB_PATH`, `OPENCODE_DATA_HOME`, `XDG_DATA_HOME`) | SQLite `session` / `message` / `part` rows with JSON `data` columns; `tokens.{input,output,cache.{read,write}}` | `init(databasePathOverride:)` |
 | **Pi Agent** | `PiAgentParser` (`UsageAggregatorParsers.swift`) | `~/.pi/sessions/*.jsonl` | One JSONL file per session; inline `usage` or character-based fallback estimate | reads `provider.logDirectory` |
 | **Goose / OpenCode hardening** | both | — | SQLite reads go through GRDB `DatabaseValue.storage`, so a column whose stored type differs from the expected one (e.g. a `TEXT` epoch) resolves instead of force-decode crashing | — |

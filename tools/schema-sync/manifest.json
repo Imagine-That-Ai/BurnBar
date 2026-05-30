@@ -91,7 +91,10 @@
         "typescript": "functions/src/types/generated/computer-use.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ComputerUseModels.kt"
-      }
+      },
+      "swiftHandMirror": [
+        "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CapabilityToken.swift"
+      ]
     },
     {
       "id": "hosted-quota",

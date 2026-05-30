@@ -80,6 +80,7 @@ extension AgentProvider {
         case .piAgent: return "~/.pi/sessions"
         case .geminiCLI: return "~/.gemini/tmp"
         case .antigravity: return "~/.gemini/antigravity-cli"
+        case .cursorAgent: return "~/.cursor-agent/sessions"
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
         case .ollama: return "~/.ollama/logs"
@@ -116,6 +117,7 @@ extension AgentProvider {
         case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
         case .antigravity: return "history.jsonl"
+        case .cursorAgent: return "*.jsonl"
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
         case .ollama: return "server*.log"
@@ -129,7 +131,7 @@ extension AgentProvider {
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI:
+        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -148,7 +150,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI:
+        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek:

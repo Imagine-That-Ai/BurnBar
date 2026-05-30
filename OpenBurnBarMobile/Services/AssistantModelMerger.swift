@@ -156,6 +156,8 @@ struct AssistantModelMerger {
             return ["antigravity", "agy", "google-antigravity", "googleantigravity"]
         case .grok:
             return ["grok", "grok-build", "xai", "grok-agent"]
+        case .cursorAgent:
+            return ["cursor", "cursor-agent", "cursoragent"]
         }
     }
 

@@ -476,14 +476,14 @@ final class SmartHubBridgeServer {
         // "Reconnecting to Mac…".
         let bucketsJSON = p.buckets.map { (b) -> String in
             """
-            {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)"}
+            {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)","isCreditBalance":\(b.isCreditBalance ? "true" : "false")}
             """
         }.joined(separator: ",")
 
         let accountsJSON = p.accounts.map { (a) -> String in
             let abuckets = a.buckets.map { (b) -> String in
                 """
-                {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)"}
+                {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)","isCreditBalance":\(b.isCreditBalance ? "true" : "false")}
                 """
             }.joined(separator: ",")
             return """
@@ -708,6 +708,10 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             // distance — was previously folded into `subLabel`.
             var resetsLabel: String
             var tone: Tone
+            /// Whether this bucket represents a prepaid credit balance
+            /// rather than a windowed quota bucket. The Nest Hub page
+            /// uses this flag to render a wallet-style card.
+            var isCreditBalance: Bool
         }
 
         struct Account: Equatable, Sendable, Hashable {

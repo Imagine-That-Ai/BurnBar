@@ -120,14 +120,79 @@ public enum CloudVaultCrypto {
 
     public static func tokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
         let key = try searchKey(from: keyData)
+        let terms = normalizedTokens(from: text)
+        return tokenHashes(forTerms: terms, key: key, limit: limit)
+    }
+
+    public static func searchIndexTokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
+        let key = try searchKey(from: keyData)
+        let tokens = uniqueNormalizedTokens(from: text)
+        var terms = tokens
+        terms.append(contentsOf: searchIndexPrefixTerms(from: tokens))
+        terms.append(contentsOf: exactPhraseTerms(from: text))
+        return tokenHashes(forTerms: terms, key: key, limit: limit)
+    }
+
+    public static func searchQueryTokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
+        let key = try searchKey(from: keyData)
+        let tokens = uniqueNormalizedTokens(from: text)
+        var terms = tokens
+        terms.append(contentsOf: tokens.compactMap(searchQueryPrefixTerm))
+        terms.append(contentsOf: exactPhraseTerms(from: text))
+        return tokenHashes(forTerms: terms, key: key, limit: limit)
+    }
+
+    private static func tokenHashes(forTerms terms: [String], key: SymmetricKey, limit: Int) -> [String] {
+        guard limit > 0 else { return [] }
         var seen = Set<String>()
         var hashes: [String] = []
-        for token in normalizedTokens(from: text) where seen.insert(token).inserted {
-            let mac = HMAC<SHA256>.authenticationCode(for: Data(token.utf8), using: key)
+        for term in terms where seen.insert(term).inserted {
+            let mac = HMAC<SHA256>.authenticationCode(for: Data(term.utf8), using: key)
             hashes.append(Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined())
             if hashes.count >= limit { break }
         }
         return hashes
+    }
+
+    private static func uniqueNormalizedTokens(from text: String) -> [String] {
+        var seen = Set<String>()
+        var tokens: [String] = []
+        for token in normalizedTokens(from: text) where seen.insert(token).inserted {
+            tokens.append(token)
+        }
+        return tokens
+    }
+
+    private static func searchIndexPrefixTerms(from tokens: [String]) -> [String] {
+        tokens.flatMap { token -> [String] in
+            let characters = Array(token)
+            guard characters.count >= 4 else { return [] }
+            let maxPrefixLength = min(16, characters.count - 1)
+            guard maxPrefixLength >= 3 else { return [] }
+            return (3...maxPrefixLength).map { length in
+                "prefix:v1:" + String(characters.prefix(length))
+            }
+        }
+    }
+
+    private static func searchQueryPrefixTerm(from token: String) -> String? {
+        guard token.count >= 3 else { return nil }
+        return "prefix:v1:\(String(token.prefix(16)))"
+    }
+
+    private static func exactPhraseTerms(from text: String) -> [String] {
+        let tokens = exactPhraseTokens(from: text)
+        guard tokens.count >= 2 else { return [] }
+        var terms: [String] = []
+        for index in tokens.indices {
+            if index + 1 < tokens.count {
+                terms.append("phrase:v1:" + tokens[index...(index + 1)].joined(separator: "_"))
+            }
+            if index + 2 < tokens.count {
+                terms.append("phrase:v1:" + tokens[index...(index + 2)].joined(separator: "_"))
+            }
+        }
+        return terms
     }
 
     /// Produces keyed semantic-search buckets from plaintext before it is encrypted.
@@ -138,7 +203,7 @@ public enum CloudVaultCrypto {
     /// favors bounded, stable recall over model-specific vectors so every client
     /// can produce identical hashes offline.
     public static func semanticHashes(for text: String, keyData: Data, limit: Int = 24) throws -> [String] {
-        let tokens = normalizedTokens(from: text)
+        let tokens = exactPhraseTokens(from: text)
         guard tokens.isEmpty == false, limit > 0 else { return [] }
 
         let key = try semanticSearchKey(from: keyData)
@@ -187,15 +252,10 @@ public enum CloudVaultCrypto {
     }
 
     public static func normalizedTokens(from text: String) -> [String] {
-        let stopwords: Set<String> = [
-            "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
-            "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
-            "into", "onto", "can", "could", "should", "would"
-        ]
         return text
             .lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count >= 2 && stopwords.contains($0) == false }
+            .filter { $0.count >= 2 && searchStopwords.contains($0) == false }
     }
 
     public static func wrapVaultKey(_ keyData: Data, recipientPublicKey: Data) throws -> Data {
@@ -276,6 +336,21 @@ public enum CloudVaultCrypto {
         let weight: Double
     }
 
+    private static let searchStopwords: Set<String> = [
+        "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
+        "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
+        "into", "onto", "can", "could", "should", "would"
+    ]
+
+    private static func exactPhraseTokens(from text: String) -> [String] {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { token in
+                (token.count >= 2 || token == "x") && searchStopwords.contains(token) == false
+            }
+    }
+
     private static func semanticFeatures(from tokens: [String]) -> [SemanticFeature] {
         var features: [SemanticFeature] = []
         var seen = Set<String>()
@@ -283,6 +358,10 @@ public enum CloudVaultCrypto {
         func append(_ name: String, weight: Double) {
             guard name.isEmpty == false, seen.insert(name).inserted else { return }
             features.append(SemanticFeature(name: name, weight: weight))
+        }
+
+        for concept in semanticConcepts(from: tokens) {
+            append("concept:\(concept)", weight: 3.2)
         }
 
         for token in tokens {
@@ -302,6 +381,47 @@ public enum CloudVaultCrypto {
             }
         }
         return features
+    }
+
+    private static func semanticConcepts(from tokens: [String]) -> [String] {
+        var concepts: [String] = []
+        var seen = Set<String>()
+
+        func append(_ concept: String) {
+            guard seen.insert(concept).inserted else { return }
+            concepts.append(concept)
+        }
+
+        for token in tokens {
+            switch token {
+            case "x", "twitter", "tweets", "tweet", "xcom":
+                append("x-platform")
+                append("social-platform")
+            case "ads", "ad", "advertising", "advertise", "campaign", "campaigns", "marketing":
+                append("advertising")
+            case "api", "apis", "endpoint", "endpoints", "sdk", "webhook", "webhooks", "integration", "integrations":
+                append("api-integration")
+            case "oauth", "auth", "login", "signin", "token", "tokens", "credential", "credentials":
+                append("authentication")
+            case "billing", "invoice", "invoices", "pricing", "price", "cost", "spend", "quota", "usage":
+                append("billing-usage")
+            case "backup", "sync", "mirror", "cache", "restore", "download", "upload":
+                append("backup-sync")
+            default:
+                break
+            }
+        }
+
+        if concepts.contains("x-platform") && concepts.contains("advertising") {
+            append("x-ads")
+        }
+        if concepts.contains("advertising") && concepts.contains("api-integration") {
+            append("ads-api")
+        }
+        if concepts.contains("x-platform") && concepts.contains("api-integration") {
+            append("x-api")
+        }
+        return concepts
     }
 
     private static func simpleSemanticStem(_ token: String) -> String {

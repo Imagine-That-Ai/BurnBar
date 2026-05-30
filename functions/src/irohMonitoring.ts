@@ -38,12 +38,7 @@ const EVENT_TYPES: IrohAuditEventType[] = [
   "iroh_fallback_to_firestore",
 ];
 
-const TRANSPORTS: IrohTransport[] = [
-  "iroh-direct",
-  "iroh-relay",
-  "wss",
-  "firestore",
-];
+const TRANSPORTS: IrohTransport[] = ["iroh-direct", "iroh-relay", "wss", "firestore"];
 
 function isIrohAuditEventType(value: unknown): value is IrohAuditEventType {
   return EVENT_TYPES.some((eventType) => eventType === value);
@@ -91,10 +86,7 @@ function percentile(sorted: number[], percentileValue: number): number | undefin
   if (sorted.length === 0) {
     return undefined;
   }
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1)
-  );
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1));
   return sorted[index];
 }
 
@@ -110,17 +102,13 @@ export function utcDayWindow(date: Date): { date: string; start: Date; end: Date
 }
 
 export function previousUtcDay(now: Date): Date {
-  return new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() - 1
-  ));
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
 }
 
 export function summarizeIrohAuditEvents(
   events: IrohAuditRollupInput[],
   window: { date: string; start: Date; end: Date },
-  generatedAt: Date = new Date()
+  generatedAt: Date = new Date(),
 ): IrohTransportDailyRollupDoc {
   const eventCounts = emptyEventCounts();
   const transportCounts = emptyTransportCounts();
@@ -206,7 +194,7 @@ function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | n
 export async function buildAndPersistIrohDailyRollup(
   db: Firestore,
   day: Date = previousUtcDay(new Date()),
-  generatedAt: Date = new Date()
+  generatedAt: Date = new Date(),
 ): Promise<IrohTransportDailyRollupDoc> {
   const window = utcDayWindow(day);
   const snapshot = await db
@@ -215,15 +203,10 @@ export async function buildAndPersistIrohDailyRollup(
     .where("observedAt", "<", window.end.toISOString())
     .get();
 
-  const events = snapshot.docs
-    .map(eventFromSnapshot)
-    .filter((event): event is IrohAuditRollupInput => event !== null);
+  const events = snapshot.docs.map(eventFromSnapshot).filter((event): event is IrohAuditRollupInput => event !== null);
   const rollup = summarizeIrohAuditEvents(events, window, generatedAt);
 
-  await db
-    .collection(IROH_ROLLUP_COLLECTION)
-    .doc(rollup.id)
-    .set(rollup, { merge: true });
+  await db.collection(IROH_ROLLUP_COLLECTION).doc(rollup.id).set(rollup, { merge: true });
 
   return rollup;
 }
@@ -236,5 +219,5 @@ export const rollupIrohTransportDaily = onSchedule(
   },
   async (_event) => {
     await buildAndPersistIrohDailyRollup(getFirestore());
-  }
+  },
 );
