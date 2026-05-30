@@ -29,7 +29,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { Timestamp, type Firestore, type Transaction } from "firebase-admin/firestore";
 
 import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
 
@@ -44,6 +44,7 @@ import type {
 import { appendEntitlementEvent } from "./audit.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
 import { type AppleJWSVerifier, type DecodedTransaction, getAppleJWSVerifier } from "./verifier.js";
+import { getConfig } from "../config.js";
 import {
   errorMessage,
   parseEntitlementBindingDoc,
@@ -56,6 +57,13 @@ const ENTITLEMENT_SCHEMA_VERSION = 2;
 const VERIFICATION_VERSION = 2;
 const BINDING_SCHEMA_VERSION = 1;
 const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
+const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
+const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
+
+export interface AppStoreEntitlementTarget {
+  sourceEntitlementID: string;
+  mirrorEntitlementID: string;
+}
 
 export interface ReconcileInput {
   /** The signed transaction JWS the caller provided. Required. */
@@ -76,7 +84,7 @@ export interface ReconcileInput {
    * `cfg.hostedQuotaProductID` from the global config. Pass through the
    * caller for clarity.
    */
-  productID: string;
+  productID?: string;
 }
 
 export interface ReconcileResult {
@@ -136,21 +144,25 @@ export async function reconcileEntitlement(
   // 3+4) Live truth: re-verify every JWS Apple returns.
   const live = await fetchLiveStatusVerified(verifier, cfg, seedTx, fetchLive);
 
+  const productID = input.productID ?? requireString(seedTx.payload.productId, "productId");
+  const target = appStoreEntitlementTarget(productID);
+
   // 5) Best-of all transactions for the productId.
-  const candidate = pickWinning([seedTx, ...live], input.productID);
+  const candidate = pickWinning([seedTx, ...live], productID);
   if (!candidate) {
     throw new EntitlementReconcileError(
       "no_active_transaction",
-      `No verified transaction matched productId ${input.productID}.`,
+      `No verified transaction matched productId ${productID}.`,
     );
   }
 
   // 6) Build & persist.
-  const docPath = `users/${uid}/entitlements/hosted_quota_sync`;
+  const docPath = `users/${uid}/entitlements/${target.sourceEntitlementID}`;
   const docRef = db.doc(docPath);
 
   const next = buildEntitlementDoc({
-    productID: input.productID,
+    entitlementID: target.sourceEntitlementID,
+    productID,
     candidate,
     notificationUUID: input.notificationUUID,
   });
@@ -160,21 +172,12 @@ export async function reconcileEntitlement(
     const existing = snap.exists ? parseHostedQuotaEntitlementDoc(snap.data()) : undefined;
 
     if (existing && !shouldOverwrite(existing, next)) {
-      tx.set(
-        db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
-        buildBurnBarProEntitlementMirror(existing),
-        { merge: true },
-      );
+      writeEntitlementMirrorOnly(tx, db, uid, existing, target);
       return { changed: false, entitlement: existing };
     }
 
     const merged = mergeWithExisting(existing, next);
-    tx.set(docRef, stripUndefinedObject(merged), { merge: true });
-    tx.set(
-      db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
-      buildBurnBarProEntitlementMirror(merged),
-      { merge: true },
-    );
+    writeEntitlementDocs(tx, db, uid, merged, target);
     return { changed: true, entitlement: merged };
   });
 
@@ -207,18 +210,56 @@ export async function reconcileEntitlement(
   return { uid, entitlement: result.entitlement, changed: result.changed };
 }
 
-function buildBurnBarProEntitlementMirror(hosted: HostedQuotaEntitlementDoc): Record<string, unknown> {
+function writeEntitlementMirrorOnly(
+  tx: Transaction,
+  db: Firestore,
+  uid: string,
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+): void {
+  if (target.sourceEntitlementID === target.mirrorEntitlementID) return;
+  tx.set(
+    db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`),
+    buildBurnBarEntitlementMirror(entitlement, target),
+    { merge: true },
+  );
+}
+
+function writeEntitlementDocs(
+  tx: Transaction,
+  db: Firestore,
+  uid: string,
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+): void {
+  const sourceRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
+  const sourceDoc = stripUndefinedObject(entitlement);
+  const mirrorDoc = buildBurnBarEntitlementMirror(entitlement, target);
+  if (target.sourceEntitlementID === target.mirrorEntitlementID) {
+    tx.set(sourceRef, stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }), { merge: true });
+    return;
+  }
+  tx.set(sourceRef, sourceDoc, { merge: true });
+  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+}
+
+function buildBurnBarEntitlementMirror(
+  hosted: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+): Record<string, unknown> {
+  const cloudPro = target.mirrorEntitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID;
   return {
-    id: BURNBAR_PRO_ENTITLEMENT_ID,
+    id: target.mirrorEntitlementID,
     active: hosted.active,
     productID: hosted.productID,
     sourceProductID: hosted.productID,
-    entitlementFamily: "burnbar_pro",
+    entitlementFamily: target.mirrorEntitlementID,
     features: {
       hostedQuota: true,
       hostedLLM: true,
       encryptedSessionLogBackup: true,
       cloudConversationSearch: true,
+      ...(cloudPro ? { floo: true, agentControl: true } : {}),
     },
     expiresAt: hosted.expiresAt,
     expireAt: hosted.expireAt,
@@ -228,6 +269,29 @@ function buildBurnBarProEntitlementMirror(hosted: HostedQuotaEntitlementDoc): Re
     updatedAt: hosted.updatedAt,
     schemaVersion: 1,
   };
+}
+
+export function appStoreEntitlementTarget(productID: string): AppStoreEntitlementTarget {
+  const cfg = getConfig();
+  if (productID === cfg.hostedQuotaProductID) {
+    return {
+      sourceEntitlementID: HOSTED_QUOTA_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+    };
+  }
+  if (productID === cfg.burnBarProProductID || productID === cfg.burnBarProAnnualProductID) {
+    return {
+      sourceEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+    };
+  }
+  if (productID === cfg.burnBarProMaxProductID || productID === cfg.burnBarProMaxAnnualProductID) {
+    return {
+      sourceEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+    };
+  }
+  throw new EntitlementReconcileError("unsupported_product", `Unsupported App Store productId ${productID}.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -346,7 +410,6 @@ async function findUidByOriginalTransaction(db: Firestore, originalTransactionId
   const cg = await db
     .collectionGroup("entitlements")
     .where("originalTransactionID", "==", originalTransactionId)
-    .where("id", "==", "hosted_quota_sync")
     .limit(2)
     .get();
   if (cg.size === 1) {
@@ -426,6 +489,7 @@ function rank(c: DecodedTransaction): number {
 // ---------------------------------------------------------------------------
 
 interface BuildArgs {
+  entitlementID?: string;
   productID: string;
   candidate: DecodedTransaction;
   notificationUUID?: string;
@@ -444,7 +508,7 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
 
   const source: HostedQuotaEntitlementSource = "apple_jws_verified";
   const doc: HostedQuotaEntitlementDoc = {
-    id: "hosted_quota_sync",
+    id: args.entitlementID ?? HOSTED_QUOTA_ENTITLEMENT_ID,
     active,
     productID,
     transactionID: requireString(p.transactionId, "transactionId"),
@@ -580,6 +644,7 @@ export const __testing__ = {
   redactPayload,
   redactToken,
   auditEventId,
+  appStoreEntitlementTarget,
   ENTITLEMENT_SCHEMA_VERSION,
   VERIFICATION_VERSION,
   BINDING_SCHEMA_VERSION,

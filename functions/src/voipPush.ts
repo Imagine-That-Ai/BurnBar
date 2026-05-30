@@ -21,7 +21,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
-const PRO_ENTITLEMENT_DOC_ID = "burnbar_pro";
+const CLOUD_PRO_ENTITLEMENT_DOC_ID = "burnbar_pro_max";
 
 export interface TriggerRequest {
   callId: string;
@@ -98,11 +98,13 @@ export async function resolveFanOut(args: {
   };
 }
 
-export async function macHasActiveMediaEntitlement(uid: string): Promise<boolean> {
-  const firestore = getFirestore();
+export async function macHasActiveMediaEntitlement(
+  uid: string,
+  firestore: FirebaseFirestore.Firestore = getFirestore(),
+): Promise<boolean> {
   const [media, pro] = await Promise.all([
     firestore.doc(`users/${uid}/entitlements/${MEDIA_ENTITLEMENT_DOC_ID}`).get(),
-    firestore.doc(`users/${uid}/entitlements/${PRO_ENTITLEMENT_DOC_ID}`).get(),
+    firestore.doc(`users/${uid}/entitlements/${CLOUD_PRO_ENTITLEMENT_DOC_ID}`).get(),
   ]);
   for (const snap of [media, pro]) {
     if (!snap.exists) continue;

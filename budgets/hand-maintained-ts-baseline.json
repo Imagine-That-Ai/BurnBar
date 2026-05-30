@@ -1,7 +1,7 @@
 {
-  "loc": 24483,
+  "loc": 25312,
   "exportedInterfaces": 334,
-  "fileCount": 95,
-  "generatedAt": "2026-05-30T17:04:32.815Z",
-  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**"
+  "fileCount": 97,
+  "generatedAt": "2026-05-30T18:00:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; raised for WS4 computerUseSecurity + appCheckAttestation callables."
 }

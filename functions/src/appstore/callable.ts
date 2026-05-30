@@ -25,7 +25,12 @@ import { parseHostedQuotaEntitlementDoc } from "../guards.js";
 import type { HostedQuotaEntitlementDoc } from "../types.js";
 
 import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
-import { beginBinding, EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
+import {
+  appStoreEntitlementTarget,
+  beginBinding,
+  EntitlementReconcileError,
+  reconcileEntitlement,
+} from "./reconciler.js";
 import { JWSVerificationFailure } from "./verifier.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
 
@@ -55,6 +60,11 @@ export const beginEntitlementBinding = onCall(
       logCallableStart("beginEntitlementBinding", traceIdFromCallableRequest(request), uid);
       enforceAuthAndAppCheck(request, uid);
       const productID = request.data.productID ?? hostedQuotaProductID();
+      try {
+        appStoreEntitlementTarget(productID);
+      } catch (err) {
+        throw mapReconcileError(err);
+      }
       const db = getFirestore();
       return beginBinding(db, uid, productID, request.data.clientPlatform);
     },
@@ -178,7 +188,13 @@ export const restoreHostedQuotaEntitlement = onCall(
 
       // Scenario (2): server-side fallback. Read existing entitlement doc;
       // if `originalTransactionID` is on file, pull live state from ASC.
-      const docRef = db.doc(`users/${uid}/entitlements/hosted_quota_sync`);
+      let target;
+      try {
+        target = appStoreEntitlementTarget(productID);
+      } catch (err) {
+        throw mapReconcileError(err);
+      }
+      const docRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
       const snap = await docRef.get();
       if (!snap.exists) {
         throw httpsError(
@@ -246,6 +262,9 @@ function mapReconcileError(err: unknown): functions.HttpsError {
       return httpsError("unavailable", err.message);
     }
     if (err.code === "missing_field") {
+      return httpsError("invalid-argument", err.message);
+    }
+    if (err.code === "unsupported_product") {
       return httpsError("invalid-argument", err.message);
     }
   }
