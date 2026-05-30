@@ -16,6 +16,7 @@ export { grantMediaGrandfather, validateMediaPurchase } from "./callables/mediaS
 export { triggerVoIPCall } from "./callables/voipPush.js";
 export { evaluateMediaBudget } from "./mediaBudget.js";
 export { evaluateComputerUseBudget } from "./computerUseBudget.js";
+export { computeTierCogsDaily } from "./tierCogs.js";
 export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloudProAllowance.js";
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
