@@ -61,6 +61,7 @@ import { Environment } from "@apple/app-store-server-library";
 const LEGACY_HOSTED_PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
 const CLOUD_PRODUCT_ID = "com.openburnbar.pro.monthly";
 const CLOUD_PRO_PRODUCT_ID = "com.openburnbar.proMax.monthly";
+const APPLE_CLOUD_PRO_PRODUCT_ID = "com.openburnbar.proMax.bundle.monthly";
 
 // ---------------------------------------------------------------------------
 // 1. Apple root certificate fingerprint pinning
@@ -300,6 +301,10 @@ test("appStoreEntitlementTarget maps locked Cloud product families", () => {
     mirrorEntitlementID: "burnbar_pro",
   });
   assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget(CLOUD_PRO_PRODUCT_ID), {
+    sourceEntitlementID: "burnbar_pro_max",
+    mirrorEntitlementID: "burnbar_pro_max",
+  });
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget(APPLE_CLOUD_PRO_PRODUCT_ID), {
     sourceEntitlementID: "burnbar_pro_max",
     mirrorEntitlementID: "burnbar_pro_max",
   });

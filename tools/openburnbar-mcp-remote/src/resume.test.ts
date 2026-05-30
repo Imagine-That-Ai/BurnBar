@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 import { buildResumeSpawnCommand, renderHostedResumeResponse, runResumeCli } from "./resume.js";
+import { validatedMcpEndpoint } from "./shim.js";
 
 function seal(text: string, key: Buffer) {
   const nonce = randomBytes(12);
@@ -139,6 +140,13 @@ test("resume CLI sends local opaque query hashes for fuzzy OBB Resume", async ()
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("MCP endpoint validation rejects token exfiltration targets", () => {
+  assert.equal(validatedMcpEndpoint("https://mcp.burnbar.ai/mcp").href, "https://mcp.burnbar.ai/mcp");
+  assert.equal(validatedMcpEndpoint("http://127.0.0.1:8080/mcp").href, "http://127.0.0.1:8080/mcp");
+  assert.throws(() => validatedMcpEndpoint("http://example.com/mcp"), /HTTPS/);
+  assert.throws(() => validatedMcpEndpoint("https://token@example.com/mcp"), /credentials/);
 });
 
 test("spawn command uses detached target mapping without hosted plaintext persistence", () => {

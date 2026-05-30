@@ -1,15 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { fetchAntigravityQuota } from "../src/providers/antigravity.mjs";
 
 test("fetchAntigravityQuota calculates rolling 5h requests and reset timestamp", async (t) => {
-  const tempHome = join(tmpdir(), `obb-test-home-${randomUUID()}`);
-  await mkdir(tempHome, { recursive: true });
+  const tempHome = await mkdtemp(join(tmpdir(), "obb-test-home-"));
+  await chmod(tempHome, 0o700);
 
   const originalHomedir = os.homedir;
   os.homedir = () => tempHome;

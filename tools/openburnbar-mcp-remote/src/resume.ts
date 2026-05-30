@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { decryptSealedText, hasVaultKey } from "./decrypt.js";
 import { readAccessToken } from "./oauth.js";
 import { readVaultKey } from "./vaultStore.js";
-import { DEFAULT_ENDPOINT } from "./shim.js";
+import { DEFAULT_ENDPOINT, validatedMcpEndpoint } from "./shim.js";
 
 const execFileAsync = promisify(execFile);
 const PROTOCOL_VERSION = "2025-11-25";
@@ -90,6 +90,7 @@ function requireVaultKey(): void {
 }
 
 async function callHostedTool(name: string, args: Record<string, unknown>, endpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT): Promise<unknown> {
+  const target = validatedMcpEndpoint(endpoint);
   const token = readAccessToken();
   if (!token) {
     throw new ResumeCliError(JSON.stringify({
@@ -98,7 +99,7 @@ async function callHostedTool(name: string, args: Record<string, unknown>, endpo
       recovery: "Run `openburnbar mcp login <token>` or connect from the OpenBurnBar app."
     }), 3);
   }
-  const response = await fetch(endpoint, {
+  const response = await fetch(target, {
     method: "POST",
     headers: {
       "accept": "application/json, text/event-stream",
