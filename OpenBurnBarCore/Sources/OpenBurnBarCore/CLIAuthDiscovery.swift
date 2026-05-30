@@ -212,6 +212,21 @@ public enum CLIAuthDiscovery {
                 configDirectory: exists ? configDir : normalizedNonEmpty(primaryConfigDir),
                 accountDescription: exists ? "Antigravity local profile" : nil
             )
+        case .cursorAgent:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.cursor-agent"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Cursor Agent local profile" : nil
+            )
         case .grok:
             let configDir = normalizedConfigDirectory(
                 configDirectoryOverride,

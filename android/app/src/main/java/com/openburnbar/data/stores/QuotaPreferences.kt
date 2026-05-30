@@ -120,6 +120,14 @@ class QuotaPreferences private constructor(private val context: Context) {
         }
         .stateIn(scope, SharingStarted.Eagerly, "remainingPercent")
 
+    // Persisted per-device Burn view style, stored as a raw key (e.g. "cards",
+    // "grid") so this data layer stays decoupled from the UI `BurnViewStyle`.
+    val burnViewStyle: StateFlow<String> = context.dataStore.data
+        .map { prefs ->
+            prefs[KEY_BURN_VIEW_STYLE] ?: "cards"
+        }
+        .stateIn(scope, SharingStarted.Eagerly, "cards")
+
     fun setDefaultWindow(kind: QuotaWindowKind) {
         // Only FIVE_HOUR and SEVEN_DAY are user-selectable presets — anything
         // else collapses to FIVE_HOUR (the iOS default).
@@ -167,6 +175,14 @@ class QuotaPreferences private constructor(private val context: Context) {
         scope.launch {
             context.dataStore.edit { prefs ->
                 prefs[KEY_PERCENTAGE_DISPLAY_MODE] = mode
+            }
+        }
+    }
+
+    fun setBurnViewStyle(key: String) {
+        scope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_BURN_VIEW_STYLE] = key
             }
         }
     }
@@ -251,6 +267,7 @@ class QuotaPreferences private constructor(private val context: Context) {
         private val KEY_HIDDEN_BUCKETS_JSON = stringPreferencesKey("quota_hiddenBucketsJSON")
         private val KEY_BUCKET_ORDERS_JSON = stringPreferencesKey("quota_bucketOrdersJSON")
         private val KEY_PERCENTAGE_DISPLAY_MODE = stringPreferencesKey("quota_percentageDisplayMode")
+        private val KEY_BURN_VIEW_STYLE = stringPreferencesKey("quota_burnViewStyle")
 
         val defaultOrder = listOf(
             AgentProvider.CODEX,

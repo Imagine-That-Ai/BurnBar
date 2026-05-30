@@ -48,15 +48,24 @@ const HOSTED_RUNNER_PROVIDERS = new Set<Provider>(["codex"]);
 
 function adapterFor(provider: Provider): ProviderAdapter | undefined {
   switch (provider) {
-    case "openai": return openaiAdapter;
-    case "minimax": return minimaxAdapter;
-    case "zai": return zaiAdapter;
-    case "kimi": return kimiAdapter;
-    case "factory": return factoryAdapter;
-    case "cursor": return cursorAdapter;
-    case "xai": return xaiAdapter;
-    case "mimo": return mimoAdapter;
-    default: return undefined;
+    case "openai":
+      return openaiAdapter;
+    case "minimax":
+      return minimaxAdapter;
+    case "zai":
+      return zaiAdapter;
+    case "kimi":
+      return kimiAdapter;
+    case "factory":
+      return factoryAdapter;
+    case "cursor":
+      return cursorAdapter;
+    case "xai":
+      return xaiAdapter;
+    case "mimo":
+      return mimoAdapter;
+    default:
+      return undefined;
   }
 }
 
@@ -70,11 +79,7 @@ export function providerAccountSecretRefPath(uid: string, accountID: string): st
   return `provider_account_secret_refs/${providerAccountSecretRefID(uid, accountID)}`;
 }
 
-async function retrieveAccountSecret(
-  db: Firestore,
-  uid: string,
-  accountID: string
-): Promise<string> {
+async function retrieveAccountSecret(db: Firestore, uid: string, accountID: string): Promise<string> {
   const ref = db.doc(providerAccountSecretRefPath(uid, accountID));
   const snap = await ref.get();
   if (!snap.exists) {
@@ -101,7 +106,7 @@ async function retrieveAccountSecret(
 export async function refreshUserProviderQuota(
   db: Firestore,
   uid: string,
-  provider: Provider
+  provider: Provider,
 ): Promise<QuotaSnapshotDoc | null> {
   const connRef = db.doc(`users/${uid}/provider_connections/${provider}`);
   const snapRef = db.doc(`users/${uid}/quota_snapshots/${provider}_default`);
@@ -168,7 +173,7 @@ export async function refreshUserProviderQuota(
 export async function refreshUserProviderAccountQuota(
   db: Firestore,
   uid: string,
-  accountID: string
+  accountID: string,
 ): Promise<QuotaSnapshotDoc | null> {
   const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
   const accountSnap = await accountRef.get();
@@ -187,11 +192,7 @@ export async function refreshUserProviderAccountQuota(
     throw new Error(`Provider account ${accountID} is not active (${account.status})`);
   }
   const accountProvider = parseProvider(account.providerID);
-  if (
-    account.storageScope === "server_private" &&
-    accountProvider &&
-    HOSTED_RUNNER_PROVIDERS.has(accountProvider)
-  ) {
+  if (account.storageScope === "server_private" && accountProvider && HOSTED_RUNNER_PROVIDERS.has(accountProvider)) {
     return refreshHostedQuotaAccount(db, uid, account);
   }
   if (account.storageScope !== "cloud_refreshable") {
@@ -256,7 +257,7 @@ export async function refreshUserProviderAccountQuota(
 async function refreshHostedQuotaAccount(
   db: Firestore,
   uid: string,
-  account: ProviderAccountDoc
+  account: ProviderAccountDoc,
 ): Promise<QuotaSnapshotDoc | null> {
   await requireHostedQuotaEntitlement(db, uid);
   await consumeHostedRefreshBudget(db, uid, account.id);
@@ -289,10 +290,7 @@ async function refreshHostedQuotaAccount(
   }
 }
 
-async function requireHostedQuotaEntitlement(
-  db: Firestore,
-  uid: string
-): Promise<void> {
+async function requireHostedQuotaEntitlement(db: Firestore, uid: string): Promise<void> {
   const [hostedSnap, proSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
     db.doc(`users/${uid}/entitlements/burnbar_pro`).get(),
@@ -305,10 +303,12 @@ async function requireHostedQuotaEntitlement(
 function isActiveHostedQuotaEntitlement(entitlement: Record<string, unknown> | undefined): boolean {
   if (!entitlement) return false;
   const expiresAtMs = typeof entitlement.expiresAt === "string" ? Date.parse(entitlement.expiresAt) : 0;
-  return entitlement.active === true
-    && entitlement.productID === getConfig().hostedQuotaProductID
-    && Number.isFinite(expiresAtMs)
-    && expiresAtMs > Date.now();
+  return (
+    entitlement.active === true &&
+    entitlement.productID === getConfig().hostedQuotaProductID &&
+    Number.isFinite(expiresAtMs) &&
+    expiresAtMs > Date.now()
+  );
 }
 
 function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
@@ -331,40 +331,25 @@ function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): b
   return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
 }
 
-async function consumeHostedRefreshBudget(
-  db: Firestore,
-  uid: string,
-  accountID: string
-): Promise<void> {
+async function consumeHostedRefreshBudget(db: Firestore, uid: string, accountID: string): Promise<void> {
   const cfg = getConfig();
   const now = new Date();
   const dayKey = now.toISOString().slice(0, 10).replace(/-/g, "");
   const monthKey = now.toISOString().slice(0, 7).replace("-", "");
   const dailyLimit = Math.max(1, cfg.hostedQuotaDailyRefreshLimit);
   const monthlyLimit = Math.max(dailyLimit, cfg.hostedQuotaMonthlyRefreshLimit);
-  const dailyRef = db.doc(
-    `users/${uid}/_rate_limits/hosted_quota_${safeDocSegment(accountID)}_${dayKey}`
-  );
-  const monthlyRef = db.doc(
-    `users/${uid}/_rate_limits/hosted_quota_${safeDocSegment(accountID)}_${monthKey}`
-  );
+  const dailyRef = db.doc(`users/${uid}/_rate_limits/hosted_quota_${safeDocSegment(accountID)}_${dayKey}`);
+  const monthlyRef = db.doc(`users/${uid}/_rate_limits/hosted_quota_${safeDocSegment(accountID)}_${monthKey}`);
 
   await db.runTransaction(async (tx) => {
-    const [dailySnap, monthlySnap] = await Promise.all([
-      tx.get(dailyRef),
-      tx.get(monthlyRef),
-    ]);
+    const [dailySnap, monthlySnap] = await Promise.all([tx.get(dailyRef), tx.get(monthlyRef)]);
     const dailyCount = numberField(dailySnap.get("attempts"));
     const monthlyCount = numberField(monthlySnap.get("attempts"));
     if (dailyCount >= dailyLimit) {
-      throw new Error(
-        `resource-exhausted: hosted quota daily refresh limit reached (${dailyLimit}/day).`
-      );
+      throw new Error(`resource-exhausted: hosted quota daily refresh limit reached (${dailyLimit}/day).`);
     }
     if (monthlyCount >= monthlyLimit) {
-      throw new Error(
-        `resource-exhausted: hosted quota monthly refresh limit reached (${monthlyLimit}/month).`
-      );
+      throw new Error(`resource-exhausted: hosted quota monthly refresh limit reached (${monthlyLimit}/month).`);
     }
     const updatedAt = Timestamp.fromDate(now);
     tx.set(
@@ -376,7 +361,7 @@ async function consumeHostedRefreshBudget(
         updatedAt,
         expireAt: Timestamp.fromMillis(now.getTime() + 8 * 24 * 60 * 60 * 1000),
       },
-      { merge: true }
+      { merge: true },
     );
     tx.set(
       monthlyRef,
@@ -387,7 +372,7 @@ async function consumeHostedRefreshBudget(
         updatedAt,
         expireAt: Timestamp.fromMillis(now.getTime() + 45 * 24 * 60 * 60 * 1000),
       },
-      { merge: true }
+      { merge: true },
     );
   });
 }
@@ -395,7 +380,7 @@ async function consumeHostedRefreshBudget(
 async function fetchHostedRunnerSnapshot(
   account: ProviderAccountDoc,
   credential: string,
-  now: string
+  now: string,
 ): Promise<QuotaSnapshotDoc> {
   const { hostedQuotaRunnerURL } = getConfig();
   const runnerToken = hostedQuotaRunnerToken();
@@ -410,9 +395,7 @@ async function fetchHostedRunnerSnapshot(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(runnerToken
-        ? { authorization: `Bearer ${runnerToken}` }
-        : {}),
+      ...(runnerToken ? { authorization: `Bearer ${runnerToken}` } : {}),
     },
     body: JSON.stringify({
       provider: account.providerID,
@@ -424,17 +407,14 @@ async function fetchHostedRunnerSnapshot(
     throw new Error(`hosted runner returned HTTP ${response.status}`);
   }
   const payload = jsonObject(await response.json());
-  const raw =
-    payload.snapshot && typeof payload.snapshot === "object"
-      ? jsonObject(payload.snapshot)
-      : payload;
+  const raw = payload.snapshot && typeof payload.snapshot === "object" ? jsonObject(payload.snapshot) : payload;
   return normalizeRunnerSnapshot(raw, account, now);
 }
 
 function normalizeRunnerSnapshot(
   raw: Record<string, unknown>,
   account: ProviderAccountDoc,
-  now: string
+  now: string,
 ): QuotaSnapshotDoc {
   const provider = parseProvider(account.providerID);
   if (!provider) {
@@ -446,16 +426,12 @@ function normalizeRunnerSnapshot(
   }
   const snapshot: QuotaSnapshotDoc = {
     sourceKind: "provider",
-    sourceId: safeDocSegment(
-      trimmedString(raw.sourceId, "hosted-runner", 96) ?? "hosted-runner"
-    ),
+    sourceId: safeDocSegment(trimmedString(raw.sourceId, "hosted-runner", 96) ?? "hosted-runner"),
     provider,
     providerID: account.providerID,
     accountID: account.id,
     accountLabel: account.label,
-    accountStorageScope: isProviderAccountStorageScope(account.storageScope)
-      ? account.storageScope
-      : undefined,
+    accountStorageScope: isProviderAccountStorageScope(account.storageScope) ? account.storageScope : undefined,
     fetchedAt: parseISOOrNow(raw.fetchedAt, now),
     source: trimmedString(raw.source, "Hosted quota runner", 160) ?? "Hosted quota runner",
     confidence: parseConfidence(raw.confidence),
@@ -477,10 +453,7 @@ function sanitizeBuckets(raw: unknown): QuotaBucket[] {
     if (!name) return [];
     const used = finiteNumber(candidate.used, 0);
     const limit = finiteNumber(candidate.limit, -1);
-    const remaining = finiteNumber(
-      candidate.remaining,
-      limit >= 0 ? Math.max(0, limit - used) : -1
-    );
+    const remaining = finiteNumber(candidate.remaining, limit >= 0 ? Math.max(0, limit - used) : -1);
     const bucket = parseQuotaBucket({
       name,
       used,
@@ -488,18 +461,13 @@ function sanitizeBuckets(raw: unknown): QuotaBucket[] {
       remaining,
       window: trimmedString(candidate.window, undefined, 64),
       resetsAt: sanitizeResetsAt(candidate.resetsAt),
-      meta:
-        recordOrUndefined(candidate.meta)
-          ? sanitizeMeta(recordOrUndefined(candidate.meta) ?? {})
-          : undefined,
+      meta: recordOrUndefined(candidate.meta) ? sanitizeMeta(recordOrUndefined(candidate.meta) ?? {}) : undefined,
     });
     return bucket ? [bucket] : [];
   });
 }
 
-function sanitizeResetsAt(
-  value: unknown
-): QuotaBucket["resetsAt"] | undefined {
+function sanitizeResetsAt(value: unknown): QuotaBucket["resetsAt"] | undefined {
   if (!value) return undefined;
   if (typeof value === "string") {
     return trimmedString(value, undefined, 64);
@@ -518,11 +486,7 @@ function sanitizeMeta(meta: Record<string, unknown>): Record<string, unknown> {
   for (const [key, value] of Object.entries(meta).slice(0, 16)) {
     if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(key)) continue;
     if (isSecretLikeKey(key)) continue;
-    if (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       out[key] = value;
     }
   }
@@ -530,9 +494,7 @@ function sanitizeMeta(meta: Record<string, unknown>): Record<string, unknown> {
 }
 
 function parseConfidence(raw: unknown): QuotaSnapshotDoc["confidence"] {
-  return raw === "high" || raw === "medium" || raw === "low" || raw === "stale"
-    ? raw
-    : "high";
+  return raw === "high" || raw === "medium" || raw === "low" || raw === "stale" ? raw : "high";
 }
 
 function parseURLString(raw: unknown): string | undefined {
@@ -551,11 +513,7 @@ function parseISOOrNow(raw: unknown, now: string): string {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : now;
 }
 
-function trimmedString(
-  raw: unknown,
-  fallback: string | undefined,
-  max = 120
-): string | undefined {
+function trimmedString(raw: unknown, fallback: string | undefined, max = 120): string | undefined {
   if (typeof raw !== "string") return fallback;
   const value = raw.trim();
   if (!value) return fallback;
@@ -572,11 +530,13 @@ function numberField(raw: unknown): number {
 }
 
 function safeDocSegment(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "hosted";
+  return (
+    raw
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "hosted"
+  );
 }
 
 function isSecretLikeKey(key: string): boolean {

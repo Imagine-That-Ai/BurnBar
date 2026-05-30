@@ -8,6 +8,10 @@ public struct RemoteUnlockReadinessSnapshot: Codable, Sendable, Equatable {
     public var systemScreenSharingAvailable: Bool
     public var loopbackOnlyFirewallActive: Bool
     public var generatedCredentialInSystemKeychain: Bool
+    public var remoteDesktopPermissionGranted: Bool
+    public var virtualHIDDriverInstalled: Bool
+    public var virtualHIDDriverActive: Bool
+    public var virtualHIDDriverPolicyRejected: Bool
     public var backendCertificationFresh: Bool
     public var currentOSBuild: String
     public var certifiedOSBuild: String?
@@ -27,6 +31,10 @@ public struct RemoteUnlockReadinessSnapshot: Codable, Sendable, Equatable {
         systemScreenSharingAvailable: Bool,
         loopbackOnlyFirewallActive: Bool,
         generatedCredentialInSystemKeychain: Bool,
+        remoteDesktopPermissionGranted: Bool = false,
+        virtualHIDDriverInstalled: Bool = false,
+        virtualHIDDriverActive: Bool = false,
+        virtualHIDDriverPolicyRejected: Bool = false,
         backendCertificationFresh: Bool,
         currentOSBuild: String,
         certifiedOSBuild: String? = nil,
@@ -45,6 +53,10 @@ public struct RemoteUnlockReadinessSnapshot: Codable, Sendable, Equatable {
         self.systemScreenSharingAvailable = systemScreenSharingAvailable
         self.loopbackOnlyFirewallActive = loopbackOnlyFirewallActive
         self.generatedCredentialInSystemKeychain = generatedCredentialInSystemKeychain
+        self.remoteDesktopPermissionGranted = remoteDesktopPermissionGranted
+        self.virtualHIDDriverInstalled = virtualHIDDriverInstalled
+        self.virtualHIDDriverActive = virtualHIDDriverActive
+        self.virtualHIDDriverPolicyRejected = virtualHIDDriverPolicyRejected
         self.backendCertificationFresh = backendCertificationFresh
         self.currentOSBuild = currentOSBuild
         self.certifiedOSBuild = certifiedOSBuild
@@ -92,12 +104,13 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
     public func capabilities(for snapshot: RemoteUnlockReadinessSnapshot) -> HermesRealtimeRelayRemoteUnlockCapabilities {
         let availabilityBlockers = availabilityBlockers(for: snapshot)
         let certificationBlockers = certificationBlockers(for: snapshot, availabilityBlockers: availabilityBlockers)
-        let runtimeReady = availabilityBlockers.isEmpty
-        let activeBackend: HermesRealtimeRelayRemoteUnlockBackend = runtimeReady
-            ? .appleScreenSharingLoopback
+        let setupReady = availabilityBlockers.isEmpty
+        let certifiedReady = setupReady && certificationBlockers.isEmpty
+        let activeBackend: HermesRealtimeRelayRemoteUnlockBackend = certifiedReady
+            ? .openBurnBarVirtualHID
             : .unavailable
         return HermesRealtimeRelayRemoteUnlockCapabilities(
-            enabled: runtimeReady,
+            enabled: certifiedReady,
             certificationStatus: certificationStatus(
                 for: snapshot,
                 certificationBlockers: certificationBlockers
@@ -105,14 +118,14 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
             certifiedAt: snapshot.certifiedAt,
             certifiedOSBuild: snapshot.certifiedOSBuild,
             activeBackend: activeBackend,
-            supportedBackends: runtimeReady ? [.appleScreenSharingLoopback] : [],
-            supportedLockStates: runtimeReady ? Array(supportedLockStates).sorted { $0.rawValue < $1.rawValue } : [],
-            blockers: availabilityBlockers,
-            allowsCredentialPaste: runtimeReady,
-            allowsSavedCredentialUnlock: runtimeReady,
-            credentialRecipientKeyId: runtimeReady ? snapshot.credentialRecipientKeyId : nil,
-            credentialRecipientPublicKeyBase64: runtimeReady ? snapshot.credentialRecipientPublicKeyBase64 : nil,
-            credentialEnvelopeAlgorithm: runtimeReady ? Self.credentialEnvelopeAlgorithm : nil,
+            supportedBackends: setupReady ? [.openBurnBarVirtualHID] : [],
+            supportedLockStates: setupReady ? Array(supportedLockStates).sorted { $0.rawValue < $1.rawValue } : [],
+            blockers: certifiedReady ? [] : certificationBlockers,
+            allowsCredentialPaste: certifiedReady,
+            allowsSavedCredentialUnlock: certifiedReady,
+            credentialRecipientKeyId: setupReady ? snapshot.credentialRecipientKeyId : nil,
+            credentialRecipientPublicKeyBase64: setupReady ? snapshot.credentialRecipientPublicKeyBase64 : nil,
+            credentialEnvelopeAlgorithm: setupReady ? Self.credentialEnvelopeAlgorithm : nil,
             fileVaultSSHSupported: snapshot.fileVaultSSHSupported
         )
     }
@@ -222,6 +235,10 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
         if !snapshot.directDownloadBuild { blockers.append("direct_download_build_required") }
         if !snapshot.daemonInstalled { blockers.append("remote_access_daemon_missing") }
         if !snapshot.systemScreenSharingAvailable { blockers.append("apple_screen_sharing_unavailable") }
+        if !snapshot.remoteDesktopPermissionGranted { blockers.append("remote_desktop_permission_missing") }
+        if snapshot.virtualHIDDriverPolicyRejected { blockers.append("virtual_hid_driver_rejected") }
+        if !snapshot.virtualHIDDriverInstalled { blockers.append("virtual_hid_driver_missing") }
+        if !snapshot.virtualHIDDriverActive { blockers.append("virtual_hid_driver_inactive") }
         if snapshot.credentialRecipientKeyId?.trimmedForRemoteUnlockPolicy.isEmpty != false ||
             snapshot.credentialRecipientPublicKeyBase64?.trimmedForRemoteUnlockPolicy.isEmpty != false {
             blockers.append("remote_unlock_recipient_key_missing")
@@ -235,7 +252,6 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
     ) -> [String] {
         var blockers = availabilityBlockers
         if !snapshot.loopbackOnlyFirewallActive { blockers.append("loopback_firewall_guard_missing") }
-        if !snapshot.generatedCredentialInSystemKeychain { blockers.append("generated_vnc_credential_missing") }
         if snapshot.certifiedOSBuild != nil, snapshot.certifiedOSBuild != snapshot.currentOSBuild {
             blockers.append("os_build_changed_recertification_required")
         }

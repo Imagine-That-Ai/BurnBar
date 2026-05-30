@@ -5,15 +5,36 @@ import Foundation
 import CryptoKit
 import OpenBurnBarCore
 
+private final class SessionLogSyncProcessGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var running = false
+
+    func tryEnter() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !running else { return false }
+        running = true
+        return true
+    }
+
+    func leave() {
+        lock.lock()
+        running = false
+        lock.unlock()
+    }
+}
+
 /// Sync domain for uploading session-log manifests/search metadata to Firestore.
 ///
 /// Firestore layout:
-///   `users/{uid}/session_logs/{deviceId}_{escapedId}` (manifest)
+///   `users/{uid}/session_logs/{safeDeviceId}_{provider}_{recordHash}` (manifest)
 ///   `users/{uid}/session_logs/{docId}/chunks/{index}` (search metadata only)
 ///
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
 final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
+    private static let processGate = SessionLogSyncProcessGate()
+
     private let context: CloudSyncContext
     private let encryptedCloudClient: SessionLogEncryptedCloudClient
     private let vaultKeyStore: SessionLogVaultKeyProviding
@@ -61,15 +82,24 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
               !gate.syncSuppressed,
               !isSyncing,
               let uid = gate.account.uid else { return }
+        guard Self.processGate.tryEnter() else { return }
 
         let deviceId = gate.account.deviceId
 
         isSyncing = true
         lastSyncError = nil
 
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            Self.processGate.leave()
+        }
 
         do {
+            let backupUsage = try context.dataStore.backupUsageSnapshot(limits: context.backupPlanLimits)
+            if let blockingReason = backupUsage.blockingReason {
+                throw CloudBackupPreflightError.planLimitExceeded(blockingReason)
+            }
+
             progress?.setPhase(.facetBackfill, operation: "Checking cockpit facet schema…")
             await runFacetBackfillIfNeeded()
             progress?.setPhase(.sessionLogs, operation: "Loading pending conversations…")
@@ -98,10 +128,12 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     )
 
                     let markdown = SessionLogMarkdownFormatter.markdown(for: record)
-                    let safeId = record.id
-                        .replacingOccurrences(of: ":", with: "_")
-                        .replacingOccurrences(of: "/", with: "_")
-                    let docId = "\(deviceId)_\(safeId)"
+                    // The cloud search-index commit hard-rejects a `projectName` longer than the
+                    // server's 512-char facet budget, and that single rejection aborts the whole
+                    // backup loop — stranding every remaining conversation. Clamp it here so one
+                    // pathological path/title can never block the queue.
+                    let projectName = Self.clampedCloudFacet(record.projectName)
+                    let docId = Self.cloudDocumentID(deviceId: deviceId, record: record)
                     let manifestRef = logsRef.document(docId)
                     let bodyHash = Self.sha256Hex(markdown)
                     let facetKey = Self.rootSessionKey(provider: record.provider, sessionId: record.sessionId)
@@ -124,6 +156,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                                 operation: "Refreshing cockpit facets"
                             )
                             var facetUpdate = facetFields
+                            facetUpdate.merge(Self.legacyPlaintextFieldDeletes()) { _, new in new }
                             facetUpdate["updatedAt"] = FieldValue.serverTimestamp()
                             let facetBatch = context.firestoreGateway.batch()
                             facetBatch.setData(facetUpdate, forDocument: manifestRef, merge: true)
@@ -171,7 +204,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         operation: "Uploading encrypted blob (\(CloudBackupProgressSnapshot.formatBytes(Int64(sealedBodyData.count))))"
                     )
                     try await encryptedCloudClient.uploadEncryptedBody(data: sealedBodyData, ticket: uploadTicket)
-                    let chunks = Self.chunkUTF8String(markdown, maxBytes: 64_000)
+                    let chunks = Self.chunkUTF8String(markdown, maxBytes: Self.cloudSearchChunkMaxBytes)
                     let sealedTitle = try CloudVaultCrypto.sealText(record.summaryTitle ?? record.inferredTaskTitle, keyData: vaultKey)
                     let previewText = String(markdown.prefix(500))
                     let sealedPreview = try CloudVaultCrypto.sealText(previewText, keyData: vaultKey)
@@ -182,7 +215,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         "provider": record.provider.rawValue,
                         "sessionId": record.sessionId,
                         "sourceType": record.sourceType.rawValue,
-                        "projectName": record.projectName,
+                        "projectName": projectName,
                         "inferredTaskTitle": "Encrypted session",
                         "bodyStorage": "firebase_storage_encrypted",
                         "storagePath": uploadTicket.storagePath,
@@ -211,7 +244,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     if let end = record.endTime { manifest["endTime"] = Timestamp(date: end) }
 
                     var writes: [(data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)] = [
-                        (manifest, manifestRef, true)
+                        (manifest, manifestRef, false)
                     ]
 
                     let chunksRef = manifestRef.collection("chunks")
@@ -222,12 +255,13 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             .trimmingCharacters(in: .whitespacesAndNewlines)
                         let chunkHash = Self.sha256Hex(chunk)
                         let sealedSnippet = try CloudVaultCrypto.sealText(String(snippet.prefix(500)), keyData: vaultKey)
-                        let tokenHashes = try CloudVaultCrypto.tokenHashes(
-                            for: chunk + " " + record.inferredTaskTitle + " " + record.projectName + " " + model,
-                            keyData: vaultKey
+                        let tokenHashes = try CloudVaultCrypto.searchIndexTokenHashes(
+                            for: chunk + " " + record.inferredTaskTitle + " " + projectName + " " + model,
+                            keyData: vaultKey,
+                            limit: Self.cloudSearchChunkTokenHashLimit
                         )
                         let semanticHashes = try CloudVaultCrypto.semanticHashes(
-                            for: chunk + " " + record.inferredTaskTitle + " " + record.projectName + " " + model,
+                            for: chunk + " " + record.inferredTaskTitle + " " + projectName + " " + model,
                             keyData: vaultKey
                         )
                         writes.append(([
@@ -240,7 +274,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             "deviceId": deviceId,
                             "provider": record.provider.rawValue,
                             "model": model,
-                            "projectName": record.projectName,
+                            "projectName": projectName,
                             "sealedSnippet": try Self.dictionary(sealedSnippet),
                             "tokenHashes": tokenHashes,
                             "semanticHashes": semanticHashes,
@@ -250,7 +284,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             "bodyHash": bodyHash,
                             "schemaVersion": Self.chunkMetadataVersion,
                             "updatedAt": FieldValue.serverTimestamp()
-                        ], chunksRef.document(String(idx)), true))
+                        ], chunksRef.document(String(idx)), false))
                         cloudSearchChunks.append([
                             "chunkID": "\(docId)_\(idx)",
                             "documentID": docId,
@@ -267,8 +301,30 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             "semanticHashes": semanticHashes,
                             "semanticHashVersion": CloudVaultCrypto.semanticHashVersion,
                             "provider": record.provider.rawValue,
-                            "projectName": record.projectName
+                            "projectName": projectName
                         ])
+                    }
+                    if let previousChunkCount = existingManifest?["chunkCount"] as? Int,
+                       previousChunkCount > chunks.count {
+                        for idx in chunks.count..<min(previousChunkCount, chunks.count + 1_000) {
+                            writes.append(([
+                                "index": idx,
+                                "uid": uid,
+                                "docId": docId,
+                                "conversationId": record.id,
+                                "sessionId": record.sessionId,
+                                "deviceId": deviceId,
+                                "provider": record.provider.rawValue,
+                                "model": model,
+                                "projectName": projectName,
+                                "bodyStorage": "firebase_storage_encrypted",
+                                "storagePath": uploadTicket.storagePath,
+                                "bodyHash": bodyHash,
+                                "schemaVersion": Self.chunkMetadataVersion,
+                                "superseded": true,
+                                "updatedAt": FieldValue.serverTimestamp()
+                            ], chunksRef.document(String(idx)), false))
+                        }
                     }
 
                     progress?.setCurrentRecord(
@@ -284,7 +340,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             "sourceID": record.id,
                             "sourceVersionID": bodyHash,
                             "provider": record.provider.rawValue,
-                            "projectName": record.projectName,
+                            "projectName": projectName,
                             "bodyHash": bodyHash,
                             "storagePath": uploadTicket.storagePath,
                             "sealedTitle": try Self.dictionary(sealedTitle),
@@ -368,6 +424,26 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     }
 
     /// Splits a UTF-8 string into chunks each fitting within `maxBytes` bytes.
+    /// Maximum length (in UTF-16 code units, mirroring the backend's JS `String.length` check) for a
+    /// descriptive cloud facet such as `projectName`. The `commitEncryptedSearchIndexBatch` callable
+    /// hard-rejects anything longer, so the client must not exceed it.
+    static let cloudFacetMaxLength = 512
+
+    /// Trims and clamps a descriptive facet to `cloudFacetMaxLength`, truncating on a `Character`
+    /// boundary so a multibyte grapheme is never split. Used so a single conversation with a
+    /// pathologically long `projectName`/path cannot trip the server's 512-char validation and abort
+    /// the entire backup loop.
+    static func clampedCloudFacet(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.utf16.count > cloudFacetMaxLength else { return trimmed }
+        var clamped = ""
+        for character in trimmed {
+            if clamped.utf16.count + character.utf16.count > cloudFacetMaxLength { break }
+            clamped.append(character)
+        }
+        return clamped
+    }
+
     static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
         let data = Data(string.utf8)
         guard data.count > maxBytes else { return [string] }
@@ -389,13 +465,30 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     }
 
     private static let chunkMetadataVersion = 1
-    private static let cloudSearchIndexVersion = 2
+    private static let cloudSearchChunkMaxBytes = 16_000
+    private static let cloudSearchChunkTokenHashLimit = 1_024
+    private static let cloudSearchIndexVersion = 4
 
     /// Generation of the plaintext cockpit facet block stored on each manifest. Bumping this
     /// triggers a one-time backfill (`markAllSessionLogsUnsynced`) so existing manifests get the
     /// new facets. Facets are metadata only — token totals, cost, timing, working directory, and
     /// generic tool tags — never conversation content (bodies stay encrypted in Cloud Storage).
     static let facetSchemaVersion = 1
+
+    private static let legacyPlaintextFields = [
+        "body",
+        "payloadCiphertext",
+        "ciphertext",
+        "data",
+        "text",
+        "title",
+        "snippet",
+        "terms"
+    ]
+
+    private static func legacyPlaintextFieldDeletes() -> [String: Any] {
+        Dictionary(uniqueKeysWithValues: legacyPlaintextFields.map { ($0, FieldValue.delete()) })
+    }
 
     private static func progressLabel(for record: ConversationRecord) -> String {
         let title = record.summaryTitle ?? record.inferredTaskTitle
@@ -666,6 +759,34 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
     }
 }
 
+extension SessionLogSyncService {
+    static func cloudDocumentID(deviceId: String, record: ConversationRecord) -> String {
+        let safeDevice = cloudDocumentComponent(deviceId, fallback: "device", maxLength: 48)
+        let safeProvider = cloudDocumentComponent(record.provider.rawValue, fallback: "provider", maxLength: 32)
+        let digest = sha256Hex("\(record.provider.rawValue)\n\(record.sessionId)\n\(record.id)")
+        return "\(safeDevice)_\(safeProvider)_\(digest.prefix(32))"
+    }
+
+    private static func cloudDocumentComponent(_ raw: String, fallback: String, maxLength: Int) -> String {
+        var result = ""
+        result.reserveCapacity(min(raw.count, maxLength))
+        for scalar in raw.unicodeScalars {
+            switch scalar.value {
+            case 48...57, 65...90, 97...122, 45, 95:
+                result.unicodeScalars.append(scalar)
+            default:
+                result.append("_")
+            }
+        }
+        while result.contains("__") {
+            result = result.replacingOccurrences(of: "__", with: "_")
+        }
+        let trimmed = result.trimmingCharacters(in: CharacterSet(charactersIn: "_-"))
+        let safe = trimmed.isEmpty ? fallback : trimmed
+        return String(safe.prefix(maxLength))
+    }
+}
+
 private extension SessionLogSyncService {
 
     static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
@@ -883,7 +1004,7 @@ extension CloudSyncService {
               accountReady.1,
               let uid = Auth.auth().currentUser?.uid else { return [] }
         guard let vaultKey = try await cloudVaultKey(uid: uid) else { return [] }
-        let tokenHashes = try CloudVaultCrypto.tokenHashes(for: query, keyData: vaultKey, limit: 10)
+        let tokenHashes = try CloudVaultCrypto.searchQueryTokenHashes(for: query, keyData: vaultKey, limit: 10)
         let semanticHashes = try CloudVaultCrypto.semanticHashes(for: query, keyData: vaultKey, limit: 12)
         guard tokenHashes.isEmpty == false || semanticHashes.isEmpty == false else { return [] }
 

@@ -14,7 +14,9 @@ export class OpenBurnBarRunTreeItem extends vscode.TreeItem {
   }
 }
 
-export class OpenBurnBarRunListTreeDataProvider implements vscode.TreeDataProvider<OpenBurnBarRunTreeItem>, vscode.Disposable {
+export class OpenBurnBarRunListTreeDataProvider
+  implements vscode.TreeDataProvider<OpenBurnBarRunTreeItem>, vscode.Disposable
+{
   private readonly eventEmitter = new vscode.EventEmitter<OpenBurnBarRunTreeItem | undefined | null | void>();
   private readonly stateSubscription: vscode.Disposable;
 
@@ -49,23 +51,23 @@ function describeRun(run: BurnBarRunProjection): string {
 
 function iconForPhase(phase: BurnBarRunProjection['phase']): string {
   switch (phase) {
-  case 'completed':
-    return 'pass';
-  case 'failed':
-    return 'warning';
-  case 'waiting_on_companion':
-    return 'clock';
-  case 'planning':
-  case 'model_streaming':
-  case 'executing_tool':
-    return 'pulse';
-  case 'cancelled':
-    return 'circle-slash';
-  case 'awaiting_approval':
-    return 'question';
-  case 'idle':
-    return 'circle-large-outline';
-  default:
-    return 'circle';
+    case 'completed':
+      return 'pass';
+    case 'failed':
+      return 'warning';
+    case 'waiting_on_companion':
+      return 'clock';
+    case 'planning':
+    case 'model_streaming':
+    case 'executing_tool':
+      return 'pulse';
+    case 'cancelled':
+      return 'circle-slash';
+    case 'awaiting_approval':
+      return 'question';
+    case 'idle':
+      return 'circle-large-outline';
+    default:
+      return 'circle';
   }
 }

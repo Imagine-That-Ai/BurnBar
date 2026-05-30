@@ -27,19 +27,9 @@ import { logError, logInfo } from "../logging.js";
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 
-import {
-  APP_STORE_SECRETS,
-  hostedQuotaProductID,
-  loadAppStoreRuntimeConfig,
-} from "./config.js";
-import {
-  EntitlementReconcileError,
-  reconcileEntitlement,
-} from "./reconciler.js";
-import {
-  getAppleJWSVerifier,
-  JWSVerificationFailure,
-} from "./verifier.js";
+import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
+import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
+import { getAppleJWSVerifier, JWSVerificationFailure } from "./verifier.js";
 
 const REGION = "us-central1";
 
@@ -74,16 +64,11 @@ export const appStoreServerNotificationsV2 = onRequest(
     // reverse proxies (incl. Firebase's frontend) set it. If it's
     // present and obviously oversized, drop it before we even parse.
     const declaredLength = Number(req.headers["content-length"] ?? 0);
-    if (
-      Number.isFinite(declaredLength) &&
-      declaredLength > MAX_NOTIFICATION_BODY_BYTES
-    ) {
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_NOTIFICATION_BODY_BYTES) {
       res.status(413).json({ error: "payload_too_large" });
       return;
     }
-    const rawSignedPayload = isRecord(req.body)
-      ? req.body.signedPayload
-      : undefined;
+    const rawSignedPayload = isRecord(req.body) ? req.body.signedPayload : undefined;
     if (typeof rawSignedPayload !== "string" || !rawSignedPayload) {
       res.status(400).json({ error: "missing signedPayload" });
       return;
@@ -106,10 +91,7 @@ export const appStoreServerNotificationsV2 = onRequest(
       logError({
         event: "appstore.notifications.verify_failed",
         message: errorMessage(err),
-        kind:
-          err instanceof JWSVerificationFailure
-            ? `jws.${err.status}`
-            : "unknown",
+        kind: err instanceof JWSVerificationFailure ? `jws.${err.status}` : "unknown",
       });
       // Distinguish "you sent us garbage" (4xx) from "we screwed up"
       // (5xx). Apple treats 4xx as terminal — no retry. That's right
@@ -147,18 +129,12 @@ export const appStoreServerNotificationsV2 = onRequest(
       await reconcileEntitlement(db, cfg, {
         signedTransactionJWS,
         signedRenewalInfoJWS:
-          typeof signedRenewalInfoJWS === "string" && signedRenewalInfoJWS
-            ? signedRenewalInfoJWS
-            : undefined,
+          typeof signedRenewalInfoJWS === "string" && signedRenewalInfoJWS ? signedRenewalInfoJWS : undefined,
         notificationUUID: notification.payload.notificationUUID,
         notificationType:
-          typeof notification.payload.notificationType === "string"
-            ? notification.payload.notificationType
-            : undefined,
+          typeof notification.payload.notificationType === "string" ? notification.payload.notificationType : undefined,
         notificationSubtype:
-          typeof notification.payload.subtype === "string"
-            ? notification.payload.subtype
-            : undefined,
+          typeof notification.payload.subtype === "string" ? notification.payload.subtype : undefined,
         // No claimed UID for S2S — we resolve uid via the binding doc.
         claimedUid: undefined,
         source: "apple_s2s",
@@ -181,5 +157,5 @@ export const appStoreServerNotificationsV2 = onRequest(
       }
       res.status(500).json({ error: "internal" });
     }
-  }
+  },
 );

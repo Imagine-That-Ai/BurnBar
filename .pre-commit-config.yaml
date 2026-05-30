@@ -1,0 +1,120 @@
+# OpenBurnBar pre-commit hooks
+# Install: brew install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Docs: https://pre-commit.com
+
+default_language_version:
+  python: python3
+
+repos:
+  # ── General file hygiene ──────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: "\\.(md|txt)$"
+      - id: end-of-file-fixer
+        exclude: "\\.(png|jpg|jpeg|gif|ico|svg|xcassets)$|Package\\.resolved$"
+      - id: check-yaml
+        exclude: "^android/"
+      - id: check-json
+        exclude: "package-lock\\.json$"
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+        exclude: |
+          (?x)(
+            ^functions/src/appstore/config\.ts$|
+            ^scripts/build-macos-website-release\.sh$
+          )
+      - id: no-commit-to-branch
+        args: [--branch, main]
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+
+  # ── Swift (SwiftLint) ─────────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: swiftlint
+        name: SwiftLint
+        language: system
+        entry: swiftlint lint --strict --quiet
+        types: [swift]
+        exclude: |
+          (?x)(
+            ^AgentLensTests/Quarantine/|
+            ^AgentLensTests/Support/|
+            ^AgentLensTests/Fixtures/|
+            ^\.build/|
+            ^\.derived-data|
+            ^\.spm-cache
+          )
+        pass_filenames: false
+
+  # ── TypeScript / JavaScript (ESLint + Prettier) ───────────────────────────
+  - repo: local
+    hooks:
+      - id: eslint-functions
+        name: ESLint (functions)
+        language: node
+        entry: npm --prefix functions run lint
+        pass_filenames: false
+        files: ^functions/src/.*\.(ts|js)$
+        stages: [pre-commit]
+
+      - id: prettier-functions
+        name: Prettier (functions)
+        language: node
+        entry: npx --prefix functions prettier --check
+        types_or: [ts, javascript]
+        files: ^functions/src/
+        stages: [pre-commit]
+
+      - id: eslint-extension
+        name: ESLint (VS Code extension)
+        language: node
+        entry: npm --prefix extensions/openburnbar run lint
+        pass_filenames: false
+        files: ^extensions/openburnbar/src/.*\.(ts|js)$
+        stages: [pre-commit]
+
+      - id: prettier-extension
+        name: Prettier (VS Code extension)
+        language: node
+        entry: npx --prefix extensions/openburnbar prettier --check
+        types_or: [ts, javascript]
+        files: ^extensions/openburnbar/src/
+        stages: [pre-commit]
+
+      - id: prettier-website
+        name: Prettier (website)
+        language: node
+        entry: npx --prefix website prettier --check
+        types_or: [ts, javascript, css]
+        files: ^website/src/
+        stages: [pre-commit]
+
+  # ── Kotlin (ktlint) ──────────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: ktlint
+        name: ktlint (Android)
+        language: system
+        entry: bash -c 'cd android && ./gradlew ktlintCheck --no-daemon --quiet'
+        pass_filenames: false
+        files: ^android/.*\.kt$
+        stages: [pre-commit]
+
+  # ── Shell scripts ────────────────────────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+        files: \.(sh|bash)$
+
+  # ── Secret detection ────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks

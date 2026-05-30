@@ -1,0 +1,30 @@
+{
+  "threshold": 10,
+  "minTokens": 50,
+  "minLines": 5,
+  "skip": [
+    "**/*.json",
+    "**/*.md",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/lib/**",
+    "**/.build/**",
+    "**/.derived-data*/**",
+    "**/.spm-cache*/**",
+    "build/**",
+    "Vendor/**",
+    "functions/scripts/**",
+    "scripts/**",
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.pbxproj",
+    "**/*.xcscheme",
+    "**/Package.resolved",
+    "**/*.storyboard",
+    "**/*.xib"
+  ],
+  "ignore": ["**/__mocks__/**", "**/Fixtures/**", "**/Quarantine/**"],
+  "reporters": ["console"],
+  "formatsExts": ["swift", "kt", "ts", "tsx", "js", "jsx"],
+  "gitignore": true
+}

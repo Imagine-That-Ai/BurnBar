@@ -1,0 +1,149 @@
+name: Code Quality Checks
+
+# Duplicate code detection, unused dep detection, and version drift checks.
+# Runs on every PR and weekly to catch accumulating technical debt.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  duplicate-code:
+    name: Duplicate Code Detection (jscpd)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Run jscpd duplicate code detection
+        run: |
+          set -euo pipefail
+          # jscpd exits non-zero when the duplication threshold is exceeded.
+          # We capture output for the artifact while still propagating the exit code.
+          if ! npx jscpd@4 \
+            --config .jscpd.json \
+            --reporters console,json \
+            --output ./jscpd-report \
+            . 2>&1 | tee jscpd-output.txt; then
+            echo "::error::Duplicate code threshold exceeded. Review the jscpd-duplication-report artifact."
+            exit 1
+          fi
+          echo "jscpd: duplication within threshold."
+
+      - name: Upload jscpd report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jscpd-duplication-report
+          path: jscpd-report/
+
+  version-drift:
+    name: Version Drift Detection (syncpack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Check for version drift across packages
+        run: |
+          set -euo pipefail
+          echo "==> Checking for dependency version drift across all packages..."
+          npx syncpack@13 list-mismatches --config .syncpackrc.json | tee syncpack-output.txt
+          if grep -qE "^✘" syncpack-output.txt; then
+            echo ""
+            echo "::error::Version drift detected. Run 'npx syncpack fix-mismatches' to resolve."
+            exit 1
+          fi
+          echo "No version drift detected."
+
+  unused-deps-functions:
+    name: Unused Dependencies (functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Run knip (functions)
+        run: |
+          cd functions
+          npx knip --reporter compact 2>&1 | tee knip-output.txt || true
+          if grep -qE "^(Unused files|Unused dependencies|Unused devDependencies)" knip-output.txt; then
+            echo "::warning::Knip found unused files/dependencies in functions. See output above."
+          else
+            echo "knip: functions looks clean."
+          fi
+
+  unused-deps-extension:
+    name: Unused Dependencies (extension)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Run knip (extension)
+        run: |
+          cd extensions/openburnbar
+          npx knip --reporter compact 2>&1 | tee knip-output.txt || true
+          if grep -qE "^(Unused files|Unused dependencies|Unused devDependencies)" knip-output.txt; then
+            echo "::warning::Knip found unused files/dependencies in extension. See output above."
+          else
+            echo "knip: extension looks clean."
+          fi
+
+  build-performance:
+    name: Build Timing Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Time functions build
+        run: |
+          START=$(date +%s%3N)
+          npm ci --prefix functions
+          npm run build --prefix functions
+          END=$(date +%s%3N)
+          DURATION=$(( END - START ))
+          echo "### Build Performance" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Duration |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| functions (npm ci + tsc) | ${DURATION}ms |" >> "$GITHUB_STEP_SUMMARY"

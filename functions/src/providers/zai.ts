@@ -22,20 +22,12 @@
  * `{ code, msg, data }` (monitor/*) envelopes; both are handled here.
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "zai" as const;
 
-const HOSTS = [
-  "https://api.z.ai",
-  "https://open.bigmodel.cn",
-] as const;
+const HOSTS = ["https://api.z.ai", "https://open.bigmodel.cn"] as const;
 
 const VALIDATE_PATH = "/api/paas/v4/models";
 const BALANCE_PATH = "/api/paas/v4/user/balance";
@@ -54,10 +46,7 @@ interface ZaiFetchResult {
   errorCode?: string;
 }
 
-async function zaiFetch(
-  url: string,
-  token: string
-): Promise<ZaiFetchResult> {
+async function zaiFetch(url: string, token: string): Promise<ZaiFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -125,9 +114,7 @@ function inlineErrorMessage(payload: unknown): string | undefined {
 
   // monitor/* shape: { success: false, code, msg }
   if (obj.success === false) {
-    return (
-      stringFromAny(obj.msg ?? obj.message ?? obj.error) ?? "Z.ai request was unsuccessful."
-    );
+    return stringFromAny(obj.msg ?? obj.message ?? obj.error) ?? "Z.ai request was unsuccessful.";
   }
 
   // monitor/* alternate shape: { code: 401, msg: "..." }
@@ -152,10 +139,7 @@ function extractInlineCode(payload: unknown): number | undefined {
   return undefined;
 }
 
-async function tryEachHost(
-  path: string,
-  token: string
-): Promise<ZaiFetchResult> {
+async function tryEachHost(path: string, token: string): Promise<ZaiFetchResult> {
   let lastFailure: ZaiFetchResult | undefined;
   for (const host of HOSTS) {
     const url = `${host}${path}`;
@@ -166,11 +150,13 @@ async function tryEachHost(
     // will fail again. Auth failures are the user's signal to fix their key.
     if (result.errorCode === "auth_failed") return result;
   }
-  return lastFailure ?? {
-    ok: false,
-    error: "Z.ai request failed against all candidate hosts.",
-    errorCode: "fetch_failed",
-  };
+  return (
+    lastFailure ?? {
+      ok: false,
+      error: "Z.ai request failed against all candidate hosts.",
+      errorCode: "fetch_failed",
+    }
+  );
 }
 
 export interface ZaiBalancePayload {
@@ -233,10 +219,7 @@ export const zaiAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
 
     type Confidence = "high" | "medium" | "low" | "stale";
@@ -259,8 +242,7 @@ export const zaiAdapter: ProviderAdapter = {
       if (!balance.ok && !coding.ok) {
         // Both probes failed — surface the most useful error. Auth failures
         // win over generic "endpoint not found" misses.
-        const failure =
-          (coding.errorCode === "auth_failed" ? coding : balance) ?? coding ?? balance;
+        const failure = (coding.errorCode === "auth_failed" ? coding : balance) ?? coding ?? balance;
         return {
           ok: false,
           errorCode: failure.errorCode ?? "fetch_failed",
@@ -292,9 +274,7 @@ export const zaiAdapter: ProviderAdapter = {
   },
 };
 
-function bucketsFromMonitorQuota(
-  payload: unknown
-): QuotaBucket[] {
+function bucketsFromMonitorQuota(payload: unknown): QuotaBucket[] {
   const record = recordOrUndefined(payload);
   if (!record) return [];
 
@@ -313,11 +293,8 @@ function bucketsFromMonitorQuota(
         if (!entry) return undefined;
         const used = numberFromAny(entry.used) ?? 0;
         const limit = numberFromAny(entry.limit) ?? -1;
-        const remaining =
-          numberFromAny(entry.remaining) ??
-          (limit >= 0 ? Math.max(0, limit - used) : -1);
-        const window =
-          stringFromAny(entry.window ?? entry.windowName) ?? `window_${index + 1}`;
+        const remaining = numberFromAny(entry.remaining) ?? (limit >= 0 ? Math.max(0, limit - used) : -1);
+        const window = stringFromAny(entry.window ?? entry.windowName) ?? `window_${index + 1}`;
         return {
           name: window,
           used,
@@ -338,9 +315,7 @@ function bucketsFromMonitorQuota(
   return harvested;
 }
 
-function bucketsFromBalance(
-  payload: unknown
-): QuotaBucket[] {
+function bucketsFromBalance(payload: unknown): QuotaBucket[] {
   const record = recordOrUndefined(payload);
   if (!record) return [];
   const nested = recordOrUndefined(record.data) ?? record;
@@ -418,10 +393,7 @@ function harvestQuotaBuckets(payload: unknown): QuotaBucket[] {
   return buckets;
 }
 
-function pickNumber(
-  source: Record<string, unknown>,
-  keys: readonly string[]
-): number | undefined {
+function pickNumber(source: Record<string, unknown>, keys: readonly string[]): number | undefined {
   for (const key of keys) {
     const value = numberFromAny(source[key]);
     if (value !== undefined) return value;
@@ -429,10 +401,7 @@ function pickNumber(
   return undefined;
 }
 
-function pickString(
-  source: Record<string, unknown>,
-  keys: readonly string[]
-): string | undefined {
+function pickString(source: Record<string, unknown>, keys: readonly string[]): string | undefined {
   for (const key of keys) {
     const value = stringFromAny(source[key]);
     if (value !== undefined) return value;
@@ -441,44 +410,99 @@ function pickString(
 }
 
 const USED_KEYS = [
-  "used", "used_num", "usedNum", "currentUsage", "current_usage",
-  "currentValue", "current_value", "consumed", "consumed_num",
-  "consumedNum", "current", "requestUsed", "requestsUsed",
-  "current_interval_used_count", "currentIntervalUsedCount",
-  "usage", "use_count", "useCount",
+  "used",
+  "used_num",
+  "usedNum",
+  "currentUsage",
+  "current_usage",
+  "currentValue",
+  "current_value",
+  "consumed",
+  "consumed_num",
+  "consumedNum",
+  "current",
+  "requestUsed",
+  "requestsUsed",
+  "current_interval_used_count",
+  "currentIntervalUsedCount",
+  "usage",
+  "use_count",
+  "useCount",
 ] as const;
 
 const LIMIT_KEYS = [
-  "limit", "limit_num", "limitNum", "total", "totalLimit", "total_limit",
-  "max", "maxValue", "max_value", "quota", "quotaLimit", "quota_limit",
-  "usageLimit", "usage_limit", "requestLimit", "requestsLimit",
-  "current_interval_total_count", "currentIntervalTotalCount", "total_num",
-  "totalNum", "max_count", "maxCount",
+  "limit",
+  "limit_num",
+  "limitNum",
+  "total",
+  "totalLimit",
+  "total_limit",
+  "max",
+  "maxValue",
+  "max_value",
+  "quota",
+  "quotaLimit",
+  "quota_limit",
+  "usageLimit",
+  "usage_limit",
+  "requestLimit",
+  "requestsLimit",
+  "current_interval_total_count",
+  "currentIntervalTotalCount",
+  "total_num",
+  "totalNum",
+  "max_count",
+  "maxCount",
 ] as const;
 
 const REMAINING_KEYS = [
-  "remaining", "remain", "remain_num", "remainNum", "remaining_quota",
-  "remainingQuota", "quota_remain", "quotaRemain", "remainingValue",
-  "available", "available_num", "availableNum", "left",
-  "current_interval_remaining_count", "currentIntervalRemainingCount",
-  "current_interval_remains_count", "currentIntervalRemainsCount",
-  "remain_count", "remainCount",
+  "remaining",
+  "remain",
+  "remain_num",
+  "remainNum",
+  "remaining_quota",
+  "remainingQuota",
+  "quota_remain",
+  "quotaRemain",
+  "remainingValue",
+  "available",
+  "available_num",
+  "availableNum",
+  "left",
+  "current_interval_remaining_count",
+  "currentIntervalRemainingCount",
+  "current_interval_remains_count",
+  "currentIntervalRemainsCount",
+  "remain_count",
+  "remainCount",
 ] as const;
 
 const NAME_KEYS = [
-  "label", "title", "name", "model", "model_name", "modelName",
-  "resource", "resource_name", "resourceName", "quota_name", "quotaName",
+  "label",
+  "title",
+  "name",
+  "model",
+  "model_name",
+  "modelName",
+  "resource",
+  "resource_name",
+  "resourceName",
+  "quota_name",
+  "quotaName",
 ] as const;
 
 const WINDOW_KEYS = [
-  "window", "quota_cycle", "quotaCycle", "cycle", "period", "period_name",
-  "periodName", "type",
+  "window",
+  "quota_cycle",
+  "quotaCycle",
+  "cycle",
+  "period",
+  "period_name",
+  "periodName",
+  "type",
 ] as const;
 
-function bucketFromObject(
-  obj: Record<string, unknown>,
-  path: string[]
-): QuotaBucket | undefined {
+function bucketFromObject(obj: Record<string, unknown>, path: string[]): QuotaBucket | undefined {
   const used = pickNumber(obj, USED_KEYS);
   const limit = pickNumber(obj, LIMIT_KEYS);
   const remaining = pickNumber(obj, REMAINING_KEYS);
@@ -497,19 +521,13 @@ function bucketFromObject(
     return undefined;
   }
 
-  const name =
-    pickString(obj, NAME_KEYS) ??
-    pickString(obj, WINDOW_KEYS) ??
-    path[path.length - 1] ??
-    "quota";
+  const name = pickString(obj, NAME_KEYS) ?? pickString(obj, WINDOW_KEYS) ?? path[path.length - 1] ?? "quota";
 
   const window = pickString(obj, WINDOW_KEYS) ?? "account";
 
   const finalUsed = used ?? (limit !== undefined && remaining !== undefined ? Math.max(0, limit - remaining) : 0);
   const finalLimit = limit ?? -1;
-  const finalRemaining =
-    remaining ??
-    (finalLimit >= 0 && finalUsed >= 0 ? Math.max(0, finalLimit - finalUsed) : -1);
+  const finalRemaining = remaining ?? (finalLimit >= 0 && finalUsed >= 0 ? Math.max(0, finalLimit - finalUsed) : -1);
 
   return {
     name,

@@ -55,6 +55,10 @@ jobs:
         if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
         run: ./scripts/e2e/android-iroh-chat.sh
 
+      - name: Android Mercury call instrumented smoke (optional)
+        if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
+        run: ./scripts/e2e/android-mercury-call.sh
+
   commercial-launch-gate:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'

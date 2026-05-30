@@ -151,6 +151,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .cursorAgent:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.session],
+                defaultKind: .session,
+                labelSuggestion: "Cursor Agent",
+                dashboardURL: URL(string: "https://cursor.com/dashboard"),
+                dashboardCTA: "Open Cursor dashboard",
+                oneLineHint: "Self-hosted quota sync from a signed-in Cursor Agent CLI.",
+                instructions: [
+                    GuideStep(1, "Sign in to Cursor Agent on your Mac", detail: "Use the Cursor account you want OpenBurnBar to track."),
+                    GuideStep(2, "Run the Mac bridge where Cursor Agent is signed in", detail: "The bridge reads local Cursor Agent auth and returns sanitized quota buckets."),
+                    GuideStep(3, "Paste your runner URL below", detail: "OpenBurnBar does not collect Cursor Agent auth for hosted refresh until Cursor exposes a stable quota API.")
+                ],
+                credentialPlaceholder: "https://your-runner.example.com",
+                credentialFooterMarkdown: "Self-hosted Cursor Agent sync keeps auth on your runner and estimates quota from the local CLI profile.",
+                supportsHosted: false,
+                supportsSelfHosted: true
+            )
+
         case .openAI:
             return ProviderSetupGuide(
                 provider: provider,

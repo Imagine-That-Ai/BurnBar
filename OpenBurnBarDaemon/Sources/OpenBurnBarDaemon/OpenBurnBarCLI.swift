@@ -422,6 +422,10 @@ public struct BurnBarCLIRunner {
             return try runClaudeHandoff(Array(effectiveArguments.dropFirst()))
         }
 
+        if effectiveArguments.first == "audit-verify" {
+            return try BurnBarCLIAuditVerify.run(arguments: Array(effectiveArguments.dropFirst()))
+        }
+
         return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
     }
 
@@ -576,6 +580,7 @@ public struct BurnBarCLIRunner {
       simulator-replay <runID>
       resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
       remote-unlock-certification <status|record-hardware-proof|reset>
+      audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       claude-meter-experiment [--prompt <text>] [--model <model>] [--json]
       claude-handoff <dispatch|reconcile|list> [args]
@@ -596,6 +601,7 @@ public struct BurnBarCLIRunner {
         "simulator-replay",
         "resume",
         "remote-unlock-certification",
+        "audit-verify",
         "exec",
         "install-shell-shims"
     ]

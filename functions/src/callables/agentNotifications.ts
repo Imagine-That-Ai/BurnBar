@@ -9,10 +9,7 @@ import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { errorCode, isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
-import type {
-  AgentNotificationReplyCommand,
-  AgentReplyNotificationEvent,
-} from "../agentNotifications.js";
+import type { AgentNotificationReplyCommand, AgentReplyNotificationEvent } from "../agentNotifications.js";
 
 const REGION = "us-central1";
 const EVENT_COLLECTION = "agent_notification_events";
@@ -33,9 +30,7 @@ export const submitAgentNotificationReply = onCall(
     const deviceId = optionalBoundedString(data.deviceId, "deviceId", 160);
     const clientReplyId = optionalBoundedString(data.clientReplyId, "clientReplyId", 160);
     const firestore = getFirestore();
-    const eventRef = firestore
-      .collection("users").doc(uid)
-      .collection(EVENT_COLLECTION).doc(eventId);
+    const eventRef = firestore.collection("users").doc(uid).collection(EVENT_COLLECTION).doc(eventId);
     const eventSnap = await eventRef.get();
     if (!eventSnap.exists) {
       throw new HttpsError("not-found", "Notification event not found.");
@@ -61,8 +56,10 @@ export const submitAgentNotificationReply = onCall(
       schemaVersion: 1,
     };
     await firestore
-      .collection("users").doc(uid)
-      .collection(REPLY_COLLECTION).doc(replyId)
+      .collection("users")
+      .doc(uid)
+      .collection(REPLY_COLLECTION)
+      .doc(replyId)
       .set(command, { merge: false })
       .catch(async (err: unknown) => {
         const code = errorCode(err);
@@ -77,8 +74,8 @@ export const submitAgentNotificationReply = onCall(
       source_kind: event.sourceKind,
     });
     return { ok: true, replyId };
-  }
-));
+  }),
+);
 
 function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | undefined {
   if (!isRecord(raw)) return undefined;

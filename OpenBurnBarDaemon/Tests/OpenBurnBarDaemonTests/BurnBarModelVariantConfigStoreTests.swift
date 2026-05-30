@@ -84,6 +84,33 @@ final class BurnBarModelVariantConfigStoreTests: XCTestCase {
         XCTAssertFalse(remaining.contains(where: { $0.variantID == "claude-opus-4-7-high" }))
     }
 
+    func testNormalizeBackfillsDefaultVariantsWhenSeedMarkerAlreadyExists() async throws {
+        let harness = try makeHarness(name: "variant-backfill")
+        let marker = harness.rootURL.appendingPathComponent("model-variants-seed.v1")
+        XCTAssertTrue(FileManager.default.createFile(atPath: marker.path, contents: Data()))
+
+        _ = try await harness.configStore.upsertModelVariant(
+            providerID: "anthropic",
+            variant: BurnBarModelVariant(
+                variantID: "claude-opus-4-7-high",
+                label: "High",
+                baseModelID: "claude-opus-4-7",
+                thinkingLevel: .high
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let opus48VariantIDs = Set(
+            snapshot.providerSettings(id: "anthropic")?
+                .variants(forBaseModelID: "claude-opus-4-8")
+                .map(\.variantID) ?? []
+        )
+
+        XCTAssertTrue(opus48VariantIDs.contains("claude-opus-4-8-high"))
+        XCTAssertTrue(opus48VariantIDs.contains("claude-opus-4-8-xhigh"))
+        XCTAssertTrue(opus48VariantIDs.contains("claude-opus-4-8-max"))
+    }
+
     private struct VariantHarness {
         let rootURL: URL
         let configStore: BurnBarConfigStore

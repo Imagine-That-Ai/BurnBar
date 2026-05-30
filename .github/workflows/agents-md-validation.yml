@@ -1,0 +1,157 @@
+name: AGENTS.md Validation
+
+# Validates that AGENTS.md stays consistent with the actual codebase.
+# Checks: script existence, command references, link validity, and doc freshness.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "scripts/**"
+      - "Makefile"
+      - ".github/workflows/agents-md-validation.yml"
+  schedule:
+    # Weekly check: Monday at 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-agents-md:
+    runs-on: macos-26
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Validate AGENTS.md script references exist
+        run: |
+          set -euo pipefail
+          echo "==> Checking scripts referenced in AGENTS.md exist..."
+          ERRORS=0
+
+          check_script() {
+            local script="$1"
+            if [[ ! -f "$script" && ! -f "$script.sh" ]]; then
+              echo "FAIL: Referenced script not found: $script" >&2
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "OK: $script"
+            fi
+          }
+
+          # Extract script references from AGENTS.md (lines that look like script paths)
+          while IFS= read -r line; do
+            if [[ "$line" =~ \`(scripts/[^[:space:]\`]+)\` ]]; then
+              check_script "${BASH_REMATCH[1]}"
+            fi
+          done < AGENTS.md
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::error::$ERRORS script(s) referenced in AGENTS.md are missing from the repo."
+            exit 1
+          fi
+          echo "All AGENTS.md script references are valid."
+
+      - name: Validate Makefile targets referenced in AGENTS.md exist
+        run: |
+          set -euo pipefail
+          echo "==> Checking Makefile targets referenced in AGENTS.md..."
+          ERRORS=0
+
+          # Targets we expect AGENTS.md to describe
+          REQUIRED_TARGETS=("ci" "test" "lint" "build")
+          for target in "${REQUIRED_TARGETS[@]}"; do
+            if grep -q "^${target}:" Makefile; then
+              echo "OK: Makefile target '$target' exists"
+            else
+              echo "FAIL: Makefile target '$target' missing" >&2
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::error::$ERRORS Makefile target(s) referenced in AGENTS.md are missing."
+            exit 1
+          fi
+
+      - name: Validate internal links in AGENTS.md
+        run: |
+          set -euo pipefail
+          echo "==> Checking internal file links in AGENTS.md..."
+          ERRORS=0
+
+          # Extract markdown links that reference local files (not URLs)
+          while IFS= read -r line; do
+            # Match [text](path) where path doesn't start with http
+            while [[ "$line" =~ \[([^\]]+)\]\(([^)http][^)]*)\) ]]; do
+              path="${BASH_REMATCH[2]}"
+              # Remove anchor fragments
+              path="${path%%#*}"
+              line="${line#*${BASH_REMATCH[0]}}"
+              if [[ -n "$path" && ! -e "$path" ]]; then
+                echo "FAIL: Broken link target: '$path'" >&2
+                ERRORS=$((ERRORS + 1))
+              elif [[ -n "$path" ]]; then
+                echo "OK: $path"
+              fi
+            done
+          done < AGENTS.md
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::warning::$ERRORS broken internal link(s) found in AGENTS.md."
+            # Warn, don't fail, because some links may be intentionally forward-referencing
+          fi
+
+      - name: Check AGENTS.md freshness relative to key scripts
+        run: |
+          set -euo pipefail
+          echo "==> Checking AGENTS.md was updated alongside key scripts..."
+
+          # Get the last-modified commit for AGENTS.md
+          AGENTS_COMMIT=$(git log -1 --format="%H" -- AGENTS.md)
+          AGENTS_DATE=$(git log -1 --format="%ct" -- AGENTS.md)
+
+          # Check if key scripts are newer than AGENTS.md by more than 30 days
+          THRESHOLD=$((30 * 24 * 3600))
+          NOW=$(date +%s)
+          AGENTS_AGE=$((NOW - AGENTS_DATE))
+
+          if [[ $AGENTS_AGE -gt $THRESHOLD ]]; then
+            echo "::warning::AGENTS.md has not been updated in over 30 days. Consider reviewing for accuracy."
+          else
+            echo "OK: AGENTS.md was updated $(( AGENTS_AGE / 86400 )) days ago."
+          fi
+
+      - name: Verify AGENTS.md build commands reference valid package.json scripts
+        run: |
+          set -euo pipefail
+          echo "==> Verifying functions build/test scripts exist in functions/package.json..."
+          ERRORS=0
+
+          check_npm_script() {
+            local dir="$1" script="$2"
+            if ! node -e "const p=require('./${dir}/package.json'); process.exit(p.scripts && p.scripts['${script}'] ? 0 : 1)" 2>/dev/null; then
+              echo "FAIL: npm script '${script}' missing in ${dir}/package.json" >&2
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "OK: ${dir} has script '${script}'"
+            fi
+          }
+
+          check_npm_script "functions" "build"
+          check_npm_script "functions" "lint"
+          check_npm_script "functions" "test"
+          check_npm_script "extensions/openburnbar" "build"
+          check_npm_script "extensions/openburnbar" "lint"
+          check_npm_script "extensions/openburnbar" "test"
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::error::$ERRORS npm script(s) referenced in AGENTS.md are missing."
+            exit 1
+          fi

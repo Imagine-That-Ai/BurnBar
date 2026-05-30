@@ -1,0 +1,72 @@
+{
+  "name": "OpenBurnBar Development",
+  "image": "mcr.microsoft.com/devcontainers/universal:2-linux",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "jdkDistro": "ms"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest"
+    }
+  },
+
+  "forwardPorts": [5001, 8080, 9099, 9199],
+  "portsAttributes": {
+    "5001": { "label": "Firebase Functions Emulator" },
+    "8080": { "label": "Firebase Auth Emulator" },
+    "9099": { "label": "Firebase Auth UI" },
+    "9199": { "label": "Firebase Firestore Emulator" }
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspaces/burnbar,type=bind,consistency=cached"
+  ],
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-typescript-next",
+        "bradlc.vscode-tailwindcss",
+        "astro-build.astro-vscode",
+        "mhutchie.git-graph",
+        "GitHub.copilot",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[typescript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "eslint.workingDirectories": [
+          "functions",
+          "extensions/openburnbar",
+          "website"
+        ],
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "git.enableSmartCommit": true
+      }
+    }
+  },
+
+  "remoteEnv": {
+    "NODE_ENV": "development",
+    "FIREBASE_EMULATORS_ENABLED": "true"
+  }
+}

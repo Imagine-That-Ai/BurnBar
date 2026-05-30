@@ -869,6 +869,8 @@ struct TextExpansionSettingsView: View {
             selectedID = id
             showToast("Saved \(snippet.activationToken) successfully")
             reloadSnippets()
+            // Trigger immediate Firestore upload so iOS picks it up in seconds
+            NotificationCenter.default.post(name: .textExpansionSnippetsDidChange, object: nil)
         } catch {
             showToast("Save failed: \(error.localizedDescription)")
         }
@@ -881,6 +883,7 @@ struct TextExpansionSettingsView: View {
             self.selectedID = nil
             showToast("Snippet deleted successfully")
             reloadSnippets(selectFirst: true)
+            NotificationCenter.default.post(name: .textExpansionSnippetsDidChange, object: nil)
         } catch {
             showToast("Delete failed: \(error.localizedDescription)")
         }
@@ -895,6 +898,7 @@ struct TextExpansionSettingsView: View {
             try dataStore.upsertTextExpansionSnippet(updated)
             showToast("\(updated.isEnabled ? "Enabled" : "Disabled") \(updated.activationToken)")
             reloadSnippets()
+            NotificationCenter.default.post(name: .textExpansionSnippetsDidChange, object: nil)
         } catch {
             showToast("Failed to toggle: \(error.localizedDescription)")
         }

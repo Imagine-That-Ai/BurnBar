@@ -66,7 +66,10 @@ export class OpenBurnBarWorkspaceRpcClient implements OpenBurnBarWorkspaceRpcCli
     );
 
     if (!response) {
-      throw new OpenBurnBarWorkspaceRpcError('NO_RESPONSE', 'OpenBurnBar workspace companion did not return a response.');
+      throw new OpenBurnBarWorkspaceRpcError(
+        'NO_RESPONSE',
+        'OpenBurnBar workspace companion did not return a response.'
+      );
     }
 
     if (!response.ok) {

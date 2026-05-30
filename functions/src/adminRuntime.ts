@@ -7,9 +7,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
 const configuredStorageBucket =
-  process.env.OPENBURNBAR_STORAGE_BUCKET ||
-  process.env.FIREBASE_STORAGE_BUCKET ||
-  undefined;
+  process.env.OPENBURNBAR_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || undefined;
 
 initializeApp(configuredStorageBucket ? { storageBucket: configuredStorageBucket } : undefined);
 

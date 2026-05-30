@@ -121,6 +121,45 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         )
     }
 
+    func testDirectPhoneControlDoesNotRequireHostedComputerUseSubscription() {
+        let entitlement = ComputerUseEntitlementSnapshot(
+            isActive: false,
+            allowsBrowser: true,
+            allowsSystem: true,
+            allowsPhoneControl: true
+        )
+
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                context: makeContext(entitlement: entitlement, originatedFromPhone: true)
+            ),
+            .allowed(approvedBy: .phone)
+        )
+    }
+
+    func testDirectPhoneControlBypassesAgentDenyRegionAndScopeRules() {
+        let entitlement = ComputerUseEntitlementSnapshot(
+            isActive: false,
+            allowsBrowser: true,
+            allowsSystem: true,
+            allowsPhoneControl: true
+        )
+
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .denied(rule: ComputerUseScopeRuleID("login-window")),
+                accessibilityDeny: .secureTextField,
+                context: makeContext(entitlement: entitlement, originatedFromPhone: true)
+            ),
+            .allowed(approvedBy: .phone),
+            "A signed paired-phone click/type is the user controlling their own mirror; agent deny regions must not block locked-login input."
+        )
+    }
+
     func testMacRequiresAccessibilityTrusted() {
         XCTAssertEqual(
             gate.check(action: macAction, scopeOutcome: .notMatched, accessibilityDeny: nil,

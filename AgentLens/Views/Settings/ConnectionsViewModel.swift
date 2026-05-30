@@ -56,6 +56,10 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
     /// When this row is a user-defined alias, whether the base model is hidden
     /// from public `/v1/models`.
     let hidesBaseModel: Bool
+    /// `true` when `displayName` is a user-chosen verbatim rename (a display
+    /// override), not the default composed name. Drives the "renamed" badge and
+    /// the reset-to-default affordance in the Proxy panel.
+    let displayNameIsCustom: Bool
 
     init(
         modelID: String,
@@ -74,7 +78,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         lastError: String?,
         baseModelID: String? = nil,
         thinkingLevel: String? = nil,
-        hidesBaseModel: Bool = false
+        hidesBaseModel: Bool = false,
+        displayNameIsCustom: Bool = false
     ) {
         self.modelID = modelID
         self.displayName = displayName
@@ -93,6 +98,7 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         self.baseModelID = baseModelID
         self.thinkingLevel = thinkingLevel
         self.hidesBaseModel = hidesBaseModel
+        self.displayNameIsCustom = displayNameIsCustom
     }
 
     var isThinkingLevelVariant: Bool {
@@ -547,7 +553,8 @@ final class ConnectionsViewModel {
             lastError: rows.compactMap(\.lastError).first,
             baseModelID: rows.compactMap(\.baseModelID).first,
             thinkingLevel: rows.compactMap(\.thinkingLevel).first,
-            hidesBaseModel: representative.hidesBaseModel
+            hidesBaseModel: representative.hidesBaseModel,
+            displayNameIsCustom: rows.contains { $0.displayNameIsCustom }
         )
     }
 
@@ -640,6 +647,7 @@ private struct ProxyModelRow: Decodable {
     let baseModelID: String?
     let thinkingLevel: String?
     let hidesBaseModel: Bool?
+    let displayNameIsCustom: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -661,6 +669,7 @@ private struct ProxyModelRow: Decodable {
         case baseModelID = "base_model_id"
         case thinkingLevel = "thinking_level"
         case hidesBaseModel = "hides_base_model"
+        case displayNameIsCustom = "display_name_is_custom"
     }
 }
 
@@ -687,6 +696,7 @@ private extension ProxyAdvertisedModel {
         self.baseModelID = (row.baseModelID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         self.thinkingLevel = (row.thinkingLevel?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         self.hidesBaseModel = row.hidesBaseModel ?? false
+        self.displayNameIsCustom = row.displayNameIsCustom ?? false
     }
 }
 

@@ -131,6 +131,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .forge: cliKind = .forgeCLI
                     case .antigravity: cliKind = .antigravityCLI
                     case .grok: cliKind = .grokCLI
+                    case .cursorAgent: cliKind = .cursorAgentCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -347,6 +348,17 @@ struct SwitcherOnboardingScanAddStep: View {
                 ) {
                     await connectDifferentCLI(.grok)
                 }
+
+            case .cursorAgentCLI:
+                differentAccountButton(
+                    title: "Connect Cursor Agent",
+                    subtitle: "Verify the local Cursor Agent CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "00E5FF"),
+                    isLoading: connectingCLIType == .cursorAgent
+                ) {
+                    await connectDifferentCLI(.cursorAgent)
+                }
             }
         }
     }
@@ -404,6 +416,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.forge, .forgeCLI): return true
         case (.antigravity, .antigravityCLI): return true
         case (.grok, .grokCLI): return true
+        case (.cursorAgent, .cursorAgentCLI): return true
         default: return false
         }
     }
@@ -501,7 +514,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -520,7 +533,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -543,6 +556,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case .forge: return .forgeCLI
         case .antigravity: return .antigravityCLI
         case .grok: return .grokCLI
+        case .cursorAgent: return .cursorAgentCLI
         }
     }
 
@@ -577,6 +591,8 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .antigravityCLI
         case .grok:
             kind = .grokCLI
+        case .cursorAgent:
+            kind = .cursorAgentCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -804,7 +820,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
             return "Connect another account for this provider?"
         }
     }
@@ -850,6 +866,10 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "111111"))
+        case .cursorAgent:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "00E5FF"))
         }
     }
 
@@ -1138,7 +1158,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1167,7 +1187,8 @@ private extension DiscoveredIdentity {
         case .droid(let executablePath, let configDirectory),
              .forge(let executablePath, let configDirectory),
              .antigravity(let executablePath, let configDirectory),
-             .grok(let executablePath, let configDirectory):
+             .grok(let executablePath, let configDirectory),
+             .cursorAgent(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

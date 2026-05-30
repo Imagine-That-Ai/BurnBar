@@ -1,0 +1,239 @@
+---
+/**
+ * FeatureDeck — editorial feature rows.
+ *
+ * Each capability is a full-width row: an oversized vignette on one side, the
+ * copy on the other, alternating left/right down the page. Cardless, airy, and
+ * driven by natural vertical scroll — each row simply rises into place. No
+ * carousel, no scroll-pinning, no orphan grid.
+ */
+import FeatureVignette from "@components/FeatureVignette.astro";
+
+export interface FeatureDeckItem {
+  art: string;
+  title: string;
+  body: string;
+  num?: string;
+}
+
+interface Props {
+  items: FeatureDeckItem[];
+  accent?: "mercury" | "ember";
+  ariaLabel: string;
+  variant?: "capability" | "moment";
+  class?: string;
+}
+
+const {
+  items,
+  accent = "mercury",
+  ariaLabel,
+  variant = "capability",
+  class: className = ""
+} = Astro.props;
+---
+
+<div class={`frows frows--${accent} frows--${variant} ${className}`} role="list" aria-label={ariaLabel}>
+  {
+    items.map((item, i) => (
+      <article
+        class={`frow ${i % 2 === 1 ? "frow--flip" : ""}`}
+        role="listitem"
+        data-animate-onview
+      >
+        <div class="frow__visual">
+          {item.num && (
+            <span class="frow__ghost mono" aria-hidden="true">
+              {item.num}
+            </span>
+          )}
+          <div class="frow__art">
+            <FeatureVignette id={item.art} />
+          </div>
+        </div>
+        <div class="frow__copy">
+          {item.num && <span class="frow__num mono">{item.num}</span>}
+          <h3 class="frow__title">{item.title}</h3>
+          <p class="frow__body">{item.body}</p>
+        </div>
+      </article>
+    ))
+  }
+</div>
+
+<script>
+  import "../scripts/animateOnView.ts";
+</script>
+
+<style>
+  .frows {
+    --row-accent: var(--mercury-bright);
+    --row-accent-wash: var(--mercury-wash);
+    display: grid;
+    gap: clamp(var(--s-8), 9vw, var(--s-10));
+    margin-top: var(--s-8);
+  }
+  .frows--ember {
+    --row-accent: var(--ember-bright);
+    --row-accent-wash: var(--ember-wash);
+  }
+  .frows--moment {
+    gap: clamp(var(--s-7), 7vw, var(--s-9));
+  }
+
+  .frow {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    align-items: center;
+    gap: clamp(var(--s-6), 6vw, var(--s-9));
+  }
+
+  /* —— visual side —— */
+  .frow__visual {
+    position: relative;
+    grid-column: 1;
+  }
+  .frow--flip .frow__visual {
+    grid-column: 2;
+  }
+  .frow__art {
+    position: relative;
+  }
+  .frow__art :global(.fv) {
+    width: 100%;
+    margin: 0;
+    border-radius: var(--r-lg);
+    border-color: color-mix(in oklab, var(--row-accent) 14%, var(--ink-line));
+    box-shadow:
+      0 50px 120px -56px rgba(0, 0, 0, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: border-color 700ms var(--ease);
+  }
+  .frow:hover .frow__art :global(.fv) {
+    border-color: color-mix(in oklab, var(--row-accent) 32%, var(--ink-line));
+  }
+  /* oversized faint index behind the visual */
+  .frow__ghost {
+    position: absolute;
+    top: -0.62em;
+    left: -0.12em;
+    font-size: clamp(5rem, 12vw, 9rem);
+    line-height: 1;
+    font-weight: 600;
+    color: transparent;
+    -webkit-text-stroke: 1px color-mix(in oklab, var(--row-accent) 26%, transparent);
+    opacity: 0.5;
+    z-index: -1;
+    pointer-events: none;
+    user-select: none;
+  }
+  .frow--flip .frow__ghost {
+    left: auto;
+    right: -0.12em;
+  }
+
+  /* —— copy side —— */
+  .frow__copy {
+    grid-column: 2;
+    display: grid;
+    gap: var(--s-3);
+    max-width: 46ch;
+  }
+  .frow--flip .frow__copy {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .frow__num {
+    font-size: 0.78rem;
+    letter-spacing: 0.18em;
+    color: var(--row-accent);
+    opacity: 0.7;
+  }
+  .frow__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.35rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    color: var(--text-bright);
+  }
+  .frow__body {
+    font-size: clamp(0.98rem, 1.5vw, 1.12rem);
+    line-height: 1.6;
+    color: var(--text-mute);
+  }
+  .frows--moment .frow__title {
+    font-size: clamp(1.3rem, 2.4vw, 1.85rem);
+  }
+
+  /* —— reveal on scroll —— */
+  .frow[data-animate-onview] {
+    opacity: 0;
+  }
+  .frow[data-animate-onview] .frow__visual {
+    opacity: 0;
+    transform: translateY(46px) scale(0.985);
+  }
+  .frow[data-animate-onview] .frow__copy {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  .frow[data-animate-onview].is-visible {
+    opacity: 1;
+  }
+  .frow[data-animate-onview].is-visible .frow__visual {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 900ms var(--ease),
+      transform 1100ms var(--ease);
+  }
+  .frow[data-animate-onview].is-visible .frow__copy {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 800ms var(--ease) 120ms,
+      transform 1000ms var(--ease) 120ms;
+  }
+
+  /* —— mobile —— */
+  @media (max-width: 820px) {
+    .frow,
+    .frow--flip {
+      grid-template-columns: 1fr;
+      gap: var(--s-5);
+    }
+    .frow__visual,
+    .frow--flip .frow__visual {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .frow__copy,
+    .frow--flip .frow__copy {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: stretch;
+      max-width: none;
+    }
+    .frow__ghost,
+    .frow--flip .frow__ghost {
+      font-size: clamp(3.5rem, 18vw, 5.5rem);
+      top: -0.55em;
+      left: -0.05em;
+      right: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .frow[data-animate-onview],
+    .frow[data-animate-onview] .frow__visual,
+    .frow[data-animate-onview] .frow__copy,
+    .frow[data-animate-onview].is-visible,
+    .frow[data-animate-onview].is-visible .frow__visual,
+    .frow[data-animate-onview].is-visible .frow__copy {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+  }
+</style>

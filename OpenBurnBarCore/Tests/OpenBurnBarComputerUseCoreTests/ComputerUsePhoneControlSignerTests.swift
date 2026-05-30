@@ -747,7 +747,7 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
             expiresAt: issuedAt.addingTimeInterval(60),
             localAuthenticationSatisfied: true,
             requestedLockState: .screenLocked,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             authority: authority(peerNodeId: "", counter: 0, intentHash: "", signature: "")
         )
 

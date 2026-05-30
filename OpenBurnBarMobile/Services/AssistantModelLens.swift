@@ -53,7 +53,7 @@ struct AssistantModelLens {
             return hermesSnapshot()
         case .pi:
             return piSnapshot()
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent:
             return cliSnapshot(for: runtime)
         }
     }

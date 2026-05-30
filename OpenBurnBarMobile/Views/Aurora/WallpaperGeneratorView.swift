@@ -6,6 +6,22 @@ import Photos
 import AVFoundation
 import CoreMedia
 import ImageIO
+import UniformTypeIdentifiers
+#endif
+
+#if canImport(UIKit)
+enum WallpaperSettingsDeepLink {
+    static let wallpaperSettingsURL = URL(string: "App-prefs:Wallpaper")!
+    static let settingsRootURL = URL(string: "App-prefs:")!
+
+    @MainActor
+    static func open(using application: UIApplication = .shared) {
+        application.open(wallpaperSettingsURL) { success in
+            guard !success else { return }
+            application.open(settingsRootURL)
+        }
+    }
+}
 #endif
 
 // MARK: - Wallpaper Generator View
@@ -833,6 +849,7 @@ struct WallpaperGeneratorView: View {
         }
         .frame(width: screenBounds.width, height: screenBounds.height)
         .preferredColorScheme(selectedStyle == .appDefault ? nil : (selectedStyle.isDark ? .dark : .light))
+        .environment(\.colorScheme, effectiveStyle.isDark ? .dark : .light)
 
         let renderer = ImageRenderer(content: wallpaperView)
         renderer.scale = scale
@@ -886,13 +903,18 @@ struct WallpaperGeneratorView: View {
         let evenHeight = (height % 2 == 0) ? height : height + 1
         let size = CGSize(width: evenWidth, height: evenHeight)
 
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("burnbar_wallpaper_\(Int(Date().timeIntervalSince1970)).mov")
-        let stillURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("burnbar_still_\(Int(Date().timeIntervalSince1970)).jpg")
-
-        // 1. Generate unique asset identifier to pair photo and video
         let assetIdentifier = UUID().uuidString
+        let outputID = UUID().uuidString
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burnbar_wallpaper_\(outputID).mov")
+        let stillURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burnbar_still_\(outputID).jpg")
+        let fps: Int32 = 30
+        let livePhotoDurationSeconds: Int32 = 3
+        let frameCount = Int(livePhotoDurationSeconds * fps)
+        let keyPhotoFrameIndex = frameCount / 2
+        let frameDuration = CMTime(value: 1, timescale: fps)
+        let keyPhotoTime = CMTimeMultiply(frameDuration, multiplier: Int32(keyPhotoFrameIndex))
 
         do {
 
@@ -901,7 +923,10 @@ struct WallpaperGeneratorView: View {
             let videoSettings: [String: Any] = [
                 AVVideoCodecKey: AVVideoCodecType.hevc,
                 AVVideoWidthKey: size.width,
-                AVVideoHeightKey: size.height
+                AVVideoHeightKey: size.height,
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: 12_000_000
+                ]
             ]
             let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
             videoInput.expectsMediaDataInRealTime = false
@@ -948,24 +973,21 @@ struct WallpaperGeneratorView: View {
             assetWriter.startWriting()
             assetWriter.startSession(atSourceTime: .zero)
 
-            // Write timed metadata at still-image-time (0)
+            // Write timed metadata at the key photo time. Wallpaper accepts
+            // native-shaped Live Photos more reliably when the still is not
+            // anchored to the first frame.
             let stillImageTimeItem = AVMutableMetadataItem()
             stillImageTimeItem.key = "com.apple.quicktime.still-image-time" as NSString
             stillImageTimeItem.keySpace = .quickTimeMetadata
             stillImageTimeItem.value = 0 as NSNumber
             stillImageTimeItem.dataType = kCMMetadataBaseDataType_SInt8 as String
 
-            let timedMetadataGroup = AVTimedMetadataGroup(items: [stillImageTimeItem], timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 100)))
+            let timedMetadataGroup = AVTimedMetadataGroup(items: [stillImageTimeItem], timeRange: CMTimeRange(start: keyPhotoTime, duration: frameDuration))
 
             while !metadataInput.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 10_000_000)
             }
             metadataAdaptor.append(timedMetadataGroup)
-
-            // 6-second loop
-            let frameCount = 180
-            let fps: Int32 = 30
-            let frameDuration = CMTime(value: 1, timescale: fps)
 
             // Create a single simulation instance
             let simulation = SwarmSimulation(
@@ -986,7 +1008,9 @@ struct WallpaperGeneratorView: View {
                 currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
             }
 
-            // Render 180 frames using the single advanced simulation
+            var didWriteKeyPhoto = false
+
+            // Render the paired video using the single advanced simulation.
             for i in 0..<frameCount {
                 while !videoInput.isReadyForMoreMediaData {
                     try await Task.sleep(nanoseconds: 10_000_000)
@@ -1005,16 +1029,17 @@ struct WallpaperGeneratorView: View {
                     backgroundColor: effectiveStyle.backgroundColor
                 )
 
-                let renderer = ImageRenderer(content: renderView)
+                let renderer = ImageRenderer(content: renderView.environment(\.colorScheme, effectiveStyle.isDark ? .dark : .light))
                 renderer.scale = scale
                 renderer.proposedSize = ProposedViewSize(screenBounds.size)
 
                 guard let uiImage = renderer.uiImage, let cgImage = uiImage.cgImage else { continue }
 
-                // Capture and save the first frame as the key/still photo for the Live Photo!
-                if i == 0 {
+                // Capture the middle frame as the key photo, matching the
+                // shape of native iOS Live Photos used by Wallpaper.
+                if i == keyPhotoFrameIndex {
                     guard let stillData = uiImage.jpegData(compressionQuality: 0.9) else {
-                        throw NSError(domain: "WallpaperGenerator", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to generate first frame JPEG data."])
+                        throw NSError(domain: "WallpaperGenerator", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to generate key photo JPEG data."])
                     }
 
                     guard let source = CGImageSourceCreateWithData(stillData as CFData, nil),
@@ -1030,6 +1055,7 @@ struct WallpaperGeneratorView: View {
                     guard CGImageDestinationFinalize(destination) else {
                         throw NSError(domain: "WallpaperGenerator", code: -5, userInfo: [NSLocalizedDescriptionKey: "Failed to write still image metadata."])
                     }
+                    didWriteKeyPhoto = true
                 }
 
                 var pixelBuffer: CVPixelBuffer?
@@ -1056,6 +1082,10 @@ struct WallpaperGeneratorView: View {
                 try await Task.sleep(nanoseconds: 5_000_000)
             }
 
+            guard didWriteKeyPhoto else {
+                throw NSError(domain: "WallpaperGenerator", code: -6, userInfo: [NSLocalizedDescriptionKey: "Failed to render Live Photo key photo."])
+            }
+
             videoInput.markAsFinished()
             metadataInput.markAsFinished()
             await assetWriter.finishWriting()
@@ -1066,6 +1096,10 @@ struct WallpaperGeneratorView: View {
                     let request = PHAssetCreationRequest.forAsset()
                     let imageOptions = PHAssetResourceCreationOptions()
                     let videoOptions = PHAssetResourceCreationOptions()
+                    imageOptions.uniformTypeIdentifier = UTType.jpeg.identifier
+                    imageOptions.originalFilename = stillURL.lastPathComponent
+                    videoOptions.uniformTypeIdentifier = UTType.quickTimeMovie.identifier
+                    videoOptions.originalFilename = tempURL.lastPathComponent
 
                     request.addResource(with: .photo, fileURL: stillURL, options: imageOptions)
                     request.addResource(with: .pairedVideo, fileURL: tempURL, options: videoOptions)
@@ -1091,8 +1125,8 @@ struct WallpaperGeneratorView: View {
     }
 
     private func getActiveCenters(size: CGSize) -> [CGPoint] {
-        if case .shapeProviderLogo = currentMode {
-            return getLogoCenters(count: selectedProviderGlyphs.count, size: size)
+        if case .shapeProviderLogo(let providers) = currentMode {
+            return getLogoCenters(count: providers.count, size: size)
         } else if currentMode != .swarm {
             let width = Double(size.width)
             let height = Double(size.height)
@@ -1378,7 +1412,7 @@ struct SaveResultSheet: View {
         case .successStill:
             return "Your high-resolution still image is now saved to your Photos library."
         case .successLive:
-            return "Your 6-second dynamic loop is now saved as a paired Live Photo. Set it from Settings or view in your Photos library."
+            return "Your dynamic loop is now saved as a wallpaper-ready Live Photo. Set it from Wallpaper or view it in Photos."
         case .permissionDenied:
             return "Enable Photos access in Settings → BurnBar → Photos to save wallpapers."
         case .error(let msg):
@@ -1387,15 +1421,7 @@ struct SaveResultSheet: View {
     }
 
     private func openSettingsWallpaper() {
-        if let url = URL(string: "App-prefs:root=Wallpaper") {
-            UIApplication.shared.open(url) { success in
-                if !success {
-                    if let fallbackUrl = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(fallbackUrl)
-                    }
-                }
-            }
-        }
+        WallpaperSettingsDeepLink.open()
         dismiss()
     }
 

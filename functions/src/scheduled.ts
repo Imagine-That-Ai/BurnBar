@@ -16,14 +16,8 @@ import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { computeUserRollups, computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
-import {
-  refreshUserProviderAccountQuota,
-  refreshUserProviderQuota,
-} from "./quota.js";
-import {
-  collectModelLandscapeBenchmarks,
-  writeModelLandscapeBenchmarks,
-} from "./modelLandscape.js";
+import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
+import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import type { Provider } from "./types.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
@@ -48,10 +42,7 @@ export const rebuildRollups = onSchedule(
     const { rollupBatchSize } = getConfig();
 
     // Collection group query for dirty jobs.
-    const dirtyQuery = db
-      .collectionGroup("rollup_jobs")
-      .where("dirty", "==", true)
-      .limit(rollupBatchSize);
+    const dirtyQuery = db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize);
 
     const snapshot = await dirtyQuery.get();
     if (snapshot.empty) {
@@ -84,13 +75,10 @@ export const rebuildRollups = onSchedule(
       } catch (err) {
         logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
         const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-        await jobRef.set(
-          { lastErrorCode: errorMessage(err) },
-          { merge: true }
-        );
+        await jobRef.set({ lastErrorCode: errorMessage(err) }, { merge: true });
       }
     }
-  }
+  },
 );
 
 /**
@@ -220,7 +208,7 @@ export const refreshAllProviderQuotas = onSchedule(
         });
       }
     }
-  }
+  },
 );
 
 /**
@@ -247,12 +235,11 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
     const result = await collectModelLandscapeBenchmarks(
       {
         ...process.env,
-        ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value()
-          || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
+        ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value() || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
       },
-      now
+      now,
     );
     await writeModelLandscapeBenchmarks(db, result);
     await buildAndPersistRouterRundown(db, now);
-  }
+  },
 );

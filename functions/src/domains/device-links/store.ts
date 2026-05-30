@@ -8,11 +8,7 @@
 import { type Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 
-import type {
-  DeviceLinkCapability,
-  DeviceLinkStatus,
-  ProviderAccountDeviceLinkDoc,
-} from "../../types.js";
+import type { DeviceLinkCapability, DeviceLinkStatus, ProviderAccountDeviceLinkDoc } from "../../types.js";
 import { isRecord, parseProviderAccountDoc, recordOrUndefined, stringField } from "../../guards.js";
 import { logInfo } from "../../logging.js";
 
@@ -158,7 +154,7 @@ export async function revokeDeviceLink(params: RevokeParams): Promise<void> {
       updatedAt: new Date().toISOString(),
       schemaVersion: SCHEMA_VERSION,
     },
-    { merge: true }
+    { merge: true },
   );
   logInfo({
     event: "device_link_revoked",
@@ -172,7 +168,7 @@ export async function backfillUserDeviceLinks(
   db: Firestore,
   uid: string,
   callerDeviceID: string | undefined,
-  callerDeviceDisplayName: string | undefined
+  callerDeviceDisplayName: string | undefined,
 ): Promise<number> {
   const accountsSnap = await db.collection(`users/${uid}/provider_accounts`).get();
   let writes = 0;
@@ -218,11 +214,7 @@ export async function backfillUserDeviceLinks(
   return writes;
 }
 
-export async function revokeAllLinksForAccount(
-  db: Firestore,
-  uid: string,
-  accountID: string
-): Promise<void> {
+export async function revokeAllLinksForAccount(db: Firestore, uid: string, accountID: string): Promise<void> {
   const snap = await db
     .collection(deviceLinkCollectionPath(uid))
     .where("accountID", "==", safeIdentifier(accountID, "account"))
@@ -239,7 +231,7 @@ export async function revokeAllLinksForAccount(
         updatedAt: now,
         schemaVersion: SCHEMA_VERSION,
       },
-      { merge: true }
+      { merge: true },
     );
   }
   await batch.commit();
@@ -251,11 +243,7 @@ export async function revokeAllLinksForAccount(
   });
 }
 
-async function resolveDeviceName(
-  db: Firestore,
-  uid: string,
-  deviceID: string
-): Promise<string> {
+async function resolveDeviceName(db: Firestore, uid: string, deviceID: string): Promise<string> {
   try {
     const snap = await db.doc(`users/${uid}/devices/${safeIdentifier(deviceID, "device")}`).get();
     if (snap.exists) {

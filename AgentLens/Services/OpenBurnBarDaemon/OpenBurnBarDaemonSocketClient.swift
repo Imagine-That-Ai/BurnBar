@@ -161,6 +161,32 @@ enum OpenBurnBarDaemonSocketClient {
         )
     }
 
+    static func setProviderModelDisplayName(
+        _ request: BurnBarProviderModelDisplayNameSetRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelDisplayNameMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelDisplayNameSet,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func clearProviderModelDisplayName(
+        _ request: BurnBarProviderModelDisplayNameClearRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelDisplayNameMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelDisplayNameClear,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     static func recentUsage(
         at socketURL: URL,
         limit: Int = 20

@@ -22,7 +22,11 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         case signatureFailed
         case counterReplay(lastSeen: UInt64, attempted: UInt64)
         case staleTimestamp(skewSeconds: Double)
+        case expiredAuthority
+        case attestationMismatch(expected: String?, observed: String?)
         case intentHashMismatch(expected: String, observed: String)
+        case peerRevoked(peerNodeId: String)
+        case escrowDeviceRevoked(deviceId: String)
     }
 
     public struct ValidationResult: Sendable, Equatable {
@@ -32,12 +36,17 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     }
 
     public let freshnessWindow: TimeInterval
+    /// Maximum wall-clock lifetime for a signed authority envelope (WS2 TTL binding).
+    public let authorityMaxLifetime: TimeInterval
     private let queue = DispatchQueue(label: "com.openburnbar.phoneControl.validator")
     private var lastSeenCounter: [String: UInt64] = [:]
     private var peerPublicKeys: [String: Curve25519.Signing.PublicKey] = [:]
+    private var revokedPeerNodeIds: Set<String> = []
+    private var revokedEscrowDeviceIds: Set<String> = []
 
-    public init(freshnessWindow: TimeInterval = 5.0) {
+    public init(freshnessWindow: TimeInterval = 5.0, authorityMaxLifetime: TimeInterval = 300.0) {
         self.freshnessWindow = freshnessWindow
+        self.authorityMaxLifetime = authorityMaxLifetime
     }
 
     /// Register the verified Ed25519 public key for a paired peer.
@@ -58,6 +67,53 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         }
     }
 
+    public func revokePeer(nodeId: String) {
+        queue.sync {
+            revokedPeerNodeIds.insert(nodeId)
+            peerPublicKeys.removeValue(forKey: nodeId)
+            lastSeenCounter.removeValue(forKey: nodeId)
+        }
+    }
+
+    public func revokeEscrowDevice(deviceId: String) {
+        queue.sync {
+            revokedEscrowDeviceIds.insert(deviceId)
+        }
+    }
+
+    public func clearRevocations() {
+        queue.sync {
+            revokedPeerNodeIds.removeAll()
+            revokedEscrowDeviceIds.removeAll()
+        }
+    }
+
+    /// When `requiredAttestationHashBlake3` is non-nil, the envelope must carry the same digest.
+    private func validateAuthorityEnvelope(
+        _ envelope: HermesRealtimeRelayAuthorityEnvelope,
+        now: Date,
+        requiredAttestationHashBlake3: String? = nil
+    ) throws {
+        if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
+            throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
+        }
+        let skew = abs(now.timeIntervalSince(envelope.timestamp))
+        guard skew <= freshnessWindow else {
+            throw ValidationError.staleTimestamp(skewSeconds: skew)
+        }
+        guard envelope.timestamp.addingTimeInterval(authorityMaxLifetime) >= now else {
+            throw ValidationError.expiredAuthority
+        }
+        if let required = requiredAttestationHashBlake3 {
+            guard envelope.attestationHashBlake3 == required else {
+                throw ValidationError.attestationMismatch(
+                    expected: required,
+                    observed: envelope.attestationHashBlake3
+                )
+            }
+        }
+    }
+
     /// Validate `envelope` against `intent`. On success the counter
     /// is committed to `lastSeenCounter`; on failure the counter is
     /// not committed (so a subsequent valid envelope with the *same*
@@ -65,16 +121,16 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public func validate(
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         intent: HermesRealtimeRelayInputIntent,
+        requiredAttestationHashBlake3: String? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
-
-        // 1. Timestamp freshness.
-        let skew = abs(now.timeIntervalSince(envelope.timestamp))
-        guard skew <= freshnessWindow else {
-            throw ValidationError.staleTimestamp(skewSeconds: skew)
-        }
+        try validateAuthorityEnvelope(
+            envelope,
+            now: now,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        )
 
         // 2. Counter replay protection.
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
@@ -124,10 +180,9 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        let grantFreshnessWindow = max(freshnessWindow, grantRequest.expiresAt.timeIntervalSince(envelope.timestamp))
-        let skew = abs(now.timeIntervalSince(envelope.timestamp))
-        guard skew <= grantFreshnessWindow else {
-            throw ValidationError.staleTimestamp(skewSeconds: skew)
+        try validateAuthorityEnvelope(envelope, now: now)
+        if queue.sync(execute: { revokedEscrowDeviceIds.contains(grantRequest.sourceDeviceId) }) {
+            throw ValidationError.escrowDeviceRevoked(deviceId: grantRequest.sourceDeviceId)
         }
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
@@ -172,10 +227,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        let skew = abs(now.timeIntervalSince(envelope.timestamp))
-        guard skew <= freshnessWindow else {
-            throw ValidationError.staleTimestamp(skewSeconds: skew)
-        }
+        try validateAuthorityEnvelope(envelope, now: now)
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
@@ -219,10 +271,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        let skew = abs(now.timeIntervalSince(envelope.timestamp))
-        guard skew <= freshnessWindow else {
-            throw ValidationError.staleTimestamp(skewSeconds: skew)
-        }
+        try validateAuthorityEnvelope(envelope, now: now)
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
@@ -266,10 +315,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        let skew = abs(now.timeIntervalSince(envelope.timestamp))
-        guard skew <= freshnessWindow else {
-            throw ValidationError.staleTimestamp(skewSeconds: skew)
-        }
+        try validateAuthorityEnvelope(envelope, now: now)
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
@@ -313,10 +359,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        let skew = abs(now.timeIntervalSince(envelope.timestamp))
-        guard skew <= freshnessWindow else {
-            throw ValidationError.staleTimestamp(skewSeconds: skew)
-        }
+        try validateAuthorityEnvelope(envelope, now: now)
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {

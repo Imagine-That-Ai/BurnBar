@@ -63,46 +63,54 @@ export function sanitizePiAgentInstances(raw: unknown): PiAgentInstanceDoc[] {
   if (!Array.isArray(raw)) {
     return [];
   }
-  return raw.flatMap((item): PiAgentInstanceDoc[] => {
-    if (!isRecord(item)) return [];
-    const value = item;
-    const id = boundedTrimmedString(value.id, "instance.id", 128);
-    const displayName = boundedTrimmedString(value.displayName, "instance.displayName", 120);
-    if (!id || !displayName) return [];
-    const status = parseOptionalPiAgentStatus(value.status) ?? "offline";
-    return [{
-      id,
-      displayName,
-      endpointURL: validateOptionalEndpointURL(value.endpointURL),
-      status,
-      modelName: boundedTrimmedString(value.modelName, "instance.modelName", 160),
-      capabilities: sanitizePiAgentCapabilities(value.capabilities),
-      lastSeenAt: boundedTrimmedString(value.lastSeenAt, "instance.lastSeenAt", 80),
-      schemaVersion: typeof value.schemaVersion === "number" ? value.schemaVersion : 1,
-    }];
-  }).slice(0, 32);
+  return raw
+    .flatMap((item): PiAgentInstanceDoc[] => {
+      if (!isRecord(item)) return [];
+      const value = item;
+      const id = boundedTrimmedString(value.id, "instance.id", 128);
+      const displayName = boundedTrimmedString(value.displayName, "instance.displayName", 120);
+      if (!id || !displayName) return [];
+      const status = parseOptionalPiAgentStatus(value.status) ?? "offline";
+      return [
+        {
+          id,
+          displayName,
+          endpointURL: validateOptionalEndpointURL(value.endpointURL),
+          status,
+          modelName: boundedTrimmedString(value.modelName, "instance.modelName", 160),
+          capabilities: sanitizePiAgentCapabilities(value.capabilities),
+          lastSeenAt: boundedTrimmedString(value.lastSeenAt, "instance.lastSeenAt", 80),
+          schemaVersion: typeof value.schemaVersion === "number" ? value.schemaVersion : 1,
+        },
+      ];
+    })
+    .slice(0, 32);
 }
 
 export function sanitizePiAgentModels(raw: unknown): PiAgentRuntimeModelDoc[] {
   if (!Array.isArray(raw)) {
     return [];
   }
-  return raw.flatMap((item): PiAgentRuntimeModelDoc[] => {
-    if (!isRecord(item)) return [];
-    const value = item;
-    const modelID = boundedTrimmedString(value.modelID, "model.modelID", 160);
-    const providerID = boundedTrimmedString(value.providerID, "model.providerID", 80) ?? "pi";
-    if (!modelID) return [];
-    return [{
-      id: boundedTrimmedString(value.id, "model.id", 240) ?? `${providerID}:${modelID}`,
-      providerID,
-      providerName: boundedTrimmedString(value.providerName, "model.providerName", 120) ?? "Pi",
-      modelID,
-      displayName: boundedTrimmedString(value.displayName, "model.displayName", 160) ?? modelID,
-      instanceID: boundedTrimmedString(value.instanceID, "model.instanceID", 128),
-      schemaVersion: typeof value.schemaVersion === "number" ? value.schemaVersion : 1,
-    }];
-  }).slice(0, 128);
+  return raw
+    .flatMap((item): PiAgentRuntimeModelDoc[] => {
+      if (!isRecord(item)) return [];
+      const value = item;
+      const modelID = boundedTrimmedString(value.modelID, "model.modelID", 160);
+      const providerID = boundedTrimmedString(value.providerID, "model.providerID", 80) ?? "pi";
+      if (!modelID) return [];
+      return [
+        {
+          id: boundedTrimmedString(value.id, "model.id", 240) ?? `${providerID}:${modelID}`,
+          providerID,
+          providerName: boundedTrimmedString(value.providerName, "model.providerName", 120) ?? "Pi",
+          modelID,
+          displayName: boundedTrimmedString(value.displayName, "model.displayName", 160) ?? modelID,
+          instanceID: boundedTrimmedString(value.instanceID, "model.instanceID", 128),
+          schemaVersion: typeof value.schemaVersion === "number" ? value.schemaVersion : 1,
+        },
+      ];
+    })
+    .slice(0, 128);
 }
 
 export function validatePiAgentEndpointURL(raw: unknown, mode: PiAgentConnectionMode): string | undefined {
@@ -132,19 +140,21 @@ export function validatePiAgentEndpointURL(raw: unknown, mode: PiAgentConnection
 export function isPiAgentConnectionDoc(doc: unknown): doc is PiAgentConnectionDoc {
   const record = recordOrUndefined(doc);
   if (!record) return false;
-  return typeof record.id === "string"
-    && typeof record.displayName === "string"
-    && (record.mode === "local" || record.mode === "directURL" || record.mode === "relayLink")
-    && (record.status === "pending"
-      || record.status === "online"
-      || record.status === "offline"
-      || record.status === "unauthorized"
-      || record.status === "revoked"
-      || record.status === "degraded")
-    && Array.isArray(record.capabilities)
-    && typeof record.createdAt === "string"
-    && typeof record.updatedAt === "string"
-    && typeof record.schemaVersion === "number";
+  return (
+    typeof record.id === "string" &&
+    typeof record.displayName === "string" &&
+    (record.mode === "local" || record.mode === "directURL" || record.mode === "relayLink") &&
+    (record.status === "pending" ||
+      record.status === "online" ||
+      record.status === "offline" ||
+      record.status === "unauthorized" ||
+      record.status === "revoked" ||
+      record.status === "degraded") &&
+    Array.isArray(record.capabilities) &&
+    typeof record.createdAt === "string" &&
+    typeof record.updatedAt === "string" &&
+    typeof record.schemaVersion === "number"
+  );
 }
 
 export function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefined {
@@ -175,8 +185,7 @@ export function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefi
     displayName: typeof record.displayName === "string" ? record.displayName : undefined,
     connectionId: typeof record.connectionId === "string" ? record.connectionId : undefined,
     failedAttempts: typeof record.failedAttempts === "number" ? record.failedAttempts : undefined,
-    requestedByDeviceId:
-      typeof record.requestedByDeviceId === "string" ? record.requestedByDeviceId : undefined,
+    requestedByDeviceId: typeof record.requestedByDeviceId === "string" ? record.requestedByDeviceId : undefined,
     requestedByPlatform:
       record.requestedByPlatform === "ios" ||
       record.requestedByPlatform === "ipados" ||
@@ -230,7 +239,7 @@ function boundedTrimmedString(
   raw: unknown,
   fieldName: string,
   maxLength: number,
-  required = false
+  required = false,
 ): string | undefined {
   const value = optionalTrimmedString(raw);
   if (!value) {

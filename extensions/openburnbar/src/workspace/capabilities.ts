@@ -79,11 +79,15 @@ function explainWorkspaceCapabilities(capabilities: {
   );
 
   if (capabilities.untrustedWorkspace) {
-    segments.push('This workspace is in restricted mode, so OpenBurnBar will not apply patches or run terminal commands until you trust it.');
+    segments.push(
+      'This workspace is in restricted mode, so OpenBurnBar will not apply patches or run terminal commands until you trust it.'
+    );
   }
 
   if (capabilities.readonlyWorkspace) {
-    segments.push('The workspace filesystem is read-only, so OpenBurnBar can read and search files but cannot write edits.');
+    segments.push(
+      'The workspace filesystem is read-only, so OpenBurnBar can read and search files but cannot write edits.'
+    );
   }
 
   if (capabilities.virtualWorkspace) {

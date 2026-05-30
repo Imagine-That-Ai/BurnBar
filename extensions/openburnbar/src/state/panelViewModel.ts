@@ -1,9 +1,4 @@
-import type {
-  BurnBarCatalog,
-  BurnBarRunPhase,
-  BurnBarRunProjection,
-  OpenBurnBarState
-} from '../types';
+import type { BurnBarCatalog, BurnBarRunPhase, BurnBarRunProjection, OpenBurnBarState } from '../types';
 import type { BurnBarWorkspaceCapabilities } from '../workspace/types';
 
 // ---------------------------------------------------------------------------
@@ -127,8 +122,7 @@ export function buildPanelViewModel(
   hostContext: BuildPanelViewModelHostContext = {}
 ): OpenBurnBarPanelViewModel {
   const isConnected = state.connectionStatus === 'connected' && Boolean(state.health);
-  const isDaemonUnavailable =
-    state.connectionStatus === 'disconnected' || state.connectionStatus === 'connecting';
+  const isDaemonUnavailable = state.connectionStatus === 'disconnected' || state.connectionStatus === 'connecting';
 
   const isWorkspaceTrusted = Boolean(state.workspace) && !(state.workspace?.untrustedWorkspace ?? false);
   const hasWorkspace = state.workspace?.hasWorkspace ?? false;
@@ -152,16 +146,13 @@ export function buildPanelViewModel(
   const catalogUnavailable = state.connectionStatus === 'connected' && !state.catalog;
 
   const systemInfo = buildSystemInfo(state);
-  const statusLineText = buildStatusLineText(
-    hostContext.sidebarStatusLineMode ?? 'smart',
-    {
-      activeRun,
-      workspaceDescription,
-      modelCount: publicModelOptions.length,
-      socketPath: state.health?.socketPath ?? undefined,
-      daemonVersion: state.health?.daemonVersion
-    }
-  );
+  const statusLineText = buildStatusLineText(hostContext.sidebarStatusLineMode ?? 'smart', {
+    activeRun,
+    workspaceDescription,
+    modelCount: publicModelOptions.length,
+    socketPath: state.health?.socketPath ?? undefined,
+    daemonVersion: state.health?.daemonVersion
+  });
 
   return {
     connectionStatus: state.connectionStatus,
@@ -234,11 +225,9 @@ function buildCapabilityChips(workspace?: BurnBarWorkspaceCapabilities): OpenBur
 
   // Group read_file + search_workspace together
   const readSearchAvailable =
-    workspace.availableTools.includes('read_file') ||
-    workspace.availableTools.includes('search_workspace');
+    workspace.availableTools.includes('read_file') || workspace.availableTools.includes('search_workspace');
   const readSearchGated =
-    workspace.gatedTools.includes('read_file') ||
-    workspace.gatedTools.includes('search_workspace');
+    workspace.gatedTools.includes('read_file') || workspace.gatedTools.includes('search_workspace');
 
   if (readSearchAvailable) {
     chips.push({ label: 'Read/Search ready', kind: 'ready' });
@@ -297,21 +286,21 @@ const ACTIVE_PHASES = new Set<BurnBarRunPhase>([
 
 function phaseColor(phase: BurnBarRunPhase): OpenBurnBarPanelRunCard['phaseColor'] {
   switch (phase) {
-  case 'planning':
-  case 'executing_tool':
-  case 'waiting_on_companion':
-  case 'model_streaming':
-    return 'active';
-  case 'awaiting_approval':
-    return 'warning';
-  case 'completed':
-    return 'success';
-  case 'failed':
-  case 'cancelled':
-    return 'error';
-  case 'idle':
-  default:
-    return 'muted';
+    case 'planning':
+    case 'executing_tool':
+    case 'waiting_on_companion':
+    case 'model_streaming':
+      return 'active';
+    case 'awaiting_approval':
+      return 'warning';
+    case 'completed':
+      return 'success';
+    case 'failed':
+    case 'cancelled':
+      return 'error';
+    case 'idle':
+    default:
+      return 'muted';
   }
 }
 
@@ -335,9 +324,10 @@ function runToCard(
   };
 }
 
-function buildRunCards(
-  state: OpenBurnBarState
-): { activeRun: OpenBurnBarPanelRunCard | undefined; historyRuns: OpenBurnBarPanelRunCard[] } {
+function buildRunCards(state: OpenBurnBarState): {
+  activeRun: OpenBurnBarPanelRunCard | undefined;
+  historyRuns: OpenBurnBarPanelRunCard[];
+} {
   const { runs, selectedRunId, selectedRunDetail } = state;
 
   if (runs.length === 0) {
@@ -352,7 +342,8 @@ function buildRunCards(
   // Find the active run: first run with an active phase, else selected run, else runs[0]
   let activeIndex = runs.findIndex((r) => ACTIVE_PHASES.has(r.phase));
   if (activeIndex === -1) {
-    activeIndex = selectedRunId !== null && selectedRunId !== undefined ? runs.findIndex((r) => r.id === selectedRunId) : -1;
+    activeIndex =
+      selectedRunId !== null && selectedRunId !== undefined ? runs.findIndex((r) => r.id === selectedRunId) : -1;
   }
   if (activeIndex === -1) {
     activeIndex = 0;
@@ -455,9 +446,7 @@ function buildRecoveryMessage(state: OpenBurnBarState): string | undefined {
   return undefined;
 }
 
-function buildSystemInfo(
-  state: OpenBurnBarState
-): OpenBurnBarPanelViewModel['systemInfo'] {
+function buildSystemInfo(state: OpenBurnBarState): OpenBurnBarPanelViewModel['systemInfo'] {
   const activeClientID = state.selectedRunDetail?.arbitration?.activeClientID;
   return {
     daemonVersion: state.health?.daemonVersion ?? '\u2014',
@@ -486,28 +475,26 @@ function buildStatusLineText(
     daemonVersion?: string;
   }
 ): string | undefined {
-  const activeRunText = input.activeRun
-    ? `${input.activeRun.title} • ${input.activeRun.phase}`
-    : 'No active run';
+  const activeRunText = input.activeRun ? `${input.activeRun.title} • ${input.activeRun.phase}` : 'No active run';
   const modelsText =
-    input.modelCount === 0 ? 'No visible models' : `${input.modelCount} visible model${input.modelCount === 1 ? '' : 's'}`;
+    input.modelCount === 0
+      ? 'No visible models'
+      : `${input.modelCount} visible model${input.modelCount === 1 ? '' : 's'}`;
   const socketText = input.socketPath ?? (input.daemonVersion ? `Daemon v${input.daemonVersion}` : undefined);
 
   switch (mode) {
-  case 'off':
-    return undefined;
-  case 'workspace':
-    return input.workspaceDescription;
-  case 'models':
-    return modelsText;
-  case 'activeRun':
-    return activeRunText;
-  case 'socket':
-    return socketText;
-  case 'smart':
-  default:
-    return input.activeRun
-      ? activeRunText
-      : [input.workspaceDescription, modelsText].filter(Boolean).join(' • ');
+    case 'off':
+      return undefined;
+    case 'workspace':
+      return input.workspaceDescription;
+    case 'models':
+      return modelsText;
+    case 'activeRun':
+      return activeRunText;
+    case 'socket':
+      return socketText;
+    case 'smart':
+    default:
+      return input.activeRun ? activeRunText : [input.workspaceDescription, modelsText].filter(Boolean).join(' • ');
   }
 }

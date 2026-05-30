@@ -7,6 +7,8 @@ import androidx.annotation.Keep
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 
+
+
 @Keep
 @IgnoreExtraProperties
 data class FirestoreComputerUsePhoneAuthorityDoc(

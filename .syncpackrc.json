@@ -1,0 +1,44 @@
+{
+  "source": [
+    "package.json",
+    "functions/package.json",
+    "extensions/openburnbar/package.json",
+    "website/package.json",
+    "firestore-rules-tests/package.json",
+    "quota-runner/package.json",
+    "services/*/package.json",
+    "tools/*/package.json"
+  ],
+  "semverGroups": [
+    {
+      "label": "Pin exact versions for security-sensitive packages",
+      "packages": ["**"],
+      "dependencies": ["stripe", "firebase-admin"],
+      "range": ""
+    }
+  ],
+  "versionGroups": [
+    {
+      "label": "TypeScript — all packages must use the highest version seen in the monorepo",
+      "packages": ["**"],
+      "dependencies": ["typescript"],
+      "policy": "highestSemver"
+    },
+    {
+      "label": "ESLint toolchain must match across TS packages",
+      "packages": ["**"],
+      "dependencies": [
+        "eslint",
+        "@typescript-eslint/parser",
+        "@typescript-eslint/eslint-plugin"
+      ],
+      "policy": "highestSemver"
+    },
+    {
+      "label": "Prettier must be the same version everywhere",
+      "packages": ["**"],
+      "dependencies": ["prettier"],
+      "policy": "highestSemver"
+    }
+  ]
+}

@@ -311,6 +311,15 @@ struct ConnectionsSettingsView: View {
                 },
                 onRemoveModelAlias: { aliasModel in
                     removeModelAlias(aliasModel)
+                },
+                onSetDisplayName: { model, name in
+                    await setModelDisplayName(model, name: name)
+                },
+                onClearDisplayName: { model in
+                    removeModelDisplayName(model)
+                },
+                onSetProviderAdvertisement: { providerID, modelIDs, isEnabled in
+                    setProviderAdvertisement(providerID, modelIDs: modelIDs, isEnabled: isEnabled)
                 }
             )
 
@@ -785,6 +794,19 @@ struct ConnectionsSettingsView: View {
         }
     }
 
+
+    private func setProviderAdvertisement(_ providerID: String, modelIDs: [String], isEnabled: Bool) {
+        Task {
+            await daemonManager.setProviderModelsAdvertisement(
+                providerID: providerID,
+                modelIDs: modelIDs,
+                isEnabled: isEnabled
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
     private func upsertModelAlias(_ model: ProxyAdvertisedModel, alias: BurnBarModelAlias) async -> String? {
         let saved = await daemonManager.setProviderModelAlias(
             providerID: model.providerID,
@@ -803,6 +825,31 @@ struct ConnectionsSettingsView: View {
             await daemonManager.removeProviderModelAlias(
                 providerID: aliasModel.providerID,
                 aliasID: aliasModel.modelID
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func setModelDisplayName(_ model: ProxyAdvertisedModel, name: String) async -> String? {
+        let saved = await daemonManager.setProviderModelDisplayName(
+            providerID: model.providerID,
+            modelID: model.modelID,
+            displayName: name
+        )
+        guard saved else {
+            return daemonManager.lastError ?? "Could not save the display name override."
+        }
+        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+        await viewModel.refreshWiringState(settings: settingsManager)
+        return nil
+    }
+
+    private func removeModelDisplayName(_ model: ProxyAdvertisedModel) {
+        Task {
+            await daemonManager.removeProviderModelDisplayName(
+                providerID: model.providerID,
+                modelID: model.modelID
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)
@@ -947,6 +994,8 @@ struct ConnectionsSettingsView: View {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return ProviderID(rawValue: "cursor-agent")
         }
     }
 
@@ -1236,6 +1285,8 @@ struct ConnectionsSettingsView: View {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return ProviderID(rawValue: "cursor-agent")
         }
     }
 
@@ -1846,6 +1897,7 @@ private struct AppConnectRow: View {
         case .forge: return .forgeDev
         case .droid: return .factory
         case .grok: return .xAI
+        case .cursorAgent: return .cursorAgent
         case .antigravity: return .antigravity
         }
     }
@@ -1959,7 +2011,7 @@ private struct AppConnectRow: View {
         switch target {
         case .claudeCode:
             return "No route-ready Anthropic account is enabled. Add an Anthropic Console API key or Claude OAuth credential before using Claude Code."
-        case .codex, .opencode, .forge, .droid:
+        case .codex, .opencode, .forge, .droid, .cursorAgent:
             return "No route-ready OpenAI-compatible account is enabled. Add or enable a provider account before using \(target.displayName)."
         case .antigravity:
             return "No route-ready Google Antigravity profile is enabled. Add or enable an Antigravity account before using \(target.displayName)."

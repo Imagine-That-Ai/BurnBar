@@ -309,6 +309,21 @@ data class QuotaBucket(
 )
 
 /**
+ * Whether this bucket represents a prepaid credit balance — no hard limit
+ * or window, just a remaining dollar value — as opposed to a time-windowed
+ * quota bucket with a used/limit pair.
+ */
+val QuotaBucket.isCreditBalance: Boolean
+    get() {
+        val effectiveLimit = if (limit.isFinite()) limit else 0.0
+        if (effectiveLimit <= 0.0 && remaining > 0.0) {
+            val windowLower = (window ?: "").lowercase()
+            return windowLower.contains("lifetime") || windowLower.isEmpty()
+        }
+        return false
+    }
+
+/**
  * Display-safe remaining fraction for quota UI. Several providers expose
  * percentage quota via metadata, percentage buckets with a zero limit, or
  * unknown/unlimited caps with `limit == -1`; raw `remaining / limit` renders

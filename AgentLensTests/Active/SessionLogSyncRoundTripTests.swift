@@ -46,6 +46,92 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
     // MARK: - Upload
 
+    func test_sessionLogUploadSkipsConcurrentDuplicateRunsAcrossServiceInstances() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-concurrent-backup"),
+            provider: .codex,
+            sessionId: "session-concurrent-backup",
+            projectName: "BackupRace",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 8,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Concurrent backup race",
+            lastAssistantMessage: "Only one uploader should drain this queue.",
+            fullText: "A manual backup and refresh backup started at the same time.",
+            fileModifiedAt: nil,
+            summaryTitle: "Concurrent Backup"
+        )
+        try dataStore.upsertConversation(record)
+
+        let firstUploadStarted = expectation(description: "first upload started")
+        fakeEncryptedCloudClient.onBeginUpload = {
+            firstUploadStarted.fulfill()
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        let secondEncryptedCloudClient = FakeSessionLogEncryptedCloudClient()
+        let secondService = SessionLogSyncService(
+            context: context,
+            encryptedCloudClient: secondEncryptedCloudClient,
+            vaultKeyStore: fakeVaultKeyStore,
+            vaultKeyPublisher: fakeVaultKeyPublisher,
+            archivedSessionMirror: fakeArchivedSessionMirror
+        )
+
+        let firstTask = Task {
+            await sessionLogSync.sync()
+        }
+        await fulfillment(of: [firstUploadStarted], timeout: 1.0)
+
+        await secondService.sync()
+        await firstTask.value
+
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
+        XCTAssertTrue(secondEncryptedCloudClient.uploadedBodies.isEmpty)
+        XCTAssertTrue(secondEncryptedCloudClient.searchIndexCommits.isEmpty)
+    }
+
+    func test_sessionLogUploadUsesCanonicalCloudDocumentIDForPathShapedRecords() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(
+                provider: .factory,
+                sessionId: "~/albertonunez/Documents/Windsurf/Imagine That.Ai/App/2.0"
+            ),
+            provider: .factory,
+            sessionId: "~/albertonunez/Documents/Windsurf/Imagine That.Ai/App/2.0",
+            projectName: "Imagine That.Ai",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 9,
+            userWordCount: 40,
+            assistantWordCount: 120,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "About Page Visual Upgrade with Editorial Bento Layout",
+            lastAssistantMessage: "Updated the about page layout.",
+            fullText: "Conversation body from a provider log whose session id is a local filesystem path.",
+            fileModifiedAt: nil,
+            summaryTitle: "About Page Visual Upgrade"
+        )
+        try dataStore.upsertConversation(record)
+
+        await sessionLogSync.sync()
+
+        let upload = try XCTUnwrap(fakeEncryptedCloudClient.uploadRequests.first)
+        XCTAssertEqual(upload.documentID, SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record))
+        XCTAssertNil(upload.documentID.range(of: #"[^A-Za-z0-9_.:-]"#, options: .regularExpression))
+        XCTAssertFalse(upload.documentID.contains("/"))
+        XCTAssertFalse(upload.documentID.contains("~"))
+        XCTAssertLessThanOrEqual(upload.documentID.count, 512)
+    }
+
     func test_sessionLogUpload_writesCheapSearchMetadataOnExistingChunks() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .kimi, sessionId: "session-kimi-1"),
@@ -67,23 +153,40 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             summaryTitle: "Cheap Firebase Search"
         )
         try dataStore.upsertConversation(record)
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+        let chunkPath = "\(manifestPath)/chunks/0"
+        fakeGateway.setDocumentData([
+            "id": record.id,
+            "sessionId": record.sessionId,
+            "bodyStorage": "firebase_storage_encrypted",
+            "bodyHash": "legacy",
+            "body": "legacy plaintext manifest body"
+        ], at: manifestPath)
+        fakeGateway.setDocumentData([
+            "index": 0,
+            "sessionId": record.sessionId,
+            "body": "legacy plaintext chunk body",
+            "title": "legacy plaintext title",
+            "snippet": "legacy plaintext snippet",
+            "terms": ["legacy", "plaintext"]
+        ], at: chunkPath)
 
         await sessionLogSync.sync()
 
-        let safeId = record.id.replacingOccurrences(of: ":", with: "_")
-        let docId = "test-device-1_\(safeId)"
-        let manifest = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/session_logs/\(docId)"))
+        let manifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
         XCTAssertEqual(manifest["sessionId"] as? String, "session-kimi-1")
         XCTAssertEqual(manifest["model"] as? String, "unknown")
         XCTAssertEqual(manifest["bodyStorage"] as? String, "firebase_storage_encrypted")
         XCTAssertEqual(manifest["storagePath"] as? String, "session-logs/\(docId).json")
+        XCTAssertNil(manifest["body"] as? String)
         XCTAssertNotNil(manifest["bodyHash"] as? String)
         XCTAssertEqual(manifest["chunkMetadataVersion"] as? Int, 1)
-        XCTAssertEqual(manifest["cloudSearchIndexVersion"] as? Int, 2)
+        XCTAssertEqual(manifest["cloudSearchIndexVersion"] as? Int, 4)
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
 
-        let chunk = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/session_logs/\(docId)/chunks/0"))
+        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
         XCTAssertEqual(chunk["uid"] as? String, "test-uid-1")
         XCTAssertEqual(chunk["sessionId"] as? String, "session-kimi-1")
         XCTAssertEqual(chunk["deviceId"] as? String, "test-device-1")
@@ -91,9 +194,88 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(chunk["schemaVersion"] as? Int, 1)
         XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
         XCTAssertNil(chunk["body"] as? String)
+        XCTAssertNil(chunk["title"] as? String)
+        XCTAssertNil(chunk["snippet"] as? String)
+        XCTAssertNil(chunk["terms"] as? [String])
         XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
         XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
         XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
+    }
+
+    func test_sessionLogUploadIndexesExactNameBeyondFirstTokenWindow() async throws {
+        let key = Data(repeating: 7, count: 32)
+        let emilioHash = try XCTUnwrap(
+            CloudVaultCrypto.tokenHashes(for: "emilio", keyData: key, limit: 1).first
+        )
+        let longPrefix = (0..<1_200)
+            .map { "uniquetoken\($0)" }
+            .joined(separator: " ")
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-emilio-late"),
+            provider: .codex,
+            sessionId: "session-emilio-late",
+            projectName: "MobileSearch",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 2,
+            userWordCount: 1_200,
+            assistantWordCount: 20,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Search exact person names",
+            lastAssistantMessage: "Mentioned Emilio near the end.",
+            fullText: "\(longPrefix) Emilio should still be searchable from the hosted encrypted index.",
+            fileModifiedAt: nil,
+            summaryTitle: "Exact name search"
+        )
+        try dataStore.upsertConversation(record)
+
+        await sessionLogSync.sync()
+
+        let commit = try XCTUnwrap(fakeEncryptedCloudClient.searchIndexCommits.first)
+        XCTAssertEqual(commit.indexVersion, 4)
+        XCTAssertGreaterThan(commit.chunks.count, 1)
+        XCTAssertTrue(
+            commit.chunks.contains { chunk in
+                (chunk["tokenHashes"] as? [String] ?? []).contains(emilioHash)
+            },
+            "The hosted index must retain exact names even when they appear after hundreds of earlier unique tokens."
+        )
+    }
+
+    func test_sessionLogUploadIndexesPrefixMatchesForLongPathNames() async throws {
+        let key = Data(repeating: 7, count: 32)
+        let queryHashes = try CloudVaultCrypto.searchQueryTokenHashes(for: "emilio", keyData: key, limit: 10)
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "session-emilio-prefix"),
+            provider: .codex,
+            sessionId: "session-emilio-prefix",
+            projectName: "MobileSearch",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 2,
+            userWordCount: 40,
+            assistantWordCount: 20,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Search path owner names",
+            lastAssistantMessage: "Indexed a long path owner token.",
+            fullText: "The transcript referenced /Users/emilionunezgarcia/Developer/LaHormigaDormida during setup.",
+            fileModifiedAt: nil,
+            summaryTitle: "Prefix name search"
+        )
+        try dataStore.upsertConversation(record)
+
+        await sessionLogSync.sync()
+
+        let commit = try XCTUnwrap(fakeEncryptedCloudClient.searchIndexCommits.first)
+        let indexedHashes = commit.chunks.flatMap { ($0["tokenHashes"] as? [String]) ?? [] }
+        XCTAssertFalse(
+            Set(indexedHashes).intersection(queryHashes).isEmpty,
+            "The hosted index must let a short name query match longer path/user tokens without plaintext search."
+        )
     }
 
     func test_sessionLogUpload_skipsUnchangedBodyToAvoidExtraWrites() async throws {
@@ -151,6 +333,121 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         )
         try dataStore.upsertConversation(record)
         XCTAssertEqual(try dataStore.countUnsyncedSessionLogs(), 1)
+    }
+
+    func test_backupUsageSnapshot_countsPendingStorageAndLimits() throws {
+        let synced = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .cursor, sessionId: "sess-usage-synced"),
+            provider: .cursor,
+            sessionId: "sess-usage-synced",
+            projectName: "UsageProject",
+            startTime: Date(),
+            endTime: Date(),
+            messageCount: 1,
+            userWordCount: 2,
+            assistantWordCount: 3,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Already backed up",
+            lastAssistantMessage: "Done",
+            fullText: "Synced body",
+            fileModifiedAt: nil
+        )
+        let pending = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "sess-usage-pending"),
+            provider: .codex,
+            sessionId: "sess-usage-pending",
+            projectName: "UsageProject",
+            startTime: Date(),
+            endTime: Date(),
+            messageCount: 1,
+            userWordCount: 4,
+            assistantWordCount: 5,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Emilio searchable",
+            lastAssistantMessage: "Mentioned Emilio",
+            fullText: "Pending body that should still count toward backup storage.",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(synced)
+        try dataStore.upsertConversation(pending)
+        try dataStore.markSessionLogsSynced(ids: [synced.id])
+
+        let usage = try dataStore.backupUsageSnapshot(
+            limits: CloudBackupPlanLimits(
+                transcriptByteLimit: 16 * 1024,
+                searchableIndexByteLimit: 128 * 1024,
+                conversationLimit: 10
+            )
+        )
+
+        XCTAssertEqual(usage.conversationCount, 2)
+        XCTAssertEqual(usage.pendingConversationCount, 1)
+        XCTAssertEqual(usage.searchChunkCount, 2)
+        XCTAssertEqual(usage.pendingSearchChunkCount, 1)
+        XCTAssertGreaterThan(usage.rawTranscriptBytes, 0)
+        XCTAssertGreaterThan(usage.estimatedSearchIndexBytes, usage.rawTranscriptBytes)
+        XCTAssertTrue(usage.isWithinLimits)
+
+        let blocked = try dataStore.backupUsageSnapshot(
+            limits: CloudBackupPlanLimits(
+                transcriptByteLimit: 1,
+                searchableIndexByteLimit: .max,
+                conversationLimit: 10
+            )
+        )
+        XCTAssertFalse(blocked.isWithinLimits)
+        XCTAssertTrue(blocked.blockingReason?.contains("Backup storage limit reached") == true)
+    }
+
+    func test_sessionLogUpload_stopsBeforeNetworkWhenBackupLimitExceeded() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .factory, sessionId: "sess-limit"),
+            provider: .factory,
+            sessionId: "sess-limit",
+            projectName: "LimitProject",
+            startTime: Date(),
+            endTime: Date(),
+            messageCount: 1,
+            userWordCount: 1,
+            assistantWordCount: 1,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Too much backup",
+            lastAssistantMessage: "Blocked",
+            fullText: "This body is intentionally larger than the tiny test limit.",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(record)
+        let limitedContext = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager,
+            firestoreGateway: fakeGateway,
+            backupPlanLimits: CloudBackupPlanLimits(
+                transcriptByteLimit: 1,
+                searchableIndexByteLimit: .max,
+                conversationLimit: 50_000
+            )
+        )
+        let limitedSync = SessionLogSyncService(
+            context: limitedContext,
+            encryptedCloudClient: fakeEncryptedCloudClient,
+            vaultKeyStore: fakeVaultKeyStore,
+            vaultKeyPublisher: fakeVaultKeyPublisher,
+            archivedSessionMirror: fakeArchivedSessionMirror
+        )
+
+        await limitedSync.sync(drainAll: true)
+
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 0)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 0)
+        XCTAssertEqual(try dataStore.countUnsyncedSessionLogs(), 1)
+        XCTAssertTrue(limitedSync.lastSyncError?.contains("Backup storage limit reached") == true)
     }
 
     func test_manualBackupProgress_emitsRealCounters() async throws {
@@ -285,6 +582,34 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
         let remote = remoteConversations.first!
         XCTAssertEqual(remote.fullText, body)
+    }
+
+    // MARK: - Facet clamping (projectName must never overflow the 512-char cloud budget)
+
+    func test_clampedCloudFacet_passesThroughShortValues() {
+        XCTAssertEqual(
+            SessionLogSyncService.clampedCloudFacet("~/Developer/LaHormigaDormida"),
+            "~/Developer/LaHormigaDormida"
+        )
+    }
+
+    func test_clampedCloudFacet_trimsWhitespaceLikeTheServer() {
+        XCTAssertEqual(SessionLogSyncService.clampedCloudFacet("  spaced path  "), "spaced path")
+    }
+
+    func test_clampedCloudFacet_truncatesToTheServerBudget() {
+        let clamped = SessionLogSyncService.clampedCloudFacet(String(repeating: "a", count: 900))
+        XCTAssertEqual(clamped.utf16.count, SessionLogSyncService.cloudFacetMaxLength)
+        XCTAssertEqual(clamped.utf16.count, 512)
+    }
+
+    func test_clampedCloudFacet_neverSplitsAGrapheme() {
+        // Each emoji is 2 UTF-16 units, so a 512-unit budget admits exactly 256 whole emoji and the
+        // truncation must not leave a dangling surrogate half.
+        let clamped = SessionLogSyncService.clampedCloudFacet(String(repeating: "😀", count: 600))
+        XCTAssertLessThanOrEqual(clamped.utf16.count, SessionLogSyncService.cloudFacetMaxLength)
+        XCTAssertTrue(clamped.allSatisfy { $0 == "😀" })
+        XCTAssertEqual(clamped.count, 256)
     }
 }
 

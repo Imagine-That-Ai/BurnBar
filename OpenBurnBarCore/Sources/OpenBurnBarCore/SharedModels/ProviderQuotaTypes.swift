@@ -162,6 +162,17 @@ public extension ProviderQuotaBucket {
         return "\(nameKey)::\(windowKey)"
     }
 
+    /// Whether this bucket represents a prepaid credit balance (no hard
+    /// limit or window) as opposed to a time-windowed quota bucket.
+    /// Detectable by: no meaningful limit value, but a positive remaining
+    /// value, and a "lifetime" or absent window.
+    var isCreditBalance: Bool {
+        let effectiveLimit = limit.isFinite ? limit : 0
+        guard effectiveLimit <= 0, remaining > 0 else { return false }
+        let windowLower = (window ?? "").lowercased()
+        return windowLower.contains("lifetime") || windowLower.isEmpty
+    }
+
     var label: String {
         if let customLabel = meta?["label"] {
             return customLabel

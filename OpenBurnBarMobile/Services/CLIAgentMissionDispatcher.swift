@@ -328,6 +328,8 @@ final class CLIAgentMissionDispatcher {
             runtime = .antigravity
         case "grok", "grok-build", "xai", "grok-agent":
             runtime = .grok
+        case "cursor", "cursor-agent", "cursoragent":
+            runtime = .cursorAgent
         default:
             runtime = nil
         }
@@ -341,7 +343,7 @@ final class CLIAgentMissionDispatcher {
         case .openClaw:
             return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
-        case .codex, .claude, .droid, .forge, .antigravity, .grok:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }

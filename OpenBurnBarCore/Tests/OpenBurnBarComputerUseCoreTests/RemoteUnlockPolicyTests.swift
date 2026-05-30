@@ -4,6 +4,39 @@ import OpenBurnBarCore
 @testable import OpenBurnBarComputerUseCore
 
 final class RemoteUnlockPolicyTests: XCTestCase {
+    func test_setupProbeRequiresLiveVirtualHIDBridgeFiles() {
+        let suiteName = "RemoteUnlockSetupProbeTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set(true, forKey: RemoteUnlockSetupProbe.virtualHIDInstalledKey)
+        defaults.set(true, forKey: RemoteUnlockSetupProbe.virtualHIDActiveKey)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let missingProbe = RemoteUnlockSetupProbe(defaults: defaults, fileExists: { _ in false })
+        XCTAssertFalse(missingProbe.virtualHIDDriverInstalled)
+        XCTAssertFalse(missingProbe.virtualHIDDriverActive)
+        XCTAssertFalse(missingProbe.virtualHIDDriverPolicyRejected)
+
+        let presentProbe = RemoteUnlockSetupProbe(defaults: defaults) { path in
+            path == RemoteUnlockSetupProbe.virtualHIDBridgeInstallPath
+                || path == RemoteUnlockSetupProbe.virtualHIDBridgeSocketPath
+        }
+        XCTAssertTrue(presentProbe.virtualHIDDriverInstalled)
+        XCTAssertTrue(presentProbe.virtualHIDDriverActive)
+    }
+
+    func test_setupProbePersistsVirtualHIDPolicyRejectionReason() {
+        let suiteName = "RemoteUnlockSetupProbePolicyRejected-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set(true, forKey: RemoteUnlockSetupProbe.virtualHIDPolicyRejectedKey)
+        defaults.set("spctl rejected helper", forKey: RemoteUnlockSetupProbe.virtualHIDPolicyRejectionReasonKey)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let probe = RemoteUnlockSetupProbe(defaults: defaults)
+
+        XCTAssertTrue(probe.virtualHIDDriverPolicyRejected)
+        XCTAssertEqual(probe.virtualHIDDriverPolicyRejectionReason, "spctl rejected helper")
+    }
+
     func test_screenSharingProbeRequiresLiveLoopbackListener() {
         let probe = RemoteUnlockSystemScreenSharingProbe(
             applicationPaths: ["/System/Applications/Utilities/Screen Sharing.app"],
@@ -45,6 +78,9 @@ final class RemoteUnlockPolicyTests: XCTestCase {
             systemScreenSharingAvailable: true,
             loopbackOnlyFirewallActive: false,
             generatedCredentialInSystemKeychain: true,
+            remoteDesktopPermissionGranted: true,
+            virtualHIDDriverInstalled: true,
+            virtualHIDDriverActive: true,
             backendCertificationFresh: true,
             currentOSBuild: "23G93",
             certifiedOSBuild: "23G93",
@@ -60,12 +96,12 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let capabilities = policy.capabilities(for: snapshot)
 
-        XCTAssertTrue(capabilities.enabled)
-        XCTAssertEqual(capabilities.activeBackend, .appleScreenSharingLoopback)
+        XCTAssertFalse(capabilities.enabled)
+        XCTAssertEqual(capabilities.activeBackend, .unavailable)
         XCTAssertEqual(capabilities.certificationStatus, .failed)
-        XCTAssertTrue(capabilities.blockers.isEmpty)
-        XCTAssertTrue(capabilities.allowsCredentialPaste)
-        XCTAssertTrue(capabilities.allowsSavedCredentialUnlock)
+        XCTAssertTrue(capabilities.blockers.contains("loopback_firewall_guard_missing"))
+        XCTAssertFalse(capabilities.allowsCredentialPaste)
+        XCTAssertFalse(capabilities.allowsSavedCredentialUnlock)
         XCTAssertEqual(capabilities.credentialRecipientKeyId, "mac-remote-unlock-key")
         XCTAssertEqual(capabilities.credentialRecipientPublicKeyBase64, "cHVibGljLWtleQ==")
         XCTAssertEqual(capabilities.credentialEnvelopeAlgorithm, RemoteUnlockPolicy.credentialEnvelopeAlgorithm)
@@ -81,6 +117,9 @@ final class RemoteUnlockPolicyTests: XCTestCase {
             systemScreenSharingAvailable: true,
             loopbackOnlyFirewallActive: false,
             generatedCredentialInSystemKeychain: true,
+            remoteDesktopPermissionGranted: true,
+            virtualHIDDriverInstalled: true,
+            virtualHIDDriverActive: true,
             backendCertificationFresh: false,
             currentOSBuild: "23G93",
             certifiedOSBuild: nil,
@@ -96,14 +135,14 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let capabilities = policy.capabilities(for: snapshot)
 
-        XCTAssertTrue(capabilities.enabled)
-        XCTAssertEqual(capabilities.activeBackend, .appleScreenSharingLoopback)
+        XCTAssertFalse(capabilities.enabled)
+        XCTAssertEqual(capabilities.activeBackend, .unavailable)
         XCTAssertEqual(capabilities.certificationStatus, .uncertified)
-        XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertFalse(capabilities.allowsCredentialPaste)
         XCTAssertEqual(capabilities.credentialRecipientKeyId, "mac-remote-unlock-key")
     }
 
-    func test_capabilitiesAdvertiseAppleScreenSharingLoopbackOnlyAfterCertification() {
+    func test_capabilitiesAdvertiseOpenBurnBarVirtualHIDOnlyAfterCertification() {
         let policy = RemoteUnlockPolicy.default
         let snapshot = certifiedSnapshot()
 
@@ -111,8 +150,8 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         XCTAssertTrue(capabilities.enabled)
         XCTAssertEqual(capabilities.certificationStatus, .certified)
-        XCTAssertEqual(capabilities.activeBackend, .appleScreenSharingLoopback)
-        XCTAssertEqual(capabilities.supportedBackends, [.appleScreenSharingLoopback])
+        XCTAssertEqual(capabilities.activeBackend, .openBurnBarVirtualHID)
+        XCTAssertEqual(capabilities.supportedBackends, [.openBurnBarVirtualHID])
         XCTAssertTrue(capabilities.supportedLockStates.contains(.loginWindow))
         XCTAssertTrue(capabilities.supportedLockStates.contains(.rebootLoginWindow))
         XCTAssertTrue(capabilities.allowsCredentialPaste)
@@ -154,6 +193,21 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         XCTAssertNil(capabilities.credentialRecipientKeyId)
     }
 
+    func test_capabilitiesSurfaceVirtualHIDPolicyRejectionBeforeGenericInactiveState() {
+        let policy = RemoteUnlockPolicy.default
+        var snapshot = certifiedSnapshot()
+        snapshot.virtualHIDDriverActive = false
+        snapshot.virtualHIDDriverPolicyRejected = true
+
+        let capabilities = policy.capabilities(for: snapshot)
+
+        XCTAssertFalse(capabilities.enabled)
+        XCTAssertEqual(capabilities.blockers.first, "virtual_hid_driver_rejected")
+        XCTAssertTrue(capabilities.blockers.contains("virtual_hid_driver_inactive"))
+        XCTAssertFalse(capabilities.allowsCredentialPaste)
+        XCTAssertFalse(capabilities.allowsSavedCredentialUnlock)
+    }
+
     func test_osBuildDriftInvalidatesCertification() {
         let policy = RemoteUnlockPolicy.default
         var snapshot = certifiedSnapshot()
@@ -161,10 +215,10 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let capabilities = policy.capabilities(for: snapshot)
 
-        XCTAssertTrue(capabilities.enabled)
-        XCTAssertTrue(capabilities.allowsCredentialPaste)
+        XCTAssertFalse(capabilities.enabled)
+        XCTAssertFalse(capabilities.allowsCredentialPaste)
         XCTAssertEqual(capabilities.certificationStatus, .stale)
-        XCTAssertFalse(capabilities.blockers.contains("os_build_changed_recertification_required"))
+        XCTAssertTrue(capabilities.blockers.contains("os_build_changed_recertification_required"))
     }
 
     func test_sessionRequiresLocalAuthenticationAndSupportedBackend() {
@@ -173,7 +227,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_774_000_000)
         let session = remoteUnlockSession(
             localAuthenticationSatisfied: false,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             expiresAt: now.addingTimeInterval(60)
         )
 
@@ -184,7 +238,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let valid = remoteUnlockSession(
             localAuthenticationSatisfied: true,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             expiresAt: now.addingTimeInterval(60)
         )
         XCTAssertEqual(policy.validate(session: valid, capabilities: capabilities, now: now), .allowed)
@@ -197,7 +251,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let overlong = remoteUnlockSession(
             localAuthenticationSatisfied: true,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             requestedAt: now,
             expiresAt: now.addingTimeInterval(policy.sessionTTLSeconds + 1)
         )
@@ -208,7 +262,7 @@ final class RemoteUnlockPolicyTests: XCTestCase {
 
         let future = remoteUnlockSession(
             localAuthenticationSatisfied: true,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             requestedAt: now.addingTimeInterval(31),
             expiresAt: now.addingTimeInterval(90)
         )
@@ -225,13 +279,13 @@ final class RemoteUnlockPolicyTests: XCTestCase {
         let missing = remoteUnlockSession(
             sessionId: nil,
             localAuthenticationSatisfied: true,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             expiresAt: now.addingTimeInterval(60)
         )
         let blank = remoteUnlockSession(
             sessionId: " ",
             localAuthenticationSatisfied: true,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             expiresAt: now.addingTimeInterval(60)
         )
 
@@ -460,6 +514,9 @@ final class RemoteUnlockPolicyTests: XCTestCase {
             systemScreenSharingAvailable: true,
             loopbackOnlyFirewallActive: true,
             generatedCredentialInSystemKeychain: true,
+            remoteDesktopPermissionGranted: true,
+            virtualHIDDriverInstalled: true,
+            virtualHIDDriverActive: true,
             backendCertificationFresh: true,
             currentOSBuild: "23G93",
             certifiedOSBuild: "23G93",

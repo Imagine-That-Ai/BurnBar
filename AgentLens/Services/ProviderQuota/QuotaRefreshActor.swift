@@ -74,6 +74,7 @@ actor QuotaRefreshActor {
         self.adapters = [
             .codex: CodexQuotaAdapter(),
             .openCode: OpenCodeQuotaAdapter(),
+            .openAI: OpenAIQuotaAdapter(),
             .deepSeek: DeepSeekQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
             .copilot: CopilotQuotaAdapter(),
@@ -658,6 +659,8 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli", isDirectory: true).path
     case .grok:
         return homeDirectoryURL.appendingPathComponent(".grok", isDirectory: true).path
+    case .cursorAgent:
+        return homeDirectoryURL.appendingPathComponent(".cursor-agent", isDirectory: true).path
     }
 }
 
@@ -700,6 +703,8 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .antigravity
     case .grok:
         return .xAI
+    case .cursorAgent:
+        return .cursorAgent
     }
 }
 

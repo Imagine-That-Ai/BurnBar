@@ -193,6 +193,7 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
         case .droid:    return .droid
         case .forge:    return .forge
         case .antigravity: return .antigravity
+        case .cursorAgent: return .cursorAgent
         case .hermes, .piAgent: return nil
         }
     }
@@ -292,6 +293,7 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
         case .factory: return .droid
         case .forgeDev: return .forge
         case .antigravity: return .antigravity
+        case .cursorAgent: return .cursorAgent
         case .xAI: return .grok
         default: return nil
         }
@@ -301,7 +303,7 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
         switch agent {
         case .codex, .claude:
             return true
-        case .openClaw, .droid, .forge, .antigravity, .grok:
+        case .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent:
             return false
         }
     }
@@ -345,6 +347,8 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
         case .antigravity:
             return nil
         case .grok:
+            return nil
+        case .cursorAgent:
             return nil
         }
     }

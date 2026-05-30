@@ -36,7 +36,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.derived.TrendDataDigest
 import com.openburnbar.data.models.*
+import com.openburnbar.data.stores.ActivityStore
+import com.openburnbar.data.stores.DashboardStore
 import com.openburnbar.data.stores.QuotaPreferences
 import com.openburnbar.data.stores.QuotaStore
 import com.openburnbar.data.stores.QuotaWindowKind
@@ -53,7 +56,9 @@ import kotlin.math.roundToInt
 @Composable
 fun BurnView(
     quotaStore: QuotaStore = viewModel(),
-    demoDataStore: DemoDataStore = viewModel()
+    demoDataStore: DemoDataStore = viewModel(),
+    dashboardStore: DashboardStore = viewModel(),
+    activityStore: ActivityStore = viewModel()
 ) {
     val snapshots by quotaStore.snapshots.collectAsState()
     val accounts by quotaStore.accounts.collectAsState()
@@ -72,6 +77,9 @@ fun BurnView(
     val hiddenBuckets by quotaPrefs.hiddenBuckets.collectAsState()
     val bucketOrders by quotaPrefs.bucketOrders.collectAsState()
     val percentageDisplayMode by quotaPrefs.percentageDisplayMode.collectAsState()
+    val burnStyle = BurnViewStyle.fromKey(quotaPrefs.burnViewStyle.collectAsState().value)
+    val rollups by dashboardStore.rollups.collectAsState()
+    val recentUsages by activityStore.usages.collectAsState()
 
     val visibleSnapshots = remember(snapshots, providerOrder, visibleProviders) {
         snapshots
@@ -95,9 +103,19 @@ fun BurnView(
     var selectedPeriod by remember { mutableIntStateOf(0) }
     val periods = listOf("Today", "Week", "Month")
 
+    // Ring items + a key→snapshot resolver shared by the alternate view styles.
+    val ringItems = remember(visibleSnapshots) { buildQuotaRingItems(visibleSnapshots) }
+    val openProvider: (String) -> Unit = { key ->
+        detailSnapshot = visibleSnapshots.firstOrNull { snap ->
+            snap.provider == key || AgentProvider.fromKey(snap.provider) == AgentProvider.fromKey(key)
+        }
+    }
+
     LaunchedEffect(currentUser.isSignedIn) {
         if (currentUser.isSignedIn) {
             quotaStore.load()
+            dashboardStore.load()
+            activityStore.loadInitial(pageSize = 250)
         }
     }
 
@@ -192,23 +210,65 @@ fun BurnView(
                         )
                     }
 
-                    StaggeredEntrance(delay = 137) {
-                        DefaultWindowSelector(
+                    StaggeredEntrance(delay = 140) {
+                        ChipSelector(
+                            items = BurnViewStyle.entries.toList(),
+                            selected = burnStyle,
+                            onSelect = { quotaPrefs.setBurnViewStyle(it.key) },
+                            labelProvider = { it.label },
                             modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)
                         )
                     }
 
-                    visibleSnapshots.forEachIndexed { index, snapshot ->
-                        StaggeredEntrance(delay = 150 + index * 25) {
-                            ProviderAccordionCard(
-                                snapshot = snapshot,
-                                accounts = matchingQuotaAccounts(snapshot, accounts),
-                                signedInEmail = currentUser.email,
-                                onOpenDetail = { detailSnapshot = snapshot },
-                                hiddenBuckets = hiddenBuckets,
-                                bucketOrders = bucketOrders,
-                                percentageDisplayMode = percentageDisplayMode,
-                                modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)
+                    val padH = Modifier.padding(horizontal = AuroraSpacing.lg.dp)
+                    when (burnStyle) {
+                        BurnViewStyle.CARDS -> {
+                            StaggeredEntrance(delay = 150) {
+                                DefaultWindowSelector(modifier = padH)
+                            }
+                            visibleSnapshots.forEachIndexed { index, snapshot ->
+                                StaggeredEntrance(delay = 160 + index * 25) {
+                                    ProviderAccordionCard(
+                                        snapshot = snapshot,
+                                        accounts = matchingQuotaAccounts(snapshot, accounts),
+                                        signedInEmail = currentUser.email,
+                                        onOpenDetail = { detailSnapshot = snapshot },
+                                        hiddenBuckets = hiddenBuckets,
+                                        bucketOrders = bucketOrders,
+                                        percentageDisplayMode = percentageDisplayMode,
+                                        modifier = padH
+                                    )
+                                }
+                            }
+                        }
+                        BurnViewStyle.CONSTELLATION -> StaggeredEntrance(delay = 150) {
+                            BurnConstellationBody(items = ringItems, onProviderClick = openProvider, modifier = padH)
+                        }
+                        BurnViewStyle.GRID -> StaggeredEntrance(delay = 150) {
+                            BurnGaugeGridBody(items = ringItems, onProviderClick = openProvider, modifier = padH)
+                        }
+                        BurnViewStyle.LEADERBOARD -> StaggeredEntrance(delay = 150) {
+                            BurnLeaderboardBody(
+                                summaries = rollups?.providerSummaries ?: emptyList(),
+                                quotaItems = ringItems,
+                                displayMode = displayMode,
+                                onProviderClick = openProvider,
+                                modifier = padH
+                            )
+                        }
+                        BurnViewStyle.TIMELINE -> StaggeredEntrance(delay = 150) {
+                            val digest = remember(rollups, recentUsages, displayMode) {
+                                TrendDataDigest.build(
+                                    rollups = rollups ?: UsageRollups(),
+                                    recentUsages = recentUsages,
+                                    displayMode = displayMode
+                                )
+                            }
+                            BurnTimelineBody(
+                                digest = digest,
+                                displayMode = displayMode,
+                                onProviderClick = openProvider,
+                                modifier = padH
                             )
                         }
                     }

@@ -151,8 +151,8 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
             freshnessLabel: "updated 3h ago",
             fetchedAtLabel: "May 7, 6:58 PM",
             buckets: [
-                .init(name: "5-hour limit", percent: 8, headlineValue: "8%", subLabel: "92% left", resetsLabel: "Resets in 2h 14m · May 8, 3:35 AM", tone: .success),
-                .init(name: "Weekly limit", percent: 18, headlineValue: "18%", subLabel: "82% left", resetsLabel: "Resets in 5d 6h · May 12, 12:00 AM", tone: .success)
+                .init(name: "5-hour limit", percent: 8, headlineValue: "8%", subLabel: "92% left", resetsLabel: "Resets in 2h 14m · May 8, 3:35 AM", tone: .success, isCreditBalance: false),
+                .init(name: "Weekly limit", percent: 18, headlineValue: "18%", subLabel: "82% left", resetsLabel: "Resets in 5d 6h · May 12, 12:00 AM", tone: .success, isCreditBalance: false)
             ],
             accounts: [
                 .init(label: "Work", badge: "MAIN", tone: .whimsy, isActive: false),
@@ -206,7 +206,7 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
             name: "KiloCode",
             percent: 0, label: "", tone: .mercury,
             buckets: [
-                .init(name: "Daily", percent: 0, headlineValue: "", subLabel: "", resetsLabel: "", tone: .mercury)
+                .init(name: "Daily", percent: 0, headlineValue: "", subLabel: "", resetsLabel: "", tone: .mercury, isCreditBalance: false)
             ]
         )
         SmartHubBridgeServer.shared.updateSnapshot(

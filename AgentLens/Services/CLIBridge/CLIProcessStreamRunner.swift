@@ -133,6 +133,32 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runCursorAgent(
+        executable: String,
+        prompt: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.cursorAgentArguments(
+                    prompt: prompt,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .cursorAgent
+            ),
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
     private func runProcess(
         invocation: CLIProcessInvocation,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
@@ -281,6 +307,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return .cursorAgent
         }
     }
 

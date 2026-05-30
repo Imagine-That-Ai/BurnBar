@@ -22,15 +22,43 @@ Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.
 8. When ready, **Enforce** App Check for **Cloud Firestore** and confirm.
 9. Smoke-test: sign in, enable cloud sync, and confirm no `PERMISSION_DENIED` from Firestore in logs.
 
-`scripts/commercial-launch-gate.mjs` reads the live Firebase App Check service
-configuration through the Firebase App Check API and fails launch unless
-`firestore.googleapis.com` reports `ENFORCED`.
+`scripts/commercial-launch-gate.mjs` probes the live Firebase App Check service
+configuration through the Firebase App Check API (`evaluateFirebaseAppCheckEnforcement`)
+and fails launch unless `firestore.googleapis.com` reports `ENFORCED`. The probe is
+also covered by `scripts/test-commercial-launch-gate-appcheck.mjs`. Set
+`OPENBURNBAR_SKIP_LIVE_APP_CHECK_GATE=1` only for offline dry-runs that cannot call
+`gcloud` (never for production launch).
+
+## Callable attestation binding (Computer Use / grants)
+
+High-risk Cloud Functions require **both** platform `enforceAppCheck` on the callable
+and a prior `bindAppCheckAttestation` call that stores `obb_app_check` on the user's
+Firebase Auth custom claims (`appId` + `boundAtMillis`, 30-day TTL). The server
+rejects grant issuance, OpenTimestamps validation, escrow trust approval, and related
+mutations when the claim is missing, stale, or mismatched with `request.app.appId`.
+
+| Callable | Purpose |
+|---|---|
+| `bindAppCheckAttestation` | Bind Auth custom claims to the current App Check app instance |
+| `registerEscrowDevice` | Register a pending escrow device (attestation required) |
+| `approveEscrowDeviceTrust` | Elevate escrow device to `trusted` (replaces direct Firestore writes) |
+| `revokeEscrowDeviceTrust` | Revoke escrow device trust and active grants |
+| `issueRemoteMcpGrant` | Remote MCP grant issuance (attestation required) |
+| `completeCliLink` | CLI link completion + MCP grant (attestation required) |
+| `validateOpenTimestampsProof` | Computer Use audit proof validation (attestation required) |
+
+Mac/iOS/Android clients must call `bindAppCheckAttestation` after sign-in (when App
+Check is enabled) and route device trust approval through `approveEscrowDeviceTrust`
+instead of writing `trustState: trusted` directly to Firestore.
 
 ## Security rules and App Check
 
 The checked-in **Firestore rules** do not duplicate App Check: **enforcement is expected at the Firestore product** in App Check, as [documented by Firebase](https://firebase.google.com/docs/app-check/enable-enforcement). The rules file header in [firestore.rules](../firestore.rules) notes this, so a rules-only review is not misread as the full story.
 
-Optional defense-in-depth in rules (e.g. `request.app`) is **not** used here by default, because support and behavior can vary; validate in a staging project before relying on it.
+Optional defense-in-depth in rules (e.g. `request.app`) is **not** used here: Firestore
+App Check is enforced on the Firestore product in the console, and escrow trust
+elevation to `trusted` is blocked in [`firestore.rules`](../firestore.rules) so clients
+must use `approveEscrowDeviceTrust`.
 
 ## See also
 

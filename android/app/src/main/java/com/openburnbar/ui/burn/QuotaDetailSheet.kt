@@ -28,6 +28,7 @@ import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.displayRemainingFraction
 import com.openburnbar.data.models.effectiveResetsAt
 import com.openburnbar.data.models.effectiveWindowLabel
+import com.openburnbar.data.models.isCreditBalance
 import com.openburnbar.data.models.isStale
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.*
@@ -276,16 +277,27 @@ fun UnifiedQuotaSignalView(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = bucket.name,
-                fontSize = if (compact) AuroraTypography.tiny.sp else AuroraTypography.caption.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Compact mode: tuck the relative-only half next to the
-                // used/limit text so the card still answers "when does this
-                // refill" without growing a new row.
+                Text(
+                    text = bucket.name,
+                    fontSize = if (compact) AuroraTypography.tiny.sp else AuroraTypography.caption.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (bucket.isCreditBalance) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Balance",
+                        fontSize = AuroraTypography.tiny.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(primary)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (compact && resetParts != null) {
                     Text(
                         text = resetParts.relative,
@@ -302,27 +314,25 @@ fun UnifiedQuotaSignalView(
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { animatedProgress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (compact) 6.dp else 8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = primary,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-        if (!compact && bucket.window != null) {
+        if (!bucket.isCreditBalance) {
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (compact) 6.dp else 8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+        if (!compact && !bucket.isCreditBalance && bucket.window != null) {
             Text(
                 text = "Window: ${bucket.window}",
                 fontSize = AuroraTypography.tiny.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        // Non-compact reset row: lifts `resetsAt` into its own line, same
-        // shape as the iOS UnifiedQuotaSignalView reset row and the Mac
-        // ProviderQuotaBucketRow micro-badge. Empty when the bucket has no
-        // known reset moment.
-        if (!compact && resetParts != null) {
+        if (!compact && !bucket.isCreditBalance && resetParts != null) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "Resets ${resetParts.relative} · ${resetParts.absolute}",

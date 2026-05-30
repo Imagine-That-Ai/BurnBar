@@ -72,9 +72,7 @@ const DEFAULT_MAX_IN_FLIGHT = 8;
 
 function resolveDefaultSocketPath(): string {
   return (
-    process.env.OPENBURNBAR_DAEMON_SOCKET_PATH ??
-    process.env.BURNBAR_DAEMON_SOCKET_PATH ??
-    DEFAULT_BURNBAR_SOCKET_PATH
+    process.env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? process.env.BURNBAR_DAEMON_SOCKET_PATH ?? DEFAULT_BURNBAR_SOCKET_PATH
   );
 }
 
@@ -358,7 +356,10 @@ export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
     }
   }
 
-  private makeEnvelope(method: BurnBarRPCMethod, params?: unknown): BurnBarRPCRequestEnvelope | BurnBarRPCRequestEnvelopeWithParams<unknown> {
+  private makeEnvelope(
+    method: BurnBarRPCMethod,
+    params?: unknown
+  ): BurnBarRPCRequestEnvelope | BurnBarRPCRequestEnvelopeWithParams<unknown> {
     const base = {
       id: randomUUID(),
       method,

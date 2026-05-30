@@ -48,10 +48,7 @@ function keyKind(apiKey: string): "token_plan" | "payg" | "unknown" {
   return "unknown";
 }
 
-function resolveRegion(
-  ctx: ProviderAccountConnectContext | undefined,
-  apiKey: string
-): MimoRegion | null {
+function resolveRegion(ctx: ProviderAccountConnectContext | undefined, apiKey: string): MimoRegion | null {
   const region = ctx?.region;
   if (region === "cn" || region === "sgp" || region === "ams") {
     return region;
@@ -66,10 +63,7 @@ function resolveRegion(
   return null;
 }
 
-function resolveInferenceBase(
-  ctx: ProviderAccountConnectContext | undefined,
-  apiKey: string
-): string {
+function resolveInferenceBase(ctx: ProviderAccountConnectContext | undefined, apiKey: string): string {
   const kind = keyKind(apiKey);
   if (kind === "payg") return PAYG_BASE;
   const region = resolveRegion(ctx, apiKey);
@@ -87,11 +81,7 @@ interface FetchResult {
   errorCode?: string;
 }
 
-async function mimoFetch(
-  url: string,
-  token: string,
-  authStyle: "bearer" | "api-key" = "bearer"
-): Promise<FetchResult> {
+async function mimoFetch(url: string, token: string, authStyle: "bearer" | "api-key" = "bearer"): Promise<FetchResult> {
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
@@ -173,9 +163,7 @@ function parseRemainsBuckets(payload: unknown): QuotaBucket[] {
       if (!item) continue;
       const used = Number(item.used ?? item.current_interval_usage_count ?? 0);
       const total = Number(item.total ?? item.current_interval_total_count ?? item.limit ?? -1);
-      const remainsVal = Number(
-        item.remains ?? item.remaining ?? (total >= 0 ? Math.max(0, total - used) : -1)
-      );
+      const remainsVal = Number(item.remains ?? item.remaining ?? (total >= 0 ? Math.max(0, total - used) : -1));
       buckets.push({
         name: String(item.model_name ?? item.name ?? "token_plan"),
         used,
@@ -191,7 +179,7 @@ function parseRemainsBuckets(payload: unknown): QuotaBucket[] {
   const used = Number(data.used ?? data.used_credits ?? 0);
   const total = Number(data.total ?? data.total_credits ?? data.limit ?? -1);
   const remaining = Number(
-    data.remains ?? data.remaining ?? data.remaining_credits ?? (total >= 0 ? total - used : -1)
+    data.remains ?? data.remaining ?? data.remaining_credits ?? (total >= 0 ? total - used : -1),
   );
   if (total > 0 || remaining >= 0) {
     return [
@@ -233,10 +221,7 @@ function ledgerBuckets(ctx: ProviderAccountConnectContext | undefined): QuotaBuc
 export const mimoAdapter: ProviderAdapter = {
   provider: PROVIDER,
 
-  async testCredential(
-    credential: string,
-    ctx?: ProviderAccountConnectContext
-  ): Promise<CredentialTestResult> {
+  async testCredential(credential: string, ctx?: ProviderAccountConnectContext): Promise<CredentialTestResult> {
     const trimmed = credential.trim();
     if (!trimmed) {
       return {
@@ -293,7 +278,7 @@ export const mimoAdapter: ProviderAdapter = {
   async fetchQuota(
     credential: string,
     sourceId: string,
-    ctx?: ProviderAccountConnectContext
+    ctx?: ProviderAccountConnectContext,
   ): Promise<QuotaRefreshResult> {
     const trimmed = credential.trim();
     const kind = keyKind(trimmed);
@@ -368,8 +353,7 @@ export const mimoAdapter: ProviderAdapter = {
           source: "MiMo Token Plan (OpenBurnBar ledger)",
           confidence: "medium",
           managementURL: "https://platform.xiaomimimo.com/docs/en-US/tokenplan/subscription",
-          statusMessage:
-            "Vendor remains endpoint unavailable. Showing tier cap for BurnBar-routed credit tracking.",
+          statusMessage: "Vendor remains endpoint unavailable. Showing tier cap for BurnBar-routed credit tracking.",
           buckets: fallbackBuckets,
         },
       };

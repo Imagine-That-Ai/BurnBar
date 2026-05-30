@@ -8,11 +8,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
-import {
-  macHasActiveMediaEntitlement,
-  parseTriggerRequest,
-  resolveFanOut,
-} from "../voipPush.js";
+import { macHasActiveMediaEntitlement, parseTriggerRequest, resolveFanOut } from "../voipPush.js";
 
 export const triggerVoIPCall = onCall(
   { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
@@ -28,14 +24,11 @@ export const triggerVoIPCall = onCall(
     if (!data.voipDeviceToken && !data.androidDeviceId) {
       throw new HttpsError(
         "invalid-argument",
-        "Either voipDeviceToken (APNs) or androidDeviceId (FCM) must be provided."
+        "Either voipDeviceToken (APNs) or androidDeviceId (FCM) must be provided.",
       );
     }
     if (!(await macHasActiveMediaEntitlement(request.auth.uid))) {
-      throw new HttpsError(
-        "permission-denied",
-        "Hosted Media Sync entitlement required to start a call."
-      );
+      throw new HttpsError("permission-denied", "Hosted Media Sync entitlement required to start a call.");
     }
 
     const firestore = getFirestore();
@@ -58,7 +51,7 @@ export const triggerVoIPCall = onCall(
 
     if (fanOut.apnsToken) {
       const apnsPayload = {
-        "aps": {
+        aps: {
           "content-available": 1,
         },
         ...sharedFields,
@@ -70,7 +63,7 @@ export const triggerVoIPCall = onCall(
           voipDeviceToken: fanOut.apnsToken,
           createdAt: Timestamp.now(),
           status: "pending",
-        })
+        }),
       );
     }
 
@@ -92,15 +85,12 @@ export const triggerVoIPCall = onCall(
           androidDeviceId: fanOut.androidDeviceId ?? null,
           createdAt: Timestamp.now(),
           status: "pending",
-        })
+        }),
       );
     }
 
     if (writes.length === 0) {
-      throw new HttpsError(
-        "failed-precondition",
-        "No push channel available for the paired device."
-      );
+      throw new HttpsError("failed-precondition", "No push channel available for the paired device.");
     }
 
     await Promise.all(writes);
@@ -120,5 +110,5 @@ export const triggerVoIPCall = onCall(
         fcm: Boolean(fanOut.fcmToken),
       },
     };
-  }
-));
+  }),
+);

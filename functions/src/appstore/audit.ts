@@ -15,10 +15,7 @@ import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore } from "firebase-admin/firestore";
 
-import type {
-  AppStoreEnvironment,
-  EntitlementEventDoc,
-} from "../types.js";
+import type { AppStoreEnvironment, EntitlementEventDoc } from "../types.js";
 import { errorCode, stripUndefinedObject } from "../guards.js";
 
 const SCHEMA_VERSION = 1;
@@ -53,10 +50,7 @@ export interface AuditWriteInput {
  * Write an audit event. Idempotent via Firestore `create()` — the second
  * write of the same `(uid, eventId)` pair is a no-op.
  */
-export async function appendEntitlementEvent(
-  db: Firestore,
-  input: AuditWriteInput
-): Promise<EntitlementEventDoc> {
+export async function appendEntitlementEvent(db: Firestore, input: AuditWriteInput): Promise<EntitlementEventDoc> {
   const docId = sanitizeDocId(input.eventId);
   const nowDate = new Date();
   const now = nowDate.toISOString();
@@ -109,11 +103,7 @@ function redact(input: Record<string, unknown>): Record<string, unknown> {
   // Nested signed JWS strings must never reach Firestore — they're
   // hashed for forensic correlation. Numeric `signedDate` etc. are
   // kept verbatim because the audit log is supposed to surface them.
-  const banned = new Set([
-    "signedTransactionInfo",
-    "signedRenewalInfo",
-    "signedPayload",
-  ]);
+  const banned = new Set(["signedTransactionInfo", "signedRenewalInfo", "signedPayload"]);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
     if (banned.has(k) && typeof v === "string") {

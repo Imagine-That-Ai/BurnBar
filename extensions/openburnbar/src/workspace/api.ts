@@ -52,12 +52,7 @@ export interface BurnBarWorkspaceApi {
   applyEdit(edit: BurnBarWorkspaceEditBuilder): Thenable<boolean>;
   saveAll(includeUntitled?: boolean): Thenable<boolean>;
   createWorkspaceEdit(): BurnBarWorkspaceEditBuilder;
-  createRange(
-    startLine: number,
-    startCharacter: number,
-    endLine: number,
-    endCharacter: number
-  ): BurnBarWorkspaceRange;
+  createRange(startLine: number, startCharacter: number, endLine: number, endCharacter: number): BurnBarWorkspaceRange;
   confirmTerminalCommand(command: string, cwd: string): Thenable<boolean>;
   createTerminal(options: { name: string; cwd?: string }): BurnBarWorkspaceTerminal;
   parseUri(value: string): BurnBarWorkspaceUri;
@@ -109,10 +104,16 @@ function toWorkspaceEdit(edit: BurnBarWorkspaceEditBuilder): vscode.WorkspaceEdi
   if (edit instanceof vscode.WorkspaceEdit) {
     return edit;
   }
-  throw new OpenBurnBarWorkspaceRpcError('APPLY_EDIT_FAILED', 'OpenBurnBar could not apply an incompatible workspace edit.');
+  throw new OpenBurnBarWorkspaceRpcError(
+    'APPLY_EDIT_FAILED',
+    'OpenBurnBar could not apply an incompatible workspace edit.'
+  );
 }
 
-export function resolveWorkspaceUri(api: Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'>, target: string): BurnBarWorkspaceUri {
+export function resolveWorkspaceUri(
+  api: Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'>,
+  target: string
+): BurnBarWorkspaceUri {
   const roots = api.workspaceFolders ?? [];
   if (roots.length === 0) {
     throw new OpenBurnBarWorkspaceRpcError(

@@ -12,6 +12,7 @@ struct ChatExpandedPanel: View {
     var onMinimize: () -> Void
     var onClose: () -> Void
     var onShowClearChatPrompt: () -> Void
+    var onRequestCLIAssistantConsent: () -> Void = { }
 
     @State private var panelResizeStart: CGFloat?
     @State private var bottomResizeStart: CGFloat?
@@ -47,7 +48,12 @@ struct ChatExpandedPanel: View {
                 ChatInlineContextRibbon(controller: controller, brief: brief)
             }
             Divider().opacity(0.35)
-            ChatInputRow(controller: controller, chatBackend: controller.chatBackend) {
+            ChatInputRow(
+                controller: controller,
+                chatBackend: controller.chatBackend,
+                cliAssistantAllowed: settingsManager.cliAssistantAllowed,
+                onRequestCLIAssistantConsent: onRequestCLIAssistantConsent
+            ) {
                 Task { await controller.send() }
             }
         }

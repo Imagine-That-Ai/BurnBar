@@ -118,7 +118,12 @@ final class ScreenCapturePipeline: NSObject {
         #if canImport(ScreenCaptureKit)
         let content: SCShareableContent
         do {
-            content = try await Self.currentShareableContent(requestPermissionIfNeeded: true)
+            // Do not trigger the native Screen Recording prompt from automatic
+            // capture startup. macOS may show that dialog over unrelated flows
+            // (including Remote Unlock) if a background mirror attempt reaches
+            // ScreenCaptureKit before the user has granted the current app
+            // identity. Permission prompts are reserved for explicit setup UI.
+            content = try await Self.currentShareableContent(requestPermissionIfNeeded: false)
         } catch {
             if case Failure.screenRecordingPermissionDenied = error {
                 throw error

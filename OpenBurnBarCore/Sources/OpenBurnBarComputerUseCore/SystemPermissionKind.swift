@@ -12,6 +12,8 @@ import OpenBurnBarCore
 public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Codable {
     case screenRecording
     case accessibility
+    case remoteDesktop
+    case systemExtension
     case camera
     case microphone
     case fullDiskAccess
@@ -21,6 +23,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch wire {
         case .screenRecording: self = .screenRecording
         case .accessibility:   self = .accessibility
+        case .remoteDesktop:   self = .remoteDesktop
+        case .systemExtension: self = .systemExtension
         case .camera:          self = .camera
         case .microphone:      self = .microphone
         case .fullDiskAccess:  self = .fullDiskAccess
@@ -32,6 +36,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return .screenRecording
         case .accessibility:   return .accessibility
+        case .remoteDesktop:   return .remoteDesktop
+        case .systemExtension: return .systemExtension
         case .camera:          return .camera
         case .microphone:      return .microphone
         case .fullDiskAccess:  return .fullDiskAccess
@@ -44,6 +50,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return "Screen Recording"
         case .accessibility:   return "Accessibility"
+        case .remoteDesktop:   return "Remote Desktop"
+        case .systemExtension: return "Virtual Keyboard"
         case .camera:          return "Camera"
         case .microphone:      return "Microphone"
         case .fullDiskAccess:  return "Full Disk Access"
@@ -56,6 +64,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return "on your Mac"
         case .accessibility:   return "for OpenBurnBar"
+        case .remoteDesktop:   return "for locked screen access"
+        case .systemExtension: return "for physical input"
         case .camera:          return "on your Mac"
         case .microphone:      return "on your Mac"
         case .fullDiskAccess:  return "for OpenBurnBar"
@@ -70,6 +80,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return "rectangle.dashed.badge.record"
         case .accessibility:   return "accessibility"
+        case .remoteDesktop:   return "desktopcomputer"
+        case .systemExtension: return "keyboard.badge.ellipsis"
         case .camera:          return "video.fill"
         case .microphone:      return "mic.fill"
         case .fullDiskAccess:  return "externaldrive.fill.badge.checkmark"
@@ -82,6 +94,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return "screen_record"
         case .accessibility:   return "accessibility_new"
+        case .remoteDesktop:   return "desktop_windows"
+        case .systemExtension: return "keyboard_external_input"
         case .camera:          return "videocam"
         case .microphone:      return "mic"
         case .fullDiskAccess:  return "folder_managed"
@@ -96,6 +110,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         case .accessibility:   return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        case .remoteDesktop:   return "x-apple.systempreferences:com.apple.preference.security?Privacy_RemoteDesktop"
+        case .systemExtension: return "x-apple.systempreferences:com.apple.preference.security?Privacy_Extensions"
         case .camera:          return "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"
         case .microphone:      return "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
         case .fullDiskAccess:  return "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
@@ -118,6 +134,18 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
                 "Open System Settings on your Mac",
                 "Go to Privacy & Security → Accessibility",
                 "Toggle OpenBurnBar on"
+            ]
+        case .remoteDesktop:
+            return [
+                "Open System Settings on your Mac",
+                "Go to Privacy & Security → Remote Desktop",
+                "Toggle OpenBurnBar on"
+            ]
+        case .systemExtension:
+            return [
+                "Click Set Up Input in OpenBurnBar",
+                "Approve the macOS administrator prompt",
+                "Approve OpenBurnBar in Privacy & Security if macOS asks"
             ]
         case .camera:
             return [
@@ -152,7 +180,9 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
     /// kinds without one fall through to `openSettings`.
     public var defaultAction: HermesRealtimeRelaySystemPermissionAction {
         switch self {
-        case .screenRecording, .accessibility:
+        case .screenRecording, .accessibility, .remoteDesktop:
+            return .promptAndOpenSettings
+        case .systemExtension:
             return .promptAndOpenSettings
         case .camera, .microphone:
             // AVCaptureDevice.requestAccess surfaces a native dialog
@@ -182,6 +212,18 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
                 "Click a button, type a sentence, or scroll a page for you",
                 "Drive Cursor, VS Code, or any other app on your behalf",
                 "Move or resize a window so two things sit side by side"
+            ]
+        case .remoteDesktop:
+            return [
+                "Show your Mac's locked login screen on your trusted phone",
+                "Keep a remote session attached to the physical display",
+                "Verify the screen actually unlocked before resuming Mercury"
+            ]
+        case .systemExtension:
+            return [
+                "Type at the macOS login window as physical keyboard input",
+                "Dismiss Touch ID-first lock screens without a special VNC password",
+                "Unlock the real console instead of a hidden virtual session"
             ]
         case .camera:
             return [
@@ -217,6 +259,8 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
         switch self {
         case .screenRecording: return "Lets the agent see your screen."
         case .accessibility:   return "Lets the agent click, type, and inspect for you."
+        case .remoteDesktop:   return "Lets trusted devices see the locked login screen."
+        case .systemExtension: return "Lets OpenBurnBar send physical-style input at login."
         case .camera:          return "Lets the agent see through your Mac's camera."
         case .microphone:      return "Lets the agent hear what you say."
         case .fullDiskAccess:  return "Lets the agent reach folders macOS protects."
@@ -231,6 +275,10 @@ public enum SystemPermissionKind: String, CaseIterable, Hashable, Sendable, Coda
             return "Your Mac needs Screen Recording so OpenBurnBar can grab the screen for this agent."
         case .accessibility:
             return "Your Mac needs Accessibility so OpenBurnBar can drive clicks, keystrokes, and inspection for this agent."
+        case .remoteDesktop:
+            return "Your Mac needs Remote Desktop so OpenBurnBar can share the locked login screen with trusted devices."
+        case .systemExtension:
+            return "Your Mac needs the OpenBurnBar virtual keyboard bridge so Remote Unlock can type at the physical login screen."
         case .camera:
             return "Your Mac needs Camera access so OpenBurnBar can read the front-facing camera for this agent."
         case .microphone:

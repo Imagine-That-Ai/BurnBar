@@ -10,6 +10,10 @@ import {
 } from "@data/providers";
 
 const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
+
+// Counts come from the data so headline copy can never drift out of sync.
+const primaryCount = PROVIDERS_PRIMARY.length;
+const detectedCount = PROVIDERS_DETECTED.length;
 ---
 
 <BaseLayout
@@ -22,8 +26,9 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
       <h1 class="pagehead__h">An honest provider matrix.</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          Twenty-two providers ship with real usage data today. Eight more are detected but expose no
-          usage API — we mark them so, rather than pretending. Confidence labels live on every row.
+          {primaryCount} providers ship with real usage data today. {detectedCount} more are detected
+          but expose no usage API — we mark them so, rather than pretending. Confidence labels live on
+          every row.
         </p>
       </div>
     </div>
@@ -101,7 +106,7 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     <div class="container">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Real usage data · today</span>
-        <h2>Twenty-two providers ship with live data.</h2>
+        <h2>{primaryCount} providers ship with live data.</h2>
         <p class="lead">
           Each one names exactly where data comes from, what we can know about cost, and how quota
           is shaped. Notes capture limitations we'd rather you read than discover later.
@@ -181,7 +186,10 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
         <li>
           <h4>Antigravity &amp; Hermes</h4>
           <p>
-            Both are deeply integrated local components. Antigravity monitors the Gemini CLI history files (<code>history.jsonl</code>) locally, while Hermes is the native automation companion scraping computer-use metrics offline. Neither leaks credential material or session data to any external server.
+            Both are deeply integrated local components. Antigravity monitors the Gemini CLI history
+            files (<code>history.jsonl</code>) locally, while Hermes is the native automation
+            companion scraping computer-use metrics offline. Neither leaks credential material or
+            session data to any external server.
           </p>
         </li>
       </ul>

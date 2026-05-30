@@ -34,6 +34,7 @@ struct DashboardChatWorkspaceView: View {
 
     @State private var brief = InsightBriefSnapshot()
     @State private var showClearChatPrompt = false
+    @State private var showCLIAssistantConsent = false
     @State private var atomRouter = HermesAtomRouter()
 
     private let canvasMaxWidth: CGFloat = 760
@@ -111,6 +112,11 @@ struct DashboardChatWorkspaceView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("This starts a new chat. Previous Burn Bar chats stay in History.")
+        }
+        .sheet(isPresented: $showCLIAssistantConsent) {
+            CLIAssistantConsentSheet(settingsManager: settingsManager) {
+                showCLIAssistantConsent = false
+            }
         }
         .hermesRuntimeGate(
             controller: controller,
@@ -228,6 +234,10 @@ struct DashboardChatWorkspaceView: View {
                 ChatInputRow(
                     controller: controller,
                     chatBackend: controller.chatBackend,
+                    cliAssistantAllowed: settingsManager.cliAssistantAllowed,
+                    onRequestCLIAssistantConsent: {
+                        showCLIAssistantConsent = true
+                    },
                     onSubmit: { Task { await controller.send() } }
                 )
                 .frame(maxWidth: canvasMaxWidth)
@@ -287,6 +297,7 @@ struct DashboardChatWorkspaceView: View {
         case .droid: return "Talk to Droid with your indexed history as grounding."
         case .forge: return "Talk to Forge with your indexed history as grounding."
         case .antigravity: return "Talk to Antigravity with your indexed history as grounding."
+        case .cursorAgent: return "Talk to Cursor Agent with your indexed history as grounding."
         }
     }
 

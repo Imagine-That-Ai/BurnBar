@@ -12,7 +12,8 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       <h1 class="pagehead__h">Link CLI to Cloud</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          Connect your terminal CLI to sync your local environment securely with your BurnBar account.
+          Connect your terminal CLI to sync your local environment securely with your BurnBar
+          account.
         </p>
       </div>
     </div>
@@ -34,9 +35,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
           </div>
           <h2>Authentication Required</h2>
           <p>Please sign in with your BurnBar account to authorize this CLI connection.</p>
-          <button id="btn-signin" class="btn btn--ember">
-            Sign In with Google
-          </button>
+          <button id="btn-signin" class="btn btn--ember"> Sign In with Google </button>
         </div>
 
         <!-- State: Signed In, Enter/Confirm Code -->
@@ -58,13 +57,9 @@ import BaseLayout from "@layouts/BaseLayout.astro";
             />
           </div>
 
-          <button id="btn-confirm" class="btn btn--ember">
-            Link CLI Device
-          </button>
+          <button id="btn-confirm" class="btn btn--ember"> Link CLI Device </button>
 
-          <button id="btn-signout" class="btn-text">
-            Sign out of this account
-          </button>
+          <button id="btn-signout" class="btn-text"> Sign out of this account </button>
         </div>
 
         <!-- State: Submitting / Linking -->
@@ -94,9 +89,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
           </div>
           <h2>Linking Failed</h2>
           <p id="error-message">An unexpected error occurred.</p>
-          <button id="btn-retry" class="btn btn--secondary">
-            Try Again
-          </button>
+          <button id="btn-retry" class="btn btn--secondary"> Try Again </button>
         </div>
       </div>
     </div>
@@ -137,8 +130,14 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   h2 {
@@ -197,8 +196,12 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     margin-bottom: 1.5rem;
   }
   @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
   }
 
   /* Icons */
@@ -409,9 +412,14 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       console.error("Linking error", err);
       let friendlyMessage = err.message || "An unexpected error occurred.";
       if (err.code === "functions/not-found" || err.code === "not-found") {
-        friendlyMessage = "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
-      } else if (err.code === "functions/failed-precondition" || err.code === "failed-precondition") {
-        friendlyMessage = "BurnBar Pro is required for Remote MCP access. Please subscribe to continue.";
+        friendlyMessage =
+          "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
+      } else if (
+        err.code === "functions/failed-precondition" ||
+        err.code === "failed-precondition"
+      ) {
+        friendlyMessage =
+          "BurnBar Pro is required for Remote MCP access. Please subscribe to continue.";
       }
       if (errorMessage) errorMessage.textContent = friendlyMessage;
       showState("error");

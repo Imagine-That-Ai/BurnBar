@@ -22,29 +22,26 @@ import Security
 ///      envelope, see `docs/runbooks/media-budget.md`).
 @MainActor
 final class MacMediaCapabilityGate: MediaCapabilityGate {
-    static let shared = MacMediaCapabilityGate(
-        entitlementProvider: {
-            EntitlementState(
-                active: true,
-                fileTransfer: true,
-                screenShare: true,
-                videoCall: true
-            )
-        },
-        usageProvider: {
-            MediaQuotaUsageSnapshot()
-        },
-        budgetProvider: {
-            MediaBudgetStatus(
-                level: .normal,
-                projectedMonthEndUSD: 0,
-                monthToDateUSD: 0,
-                lastEvaluatedAt: Date(),
-                activeEnvelope: .normal
-            )
-        },
-        concurrentSessionsProvider: { _ in 0 }
-    )
+    static let shared: MacMediaCapabilityGate = {
+        MediaBudgetStatusStore.shared.startListening()
+        return MacMediaCapabilityGate(
+            entitlementProvider: {
+                EntitlementState(
+                    active: true,
+                    fileTransfer: true,
+                    screenShare: true,
+                    videoCall: true
+                )
+            },
+            usageProvider: {
+                MediaQuotaUsageSnapshot()
+            },
+            budgetProvider: {
+                MediaBudgetStatusStore.shared.effectiveStatus
+            },
+            concurrentSessionsProvider: { _ in 0 }
+        )
+    }()
 
     struct EntitlementState: Sendable, Equatable {
         var active: Bool
@@ -97,6 +94,9 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
             }
 
             let budget = budgetProvider()
+            if SettingsManager.shared.mediaKillSwitch {
+                return .denied(reason: .killSwitchActive)
+            }
             switch budget.level {
             case .hardCap:
                 return .denied(reason: .budgetHardCapReached)
@@ -282,6 +282,9 @@ final class MacRemoteUnlockReadinessService {
         static let backendCertificationFresh = "remote_unlock.backend_certification_fresh"
         static let loopbackFirewallActive = "remote_unlock.loopback_firewall_active"
         static let generatedCredentialInSystemKeychain = "remote_unlock.generated_credential_in_system_keychain"
+        static let remoteDesktopPermissionGranted = RemoteUnlockSetupProbe.remoteDesktopGrantKey
+        static let virtualHIDDriverInstalled = RemoteUnlockSetupProbe.virtualHIDInstalledKey
+        static let virtualHIDDriverActive = RemoteUnlockSetupProbe.virtualHIDActiveKey
         static let lastLockScreenProbeSucceeded = "remote_unlock.last_lock_screen_probe_succeeded"
         static let lastCredentialInputProbeSucceeded = "remote_unlock.last_credential_input_probe_succeeded"
         static let lastUnlockProbeSucceeded = "remote_unlock.last_unlock_probe_succeeded"
@@ -386,6 +389,7 @@ final class MacRemoteUnlockReadinessService {
 
     func revokeAllRemoteUnlockSessions() {
         activeRemoteUnlockSessions.removeAll()
+        try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
     }
 
     func snapshot() -> RemoteUnlockReadinessSnapshot {
@@ -400,11 +404,20 @@ final class MacRemoteUnlockReadinessService {
         let osBuild = currentOSBuild()
         let featureFlag = (defaults.object(forKey: Keys.featureEnabled) as? Bool) ?? true
         let screenSharingAvailable = RemoteUnlockSystemScreenSharingProbe().status().isAvailable
+        let setupProbe = RemoteUnlockSetupProbe(defaults: defaults)
         let agentHealthy = RemoteAccessAgentHealthProbe.isHealthy()
         let daemonInstalled = agentHealthy || FileManager.default.fileExists(
             atPath: "/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist"
         )
         let report = try? certificationStore.load()
+        if report != nil {
+            try? RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
+        }
+        let observedLockedScreenCapture =
+            defaults.bool(forKey: Keys.lastLockScreenProbeSucceeded) ||
+            (report?.probes.lockScreenCapture.succeeded == true)
+        let remoteDesktopPermissionGranted =
+            setupProbe.remoteDesktopPermissionGranted || observedLockedScreenCapture
         let reportBlockers = report?.validationBlockers(
             now: Date(),
             currentOSBuild: osBuild,
@@ -412,7 +425,10 @@ final class MacRemoteUnlockReadinessService {
             credentialRecipientPublicKeyBase64: keyMaterial?.publicKeyBase64,
             directDownloadBuild: isDirectDownloadBuild,
             daemonInstalled: daemonInstalled,
-            systemScreenSharingAvailable: screenSharingAvailable
+            systemScreenSharingAvailable: screenSharingAvailable,
+            remoteDesktopPermissionGranted: remoteDesktopPermissionGranted,
+            virtualHIDDriverInstalled: setupProbe.virtualHIDDriverInstalled,
+            virtualHIDDriverActive: setupProbe.virtualHIDDriverActive
         ) ?? ["remote_unlock_report_missing"]
         let hasValidReport = reportBlockers.isEmpty
 
@@ -423,6 +439,10 @@ final class MacRemoteUnlockReadinessService {
             systemScreenSharingAvailable: screenSharingAvailable,
             loopbackOnlyFirewallActive: hasValidReport && (report?.loopbackOnlyFirewallActive == true),
             generatedCredentialInSystemKeychain: hasValidReport && (report?.generatedCredentialInSystemKeychain == true),
+            remoteDesktopPermissionGranted: remoteDesktopPermissionGranted,
+            virtualHIDDriverInstalled: setupProbe.virtualHIDDriverInstalled,
+            virtualHIDDriverActive: setupProbe.virtualHIDDriverActive,
+            virtualHIDDriverPolicyRejected: setupProbe.virtualHIDDriverPolicyRejected,
             backendCertificationFresh: hasValidReport,
             currentOSBuild: osBuild,
             certifiedOSBuild: hasValidReport ? report?.currentOSBuild : nil,
@@ -463,13 +483,18 @@ final class MacRemoteUnlockReadinessService {
         defaults.set(osBuild ?? currentOSBuild(), forKey: Keys.certifiedOSBuild)
         defaults.set(true, forKey: Keys.backendCertificationFresh)
         defaults.set(true, forKey: Keys.loopbackFirewallActive)
-        defaults.set(true, forKey: Keys.generatedCredentialInSystemKeychain)
+        defaults.set(false, forKey: Keys.generatedCredentialInSystemKeychain)
+        defaults.set(true, forKey: Keys.remoteDesktopPermissionGranted)
+        // Do not persist virtual-HID install/active truth. Those are live
+        // probes (installed binary + socket) and must fail closed if the
+        // bridge is removed, killed, or rejected by AMFI after certification.
         defaults.set(true, forKey: Keys.lastLockScreenProbeSucceeded)
         defaults.set(true, forKey: Keys.lastCredentialInputProbeSucceeded)
         defaults.set(true, forKey: Keys.lastUnlockProbeSucceeded)
         defaults.set(fileVaultSSHSupported, forKey: Keys.fileVaultSSHSupported)
         defaults.set(credentialRecipientKeyId, forKey: Keys.credentialRecipientKeyId)
         defaults.set(credentialRecipientPublicKeyBase64, forKey: Keys.credentialRecipientPublicKeyBase64)
+        try? RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
     }
 
     private var isDirectDownloadBuild: Bool {
@@ -489,6 +514,15 @@ final class MacRemoteUnlockReadinessService {
                !loginDone {
                 return .loginWindow
             }
+            // Only report `.unlocked` on *positive* evidence: the screen-lock flag is explicitly
+            // present and false. A merely-absent flag is ambiguous — assuming unlocked there is the
+            // bug that made Remote Unlock report success (and stop) while the Mac stayed locked,
+            // e.g. when a screen-sharing connection perturbs the current session dictionary.
+            // When unlocked, macOS omits CGSSessionScreenIsLocked entirely; a live, login-done
+            // console session that is not flagged locked is unlocked. (Requiring an explicit
+            // `== false` wrongly reported "locked" and prompted for the Mac password while already
+            // logged in.)
+            return .unlocked
         }
 
         guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
@@ -498,7 +532,8 @@ final class MacRemoteUnlockReadinessService {
         case "com.apple.SecurityAgent", "com.apple.SecurityAgentHelper":
             return .securityAgent
         default:
-            return .unlocked
+            // No positive lock *or* unlock signal: do not assume unlocked.
+            return .unknown
         }
     }
 

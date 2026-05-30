@@ -2,6 +2,7 @@ import Foundation
 import OpenBurnBarCore
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseFunctions
 
 @Observable
 @MainActor
@@ -193,7 +194,7 @@ final class ActivityStore {
 
     private func searchEncryptedCloudIndex(query: String) async throws -> [CloudConversationSearchRow] {
         guard let vaultKey = try await unlockCloudVaultKeyIfAvailable() else { return [] }
-        let tokenHashes = try CloudVaultCrypto.tokenHashes(for: query, keyData: vaultKey, limit: 10)
+        let tokenHashes = try CloudVaultCrypto.searchQueryTokenHashes(for: query, keyData: vaultKey, limit: 10)
         let semanticHashes = try CloudVaultCrypto.semanticHashes(for: query, keyData: vaultKey, limit: 12)
         guard tokenHashes.isEmpty == false || semanticHashes.isEmpty == false else { return [] }
         let hits = try await functions.searchEncryptedConversationIndex(
@@ -201,7 +202,7 @@ final class ActivityStore {
             semanticHashes: semanticHashes,
             limit: Self.serverSearchLimit
         )
-        return hits.compactMap { hit in
+        let rows: [CloudConversationSearchRow] = hits.compactMap { (hit: CloudConversationSearchHit) -> CloudConversationSearchRow? in
             guard let title = try? CloudVaultCrypto.openText(hit.sealedTitle, keyData: vaultKey),
                   let snippet = try? CloudVaultCrypto.openText(hit.sealedSnippet, keyData: vaultKey) else {
                 return nil
@@ -214,9 +215,13 @@ final class ActivityStore {
                 projectName: hit.projectName,
                 storagePath: hit.storagePath,
                 bodyHash: hit.bodyHash,
-                score: hit.score
+                score: hit.score,
+                tokenScore: hit.tokenScore,
+                semanticScore: hit.semanticScore,
+                matchKind: hit.matchKind
             )
         }
+        return Self.rankCloudConversationRows(rows, query: query)
     }
 
     func loadCloudConversationBody(for row: CloudConversationSearchRow) async throws -> String {
@@ -388,6 +393,21 @@ final class ActivityStore {
             .compactMap { value($0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { $0.isEmpty == false }
     }
+
+    nonisolated static func rankCloudConversationRows(
+        _ rows: [CloudConversationSearchRow],
+        query: String
+    ) -> [CloudConversationSearchRow] {
+        let scorer = CloudConversationSearchReranker(query: query)
+        guard scorer.isActive else { return rows }
+        return rows.sorted { lhs, rhs in
+            let lhsScore = scorer.score(lhs)
+            let rhsScore = scorer.score(rhs)
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
 }
 
 struct CloudConversationSearchRow: Identifiable, Hashable, Sendable {
@@ -399,18 +419,181 @@ struct CloudConversationSearchRow: Identifiable, Hashable, Sendable {
     let storagePath: String
     let bodyHash: String
     let score: Double
+    let tokenScore: Double?
+    let semanticScore: Double?
+    let matchKind: String?
+
+    var providerEnum: AgentProvider? {
+        guard let provider else { return nil }
+        return AgentProvider.fromCatalogProviderID(provider)
+            ?? AgentProvider.fromPersistedToken(provider)
+            ?? AgentProvider(rawValue: provider)
+    }
 }
 
-enum CloudConversationSearchError: LocalizedError {
+private struct CloudConversationSearchReranker: Sendable {
+    let phrase: String
+    let tokens: [String]
+    let concepts: Set<String>
+
+    init(query: String) {
+        phrase = Self.normalizedPhrase(query)
+        tokens = Self.normalizedTokens(query)
+        concepts = Self.semanticConcepts(in: query)
+    }
+
+    var isActive: Bool {
+        !phrase.isEmpty || !tokens.isEmpty
+    }
+
+    func score(_ row: CloudConversationSearchRow) -> Double {
+        let title = Self.normalizedPhrase(row.title)
+        let snippet = Self.normalizedPhrase(row.snippet)
+        let project = Self.normalizedPhrase(row.projectName ?? "")
+        let provider = Self.normalizedPhrase(row.providerEnum?.displayName ?? row.provider ?? "")
+        let haystack = [title, snippet, project, provider]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        var score = row.score * 100
+        score += (row.tokenScore ?? 0) * 45
+        score += (row.semanticScore ?? 0) * 28
+
+        if phrase.count >= 3 {
+            if title.contains(phrase) { score += 90 }
+            if snippet.contains(phrase) { score += 70 }
+            if project.contains(phrase) { score += 35 }
+        }
+
+        if !tokens.isEmpty {
+            let matched = tokens.filter { haystack.contains($0) }
+            let coverage = Double(matched.count) / Double(tokens.count)
+            score += coverage * 70
+            if matched.count == tokens.count { score += 45 }
+            if title.containsAll(tokens) { score += 30 }
+            if snippet.containsAll(tokens) { score += 18 }
+        }
+
+        if !concepts.isEmpty {
+            let rowConcepts = Self.semanticConcepts(in: haystack)
+            let matchedConcepts = concepts.intersection(rowConcepts)
+            let coverage = Double(matchedConcepts.count) / Double(concepts.count)
+            score += coverage * 55
+            if matchedConcepts.count == concepts.count { score += 22 }
+        }
+
+        switch row.matchKind?.lowercased() {
+        case "hybrid":
+            score += 18
+        case "token":
+            score += 10
+        case "semantic":
+            score += 18
+        default:
+            break
+        }
+
+        return score
+    }
+
+    private static func normalizedPhrase(_ text: String) -> String {
+        normalizedTokens(text).joined(separator: " ")
+    }
+
+    private static func normalizedTokens(_ text: String) -> [String] {
+        let stopwords: Set<String> = [
+            "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
+            "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
+            "into", "onto", "can", "could", "should", "would"
+        ]
+        var seen = Set<String>()
+        return text
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { token in
+                (token.count >= 2 || token == "x") && !stopwords.contains(token)
+            }
+            .filter { seen.insert($0).inserted }
+    }
+
+    private static func semanticConcepts(in text: String) -> Set<String> {
+        let phrase = normalizedPhrase(text)
+        let tokenSet = Set(normalizedTokens(text))
+        var concepts = Set<String>()
+
+        let mentionsX = tokenSet.contains("x")
+            || tokenSet.contains("twitter")
+            || phrase.contains("x platform")
+        let mentionsAds = tokenSet.contains("ad")
+            || tokenSet.contains("ads")
+            || tokenSet.contains("advertising")
+            || tokenSet.contains("campaign")
+            || tokenSet.contains("campaigns")
+            || tokenSet.contains("marketing")
+        let mentionsAPI = tokenSet.contains("api")
+            || tokenSet.contains("endpoint")
+            || tokenSet.contains("endpoints")
+            || tokenSet.contains("sdk")
+            || tokenSet.contains("webhook")
+            || tokenSet.contains("integration")
+            || tokenSet.contains("integrations")
+
+        if mentionsX {
+            concepts.insert("x-platform")
+            concepts.insert("social-platform")
+        }
+        if mentionsAds {
+            concepts.insert("advertising")
+        }
+        if mentionsAPI {
+            concepts.insert("api-integration")
+        }
+        if mentionsX && mentionsAds {
+            concepts.insert("x-ads")
+        }
+        if mentionsAds && mentionsAPI {
+            concepts.insert("ads-api")
+        }
+        if mentionsX && mentionsAPI {
+            concepts.insert("x-api")
+        }
+
+        return concepts
+    }
+}
+
+private extension String {
+    func containsAll(_ tokens: [String]) -> Bool {
+        tokens.allSatisfy { contains($0) }
+    }
+}
+
+enum CloudConversationSearchError: LocalizedError, Equatable {
     case vaultKeyUnavailable
-    case downloadFailed
+    /// The conversation row carries no stored body (missing `storagePath`/`bodyHash`), so there is
+    /// no encrypted transcript to download — distinct from a transfer failure, and not retryable.
+    case transcriptUnavailable
+    /// The encrypted body object is gone from Cloud Storage (a signed-URL 404/410, or a server-side
+    /// `not-found` from `getEncryptedSessionBlobDownloadUrl`). Retrying won't help until the Mac
+    /// re-uploads the body, so the UI should say so rather than offer a futile "Try Again".
+    case transcriptMissingFromCloud
+    /// A genuine transfer/decode failure. `underlying` carries the real cause (HTTP status, callable
+    /// message, or network/decode error) so the error pane is never an opaque dead end.
+    case downloadFailed(underlying: String?)
     case bodyHashMismatch
 
     var errorDescription: String? {
         switch self {
         case .vaultKeyUnavailable:
             return "This device has not received the encrypted search key yet. Leave the app signed in and let your Mac sync again."
-        case .downloadFailed:
+        case .transcriptUnavailable:
+            return "This conversation was indexed without a stored transcript, so there's nothing to open."
+        case .transcriptMissingFromCloud:
+            return "This conversation's encrypted transcript is no longer stored in the cloud."
+        case .downloadFailed(let underlying):
+            if let underlying, !underlying.isEmpty {
+                return "Could not download the encrypted session log: \(underlying)"
+            }
             return "Could not download the encrypted session log."
         case .bodyHashMismatch:
             return "The encrypted session log did not match its indexed hash."
@@ -759,8 +942,8 @@ struct CloudVaultGateway {
         do {
             let url = try await functions.encryptedSessionBlobDownloadURL(storagePath: storagePath)
             let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                throw CloudConversationSearchError.downloadFailed
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw Self.classifyDownloadFailure(httpStatus: http.statusCode, error: nil)
             }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
@@ -780,8 +963,35 @@ struct CloudVaultGateway {
         } catch let error as CloudConversationSearchError {
             throw error
         } catch {
-            throw CloudConversationSearchError.downloadFailed
+            throw Self.classifyDownloadFailure(httpStatus: nil, error: error)
         }
+    }
+
+    /// Maps a raw transcript-download failure into a precise, user-facing error. Pure (no I/O) so it
+    /// can be unit-tested without a live Functions/Storage round-trip. A missing body object surfaces
+    /// either as a signed-URL 404/410 or as a callable `not-found`; both become
+    /// `.transcriptMissingFromCloud` so the UI stops offering a futile retry. Every other failure
+    /// keeps its real cause (HTTP status or the SDK's localized message) instead of collapsing into an
+    /// opaque "download failed".
+    nonisolated static func classifyDownloadFailure(httpStatus: Int?, error: Error?) -> CloudConversationSearchError {
+        if let httpStatus, httpStatus == 404 || httpStatus == 410 {
+            return .transcriptMissingFromCloud
+        }
+        if let error, isNotFoundError(error) {
+            return .transcriptMissingFromCloud
+        }
+        if let httpStatus, !(200...299).contains(httpStatus) {
+            return .downloadFailed(underlying: "HTTP \(httpStatus)")
+        }
+        return .downloadFailed(underlying: error?.localizedDescription)
+    }
+
+    /// True when `error` is a Firebase callable `not-found` (the download URL function reports a
+    /// missing body object this way after its `file.exists()` precheck).
+    nonisolated static func isNotFoundError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == FunctionsErrorDomain
+            && nsError.code == FunctionsErrorCode.notFound.rawValue
     }
 }
 
@@ -1124,7 +1334,7 @@ final class ConversationCockpitStore {
     func loadTranscript(for row: CockpitConversationRow) async throws -> String {
         guard let storagePath = row.storagePath, !storagePath.isEmpty,
               let bodyHash = row.bodyHash, !bodyHash.isEmpty else {
-            throw CloudConversationSearchError.downloadFailed
+            throw CloudConversationSearchError.transcriptUnavailable
         }
         let key: Data
         if let vaultKey {

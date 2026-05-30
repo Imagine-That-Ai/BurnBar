@@ -6,12 +6,7 @@
  * Manager cleanup happen under one audited callable.
  */
 
-import type {
-  CollectionReference,
-  DocumentReference,
-  Firestore,
-  WriteBatch,
-} from "firebase-admin/firestore";
+import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
 
 export interface AccountDeletionSummary {
   destroyedSecrets: number;
@@ -46,7 +41,7 @@ export function providerSecretRefDocumentID(uid: string, accountID: string): str
 export async function eraseUserAccount(
   db: Firestore,
   uid: string,
-  options: DeleteUserAccountOptions
+  options: DeleteUserAccountOptions,
 ): Promise<AccountDeletionResult> {
   const summary = await eraseUserCloudData(db, uid, options);
   if (summary.failedSecretDestroys > 0) {
@@ -79,7 +74,7 @@ export async function eraseUserAccount(
 export async function eraseUserCloudData(
   db: Firestore,
   uid: string,
-  options: AccountDeletionOptions
+  options: AccountDeletionOptions,
 ): Promise<AccountDeletionSummary> {
   if (!uid.trim()) {
     throw new Error("uid is required for account deletion.");
@@ -92,17 +87,13 @@ export async function eraseUserCloudData(
   };
   const logger = options.logger ?? console;
 
-  const secretRefs = await db
-    .collection("provider_account_secret_refs")
-    .where("uid", "==", uid)
-    .get();
+  const secretRefs = await db.collection("provider_account_secret_refs").where("uid", "==", uid).get();
 
   const batcher = new DeleteBatcher(db, summary);
 
   for (const doc of secretRefs.docs) {
     const secretVersionName = doc.get("secretVersionName");
-    const secretVersion =
-      typeof secretVersionName === "string" ? secretVersionName : undefined;
+    const secretVersion = typeof secretVersionName === "string" ? secretVersionName : undefined;
     if (secretVersion) {
       try {
         await options.destroyCredential(secretVersion);
@@ -125,17 +116,13 @@ export async function eraseUserCloudData(
 export function isFirebaseAuthUserNotFound(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const code = "code" in error ? error.code : undefined;
-  const errorInfo = "errorInfo" in error && error.errorInfo && typeof error.errorInfo === "object"
-    ? error.errorInfo
-    : undefined;
+  const errorInfo =
+    "errorInfo" in error && error.errorInfo && typeof error.errorInfo === "object" ? error.errorInfo : undefined;
   const nestedCode = errorInfo && "code" in errorInfo ? errorInfo.code : undefined;
   return code === "auth/user-not-found" || nestedCode === "auth/user-not-found";
 }
 
-async function deleteDocumentTree(
-  ref: DocumentReference,
-  batcher: DeleteBatcher
-): Promise<void> {
+async function deleteDocumentTree(ref: DocumentReference, batcher: DeleteBatcher): Promise<void> {
   const collections = await ref.listCollections();
   for (const collection of collections) {
     await deleteCollectionTree(collection, batcher);
@@ -143,10 +130,7 @@ async function deleteDocumentTree(
   await batcher.delete(ref);
 }
 
-async function deleteCollectionTree(
-  collection: CollectionReference,
-  batcher: DeleteBatcher
-): Promise<void> {
+async function deleteCollectionTree(collection: CollectionReference, batcher: DeleteBatcher): Promise<void> {
   const docs = await collection.listDocuments();
   for (const doc of docs) {
     await deleteDocumentTree(doc, batcher);
@@ -159,7 +143,7 @@ class DeleteBatcher {
 
   constructor(
     private readonly db: Firestore,
-    private readonly summary: AccountDeletionSummary
+    private readonly summary: AccountDeletionSummary,
   ) {
     this.batch = db.batch();
   }

@@ -49,18 +49,110 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000)
     }
 
-    private struct JSONLTokenWindows {
+    /// Token totals across the rolling Claude windows. Internal (not private)
+    /// so `ClaudeQuotaJSONLScannerTests` can assert on the scan output.
+    struct JSONLTokenWindows {
         let fiveHourTokens: Int
         let sevenDayTokens: Int
         let latestTimestamp: Date?
         let filesScanned: Int
     }
 
+    // MARK: - JSONL Scan Cache & Timestamp Parsing
+
+    /// Shared, reused ISO8601 parsers. Claude writes turn timestamps with
+    /// fractional seconds (e.g. `2026-05-27T08:00:53.077Z`), which the
+    /// *default* `ISO8601DateFormatter` rejects. The previous per-line
+    /// `ISO8601DateFormatter().date(from:)` therefore both (a) allocated an
+    /// ICU-backed formatter for every assistant line — pure CPU burn that
+    /// showed up as the hottest non-idle frame under load — and (b) returned
+    /// `nil`, silently zeroing every JSONL token count. Reusing two configured
+    /// formatters fixes the correctness bug and removes the allocation.
+    private enum JSONLTimestamp {
+        static let fractional: ISO8601DateFormatter = {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }()
+        static let plain: ISO8601DateFormatter = {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter
+        }()
+        static func date(from text: String) -> Date? {
+            fractional.date(from: text) ?? plain.date(from: text)
+        }
+    }
+
+    /// Per-file invalidation key: a transcript is unchanged iff both its
+    /// modification time and byte size are unchanged. Mirrors
+    /// `CodexRolloutFileSignature`.
+    private struct JSONLFileSignature: Equatable {
+        let modifiedAt: TimeInterval
+        let sizeBytes: Int64
+    }
+
+    /// Boundary-independent contribution of a single assistant turn: its
+    /// timestamp and token total. Window membership (5-hour / 7-day) is applied
+    /// at aggregation time, so cached contributions stay valid as the rolling
+    /// windows slide.
+    private struct JSONLContribution {
+        let timestamp: Date
+        let total: Int
+    }
+
+    /// Process-lifetime, thread-safe cache of parsed per-file contributions.
+    ///
+    /// The Claude statusline watcher re-runs this scan on *every* hook write
+    /// (constantly during an active Claude session), and the provider, account,
+    /// and switcher-profile scopes each scan concurrently. Without a cache,
+    /// every run re-reads and re-JSON-parses every in-window transcript on every
+    /// core. With it, only the file Claude actually appended to is re-read;
+    /// everything else is an O(lines) re-sum of cached numbers.
+    ///
+    /// Unlike `CodexRolloutScanCache` this is in-memory only (no disk
+    /// persistence plumbed through `ProviderQuotaAdapterContext`): the
+    /// modification-time window cutoff already keeps a cold first scan cheap, so
+    /// the persisted variant's complexity isn't warranted here.
+    private final class JSONLScanCache: @unchecked Sendable {
+        private struct Entry {
+            let signature: JSONLFileSignature
+            let contributions: [JSONLContribution]
+        }
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+
+        func contributions(forPath path: String, signature: JSONLFileSignature) -> [JSONLContribution]? {
+            lock.lock(); defer { lock.unlock() }
+            guard let entry = entries[path], entry.signature == signature else { return nil }
+            return entry.contributions
+        }
+
+        func store(path: String, signature: JSONLFileSignature, contributions: [JSONLContribution]) {
+            lock.lock(); defer { lock.unlock() }
+            entries[path] = Entry(signature: signature, contributions: contributions)
+        }
+
+        /// Drop entries for transcripts that fell out of the widest rolling
+        /// window. Pruning by absolute modification time (not by one scope's
+        /// file set) keeps it safe when scopes scan concurrently: every scope
+        /// derives the cutoff from the same `now`, so none evicts another
+        /// scope's still-relevant entries.
+        func pruneEntries(olderThan cutoffEpoch: TimeInterval) {
+            lock.lock(); defer { lock.unlock() }
+            entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+        }
+    }
+
+    private static let scanCache = JSONLScanCache()
+
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let usesScopedConfig = Self.hasScopedClaudeConfig(environment: context.environment)
         let routeCredentialScope = Self.hasRouteCredentialScope(environment: context.environment)
         let switcherProfileScope = Self.hasSwitcherProfileScope(environment: context.environment)
         let accountScopedQuota = routeCredentialScope || switcherProfileScope
+        let canUseLocalClaudeSessionForAccount = switcherProfileScope
+            && Self.scopedClaudeProfileMatchesDefaultLogin(context: context)
         let workingCredentials = context.claudeCredentialsReader.load()
         let bridgeStatus = context.refreshClaudeBridgeStatus()
 
@@ -120,9 +212,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // 1. Statusline bridge — most current when the CLI has fired
         //    at least once. Returns immediately if a fresh payload is
         //    available.
-        if workingCredentials == nil,
-           !accountScopedQuota,
-           !usesScopedConfig,
+        if (workingCredentials == nil || canUseLocalClaudeSessionForAccount),
+           (!accountScopedQuota || canUseLocalClaudeSessionForAccount),
+           (!usesScopedConfig || canUseLocalClaudeSessionForAccount),
            postInstallStatus.state == .ready,
            Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
@@ -209,9 +301,11 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return staleSnapshot
         }
 
-        // 4. Plan-only snapshot for explicit credentials. This is not
-        //    reached in production default mode because OpenBurnBar no
-        //    longer discovers Claude credentials on its own.
+        // 4. Explicit credentials without current quota buckets. Do not render
+        //    plan/account metadata as a quota bucket: a Max/Pro plan badge is
+        //    not a lifetime allowance, and a context window is not a Claude
+        //    subscription quota. Leave the card bucketless until Claude returns
+        //    real rate-limit windows for this exact account.
         if let credentials = workingCredentials {
             if routeCredentialScope {
                 return unavailableSnapshot(
@@ -220,33 +314,12 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                     message: "No current Claude quota returned for this account's stored credential. OpenBurnBar will not reuse another Claude account's statusline or cache data."
                 )
             }
-            if switcherProfileScope {
-                return unavailableSnapshot(
-                    for: .claudeCode,
-                    source: .officialAPI,
-                    message: "No current Claude quota returned for this Claude profile's OAuth credential. OpenBurnBar will not reuse another Claude account's statusline or cache data."
-                )
-            }
-            let badgeBucket = ProviderQuotaBucket(
-                key: "claude-plan-badge",
-                label: "Plan: \(credentials.planDisplayName)",
-                windowKind: .lifetime,
-                usedValue: nil,
-                limitValue: nil,
-                remainingValue: nil,
-                usedPercent: nil,
-                resetsAt: nil,
-                unit: .count,
-                isEstimated: false
-            )
-            return ProviderQuotaSnapshot(
-                provider: .claudeCode,
-                fetchedAt: Date(),
-                source: .localCLI,
-                confidence: .estimated,
-                managementURL: "https://claude.ai/settings/usage",
-                statusMessage: "Claude \(credentials.planDisplayName) detected from explicitly supplied credentials. Run any Claude Code prompt to capture local rate-limit percentages.",
-                buckets: [badgeBucket]
+            return unavailableSnapshot(
+                for: .claudeCode,
+                source: .officialAPI,
+                message: switcherProfileScope
+                    ? "Claude \(credentials.planDisplayName) credential is signed in for this profile, but Anthropic did not return current quota buckets for it. OpenBurnBar will not reuse another Claude account's statusline, context window, or cache data."
+                    : "Claude \(credentials.planDisplayName) credential is available, but Anthropic did not return current quota buckets. OpenBurnBar will not display plan metadata as quota."
             )
         }
 
@@ -486,7 +559,10 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - File Discovery
 
-    private static func scanJSONLTokenWindows(
+    /// Sum real assistant-turn token usage across the rolling 5-hour and
+    /// 7-day windows from local Claude transcripts. Internal (not private) so
+    /// `ClaudeQuotaJSONLScannerTests` can drive it against a temp directory.
+    static func scanJSONLTokenWindows(
         homeDirectoryURL: URL,
         fileManager: FileManager,
         environment: [String: String],
@@ -495,9 +571,20 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let calendar = Calendar.current
         let fiveHoursAgo = calendar.date(byAdding: .hour, value: -5, to: now) ?? now
         let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-        let files = findJSONLFiles(
+
+        // A transcript's modification time is an upper bound on the timestamp of
+        // any line it holds: Claude appends each turn the moment it is produced.
+        // A file last written before the 7-day window opened therefore cannot
+        // contribute to either the 5-hour or 7-day window, so it is skipped
+        // without ever being opened. This is the single biggest win — stale
+        // transcripts accumulate indefinitely (hundreds of MB) while only the
+        // last week's files can ever matter.
+        let windowCutoffEpoch = sevenDaysAgo.timeIntervalSince1970
+
+        let files = findRecentJSONLFiles(
             in: claudeProjectDirectories(homeDirectoryURL: homeDirectoryURL, environment: environment),
-            fileManager: fileManager
+            fileManager: fileManager,
+            modifiedAtOrAfterEpoch: windowCutoffEpoch
         )
 
         var fiveHourTokens = 0
@@ -505,22 +592,29 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         var latestTimestamp: Date?
         var filesScanned = 0
 
-        for file in files {
-            guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
-            defer { try? handle.close() }
+        for (file, signature) in files {
+            let path = file.standardizedFileURL.path
+            let contributions: [JSONLContribution]
+            if let cached = scanCache.contributions(forPath: path, signature: signature) {
+                contributions = cached
+            } else {
+                guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
+                defer { try? handle.close() }
+                contributions = parseFileContributions(from: handle, now: now)
+                scanCache.store(path: path, signature: signature, contributions: contributions)
+            }
+
             filesScanned += 1
-            let tokens = parseTokenWindows(
-                from: handle,
-                fiveHoursAgo: fiveHoursAgo,
-                sevenDaysAgo: sevenDaysAgo,
-                now: now
-            )
-            fiveHourTokens += tokens.fiveHour
-            sevenDayTokens += tokens.sevenDay
-            if let ts = tokens.latestTimestamp {
-                latestTimestamp = max(ts, latestTimestamp ?? .distantPast)
+            for contribution in contributions {
+                if contribution.total > 0 {
+                    if contribution.timestamp >= fiveHoursAgo { fiveHourTokens += contribution.total }
+                    if contribution.timestamp >= sevenDaysAgo { sevenDayTokens += contribution.total }
+                }
+                latestTimestamp = max(contribution.timestamp, latestTimestamp ?? .distantPast)
             }
         }
+
+        scanCache.pruneEntries(olderThan: windowCutoffEpoch)
 
         return JSONLTokenWindows(
             fiveHourTokens: fiveHourTokens,
@@ -559,6 +653,44 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         quotaNonEmpty(environment["OPENBURNBAR_QUOTA_SWITCHER_PROFILE_ID"]) != nil
     }
 
+    /// A switcher profile may represent the same account as the default local
+    /// Claude Code login. In that case the global statusline hook is not
+    /// cross-account leakage; it is the account's live signal.
+    private static func scopedClaudeProfileMatchesDefaultLogin(
+        context: ProviderQuotaAdapterContext
+    ) -> Bool {
+        guard let profileDirectory = quotaNonEmpty(context.environment["CLAUDE_CONFIG_DIR"]) else {
+            return false
+        }
+
+        let profileStateURL = URL(fileURLWithPath: profileDirectory, isDirectory: true)
+            .appendingPathComponent(".claude.json", isDirectory: false)
+        let defaultStateURL = context.homeDirectoryURL
+            .appendingPathComponent(".claude.json", isDirectory: false)
+
+        guard let profileState = try? context.snapshotStore.readJSONObject(from: profileStateURL),
+              let defaultState = try? context.snapshotStore.readJSONObject(from: defaultStateURL) else {
+            return false
+        }
+
+        let profileIdentity = claudeAccountIdentity(from: profileState)
+        let defaultIdentity = claudeAccountIdentity(from: defaultState)
+        guard !profileIdentity.isEmpty, !defaultIdentity.isEmpty else { return false }
+        return !profileIdentity.isDisjoint(with: defaultIdentity)
+    }
+
+    private static func claudeAccountIdentity(from state: [String: Any]) -> Set<String> {
+        guard let account = state["oauthAccount"] as? [String: Any] else { return [] }
+        let candidates = [
+            account["accountUuid"] as? String,
+            account["emailAddress"] as? String,
+            account["organizationUuid"] as? String,
+        ]
+        return Set(candidates.compactMap { value in
+            quotaNonEmpty(value)?.lowercased()
+        })
+    }
+
     private static func scopedClaudeProjectDirectories(environment: [String: String]) -> [URL] {
         let rawValues = [
             environment["CLAUDE_CONFIG_DIR"],
@@ -591,15 +723,23 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         return directories
     }
 
-    private static func findJSONLFiles(in directories: [URL], fileManager: FileManager) -> [URL] {
-        var files: [URL] = []
+    /// Enumerate `*.jsonl` transcripts modified at or after `cutoffEpoch`,
+    /// returning each with its `(modifiedAt, sizeBytes)` signature for cache
+    /// invalidation. Files older than the cutoff are dropped here so they are
+    /// never opened or read — see `scanJSONLTokenWindows`.
+    private static func findRecentJSONLFiles(
+        in directories: [URL],
+        fileManager: FileManager,
+        modifiedAtOrAfterEpoch cutoffEpoch: TimeInterval
+    ) -> [(url: URL, signature: JSONLFileSignature)] {
+        var files: [(url: URL, signature: JSONLFileSignature)] = []
         var seen = Set<String>()
 
         for directory in directories {
             guard fileManager.fileExists(atPath: directory.path) else { continue }
             guard let enumerator = fileManager.enumerator(
                 at: directory,
-                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
@@ -607,7 +747,23 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 guard fileURL.pathExtension.lowercased() == "jsonl" else { continue }
                 let path = fileURL.standardizedFileURL.path
                 guard seen.insert(path).inserted else { continue }
-                files.append(fileURL)
+
+                guard let values = try? fileURL.resourceValues(
+                    forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
+                ),
+                    values.isRegularFile == true,
+                    let modified = values.contentModificationDate else { continue }
+
+                let modifiedEpoch = modified.timeIntervalSince1970
+                guard modifiedEpoch >= cutoffEpoch else { continue }
+
+                files.append((
+                    fileURL,
+                    JSONLFileSignature(
+                        modifiedAt: modifiedEpoch,
+                        sizeBytes: Int64(values.fileSize ?? 0)
+                    )
+                ))
             }
         }
 
@@ -615,12 +771,6 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     }
 
     // MARK: - Parsing
-
-    private struct FileTokens {
-        let fiveHour: Int
-        let sevenDay: Int
-        let latestTimestamp: Date?
-    }
 
     // MARK: - Claude Helpers
 
@@ -660,32 +810,33 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
     }
 
-    private static func parseTokenWindows(
+    /// Stream a transcript line by line, returning the boundary-independent
+    /// `(timestamp, total)` contribution of every assistant turn. The result is
+    /// what the per-file cache stores; rolling-window summation happens in
+    /// `scanJSONLTokenWindows` so cached values survive window movement.
+    private static func parseFileContributions(
         from handle: FileHandle,
-        fiveHoursAgo: Date,
-        sevenDaysAgo: Date,
         now: Date
-    ) -> FileTokens {
+    ) -> [JSONLContribution] {
         try? handle.seek(toOffset: 0)
 
-        var fiveHour = 0
-        var sevenDay = 0
-        var latestTimestamp: Date?
-
+        var contributions: [JSONLContribution] = []
         var currentLine = Data()
         currentLine.reserveCapacity(4 * 1024)
         var lineByteCount = 0
 
+        func flushCurrentLine() {
+            if lineByteCount > 0, lineByteCount <= ScannerPolicy.maxLineBytes,
+               let contribution = parseLineContribution(currentLine, now: now) {
+                contributions.append(contribution)
+            }
+            currentLine.removeAll(keepingCapacity: true)
+            lineByteCount = 0
+        }
+
         while true {
             guard let chunk = try? handle.read(upToCount: 256 * 1024), !chunk.isEmpty else {
-                if lineByteCount > 0 {
-                    let tokens = parseLineTokens(currentLine, fiveHoursAgo: fiveHoursAgo, sevenDaysAgo: sevenDaysAgo, now: now)
-                    fiveHour += tokens.fiveHour
-                    sevenDay += tokens.sevenDay
-                    if let ts = tokens.timestamp {
-                        latestTimestamp = max(ts, latestTimestamp ?? .distantPast)
-                    }
-                }
+                flushCurrentLine()
                 break
             }
 
@@ -693,18 +844,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             while let nl = chunk[segmentStart...].firstIndex(of: 0x0A) {
                 currentLine.append(chunk[segmentStart..<nl])
                 lineByteCount += chunk[segmentStart..<nl].count
-
-                if lineByteCount > 0, lineByteCount <= ScannerPolicy.maxLineBytes {
-                    let tokens = parseLineTokens(currentLine, fiveHoursAgo: fiveHoursAgo, sevenDaysAgo: sevenDaysAgo, now: now)
-                    fiveHour += tokens.fiveHour
-                    sevenDay += tokens.sevenDay
-                    if let ts = tokens.timestamp {
-                        latestTimestamp = max(ts, latestTimestamp ?? .distantPast)
-                    }
-                }
-
-                currentLine.removeAll(keepingCapacity: true)
-                lineByteCount = 0
+                flushCurrentLine()
                 segmentStart = chunk.index(after: nl)
             }
 
@@ -714,34 +854,22 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        return FileTokens(
-            fiveHour: fiveHour,
-            sevenDay: sevenDay,
-            latestTimestamp: latestTimestamp
-        )
+        return contributions
     }
 
-    private struct LineTokens {
-        let fiveHour: Int
-        let sevenDay: Int
-        let timestamp: Date?
-    }
-
-    private static func parseLineTokens(
+    private static func parseLineContribution(
         _ data: Data,
-        fiveHoursAgo: Date,
-        sevenDaysAgo: Date,
         now: Date
-    ) -> LineTokens {
-        guard !data.isEmpty else { return LineTokens(fiveHour: 0, sevenDay: 0, timestamp: nil) }
+    ) -> JSONLContribution? {
+        guard !data.isEmpty else { return nil }
 
         guard data.containsAscii(#""type""#),
               data.containsAscii(#""usage""#) else {
-            return LineTokens(fiveHour: 0, sevenDay: 0, timestamp: nil)
+            return nil
         }
 
         guard data.containsAscii(#""type":"assistant""#) else {
-            return LineTokens(fiveHour: 0, sevenDay: 0, timestamp: nil)
+            return nil
         }
 
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -749,36 +877,20 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
               type == "assistant",
               let message = obj["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any] else {
-            return LineTokens(fiveHour: 0, sevenDay: 0, timestamp: nil)
+            return nil
         }
 
-        let timestamp: Date?
-        if let tsText = obj["timestamp"] as? String {
-            timestamp = ISO8601DateFormatter().date(from: tsText)
-        } else {
-            timestamp = nil
-        }
-
-        guard let ts = timestamp, ts <= now else {
-            return LineTokens(fiveHour: 0, sevenDay: 0, timestamp: timestamp)
+        guard let tsText = obj["timestamp"] as? String,
+              let timestamp = JSONLTimestamp.date(from: tsText),
+              timestamp <= now else {
+            return nil
         }
 
         let input = (usage["input_tokens"] as? Int) ?? 0
         let output = (usage["output_tokens"] as? Int) ?? 0
         let total = max(0, input) + max(0, output)
 
-        guard total > 0 else {
-            return LineTokens(fiveHour: 0, sevenDay: 0, timestamp: ts)
-        }
-
-        let fiveHour = ts >= fiveHoursAgo ? total : 0
-        let sevenDay = ts >= sevenDaysAgo ? total : 0
-
-        return LineTokens(
-            fiveHour: fiveHour,
-            sevenDay: sevenDay,
-            timestamp: ts
-        )
+        return JSONLContribution(timestamp: timestamp, total: total)
     }
 }
 

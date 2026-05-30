@@ -32,12 +32,8 @@ export const onUsageWritten = onDocumentWritten(
     const uid = event.params.uid;
     const db = getFirestore();
     const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-    const before = event.data?.before.exists
-      ? parseUsageEventDoc(event.data.before.data())
-      : undefined;
-    const after = event.data?.after.exists
-      ? parseUsageEventDoc(event.data.after.data())
-      : undefined;
+    const before = event.data?.before.exists ? parseUsageEventDoc(event.data.before.data()) : undefined;
+    const after = event.data?.after.exists ? parseUsageEventDoc(event.data.after.data()) : undefined;
 
     // Mark dirty BEFORE attempting the counter delta so that even if the
     // transaction fails (contention, quota, etc.), the scheduled
@@ -63,7 +59,7 @@ export const onUsageWritten = onDocumentWritten(
         {
           lastErrorCode: errorMessage(err),
         },
-        { merge: true }
+        { merge: true },
       );
       // Dirty flag is already set — the scheduled worker will pick this up
       // and fall back to a raw-usage rebuild instead of trusting counters.
@@ -71,5 +67,5 @@ export const onUsageWritten = onDocumentWritten(
       // (queued the rollup job). Letting it throw would cause unnecessary
       // retries that just re-attempt the same failing transaction.
     }
-  }
+  },
 );

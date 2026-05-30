@@ -7,6 +7,7 @@
 
 import "./adminRuntime.js";
 
+export { healthCheck, healthLive, healthReady } from "./health.js";
 export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
 export { rollupIrohTransportDaily } from "./irohMonitoring.js";
 export { recomputeMediaQuotaUsage } from "./mediaQuota.js";
@@ -20,10 +21,7 @@ export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound } from "./apnsSender.js";
 export { sendFcmOutbound } from "./fcmAndroidSender.js";
-export {
-  onCliSessionAgentReplyNotification,
-  onMobileAssistantAgentReplyNotification,
-} from "./agentNotifications.js";
+export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification } from "./agentNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
 
 export {
@@ -75,11 +73,13 @@ export {
   queryConversations,
 } from "./callables/encryptedSearch.js";
 
+export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {
-  issueRemoteMcpGrant,
-  revokeRemoteMcpClient,
-  searchStreams,
-} from "./callables/remoteMcp.js";
+  bindAppCheckAttestation,
+  registerEscrowDevice,
+  approveEscrowDeviceTrust,
+  revokeEscrowDeviceTrust,
+} from "./callables/computerUseSecurity.js";
 
 export { rebuildUsageRollups, seedAndroidDemoAccount } from "./callables/misc.js";
 
@@ -106,8 +106,4 @@ export {
   reconcileHostedEntitlementsDaily,
 } from "./appstore/index.js";
 
-export {
-  startCliLink,
-  pollCliLink,
-  completeCliLink,
-} from "./callables/cliLink.js";
+export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";

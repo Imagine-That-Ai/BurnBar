@@ -91,6 +91,8 @@ public enum CLILaunchAdapter {
         "AGY_CONFIG_HOME",
         "ANTIGRAVITY_HOME",
         "GEMINI_HOME",
+        "CURSOR_AGENT_HOME",
+        "CURSOR_AGENT_CONFIG_PATH",
     ]
 
     // MARK: - Additional Arguments Allowlist
@@ -292,6 +294,7 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.forge/bin",
             "\(homeDirectory)/.antigravity/bin",
             "\(homeDirectory)/.gemini/antigravity-cli",
+            "\(homeDirectory)/.cursor-agent/bin",
             "\(homeDirectory)/.cargo/bin",
             "\(homeDirectory)/.npm-global/bin",
             "\(homeDirectory)/.bun/bin",
@@ -765,6 +768,8 @@ public enum CLILaunchAdapter {
             return ["AGY_CONFIG_HOME", "ANTIGRAVITY_HOME", "GEMINI_HOME"]
         case .grok:
             return ["GROK_HOME", "XAI_API_KEY"]
+        case .cursorAgent:
+            return ["CURSOR_AGENT_HOME", "CURSOR_AGENT_CONFIG_PATH"]
         }
     }
 }

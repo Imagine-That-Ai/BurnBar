@@ -78,10 +78,7 @@ class SimpleEventEmitter<T> {
 }
 
 /** Minimal controller surface used by read-only tree views in tests and production. */
-export type OpenBurnBarControllerSnapshotSource = Pick<
-  OpenBurnBarExtensionController,
-  "snapshot" | "onDidChangeState"
->;
+export type OpenBurnBarControllerSnapshotSource = Pick<OpenBurnBarExtensionController, 'snapshot' | 'onDidChangeState'>;
 
 export class OpenBurnBarExtensionController {
   private readonly eventEmitter = new SimpleEventEmitter<void>();
@@ -328,7 +325,10 @@ export class OpenBurnBarExtensionController {
     return response;
   }
 
-  async cancelRun(runId: string, reason = 'Cancelled from the OpenBurnBar sidebar.'): Promise<BurnBarRunDetailResponse> {
+  async cancelRun(
+    runId: string,
+    reason = 'Cancelled from the OpenBurnBar sidebar.'
+  ): Promise<BurnBarRunDetailResponse> {
     await this.ensureClientAttachment();
 
     const response = await this.withControllerRetry(() =>
@@ -391,10 +391,7 @@ export class OpenBurnBarExtensionController {
 
   // MARK: - Mission operator actions
 
-  async approveMission(
-    missionId: string,
-    note?: string
-  ): Promise<BurnBarMissionMutationResponse> {
+  async approveMission(missionId: string, note?: string): Promise<BurnBarMissionMutationResponse> {
     await this.ensureClientAttachment();
 
     const response = await this.withControllerRetry(() =>
@@ -412,9 +409,7 @@ export class OpenBurnBarExtensionController {
   async listMissions(projectSlug?: string): Promise<BurnBarMissionMutationResponse['mission'][]> {
     await this.ensureClientAttachment();
 
-    const response = await this.withControllerRetry(() =>
-      this.dependencies.client.missionList({ projectSlug })
-    );
+    const response = await this.withControllerRetry(() => this.dependencies.client.missionList({ projectSlug }));
 
     return response.missions;
   }
@@ -466,16 +461,18 @@ export class OpenBurnBarExtensionController {
   availableModels(): Array<BurnBarCatalogModel & { provider: BurnBarCatalogProvider }> {
     return (
       this.state.catalog?.providers.flatMap((provider) =>
-        provider.models
-          .filter((model) => model.visibility === 'public')
-          .map((model) => ({ ...model, provider }))
+        provider.models.filter((model) => model.visibility === 'public').map((model) => ({ ...model, provider }))
       ) ?? []
     );
   }
 
   activeRun(): BurnBarRunProjection | undefined {
     const activePhasesSet = new Set<BurnBarRunPhase>([
-      'planning', 'awaiting_approval', 'executing_tool', 'waiting_on_companion', 'model_streaming'
+      'planning',
+      'awaiting_approval',
+      'executing_tool',
+      'waiting_on_companion',
+      'model_streaming'
     ]);
     return (
       this.state.runs.find((r) => activePhasesSet.has(r.phase)) ??
@@ -497,7 +494,12 @@ export class OpenBurnBarExtensionController {
     return request?.runID === runId ? request : undefined;
   }
 
-  workspaceCapabilitySummary(): { available: BurnBarToolKind[]; gated: BurnBarToolKind[]; trusted: boolean; hasWorkspace: boolean } {
+  workspaceCapabilitySummary(): {
+    available: BurnBarToolKind[];
+    gated: BurnBarToolKind[];
+    trusted: boolean;
+    hasWorkspace: boolean;
+  } {
     return {
       available: this.state.workspace?.availableTools ?? [],
       gated: this.state.workspace?.gatedTools ?? [],
@@ -557,8 +559,7 @@ export class OpenBurnBarExtensionController {
       try {
         return await this.withSessionRetry(operation);
       } catch (error) {
-        const shouldRetry =
-          isObserverControlError(error) && attempt < CONTROLLER_RETRY_LIMIT - 1;
+        const shouldRetry = isObserverControlError(error) && attempt < CONTROLLER_RETRY_LIMIT - 1;
         if (!shouldRetry) {
           throw error;
         }
@@ -581,8 +582,7 @@ export class OpenBurnBarExtensionController {
       try {
         return await operation();
       } catch (error) {
-        const shouldRetry =
-          isSessionMismatchError(error) && attempt < SESSION_RETRY_LIMIT - 1;
+        const shouldRetry = isSessionMismatchError(error) && attempt < SESSION_RETRY_LIMIT - 1;
         if (!shouldRetry) {
           throw error;
         }
@@ -762,66 +762,66 @@ export class OpenBurnBarExtensionController {
     const workspaceClient = this.dependencies.workspaceClient;
 
     switch (toolCall.tool) {
-    case 'read_file': {
-      const path = expectString(args.path, 'read_file.path');
-      if (!workspaceClient.readFile) {
-        throw new Error('Workspace RPC client does not support read_file.');
+      case 'read_file': {
+        const path = expectString(args.path, 'read_file.path');
+        if (!workspaceClient.readFile) {
+          throw new Error('Workspace RPC client does not support read_file.');
+        }
+        const result = await workspaceClient.readFile({ path });
+        return readFileResultToJSON(result);
       }
-      const result = await workspaceClient.readFile({ path });
-      return readFileResultToJSON(result);
-    }
-    case 'search_workspace': {
-      const query = expectString(args.query, 'search_workspace.query');
-      if (!workspaceClient.searchWorkspace) {
-        throw new Error('Workspace RPC client does not support search_workspace.');
+      case 'search_workspace': {
+        const query = expectString(args.query, 'search_workspace.query');
+        if (!workspaceClient.searchWorkspace) {
+          throw new Error('Workspace RPC client does not support search_workspace.');
+        }
+        const result = await workspaceClient.searchWorkspace({
+          query,
+          include: optionalString(args.include),
+          exclude: optionalString(args.exclude),
+          maxResults: optionalNumber(args.maxResults),
+          maxFiles: optionalNumber(args.maxFiles),
+          maxFileBytes: optionalNumber(args.maxFileBytes),
+          caseSensitive: optionalBoolean(args.caseSensitive)
+        });
+        return searchWorkspaceResultToJSON(result);
       }
-      const result = await workspaceClient.searchWorkspace({
-        query,
-        include: optionalString(args.include),
-        exclude: optionalString(args.exclude),
-        maxResults: optionalNumber(args.maxResults),
-        maxFiles: optionalNumber(args.maxFiles),
-        maxFileBytes: optionalNumber(args.maxFileBytes),
-        caseSensitive: optionalBoolean(args.caseSensitive)
-      });
-      return searchWorkspaceResultToJSON(result);
-    }
-    case 'apply_patch': {
-      const changes = expectArray(args.changes, 'apply_patch.changes');
-      if (!workspaceClient.applyPatch) {
-        throw new Error('Workspace RPC client does not support apply_patch.');
+      case 'apply_patch': {
+        const changes = expectArray(args.changes, 'apply_patch.changes');
+        if (!workspaceClient.applyPatch) {
+          throw new Error('Workspace RPC client does not support apply_patch.');
+        }
+        const result = await workspaceClient.applyPatch({
+          changes: changes.map((change, index) => {
+            const object = expectObject(change, `apply_patch.changes[${index}]`);
+            return {
+              path: expectString(object.path, `apply_patch.changes[${index}].path`),
+              text: expectString(object.text, `apply_patch.changes[${index}].text`),
+              range: object.range
+                ? toRange(expectObject(object.range, `apply_patch.changes[${index}].range`))
+                : undefined
+            };
+          })
+        });
+        return applyPatchResultToJSON(result);
       }
-      const result = await workspaceClient.applyPatch({
-        changes: changes.map((change, index) => {
-          const object = expectObject(change, `apply_patch.changes[${index}]`);
-          return {
-            path: expectString(object.path, `apply_patch.changes[${index}].path`),
-            text: expectString(object.text, `apply_patch.changes[${index}].text`),
-            range: object.range
-              ? toRange(expectObject(object.range, `apply_patch.changes[${index}].range`))
-              : undefined
-          };
-        })
-      });
-      return applyPatchResultToJSON(result);
-    }
-    case 'run_terminal': {
-      const command = expectString(args.command, 'run_terminal.command');
-      if (!workspaceClient.runTerminal) {
-        throw new Error('Workspace RPC client does not support run_terminal.');
+      case 'run_terminal': {
+        const command = expectString(args.command, 'run_terminal.command');
+        if (!workspaceClient.runTerminal) {
+          throw new Error('Workspace RPC client does not support run_terminal.');
+        }
+        const result = await workspaceClient.runTerminal({
+          command,
+          cwd: optionalString(args.cwd),
+          name: optionalString(args.name),
+          preserveFocus: optionalBoolean(args.preserveFocus)
+        });
+        return runTerminalResultToJSON(result);
       }
-      const result = await workspaceClient.runTerminal({
-        command,
-        cwd: optionalString(args.cwd),
-        name: optionalString(args.name),
-        preserveFocus: optionalBoolean(args.preserveFocus)
-      });
-      return runTerminalResultToJSON(result);
-    }
-    default: {
-      const unsupportedTool: never = toolCall.tool;
-      throw new Error(`Unknown workspace tool: ${unsupportedTool}`);
-    }
+      default: {
+        const unsupportedTool: never = toolCall.tool;
+        throw new Error(`Unknown workspace tool: ${unsupportedTool}`);
+      }
     }
   }
 
@@ -833,10 +833,7 @@ export class OpenBurnBarExtensionController {
 
     nextState.runs = projectRuns(nextState);
     nextState.selectedRunId = chooseSelectedRunId(nextState.runs, partial.selectedRunId ?? this.state.selectedRunId);
-    if (
-      nextState.selectedRunDetail?.run?.runID &&
-      nextState.selectedRunDetail.run.runID !== nextState.selectedRunId
-    ) {
+    if (nextState.selectedRunDetail?.run?.runID && nextState.selectedRunDetail.run.runID !== nextState.selectedRunId) {
       nextState.selectedRunDetail = undefined;
     }
 
@@ -891,41 +888,38 @@ function mapToolError(error: unknown, tool: BurnBarToolKind): BurnBarToolExecuti
   let code: BurnBarToolExecutionErrorCode;
 
   switch (workspaceCode) {
-  case 'TRUST_REQUIRED':
-    code = 'trust_gated';
-    break;
-  case 'NO_WORKSPACE':
-    code = 'no_workspace';
-    break;
-  case 'PATH_OUTSIDE_WORKSPACE':
-    code = tool === 'run_terminal' ? 'terminal_failed' : 'apply_failed';
-    break;
-  case 'VIRTUAL_WORKSPACE':
-  case 'REMOTE_UNSUPPORTED':
-    code = 'remote_unsupported';
-    break;
-  case 'APPLY_EDIT_FAILED':
-  case 'SAVE_FAILED':
-  case 'READONLY_WORKSPACE':
-    code = 'apply_failed';
-    break;
-  default:
-    if (tool === 'run_terminal') {
-      code = 'terminal_failed';
-    } else if (tool === 'apply_patch') {
+    case 'TRUST_REQUIRED':
+      code = 'trust_gated';
+      break;
+    case 'NO_WORKSPACE':
+      code = 'no_workspace';
+      break;
+    case 'PATH_OUTSIDE_WORKSPACE':
+      code = tool === 'run_terminal' ? 'terminal_failed' : 'apply_failed';
+      break;
+    case 'VIRTUAL_WORKSPACE':
+    case 'REMOTE_UNSUPPORTED':
+      code = 'remote_unsupported';
+      break;
+    case 'APPLY_EDIT_FAILED':
+    case 'SAVE_FAILED':
+    case 'READONLY_WORKSPACE':
       code = 'apply_failed';
-    } else {
-      code = 'unknown';
-    }
+      break;
+    default:
+      if (tool === 'run_terminal') {
+        code = 'terminal_failed';
+      } else if (tool === 'apply_patch') {
+        code = 'apply_failed';
+      } else {
+        code = 'unknown';
+      }
   }
 
   return { code, message };
 }
 
-function expectObject(
-  value: BurnBarJSONValue | undefined,
-  label: string
-): Record<string, BurnBarJSONValue> {
+function expectObject(value: BurnBarJSONValue | undefined, label: string): Record<string, BurnBarJSONValue> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return Object.fromEntries(Object.entries(value));
   }

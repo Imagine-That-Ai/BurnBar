@@ -1,37 +1,38 @@
 import UIKit
 
 // MARK: - Keyboard Haptics
-/// Provides tactile feedback for key presses in the custom keyboard,
-/// matching the native Apple keyboard feel.
+/// Provides tactile feedback for key presses in the custom keyboard extension.
 ///
-/// Uses `UIImpactFeedbackGenerator` with different intensities:
-/// - **Light**: Standard letter key presses
-/// - **Medium**: Special keys (shift, delete, return, globe)
-/// - **Rigid**: Suggestion/snippet selection
+/// Keeps persistent static instances of `UIImpactFeedbackGenerator` alive to prevent
+/// immediate deallocation (which cancels the asynchronous haptic playback).
 @MainActor
 enum KeyboardHaptics {
-    private static let light = UIImpactFeedbackGenerator(style: .light)
-    private static let medium = UIImpactFeedbackGenerator(style: .medium)
-    private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
+    private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+    private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
+    private static let rigidGenerator = UIImpactFeedbackGenerator(style: .rigid)
 
-    /// Call during `viewWillAppear` to warm up the Taptic Engine.
+    /// Warm-up call to prepare the generators and reduce latency on the first tap.
     static func prepare() {
-        light.prepare()
-        medium.prepare()
+        lightGenerator.prepare()
+        mediumGenerator.prepare()
+        rigidGenerator.prepare()
     }
 
     /// Standard letter key tap — subtle, fast.
     static func keyPress() {
-        light.impactOccurred(intensity: 0.6)
+        lightGenerator.prepare()
+        lightGenerator.impactOccurred(intensity: 0.6)
     }
 
     /// Special key tap (shift, delete, globe, return) — slightly stronger.
     static func specialKeyPress() {
-        medium.impactOccurred(intensity: 0.5)
+        mediumGenerator.prepare()
+        mediumGenerator.impactOccurred(intensity: 0.5)
     }
 
     /// Suggestion or snippet selection — distinct confirmation feel.
     static func selectionPress() {
-        rigid.impactOccurred(intensity: 0.7)
+        rigidGenerator.prepare()
+        rigidGenerator.impactOccurred(intensity: 0.7)
     }
 }

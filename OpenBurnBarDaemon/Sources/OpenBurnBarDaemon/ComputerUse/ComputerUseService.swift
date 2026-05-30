@@ -156,7 +156,9 @@ public actor ComputerUseService {
             throw ServiceError.invalidSession(request.sessionId)
         }
         let lastHead = state.auditChainHeadHashHex ?? ""
+        let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
         await coordinator.panicHalt(sessionId: sessionId, source: source)
+        finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: Date())
         manifests.removeValue(forKey: sessionId)
         return ComputerUsePanicHaltResponse(
             sessionId: sessionId.rawValue,
@@ -175,6 +177,10 @@ public actor ComputerUseService {
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        let chainURL = sessionDirectory.appendingPathComponent("chain.jsonl")
+        if request.anchorOpenTimestamps {
+            try await anchorOpenTimestampsProof(forChainAt: chainURL)
+        }
         let signer = try deviceAuditExportSigner()
         let result = try ComputerUseAuditExportWriter().export(
             sessionDirectory: sessionDirectory,
@@ -206,12 +212,27 @@ public actor ComputerUseService {
         try auditExportSignerProvider.signer()
     }
 
+    private func anchorOpenTimestampsProof(forChainAt chainURL: URL) async throws {
+        let client = ComputerUseOpenTimestampsClient()
+        let proof = try await client.notarize(chainFileAt: chainURL)
+        _ = try ComputerUseOpenTimestampsArchive.writeProof(
+            proofBytes: proof,
+            sourceChainURL: chainURL,
+            calendarURL: client.configuration.calendarURL
+        )
+    }
+
     private func openTimestampsProofBase64(forChainAt chainURL: URL) -> String? {
         let proofURL = ComputerUseOpenTimestampsClient.proofFilename(forChainAt: chainURL)
         guard let proof = try? Data(contentsOf: proofURL), proof.isEmpty == false else {
             return nil
         }
         return proof.base64EncodedString()
+    }
+
+    private func finalizeAuditHeadIfPossible(sessionDirectory: URL, closedAt: Date = Date()) {
+        guard let signer = try? deviceAuditExportSigner() else { return }
+        try? ComputerUseAuditHeadFinalizer.finalizeSessionDirectory(sessionDirectory, closedAt: closedAt, signer: signer)
     }
 
     private func makePlaywrightDriverIfNeeded(

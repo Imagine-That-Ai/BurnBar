@@ -151,6 +151,7 @@ public enum DesignSystemColors {
         case .piAgent:    return Color(hex: "7C3AED")
         case .geminiCLI:  return Color(hex: "4285F4")
         case .antigravity: return Color(hex: "6C63FF")
+        case .cursorAgent: return Color(hex: "00E5FF")
         case .goose:      return Color(hex: "0D9488")
         case .openClaw:   return Color(hex: "FF6B6B")
         case .ollama:     return Color(hex: "6B7280")
@@ -184,6 +185,7 @@ public enum DesignSystemColors {
         case .piAgent:    return Color(hex: "A78BFA")
         case .geminiCLI:  return Color(hex: "8AB4F8")
         case .antigravity: return Color(hex: "8F8AFF")
+        case .cursorAgent: return Color(hex: "33ECFF")
         case .goose:      return Color(hex: "2DD4BF")
         case .openClaw:   return Color(hex: "F472B6")
         case .ollama:     return Color(hex: "9CA3AF")
@@ -293,6 +295,7 @@ public enum DesignSystemColors {
         case .piAgent:     return "7C3AED"
         case .geminiCLI:   return "4285F4"
         case .antigravity: return "6C63FF"
+        case .cursorAgent: return "00E5FF"
         case .goose:       return "0D9488"
         case .openClaw:    return "FF6B6B"
         case .ollama:      return "6B7280"

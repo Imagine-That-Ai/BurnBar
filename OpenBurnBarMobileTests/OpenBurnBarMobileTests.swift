@@ -163,6 +163,31 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(rootNavigation.contains("selection = .settings"))
     }
 
+    func testWallpaperSettingsActionDoesNotOpenAppSettingsFallback() throws {
+        XCTAssertEqual(WallpaperSettingsDeepLink.wallpaperSettingsURL.absoluteString, "App-prefs:Wallpaper")
+        XCTAssertEqual(WallpaperSettingsDeepLink.settingsRootURL.absoluteString, "App-prefs:")
+
+        let generator = try sourceFile("OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift")
+        let actionStart = try XCTUnwrap(generator.range(of: "private func openSettingsWallpaper()"))
+        let actionAndRest = generator[actionStart.lowerBound...]
+        let actionEnd = try XCTUnwrap(actionAndRest.range(of: "private func openPhotosApp()"))
+        let actionBody = String(actionAndRest[..<actionEnd.lowerBound])
+
+        XCTAssertFalse(generator.contains("App-prefs:root=Wallpaper"))
+        XCTAssertFalse(actionBody.contains("UIApplication.openSettingsURLString"))
+        XCTAssertTrue(actionBody.contains("WallpaperSettingsDeepLink.open()"))
+    }
+
+    func testLiveWallpaperExportUsesWallpaperReadyLivePhotoShape() throws {
+        let generator = try sourceFile("OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift")
+
+        XCTAssertTrue(generator.contains("let livePhotoDurationSeconds: Int32 = 3"))
+        XCTAssertTrue(generator.contains("let keyPhotoFrameIndex = frameCount / 2"))
+        XCTAssertTrue(generator.contains("CMTimeRange(start: keyPhotoTime, duration: frameDuration)"))
+        XCTAssertTrue(generator.contains("imageOptions.uniformTypeIdentifier = UTType.jpeg.identifier"))
+        XCTAssertTrue(generator.contains("videoOptions.uniformTypeIdentifier = UTType.quickTimeMovie.identifier"))
+    }
+
     func testLiveCloudReaderUsesMacLastSeenHeartbeatAsActivityDate() throws {
         let lastSeen = Date(timeIntervalSince1970: 1_800_000_000)
         let updated = Date(timeIntervalSince1970: 1_700_000_000)
@@ -327,6 +352,49 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
 
         XCTAssertEqual(state.mode, .inactive)
+    }
+
+    func testCloudConversationRowsResolveProviderLogosFromCloudProviderStrings() {
+        let claude = makeCloudSearchRow(id: "claude", provider: "Claude Code")
+        let forge = makeCloudSearchRow(id: "forge", provider: "forge")
+
+        XCTAssertEqual(claude.providerEnum, .claudeCode)
+        XCTAssertEqual(forge.providerEnum, .forgeDev)
+    }
+
+    func testCloudConversationSearchRerankerPromotesExactDecryptedMatches() {
+        let exact = makeCloudSearchRow(
+            id: "exact",
+            title: "X Ads API launch notes",
+            snippet: "Build reporting for the campaign endpoint.",
+            score: 0.22,
+            tokenScore: 0.55,
+            semanticScore: 0.35,
+            matchKind: "hybrid"
+        )
+        let semantic = makeCloudSearchRow(
+            id: "semantic",
+            title: "Twitter advertising endpoint migration",
+            snippet: "Campaign reporting integration work.",
+            score: 0.44,
+            tokenScore: 0.10,
+            semanticScore: 1.0,
+            matchKind: "semantic"
+        )
+        let weakToken = makeCloudSearchRow(
+            id: "weak-token",
+            title: "Node 22 runtime upgrade and TypeScript migration",
+            snippet: "Current repo facts mention api once.",
+            score: 0.50,
+            tokenScore: 0.20,
+            semanticScore: 0.0,
+            matchKind: "token"
+        )
+
+        let ranked = ActivityStore.rankCloudConversationRows([weakToken, semantic, exact], query: "x ads api")
+
+        XCTAssertEqual(ranked.map(\.id).first, "exact")
+        XCTAssertLessThan(ranked.firstIndex(of: semantic) ?? Int.max, ranked.firstIndex(of: weakToken) ?? Int.max)
     }
 
     func testCloudTranscriptCacheDefaultsTo250Megabytes() {
@@ -983,6 +1051,32 @@ final class OpenBurnBarMobileTests: XCTestCase {
             root.deleteLastPathComponent()
         }
         throw NSError(domain: "OpenBurnBarMobileTests", code: 1)
+    }
+
+    private func makeCloudSearchRow(
+        id: String,
+        title: String = "Encrypted result",
+        snippet: String = "Search snippet",
+        provider: String? = "Claude Code",
+        projectName: String? = "Project",
+        score: Double = 0.25,
+        tokenScore: Double? = nil,
+        semanticScore: Double? = nil,
+        matchKind: String? = nil
+    ) -> CloudConversationSearchRow {
+        CloudConversationSearchRow(
+            id: id,
+            title: title,
+            snippet: snippet,
+            provider: provider,
+            projectName: projectName,
+            storagePath: "users/test-user/session_logs/\(id)/bodies/hash.json.aesgcm",
+            bodyHash: String(repeating: "a", count: 64),
+            score: score,
+            tokenScore: tokenScore,
+            semanticScore: semanticScore,
+            matchKind: matchKind
+        )
     }
 
     private func makeUsage(

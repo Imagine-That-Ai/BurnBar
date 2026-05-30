@@ -28,6 +28,7 @@ struct ChatPanel: View {
     @State private var headerDragStart: CGSize?
     @State private var showHistoryPopover = false
     @State private var showClearChatPrompt = false
+    @State private var showCLIAssistantConsent = false
     @State private var didRequestHermesFirstRunSetup = false
     @State private var showHermesRuntimePrompt = false
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
@@ -143,6 +144,11 @@ struct ChatPanel: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Hermes is enabled but the local gateway is not reachable. OpenBurnBar can start the Hermes Dashboard and gateway for you.")
+        }
+        .sheet(isPresented: $showCLIAssistantConsent) {
+            CLIAssistantConsentSheet(settingsManager: settingsManager) {
+                showCLIAssistantConsent = false
+            }
         }
     }
 
@@ -754,6 +760,7 @@ struct ChatPanel: View {
         case .droid: return "Ask Droid\u{2026}"
         case .forge: return "Ask Forge\u{2026}"
         case .antigravity: return "Ask Antigravity\u{2026}"
+        case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         }
     }
 
@@ -781,6 +788,10 @@ struct ChatPanel: View {
         ChatInputRow(
             controller: controller,
             chatBackend: controller.chatBackend,
+            cliAssistantAllowed: settingsManager.cliAssistantAllowed,
+            onRequestCLIAssistantConsent: {
+                showCLIAssistantConsent = true
+            },
             onSubmit: { Task { await controller.send() } }
         )
     }

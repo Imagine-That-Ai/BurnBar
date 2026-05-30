@@ -156,11 +156,37 @@ struct ClaudeOAuthUsageFetcher {
             }
         }
 
-        guard let payload = await live(credentials: workingCredentials) else {
-            // Live call failed; surface whatever cached payload we
-            // have, even if stale, so the popover doesn't blink to
-            // "unavailable" on a transient failure.
-            if let cached = readCache() {
+        let liveResult = await live(credentials: workingCredentials)
+        let payload: ClaudeRateLimits?
+        switch liveResult {
+        case .success(let rateLimits):
+            payload = rateLimits
+        case .unauthorized where workingCredentials.refreshToken != nil:
+            // Claude OAuth access tokens can be rejected before their
+            // local expiresAt value, especially after reauth/import. Match
+            // Claude Code/CodexBar behavior: refresh once on 401 and retry
+            // before declaring the account unavailable.
+            if let refreshed = await refreshAccessToken(credentials: workingCredentials) {
+                workingCredentials = refreshed
+                refreshedCredentials = refreshed
+                if case .success(let retriedLimits) = await live(credentials: refreshed) {
+                    payload = retriedLimits
+                } else {
+                    payload = nil
+                }
+            } else {
+                payload = nil
+            }
+        case .unauthorized, .rateLimited, .failed:
+            payload = nil
+        }
+
+        guard let payload else {
+            // Live call failed. Only reuse cache that still belongs to the
+            // active reset window; an expired OAuth cache is worse than no
+            // signal because it can pin an account at 0% for weeks after
+            // the Claude window has reset.
+            if let cached = readCache(), cached.isFresh(now: now) {
                 return RateLimitsResult(
                     rateLimits: cached.payload,
                     fetchedAt: cached.fetchedAt,
@@ -202,32 +228,108 @@ struct ClaudeOAuthUsageFetcher {
 
     // MARK: - Live Request
 
-    private func live(credentials: ClaudeOAuthCredentials) async -> ClaudeRateLimits? {
+    private enum LiveUsageResult {
+        case success(ClaudeRateLimits)
+        case unauthorized
+        case rateLimited
+        case failed
+    }
+
+    private func live(credentials: ClaudeOAuthCredentials) async -> LiveUsageResult {
         guard let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
-            return nil
+            return .failed
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 12
+        request.timeoutInterval = 30
         request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
         // Required beta header — Anthropic gates the OAuth surface
         // behind this opaque flag. Skipping it returns 404.
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        // A real Claude-Code-shaped UA helps avoid edge filters that
-        // return 403 for unknown clients.
-        request.setValue("Claude-Code/2.1 (OpenBurnBar quota refresh)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Match Claude Code/CodexBar's client shape exactly. Anthropic's
+        // OAuth usage edge is picky about non-CLI-looking clients.
+        request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
 
         guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse else {
-            return nil
+            return .failed
         }
-        guard (200..<300).contains(http.statusCode) else {
+        switch http.statusCode {
+        case 200..<300:
+            let rateLimits = ClaudeRateLimits(from: data)
+            guard !rateLimits.isEmpty else {
+                return .failed
+            }
+            return .success(rateLimits)
+        case 401:
+            return .unauthorized
+        case 429:
             // Don't retry on 429 — that's exactly what bricks the
             // endpoint. The cache will be reused on the next call.
+            return .rateLimited
+        default:
+            return .failed
+        }
+    }
+
+    private static func claudeCodeUserAgent() -> String {
+        "claude-code/\(detectClaudeCodeVersion() ?? "2.1.0")"
+    }
+
+    private static func detectClaudeCodeVersion() -> String? {
+        let candidates = [
+            ProcessInfo.processInfo.environment["CLAUDE_BINARY"],
+            "\(NSHomeDirectory())/.claude/local/claude",
+            "\(NSHomeDirectory())/.local/bin/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+        ].compactMap { quotaNonEmpty($0) }
+
+        for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
+            if let version = runClaudeVersion(executableURL: URL(fileURLWithPath: candidate)) {
+                return version
+            }
+        }
+        return runClaudeVersion(executableURL: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["claude", "--version"])
+    }
+
+    private static func runClaudeVersion(
+        executableURL: URL,
+        arguments: [String] = ["--version"]
+    ) -> String? {
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+        } catch {
             return nil
         }
-        return ClaudeRateLimits(from: data)
+
+        let deadline = Date().addingTimeInterval(0.75)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if process.isRunning {
+            process.terminate()
+            return nil
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+        let pattern = #"\b\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
+              let range = Range(match.range, in: output) else {
+            return nil
+        }
+        return String(output[range])
     }
 
     // MARK: - Token Refresh
@@ -261,7 +363,7 @@ struct ClaudeOAuthUsageFetcher {
         request.timeoutInterval = 12
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Claude-Code/2.1 (OpenBurnBar token refresh)", forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
         request.httpBody = Data(bodyString.utf8)
 
         guard let (data, response) = try? await session.data(for: request),

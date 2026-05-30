@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Darwin
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
@@ -1492,9 +1493,7 @@ final class MercuryRouter: ObservableObject {
                 frame: request.frame,
                 replySender: request.replySender
             )
-            if remoteUnlockSession == nil {
-                startAcceptedMirrorRuntime(for: viewer, focusMode: focusMode)
-            }
+            startAcceptedMirrorRuntime(for: viewer, focusMode: focusMode)
             if wasJoiningExistingSession {
                 await broadcastMirrorAck(
                     decision: .accepted,
@@ -1555,6 +1554,17 @@ final class MercuryRouter: ObservableObject {
         }
         guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
         do {
+            if viewer.remoteUnlockSessionID != nil {
+                do {
+                    try await MercuryRemoteAccessAgentClient().wakeDisplay()
+                    Self.log.info("router_locked_mirror_display_wake_submitted requestID=\(viewer.requestID, privacy: .public)")
+                    Self.debugTrace("router_locked_mirror_display_wake_submitted requestID=\(viewer.requestID)")
+                } catch {
+                    Self.log.error("router_locked_mirror_display_wake_failed requestID=\(viewer.requestID, privacy: .public) error=\(String(describing: error), privacy: .public)")
+                    Self.debugTrace("router_locked_mirror_display_wake_failed requestID=\(viewer.requestID) error=\(String(describing: error))")
+                }
+            }
+
             // Phase 12 — interactive single-window CLI. Launch the agent's CLI
             // in a visible Terminal first so we can pin the capture to just that
             // window (no `controlSurfaceFrame`/focus-follow dependency, so this
@@ -1860,4 +1870,105 @@ final class MercuryRouter: ObservableObject {
 
         return jpegData.base64EncodedString()
     }
+}
+
+private struct MercuryRemoteAccessAgentClient: Sendable {
+    private static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
+    private static let maximumResponseBytes = 16 * 1024
+    private static let requestIOTimeoutSeconds: time_t = 3
+
+    func wakeDisplay() async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
+        }.value
+    }
+
+    private static func send(_ request: MercuryRemoteAccessAgentRequest) throws {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw MercuryRemoteAccessAgentClientError.socketUnavailable }
+        defer { close(fd) }
+        configureSocket(fd)
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        try socketPath.withCString { path in
+            let capacity = MemoryLayout.size(ofValue: address.sun_path)
+            guard strlen(path) < capacity else { throw MercuryRemoteAccessAgentClientError.socketPathTooLong }
+            withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+                pointer.withMemoryRebound(to: CChar.self, capacity: capacity) { destination in
+                    strncpy(destination, path, capacity - 1)
+                }
+            }
+        }
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                connect(fd, rebound, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard connected == 0 else { throw MercuryRemoteAccessAgentClientError.daemonUnavailable }
+
+        var data = try JSONEncoder().encode(request)
+        data.append(0x0a)
+        try data.withUnsafeBytes { pointer in
+            guard let base = pointer.baseAddress else { return }
+            var written = 0
+            while written < data.count {
+                let count = Darwin.write(fd, base.advanced(by: written), data.count - written)
+                guard count >= 0 else {
+                    if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { throw MercuryRemoteAccessAgentClientError.timedOut }
+                    throw MercuryRemoteAccessAgentClientError.writeFailed
+                }
+                written += count
+            }
+        }
+        shutdown(fd, SHUT_WR)
+
+        var responseData = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = Darwin.read(fd, &buffer, buffer.count)
+            if count == 0 { break }
+            guard count > 0 else {
+                if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK { throw MercuryRemoteAccessAgentClientError.timedOut }
+                throw MercuryRemoteAccessAgentClientError.readFailed
+            }
+            responseData.append(buffer, count: count)
+            if responseData.count > maximumResponseBytes { throw MercuryRemoteAccessAgentClientError.responseTooLarge }
+        }
+        guard let response = try? JSONDecoder().decode(MercuryRemoteAccessAgentResponse.self, from: responseData),
+              response.ok else {
+            throw MercuryRemoteAccessAgentClientError.daemonRejected
+        }
+    }
+
+    private static func configureSocket(_ fd: Int32) {
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+        var timeout = timeval(tv_sec: requestIOTimeoutSeconds, tv_usec: 0)
+        let length = socklen_t(MemoryLayout<timeval>.size)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, length)
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, length)
+    }
+}
+
+private struct MercuryRemoteAccessAgentRequest: Encodable, Sendable {
+    var operation: String
+    var password: String?
+}
+
+private struct MercuryRemoteAccessAgentResponse: Decodable, Sendable {
+    var ok: Bool
+}
+
+private enum MercuryRemoteAccessAgentClientError: Error {
+    case socketUnavailable
+    case socketPathTooLong
+    case daemonUnavailable
+    case timedOut
+    case writeFailed
+    case readFailed
+    case responseTooLarge
+    case daemonRejected
 }

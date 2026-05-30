@@ -3,6 +3,7 @@ name: OpenBurnBar Release
 permissions:
   contents: write
   id-token: write
+  attestations: write
 
 on:
   push:
@@ -501,6 +502,34 @@ jobs:
 
           echo "sbom_path=$SBOM_FILE" >> "$GITHUB_OUTPUT"
 
+      - name: Generate OpenVEX sidecar
+        id: vex
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
+        run: |
+          VEX_FILE="$RUNNER_TEMP/openburnbar-v${VERSION}.vex.json"
+          python3 scripts/supply-chain/generate-vex.py \
+            --sbom "$SBOM_PATH" \
+            --output "$VEX_FILE" \
+            --product-version "$VERSION"
+          echo "vex_path=$VEX_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: SLSA provenance attestations (SBOM + VEX + checksums)
+        env:
+          SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
+          VEX_PATH: ${{ steps.vex.outputs.vex_path }}
+          CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
+        run: |
+          cosign attest --yes "$SBOM_PATH"
+          cosign attest --yes "$VEX_PATH"
+          if [[ -f "$CHECKSUMS_PATH" ]]; then
+            cosign attest --yes "$CHECKSUMS_PATH"
+          fi
+
       - name: Verify Apple privacy manifests in release bundles
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -621,6 +650,13 @@ jobs:
         with:
           name: sbom-v${{ steps.version.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
+          if-no-files-found: error
+
+      - name: Upload VEX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vex-v${{ steps.version.outputs.version }}
+          path: ${{ steps.vex.outputs.vex_path }}
           if-no-files-found: error
 
       - name: Upload NOTICES artifact
@@ -776,6 +812,7 @@ jobs:
           # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
           CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
           SBOM_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.spdx.json" -print -quit 2>/dev/null)
+          VEX_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.vex.json" -print -quit 2>/dev/null)
           NOTICES_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "NOTICES-v${VERSION}*.txt" -print -quit 2>/dev/null)
           METADATA_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "release-metadata.json" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
@@ -803,6 +840,7 @@ jobs:
           done
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$SBOM_PATH" && -f "$SBOM_PATH" ]] && ASSETS+=("$SBOM_PATH")
+          [[ -n "$VEX_PATH" && -f "$VEX_PATH" ]] && ASSETS+=("$VEX_PATH")
           [[ -n "$NOTICES_PATH" && -f "$NOTICES_PATH" ]] && ASSETS+=("$NOTICES_PATH")
           [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
           [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")

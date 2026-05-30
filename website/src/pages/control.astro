@@ -1,0 +1,363 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import FeatureDeck from "@components/FeatureDeck.astro";
+import { CONTROL, CONTROL_CAPABILITIES, CONTROL_PROMISES } from "@data/capabilities";
+
+const ladder = [
+  {
+    rung: "Off",
+    body: "The default. The agent can read and answer, but it can't touch anything. Most people stay here."
+  },
+  {
+    rung: "Ask first",
+    body: "It proposes each action and waits. You see what it's about to do — with a picture — and approve or reject, one at a time."
+  },
+  {
+    rung: "Trusted, within limits",
+    body: "Set the boundaries once and let it move freely inside them. The moment it tries to step outside, it stops and asks."
+  }
+];
+---
+
+<BaseLayout
+  title={`${CONTROL.name} — let an agent use the computer, safely`}
+  description={`${CONTROL.name} lets an OpenBurnBar agent click, type, and work your apps — only with your explicit permission, only within limits you set, with a tamper-proof record and an instant stop.`}
+>
+  <section class="pagehead pagehead--control">
+    <div class="container container--narrow pagehead__inner">
+      <span class="eyebrow eyebrow--ember">{CONTROL.name}</span>
+      <h1 class="pagehead__h">
+        Let an agent use the computer —<br /><span class="ember">only when you say so.</span>
+      </h1>
+      <p class="lead pagehead__lead">
+        Some jobs are just faster if the agent does them — clicks the buttons, fills the forms,
+        works the apps. OpenBurnBar lets it, on a leash you hold. It does nothing you didn't allow,
+        you can watch every move, and you can stop it in an instant.
+      </p>
+      <p class="ctrl-status mono">
+        <span class="tag tag--ember tag--plain mono">{CONTROL.statusLabel}</span>
+      </p>
+      <div class="pagehead__ctas">
+        <a class="btn btn--ember" href="/download"
+          >Get OpenBurnBar <span aria-hidden="true">→</span></a
+        >
+        <a class="btn btn--ghost" href="#charge">Why it's safe</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="ctrlgroup">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">What it can do</span>
+        <h2>Hand off the busywork.</h2>
+      </header>
+    </div>
+    <FeatureDeck
+      accent="ember"
+      ariaLabel="What Agent Control can do"
+      items={CONTROL_CAPABILITIES.map((f) => ({
+        art: f.id,
+        title: f.title,
+        body: f.blurb
+      }))}
+    />
+  </section>
+
+  <!-- THREE WAYS IN — Chat · Mac CLI · Terminal -->
+  <section class="ctrlgroup ctrlgroup--raise" id="modes">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Three ways in</span>
+        <h2>Chat, Mac CLI, or Terminal — your call.</h2>
+        <p class="lead">
+          Same agent, three ways to talk to it. Ask in plain language, watch it work the Mac command
+          line, or drop into a live terminal yourself. Switch with one tap.
+        </p>
+      </header>
+      <div class="modes">
+        <div class="modes__device">
+          <div class="phoneframe">
+            <img
+              src="/screens/agent-control-modes.png"
+              alt="OpenBurnBar on iPhone — Agent Control with a Chat, Mac CLI, and Terminal switcher above the message box"
+              width="921"
+              height="2000"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <p class="modes__cap mono">Real app · the Chat · Mac CLI · Terminal switcher</p>
+        </div>
+        <ul class="modes__list">
+          <li>
+            <span class="modes__num mono">Chat</span>
+            <h3>Just ask</h3>
+            <p>
+              Tell the agent what you want in plain language. It works out the steps and does them —
+              the friendliest way in, and the default.
+            </p>
+          </li>
+          <li>
+            <span class="modes__num mono">Mac CLI</span>
+            <h3>Watch it work the command line</h3>
+            <p>
+              Follow the agent as it drives your Mac's command line, step by step — see every
+              command before it runs.
+            </p>
+          </li>
+          <li>
+            <span class="modes__num mono">Terminal</span>
+            <h3>Take the keyboard</h3>
+            <p>
+              Drop straight into a live terminal when you'd rather drive it yourself — the agent
+              steps aside.
+            </p>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="ctrlgroup">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">How much rope</span>
+        <h2>You decide how far it goes.</h2>
+        <p class="lead">
+          Three settings, your call per task. Start cautious; loosen it only when you trust the job.
+        </p>
+      </header>
+      <ol class="ladder">
+        {
+          ladder.map((step, i) => (
+            <li class="ladder__step glass-pane">
+              <span class="ladder__num mono">{String(i + 1).padStart(2, "0")}</span>
+              <div>
+                <h3>{step.rung}</h3>
+                <p>{step.body}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </section>
+
+  <section class="ctrlgroup ctrlgroup--raise" id="charge">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">You're always in charge</span>
+        <h2>Built to be stopped.</h2>
+        <p class="lead">
+          Power like this only belongs to a tool you can trust completely. So the brakes come first.
+        </p>
+      </header>
+      <ul class="promiselist">
+        {CONTROL_PROMISES.map((p) => <li class="glass-pane">{p}</li>)}
+      </ul>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow endcta__inner">
+      <h2>Give it a job. Keep the keys.</h2>
+      <p class="lead">
+        {CONTROL.name} comes with the direct download of OpenBurnBar. It stays off until you turn it on
+        — and you can always turn it back off.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span aria-hidden="true">→</span></a
+        >
+        <a class="btn btn--ghost" href="/security">See the security model</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead {
+    padding: var(--s-9) 0 var(--s-7);
+    text-align: center;
+  }
+  .pagehead__inner {
+    max-width: 760px;
+    margin-inline: auto;
+  }
+  .pagehead .lead,
+  .pagehead__lead {
+    margin-inline: auto;
+  }
+  /* Centered section headers, matching this page's centered hero. */
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin: 0 auto var(--s-6);
+    max-width: 62ch;
+    text-align: center;
+    justify-items: center;
+  }
+  .pagehead__ctas {
+    display: flex;
+    gap: var(--s-3);
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--s-5);
+  }
+  .ctrl-status {
+    margin-top: var(--s-4);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+  .ctrlgroup {
+    padding: var(--s-8) 0;
+    border-top: 1px solid var(--ink-line-soft);
+  }
+  .ctrlgroup--raise {
+    background: var(--ink-raise);
+  }
+  /* Three ways in — device frame + mode list */
+  .modes {
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) 1fr;
+    gap: var(--s-7);
+    align-items: center;
+    margin-top: var(--s-6);
+  }
+  .modes__device {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: center;
+  }
+  .phoneframe {
+    width: 100%;
+    max-width: 290px;
+    aspect-ratio: 921 / 2000;
+    background: #0a0a10;
+    padding: 7px;
+    border: 7px solid #1a1822;
+    border-radius: 44px;
+    box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.75);
+    overflow: hidden;
+  }
+  .phoneframe img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    border-radius: 37px;
+    display: block;
+  }
+  .modes__cap {
+    text-align: center;
+    color: var(--ember-bright);
+    font-size: var(--t-caption);
+    letter-spacing: 0.04em;
+  }
+  .modes__list {
+    display: grid;
+    gap: var(--s-4);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .modes__list li {
+    padding-left: var(--s-4);
+    border-left: 2px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+  }
+  .modes__num {
+    color: var(--ember-bright);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+  .modes__list h3 {
+    font-family: var(--font-display);
+    font-size: 1.12rem;
+    color: var(--text-bright);
+    letter-spacing: -0.012em;
+    margin-top: 2px;
+  }
+  .modes__list p {
+    color: var(--text-mute);
+    font-size: 0.92rem;
+    line-height: 1.55;
+    margin-top: 4px;
+  }
+  @media (max-width: 760px) {
+    .modes {
+      grid-template-columns: 1fr;
+      gap: var(--s-6);
+    }
+  }
+  .ladder {
+    display: grid;
+    gap: var(--s-3);
+    margin-top: var(--s-6);
+    list-style: none;
+    padding: 0;
+  }
+  .ladder__step {
+    display: flex;
+    gap: var(--s-4);
+    align-items: flex-start;
+    padding: var(--s-5);
+  }
+  .ladder__num {
+    font-size: 0.85rem;
+    color: var(--ember-bright);
+    opacity: 0.7;
+    padding-top: 2px;
+  }
+  .ladder__step h3 {
+    font-size: 1.08rem;
+    color: var(--text-bright);
+    margin-bottom: 4px;
+  }
+  .ladder__step p {
+    color: var(--text-mute);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .promiselist {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--s-3);
+    margin-top: var(--s-6);
+    list-style: none;
+    padding: 0;
+    text-align: left;
+  }
+  .promiselist li {
+    padding: var(--s-4) var(--s-5);
+    color: var(--text-base);
+    font-size: 0.96rem;
+    line-height: 1.55;
+    position: relative;
+    padding-left: calc(var(--s-5) + 1.4em);
+  }
+  .promiselist li::before {
+    content: "✓";
+    position: absolute;
+    left: var(--s-5);
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .endcta--inline {
+    border-top: 1px solid var(--ink-line-soft);
+    text-align: center;
+  }
+  .endcta__ctas {
+    display: flex;
+    gap: var(--s-3);
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--s-5);
+  }
+  @media (max-width: 600px) {
+    .ctrlgroup {
+      padding: var(--s-7) 0;
+    }
+  }
+</style>
