@@ -285,7 +285,11 @@ export function appStoreEntitlementTarget(productID: string): AppStoreEntitlemen
       mirrorEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
     };
   }
-  if (productID === cfg.burnBarProMaxProductID || productID === cfg.burnBarProMaxAnnualProductID) {
+  if (
+    productID === cfg.burnBarProMaxProductID ||
+    productID === cfg.burnBarProMaxAnnualProductID ||
+    productID === "com.openburnbar.proMax.bundle.monthly"
+  ) {
     return {
       sourceEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
       mirrorEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,

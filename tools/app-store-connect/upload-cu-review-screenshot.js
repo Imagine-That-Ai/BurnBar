@@ -90,8 +90,11 @@ async function deleteExistingReviewScreenshots(subId, token) {
 }
 
 function putBytes(uploadUrl, headersList, bytes) {
+  const u = new URL(uploadUrl);
+  if (u.protocol !== 'https:') {
+    throw new Error(`Refusing non-HTTPS App Store upload operation: ${u.protocol}`);
+  }
   return new Promise((resolve, reject) => {
-    const u = new URL(uploadUrl);
     const headers = {};
     for (const h of headersList) headers[h.name] = h.value;
     headers['Content-Length'] = bytes.length;
@@ -111,8 +114,9 @@ function putBytes(uploadUrl, headersList, bytes) {
 
 async function uploadFor(subId, imagePath, token, dryRun) {
   console.log(`\n→ subscription ${subId}`);
-  const fileSize = fs.statSync(imagePath).size;
   const fileName = path.basename(imagePath);
+  const bytes = fs.readFileSync(imagePath);
+  const fileSize = bytes.length;
   if (dryRun) {
     console.log(`  [DRY] would upload ${fileName} (${fileSize} bytes) for sub ${subId}`);
     return;
@@ -132,7 +136,6 @@ async function uploadFor(subId, imagePath, token, dryRun) {
   const reservation = created.data;
   console.log(`  reservation id=${reservation.id}`);
   const ops = reservation.attributes.uploadOperations || [];
-  const bytes = fs.readFileSync(imagePath);
   for (const op of ops) {
     const slice = bytes.slice(op.offset, op.offset + op.length);
     await putBytes(op.url, op.requestHeaders, slice);

@@ -275,7 +275,10 @@ const phase9PlanScenarios = [
       const body = await client.call('extract', { selector: 'body', timeoutMs: 20000 });
       expectMatch(body.result.text, /Playwright/i, this.name);
       const current = await client.call('current_url');
-      expectMatch(current.result.url, /wikipedia\.org/, `${this.name} current_url`);
+      const currentUrl = new URL(current.result.url);
+      if (currentUrl.hostname !== 'wikipedia.org' && !currentUrl.hostname.endsWith('.wikipedia.org')) {
+        throw new Error(`${this.name} current_url: expected wikipedia.org host, got ${currentUrl.hostname}`);
+      }
     },
   },
   {

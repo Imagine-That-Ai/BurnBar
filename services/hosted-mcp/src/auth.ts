@@ -84,11 +84,15 @@ export function verifyBearerToken(header: string | undefined): AccessTokenClaims
   if (!header) {
     throw new HttpError(401, "Missing OpenBurnBar MCP bearer token.", "missing_auth");
   }
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  if (!match) {
+  const trimmed = header.trim();
+  const separator = trimmed.indexOf(" ");
+  if (separator <= 0 || trimmed.slice(0, separator).toLowerCase() !== "bearer") {
     throw new HttpError(401, "Bearer token must be sent in the Authorization header.", "invalid_auth_header");
   }
-  const token = match[1];
+  const token = trimmed.slice(separator + 1).trim();
+  if (!token || token.includes(" ")) {
+    throw new HttpError(401, "Bearer token must be sent in the Authorization header.", "invalid_auth_header");
+  }
   if (token.includes("?")) {
     throw new HttpError(401, "Tokens in query strings are rejected.", "token_query_string_rejected");
   }
