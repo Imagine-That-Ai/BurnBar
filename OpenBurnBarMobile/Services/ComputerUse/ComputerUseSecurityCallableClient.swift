@@ -1,9 +1,8 @@
-#if canImport(AppKit)
 import FirebaseAuth
 import FirebaseFunctions
 import Foundation
 
-/// WS4 Mac client for App Check attestation binding and escrow device trust callables.
+/// WS4 iOS client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
     enum ClientError: LocalizedError {
         case notAuthenticated
@@ -23,8 +22,6 @@ enum ComputerUseSecurityCallableClient {
         Functions.functions(region: "us-central1")
     }
 
-    /// Binds the signed-in user's Auth custom claims to the current App Check app id.
-    /// Call after sign-in when cloud sync is enabled and before high-risk CU actions.
     static func bindAppCheckAttestation() async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
@@ -33,7 +30,6 @@ enum ComputerUseSecurityCallableClient {
         try await refreshAuthClaimsAfterBind()
     }
 
-    /// Registers a pending escrow device via the server-only callable (clients cannot elevate trust).
     static func registerEscrowDevice(
         deviceId: String,
         deviceName: String,
@@ -61,15 +57,6 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
-    /// Forces an ID token refresh so `obb_app_check` custom claims propagate before high-risk callables.
-    private static func refreshAuthClaimsAfterBind() async throws {
-        guard let user = Auth.auth().currentUser else {
-            throw ClientError.notAuthenticated
-        }
-        _ = try await user.getIDTokenResult(forcingRefresh: true)
-    }
-
-    /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String) async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
@@ -82,7 +69,6 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
-    /// Revokes escrow device trust and active grants server-side.
     static func revokeEscrowDeviceTrust(deviceId: String) async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
@@ -94,5 +80,11 @@ enum ComputerUseSecurityCallableClient {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
         }
     }
+
+    private static func refreshAuthClaimsAfterBind() async throws {
+        guard let user = Auth.auth().currentUser else {
+            throw ClientError.notAuthenticated
+        }
+        _ = try await user.getIDTokenResult(forcingRefresh: true)
+    }
 }
-#endif

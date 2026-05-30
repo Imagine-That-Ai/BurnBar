@@ -12,7 +12,7 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
     private static let requestIOTimeoutSeconds: time_t = 4
     private static let xpcClient = PrivilegedInputXPCClient()
 
-    func dispatch(_ action: MacInputAction) async throws -> BurnBarJSONValue {
+    func dispatch(_ action: MacInputAction, capabilityToken: CapabilityToken? = nil) async throws -> BurnBarJSONValue {
         try await Task.detached(priority: .userInitiated) {
             let request = PrivilegedInputDispatchRequest(
                 operation: "input",
@@ -28,11 +28,11 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
                 key: action.key,
                 modifiers: action.modifiers
             )
-            let envelope = PrivilegedInputDispatchEnvelope(request: request)
+            let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: capabilityToken)
             if (try? Self.xpcClient.perform(envelope)) != nil {
                 return Self.successPayload(for: action)
             }
-            try Self.sendSocket(legacyRequest(from: request))
+            try Self.sendSocket(Self.legacyRequest(from: request, capabilityToken: capabilityToken))
             return Self.successPayload(for: action)
         }.value
     }
@@ -45,7 +45,10 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
         ])
     }
 
-    private static func legacyRequest(from request: PrivilegedInputDispatchRequest) -> RemoteUnlockVirtualHIDInputRequest {
+    private static func legacyRequest(
+        from request: PrivilegedInputDispatchRequest,
+        capabilityToken: CapabilityToken?
+    ) -> RemoteUnlockVirtualHIDInputRequest {
         RemoteUnlockVirtualHIDInputRequest(
             operation: request.operation,
             password: request.password,
@@ -59,7 +62,8 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
             mouseButton: request.mouseButton,
             text: request.text,
             key: request.key,
-            modifiers: request.modifiers
+            modifiers: request.modifiers,
+            capabilityToken: capabilityToken
         )
     }
 
@@ -163,6 +167,7 @@ private struct RemoteUnlockVirtualHIDInputRequest: Encodable, Sendable {
     var text: String?
     var key: String?
     var modifiers: [String]?
+    var capabilityToken: CapabilityToken?
 }
 
 private struct RemoteUnlockVirtualHIDInputResponse: Decodable, Sendable {

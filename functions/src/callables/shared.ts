@@ -48,14 +48,11 @@ import { auth, db } from "../adminRuntime.js";
 import {
   allowanceDocPath,
   CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
-  CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
-  CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
-  CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
-  CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
   monthKeyForDate,
   unitsForCloudProTopUp,
   type CloudProTopUpKind,
 } from "../cloudProAllowanceCore.js";
+import { loadCloudProAllowanceConfig } from "../cloudProAllowanceRemoteConfig.js";
 
 // ---------------------------------------------------------------------------
 // Provider adapter registry
@@ -902,7 +899,8 @@ export async function creditCloudProTopUp(args: {
   const topUpRef = allowanceRef
     .collection("topups")
     .doc(requiredIdentifier(`${args.source}_${args.externalPaymentID}`, "externalPaymentID"));
-  const topUp = unitsForCloudProTopUp(args.kind, args.quantity);
+  const allowanceConfig = await loadCloudProAllowanceConfig();
+  const topUp = unitsForCloudProTopUp(args.kind, args.quantity, allowanceConfig);
 
   return db.runTransaction(async (transaction) => {
     const existing = await transaction.get(topUpRef);
@@ -915,10 +913,10 @@ export async function creditCloudProTopUp(args: {
     transaction.set(
       allowanceRef,
       {
-        includedHostedActions: CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
-        includedRelayGB: CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
-        monthlyHostedActionCap: CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
-        monthlyRelayGBCap: CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
+        includedHostedActions: allowanceConfig.includedHostedActionsMonthly,
+        includedRelayGB: allowanceConfig.includedRelayGBMonthly,
+        monthlyHostedActionCap: allowanceConfig.monthlyHostedActionCap,
+        monthlyRelayGBCap: allowanceConfig.monthlyRelayGBCap,
         [incrementField]: FieldValue.increment(topUp.units),
         updatedAt: now,
         schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,

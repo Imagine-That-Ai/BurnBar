@@ -296,6 +296,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 <script>
   import { auth, googleProvider, functions } from "../lib/firebaseClient";
   import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+  import type { User } from "firebase/auth";
   import { httpsCallable } from "firebase/functions";
 
   // Elements
@@ -318,7 +319,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   const userAvatar = document.getElementById("user-avatar") as HTMLImageElement;
   const errorMessage = document.getElementById("error-message");
 
-  let currentUser = null;
+  let currentUser: User | null = null;
 
   // Helpers
   function showState(activeState: keyof typeof states) {
@@ -341,7 +342,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 
   // Format code input with hyphen: WDJB-MQXK
   if (codeInput) {
-    codeInput.addEventListener("input", (e) => {
+    codeInput.addEventListener("input", () => {
       let val = codeInput.value.replace(/[^A-Za-z2-9]/g, "").toUpperCase();
       if (val.length > 4) {
         val = val.slice(0, 4) + "-" + val.slice(4, 8);

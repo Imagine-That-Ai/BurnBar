@@ -894,14 +894,20 @@ final class FirestoreRepository {
     func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
         let uid = try uid()
         var inactiveResponse: HostedQuotaEntitlementResponse?
-        for entitlementID in ["hosted_quota_sync", "burnbar_pro"] {
+        for entitlementID in ["hosted_quota_sync", "burnbar_pro", "burnbar_pro_max"] {
             let snapshot = try await db
                 .document("users/\(uid)/entitlements/\(entitlementID)")
                 .getDocument()
             guard let data = snapshot.data() else { continue }
-            let fallbackProductID = entitlementID == "burnbar_pro"
-                ? "com.openburnbar.pro.monthly"
-                : "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            let fallbackProductID: String
+            switch entitlementID {
+            case "burnbar_pro":
+                fallbackProductID = "com.openburnbar.pro.monthly"
+            case "burnbar_pro_max":
+                fallbackProductID = "com.openburnbar.proMax.monthly"
+            default:
+                fallbackProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            }
             let response = Self.hostedQuotaEntitlementResponse(
                 from: data,
                 fallbackProductID: fallbackProductID

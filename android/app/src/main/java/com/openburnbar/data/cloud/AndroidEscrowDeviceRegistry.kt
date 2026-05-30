@@ -5,6 +5,7 @@ import android.util.Base64
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import kotlinx.coroutines.tasks.await
 
 data class AndroidEscrowDeviceRegistration(
@@ -14,6 +15,7 @@ data class AndroidEscrowDeviceRegistration(
 
 class AndroidEscrowDeviceRegistry(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     suspend fun registerSelf(
         uid: String,
@@ -29,19 +31,15 @@ class AndroidEscrowDeviceRegistry(
             .joinToString(" ")
             .ifBlank { "Android" }
 
-        val devicePayload = mutableMapOf<String, Any>(
-            "deviceId" to keypair.deviceId,
-            "deviceName" to deviceName,
-            "platform" to "Android",
-            "trustState" to trustState,
-            "publicKeyFingerprint" to keypair.publicKeyFingerprint,
-            "keyVersion" to keypair.keyVersion,
-            "updatedAt" to FieldValue.serverTimestamp(),
-        )
-        if (existing?.exists() != true) {
-            devicePayload["createdAt"] = FieldValue.serverTimestamp()
+        runCatching {
+            securityClient.registerEscrowDevice(
+                deviceId = keypair.deviceId,
+                deviceName = deviceName,
+                platform = "Android",
+                publicKeyFingerprint = keypair.publicKeyFingerprint,
+                keyVersion = keypair.keyVersion,
+            )
         }
-        deviceRef.set(devicePayload, SetOptions.merge()).await()
 
         userRef.collection("escrow_public_keys")
             .document("${keypair.deviceId}_${keypair.keyVersion}")
@@ -69,17 +67,7 @@ class AndroidEscrowDeviceRegistry(
         keypair: AndroidCloudVaultDeviceKeypair = AndroidCloudVaultDeviceKeypair.loadOrCreate(),
     ): AndroidEscrowDeviceRegistration {
         registerSelf(uid = uid, keypair = keypair)
-        firestore.collection("users").document(uid)
-            .collection("escrow_devices")
-            .document(keypair.deviceId)
-            .update(
-                mapOf(
-                    "trustState" to TRUSTED,
-                    "approvedAt" to FieldValue.serverTimestamp(),
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                )
-            )
-            .await()
+        securityClient.approveEscrowDeviceTrust(keypair.deviceId)
 
         return AndroidEscrowDeviceRegistration(
             deviceId = keypair.deviceId,

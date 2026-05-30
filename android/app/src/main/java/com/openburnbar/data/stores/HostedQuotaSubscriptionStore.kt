@@ -27,10 +27,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.security.MessageDigest
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 data class HostedQuotaProductDetails(val formattedPrice: String)
+
+enum class HostedQuotaStoreProductRole {
+    CLOUD_SUBSCRIPTION,
+    CLOUD_PRO_SUBSCRIPTION,
+    CLOUD_PRO_TOP_UP
+}
+
+data class HostedQuotaStoreProduct(
+    val id: String,
+    val productType: String,
+    val role: HostedQuotaStoreProductRole,
+    val fallbackPrice: String
+)
 
 /**
  * Google Play Billing integration for BurnBar Pro.
@@ -45,6 +59,29 @@ class HostedQuotaSubscriptionStore(
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
         const val PRODUCT_ID = "com.openburnbar.pro.monthly"
+        const val CLOUD_ANNUAL_PRODUCT_ID = "com.openburnbar.pro.annual"
+        const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.proMax.monthly"
+        const val CLOUD_PRO_ANNUAL_PRODUCT_ID = "com.openburnbar.proMax.annual"
+        const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentControl.actions100"
+        const val FLOO_RELAY_TOP_UP_PRODUCT_ID = "com.openburnbar.floo.relay50gb"
+
+        val STORE_PRODUCTS = listOf(
+            HostedQuotaStoreProduct(PRODUCT_ID, BillingClient.ProductType.SUBS, HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION, "$7.99"),
+            HostedQuotaStoreProduct(CLOUD_ANNUAL_PRODUCT_ID, BillingClient.ProductType.SUBS, HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION, "$79"),
+            HostedQuotaStoreProduct(CLOUD_PRO_MONTHLY_PRODUCT_ID, BillingClient.ProductType.SUBS, HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION, "$24.99"),
+            HostedQuotaStoreProduct(CLOUD_PRO_ANNUAL_PRODUCT_ID, BillingClient.ProductType.SUBS, HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION, "$249"),
+            HostedQuotaStoreProduct(AGENT_CONTROL_TOP_UP_PRODUCT_ID, BillingClient.ProductType.INAPP, HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP, "$4.99"),
+            HostedQuotaStoreProduct(FLOO_RELAY_TOP_UP_PRODUCT_ID, BillingClient.ProductType.INAPP, HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP, "$4.99")
+        )
+        private val STORE_PRODUCT_BY_ID = STORE_PRODUCTS.associateBy { it.id }
+        private val SUBSCRIPTION_PRODUCT_IDS = STORE_PRODUCTS
+            .filter { it.productType == BillingClient.ProductType.SUBS }
+            .map { it.id }
+            .toSet()
+        private val TOP_UP_PRODUCT_IDS = STORE_PRODUCTS
+            .filter { it.productType == BillingClient.ProductType.INAPP }
+            .map { it.id }
+            .toSet()
     }
 
     private val _isActive = MutableStateFlow(false)
@@ -59,6 +96,15 @@ class HostedQuotaSubscriptionStore(
     private val _productDetails = MutableStateFlow<HostedQuotaProductDetails?>(null)
     val productDetails: StateFlow<HostedQuotaProductDetails?> = _productDetails.asStateFlow()
 
+    private val _productDetailsByID = MutableStateFlow<Map<String, HostedQuotaProductDetails>>(emptyMap())
+    val productDetailsByID: StateFlow<Map<String, HostedQuotaProductDetails>> = _productDetailsByID.asStateFlow()
+
+    private val _activeProductID = MutableStateFlow<String?>(null)
+    val activeProductID: StateFlow<String?> = _activeProductID.asStateFlow()
+
+    private val _lastTopUpCredit = MutableStateFlow<Map<String, Any>?>(null)
+    val lastTopUpCredit: StateFlow<Map<String, Any>?> = _lastTopUpCredit.asStateFlow()
+
     private val _expirationDate = MutableStateFlow<Long?>(null)
     val expirationDate: StateFlow<Long?> = _expirationDate.asStateFlow()
 
@@ -66,7 +112,7 @@ class HostedQuotaSubscriptionStore(
     val purchaseDate: StateFlow<Long?> = _purchaseDate.asStateFlow()
 
     private var billingClient: BillingClient? = null
-    private var rawProductDetails: ProductDetails? = null
+    private var rawProductDetailsByID: Map<String, ProductDetails> = emptyMap()
 
     // ── Cloud entitlement listener (cross-platform fallback) ──
     //
@@ -145,6 +191,11 @@ class HostedQuotaSubscriptionStore(
 
         val notExpired = expiresAtMs == null || expiresAtMs > System.currentTimeMillis()
         _isActive.value = active && notExpired
+        if (_isActive.value) {
+            _activeProductID.value = data["productID"] as? String ?: data["productId"] as? String ?: _activeProductID.value
+        } else {
+            _activeProductID.value = null
+        }
         if (expiresAtMs != null) _expirationDate.value = expiresAtMs
         if (purchaseMs != null) _purchaseDate.value = purchaseMs
     }
@@ -176,24 +227,36 @@ class HostedQuotaSubscriptionStore(
     fun loadProducts() = load()
 
     fun purchase(activity: Activity) {
+        purchase(activity, PRODUCT_ID)
+    }
+
+    fun purchase(activity: Activity, productID: String) {
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
                 ensureReady()
-                val details = rawProductDetails ?: loadProductsInternal()
-                val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken
-                    ?: throw IllegalStateException("No subscription offer is available.")
-                val params = BillingFlowParams.newBuilder()
+                val storeProduct = STORE_PRODUCT_BY_ID[productID]
+                    ?: throw IllegalArgumentException("Unsupported BurnBar product.")
+                val details = rawProductDetailsByID[productID] ?: loadProductsInternal()[productID]
+                    ?: throw IllegalStateException("BurnBar product is not configured in Google Play.")
+                val productDetailsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder()
+                    .setProductDetails(details)
+                if (storeProduct.productType == BillingClient.ProductType.SUBS) {
+                    val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken
+                        ?: throw IllegalStateException("No subscription offer is available.")
+                    productDetailsBuilder.setOfferToken(offerToken)
+                }
+                val flowBuilder = BillingFlowParams.newBuilder()
                     .setProductDetailsParamsList(
                         listOf(
-                            BillingFlowParams.ProductDetailsParams.newBuilder()
-                                .setProductDetails(details)
-                                .setOfferToken(offerToken)
-                                .build()
+                            productDetailsBuilder.build()
                         )
                     )
-                    .build()
+                firebaseAuth.currentUser?.uid?.let { uid ->
+                    flowBuilder.setObfuscatedAccountId(sha256Hex(uid))
+                }
+                val params = flowBuilder.build()
                 val result = requireBillingClient().launchBillingFlow(activity, params)
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     throw IllegalStateException(result.debugMessage.ifBlank { "Google Play Billing did not start." })
@@ -270,49 +333,62 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    private suspend fun loadProductsInternal(): ProductDetails {
+    private suspend fun loadProductsInternal(): Map<String, ProductDetails> {
+        val subscriptions = queryProductDetails(
+            BillingClient.ProductType.SUBS,
+            STORE_PRODUCTS.filter { it.productType == BillingClient.ProductType.SUBS }.map { it.id }
+        )
+        val topUps = queryProductDetails(
+            BillingClient.ProductType.INAPP,
+            STORE_PRODUCTS.filter { it.productType == BillingClient.ProductType.INAPP }.map { it.id }
+        )
+        val detailsByID = subscriptions + topUps
+        rawProductDetailsByID = detailsByID
+        _productDetailsByID.value = STORE_PRODUCTS.associate { storeProduct ->
+            val formattedPrice = detailsByID[storeProduct.id]?.let { formattedPrice(it) } ?: storeProduct.fallbackPrice
+            storeProduct.id to HostedQuotaProductDetails(formattedPrice = formattedPrice)
+        }
+        _productDetails.value = _productDetailsByID.value[PRODUCT_ID]
+        return detailsByID
+    }
+
+    private suspend fun queryProductDetails(productType: String, productIDs: List<String>): Map<String, ProductDetails> {
+        if (productIDs.isEmpty()) return emptyMap()
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(
-                listOf(
+                productIDs.map { productID ->
                     QueryProductDetailsParams.Product.newBuilder()
-                        .setProductId(PRODUCT_ID)
-                        .setProductType(BillingClient.ProductType.SUBS)
+                        .setProductId(productID)
+                        .setProductType(productType)
                         .build()
-                )
+                }
             )
             .build()
-        val details = suspendCancellableCoroutine<ProductDetails> { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             requireBillingClient().queryProductDetailsAsync(params, ProductDetailsResponseListener { result, products ->
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     continuation.resumeWithException(
-                        IllegalStateException(result.debugMessage.ifBlank { "Could not load subscription product." })
+                        IllegalStateException(result.debugMessage.ifBlank { "Could not load BurnBar products." })
                     )
                     return@ProductDetailsResponseListener
                 }
-                val product = products.getProductDetailsList().firstOrNull { it.productId == PRODUCT_ID }
-                if (product == null) {
-                    continuation.resumeWithException(IllegalStateException("BurnBar Pro is not configured in Google Play."))
-                } else {
-                    continuation.resume(product)
-                }
+                continuation.resume(products.getProductDetailsList().associateBy { it.productId })
             })
         }
-        rawProductDetails = details
-        _productDetails.value = HostedQuotaProductDetails(
-            formattedPrice = details.subscriptionOfferDetails
-                ?.firstOrNull()
-                ?.pricingPhases
-                ?.pricingPhaseList
-                ?.firstOrNull()
-                ?.formattedPrice
-                ?: "$4.99"
-        )
-        return details
+    }
+
+    private fun formattedPrice(details: ProductDetails): String? {
+        return details.subscriptionOfferDetails
+            ?.firstOrNull()
+            ?.pricingPhases
+            ?.pricingPhaseList
+            ?.firstOrNull()
+            ?.formattedPrice
+            ?: details.oneTimePurchaseOfferDetails?.formattedPrice
     }
 
     private suspend fun restorePurchasesInternal() {
-        val purchases = querySubscriptionPurchases()
-        handlePurchases(purchases)
+        handlePurchases(querySubscriptionPurchases() + queryOneTimePurchases())
         // No local Play purchase doesn't necessarily mean inactive — the
         // user may be a Cloud Member via the iOS subscription. The Firestore
         // entitlement listener is the canonical source; only clear local
@@ -322,17 +398,30 @@ class HostedQuotaSubscriptionStore(
     }
 
     private suspend fun handlePurchases(purchases: List<Purchase>) {
+        val topUpPurchase = purchases.firstOrNull {
+            it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.any { productID -> productID in TOP_UP_PRODUCT_IDS }
+        }
+        if (topUpPurchase != null) {
+            val productID = topUpPurchase.products.first { it in TOP_UP_PRODUCT_IDS }
+            _lastTopUpCredit.value = functions.verifyGooglePlayCloudProTopUp(
+                purchaseToken = topUpPurchase.purchaseToken,
+                productID = productID
+            )
+        }
+
         val purchase = purchases.firstOrNull {
-            it.products.contains(PRODUCT_ID) && it.purchaseState == Purchase.PurchaseState.PURCHASED
+            it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.any { productID -> productID in SUBSCRIPTION_PRODUCT_IDS }
         } ?: return
+        val productID = purchase.products.first { it in SUBSCRIPTION_PRODUCT_IDS }
         val response = functions.verifyGooglePlayBurnBarProSubscription(
             purchaseToken = purchase.purchaseToken,
-            productID = PRODUCT_ID
+            productID = productID
         )
         if (!purchase.isAcknowledged) {
             acknowledge(purchase)
         }
         _isActive.value = response["active"] as? Boolean ?: true
+        _activeProductID.value = productID
         _purchaseDate.value = purchase.purchaseTime
         val expiresAt = response["expiresAt"] as? String
         _expirationDate.value = expiresAt?.let { java.time.Instant.parse(it).toEpochMilli() }
@@ -356,8 +445,16 @@ class HostedQuotaSubscriptionStore(
     }
 
     private suspend fun querySubscriptionPurchases(): List<Purchase> {
+        return queryPurchases(BillingClient.ProductType.SUBS)
+    }
+
+    private suspend fun queryOneTimePurchases(): List<Purchase> {
+        return queryPurchases(BillingClient.ProductType.INAPP)
+    }
+
+    private suspend fun queryPurchases(productType: String): List<Purchase> {
         val params = QueryPurchasesParams.newBuilder()
-            .setProductType(BillingClient.ProductType.SUBS)
+            .setProductType(productType)
             .build()
         return suspendCancellableCoroutine { continuation ->
             requireBillingClient().queryPurchasesAsync(params) { result, purchases ->
@@ -374,4 +471,9 @@ class HostedQuotaSubscriptionStore(
 
     private fun requireBillingClient(): BillingClient =
         checkNotNull(billingClient) { "Google Play Billing client is not ready." }
+
+    private fun sha256Hex(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
+    }
 }

@@ -61,6 +61,7 @@ export {
   createStripeBurnBarProCheckoutSession,
   createStripeBurnBarProPortalSession,
   verifyGooglePlayBurnBarProSubscription,
+  verifyGooglePlayCloudProTopUp,
   stripeBurnBarProWebhook,
 } from "./callables/stripe.js";
 
@@ -103,6 +104,7 @@ export {
 export {
   beginEntitlementBinding,
   verifyHostedQuotaEntitlement,
+  verifyCloudProTopUp,
   restoreHostedQuotaEntitlement,
   appStoreServerNotificationsV2,
   reconcileHostedEntitlementsDaily,

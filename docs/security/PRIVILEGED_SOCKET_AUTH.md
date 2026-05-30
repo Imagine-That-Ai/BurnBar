@@ -49,6 +49,28 @@ Events are emitted as JSON lines on stderr (`privileged_socket_audit …`).
 
 Build `OpenBurnBarPrivilegedSocketRedTeamProbe` and run against a live socket. **Exit 1** means the server rejected the probe (expected post-P0). **Exit 0** means the vulnerability is still present.
 
+### Live drill (operator runbook)
+
+1. Rebuild and install the privileged helpers from a P0+ tree (Virtual HID bridge + Remote Access Agent + input execution leaf):
+   ```bash
+   cd /path/to/BurnBar
+   xcodebuild -scheme OpenBurnBarPrivilegedInputExecution -destination 'platform=macOS' build
+   xcodebuild -scheme OpenBurnBarVirtualHIDBridge -destination 'platform=macOS' build
+   xcodebuild -scheme OpenBurnBarRemoteAccessAgent -destination 'platform=macOS' build
+   ```
+   Restart the launchd Mach services / socket adapters so the running daemons match the new binaries.
+
+2. Run the opt-in integration probe against the live sockets:
+   ```bash
+   export RUN_PRIVILEGED_SOCKET_REDTEAM=1
+   cd OpenBurnBarDaemon
+   swift test --filter PrivilegedSocketRedTeamIntegrationTests
+   ```
+
+3. **Pass criteria:** the XCTest suite skips unless `RUN_PRIVILEGED_SOCKET_REDTEAM=1` is set; when set, unsigned / wrong-signature peers must be rejected (probe exits non-zero / test passes). Re-run after every privileged-helper change before shipping.
+
+See `OpenBurnBarDaemon/Tests/OpenBurnBarRemoteAccessAgentCoreTests/PrivilegedSocketRedTeamIntegrationTests.swift`.
+
 ## Leaf kill switch
 
 `PrivilegedInputKillSwitch` (`/var/run/openburnbar-privileged-input-kill`) is set on app panic and checked on every Virtual HID dispatch.

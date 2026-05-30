@@ -23,6 +23,7 @@ public struct ComputerUseOpenTimestampsProofVerifier: Sendable {
         guard fileManager.fileExists(atPath: proofURL.path) else {
             return Result(status: .proofMissing, output: "proof file missing: \(proofURL.path)")
         }
+#if os(macOS)
         guard let otsPath = locateOTSBinary() else {
             return Result(status: .verifierUnavailable, output: "ots CLI not found on PATH")
         }
@@ -49,8 +50,12 @@ public struct ComputerUseOpenTimestampsProofVerifier: Sendable {
         } catch {
             return Result(status: .verifierUnavailable, output: error.localizedDescription)
         }
+#else
+        return Result(status: .verifierUnavailable, output: "ots CLI verification is only available on macOS")
+#endif
     }
 
+#if os(macOS)
     private func locateOTSBinary() -> String? {
         let process = Process()
         let output = Pipe()
@@ -68,4 +73,5 @@ public struct ComputerUseOpenTimestampsProofVerifier: Sendable {
             return nil
         }
     }
+#endif
 }

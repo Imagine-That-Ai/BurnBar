@@ -7,7 +7,10 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import process from "node:process";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { BILLING_ALERT_POLICIES } from "../functions/scripts/billing-alert-policy-definitions.mjs";
 import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
@@ -85,6 +88,8 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "rollupMediaSessionDaily",
   "searchStreams",
   "stripeBurnBarProWebhook",
+  "verifyCloudProTopUp",
+  "verifyGooglePlayCloudProTopUp",
   "verifyGooglePlayBurnBarProSubscription",
   "verifyHostedQuotaEntitlement",
 ];
@@ -837,9 +842,11 @@ function deployedFunctionEnvironment(functionName) {
 function checkCommercialBillingRuntime() {
   const checkout = deployedFunctionEnvironment("createStripeBurnBarProCheckoutSession");
   const googlePlay = deployedFunctionEnvironment("verifyGooglePlayBurnBarProSubscription");
+  const googlePlayTopUp = deployedFunctionEnvironment("verifyGooglePlayCloudProTopUp");
+  const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
 
-  const envSources = [checkout, googlePlay].filter((source) => source.ok);
+  const envSources = [checkout, googlePlay, googlePlayTopUp, appStoreTopUp].filter((source) => source.ok);
   const mergedEnv = Object.assign({}, ...envSources.map((source) => source.env));
   const envRequirements = evaluateEnvRequirements(
     mergedEnv,
@@ -860,25 +867,39 @@ function checkCommercialBillingRuntime() {
   };
 
   return {
-    ok: checkout.ok && googlePlay.ok && webhook.ok && envRequirements.ok && stripeSecrets.ok,
-    functions: { checkout, googlePlay, webhook },
+    ok:
+      checkout.ok &&
+      googlePlay.ok &&
+      googlePlayTopUp.ok &&
+      appStoreTopUp.ok &&
+      webhook.ok &&
+      envRequirements.ok &&
+      stripeSecrets.ok,
+    functions: { checkout, googlePlay, googlePlayTopUp, appStoreTopUp, webhook },
     envRequirements,
     stripeSecrets,
   };
 }
 
 function checkRemoteConfigCaps() {
+  const tempDir = mkdtempSync(join(tmpdir(), "openburnbar-remote-config-"));
+  const tempFile = join(tempDir, "remote-config.json");
   const result = run("firebase", [
     "remoteconfig:get",
     "--project",
     PROJECT,
-    "--format=json",
+    "--output",
+    tempFile,
   ], { timeout: 60_000 });
-  if (!result.ok) {
-    return { ok: false, error: result.stderr || result.stdout || result.error };
+  try {
+    if (!result.ok) {
+      return { ok: false, error: result.stderr || result.stdout || result.error };
+    }
+    const template = JSON.parse(readFileSync(tempFile, "utf8"));
+    return evaluateRemoteConfigDefaults(template, REQUIRED_REMOTE_CONFIG_DEFAULTS);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
   }
-  const template = JSON.parse(result.stdout);
-  return evaluateRemoteConfigDefaults(template, REQUIRED_REMOTE_CONFIG_DEFAULTS);
 }
 
 function metricTypesForPolicy(policy) {

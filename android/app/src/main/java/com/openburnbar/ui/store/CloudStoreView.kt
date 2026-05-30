@@ -74,6 +74,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.RemoteMcpClientRecord
 import com.openburnbar.data.stores.RemoteMcpClientStore
@@ -125,6 +126,7 @@ fun CloudStoreView(
     val isLoading by subscriptionStore.isLoading.collectAsState()
     val error by subscriptionStore.error.collectAsState()
     val productDetails by subscriptionStore.productDetails.collectAsState()
+    val productDetailsByID by subscriptionStore.productDetailsByID.collectAsState()
     val expirationDate by subscriptionStore.expirationDate.collectAsState()
     val purchaseDate by subscriptionStore.purchaseDate.collectAsState()
     val remoteMcpClients by remoteMcpClientStore.clients.collectAsState()
@@ -142,7 +144,8 @@ fun CloudStoreView(
         onDispose { remoteMcpClientStore.stopListening() }
     }
 
-    val priceText = productDetails?.formattedPrice ?: "$4.99"
+    val priceText = productDetails?.formattedPrice ?: "$7.99"
+    val activity = context as? android.app.Activity
 
     Box(modifier = Modifier.fillMaxSize()) {
         AuroraBackdrop()
@@ -207,6 +210,17 @@ fun CloudStoreView(
                     }
                 }
 
+                item {
+                    CloudPaidTierCard(
+                        isActive = isActive,
+                        prices = productDetailsByID,
+                        isLoading = isLoading,
+                        onPurchase = { productID ->
+                            activity?.let { subscriptionStore.purchase(it, productID) }
+                        }
+                    )
+                }
+
                 item { CloudCapabilityLineup(isActive = isActive) }
                 item {
                     CloudRemoteMcpCard(
@@ -238,7 +252,6 @@ fun CloudStoreView(
                 priceText = priceText,
                 isLoading = isLoading,
                 onPurchase = {
-                    val activity = context as? android.app.Activity
                     activity?.let(subscriptionStore::purchase)
                 },
                 onRestore = { subscriptionStore.restorePurchases() },
@@ -624,6 +637,90 @@ private fun CloudPlanGlassCard(priceText: String) {
                 fontSize = 12.sp,
                 color = Pal.textSecondary
             )
+        }
+    }
+}
+
+@Composable
+private fun CloudPaidTierCard(
+    isActive: Boolean,
+    prices: Map<String, HostedQuotaProductDetails>,
+    isLoading: Boolean,
+    onPurchase: (String) -> Unit
+) {
+    val subscriptionProducts = HostedQuotaSubscriptionStore.STORE_PRODUCTS
+        .filter { it.productType == com.android.billingclient.api.BillingClient.ProductType.SUBS }
+    val topUpProducts = HostedQuotaSubscriptionStore.STORE_PRODUCTS
+        .filter { it.productType == com.android.billingclient.api.BillingClient.ProductType.INAPP }
+
+    AuroraGlassCard {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "GOOGLE PLAY PLANS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.4.sp,
+                color = Pal.ember
+            )
+            subscriptionProducts.forEach { product ->
+                CloudStoreProductRow(
+                    title = when (product.id) {
+                        HostedQuotaSubscriptionStore.PRODUCT_ID -> "BurnBar Cloud Monthly"
+                        HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID -> "BurnBar Cloud Annual"
+                        HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID -> "BurnBar Cloud Pro Monthly"
+                        else -> "BurnBar Cloud Pro Annual"
+                    },
+                    subtitle = when (product.id) {
+                        HostedQuotaSubscriptionStore.PRODUCT_ID,
+                        HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID -> "Sync quota, encrypted history, search, and memory."
+                        else -> "Everything in Cloud plus Floo and supervised Agent Control."
+                    },
+                    price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
+                    enabled = !isLoading,
+                    onPurchase = { onPurchase(product.id) }
+                )
+            }
+            if (isActive) {
+                HorizontalDivider(color = Pal.border.copy(alpha = 0.5f))
+                topUpProducts.forEach { product ->
+                    CloudStoreProductRow(
+                        title = if (product.id == HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID) {
+                            "Agent Control 100 actions"
+                        } else {
+                            "Floo relay 50 GB"
+                        },
+                        subtitle = "Prepaid Cloud Pro top-up.",
+                        price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
+                        enabled = !isLoading,
+                        onPurchase = { onPurchase(product.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudStoreProductRow(
+    title: String,
+    subtitle: String,
+    price: String,
+    enabled: Boolean,
+    onPurchase: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Pal.textPrimary)
+            Text(subtitle, fontSize = 12.sp, color = Pal.textSecondary)
+        }
+        TextButton(enabled = enabled, onClick = onPurchase) {
+            Text(price, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Pal.ember)
         }
     }
 }
@@ -1133,9 +1230,9 @@ private fun CloudComparisonCard() {
 @Composable
 private fun CloudTrustCard() {
     val bullets = listOf(
-        Triple(Icons.Filled.VerifiedUser, "Apple-verified", "Every transaction JWS is checked against Apple's root certificates server-side."),
-        Triple(Icons.Filled.Backup, "UID-bound", "Each purchase is bound to your Firebase UID via a signed appAccountToken."),
-        Triple(Icons.Filled.Cloud, "Cancel anytime", "Managed by Apple in Settings → Apple ID. We never store payment details.")
+        Triple(Icons.Filled.VerifiedUser, "Play-verified", "Every purchase token is checked server-side before an entitlement or top-up is credited."),
+        Triple(Icons.Filled.Backup, "UID-bound", "Each purchase launches with a Firebase UID hash and verifies against your signed-in account."),
+        Triple(Icons.Filled.Cloud, "Cancel anytime", "Subscriptions are managed by Google Play. We never store payment details.")
     )
     AuroraGlassCard {
         Column(

@@ -25,6 +25,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
 const primaryCount = PROVIDERS_PRIMARY.length;
 const totalCount = PROVIDERS_ALL.length;
 const detectedCount = totalCount - primaryCount;
+const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
+const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
 ---
 
 <BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">
@@ -616,23 +618,49 @@ const detectedCount = totalCount - primaryCount;
 
         <article class="ptcard ptcard--ember">
           <header>
-            <span class="tag tag--ember tag--plain mono">OpenBurnBar Cloud</span>
+            <span class="tag tag--ember tag--plain mono">{cloud.name}</span>
             <div class="ptcard__price">
-              <span class="mono">${SITE.iapPriceUSD}</span><span class="ptcard__period"
-                >/{SITE.iapPeriod}</span
+              <span class="mono">${cloud.priceMonthlyUSD}</span><span class="ptcard__period"
+                >/month</span
               >
             </div>
-            <p class="muted small">billed monthly by Apple · cancel anytime · no free trial</p>
+            <p class="muted small">
+              ${cloud.priceAnnualUSD}/year · sync, encrypted history, agent memory
+            </p>
           </header>
           <ul>
-            <li>Hosted Codex quota refresh from any signed-in device</li>
+            <li>Hosted quota refresh from any signed-in device</li>
             <li>Conversation backup &amp; resume across iPhone, iPad, Mac</li>
             <li>Full session-log sync, searchable across devices</li>
-            <li>Hermes Remote Relay — reach your Mac's Hermes from anywhere</li>
-            <li>App Store-verified, App Check-enforced, JWS end-to-end</li>
+            <li>Encrypted project memory and assistant history</li>
+            <li>Server-verified entitlement before hosted features turn on</li>
           </ul>
           <a class="btn btn--ember" href="/pricing">
             Pricing details <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+        </article>
+
+        <article class="ptcard ptcard--pro">
+          <header>
+            <span class="tag tag--plain mono tag--estimated">{cloudPro.name}</span>
+            <div class="ptcard__price">
+              <span class="mono">${cloudPro.priceMonthlyUSD}</span><span class="ptcard__period"
+                >/month</span
+              >
+            </div>
+            <p class="muted small">
+              ${cloudPro.priceAnnualUSD}/year · phone-to-Mac + supervised agent work
+            </p>
+          </header>
+          <ul>
+            <li>Everything in BurnBar Cloud</li>
+            <li>Floo phone-to-Mac live view, file transfer, calls, clipboard</li>
+            <li>Agent Control with grants, boundaries, and action records</li>
+            <li>Includes 500 hosted actions and 50 relay-accounting GB each month</li>
+            <li>Extra hosted usage is prepaid before use</li>
+          </ul>
+          <a class="btn btn--ghost" href="/pricing">
+            Compare plans <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
         </article>
       </div>
@@ -1414,7 +1442,7 @@ const detectedCount = totalCount - primaryCount;
   }
   .pricing-teaser__grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--s-5);
   }
   .ptcard {
@@ -1485,6 +1513,10 @@ const detectedCount = totalCount - primaryCount;
     border-radius: inherit;
     box-shadow: 0 0 60px -20px rgba(255, 106, 26, 0.4);
     pointer-events: none;
+  }
+  .ptcard--pro {
+    border-color: color-mix(in oklab, var(--mercury-core) 35%, var(--ink-line));
+    background: rgba(12, 16, 20, 0.64);
   }
   @media (max-width: 900px) {
     .pricing-teaser__grid {

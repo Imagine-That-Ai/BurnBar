@@ -140,9 +140,49 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
         FirebaseApp.configure()
         Self.configureGoogleSignIn()
+        _ = MobileAppCheckAttestationMonitor.shared
+        Task { @MainActor in
+            await Self.validateAppCheckIfNeeded()
+        }
+        Auth.auth().addStateDidChangeListener { _, user in
+            guard user != nil, user?.isAnonymous == false else { return }
+            Task { @MainActor in
+                await Self.validateAppCheckIfNeeded()
+            }
+        }
         #if DEBUG
         Self.signInWithE2ECustomTokenIfNeeded()
         #endif
+    }
+
+    @MainActor
+    private static func validateAppCheckIfNeeded() async {
+        guard Auth.auth().currentUser?.isAnonymous == false else { return }
+        do {
+            let token = try await AppCheck.appCheck().token(forcingRefresh: false)
+            guard !token.token.isEmpty else {
+                postAppCheckWarning("App Check returned an empty token.")
+                return
+            }
+        } catch {
+            postAppCheckWarning("App Check token fetch failed: \(error.localizedDescription)")
+            return
+        }
+        do {
+            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
+        } catch {
+            postAppCheckWarning("App Check attestation bind failed: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private static func postAppCheckWarning(_ message: String) {
+        print("App Check validation warning: \(message)")
+        NotificationCenter.default.post(
+            name: .openBurnBarMobileAppCheckValidationFailed,
+            object: nil,
+            userInfo: ["message": message]
+        )
     }
 
     private static func configureGoogleSignIn() {

@@ -17,14 +17,14 @@ import OpenBurnBarCore
 /// actor isolation. Callers `await` all public methods. The `SearchRetrievalGate` private actor that
 /// previously serialized calls is now redundant and has been removed.
 actor SearchService {
-    private let dataStore: DataStore
-    private let semanticProvider: SemanticCandidateProviding?
-    private let reranker: RetrievalRerankProviding?
-    private let sharedArtifactAccessContextProvider: @MainActor @Sendable () -> SharedArtifactAccessContext?
-    private let nowProvider: @Sendable () -> Date
+    let dataStore: DataStore
+    let semanticProvider: SemanticCandidateProviding?
+    let reranker: RetrievalRerankProviding?
+    let sharedArtifactAccessContextProvider: @MainActor @Sendable () -> SharedArtifactAccessContext?
+    let nowProvider: @Sendable () -> Date
 
-    private var _lastHealthWriteError: String?
-    private var _lastTypedHealthWriteError: OpenBurnBarError?
+    var _lastHealthWriteError: String?
+    var _lastTypedHealthWriteError: OpenBurnBarError?
 
     /// May be read from the main thread or tests while retrieval runs in the background.
     public var lastHealthWriteError: String? {
@@ -36,7 +36,7 @@ actor SearchService {
         get { _lastTypedHealthWriteError }
     }
 
-    private func setLastHealthWriteError(_ value: String?, typed: OpenBurnBarError? = nil) {
+    func setLastHealthWriteError(_ value: String?, typed: OpenBurnBarError? = nil) {
         _lastHealthWriteError = value
         _lastTypedHealthWriteError = typed
     }
@@ -112,7 +112,7 @@ actor SearchService {
         return result
     }
 
-    private func runBurnBarQueryInGate(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
+    func runBurnBarQueryInGate(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
         let plan = BurnBarSearchPlan.plan(userText: query.text)
         let now = nowProvider()
         var filters = query.filters

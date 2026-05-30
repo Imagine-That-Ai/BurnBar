@@ -140,16 +140,16 @@ treats Kimi as exact, which matches the running code.
 | Claim | Source |
 |---|---|
 | Free tier — full local product | `docs/PRIVACY.md:21,34`, `docs/HOSTED_QUOTA_SYNC.md:38-68` |
-| Cloud subscription `com.openburnbar.hostedQuotaSync.cloud.monthly` | `OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift:61`, `OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit:27`, `functions/src/config.ts:75` |
-| `$4.99` / month | `OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit:15`, `docs/HOSTED_QUOTA_SYNC.md:184-188`. **[verify]** the actual App Store Connect price tier in production matches |
-| Apple App Store auto-renewing subscription | `OpenBurnBarHostedQuota.storekit:28,31` |
-| No introductory offer / no free trial | `OpenBurnBarHostedQuota.storekit:19` |
-| Hosted Codex quota refresh — 30/day, 300/month per account | `docs/HOSTED_QUOTA_SYNC.md:287-288, 583` |
-| Conversation backup gated on entitlement | `docs/PRIVACY.md:38` |
-| Hermes Realtime Relay gated on entitlement | `docs/HERMES_REALTIME_RELAY.md:10,53` |
-| Cancellation language — `Settings → Apple ID` | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift:182` |
-| Refunds via reportaproblem.apple.com | Apple's standard policy; site does not invent a custom policy |
-| Yearly plan "coming soon" — kept off the site | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift:172-179`. **[verify]** stays off-site until built |
+| BurnBar Cloud — `$7.99/mo`, `$79/yr`, `com.openburnbar.pro.monthly`, `com.openburnbar.pro.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
+| BurnBar Cloud Pro — `$24.99/mo`, `$249/yr`, `com.openburnbar.proMax.monthly`, `com.openburnbar.proMax.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
+| Legacy Hosted Quota Sync `$4.99` is grandfathered only, not a new purchase tier | `GTMMasterPlan.MD:91-99`, `functions/src/callables/shared.ts`, `functions/src/appstore/reconciler.ts` |
+| Cloud Pro allowance — 500 hosted actions and 50 relay-accounting GB monthly | `GTMMasterPlan.MD:38-79`, `functions/src/cloudProAllowanceCore.ts` |
+| Cloud Pro monthly caps — 2,000 hosted actions and 300 relay-accounting GB | `GTMMasterPlan.MD:38-79`, `functions/src/cloudProAllowanceCore.ts` |
+| Top-ups — `$4.99` for 100 hosted actions, `$4.99` for 50 relay-accounting GB | `GTMMasterPlan.MD:59-75`, `functions/src/cloudProAllowanceCore.ts`, `functions/src/callables/stripe.ts` |
+| Hosted quota refresh, conversation backup, cloud search, and synced memory are Group A / Cloud features | `GTMMasterPlan.MD:28-34`, `functions/src/callables/shared.ts` |
+| Floo and Agent Control are Group B / Cloud Pro features | `GTMMasterPlan.MD:28-34`, `functions/src/callables/shared.ts`, `functions/src/voipPush.ts` |
+| No free trial configured | `GTMMasterPlan.MD:82-86` |
+| Refund and cancellation handling follows Apple, Google Play, or Stripe platform state | `GTMMasterPlan.MD:584-593`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
 | Subscription state on launch | `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md:13-17` says `WAITING_FOR_REVIEW` as of 2026-05-09. **[verify]** Apple has approved before the site claims iOS availability |
 
 ---
@@ -222,11 +222,11 @@ These are the recurring **[verify]** flags above, collected:
 
 1. **Canonical GitHub URL.** README + Homebrew formula say `Ajnunezg/BurnBar`. `git remote -v` says `Imagine-That-Ai/BurnBar`. Both repos exist publicly; only the latter has shipped release artifacts. Pick one and align everything.
 2. **iOS launch status.** Until Apple approves, the site copy says "in App Store review." When approved, set `SITE.iosStatus = "available on iPhone & iPad"` in `src/data/site.ts`.
-3. **App Store Connect price tier.** Site advertises $4.99/month. Confirm the live tier matches; if Apple sets a different tier in some locales, decide whether to footnote.
+3. **Store price tiers.** Site advertises Cloud at $7.99/month or $79/year, Cloud Pro at $24.99/month or $249/year, and both top-ups at $4.99. Confirm Apple, Play, and Stripe live products match; if stores set different local prices, decide whether to footnote.
 4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` now target `v1.0`; verify the GitHub release asset exists before deployment.
 5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
 6. **Trademark clearance for "OpenBurnBar"** is listed as a TODO in `docs/OSS_LAUNCH_CHECKLIST.md:108`. The site uses the name everywhere, so confirm clearance before going public.
-7. **Yearly plan / team plan copy** — kept off the page until built.
+7. **Team plan copy** — kept off the page until built.
 8. **Floo activation state.** The `/floo` page and the surfaces matrix say "Built · rolling out." Confirm which Floo capabilities (screen view, control, file transfer, calls, remote unlock) are flag-live in the shipping build before any "available now" framing. Activation gates: `docs/runbooks/media-rollout-status.md`.
 9. **Agent Control submission state.** The `/control` page says "Direct download · behind your grant" and states the Mac App Store build ships without it. Confirm the App Store Connect submission / usage-description posture matches before launch.
 10. **Android parity claim.** Site now says "Feature-complete · Play Store pending." Confirm the device-matrix soak has passed before publishing the parity claim; there is still no Play Store listing.

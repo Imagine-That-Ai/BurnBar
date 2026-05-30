@@ -6,15 +6,18 @@ import OpenBurnBarComputerUseCore
 /// Mints single-use Remote Unlock capability tokens only while an attested unlock session is pending.
 @MainActor
 public final class RemoteUnlockCapabilityTokenBroker {
-    public static let shared = RemoteUnlockCapabilityTokenBroker()
+    public static let shared = RemoteUnlockCapabilityTokenBroker(
+        readiness: MacRemoteUnlockReadinessService.shared,
+        signingKeyStore: .shared
+    )
 
     private let issuer = CapabilityTokenIssuer()
     private let readiness: MacRemoteUnlockReadinessService
     private let signingKeyStore: RemoteUnlockCapabilitySigningKeyStore
 
-    public init(
-        readiness: MacRemoteUnlockReadinessService = .shared,
-        signingKeyStore: RemoteUnlockCapabilitySigningKeyStore = .shared
+    init(
+        readiness: MacRemoteUnlockReadinessService,
+        signingKeyStore: RemoteUnlockCapabilitySigningKeyStore
     ) {
         self.readiness = readiness
         self.signingKeyStore = signingKeyStore

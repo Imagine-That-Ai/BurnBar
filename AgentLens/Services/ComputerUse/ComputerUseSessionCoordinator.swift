@@ -1106,14 +1106,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private static func agentGrantDenialReason(
         for error: PhoneControlAuthorityValidator.ValidationError
     ) -> AgentGrantDenialReason {
-        switch error {
-        case .counterReplay:
-            return .counterReplay
-        case .staleTimestamp:
-            return .staleTimestamp
-        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch:
-            return .signatureFailure
-        }
+        error.agentGrantDenialReason
     }
 
     #if DEBUG

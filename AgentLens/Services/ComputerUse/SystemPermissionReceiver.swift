@@ -218,12 +218,7 @@ public final class SystemPermissionReceiver {
     }
 
     private func deniedReason(for error: PhoneControlAuthorityValidator.ValidationError) -> HermesRealtimeRelayControlDenied.Reason {
-        switch error {
-        case .signatureFailed, .missingPeerPubKey: return .signatureFailure
-        case .counterReplay: return .counterReplay
-        case .staleTimestamp: return .staleTimestamp
-        case .intentHashMismatch: return .signatureFailure
-        }
+        error.relayControlDeniedReason
     }
 }
 #endif

@@ -13,6 +13,24 @@ export const CLOUD_PRO_MONTHLY_RELAY_GB_CAP = 300;
 export type CloudProAllowanceMeter = "hosted_actions" | "relay_gb";
 export type CloudProTopUpKind = "agent_control_actions_100" | "floo_relay_50gb";
 
+export interface CloudProAllowanceConfig {
+  includedHostedActionsMonthly: number;
+  includedRelayGBMonthly: number;
+  actionTopUpUnit: number;
+  relayTopUpUnitGB: number;
+  monthlyHostedActionCap: number;
+  monthlyRelayGBCap: number;
+}
+
+export const DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG: CloudProAllowanceConfig = Object.freeze({
+  includedHostedActionsMonthly: CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
+  includedRelayGBMonthly: CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
+  actionTopUpUnit: CLOUD_PRO_ACTION_TOP_UP_UNIT,
+  relayTopUpUnitGB: CLOUD_PRO_RELAY_TOP_UP_UNIT_GB,
+  monthlyHostedActionCap: CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
+  monthlyRelayGBCap: CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
+});
+
 export interface CloudProAllowanceSnapshot {
   includedUnits: number;
   usedUnits: number;
@@ -43,20 +61,70 @@ export function monthKeyForDate(date: Date): string {
   return `${year}-${month}`;
 }
 
-export function defaultsForAllowanceMeter(meter: CloudProAllowanceMeter): CloudProAllowanceSnapshot {
+function positiveInteger(raw: unknown, fallback: number): number {
+  const value = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(value) && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+export function normalizeCloudProAllowanceConfig(
+  overrides: Partial<Record<keyof CloudProAllowanceConfig, unknown>>,
+): CloudProAllowanceConfig {
+  const includedHostedActionsMonthly = positiveInteger(
+    overrides.includedHostedActionsMonthly,
+    DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.includedHostedActionsMonthly,
+  );
+  const includedRelayGBMonthly = positiveInteger(
+    overrides.includedRelayGBMonthly,
+    DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.includedRelayGBMonthly,
+  );
+  const actionTopUpUnit = positiveInteger(
+    overrides.actionTopUpUnit,
+    DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.actionTopUpUnit,
+  );
+  const relayTopUpUnitGB = positiveInteger(
+    overrides.relayTopUpUnitGB,
+    DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.relayTopUpUnitGB,
+  );
+  const rawHostedCap = positiveInteger(
+    overrides.monthlyHostedActionCap,
+    DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.monthlyHostedActionCap,
+  );
+  const rawRelayCap = positiveInteger(
+    overrides.monthlyRelayGBCap,
+    DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.monthlyRelayGBCap,
+  );
+
+  return {
+    includedHostedActionsMonthly,
+    includedRelayGBMonthly,
+    actionTopUpUnit,
+    relayTopUpUnitGB,
+    monthlyHostedActionCap:
+      rawHostedCap >= includedHostedActionsMonthly
+        ? rawHostedCap
+        : DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.monthlyHostedActionCap,
+    monthlyRelayGBCap:
+      rawRelayCap >= includedRelayGBMonthly ? rawRelayCap : DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG.monthlyRelayGBCap,
+  };
+}
+
+export function defaultsForAllowanceMeter(
+  meter: CloudProAllowanceMeter,
+  config: CloudProAllowanceConfig = DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG,
+): CloudProAllowanceSnapshot {
   if (meter === "relay_gb") {
     return {
-      includedUnits: CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
+      includedUnits: config.includedRelayGBMonthly,
       usedUnits: 0,
       topUpUnits: 0,
-      monthlyCap: CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
+      monthlyCap: config.monthlyRelayGBCap,
     };
   }
   return {
-    includedUnits: CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
+    includedUnits: config.includedHostedActionsMonthly,
     usedUnits: 0,
     topUpUnits: 0,
-    monthlyCap: CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
+    monthlyCap: config.monthlyHostedActionCap,
   };
 }
 
@@ -112,6 +180,7 @@ export function evaluateCloudProAllowanceReservation(
 export function unitsForCloudProTopUp(
   kind: CloudProTopUpKind,
   quantity = 1,
+  config: CloudProAllowanceConfig = DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG,
 ): {
   meter: CloudProAllowanceMeter;
   units: number;
@@ -121,12 +190,12 @@ export function unitsForCloudProTopUp(
     case "agent_control_actions_100":
       return {
         meter: "hosted_actions",
-        units: CLOUD_PRO_ACTION_TOP_UP_UNIT * normalizedQuantity,
+        units: config.actionTopUpUnit * normalizedQuantity,
       };
     case "floo_relay_50gb":
       return {
         meter: "relay_gb",
-        units: CLOUD_PRO_RELAY_TOP_UP_UNIT_GB * normalizedQuantity,
+        units: config.relayTopUpUnitGB * normalizedQuantity,
       };
   }
 }

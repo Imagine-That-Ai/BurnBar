@@ -532,7 +532,7 @@ targets:
       testTargets:
         - OpenBurnBarMobileTests
         - OpenBurnBarMobileUITests
-      storeKitConfiguration: OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit
+      storeKitConfiguration: OpenBurnBarMobileTests/Resources/OpenBurnBarPaidTiers.storekit
 
   OpenBurnBarMobileTests:
     type: bundle.unit-test
