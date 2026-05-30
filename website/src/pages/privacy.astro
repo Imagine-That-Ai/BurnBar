@@ -49,12 +49,14 @@ import { SITE } from "@data/site";
           <ul>
             <li>
               <strong>Local SQLite</strong> at <code
-                >~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite</code>
+                >~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite</code
+              >
             </li>
             <li><strong>Local daemon</strong> over a UNIX socket, auth-token-gated</li>
             <li>
               <strong>macOS Keychain</strong> for any provider keys you supply, scoped <code
-                >kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code>
+                >kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code
+              >
             </li>
             <li>
               <strong>Read-only agent logs</strong> in <code>~/.claude/</code>, <code
@@ -76,7 +78,8 @@ import { SITE } from "@data/site";
           <ul>
             <li>
               <strong>Session-log mirror</strong> copies selected local session files into <code
-                >iCloud.com.openburnbar.app</code>
+                >iCloud.com.openburnbar.app</code
+              >
             </li>
             <li>
               Mirrored files can contain prompts, assistant responses, file paths, and code snippets
@@ -113,7 +116,8 @@ import { SITE } from "@data/site";
             <li>
               <strong>Owner-scoped, secret-field-name-denied</strong> — Firestore rules reject documents
               with field names like <code>apiKey</code>, <code>token</code>, <code>cookie</code>, <code
-                >credential</code>
+                >credential</code
+              >
             </li>
           </ul>
         </article>

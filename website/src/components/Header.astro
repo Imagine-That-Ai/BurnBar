@@ -139,14 +139,15 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   }
   .site-nav ul {
     display: flex;
-    gap: 0.2rem;
+    gap: 0.1rem;
   }
   .site-nav a {
     display: inline-flex;
     align-items: center;
-    padding: 0.4rem 0.85rem;
+    padding: 0.4rem 0.65rem;
     border-radius: var(--r-3);
-    font-size: 0.88rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
     color: var(--text-mute);
     transition:
       color var(--dur-fast) var(--ease-out),
@@ -198,7 +199,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
     font-size: 1.1rem;
     color: var(--text-bright);
   }
-  @media (max-width: 880px) {
+  @media (max-width: 1024px) {
     .site-nav {
       display: none;
     }
@@ -209,7 +210,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
       display: inline-flex;
     }
   }
-  @media (min-width: 881px) {
+  @media (min-width: 1025px) {
     .mobile-nav {
       display: none !important;
     }

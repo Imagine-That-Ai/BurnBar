@@ -79,6 +79,7 @@ struct ClaudeCodeOAuthCredentialImporter {
                 from: profileKeychainStore(service),
                 service: service,
                 allowUserInteraction: allowUserInteraction,
+                allowExternalFallback: true,
                 sawMalformedPayload: &sawMalformedPayload
             ) {
                 return credentials
@@ -96,6 +97,7 @@ struct ClaudeCodeOAuthCredentialImporter {
             from: keychain,
             service: Self.keychainService,
             allowUserInteraction: allowUserInteraction,
+            allowExternalFallback: allowUserInteraction,
             sawMalformedPayload: &sawMalformedPayload
         ) {
             return credentials
@@ -130,6 +132,7 @@ struct ClaudeCodeOAuthCredentialImporter {
         from keychain: KeychainStore,
         service: String,
         allowUserInteraction: Bool,
+        allowExternalFallback: Bool,
         sawMalformedPayload: inout Bool
     ) throws -> ClaudeOAuthCredentials? {
         for account in accounts {
@@ -140,7 +143,7 @@ struct ClaudeCodeOAuthCredentialImporter {
                 payload = nil
             }
 
-            if allowUserInteraction,
+            if allowExternalFallback,
                payload?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
                 payload = externalKeychainPasswordReader(service, account)
             }

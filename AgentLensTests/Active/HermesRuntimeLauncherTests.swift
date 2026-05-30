@@ -32,11 +32,13 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         let commands = await fake.commands
         let detachedCommands = await fake.detachedCommands
         XCTAssertEqual(commands, [
-            ["gateway", "--accept-hooks", "start"],
             ["dashboard", "--status"],
             ["dashboard", "--status"]
         ])
-        XCTAssertEqual(detachedCommands, [["dashboard", "--tui"]])
+        XCTAssertEqual(detachedCommands, [
+            ["gateway", "run"],
+            ["dashboard", "--tui"]
+        ])
     }
 
     func test_openHermesAndGateway_doesNotDuplicateRunningGatewayOrDashboard() async {
@@ -73,13 +75,12 @@ final class HermesRuntimeLauncherTests: XCTestCase {
         let commands = await fake.commands
         let detachedCommands = await fake.detachedCommands
         XCTAssertEqual(commands, [
-            ["gateway", "--accept-hooks", "start"],
             ["dashboard", "--status"]
         ])
-        XCTAssertEqual(detachedCommands, [])
+        XCTAssertEqual(detachedCommands, [["gateway", "run"]])
     }
 
-    func test_openHermesAndGateway_installsGatewayWhenStartFails() async {
+    func test_openHermesAndGateway_installsGatewayWhenRunFails() async {
         let fake = FakeHermesRuntime(
             gatewayAvailable: false,
             dashboardStatusOutput: "",
@@ -91,17 +92,32 @@ final class HermesRuntimeLauncherTests: XCTestCase {
 
         XCTAssertTrue(status.gatewayRunning)
         let commands = await fake.commands
-        XCTAssertEqual(Array(commands.prefix(3)), [
-            ["gateway", "--accept-hooks", "start"],
-            ["gateway", "--accept-hooks", "install", "--force"],
-            ["gateway", "--accept-hooks", "start"]
+        let detachedCommands = await fake.detachedCommands
+        XCTAssertEqual(commands.first, ["gateway", "--accept-hooks", "install", "--force"])
+        XCTAssertEqual(Array(detachedCommands.prefix(2)), [
+            ["gateway", "run"],
+            ["gateway", "run"]
         ])
+    }
+
+    func test_openHermesAndGateway_enablesAPIServerBeforeLaunchingGateway() async {
+        let fake = FakeHermesRuntime(
+            gatewayAvailable: false,
+            dashboardStatusOutput: ""
+        )
+        let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)
+
+        _ = await launcher.openHermesAndGateway()
+
+        let didEnsureAPIServerEnabled = await fake.didEnsureAPIServerEnabled
+        XCTAssertTrue(didEnsureAPIServerEnabled)
     }
 }
 
 private actor FakeHermesRuntime {
     var commands: [[String]] = []
     var detachedCommands: [[String]] = []
+    var didEnsureAPIServerEnabled = false
 
     private let executable: String?
     private var gatewayAvailable: Bool
@@ -132,17 +148,26 @@ private actor FakeHermesRuntime {
                 return try await self.runCommand(arguments)
             },
             launchDetached: { [weak self] _, arguments in
-                await self?.launchDetached(arguments)
+                try await self?.launchDetached(arguments)
             },
             probeGateway: { [weak self] _, _ in
                 guard let self else { return (false, nil) }
                 return await self.probeGateway()
+            },
+            ensureAPIServerEnabled: { [weak self] in
+                await self?.ensureAPIServerEnabled()
+            },
+            readAPIServerKey: {
+                nil
             }
         )
     }
 
     private func runCommand(_ arguments: [String]) throws -> String {
         commands.append(arguments)
+        if arguments == ["gateway", "--accept-hooks", "install", "--force"] {
+            return "Gateway installed"
+        }
         if arguments == ["gateway", "--accept-hooks", "start"] {
             gatewayStartAttempts += 1
             if failFirstGatewayStart && gatewayStartAttempts == 1 {
@@ -151,17 +176,21 @@ private actor FakeHermesRuntime {
             gatewayAvailable = true
             return "Gateway started"
         }
-        if arguments == ["gateway", "--accept-hooks", "install", "--force"] {
-            return "Gateway installed"
-        }
         if arguments == ["dashboard", "--status"] {
             return dashboardStatusOutput
         }
         return ""
     }
 
-    private func launchDetached(_ arguments: [String]) {
+    private func launchDetached(_ arguments: [String]) throws {
         detachedCommands.append(arguments)
+        if arguments == ["gateway", "run"] {
+            gatewayStartAttempts += 1
+            if failFirstGatewayStart && gatewayStartAttempts == 1 {
+                throw HermesRuntimeLauncherError.commandFailed(command: "hermes gateway run", detail: "not installed")
+            }
+            gatewayAvailable = true
+        }
         if arguments == ["dashboard", "--tui"] {
             dashboardStatusOutput = "Hermes dashboard running PID 456"
         }
@@ -169,5 +198,9 @@ private actor FakeHermesRuntime {
 
     private func probeGateway() -> (available: Bool, modelName: String?) {
         (gatewayAvailable, gatewayAvailable ? "hermes-agent" : nil)
+    }
+
+    private func ensureAPIServerEnabled() {
+        didEnsureAPIServerEnabled = true
     }
 }

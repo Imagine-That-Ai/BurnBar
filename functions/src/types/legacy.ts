@@ -53,27 +53,11 @@ export const LOCAL_ONLY_PROVIDERS: readonly Provider[] = ["claude-code", "codex"
 
 export type CredentialKind = "token" | "bearer" | "session" | "cookie" | "plan";
 
-export type ProviderAccountStatus =
-  | "connected"
-  | "disconnected"
-  | "stale"
-  | "error"
-  | "disabled"
-  | "deleted";
+export type ProviderAccountStatus = "connected" | "disconnected" | "stale" | "error" | "disabled" | "deleted";
 
-export type ProviderAccountStorageScope =
-  | "cloud_refreshable"
-  | "local_only"
-  | "device_keychain"
-  | "server_private";
+export type ProviderAccountStorageScope = "cloud_refreshable" | "local_only" | "device_keychain" | "server_private";
 
-export type ProviderAccountRefreshState =
-  | "connected"
-  | "refreshing"
-  | "stale"
-  | "error"
-  | "disabled"
-  | "local_only";
+export type ProviderAccountRefreshState = "connected" | "refreshing" | "stale" | "error" | "disabled" | "local_only";
 
 export interface ProviderAccountCredentialDescriptor {
   credentialKind: CredentialKind;
@@ -216,13 +200,7 @@ export interface ProviderConnectionDoc {
 
 export type HermesConnectionMode = "local" | "directURL" | "relayLink";
 
-export type HermesConnectionStatus =
-  | "pending"
-  | "online"
-  | "offline"
-  | "unauthorized"
-  | "revoked"
-  | "degraded";
+export type HermesConnectionStatus = "pending" | "online" | "offline" | "unauthorized" | "revoked" | "degraded";
 
 export interface HermesConnectionDoc {
   id: string;
@@ -602,13 +580,7 @@ export interface HermesRelayChunkDoc {
 
 export type PiAgentConnectionMode = "local" | "directURL" | "relayLink";
 
-export type PiAgentConnectionStatus =
-  | "pending"
-  | "online"
-  | "offline"
-  | "unauthorized"
-  | "revoked"
-  | "degraded";
+export type PiAgentConnectionStatus = "pending" | "online" | "offline" | "unauthorized" | "revoked" | "degraded";
 
 export interface PiAgentInstanceDoc {
   id: string;
@@ -708,11 +680,7 @@ export interface PiAgentConnectionAuditEventDoc {
   expireAt?: import("firebase-admin/firestore").Timestamp;
 }
 
-export type PiAgentRelayOperation =
-  | "chatCompletions"
-  | "models"
-  | "sessions"
-  | "sessionDetail";
+export type PiAgentRelayOperation = "chatCompletions" | "models" | "sessions" | "sessionDetail";
 
 export type PiAgentRelayRequestStatus =
   | "pending"
@@ -994,12 +962,7 @@ export type ModelBenchmarkTaskCategory =
   | "analysis"
   | "unknown";
 
-export type ModelBenchmarkFreshness =
-  | "fresh"
-  | "stale"
-  | "unavailable"
-  | "cached"
-  | "manual";
+export type ModelBenchmarkFreshness = "fresh" | "stale" | "unavailable" | "cached" | "manual";
 
 export type ModelBenchmarkSnapshotDoc = Omit<
   import("./generated/model-benchmarks.js").ModelBenchmarkSnapshotDoc,
@@ -1267,16 +1230,13 @@ export interface ProviderAdapter {
   readonly provider: Provider;
 
   /** Test a raw credential without storing it. */
-  testCredential(
-    credential: string,
-    accountContext?: ProviderAccountConnectContext
-  ): Promise<CredentialTestResult>;
+  testCredential(credential: string, accountContext?: ProviderAccountConnectContext): Promise<CredentialTestResult>;
 
   /** Fetch current quota using the decrypted credential. */
   fetchQuota(
     credential: string,
     sourceId: string,
-    accountContext?: ProviderAccountConnectContext
+    accountContext?: ProviderAccountConnectContext,
   ): Promise<QuotaRefreshResult>;
 }
 
@@ -1312,8 +1272,41 @@ export interface EnvConfig {
   /** Canonical premium bundle entitlement doc id/product id. */
   burnBarProProductID: string;
 
-  /** Stripe price id for macOS/web BurnBar Pro checkout. */
+  /** Annual BurnBar Cloud product id. */
+  burnBarProAnnualProductID: string;
+
+  /** Canonical Cloud Pro product id. */
+  burnBarProMaxProductID: string;
+
+  /** Annual Cloud Pro product id. */
+  burnBarProMaxAnnualProductID: string;
+
+  /** Agent Control hosted-action top-up product id. */
+  agentControl100ActionsProductID: string;
+
+  /** Floo relay-accounting top-up product id. */
+  flooRelay50GBProductID: string;
+
+  /** Compatibility Stripe price id for macOS/web BurnBar Cloud monthly checkout. */
   stripeBurnBarProPriceID: string;
+
+  /** Stripe price id for BurnBar Cloud monthly checkout. */
+  stripeBurnBarCloudMonthlyPriceID: string;
+
+  /** Stripe price id for BurnBar Cloud annual checkout. */
+  stripeBurnBarCloudAnnualPriceID: string;
+
+  /** Stripe price id for BurnBar Cloud Pro monthly checkout. */
+  stripeBurnBarCloudProMonthlyPriceID: string;
+
+  /** Stripe price id for BurnBar Cloud Pro annual checkout. */
+  stripeBurnBarCloudProAnnualPriceID: string;
+
+  /** Stripe price id for 100 hosted Agent Control action top-up. */
+  stripeAgentControl100ActionsPriceID: string;
+
+  /** Stripe price id for 50 GB Floo relay top-up. */
+  stripeFlooRelay50GBPriceID: string;
 
   /** Stripe secret key for macOS/web BurnBar Pro checkout and webhook reads. */
   stripeSecretKey: string;
@@ -1326,6 +1319,24 @@ export interface EnvConfig {
 
   /** Google Play subscription product id for BurnBar Pro. */
   googlePlaySubscriptionProductID: string;
+
+  /** Google Play BurnBar Cloud monthly product id. */
+  googlePlayCloudMonthlyProductID: string;
+
+  /** Google Play BurnBar Cloud annual product id. */
+  googlePlayCloudAnnualProductID: string;
+
+  /** Google Play BurnBar Cloud Pro monthly product id. */
+  googlePlayCloudProMonthlyProductID: string;
+
+  /** Google Play BurnBar Cloud Pro annual product id. */
+  googlePlayCloudProAnnualProductID: string;
+
+  /** Google Play Agent Control hosted-action top-up product id. */
+  googlePlayAgentControl100ActionsProductID: string;
+
+  /** Google Play Floo relay-accounting top-up product id. */
+  googlePlayFlooRelay50GBProductID: string;
 
   /** Max encrypted session blob upload size in bytes. */
   encryptedSessionBlobMaxBytes: number;
@@ -1350,11 +1361,7 @@ export interface EnvConfig {
 // App Store hosted quota entitlement docs
 // ---------------------------------------------------------------------------
 
-export type AppStoreEnvironment =
-  | "Production"
-  | "Sandbox"
-  | "Xcode"
-  | "LocalTesting";
+export type AppStoreEnvironment = "Production" | "Sandbox" | "Xcode" | "LocalTesting";
 
 export interface AppStoreConfig {
   bundleId: string;
@@ -1371,10 +1378,7 @@ export interface AppStoreConfig {
 
 export type EntitlementOwnershipType = "PURCHASED" | "FAMILY_SHARED";
 
-export type HostedQuotaEntitlementSource =
-  | "apple_jws_verified"
-  | "apple_s2s"
-  | "scheduled_reconcile";
+export type HostedQuotaEntitlementSource = "apple_jws_verified" | "apple_s2s" | "scheduled_reconcile";
 
 export interface HostedQuotaEntitlementDoc {
   id: string;
@@ -1466,13 +1470,7 @@ export type InsightCanvasOrigin =
   | { composed: { prompt: string } }
   | { imported: { filename: string } };
 
-export type InsightTheme =
-  | "aurora"
-  | "ember"
-  | "mercury"
-  | "whimsy"
-  | "mono"
-  | "print";
+export type InsightTheme = "aurora" | "ember" | "mercury" | "whimsy" | "mono" | "print";
 
 export type InsightWidgetKind =
   | "kpiTile"
@@ -1502,18 +1500,9 @@ export type InsightWidgetKind =
   | "composed"
   | "error";
 
-export type InsightFreshness =
-  | "fresh"
-  | "stale"
-  | "computing"
-  | "error"
-  | "locked";
+export type InsightFreshness = "fresh" | "stale" | "computing" | "error" | "locked";
 
-export type InsightEgressTier =
-  | "localOnly"
-  | "userKey"
-  | "userRelay"
-  | "hosted";
+export type InsightEgressTier = "localOnly" | "userKey" | "userRelay" | "hosted";
 
 export interface InsightWidgetDoc {
   id: string;
@@ -1646,8 +1635,22 @@ export type InsightDataBindingDoc =
   | { ranking: { metric: string; dimension: InsightDataBindingDimension; limit: number; window: InsightTimeWindowDoc } }
   | { distribution: { metric: string; dimension: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
   | { heatmap: { metric: string; window: InsightTimeWindowDoc } }
-  | { scatter: { xMetric: string; yMetric: string; dimension: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
-  | { sankey: { source: InsightDataBindingDimension; mid?: InsightDataBindingDimension; target: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
+  | {
+      scatter: {
+        xMetric: string;
+        yMetric: string;
+        dimension: InsightDataBindingDimension;
+        window: InsightTimeWindowDoc;
+      };
+    }
+  | {
+      sankey: {
+        source: InsightDataBindingDimension;
+        mid?: InsightDataBindingDimension;
+        target: InsightDataBindingDimension;
+        window: InsightTimeWindowDoc;
+      };
+    }
   | { radar: { target: InsightRadarTargetDoc; window: InsightTimeWindowDoc } }
   | { cohort: { window: InsightTimeWindowDoc } }
   | { funnel: { stages: string[]; window: InsightTimeWindowDoc } }
@@ -1677,11 +1680,7 @@ export type InsightDataBindingDimension =
   | "focus"
   | "useCase";
 
-export type InsightRadarTargetDoc =
-  | { agent: string }
-  | { model: string }
-  | "allAgents"
-  | "allModels";
+export type InsightRadarTargetDoc = { agent: string } | { model: string } | "allAgents" | "allModels";
 
 export type InsightTimeWindowDoc =
   | "today"
@@ -1749,13 +1748,7 @@ export interface InsightTaxonomyDoc {
   useCases: string[];
 }
 
-export type InsightValueFormat =
-  | "currency"
-  | "tokens"
-  | "percent"
-  | "duration"
-  | "count"
-  | "raw";
+export type InsightValueFormat = "currency" | "tokens" | "percent" | "duration" | "count" | "raw";
 
 // InsightWidgetDataDoc — the full union of widget data shapes.
 // Each variant matches InsightWidgetKind one-to-one.
@@ -2165,17 +2158,9 @@ export interface InsightDigestAnomalyDoc {
   detail?: string;
 }
 
-export type InsightAnalysisPlatformDoc =
-  | "macOS"
-  | "iOS"
-  | "iPadOS"
-  | "android";
+export type InsightAnalysisPlatformDoc = "macOS" | "iOS" | "iPadOS" | "android";
 
-export type InsightAnalysisInstructionDoc =
-  | "defaultBrief"
-  | "answerFollowUp"
-  | "generateReport"
-  | "updateCanvas";
+export type InsightAnalysisInstructionDoc = "defaultBrief" | "answerFollowUp" | "generateReport" | "updateCanvas";
 
 export interface InsightAnalysisRequestDoc {
   id: string;
@@ -2279,12 +2264,7 @@ export interface InsightAnalysisResultDoc {
 
 export type InsightConfidenceDoc = "low" | "medium" | "high";
 
-export type InsightSeverityDoc =
-  | "info"
-  | "low"
-  | "medium"
-  | "high"
-  | "critical";
+export type InsightSeverityDoc = "info" | "low" | "medium" | "high" | "critical";
 
 export interface InsightFindingDoc {
   id: string;
@@ -2318,13 +2298,7 @@ export interface InsightRecommendationDoc {
   severity: InsightSeverityDoc;
 }
 
-export type InsightMissionLensDoc =
-  | "accretion"
-  | "diligence"
-  | "techDebt"
-  | "routing"
-  | "quota"
-  | "focus";
+export type InsightMissionLensDoc = "accretion" | "diligence" | "techDebt" | "routing" | "quota" | "focus";
 
 export type InsightMissionPriorityDoc = "low" | "medium" | "high" | "critical";
 export type InsightMissionEffortDoc = "small" | "medium" | "large";
@@ -2371,14 +2345,7 @@ export interface InsightAnalysisAuditEntryDoc {
   truncationSummary: string;
   promptHash: string;
   resultHash: string;
-  status:
-    | "started"
-    | "succeeded"
-    | "partial"
-    | "modelUnavailable"
-    | "schemaViolation"
-    | "cancelled"
-    | "failed";
+  status: "started" | "succeeded" | "partial" | "modelUnavailable" | "schemaViolation" | "cancelled" | "failed";
   startedAt: string;
   completedAt?: string;
   errorDescription?: string;
@@ -2668,19 +2635,8 @@ export type ComputerUseEndReason =
   | "budget_soft_cap"
   | "budget_hard_cap"
   | "error";
-export type ComputerUseActionStatus =
-  | "executed"
-  | "denied"
-  | "rejected"
-  | "awaiting_approval"
-  | "error";
-export type ComputerUseApprovedBy =
-  | "mac"
-  | "phone"
-  | "trusted_scope"
-  | "step"
-  | "denied"
-  | "panic";
+export type ComputerUseActionStatus = "executed" | "denied" | "rejected" | "awaiting_approval" | "error";
+export type ComputerUseApprovedBy = "mac" | "phone" | "trusted_scope" | "step" | "denied" | "panic";
 
 /**
  * Session record. Persisted server-side at session end with metadata
@@ -2859,11 +2815,7 @@ export type HermesSkillRunIDDoc =
 
 export type SkillRunDeliveryModeDoc = "action_only" | "full_stream" | "muted";
 
-export type SkillRunEventImportanceDoc =
-  | "quiet"
-  | "normal"
-  | "action_required"
-  | "terminal";
+export type SkillRunEventImportanceDoc = "quiet" | "normal" | "action_required" | "terminal";
 
 export interface CLIAgentMissionEventDoc {
   sequence: number;

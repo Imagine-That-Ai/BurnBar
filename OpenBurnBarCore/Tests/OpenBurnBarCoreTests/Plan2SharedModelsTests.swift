@@ -22,9 +22,10 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(AssistantRuntimeID.forge.rawValue, "forge")
         XCTAssertEqual(AssistantRuntimeID.antigravity.rawValue, "antigravity")
         XCTAssertEqual(AssistantRuntimeID.grok.rawValue, "grok")
+        XCTAssertEqual(AssistantRuntimeID.cursorAgent.rawValue, "cursorAgent")
         XCTAssertEqual(
             AssistantRuntimeID.allCases,
-            [.hermes, .pi, .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok]
+            [.hermes, .pi, .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent]
         )
     }
 
@@ -49,6 +50,10 @@ final class Plan2SharedModelsTests: XCTestCase {
             AssistantRuntimeID.antigravity.defaultGatewayURL.absoluteString,
             "http://127.0.0.1:8642"
         )
+        XCTAssertEqual(
+            AssistantRuntimeID.cursorAgent.defaultGatewayURL.absoluteString,
+            "http://127.0.0.1:8642"
+        )
     }
 
     func test_assistantRuntimeID_glyphsAreStableAcrossPlatforms() {
@@ -57,6 +62,7 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(AssistantRuntimeID.droid.glyph, "\u{25C6}")
         XCTAssertEqual(AssistantRuntimeID.forge.glyph, "\u{25B0}")
         XCTAssertEqual(AssistantRuntimeID.antigravity.glyph, "\u{2727}")
+        XCTAssertEqual(AssistantRuntimeID.cursorAgent.glyph, "\u{27A4}")
     }
 
     func test_assistantRuntimeID_codableRoundTrip() throws {
@@ -168,8 +174,8 @@ final class Plan2SharedModelsTests: XCTestCase {
             certificationStatus: .certified,
             certifiedAt: Date(timeIntervalSince1970: 1_774_000_000),
             certifiedOSBuild: "23G93",
-            activeBackend: .appleScreenSharingLoopback,
-            supportedBackends: [.appleScreenSharingLoopback],
+            activeBackend: .openBurnBarVirtualHID,
+            supportedBackends: [.openBurnBarVirtualHID],
             supportedLockStates: [.screenLocked, .loginWindow, .rebootLoginWindow],
             blockers: [],
             allowsCredentialPaste: true,
@@ -189,13 +195,13 @@ final class Plan2SharedModelsTests: XCTestCase {
             expiresAt: Date(timeIntervalSince1970: 1_774_000_600),
             localAuthenticationSatisfied: true,
             requestedLockState: .loginWindow,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             authority: authority
         )
         let state = HermesRealtimeRelayRemoteUnlockState(
             sessionId: "unlock-session-1",
             lockState: .loginWindow,
-            backend: .appleScreenSharingLoopback,
+            backend: .openBurnBarVirtualHID,
             capabilities: capabilities,
             controlOwnerViewerId: "viewer-1",
             observedAt: Date(timeIntervalSince1970: 1_774_000_001)
@@ -219,7 +225,7 @@ final class Plan2SharedModelsTests: XCTestCase {
             sessionId: "unlock-session-1",
             status: .unlocked,
             lockState: .unlocked,
-            backend: .appleScreenSharingLoopback,
+            backend: .openBurnBarVirtualHID,
             detail: "unlocked",
             completedAt: Date(timeIntervalSince1970: 1_774_000_010)
         )

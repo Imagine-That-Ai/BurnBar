@@ -123,6 +123,7 @@ struct ChatTilesSettingsView: View {
         case .forge:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "F97316"), Color(hex: "EA580C")], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .antigravity: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "6C63FF"), Color(hex: "8F8AFF")], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .grok: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "111111"), Color(hex: "333333")], startPoint: .topLeading, endPoint: .bottomTrailing))
+        case .cursorAgent: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "00E5FF"), Color(hex: "33ECFF")], startPoint: .topLeading, endPoint: .bottomTrailing))
         }
     }
 
@@ -137,6 +138,7 @@ struct ChatTilesSettingsView: View {
         case .forge:    return "Forge chat bridged from your Mac."
         case .antigravity: return "Antigravity chat bridged from your Mac."
         case .grok: return "Grok Build chat bridged from your Mac."
+        case .cursorAgent: return "Cursor Agent chat bridged from your Mac."
         }
     }
 }

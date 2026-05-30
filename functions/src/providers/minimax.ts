@@ -22,19 +22,13 @@
  * as successful.
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
 
 const PROVIDER = "minimax" as const;
 
 const TOKEN_PLAN_URL = "https://www.minimax.io/v1/token_plan/remains";
-const CODING_PLAN_URL =
-  "https://www.minimax.io/v1/api/openplatform/coding_plan/remains";
+const CODING_PLAN_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains";
 
 /** Extract a redacted label from a long token. */
 function redact(token: string): string {
@@ -74,10 +68,7 @@ interface MiniMaxFetchResult {
   errorCode?: string;
 }
 
-async function minimaxFetch(
-  url: string,
-  token: string
-): Promise<MiniMaxFetchResult> {
+async function minimaxFetch(url: string, token: string): Promise<MiniMaxFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -119,11 +110,7 @@ async function minimaxFetch(
   // other than `0` (or omitted, which means success on some endpoints) as a
   // logical failure.
   const baseResp = recordOrUndefined(body?.base_resp) ?? {};
-  if (
-    typeof baseResp.status_code === "number" &&
-    baseResp.status_code !== 0 &&
-    baseResp.status_code !== 200
-  ) {
+  if (typeof baseResp.status_code === "number" && baseResp.status_code !== 0 && baseResp.status_code !== 200) {
     const code = baseResp.status_code;
     const msg = typeof baseResp.status_msg === "string" ? baseResp.status_msg : `MiniMax error ${code}`;
     return {
@@ -200,10 +187,7 @@ export const minimaxAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
     const result = await fetchRemains(trimmed);
     if (!result.ok) {
@@ -239,9 +223,7 @@ export const minimaxAdapter: ProviderAdapter = {
  * shape. We accept three flavors: Token Plan (`model_remains` array), Coding
  * Plan (`data.model_remains`), and any flat `{used, total, remains}` payload.
  */
-export function extractBuckets(
-  payload: unknown
-): QuotaBucket[] {
+export function extractBuckets(payload: unknown): QuotaBucket[] {
   const root = recordOrUndefined(payload);
   if (!root) return [];
 
@@ -250,7 +232,10 @@ export function extractBuckets(
     return rows.map((row, index) => {
       const used = numberFrom(row.used);
       const total = numberFrom(row.total);
-      const remains = numberFrom(row.remains, total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined);
+      const remains = numberFrom(
+        row.remains,
+        total !== undefined && used !== undefined ? Math.max(0, total - used) : undefined,
+      );
       const name = stringFrom(row.model_name) ?? `plan_${index + 1}`;
       return {
         name: `${name}${row.period ? ` (${row.period})` : ""}`,
@@ -271,7 +256,10 @@ export function extractBuckets(
   // missing.
   const top = numberFrom(root.used);
   const limit = numberFrom(root.total);
-  const remaining = numberFrom(root.remains, limit !== undefined && top !== undefined ? Math.max(0, limit - top) : undefined);
+  const remaining = numberFrom(
+    root.remains,
+    limit !== undefined && top !== undefined ? Math.max(0, limit - top) : undefined,
+  );
   if (top !== undefined || limit !== undefined || remaining !== undefined) {
     return [
       {
@@ -293,29 +281,64 @@ export function extractBuckets(
 }
 
 const MINIMAX_USED_KEYS = [
-  "used", "used_num", "usedNum", "current_usage", "currentUsage",
-  "current", "consumed", "current_interval_used_count",
-  "currentIntervalUsedCount", "request_used", "requestsUsed",
-  "use_count", "useCount",
+  "used",
+  "used_num",
+  "usedNum",
+  "current_usage",
+  "currentUsage",
+  "current",
+  "consumed",
+  "current_interval_used_count",
+  "currentIntervalUsedCount",
+  "request_used",
+  "requestsUsed",
+  "use_count",
+  "useCount",
 ] as const;
 
 const MINIMAX_LIMIT_KEYS = [
-  "total", "limit", "total_num", "totalNum", "max", "max_value",
-  "max_count", "maxCount", "quota", "quota_limit", "quotaLimit",
-  "request_limit", "requestLimit", "current_interval_total_count",
+  "total",
+  "limit",
+  "total_num",
+  "totalNum",
+  "max",
+  "max_value",
+  "max_count",
+  "maxCount",
+  "quota",
+  "quota_limit",
+  "quotaLimit",
+  "request_limit",
+  "requestLimit",
+  "current_interval_total_count",
   "currentIntervalTotalCount",
 ] as const;
 
 const MINIMAX_REMAINING_KEYS = [
-  "remains", "remaining", "remain", "remaining_quota", "remainingQuota",
-  "quota_remain", "quotaRemain", "available", "left",
-  "current_interval_remaining_count", "currentIntervalRemainingCount",
-  "current_interval_remains_count", "currentIntervalRemainsCount",
-  "remain_count", "remainCount",
+  "remains",
+  "remaining",
+  "remain",
+  "remaining_quota",
+  "remainingQuota",
+  "quota_remain",
+  "quotaRemain",
+  "available",
+  "left",
+  "current_interval_remaining_count",
+  "currentIntervalRemainingCount",
+  "current_interval_remains_count",
+  "currentIntervalRemainsCount",
+  "remain_count",
+  "remainCount",
 ] as const;
 
 const MINIMAX_NAME_KEYS = [
-  "model_name", "modelName", "name", "title", "label", "resource_name",
+  "model_name",
+  "modelName",
+  "name",
+  "title",
+  "label",
+  "resource_name",
   "resourceName",
 ] as const;
 
@@ -353,10 +376,7 @@ function harvestMiniMaxBuckets(payload: unknown): QuotaBucket[] {
   return buckets;
 }
 
-function miniMaxBucketFromObject(
-  obj: Record<string, unknown>,
-  path: string[]
-): QuotaBucket | undefined {
+function miniMaxBucketFromObject(obj: Record<string, unknown>, path: string[]): QuotaBucket | undefined {
   function pickNumber(keys: readonly string[]): number | undefined {
     for (const key of keys) {
       const value = numberFrom(obj[key]);
@@ -387,16 +407,12 @@ function miniMaxBucketFromObject(
     return undefined;
   }
 
-  const name =
-    pickString(MINIMAX_NAME_KEYS) ?? path[path.length - 1] ?? "tokens";
+  const name = pickString(MINIMAX_NAME_KEYS) ?? path[path.length - 1] ?? "tokens";
   const period = pickString(["period", "window", "cycle", "period_name", "periodName"]) ?? "account";
 
-  const finalUsed =
-    used ?? (limit !== undefined && remaining !== undefined ? Math.max(0, limit - remaining) : 0);
+  const finalUsed = used ?? (limit !== undefined && remaining !== undefined ? Math.max(0, limit - remaining) : 0);
   const finalLimit = limit ?? -1;
-  const finalRemaining =
-    remaining ??
-    (finalLimit >= 0 && finalUsed >= 0 ? Math.max(0, finalLimit - finalUsed) : -1);
+  const finalRemaining = remaining ?? (finalLimit >= 0 && finalUsed >= 0 ? Math.max(0, finalLimit - finalUsed) : -1);
 
   return {
     name,
@@ -407,9 +423,7 @@ function miniMaxBucketFromObject(
   };
 }
 
-function collectModelRows(
-  payload: Record<string, unknown>
-): Array<Record<string, unknown>> {
+function collectModelRows(payload: Record<string, unknown>): Array<Record<string, unknown>> {
   if (Array.isArray(payload.model_remains)) {
     return payload.model_remains.filter(recordOrUndefined);
   }
@@ -437,9 +451,7 @@ function stringFrom(raw: unknown): string | undefined {
 }
 
 function stripUndefined(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined)
-  );
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
 }
 
 export const __testing__ = {

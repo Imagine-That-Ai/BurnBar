@@ -205,6 +205,8 @@ extension SwitcherCLIProfileType {
             return .antigravity
         case .grok:
             return .xAI
+        case .cursorAgent:
+            return .cursorAgent
         }
     }
 }

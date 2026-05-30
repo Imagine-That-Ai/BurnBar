@@ -48,8 +48,9 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
     private readonly api: BurnBarWorkspaceApi,
     private readonly indexedSearch?: BurnBarIndexedSearchBridge
   ) {
-    this.registration = vscode.commands.registerCommand(BURNBAR_WORKSPACE_RPC_COMMAND, (request: BurnBarWorkspaceRpcRequest) =>
-      this.handle(request)
+    this.registration = vscode.commands.registerCommand(
+      BURNBAR_WORKSPACE_RPC_COMMAND,
+      (request: BurnBarWorkspaceRpcRequest) => this.handle(request)
     );
   }
 
@@ -64,7 +65,10 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
       const rpcError =
         error instanceof OpenBurnBarWorkspaceRpcError
           ? error
-          : new OpenBurnBarWorkspaceRpcError('UNKNOWN', error instanceof Error ? error.message : 'Unknown workspace RPC error.');
+          : new OpenBurnBarWorkspaceRpcError(
+              'UNKNOWN',
+              error instanceof Error ? error.message : 'Unknown workspace RPC error.'
+            );
 
       return {
         ok: false,
@@ -82,23 +86,23 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
 
   private execute(request: BurnBarWorkspaceRpcRequest): Promise<BurnBarWorkspaceRpcResult> {
     switch (request.method) {
-    case 'workspace.capabilities':
-      return Promise.resolve(this.capabilities());
-    case 'workspace.read_file':
-      return this.readFile(request.params);
-    case 'workspace.search_workspace':
-      return this.searchWorkspace(request.params);
-    case 'workspace.search_burnbar_index':
-      return this.searchBurnbarIndex(request.params);
-    case 'workspace.apply_patch':
-      return this.applyPatch(request.params);
-    case 'workspace.run_terminal':
-      return this.runTerminal(request.params);
-    default: {
-      // Exhaustiveness check - this should never be reached
-      const exhaustiveCheck: never = request;
-      return Promise.reject(new Error(`Unknown workspace method: ${String(exhaustiveCheck)}`));
-    }
+      case 'workspace.capabilities':
+        return Promise.resolve(this.capabilities());
+      case 'workspace.read_file':
+        return this.readFile(request.params);
+      case 'workspace.search_workspace':
+        return this.searchWorkspace(request.params);
+      case 'workspace.search_burnbar_index':
+        return this.searchBurnbarIndex(request.params);
+      case 'workspace.apply_patch':
+        return this.applyPatch(request.params);
+      case 'workspace.run_terminal':
+        return this.runTerminal(request.params);
+      default: {
+        // Exhaustiveness check - this should never be reached
+        const exhaustiveCheck: never = request;
+        return Promise.reject(new Error(`Unknown workspace method: ${String(exhaustiveCheck)}`));
+      }
     }
   }
 
@@ -174,7 +178,9 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
     };
   }
 
-  private async searchBurnbarIndex(request: BurnBarSearchBurnbarIndexRequest): Promise<BurnBarSearchBurnbarIndexResult> {
+  private async searchBurnbarIndex(
+    request: BurnBarSearchBurnbarIndexRequest
+  ): Promise<BurnBarSearchBurnbarIndexResult> {
     if (!this.indexedSearch) {
       throw new OpenBurnBarWorkspaceRpcError(
         'UNSUPPORTED',
@@ -299,7 +305,10 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
   private defaultWorkspaceCwd(): string {
     const workspaceUri = this.api.workspaceFolders?.[0]?.uri;
     if (!workspaceUri) {
-      throw new OpenBurnBarWorkspaceRpcError('NO_WORKSPACE', 'Open a workspace folder before running OpenBurnBar terminal commands.');
+      throw new OpenBurnBarWorkspaceRpcError(
+        'NO_WORKSPACE',
+        'Open a workspace folder before running OpenBurnBar terminal commands.'
+      );
     }
 
     if (workspaceUri.scheme !== 'file') {

@@ -33,6 +33,8 @@ struct HermesRuntimeLauncherDependencies: Sendable {
     var runCommand: @Sendable (_ executable: String, _ arguments: [String]) async throws -> String
     var launchDetached: @Sendable (_ executable: String, _ arguments: [String]) async throws -> Void
     var probeGateway: @Sendable (_ baseURL: URL, _ bearerToken: String?) async -> (available: Bool, modelName: String?)
+    var ensureAPIServerEnabled: @Sendable () async throws -> Void
+    var readAPIServerKey: @Sendable () async -> String?
 
     static let live = HermesRuntimeLauncherDependencies(
         resolveHermesExecutable: {
@@ -50,6 +52,12 @@ struct HermesRuntimeLauncherDependencies: Sendable {
                 bearerToken: bearerToken,
                 timeout: 8
             )
+        },
+        ensureAPIServerEnabled: {
+            try await HermesEnvironmentFile.ensureAPIServerEnabled()
+        },
+        readAPIServerKey: {
+            await HermesEnvironmentFile.readAPIServerKey()
         }
     )
 }
@@ -136,7 +144,8 @@ final class HermesRuntimeLauncher {
             return next
         }
 
-        async let gatewayProbe = dependencies.probeGateway(baseURL, bearerToken)
+        let effectiveBearerToken = await resolvedBearerToken(bearerToken)
+        async let gatewayProbe = dependencies.probeGateway(baseURL, effectiveBearerToken)
         async let dashboard = dashboardIsRunning(executable: executable)
         let gateway = await gatewayProbe
         let dashboardRunning = await dashboard
@@ -170,13 +179,15 @@ final class HermesRuntimeLauncher {
         }
 
         do {
-            let gatewayProbe = await dependencies.probeGateway(baseURL, bearerToken)
+            try await dependencies.ensureAPIServerEnabled()
+            let effectiveBearerToken = await resolvedBearerToken(bearerToken)
+            let gatewayProbe = await dependencies.probeGateway(baseURL, effectiveBearerToken)
             if !gatewayProbe.available {
                 do {
-                    _ = try await dependencies.runCommand(executable, ["gateway", "--accept-hooks", "start"])
+                    try await dependencies.launchDetached(executable, ["gateway", "run"])
                 } catch {
                     _ = try await dependencies.runCommand(executable, ["gateway", "--accept-hooks", "install", "--force"])
-                    _ = try await dependencies.runCommand(executable, ["gateway", "--accept-hooks", "start"])
+                    try await dependencies.launchDetached(executable, ["gateway", "run"])
                 }
             }
 
@@ -184,7 +195,7 @@ final class HermesRuntimeLauncher {
                 try await dependencies.launchDetached(executable, ["dashboard", "--tui"])
             }
 
-            return await refreshStatus(baseURL: baseURL, bearerToken: bearerToken)
+            return await refreshStatus(baseURL: baseURL, bearerToken: effectiveBearerToken)
         } catch {
             let detail = error.localizedDescription
             let next = HermesRuntimeStatus(
@@ -211,6 +222,14 @@ final class HermesRuntimeLauncher {
         }
     }
 
+    private func resolvedBearerToken(_ explicitToken: String?) async -> String? {
+        if let explicitToken,
+           explicitToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return explicitToken
+        }
+        return await dependencies.readAPIServerKey()
+    }
+
     private func statusMessage(gatewayRunning: Bool, dashboardRunning: Bool, modelName: String?) -> String {
         if gatewayRunning && dashboardRunning {
             if let modelName, !modelName.isEmpty {
@@ -228,6 +247,61 @@ final class HermesRuntimeLauncher {
             return "Hermes Dashboard is running, but the local gateway is not reachable yet."
         }
         return "Hermes Dashboard and gateway are not running."
+    }
+}
+
+enum HermesEnvironmentFile {
+    private static var envURL: URL {
+        FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent(".hermes", isDirectory: true)
+            .appendingPathComponent(".env")
+    }
+
+    static func ensureAPIServerEnabled() async throws {
+        try await Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+            let directoryURL = envURL.deletingLastPathComponent()
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+            var lines: [String] = []
+            if fileManager.fileExists(atPath: envURL.path) {
+                let content = try String(contentsOf: envURL, encoding: .utf8)
+                lines = content.components(separatedBy: .newlines)
+            }
+
+            var replaced = false
+            lines = lines.map { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("API_SERVER_ENABLED=") else { return line }
+                replaced = true
+                return "API_SERVER_ENABLED=true"
+            }
+            if !replaced {
+                if lines.last?.isEmpty == false {
+                    lines.append("")
+                }
+                lines.append("API_SERVER_ENABLED=true")
+            }
+
+            let output = lines.joined(separator: "\n").trimmingCharacters(in: .newlines) + "\n"
+            try output.write(to: envURL, atomically: true, encoding: .utf8)
+        }.value
+    }
+
+    static func readAPIServerKey() async -> String? {
+        await Task.detached(priority: .utility) {
+            guard let content = try? String(contentsOf: envURL, encoding: .utf8) else { return nil }
+            for rawLine in content.components(separatedBy: .newlines) {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                guard line.hasPrefix("API_SERVER_KEY=") else { continue }
+                let rawValue = String(line.dropFirst("API_SERVER_KEY=".count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !rawValue.isEmpty else { return nil }
+                return rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            }
+            return nil
+        }.value
     }
 }
 

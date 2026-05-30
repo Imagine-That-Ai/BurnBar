@@ -33,17 +33,13 @@ type StringParam = ReturnType<typeof defineString>;
  * page; not technically secret, but treated as sensitive for parity with
  * the ASC private key.
  */
-export const APP_STORE_ASC_KEY_ID: SecretParam = defineSecret(
-  "APP_STORE_ASC_KEY_ID"
-);
+export const APP_STORE_ASC_KEY_ID: SecretParam = defineSecret("APP_STORE_ASC_KEY_ID");
 
 /**
  * App Store Connect API issuer id (UUID). Sourced from the same
  * App Store Connect "Keys" page.
  */
-export const APP_STORE_ASC_ISSUER_ID: SecretParam = defineSecret(
-  "APP_STORE_ASC_ISSUER_ID"
-);
+export const APP_STORE_ASC_ISSUER_ID: SecretParam = defineSecret("APP_STORE_ASC_ISSUER_ID");
 
 /**
  * PEM-encoded ASC API private key (the `.p8` file body, including
@@ -52,9 +48,7 @@ export const APP_STORE_ASC_ISSUER_ID: SecretParam = defineSecret(
  *
  * MUST be created with `firebase functions:secrets:set APP_STORE_ASC_KEY_P8`.
  */
-export const APP_STORE_ASC_KEY_P8: SecretParam = defineSecret(
-  "APP_STORE_ASC_KEY_P8"
-);
+export const APP_STORE_ASC_KEY_P8: SecretParam = defineSecret("APP_STORE_ASC_KEY_P8");
 
 /**
  * Numeric `appAppleId` for production. Optional in sandbox; required for
@@ -63,16 +57,10 @@ export const APP_STORE_ASC_KEY_P8: SecretParam = defineSecret(
  * Surfaced as a non-secret string param so it is visible in the deployed
  * function configuration without revealing key material.
  */
-export const APP_STORE_APPLE_APP_ID: StringParam = defineString(
-  "APP_STORE_APPLE_APP_ID",
-  { default: "" }
-);
+export const APP_STORE_APPLE_APP_ID: StringParam = defineString("APP_STORE_APPLE_APP_ID", { default: "" });
 
 /** Bundle identifier override; defaults to the real App Store Connect app. */
-export const APP_STORE_BUNDLE_ID: StringParam = defineString(
-  "APP_STORE_BUNDLE_ID",
-  { default: "com.openburnbar.app" }
-);
+export const APP_STORE_BUNDLE_ID: StringParam = defineString("APP_STORE_BUNDLE_ID", { default: "com.openburnbar.app" });
 
 /** Default environment override (`"Production"`, `"Sandbox"`, …). */
 export const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
@@ -80,21 +68,16 @@ export const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
 });
 
 /** StoreKit product id for hosted quota sync. */
-export const HOSTED_QUOTA_PRODUCT_ID: StringParam = defineString(
-  "HOSTED_QUOTA_PRODUCT_ID",
-  { default: "com.openburnbar.hostedQuotaSync.cloud.monthly" }
-);
+export const HOSTED_QUOTA_PRODUCT_ID: StringParam = defineString("HOSTED_QUOTA_PRODUCT_ID", {
+  default: "com.openburnbar.hostedQuotaSync.cloud.monthly",
+});
 
 /**
  * The set of secrets each callable / webhook / scheduled job must declare
  * so Firebase Functions provisions Secret Manager access at deploy time.
  * Centralised so we never forget one.
  */
-export const APP_STORE_SECRETS: SecretParam[] = [
-  APP_STORE_ASC_KEY_ID,
-  APP_STORE_ASC_ISSUER_ID,
-  APP_STORE_ASC_KEY_P8,
-];
+export const APP_STORE_SECRETS: SecretParam[] = [APP_STORE_ASC_KEY_ID, APP_STORE_ASC_ISSUER_ID, APP_STORE_ASC_KEY_P8];
 
 /**
  * Resolve the active ASC credentials at runtime. Throws with a precise
@@ -118,9 +101,7 @@ export function readAscCredentials(): {
   if (!keyId) throw new Error("APP_STORE_ASC_KEY_ID is not set");
   if (!issuerId) throw new Error("APP_STORE_ASC_ISSUER_ID is not set");
   if (!privateKeyP8 || !privateKeyP8.includes("PRIVATE KEY")) {
-    throw new Error(
-      "APP_STORE_ASC_KEY_P8 is missing or does not look like a PEM body"
-    );
+    throw new Error("APP_STORE_ASC_KEY_P8 is missing or does not look like a PEM body");
   }
   return { keyId, issuerId, privateKeyP8 };
 }
@@ -144,10 +125,7 @@ export function loadAppStoreRuntimeConfig(): AppStoreConfig {
   return {
     ...base,
     bundleId: APP_STORE_BUNDLE_ID.value().trim() || base.bundleId,
-    appAppleId:
-      appleAppId !== undefined && Number.isFinite(appleAppId)
-        ? Math.floor(appleAppId)
-        : base.appAppleId,
+    appAppleId: appleAppId !== undefined && Number.isFinite(appleAppId) ? Math.floor(appleAppId) : base.appAppleId,
     environment: normalizeEnvironment(APP_STORE_ENV.value(), base.environment),
     asc,
   };
@@ -163,7 +141,7 @@ export function hostedQuotaProductID(): string {
 
 function normalizeEnvironment(
   raw: string | undefined,
-  fallback: AppStoreConfig["environment"]
+  fallback: AppStoreConfig["environment"],
 ): AppStoreConfig["environment"] {
   switch (raw) {
     case "Production":

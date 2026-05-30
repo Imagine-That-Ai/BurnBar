@@ -351,88 +351,25 @@ struct MercuryLiveSheet: View {
                 remoteUnlockDiagnosticMessage: remoteUnlockDiagnosticMessage,
                 remoteUnlockPasswordDraft: $remoteUnlockPasswordDraft,
                 usePremiumSOTAUX: personalization.usePremiumSOTAUX ?? false,
-                sendTapIntent: { x, y, mouseButton in
-                    let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
-                    Task { await sendPhoneControlIntent(kind: .tap, displayId: displayId, normalizedX: x, normalizedY: y, mouseButton: mouseButton) }
-                },
-                sendScrollIntent: { x1, y1, x2, y2, displayId in
-                    Task {
-                        await sendPhoneControlIntent(
-                            kind: .scroll,
-                            displayId: displayId ?? selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
-                            normalizedX: x1,
-                            normalizedY: y1,
-                            normalizedX2: x2,
-                            normalizedY2: y2
-                        )
-                    }
-                },
-                sendPointerMoveIntent: { dx, dy in
-                    Task { await sendPhoneControlIntent(kind: .pointerMove, normalizedX2: dx, normalizedY2: dy) }
-                },
-                sendPointerClickIntent: { mouseButton in
-                    Task { await sendPhoneControlIntent(kind: .pointerClick, mouseButton: mouseButton) }
-                },
-                sendTextIntent: { text in
-                    Task { await sendPhoneControlIntent(kind: .type, text: text) }
-                },
-                sendShortcutIntent: { key, modifiers in
-                    Task { await sendPhoneControlIntent(kind: .shortcut, key: key, modifiers: modifiers) }
-                },
-                sendAgentContextTargetIntent: { x, y, instruction, runtime, clientIntentId in
-                    Task {
-                        await sendPhoneControlContextTarget(
-                            normalizedX: x,
-                            normalizedY: y,
-                            instruction: instruction,
-                            runtime: runtime,
-                            threadId: nil
-                        )
-                    }
-                },
-                pasteClipboardToMac: {
-                    Task { await sendClipboardRequest(action: .pasteToMac) }
-                },
-                grabClipboardFromMac: {
-                    Task { await sendClipboardRequest(action: .grabFromMac) }
-                },
-                sendRemoteUnlockCredential: { password in
-                    Task { await sendRemoteUnlockCredential(password: password) }
-                },
-                saveRemoteUnlockCredential: { password in
-                    Task { await saveRemoteUnlockCredential(password: password) }
-                },
-                sendSavedRemoteUnlockCredential: {
-                    Task { await sendSavedRemoteUnlockCredential() }
-                },
-                deleteSavedRemoteUnlockCredential: {
-                    deleteSavedRemoteUnlockCredential()
-                },
+                sendTapIntent: handleSendTapIntent,
+                sendScrollIntent: handleSendScrollIntent,
+                sendPointerMoveIntent: handleSendPointerMoveIntent,
+                sendPointerClickIntent: handleSendPointerClickIntent,
+                sendTextIntent: handleSendTextIntent,
+                sendShortcutIntent: handleSendShortcutIntent,
+                sendAgentContextTargetIntent: handleSendAgentContextTargetIntent,
+                pasteClipboardToMac: handlePasteClipboardToMac,
+                grabClipboardFromMac: handleGrabClipboardFromMac,
+                sendRemoteUnlockCredential: handleSendRemoteUnlockCredential,
+                saveRemoteUnlockCredential: handleSaveRemoteUnlockCredential,
+                sendSavedRemoteUnlockCredential: handleSendSavedRemoteUnlockCredential,
+                deleteSavedRemoteUnlockCredential: handleDeleteSavedRemoteUnlockCredential,
+                requestRemoteUnlockSetup: requestRemoteUnlockInputSetupFromOverlay,
                 onSelectDisplay: selectMirrorDisplay,
-                onTrustControlDevice: {
-                    Task { await trustThisIPhoneForControl() }
-                },
-                onForceReconnect: {
-                    Task {
-                        await controlStreamCoordinator.stop()
-                        if let uid = uidProvider() {
-                            controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
-                        }
-                    }
-                },
-                onRetryRequest: {
-                    Task {
-                        if remoteUnlockState != nil || lastLockedRemoteUnlockState != nil || lastAck?.remoteUnlockState != nil {
-                            await requestMirror(forceRemoteUnlockSession: true)
-                        } else {
-                            await requestMirror()
-                        }
-                    }
-                },
-                onClose: {
-                    isShowingMirrorViewer = false
-                    Task { await stopActiveMirror(reason: "viewer_closed") }
-                }
+                onTrustControlDevice: handleTrustControlDevice,
+                onForceReconnect: handleForceReconnect,
+                onRetryRequest: handleRetryRequest,
+                onClose: handleClose
             )
             .onDisappear {
                 // Disappearing is lifecycle noise on iOS: app switch, PiP,
@@ -1065,6 +1002,104 @@ struct MercuryLiveSheet: View {
         }
     }
 
+    private func handleSendTapIntent(x: Double, y: Double, mouseButton: Int) {
+        let displayId = selectedMirrorDisplayId ?? lastAck?.selectedDisplayId
+        Task { await sendPhoneControlIntent(kind: .tap, displayId: displayId, normalizedX: x, normalizedY: y, mouseButton: mouseButton) }
+    }
+
+    private func handleSendScrollIntent(x1: Double, y1: Double, x2: Double, y2: Double, displayId: String?) {
+        Task {
+            await sendPhoneControlIntent(
+                kind: .scroll,
+                displayId: displayId ?? selectedMirrorDisplayId ?? lastAck?.selectedDisplayId,
+                normalizedX: x1,
+                normalizedY: y1,
+                normalizedX2: x2,
+                normalizedY2: y2
+            )
+        }
+    }
+
+    private func handleSendPointerMoveIntent(dx: Double, dy: Double) {
+        Task { await sendPhoneControlIntent(kind: .pointerMove, normalizedX2: dx, normalizedY2: dy) }
+    }
+
+    private func handleSendPointerClickIntent(mouseButton: Int) {
+        Task { await sendPhoneControlIntent(kind: .pointerClick, mouseButton: mouseButton) }
+    }
+
+    private func handleSendTextIntent(text: String) {
+        Task { await sendPhoneControlIntent(kind: .type, text: text) }
+    }
+
+    private func handleSendShortcutIntent(key: String, modifiers: [String]) {
+        Task { await sendPhoneControlIntent(kind: .shortcut, key: key, modifiers: modifiers) }
+    }
+
+    private func handleSendAgentContextTargetIntent(x: Double, y: Double, instruction: String, runtime: String, clientIntentId: String?) {
+        Task {
+            await sendPhoneControlContextTarget(
+                normalizedX: x,
+                normalizedY: y,
+                instruction: instruction,
+                runtime: runtime,
+                threadId: nil
+            )
+        }
+    }
+
+    private func handlePasteClipboardToMac() {
+        Task { await sendClipboardRequest(action: .pasteToMac) }
+    }
+
+    private func handleGrabClipboardFromMac() {
+        Task { await sendClipboardRequest(action: .grabFromMac) }
+    }
+
+    private func handleSendRemoteUnlockCredential(password: String) {
+        Task { await sendRemoteUnlockCredential(password: password) }
+    }
+
+    private func handleSaveRemoteUnlockCredential(password: String) {
+        Task { await saveRemoteUnlockCredential(password: password) }
+    }
+
+    private func handleSendSavedRemoteUnlockCredential() {
+        Task { await sendSavedRemoteUnlockCredential() }
+    }
+
+    private func handleDeleteSavedRemoteUnlockCredential() {
+        deleteSavedRemoteUnlockCredential()
+    }
+
+    private func handleTrustControlDevice() {
+        Task { await trustThisIPhoneForControl() }
+    }
+
+    private func handleForceReconnect() {
+        Task {
+            await controlStreamCoordinator.stop()
+            if let uid = uidProvider() {
+                controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
+            }
+        }
+    }
+
+    private func handleRetryRequest() {
+        Task {
+            if remoteUnlockState != nil || lastLockedRemoteUnlockState != nil || lastAck?.remoteUnlockState != nil {
+                await requestMirror(forceRemoteUnlockSession: true)
+            } else {
+                await requestMirror()
+            }
+        }
+    }
+
+    private func handleClose() {
+        isShowingMirrorViewer = false
+        Task { await stopActiveMirror(reason: "viewer_closed") }
+    }
+
     private func reinstallMirrorSurfaceAfterReturn() {
         installAckHandler()
         guard let uid = uidProvider(), !uid.isEmpty else { return }
@@ -1075,8 +1110,8 @@ struct MercuryLiveSheet: View {
                     uid: uid,
                     connectionID: connectionID,
                     freshnessInterval: 2.0,
-                    probeTimeout: 1.0,
-                    restartTimeout: 4.0
+                    probeTimeout: 2.5,
+                    restartTimeout: 6.0
                 )
                 await startPhoneControlIfPossible(surfaceError: false)
             } catch {
@@ -1409,6 +1444,17 @@ struct MercuryLiveSheet: View {
     )
 
     private func setRemoteUnlockState(_ state: HermesRealtimeRelayRemoteUnlockState) {
+        let previousBlockers = remoteUnlockState?.capabilities.blockers ?? []
+        let incomingBlockers = state.capabilities.blockers
+        if incomingBlockers != previousBlockers {
+            // Exact blocker identifiers live in logs only — users see the
+            // mapped, product-ready copy from RemoteUnlockBlockerPresentationMap.
+            if incomingBlockers.isEmpty {
+                Self.log.debug("Remote Unlock blockers cleared (lockState=\(state.lockState.rawValue, privacy: .public))")
+            } else {
+                Self.log.debug("Remote Unlock blockers: \(incomingBlockers.joined(separator: ", "), privacy: .public) (lockState=\(state.lockState.rawValue, privacy: .public))")
+            }
+        }
         remoteUnlockState = state
         if state.lockState == .unlocked {
             lastLockedRemoteUnlockState = nil
@@ -1484,7 +1530,7 @@ struct MercuryLiveSheet: View {
             // each unlock attempt.
             localAuthenticationSatisfied: true,
             requestedLockState: nil,
-            requestedBackend: .appleScreenSharingLoopback,
+            requestedBackend: .openBurnBarVirtualHID,
             authority: Self.emptyAuthorityEnvelope
         )
         return (try sessionSigner.sign(remoteUnlockSession: unsignedSession), peerNodeId)
@@ -1642,18 +1688,14 @@ struct MercuryLiveSheet: View {
                     let message = PhoneControlSetupMessage.message(for: error)
                     Self.log.error("phone_control_auto_trust_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                     Self.debugTrace("phone_control_auto_trust_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
-                    if surfaceError || PhoneControlSetupMessage.isFirestorePermissionDenied(error) {
-                        phoneControlError = message
-                    }
+                    phoneControlError = message
                     return
                 }
             }
             let message = PhoneControlSetupMessage.message(for: error)
             Self.log.error("phone_control_start_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             Self.debugTrace("phone_control_start_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
-            if surfaceError || PhoneControlSetupMessage.isFirestorePermissionDenied(error) {
-                phoneControlError = message
-            }
+            phoneControlError = message
         }
     }
 
@@ -1717,8 +1759,8 @@ struct MercuryLiveSheet: View {
             uid: uid,
             connectionID: connectionID,
             freshnessInterval: 2.0,
-            probeTimeout: 0.85,
-            restartTimeout: 3.0
+            probeTimeout: 2.5,
+            restartTimeout: 6.0
         )
     }
 
@@ -1925,6 +1967,14 @@ struct MercuryLiveSheet: View {
             return "Remote Unlock helper is not reachable on the Mac."
         case "remote_access_daemon_rejected":
             return "Remote Unlock helper rejected the password request."
+        case "virtual_hid_bridge_unavailable", "virtual_hid_bridge_socket_unavailable":
+            return "Remote Unlock needs the Mac virtual keyboard bridge to be installed and running."
+        case "virtual_hid_device_unavailable":
+            return "macOS blocked the Remote Unlock virtual keyboard. Install the approved OpenBurnBar helper, then try again."
+        case "unsupported_keyboard_layout":
+            return "This Mac password has characters Remote Unlock cannot type yet."
+        case "virtual_hid_report_failed", "virtual_hid_bridge_write_failed", "virtual_hid_bridge_read_failed", "virtual_hid_bridge_timed_out":
+            return "Remote Unlock could not send keys through the Mac virtual keyboard."
         case "login_session_worker_failed", "login_session_worker_launch_failed", "login_session_worker_input_failed":
             return "Remote Unlock could not reach the Mac login session."
         case "login_session_worker_timed_out":
@@ -2199,6 +2249,45 @@ struct MercuryLiveSheet: View {
             phoneControlError = error.localizedDescription
             remoteUnlockDiagnosticMessage = "credential failed: \(error.localizedDescription)"
         }
+    }
+
+    private func requestRemoteUnlockInputSetup() async {
+        guard activeMirrorViewerRole == "controller" else {
+            remoteUnlockDiagnosticMessage = "Take control from this iPhone before requesting Mac setup."
+            return
+        }
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            remoteUnlockDiagnosticMessage = "Sign in to request Mac setup."
+            return
+        }
+        do {
+            try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
+            if phoneControlSender == nil {
+                await startPhoneControlIfPossible()
+            }
+            guard let phoneControlSender else {
+                remoteUnlockDiagnosticMessage = "Mac control stream is not ready yet."
+                return
+            }
+            let item = SystemPermissionItem(
+                kind: .systemExtension,
+                threadId: activeMirrorSessionId ?? connectionID,
+                status: .needsAccess,
+                instructions: "Install and activate OpenBurnBar locked-screen input on the Mac.",
+                source: .iosHeuristic
+            )
+            let sender = SystemPermissionGrantSender(senderFactory: { phoneControlSender })
+            _ = try await sender.sendGrant(item: item, action: .promptAndOpenSettings)
+            remoteUnlockDiagnosticMessage = "Mac setup requested. Approve the OpenBurnBar prompt on the Mac."
+            phoneControlError = nil
+        } catch {
+            remoteUnlockDiagnosticMessage = "Mac setup request failed: \(error.localizedDescription)"
+            Self.debugTrace("remote_unlock_input_setup_request_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func requestRemoteUnlockInputSetupFromOverlay() {
+        Task { await requestRemoteUnlockInputSetup() }
     }
 
     private func sendPhoneControlIntent(
@@ -2502,6 +2591,7 @@ private struct MercuryMirrorViewerFullScreen: View {
     let saveRemoteUnlockCredential: (String) -> Void
     let sendSavedRemoteUnlockCredential: () -> Void
     let deleteSavedRemoteUnlockCredential: () -> Void
+    let requestRemoteUnlockSetup: () -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onForceReconnect: () -> Void
@@ -2537,6 +2627,7 @@ private struct MercuryMirrorViewerFullScreen: View {
         saveRemoteUnlockCredential: @escaping (String) -> Void,
         sendSavedRemoteUnlockCredential: @escaping () -> Void,
         deleteSavedRemoteUnlockCredential: @escaping () -> Void,
+        requestRemoteUnlockSetup: @escaping () -> Void,
         onSelectDisplay: @escaping (String) -> Void,
         onTrustControlDevice: @escaping () -> Void,
         onForceReconnect: @escaping () -> Void,
@@ -2572,6 +2663,7 @@ private struct MercuryMirrorViewerFullScreen: View {
         self.saveRemoteUnlockCredential = saveRemoteUnlockCredential
         self.sendSavedRemoteUnlockCredential = sendSavedRemoteUnlockCredential
         self.deleteSavedRemoteUnlockCredential = deleteSavedRemoteUnlockCredential
+        self.requestRemoteUnlockSetup = requestRemoteUnlockSetup
         self.onSelectDisplay = onSelectDisplay
         self.onTrustControlDevice = onTrustControlDevice
         self.onForceReconnect = onForceReconnect
@@ -2612,6 +2704,7 @@ private struct MercuryMirrorViewerFullScreen: View {
             saveRemoteUnlockCredential: saveRemoteUnlockCredential,
             sendSavedRemoteUnlockCredential: sendSavedRemoteUnlockCredential,
             deleteSavedRemoteUnlockCredential: deleteSavedRemoteUnlockCredential,
+            requestRemoteUnlockSetup: requestRemoteUnlockSetup,
             onSelectDisplay: onSelectDisplay,
             onTrustControlDevice: onTrustControlDevice,
             onClose: onClose

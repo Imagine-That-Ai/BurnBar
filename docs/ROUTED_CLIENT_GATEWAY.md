@@ -88,6 +88,12 @@ accounts do not disappear forever after one temporary quota or balance error.
 The next real upstream call either succeeds and clears the status, or records a
 fresh block with a new timestamp.
 
+Documented provider compatibility aliases stay route-eligible even when the
+live `/models` endpoint only lists the newer canonical target. For example,
+DeepSeek may advertise `deepseek-v4-flash` while still accepting the deprecated
+`deepseek-chat` alias during its compatibility window; OpenBurnBar treats the
+alias as routable instead of hiding it as a false negative.
+
 Anthropic `-family` catalog rows can list multiple CLI wire IDs as aliases.
 `OpenBurnBarLiveModelCatalog` publishes every alias in `/v1/models`, and the
 gateway treats aliases on the same family row as mutually routable. When

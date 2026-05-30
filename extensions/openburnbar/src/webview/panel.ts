@@ -80,57 +80,57 @@ export class OpenBurnBarPanel {
    */
   private handleWebviewMessage(message: { type: string; payload?: unknown }): void {
     switch (message.type) {
-    case 'workspace.requestState':
-      vscode.commands.executeCommand('openburnbar.requestState');
-      break;
+      case 'workspace.requestState':
+        vscode.commands.executeCommand('openburnbar.requestState');
+        break;
 
-    case 'workspace.selectRun': {
-      const payload = runIDPayload(message.payload);
-      if (!payload) {
-        return;
+      case 'workspace.selectRun': {
+        const payload = runIDPayload(message.payload);
+        if (!payload) {
+          return;
+        }
+        vscode.commands.executeCommand('openburnbar.selectRun', payload.runId);
+        break;
       }
-      vscode.commands.executeCommand('openburnbar.selectRun', payload.runId);
-      break;
-    }
 
-    case 'workspace.viewRun': {
-      const payload = runIDPayload(message.payload);
-      if (!payload) {
-        return;
+      case 'workspace.viewRun': {
+        const payload = runIDPayload(message.payload);
+        if (!payload) {
+          return;
+        }
+        vscode.commands.executeCommand('openburnbar.viewRun', payload.runId);
+        break;
       }
-      vscode.commands.executeCommand('openburnbar.viewRun', payload.runId);
-      break;
-    }
 
-    case 'workspace.cancelRun': {
-      const payload = runIDPayload(message.payload);
-      if (!payload) {
-        return;
+      case 'workspace.cancelRun': {
+        const payload = runIDPayload(message.payload);
+        if (!payload) {
+          return;
+        }
+        vscode.commands.executeCommand('openburnbar.cancelRun', payload.runId);
+        break;
       }
-      vscode.commands.executeCommand('openburnbar.cancelRun', payload.runId);
-      break;
-    }
 
-    case 'workspace.retryRun': {
-      const payload = runIDPayload(message.payload);
-      if (!payload) {
-        return;
+      case 'workspace.retryRun': {
+        const payload = runIDPayload(message.payload);
+        if (!payload) {
+          return;
+        }
+        vscode.commands.executeCommand('openburnbar.retryRun', payload.runId);
+        break;
       }
-      vscode.commands.executeCommand('openburnbar.retryRun', payload.runId);
-      break;
-    }
 
-    case 'workspace.executeTool': {
-      const payload = executeToolPayload(message.payload);
-      if (!payload) {
-        return;
+      case 'workspace.executeTool': {
+        const payload = executeToolPayload(message.payload);
+        if (!payload) {
+          return;
+        }
+        vscode.commands.executeCommand('openburnbar.executeTool', payload.tool, payload.args);
+        break;
       }
-      vscode.commands.executeCommand('openburnbar.executeTool', payload.tool, payload.args);
-      break;
-    }
 
-    default:
-      console.warn('Unknown webview message type:', message.type);
+      default:
+        console.warn('Unknown webview message type:', message.type);
     }
   }
 
@@ -159,9 +159,7 @@ export class OpenBurnBarPanel {
    * Generate the HTML content for the webview.
    */
   private getHtmlContent(): string {
-    const stylesUri = this.webview.webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'styles.css')
-    );
+    const stylesUri = this.webview.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'styles.css'));
     const workspaceScriptUri = this.webview.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'workspace.js')
     );
@@ -241,11 +239,7 @@ export function registerPanelProvider(context: vscode.ExtensionContext): void {
             onDidDispose: new vscode.EventEmitter<void>().event
           });
 
-          webviewView.onDidDispose(
-            () => panel.dispose(),
-            undefined,
-            context.subscriptions
-          );
+          webviewView.onDidDispose(() => panel.dispose(), undefined, context.subscriptions);
         }
       })()
     )

@@ -6,6 +6,7 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("org.jetbrains.kotlin.kapt")
+    id("org.jlleitschuh.gradle.ktlint")
     jacoco
 }
 
@@ -140,6 +141,39 @@ tasks.register<JacocoReport>("jacocoTestReport") {
             include("jacoco/testDebugUnitTest.exec")
         }
     )
+}
+
+// Enforce minimum coverage thresholds — CI fails if coverage drops below these levels
+tasks.register("jacocoCoverageVerification") {
+    dependsOn("jacocoTestReport")
+    doLast {
+        val reportFile = layout.buildDirectory.file(
+            "reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"
+        ).get().asFile
+        if (!reportFile.exists()) {
+            logger.warn("JaCoCo XML report not found; skipping coverage verification.")
+            return@doLast
+        }
+        val xml = reportFile.readText()
+        // Extract instruction coverage (most stable metric for Kotlin)
+        val instructionMatch = Regex(
+            """<counter type="INSTRUCTION" missed="(\d+)" covered="(\d+)"/>"""
+        ).findAll(xml).lastOrNull()
+        if (instructionMatch != null) {
+            val missed = instructionMatch.groupValues[1].toLong()
+            val covered = instructionMatch.groupValues[2].toLong()
+            val total = missed + covered
+            val pct = if (total > 0) covered * 100.0 / total else 0.0
+            val threshold = 40.0
+            logger.lifecycle("JaCoCo instruction coverage: ${String.format("%.1f", pct)}% (threshold: ${threshold}%)")
+            if (pct < threshold) {
+                throw GradleException(
+                    "Instruction coverage ${String.format("%.1f", pct)}% is below the minimum ${threshold}%. " +
+                        "Add tests to bring coverage above ${threshold}%."
+                )
+            }
+        }
+    }
 }
 
 tasks.matching { it.name == "testDebugUnitTest" }.configureEach {

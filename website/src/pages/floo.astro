@@ -1,0 +1,223 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import FeatureDeck from "@components/FeatureDeck.astro";
+import { FLOO, FLOO_CAPABILITIES, FLOO_PROMISES } from "@data/capabilities";
+
+const moments = [
+  {
+    art: "couch-watch",
+    when: "An agent's been running for an hour",
+    then: "Pull it up on your phone from the couch and watch it finish — no walking back to the desk."
+  },
+  {
+    art: "file-fly",
+    when: "You need a file that's on the other device",
+    then: "Send it across in a tap. Screenshot, PDF, photo — either direction, right now."
+  },
+  {
+    art: "faceid-unlock",
+    when: "You walked away and locked your Mac",
+    then: "Unlock it from your phone with Face ID and pick up where you left off."
+  },
+  {
+    art: "keyboard-zoom",
+    when: "You want to type a quick correction",
+    then: "Touch the field on your phone — the keyboard rises and zooms straight to it."
+  }
+];
+---
+
+<BaseLayout
+  title={`${FLOO.name} — your phone and your Mac, joined`}
+  description={`${FLOO.name} connects your iPhone or iPad to your Mac — see its screen, take control, send files, call it, and unlock it. End-to-end encrypted, only your own devices, you approve every connection.`}
+>
+  <section class="pagehead pagehead--floo">
+    <div class="container container--narrow pagehead__inner">
+      <span class="eyebrow eyebrow--mercury">{FLOO.name}</span>
+      <h1 class="pagehead__h">Your phone and your Mac,<br /><span class="ember">joined.</span></h1>
+      <p class="lead pagehead__lead">
+        Your Mac is where the work happens. {FLOO.name} makes your phone the window into it — and the
+        remote control for it. See the screen, reach in and steer, send a file, take a call, even unlock
+        it. From the next room or the next city.
+      </p>
+      <p class="floo-backronym mono">
+        <span class="tag tag--mercury tag--plain mono">{FLOO.statusLabel}</span>
+        <span aria-hidden="true">·</span>
+        <span>{FLOO.name} — {FLOO.expansion}</span>
+        <span class="floo-wink">(or, if you prefer, <em>{FLOO.expansionWhimsical}</em>)</span>
+      </p>
+      <div class="pagehead__ctas">
+        <a class="btn btn--ember" href="/download"
+          >Get OpenBurnBar <span aria-hidden="true">→</span></a
+        >
+        <a class="btn btn--ghost" href="#safe">How it stays private</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="floogroup">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">What it does</span>
+        <h2>Six ways your phone reaches your Mac.</h2>
+      </header>
+    </div>
+    <FeatureDeck
+      accent="mercury"
+      ariaLabel="Six ways your phone reaches your Mac"
+      items={FLOO_CAPABILITIES.map((f, i) => ({
+        art: f.id,
+        title: f.title,
+        body: f.blurb,
+        num: String(i + 1).padStart(2, "0")
+      }))}
+    />
+  </section>
+
+  <section class="floogroup floogroup--raise" id="safe">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">Safe by design</span>
+        <h2>It only ever connects you to you.</h2>
+        <p class="lead">
+          {FLOO.name} is for your devices and no one else's. The connection is private end to end — and
+          that includes us. We built it so we couldn't peek even if we wanted to.
+        </p>
+      </header>
+      <ul class="promiselist">
+        {FLOO_PROMISES.map((p) => <li class="glass-pane">{p}</li>)}
+      </ul>
+    </div>
+  </section>
+
+  <section class="floogroup">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">In real life</span>
+        <h2>The moments it's actually for.</h2>
+      </header>
+    </div>
+    <FeatureDeck
+      accent="mercury"
+      variant="moment"
+      ariaLabel="Real-life Floo moments"
+      items={moments.map((moment) => ({
+        art: moment.art,
+        title: moment.when,
+        body: moment.then
+      }))}
+    />
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow endcta__inner">
+      <h2>Bring your Mac with you.</h2>
+      <p class="lead">
+        {FLOO.name} comes built into OpenBurnBar. Pair your phone once and it's there whenever you need
+        it.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span aria-hidden="true">→</span></a
+        >
+        <a class="btn btn--ghost" href="/product">Tour the product</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead {
+    padding: var(--s-9) 0 var(--s-7);
+    text-align: center;
+  }
+  .pagehead__inner {
+    max-width: 760px;
+    margin-inline: auto;
+  }
+  .pagehead .lead,
+  .pagehead__lead {
+    margin-inline: auto;
+  }
+  /* Centered section headers, matching this page's centered hero. */
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin: 0 auto var(--s-6);
+    max-width: 62ch;
+    text-align: center;
+    justify-items: center;
+  }
+  .pagehead__ctas {
+    display: flex;
+    gap: var(--s-3);
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--s-5);
+  }
+  .floo-backronym {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: var(--s-4);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+  .floo-backronym em {
+    color: var(--text-base);
+    font-style: italic;
+  }
+  .floo-wink {
+    color: var(--text-mute);
+    opacity: 0.85;
+  }
+  .floogroup {
+    padding: var(--s-8) 0;
+    border-top: 1px solid var(--ink-line-soft);
+  }
+  .floogroup--raise {
+    background: var(--ink-raise);
+  }
+  .promiselist {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--s-3);
+    margin-top: var(--s-6);
+    list-style: none;
+    padding: 0;
+    text-align: left;
+  }
+  .promiselist li {
+    padding: var(--s-4) var(--s-5);
+    color: var(--text-base);
+    font-size: 0.96rem;
+    line-height: 1.55;
+    position: relative;
+    padding-left: calc(var(--s-5) + 1.4em);
+  }
+  .promiselist li::before {
+    content: "✓";
+    position: absolute;
+    left: var(--s-5);
+    color: var(--mercury-bright);
+    font-family: var(--font-mono);
+  }
+  .endcta--inline {
+    border-top: 1px solid var(--ink-line-soft);
+    text-align: center;
+  }
+  .endcta__ctas {
+    display: flex;
+    gap: var(--s-3);
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--s-5);
+  }
+  @media (max-width: 600px) {
+    .floogroup {
+      padding: var(--s-7) 0;
+    }
+  }
+</style>

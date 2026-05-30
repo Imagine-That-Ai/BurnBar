@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import globals from 'globals';
+import prettier from 'eslint-config-prettier';
 
 export default [
   {
@@ -83,7 +84,18 @@ export default [
       'no-with': 'error',
       'space-infix-ops': 'error',
       'keyword-spacing': 'warn',
-      'space-before-blocks': 'warn'
+      'space-before-blocks': 'warn',
+      // Cyclomatic complexity — warn on existing violations, new code should stay under 25
+      'complexity': ['warn', { max: 25 }],
+      // Naming conventions
+      '@typescript-eslint/naming-convention': [
+        'warn',
+        { selector: 'variable', format: ['camelCase', 'UPPER_CASE', 'PascalCase'], leadingUnderscore: 'allow' },
+        { selector: 'function', format: ['camelCase', 'PascalCase'] },
+        { selector: 'typeLike', format: ['PascalCase'] },
+        { selector: 'classMethod', format: ['camelCase'], leadingUnderscore: 'allow' },
+        { selector: 'classProperty', format: ['camelCase', 'UPPER_CASE'], leadingUnderscore: 'allow' }
+      ]
     }
   },
   // Extension TypeScript files - VS Code + Node.js + browser (for shared code)
@@ -164,7 +176,20 @@ export default [
       'no-with': 'error',
       'space-infix-ops': 'error',
       'keyword-spacing': 'warn',
-      'space-before-blocks': 'warn'
+      'space-before-blocks': 'warn',
+      // Cyclomatic complexity — warn on existing violations, new code should stay under 25
+      'complexity': ['warn', { max: 25 }],
+      // Naming conventions
+      '@typescript-eslint/naming-convention': [
+        'warn',
+        { selector: 'variable', format: ['camelCase', 'UPPER_CASE', 'PascalCase'], leadingUnderscore: 'allow' },
+        { selector: 'function', format: ['camelCase', 'PascalCase'] },
+        { selector: 'typeLike', format: ['PascalCase'] },
+        { selector: 'classMethod', format: ['camelCase'], leadingUnderscore: 'allow' },
+        { selector: 'classProperty', format: ['camelCase', 'UPPER_CASE'], leadingUnderscore: 'allow' }
+      ]
     }
-  }
+  },
+  // Must be last: turns off all ESLint rules that conflict with Prettier formatting
+  prettier,
 ];

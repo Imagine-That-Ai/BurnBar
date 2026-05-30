@@ -1,11 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { HttpsError } from "firebase-functions/v2/https";
 
-import type {
-  HermesConnectionDoc,
-  HermesConnectionMode,
-  HermesPairingDoc,
-} from "./types.js";
+import type { HermesConnectionDoc, HermesConnectionMode, HermesPairingDoc } from "./types.js";
 import { isRecord, recordOrUndefined } from "./guards.js";
 
 export function randomPairingCode(): string {
@@ -84,19 +80,21 @@ export function validateHermesEndpointURL(raw: unknown, mode: HermesConnectionMo
 export function isHermesConnectionDoc(doc: unknown): doc is HermesConnectionDoc {
   const record = recordOrUndefined(doc);
   if (!record) return false;
-  return typeof record.id === "string"
-    && typeof record.displayName === "string"
-    && (record.mode === "local" || record.mode === "directURL" || record.mode === "relayLink")
-    && (record.status === "pending"
-      || record.status === "online"
-      || record.status === "offline"
-      || record.status === "unauthorized"
-      || record.status === "revoked"
-      || record.status === "degraded")
-    && Array.isArray(record.capabilities)
-    && typeof record.createdAt === "string"
-    && typeof record.updatedAt === "string"
-    && typeof record.schemaVersion === "number";
+  return (
+    typeof record.id === "string" &&
+    typeof record.displayName === "string" &&
+    (record.mode === "local" || record.mode === "directURL" || record.mode === "relayLink") &&
+    (record.status === "pending" ||
+      record.status === "online" ||
+      record.status === "offline" ||
+      record.status === "unauthorized" ||
+      record.status === "revoked" ||
+      record.status === "degraded") &&
+    Array.isArray(record.capabilities) &&
+    typeof record.createdAt === "string" &&
+    typeof record.updatedAt === "string" &&
+    typeof record.schemaVersion === "number"
+  );
 }
 
 export function parseHermesPairingDoc(raw: unknown): HermesPairingDoc | undefined {
@@ -127,8 +125,7 @@ export function parseHermesPairingDoc(raw: unknown): HermesPairingDoc | undefine
     displayName: typeof record.displayName === "string" ? record.displayName : undefined,
     connectionId: typeof record.connectionId === "string" ? record.connectionId : undefined,
     failedAttempts: typeof record.failedAttempts === "number" ? record.failedAttempts : undefined,
-    requestedByDeviceId:
-      typeof record.requestedByDeviceId === "string" ? record.requestedByDeviceId : undefined,
+    requestedByDeviceId: typeof record.requestedByDeviceId === "string" ? record.requestedByDeviceId : undefined,
     requestedByPlatform:
       record.requestedByPlatform === "ios" ||
       record.requestedByPlatform === "ipados" ||
@@ -159,7 +156,7 @@ function boundedTrimmedString(
   raw: unknown,
   fieldName: string,
   maxLength: number,
-  required = false
+  required = false,
 ): string | undefined {
   const value = optionalTrimmedString(raw);
   if (!value) {

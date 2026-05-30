@@ -196,10 +196,18 @@ public struct ComputerUseAuditExportRequest: Codable, Hashable, Sendable {
     /// Whether to include screenshot PNGs in the archive. Defaults to
     /// true; the user can opt out for a chain-only export.
     public let includeScreenshots: Bool
+    /// When true, submits the chain digest to OpenTimestamps and writes
+    /// `chain.jsonl.ots` beside the session directory before packaging.
+    public let anchorOpenTimestamps: Bool
 
-    public init(sessionId: String, includeScreenshots: Bool = true) {
+    public init(
+        sessionId: String,
+        includeScreenshots: Bool = true,
+        anchorOpenTimestamps: Bool = false
+    ) {
         self.sessionId = sessionId
         self.includeScreenshots = includeScreenshots
+        self.anchorOpenTimestamps = anchorOpenTimestamps
     }
 }
 

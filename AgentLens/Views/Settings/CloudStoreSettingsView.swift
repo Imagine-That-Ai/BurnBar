@@ -39,8 +39,10 @@ struct CloudStoreSettingsView: View {
     @State private var backupNoticeError: String?
     @State private var lastManualBackupAt: Date?
     @State private var backupProgress: CloudBackupProgressSnapshot?
+    @State private var backupUsage: CloudBackupUsageSnapshot?
     @State private var pendingBackupSessionLogs = 0
     @State private var pendingBackupChatThreads = 0
+    @State private var didRequestAutomaticCatchUp = false
 
     var body: some View {
         ZStack {
@@ -86,7 +88,7 @@ struct CloudStoreSettingsView: View {
         .onAppear {
             entitlement.start()
             Task { await purchaseStore.load() }
-            refreshPendingBackupCounts()
+            refreshBackupState(startAutomaticCatchUp: true)
         }
     }
 
@@ -297,6 +299,10 @@ struct CloudStoreSettingsView: View {
                         )
                     }
 
+                    if let backupUsage {
+                        backupUsageMeter(backupUsage)
+                    }
+
                     backupActionRow
 
                     if isBackingUp, let backupProgress {
@@ -357,6 +363,90 @@ struct CloudStoreSettingsView: View {
             return "\(logs) conversation\(logs == 1 ? "" : "s") and \(threads) chat thread\(threads == 1 ? "" : "s") waiting."
         default:
             return "Everything is backed up."
+        }
+    }
+
+    private func backupUsageMeter(_ usage: CloudBackupUsageSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Backup usage", systemImage: "externaldrive.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer(minLength: 8)
+                Text(usage.isWithinLimits ? "Included" : "Limit reached")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(usage.isWithinLimits ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill((usage.isWithinLimits ? DesignSystem.Colors.success : DesignSystem.Colors.warning).opacity(0.14))
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                meterRow(
+                    title: "Conversation backup",
+                    value: "\(CloudBackupUsageSnapshot.formatBytes(usage.rawTranscriptBytes)) of \(CloudBackupUsageSnapshot.formatBytes(usage.limits.transcriptByteLimit))",
+                    fraction: usage.transcriptUsageFraction,
+                    tint: DesignSystem.Colors.ember
+                )
+                meterRow(
+                    title: "Searchable index",
+                    value: "\(CloudBackupUsageSnapshot.formatBytes(usage.estimatedSearchIndexBytes)) of \(CloudBackupUsageSnapshot.formatBytes(usage.limits.searchableIndexByteLimit))",
+                    fraction: usage.searchIndexUsageFraction,
+                    tint: DesignSystem.Colors.teal
+                )
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                backupMetricPill(title: "Conversations", value: "\(usage.conversationCount)")
+                backupMetricPill(title: "Waiting", value: "\(usage.pendingConversationCount)")
+                backupMetricPill(title: "Indexed parts", value: "\(usage.searchChunkCount)")
+            }
+
+            if let blockingReason = usage.blockingReason {
+                Label(blockingReason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.35), lineWidth: 0.6)
+        )
+        .accessibilityIdentifier("macCloud.backupUsage")
+    }
+
+    private func meterRow(title: String, value: String, fraction: Double, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer(minLength: 8)
+                Text(value)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            ProgressView(value: max(0, min(1, fraction)))
+                .progressViewStyle(.linear)
+                .tint(tint)
         }
     }
 
@@ -422,11 +512,7 @@ struct CloudStoreSettingsView: View {
                     value: CloudBackupProgressSnapshot.formatRate(recordsPerSecond: progress.recordsPerSecond)
                 )
                 backupMetricPill(
-                    title: "Firestore",
-                    value: "\(progress.firestoreWrites) writes"
-                )
-                backupMetricPill(
-                    title: "Search index",
+                    title: "Searchable",
                     value: "\(progress.searchIndexCommits)"
                 )
                 backupMetricPill(
@@ -494,6 +580,37 @@ struct CloudStoreSettingsView: View {
         pendingBackupChatThreads = (try? dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0
     }
 
+    private func refreshBackupUsage() {
+        guard let dataStore else {
+            backupUsage = nil
+            return
+        }
+        backupUsage = try? dataStore.backupUsageSnapshot()
+    }
+
+    private func refreshBackupState(startAutomaticCatchUp: Bool = false) {
+        refreshPendingBackupCounts()
+        refreshBackupUsage()
+        if startAutomaticCatchUp {
+            startAutomaticCatchUpIfNeeded()
+        }
+    }
+
+    private func startAutomaticCatchUpIfNeeded() {
+        guard settingsManager.conversationBackupEnabled,
+              accountManager.isSignedIn,
+              dataStore != nil,
+              !isBackingUp,
+              !didRequestAutomaticCatchUp else { return }
+        guard pendingBackupSessionLogs > 0 || pendingBackupChatThreads > 0 else { return }
+        if let blockingReason = backupUsage?.blockingReason {
+            backupNoticeError = blockingReason
+            return
+        }
+        didRequestAutomaticCatchUp = true
+        triggerBackup()
+    }
+
     private var backupActionRow: some View {
         HStack(spacing: 12) {
             Button {
@@ -511,7 +628,7 @@ struct CloudStoreSettingsView: View {
                 }
             }
             .buttonStyle(AuroraSecondaryButtonStyle())
-            .disabled(!accountManager.isSignedIn || isBackingUp || dataStore == nil)
+            .disabled(!accountManager.isSignedIn || isBackingUp || dataStore == nil || backupUsage?.blockingReason != nil)
             .accessibilityIdentifier("macCloud.backupNow")
 
             if let lastManualBackupAt, !isBackingUp {
@@ -610,10 +727,14 @@ struct CloudStoreSettingsView: View {
             set: { newValue in
                 settingsManager.conversationBackupEnabled = newValue
                 settingsManager.sessionLogCloudBackupConsentShown = true
-                // Kick an immediate backup only for Cloud members so free
-                // users don't trip the paid-gated Firestore rules; everyone
-                // can still press "Back up now" explicitly.
-                if newValue && entitlement.isActive { triggerBackup() }
+                didRequestAutomaticCatchUp = false
+                if newValue {
+                    refreshBackupState(startAutomaticCatchUp: true)
+                } else {
+                    backupNoticeError = nil
+                    backupProgress = nil
+                    refreshBackupState()
+                }
             }
         )
     }
@@ -641,6 +762,11 @@ struct CloudStoreSettingsView: View {
     /// Streams cockpit fills in on the next refresh. Idempotent.
     private func triggerBackup() {
         guard let dataStore, accountManager.isSignedIn, !isBackingUp else { return }
+        refreshBackupUsage()
+        if let blockingReason = backupUsage?.blockingReason {
+            backupNoticeError = blockingReason
+            return
+        }
         isBackingUp = true
         backupNoticeError = nil
         backupProgress = nil
@@ -657,16 +783,39 @@ struct CloudStoreSettingsView: View {
                 backupProgress = snapshot
             }
             isBackingUp = false
-            refreshPendingBackupCounts()
+            refreshBackupState()
             if let error = coordinator.lastSyncError ?? backupProgress?.errorMessage {
-                backupNoticeError = error
+                backupNoticeError = Self.userFacingBackupError(error)
             } else if backupProgress?.phase == .failed {
-                backupNoticeError = backupProgress?.errorMessage ?? "Backup failed."
+                backupNoticeError = Self.userFacingBackupError(backupProgress?.errorMessage ?? "Backup failed.")
             } else {
                 lastManualBackupAt = Date()
                 backupNoticeError = nil
             }
         }
+    }
+
+    private static func userFacingBackupError(_ message: String) -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Backup failed. Try again." }
+        let lower = trimmed.lowercased()
+        if lower == "internal"
+            || lower.contains("code=internal")
+            || lower.contains("error 13")
+            || lower.contains("signblob")
+            || lower.contains("signed url") {
+            return "Cloud backup could not create a secure upload link. Try again in a minute."
+        }
+        if lower.contains("unauthenticated") || lower.contains("auth") && lower.contains("expired") {
+            return "Sign in again to back up cloud conversations."
+        }
+        if lower.contains("permission") || lower.contains("denied") {
+            return "Cloud backup is not available for this account yet."
+        }
+        if lower.contains("network") || lower.contains("offline") || lower.contains("timed out") {
+            return "Network connection failed during backup. Try again when you are online."
+        }
+        return trimmed
     }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {

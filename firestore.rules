@@ -22,6 +22,9 @@ rules_version = '2';
 // traffic reaches this ruleset. See: https://firebase.google.com/docs/app-check/enable-enforcement
 // and docs/FIREBASE_APP_CHECK_ENFORCEMENT.md in this repo.
 //
+// Escrow trust: clients may register pending escrow_devices but cannot elevate
+// trustState to `trusted` in rules — use the `approveEscrowDeviceTrust` callable.
+//
 // Escrow security: escrow_envelopes MUST contain ciphertext only. The rules below
 // reject documents that contain field names associated with plaintext credentials.
 // Client code is independently responsible for ensuring plaintext secrets are never
@@ -1994,8 +1997,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Operator-side documents. Server-only writes.
+    // Budget split (ADR 006): public envelope vs operator metrics.
     match /ops/computer_use_budget_status/state/current {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /ops/computer_use_budget_status/metrics/current {
+      allow read: if isOperator();
+      allow write: if false;
+    }
+    match /ops/computer_use_budget_status/events/{eventId} {
       allow read: if isOperator();
       allow write: if false;
     }
@@ -2321,19 +2332,12 @@ service cloud.firestore {
       }
 
       function validEscrowDeviceUpdate(deviceId) {
+        // Trust elevation to `trusted` is server-only via `approveEscrowDeviceTrust`
+        // (App Check + attestation-bound Auth claims). Clients may still register
+        // pending devices and revoke trust locally.
         return validEscrowDeviceDocument(deviceId)
-          && (
-            request.resource.data.trustState != "trusted"
-            || resource.data.trustState == "trusted"
-            || (
-              resource.data.trustState == "pending"
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                "trustState",
-                "approvedAt",
-                "updatedAt"
-              ])
-            )
-          );
+          && !(request.resource.data.trustState == "trusted"
+            && resource.data.trustState != "trusted");
       }
 
       allow read: if ownsUserNamespace(userId);
@@ -2525,12 +2529,18 @@ service cloud.firestore {
       }
     }
 
-    // --- Operator-owned Mercury observability ---
-    // Public read so both apps can cache the budget envelope and the
-    // session daily rollups for status-bar display. Server-only writes —
-    // the canonical writers are `evaluateMediaBudget` and
-    // `rollupMediaSessionDaily`.
-    match /ops/media_budget_status/{document=**} {
+    // --- Mercury budget split (ADR 006) ---
+    // Public envelope: level + caps only (no USD). Operator metrics and
+    // events hold projections and audit rows. Rollups stay operator-only.
+    match /ops/media_budget_status/state/current {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /ops/media_budget_status/metrics/current {
+      allow read: if isOperator();
+      allow write: if false;
+    }
+    match /ops/media_budget_status/events/{eventId} {
       allow read: if isOperator();
       allow write: if false;
     }

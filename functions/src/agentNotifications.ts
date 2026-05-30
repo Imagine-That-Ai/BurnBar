@@ -86,9 +86,7 @@ export interface AgentNotificationReplyCommand {
   schemaVersion: 1;
 }
 
-export function latestAssistantReply(
-  data: Record<string, unknown> | undefined
-): AgentReplyMessage | undefined {
+export function latestAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
   const messages = Array.isArray(data?.messages) ? data?.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const raw = isRecord(messages[index]) ? messages[index] : undefined;
@@ -118,29 +116,37 @@ export function shouldCreateNotificationEvent(args: {
   return !before || before.id !== after.id || before.text !== after.text;
 }
 
-export function normalizeRuntime(
-  sourceKind: AgentNotificationSourceKind,
-  data: Record<string, unknown>
-): string {
-  const raw = String(data.agent ?? data.runtime ?? data.provider ?? "").trim().toLowerCase();
+export function normalizeRuntime(sourceKind: AgentNotificationSourceKind, data: Record<string, unknown>): string {
+  const raw = String(data.agent ?? data.runtime ?? data.provider ?? "")
+    .trim()
+    .toLowerCase();
   if (raw) return raw;
   return sourceKind === "cli_session" ? "codex" : "hermes";
 }
 
 export function providerLabel(runtime: string): string {
   switch (runtime.toLowerCase()) {
-    case "codex": return "Codex";
-    case "claude": return "Claude";
-    case "openclaw": return "OpenClaw";
-    case "antigravity": return "Antigravity";
+    case "codex":
+      return "Codex";
+    case "claude":
+      return "Claude";
+    case "openclaw":
+      return "OpenClaw";
+    case "antigravity":
+      return "Antigravity";
     case "droid":
-    case "factory": return "Droid";
-    case "forge": return "Forge";
+    case "factory":
+      return "Droid";
+    case "forge":
+      return "Forge";
     case "pi":
     case "piagent":
-    case "pi_agent": return "Pi";
-    case "hermes": return "Hermes";
-    default: return runtime || "Agent";
+    case "pi_agent":
+      return "Pi";
+    case "hermes":
+      return "Hermes";
+    default:
+      return runtime || "Agent";
   }
 }
 
@@ -162,10 +168,14 @@ export function truncatePreview(text: string): string {
   return `${normalized.slice(0, MAX_PREVIEW_CHARS - 1).trimEnd()}…`;
 }
 
-export function shouldSuppressForDevice(device: DeviceNotificationState, event: {
-  threadId: string;
-  runtime: string;
-}, nowMillis: number = Date.now()): boolean {
+export function shouldSuppressForDevice(
+  device: DeviceNotificationState,
+  event: {
+    threadId: string;
+    runtime: string;
+  },
+  nowMillis: number = Date.now(),
+): boolean {
   if (!device.notificationsEnabled) return true;
   if (device.invalidatedAtMillis) return true;
   const fresh = nowMillis - device.lastSeenAtMillis <= ACTIVE_TTL_MS;
@@ -276,9 +286,7 @@ export async function createEventFromThreadWrite(args: {
     schemaVersion: 1,
   };
 
-  const ref = firestore
-    .collection("users").doc(args.uid)
-    .collection(EVENT_COLLECTION).doc(eventId);
+  const ref = firestore.collection("users").doc(args.uid).collection(EVENT_COLLECTION).doc(eventId);
   await ref.create(event).catch(async (err: unknown) => {
     const code = errorCode(err);
     if (code === 6 || code === "already-exists") return;
@@ -295,19 +303,14 @@ export async function fanoutAgentReplyEvent(args: {
 }): Promise<{ sent: number; suppressed: number; rejected: number }> {
   const firestore = args.firestore ?? getFirestore();
   const messaging = args.messaging ?? getMessaging();
-  const eventRef = firestore
-    .collection("users").doc(args.uid)
-    .collection(EVENT_COLLECTION).doc(args.eventId);
+  const eventRef = firestore.collection("users").doc(args.uid).collection(EVENT_COLLECTION).doc(args.eventId);
   const eventSnap = await eventRef.get();
   if (!eventSnap.exists) return { sent: 0, suppressed: 0, rejected: 0 };
   const event = parseNotificationEvent(eventSnap.data());
   if (!event) return { sent: 0, suppressed: 0, rejected: 0 };
   if (event.status !== "pending") return { sent: 0, suppressed: 0, rejected: 0 };
 
-  const devices = await firestore
-    .collection("users").doc(args.uid)
-    .collection(DEVICE_COLLECTION)
-    .get();
+  const devices = await firestore.collection("users").doc(args.uid).collection(DEVICE_COLLECTION).get();
   let sent = 0;
   let suppressed = 0;
   let rejected = 0;
@@ -331,24 +334,30 @@ export async function fanoutAgentReplyEvent(args: {
         code === "messaging/mismatched-credential"
       ) {
         rejected += 1;
-        await doc.ref.set({
-          pushTokenInvalidatedAtMillis: nowMillis,
-          pushTokenInvalidationReason: code,
-          updated_at_millis: nowMillis,
-        }, { merge: true });
+        await doc.ref.set(
+          {
+            pushTokenInvalidatedAtMillis: nowMillis,
+            pushTokenInvalidationReason: code,
+            updated_at_millis: nowMillis,
+          },
+          { merge: true },
+        );
       } else {
         throw err;
       }
     }
   }
 
-  await eventRef.set({
-    status: "fanout_complete",
-    updatedAt: Timestamp.now(),
-    updatedAtMillis: Date.now(),
-    fanoutAttemptCount: (event.fanoutAttemptCount ?? 0) + 1,
-    fanout: { sent, suppressed, rejected },
-  }, { merge: true });
+  await eventRef.set(
+    {
+      status: "fanout_complete",
+      updatedAt: Timestamp.now(),
+      updatedAtMillis: Date.now(),
+      fanoutAttemptCount: (event.fanoutAttemptCount ?? 0) + 1,
+      fanout: { sent, suppressed, rejected },
+    },
+    { merge: true },
+  );
   return { sent, suppressed, rejected };
 }
 
@@ -369,7 +378,7 @@ export const onCliSessionAgentReplyNotification = onDocumentWritten(
     if (eventId) {
       await fanoutAgentReplyEvent({ uid: String(event.params.uid), eventId });
     }
-  }
+  },
 );
 
 export const onMobileAssistantAgentReplyNotification = onDocumentWritten(
@@ -389,7 +398,7 @@ export const onMobileAssistantAgentReplyNotification = onDocumentWritten(
     if (eventId) {
       await fanoutAgentReplyEvent({ uid: String(event.params.uid), eventId });
     }
-  }
+  },
 );
 
 function decodeDevice(id: string, data: FirebaseFirestore.DocumentData): DeviceNotificationState {
@@ -402,10 +411,11 @@ function decodeDevice(id: string, data: FirebaseFirestore.DocumentData): DeviceN
     activeThreadId: stringValue(data.activeThreadId) ?? stringValue(data.active_thread_id),
     activeSurface: stringValue(data.activeSurface) ?? stringValue(data.active_surface),
     activeRuntime: stringValue(data.activeRuntime) ?? stringValue(data.active_runtime),
-    lastSeenAtMillis: numberValue(data.lastSeenAtMillis)
-      ?? numberValue(data.updated_at_millis)
-      ?? numberValue(data.updatedAtMillis)
-      ?? 0,
+    lastSeenAtMillis:
+      numberValue(data.lastSeenAtMillis) ??
+      numberValue(data.updated_at_millis) ??
+      numberValue(data.updatedAtMillis) ??
+      0,
     invalidatedAtMillis: numberValue(data.pushTokenInvalidatedAtMillis),
   };
 }

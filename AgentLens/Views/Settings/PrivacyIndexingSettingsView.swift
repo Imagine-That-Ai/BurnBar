@@ -30,8 +30,8 @@ struct PrivacyIndexingSettingsView: View {
                 Divider().background(DesignSystem.Colors.border)
 
                 SettingsToggle(
-                    title: "Allow Claude Code / Codex CLI",
-                    subtitle: "Lets OpenBurnBar run your local `claude` or `codex` binary for chat and reranking. You can revoke this anytime.",
+                    title: "Mac CLI Assistants",
+                    subtitle: "Lets OpenBurnBar run approved local CLI agents like `claude`, `codex`, `droid`, `forge`, or `agy` for chat and reranking. You can revoke this anytime.",
                     isOn: $settingsManager.cliAssistantAllowed
                 )
 

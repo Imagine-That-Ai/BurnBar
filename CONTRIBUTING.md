@@ -118,3 +118,48 @@ the operation is safe and idempotent.
 3. Verify provider log paths are correct for your machine
 4. Click the refresh button to scan
 5. Check the dashboard for parsed sessions and cost totals
+
+---
+
+## Dependency update policy
+
+### Minimum release age
+
+New dependency versions must be at least **3 days old** before they are merged into `main`. This policy provides supply chain protection — it gives the ecosystem time to detect and report malicious packages before we adopt them.
+
+- **Automated PRs** from Renovate enforce this automatically via `minimumReleaseAge: "3 days"` in `renovate.json`.
+- **Manual dependency bumps** must include the release date in the PR description and must not be merged until the 3-day window passes.
+- **Security vulnerabilities** are exempt: zero-day CVE fixes can be merged immediately after review.
+- **Patch updates** use a 5-day window; minor updates use a 7-day window.
+
+This is configured in `renovate.json`. Do not override `minimumReleaseAge` without explicit approval.
+
+### Version drift
+
+All shared dependencies (TypeScript, ESLint, Prettier) must use the same version range across all packages. Run `npx syncpack list-mismatches` to check, and `npx syncpack fix-mismatches` to auto-correct. CI will warn on drift.
+
+---
+
+## Code quality
+
+### Pre-commit hooks
+
+Install pre-commit hooks before your first commit:
+
+```bash
+brew install pre-commit
+pre-commit install
+```
+
+The hooks (`.pre-commit-config.yaml`) run SwiftLint, ESLint, Prettier, shellcheck, and gitleaks on each commit.
+
+### Formatters
+
+| Language | Tool | Command |
+|----------|------|---------|
+| TypeScript (functions) | Prettier | `npm --prefix functions run format` |
+| TypeScript (extension) | Prettier | `npm --prefix extensions/openburnbar run format` |
+| TypeScript (website) | Prettier | `npm --prefix website run format` |
+| Swift | SwiftLint | `swiftlint lint --fix` |
+| Kotlin | ktlint | `cd android && ./gradlew ktlintFormat` |
+

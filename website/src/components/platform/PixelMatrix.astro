@@ -63,23 +63,33 @@ function parsePixelItems(value: unknown): PixelItem[] {
     return [];
   }
   return value.filter((item): item is PixelItem => {
-    return isRecord(item)
-      && typeof item.providerID === "string"
-      && typeof item.percentUsed === "number"
-      && (item.providerName === undefined || typeof item.providerName === "string")
-      && (item.usageText === undefined || typeof item.usageText === "string")
-      && (item.windowLabel === undefined || typeof item.windowLabel === "string");
+    return (
+      isRecord(item) &&
+      typeof item.providerID === "string" &&
+      typeof item.percentUsed === "number" &&
+      (item.providerName === undefined || typeof item.providerName === "string") &&
+      (item.usageText === undefined || typeof item.usageText === "string") &&
+      (item.windowLabel === undefined || typeof item.windowLabel === "string")
+    );
   });
 }
 
 function parsePresentedFrame(value: unknown): PresentedFrame {
-  if (!isRecord(value) || typeof value.accessibilityLabel !== "string" || !Array.isArray(value.grid)) {
+  if (
+    !isRecord(value) ||
+    typeof value.accessibilityLabel !== "string" ||
+    !Array.isArray(value.grid)
+  ) {
     return { grid: [], accessibilityLabel: "OpenBurnBar pixel matrix" };
   }
-  const grid = value.grid.map((row) => Array.isArray(row)
-    ? row.filter((cell): cell is { isLit: boolean; color: string } =>
-        isRecord(cell) && typeof cell.isLit === "boolean" && typeof cell.color === "string")
-    : []);
+  const grid = value.grid.map((row) =>
+    Array.isArray(row)
+      ? row.filter(
+          (cell): cell is { isLit: boolean; color: string } =>
+            isRecord(cell) && typeof cell.isLit === "boolean" && typeof cell.color === "string"
+        )
+      : []
+  );
   return { grid, accessibilityLabel: value.accessibilityLabel };
 }
 

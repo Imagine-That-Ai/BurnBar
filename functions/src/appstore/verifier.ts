@@ -61,18 +61,15 @@ export const ROOT_CERT_FILES: ReadonlyArray<{
 }> = [
   {
     name: "AppleRootCA-G3.cer",
-    fingerprintHex:
-      "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
+    fingerprintHex: "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
   },
   {
     name: "AppleRootCA-G2.cer",
-    fingerprintHex:
-      "c2b9b042dd57830e7d117dac55ac8ae19407d38e41d88f3215bc3a890444a050",
+    fingerprintHex: "c2b9b042dd57830e7d117dac55ac8ae19407d38e41d88f3215bc3a890444a050",
   },
   {
     name: "AppleIncRootCertificate.cer",
-    fingerprintHex:
-      "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024",
+    fingerprintHex: "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024",
   },
 ];
 
@@ -96,7 +93,7 @@ export function loadAppleRootCertificates(): Buffer[] {
     if (got !== fingerprintHex) {
       throw new Error(
         `Apple root certificate fingerprint mismatch for ${name}: ` +
-          `expected ${fingerprintHex}, got ${got}. Refusing to start.`
+          `expected ${fingerprintHex}, got ${got}. Refusing to start.`,
       );
     }
     // Quick sanity check that the bytes are a parseable X.509 cert.
@@ -126,9 +123,7 @@ export function toLibEnvironment(env: AppStoreEnvironment | string): Environment
   }
 }
 
-export function fromLibEnvironment(
-  env: Environment | string | undefined
-): AppStoreEnvironment | undefined {
+export function fromLibEnvironment(env: Environment | string | undefined): AppStoreEnvironment | undefined {
   if (env === undefined) return undefined;
   try {
     return normalizeAppleEnvironment(env);
@@ -221,11 +216,7 @@ export class JWSVerificationFailure extends Error {
 /** Convert library exception → our stable error. Never silently swallow. */
 function rethrow(err: unknown, where: string): never {
   if (err instanceof VerificationException) {
-    throw new JWSVerificationFailure(
-      err.status,
-      `apple-jws-${stableErrorCode(err.status)}: ${where}`,
-      err.cause
-    );
+    throw new JWSVerificationFailure(err.status, `apple-jws-${stableErrorCode(err.status)}: ${where}`, err.cause);
   }
   throw err;
 }
@@ -258,8 +249,7 @@ function stableErrorCode(status: VerificationStatus): string {
  */
 export class AppleJWSVerifier {
   private readonly cfg: AppStoreConfig;
-  private readonly verifiers: Map<AppStoreEnvironment, SignedDataVerifier> =
-    new Map();
+  private readonly verifiers: Map<AppStoreEnvironment, SignedDataVerifier> = new Map();
 
   constructor(cfg: AppStoreConfig) {
     if (!cfg.bundleId) {
@@ -285,7 +275,7 @@ export class AppleJWSVerifier {
     if (env === "Production" && !this.cfg.appAppleId) {
       throw new Error(
         "AppleJWSVerifier: appAppleId is required for the Production environment. " +
-          "Set APP_STORE_APPLE_APP_ID before deploying production verification."
+          "Set APP_STORE_APPLE_APP_ID before deploying production verification.",
       );
     }
     const verifier = new SignedDataVerifier(
@@ -293,7 +283,7 @@ export class AppleJWSVerifier {
       this.cfg.enableOnlineChecks,
       toLibEnvironment(env),
       this.cfg.bundleId,
-      env === "Production" ? this.cfg.appAppleId : undefined
+      env === "Production" ? this.cfg.appAppleId : undefined,
     );
     this.verifiers.set(env, verifier);
     return verifier;
@@ -318,10 +308,7 @@ export class AppleJWSVerifier {
   async verifyNotification(signedPayload: string): Promise<DecodedNotification> {
     const primary = this.cfg.environment;
     try {
-      const payload =
-        await this.verifierFor(primary).verifyAndDecodeNotification(
-          signedPayload
-        );
+      const payload = await this.verifierFor(primary).verifyAndDecodeNotification(signedPayload);
       return {
         raw: signedPayload,
         payload,
@@ -334,18 +321,13 @@ export class AppleJWSVerifier {
         (err.status === VerificationStatus.INVALID_ENVIRONMENT ||
           err.status === VerificationStatus.INVALID_APP_IDENTIFIER)
       ) {
-        const fallback: AppStoreEnvironment =
-          primary === "Production" ? "Sandbox" : "Production";
+        const fallback: AppStoreEnvironment = primary === "Production" ? "Sandbox" : "Production";
         try {
-          const payload =
-            await this.verifierFor(fallback).verifyAndDecodeNotification(
-              signedPayload
-            );
+          const payload = await this.verifierFor(fallback).verifyAndDecodeNotification(signedPayload);
           return {
             raw: signedPayload,
             payload,
-            environment:
-              fromLibEnvironment(payload.data?.environment) ?? fallback,
+            environment: fromLibEnvironment(payload.data?.environment) ?? fallback,
           };
         } catch (e2) {
           rethrow(e2, "verifyNotification[fallback]");
@@ -361,13 +343,10 @@ export class AppleJWSVerifier {
 
   async verifyTransaction(
     signedTransaction: string,
-    env: AppStoreEnvironment = this.cfg.environment
+    env: AppStoreEnvironment = this.cfg.environment,
   ): Promise<DecodedTransaction> {
     try {
-      const payload =
-        await this.verifierFor(env).verifyAndDecodeTransaction(
-          signedTransaction
-        );
+      const payload = await this.verifierFor(env).verifyAndDecodeTransaction(signedTransaction);
       return {
         raw: signedTransaction,
         payload,
@@ -380,13 +359,9 @@ export class AppleJWSVerifier {
         (err.status === VerificationStatus.INVALID_ENVIRONMENT ||
           err.status === VerificationStatus.INVALID_APP_IDENTIFIER)
       ) {
-        const fallback: AppStoreEnvironment =
-          env === "Production" ? "Sandbox" : "Production";
+        const fallback: AppStoreEnvironment = env === "Production" ? "Sandbox" : "Production";
         try {
-          const payload =
-            await this.verifierFor(fallback).verifyAndDecodeTransaction(
-              signedTransaction
-            );
+          const payload = await this.verifierFor(fallback).verifyAndDecodeTransaction(signedTransaction);
           return {
             raw: signedTransaction,
             payload,
@@ -402,13 +377,10 @@ export class AppleJWSVerifier {
 
   async verifyRenewalInfo(
     signedRenewalInfo: string,
-    env: AppStoreEnvironment = this.cfg.environment
+    env: AppStoreEnvironment = this.cfg.environment,
   ): Promise<DecodedRenewalInfo> {
     try {
-      const payload =
-        await this.verifierFor(env).verifyAndDecodeRenewalInfo(
-          signedRenewalInfo
-        );
+      const payload = await this.verifierFor(env).verifyAndDecodeRenewalInfo(signedRenewalInfo);
       return {
         raw: signedRenewalInfo,
         payload,
@@ -421,13 +393,9 @@ export class AppleJWSVerifier {
         (err.status === VerificationStatus.INVALID_ENVIRONMENT ||
           err.status === VerificationStatus.INVALID_APP_IDENTIFIER)
       ) {
-        const fallback: AppStoreEnvironment =
-          env === "Production" ? "Sandbox" : "Production";
+        const fallback: AppStoreEnvironment = env === "Production" ? "Sandbox" : "Production";
         try {
-          const payload =
-            await this.verifierFor(fallback).verifyAndDecodeRenewalInfo(
-              signedRenewalInfo
-            );
+          const payload = await this.verifierFor(fallback).verifyAndDecodeRenewalInfo(signedRenewalInfo);
           return {
             raw: signedRenewalInfo,
             payload,
@@ -447,13 +415,10 @@ export class AppleJWSVerifier {
 
   async verifyAppTransaction(
     signedAppTransaction: string,
-    env: AppStoreEnvironment = this.cfg.environment
+    env: AppStoreEnvironment = this.cfg.environment,
   ): Promise<DecodedAppTransaction> {
     try {
-      const payload =
-        await this.verifierFor(env).verifyAndDecodeAppTransaction(
-          signedAppTransaction
-        );
+      const payload = await this.verifierFor(env).verifyAndDecodeAppTransaction(signedAppTransaction);
       return {
         raw: signedAppTransaction,
         payload,
@@ -469,9 +434,7 @@ export class AppleJWSVerifier {
 // Singleton accessor
 // ---------------------------------------------------------------------------
 
-let cachedVerifier:
-  | { cfg: AppStoreConfig; verifier: AppleJWSVerifier }
-  | undefined;
+let cachedVerifier: { cfg: AppStoreConfig; verifier: AppleJWSVerifier } | undefined;
 
 /**
  * Get the process-singleton verifier. The cached instance is rebuilt if

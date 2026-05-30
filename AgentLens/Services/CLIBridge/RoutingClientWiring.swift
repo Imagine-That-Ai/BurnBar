@@ -37,6 +37,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case droid
     case grok
     case antigravity
+    case cursorAgent
 
     var id: String { rawValue }
 
@@ -49,6 +50,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         case .droid: return "Droid CLI"
         case .grok: return "Grok Build CLI"
         case .antigravity: return "Antigravity CLI"
+        case .cursorAgent: return "Cursor Agent CLI"
         }
     }
 
@@ -58,6 +60,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         case .claudeCode: return "Anthropic Messages"
         case .codex, .opencode, .forge, .droid, .grok: return "OpenAI-style gateway"
         case .antigravity: return "Profile-scoped Antigravity"
+        case .cursorAgent: return "Profile-scoped Cursor Agent"
         }
     }
 }
@@ -319,6 +322,10 @@ struct RoutingClientWiring {
             throw RoutingClientWiringError.gatewayMisconfigured(
                 detail: "Antigravity profile switching is supported, but Antigravity does not expose a file-based OpenAI-compatible routing config for OpenBurnBar to rewrite yet."
             )
+        case .cursorAgent:
+            throw RoutingClientWiringError.gatewayMisconfigured(
+                detail: "Cursor Agent profile switching is supported, but Cursor Agent does not expose a file-based OpenAI-compatible routing config for OpenBurnBar to rewrite yet."
+            )
         }
     }
 
@@ -337,6 +344,8 @@ struct RoutingClientWiring {
         case .grok:
             try unwireGrok()
         case .antigravity:
+            throw RoutingClientWiringError.notEnabled
+        case .cursorAgent:
             throw RoutingClientWiringError.notEnabled
         }
     }
@@ -359,6 +368,8 @@ struct RoutingClientWiring {
             return home.appendingPathComponent(".grok/config.toml")
         case .antigravity:
             return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        case .cursorAgent:
+            return home.appendingPathComponent(".cursor-agent/settings.json")
         }
     }
 
@@ -434,6 +445,8 @@ struct RoutingClientWiring {
                 || (text.contains("[model.openburnbar]") && text.contains("base_url"))
         case .antigravity:
             return false
+        case .cursorAgent:
+            return false
         }
     }
 
@@ -458,6 +471,8 @@ struct RoutingClientWiring {
         case .claudeCode, .codex, .opencode, .forge, .grok:
             return isWired(target: target) ? .current(modelIDs: []) : .notWired
         case .antigravity:
+            return .notWired
+        case .cursorAgent:
             return .notWired
         }
     }
@@ -540,6 +555,15 @@ struct RoutingClientWiring {
             # Antigravity profile launcher for account-scoped sessions.
             export AGY_CONFIG_HOME=$HOME/.gemini/antigravity-cli
             export ANTIGRAVITY_HOME=$HOME/.gemini/antigravity-cli
+            """
+        case .cursorAgent:
+            return """
+            # OpenBurnBar — Cursor Agent currently uses profile-scoped config
+            # directories rather than a file-based OpenAI-compatible gateway
+            # setting that BurnBar can safely rewrite. Use OpenBurnBar's
+            # Cursor Agent profile launcher for account-scoped sessions.
+            export CURSOR_AGENT_HOME=$HOME/.cursor-agent
+            export CURSOR_AGENT_CONFIG_PATH=$HOME/.cursor-agent
             """
         }
     }
@@ -696,6 +720,8 @@ struct RoutingClientWiring {
         switch target {
         case .antigravity:
             return .skipped(reason: "Antigravity is launched through profile switching, not routed client wiring.")
+        case .cursorAgent:
+            return .skipped(reason: "Cursor Agent is launched through profile switching, not routed client wiring.")
         case .claudeCode:
             probeModel = Self.anthropicProbeModel
             // Anthropic Messages uses `max_tokens`. Older versions of the
@@ -785,6 +811,8 @@ struct RoutingClientWiring {
         let base = URL(string: gateway.baseURL)
         switch target {
         case .antigravity:
+            return nil
+        case .cursorAgent:
             return nil
         case .claudeCode:
             return base?.appending(path: "v1/messages")

@@ -8,14 +8,41 @@
 
 import { spawnSync } from "node:child_process";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { BILLING_ALERT_POLICIES } from "../functions/scripts/billing-alert-policy-definitions.mjs";
+import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
+
+export { evaluateFirebaseAppCheckEnforcement };
 
 const REPO = process.env.OPENBURNBAR_GITHUB_REPO || "Imagine-That-Ai/BurnBar";
 const PROJECT = process.env.OPENBURNBAR_FIREBASE_PROJECT || "burnbar";
 const REGION = process.env.OPENBURNBAR_GCP_REGION || "us-central1";
 const REQUIRED_IOS_STATE = "PENDING_DEVELOPER_RELEASE";
 const LIVE_IOS_STATE = "READY_FOR_SALE";
-const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+const LEGACY_HOSTED_QUOTA_PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+export const COMMERCIAL_PRODUCTS = Object.freeze({
+  legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
+  cloudMonthly: "com.openburnbar.pro.monthly",
+  cloudAnnual: "com.openburnbar.pro.annual",
+  cloudProMonthly: "com.openburnbar.proMax.monthly",
+  cloudProAnnual: "com.openburnbar.proMax.annual",
+  agentControlActions100: "com.openburnbar.agentControl.actions100",
+  flooRelay50GB: "com.openburnbar.floo.relay50gb",
+});
+const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
+  COMMERCIAL_PRODUCTS.cloudMonthly,
+  COMMERCIAL_PRODUCTS.cloudAnnual,
+  COMMERCIAL_PRODUCTS.cloudProMonthly,
+  COMMERCIAL_PRODUCTS.cloudProAnnual,
+];
+const REQUIRED_TOP_UP_PRODUCT_IDS = [
+  COMMERCIAL_PRODUCTS.agentControlActions100,
+  COMMERCIAL_PRODUCTS.flooRelay50GB,
+];
+const REQUIRED_COMMERCIAL_PRODUCT_IDS = [
+  ...REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS,
+  ...REQUIRED_TOP_UP_PRODUCT_IDS,
+];
 const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
 const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
   process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME || "hermes-realtime-relay-redis-prod-secure";
@@ -36,16 +63,27 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "appStoreServerNotificationsV2",
   "beginEntitlementBinding",
   "connectHostedQuotaAccount",
+  "createStripeBurnBarProCheckoutSession",
+  "createStripeBurnBarProPortalSession",
   "deleteUserCloudData",
   "deleteHostedQuotaCredentials",
   "deleteProviderAccount",
+  "evaluateComputerUseBudget",
+  "evaluateMediaBudget",
+  "computeTierCogsDaily",
   "onUsageWritten",
   "rebuildRollups",
   "reconcileHostedEntitlementsDaily",
+  "recomputeComputerUseQuotaUsage",
+  "recomputeMediaQuotaUsage",
   "refreshAllProviderQuotas",
   "refreshProviderAccountQuota",
   "restoreHostedQuotaEntitlement",
+  "rollupComputerUseDaily",
+  "rollupMediaSessionDaily",
   "searchStreams",
+  "stripeBurnBarProWebhook",
+  "verifyGooglePlayBurnBarProSubscription",
   "verifyHostedQuotaEntitlement",
 ];
 const FORBIDDEN_FIREBASE_FUNCTIONS = [
@@ -79,7 +117,48 @@ const REQUIRED_HOSTED_QUOTA_ENV = {
   ENFORCE_APP_CHECK: "true",
   HOSTED_QUOTA_DAILY_REFRESH_LIMIT: "30",
   HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT: "300",
-  HOSTED_QUOTA_PRODUCT_ID: PRODUCT_ID,
+  HOSTED_QUOTA_PRODUCT_ID: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
+  BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
+  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
+};
+const REQUIRED_COMMERCIAL_ENV_VALUES = {
+  STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+  BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
+  BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
+  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
+  BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
+  AGENT_CONTROL_100_ACTIONS_PRODUCT_ID: COMMERCIAL_PRODUCTS.agentControlActions100,
+  FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
+  GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
+  GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
+  GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
+  GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
+  GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID: COMMERCIAL_PRODUCTS.agentControlActions100,
+  GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
+};
+const REQUIRED_COMMERCIAL_ENV_PRESENT = [
+  "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID",
+  "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
+  "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID",
+  "STRIPE_FLOO_RELAY_50GB_PRICE_ID",
+];
+const REQUIRED_REMOTE_CONFIG_DEFAULTS = {
+  media_budget_soft_usd: "600",
+  media_budget_hard_usd: "1000",
+  media_kill_switch: "false",
+  computer_use_budget_soft_usd: "1500",
+  computer_use_budget_hard_usd: "2500",
+  computer_use_kill_switch: "false",
+  hosted_quota_daily_refresh_limit: "30",
+  hosted_quota_monthly_refresh_limit: "300",
+  cloud_pro_included_hosted_actions_monthly: "500",
+  cloud_pro_action_topup_unit: "100",
+  cloud_pro_monthly_hosted_action_cap: "2000",
+  cloud_pro_included_relay_gb_monthly: "50",
+  cloud_pro_relay_topup_unit_gb: "50",
+  cloud_pro_monthly_relay_gb_cap: "300",
 };
 
 function run(command, args, options = {}) {
@@ -103,6 +182,79 @@ function firstJSON(text) {
   const start = source.indexOf("{");
   if (start < 0) throw new Error("no JSON object found in command output");
   return JSON.parse(source.slice(start));
+}
+
+export function evaluateRequiredProductIDs(observedProductIDs, requiredProductIDs) {
+  const observed = [...new Set((observedProductIDs || []).filter(Boolean))].sort();
+  const observedSet = new Set(observed);
+  const missing = requiredProductIDs.filter((productID) => !observedSet.has(productID));
+  return {
+    ok: missing.length === 0,
+    required: requiredProductIDs,
+    observed,
+    missing,
+  };
+}
+
+function appStoreProductIDsFromStatus(status) {
+  const ids = [];
+  const push = (value) => {
+    if (typeof value === "string" && value.trim()) ids.push(value.trim());
+  };
+  push(status.subscription?.productId);
+  for (const item of status.subscriptions || []) push(item?.productId || item?.productID);
+  for (const item of status.inAppPurchases || []) push(item?.productId || item?.productID);
+  for (const item of status.products || []) push(item?.productId || item?.productID);
+  for (const item of status.commercialProducts || []) push(item?.productId || item?.productID);
+  return ids;
+}
+
+export function evaluateEnvRequirements(env, requiredValues, requiredPresent = []) {
+  const valueChecks = Object.entries(requiredValues).map(([name, expected]) => {
+    const actual = env[name] ?? null;
+    if (typeof expected === "string" && expected.startsWith("alias:")) {
+      const alias = expected.slice("alias:".length);
+      const aliasValue = env[alias] ?? null;
+      return {
+        name,
+        ok: Boolean(actual) && actual === aliasValue,
+        actual,
+        expected: `same as ${alias}`,
+        aliasValue,
+      };
+    }
+    return { name, ok: actual === expected, actual, expected };
+  });
+  const presenceChecks = requiredPresent.map((name) => ({
+    name,
+    ok: typeof env[name] === "string" && env[name].trim().length > 0,
+    present: typeof env[name] === "string" && env[name].trim().length > 0,
+  }));
+  return {
+    ok: valueChecks.every((check) => check.ok) && presenceChecks.every((check) => check.ok),
+    valueChecks,
+    presenceChecks,
+  };
+}
+
+function remoteConfigDefaultValue(parameter) {
+  const raw = parameter?.defaultValue;
+  if (!raw || typeof raw !== "object") return undefined;
+  if (typeof raw.value === "string") return raw.value;
+  if (raw.useInAppDefault === true) return "USE_IN_APP_DEFAULT";
+  return undefined;
+}
+
+export function evaluateRemoteConfigDefaults(template, requiredDefaults) {
+  const parameters = template?.parameters || {};
+  const checks = Object.entries(requiredDefaults).map(([name, expected]) => {
+    const actual = remoteConfigDefaultValue(parameters[name]);
+    return { name, ok: actual === expected, actual: actual ?? null, expected };
+  });
+  return {
+    ok: checks.every((check) => check.ok),
+    checks,
+  };
 }
 
 function secretEnv() {
@@ -164,19 +316,26 @@ function checkAppStore() {
     status.linkedBuild?.processingState === "VALID" &&
     status.linkedBuild?.buildAudienceType === "APP_STORE_ELIGIBLE" &&
     status.linkedBuild?.usesNonExemptEncryption === false;
-  const subscriptionMatches = status.subscription?.productId === PRODUCT_ID;
+  const observedProductIDs = appStoreProductIDsFromStatus(status);
+  const productCoverage = evaluateRequiredProductIDs(
+    observedProductIDs,
+    REQUIRED_COMMERCIAL_PRODUCT_IDS
+  );
+  const legacyGrandfatherPresent = observedProductIDs.includes(LEGACY_HOSTED_QUOTA_PRODUCT_ID);
   return {
     ok:
       manualRelease &&
       buildReady &&
-      subscriptionMatches &&
+      productCoverage.ok &&
+      legacyGrandfatherPresent &&
       ["WAITING_FOR_REVIEW", REQUIRED_IOS_STATE, LIVE_IOS_STATE].includes(state) &&
       ["WAITING_FOR_REVIEW", "APPROVED", "READY_FOR_SALE"].includes(subscriptionState),
     state,
     subscriptionState,
     manualRelease,
     buildReady,
-    subscriptionMatches,
+    productCoverage,
+    legacyGrandfatherPresent,
     versionString: status.iosVersion?.versionString,
     versionId: status.iosVersion?.id,
   };
@@ -226,6 +385,15 @@ function checkAppStoreServerNotifications(appStore) {
 }
 
 function checkFirebaseAppCheckEnforcement() {
+  if (process.env.OPENBURNBAR_SKIP_LIVE_APP_CHECK_GATE === "1") {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "OPENBURNBAR_SKIP_LIVE_APP_CHECK_GATE=1",
+      probe: "skipped",
+    };
+  }
+
   const projectNumber = run("gcloud", [
     "projects",
     "describe",
@@ -262,12 +430,11 @@ function checkFirebaseAppCheckEnforcement() {
   }
 
   const config = JSON.parse(result.stdout);
-  return {
-    ok: config.enforcementMode === "ENFORCED",
+  return evaluateFirebaseAppCheckEnforcement({
     serviceName,
     enforcementMode: config.enforcementMode || null,
     updateTime: config.updateTime || null,
-  };
+  });
 }
 
 function checkProtection() {
@@ -635,6 +802,83 @@ function checkHostedQuotaRuntime() {
   };
 }
 
+function deployedFunctionEnvironment(functionName) {
+  const result = run("gcloud", [
+    "functions",
+    "describe",
+    functionName,
+    "--gen2",
+    "--region",
+    REGION,
+    "--project",
+    PROJECT,
+    "--format=json",
+  ]);
+  if (!result.ok) {
+    return {
+      ok: false,
+      functionName,
+      error: result.stderr || result.stdout || result.error,
+    };
+  }
+  const details = JSON.parse(result.stdout);
+  return {
+    ok: true,
+    functionName,
+    env: details.serviceConfig?.environmentVariables || {},
+    secretEnvVarNames: (details.serviceConfig?.secretEnvironmentVariables || [])
+      .map((entry) => entry.key)
+      .sort(),
+  };
+}
+
+function checkCommercialBillingRuntime() {
+  const checkout = deployedFunctionEnvironment("createStripeBurnBarProCheckoutSession");
+  const googlePlay = deployedFunctionEnvironment("verifyGooglePlayBurnBarProSubscription");
+  const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
+
+  const envSources = [checkout, googlePlay].filter((source) => source.ok);
+  const mergedEnv = Object.assign({}, ...envSources.map((source) => source.env));
+  const envRequirements = evaluateEnvRequirements(
+    mergedEnv,
+    REQUIRED_COMMERCIAL_ENV_VALUES,
+    REQUIRED_COMMERCIAL_ENV_PRESENT
+  );
+
+  const stripeSecretNames = new Set([
+    ...(checkout.secretEnvVarNames || []),
+    ...(webhook.secretEnvVarNames || []),
+  ]);
+  const stripeSecrets = {
+    ok:
+      stripeSecretNames.has("STRIPE_SECRET_KEY") &&
+      stripeSecretNames.has("STRIPE_WEBHOOK_SECRET"),
+    present: [...stripeSecretNames].sort(),
+    required: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+  };
+
+  return {
+    ok: checkout.ok && googlePlay.ok && webhook.ok && envRequirements.ok && stripeSecrets.ok,
+    functions: { checkout, googlePlay, webhook },
+    envRequirements,
+    stripeSecrets,
+  };
+}
+
+function checkRemoteConfigCaps() {
+  const result = run("firebase", [
+    "remoteconfig:get",
+    "--project",
+    PROJECT,
+    "--format=json",
+  ], { timeout: 60_000 });
+  if (!result.ok) {
+    return { ok: false, error: result.stderr || result.stdout || result.error };
+  }
+  const template = JSON.parse(result.stdout);
+  return evaluateRemoteConfigDefaults(template, REQUIRED_REMOTE_CONFIG_DEFAULTS);
+}
+
 function metricTypesForPolicy(policy) {
   const filters = (policy.conditions || [])
     .map((condition) => condition.conditionThreshold?.filter || "")
@@ -759,6 +1003,8 @@ async function main() {
     runnerReadyz: checkRunnerReadyz(),
     redis: checkRedis(),
     hostedQuotaRuntime: checkHostedQuotaRuntime(),
+    commercialBillingRuntime: checkCommercialBillingRuntime(),
+    remoteConfigCaps: checkRemoteConfigCaps(),
     billingAlerts: checkBillingAlerts(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
   };
@@ -771,7 +1017,10 @@ async function main() {
   process.exitCode = result.verdict.status === "NO_GO" ? 1 : 0;
 }
 
-main().catch((error) => {
-  console.error(JSON.stringify({ ok: false, error: error.message }, null, 2));
-  process.exitCode = 1;
-});
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  main().catch((error) => {
+    console.error(JSON.stringify({ ok: false, error: error.message }, null, 2));
+    process.exitCode = 1;
+  });
+}

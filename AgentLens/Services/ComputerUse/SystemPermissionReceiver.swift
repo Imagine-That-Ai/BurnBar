@@ -136,6 +136,13 @@ public final class SystemPermissionReceiver {
             #endif
         case .accessibility:
             _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
+        case .remoteDesktop:
+            // macOS does not expose a public prompt API for these buckets.
+            // The paired UI opens the Privacy & Security pane and the live
+            // monitor/setup probes confirm the grant.
+            break
+        case .systemExtension:
+            await RemoteUnlockVirtualHIDBridgeInstaller.shared.installOrRepair()
         case .camera:
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 AVCaptureDevice.requestAccess(for: .video) { _ in cont.resume() }

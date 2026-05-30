@@ -6,6 +6,7 @@ import UIKit
 #endif
 import OpenBurnBarMedia
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 enum ScreenSharePhoneControlStatus: Equatable {
     case unavailable(String)
@@ -79,6 +80,7 @@ struct ScreenShareViewerView: View {
     let saveRemoteUnlockCredential: (String) -> Void
     let sendSavedRemoteUnlockCredential: () -> Void
     let deleteSavedRemoteUnlockCredential: () -> Void
+    let requestRemoteUnlockSetup: () -> Void
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onClose: () -> Void
@@ -86,6 +88,7 @@ struct ScreenShareViewerView: View {
     @State private var statsVisible: Bool = false
     @State private var viewport = ScreenShareViewportState()
     @AppStorage("mercurySmartZoomMode") private var smartZoomModeRaw: String = SmartZoomMode.smart.rawValue
+    @AppStorage("mercury.trackpadSensitivity") private var trackpadSensitivity: Double = 1.0
     @AppStorage("mercury.smartTextDoubleTapLearned") private var smartTextDoubleTapLearned = false
     @State private var smartZoomManualOverrideUntil: Date?
     @State private var smartZoomAutoFollowing: Bool = false
@@ -106,7 +109,7 @@ struct ScreenShareViewerView: View {
     @State private var edgeScrollEnabled = true
     @State private var hardwareScrollEnabled = false
     @State private var trackpadActive = false
-    @State private var panelCollapsed = false
+    @State private var panelCollapsed = true
     @State private var controlPanTranslation: CGSize = .zero
     @State private var tapFeedbackPoint: CGPoint?
     @State private var lastControlClickPoint: CGPoint?
@@ -160,6 +163,7 @@ struct ScreenShareViewerView: View {
         saveRemoteUnlockCredential: @escaping (String) -> Void = { _ in },
         sendSavedRemoteUnlockCredential: @escaping () -> Void = {},
         deleteSavedRemoteUnlockCredential: @escaping () -> Void = {},
+        requestRemoteUnlockSetup: @escaping () -> Void = {},
         onSelectDisplay: @escaping (String) -> Void = { _ in },
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
@@ -195,6 +199,7 @@ struct ScreenShareViewerView: View {
         self.saveRemoteUnlockCredential = saveRemoteUnlockCredential
         self.sendSavedRemoteUnlockCredential = sendSavedRemoteUnlockCredential
         self.deleteSavedRemoteUnlockCredential = deleteSavedRemoteUnlockCredential
+        self.requestRemoteUnlockSetup = requestRemoteUnlockSetup
         self.onSelectDisplay = onSelectDisplay
         self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
@@ -214,7 +219,7 @@ struct ScreenShareViewerView: View {
     }
 
     private var standardControlInputEnabled: Bool {
-        controlInputEnabled && activeRemoteUnlockState == nil
+        controlInputEnabled
     }
 
     var body: some View {
@@ -296,6 +301,7 @@ struct ScreenShareViewerView: View {
                     TrackpadGlassSurface(
                         isVisible: true,
                         usePremiumSOTAUX: usePremiumSOTAUX,
+                        sensitivity: $trackpadSensitivity,
                         onActiveChange: { active in
                             withAnimation(.snappy) {
                                 trackpadActive = active
@@ -424,6 +430,17 @@ struct ScreenShareViewerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
 
+                if !panelCollapsed {
+                    Color.black.opacity(0.15)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                panelCollapsed = true
+                            }
+                        }
+                }
+
                 MirrorControlPanel(
                     interactionMode: $interactionMode,
                     isCollapsed: $panelCollapsed,
@@ -475,7 +492,8 @@ struct ScreenShareViewerView: View {
                     },
                     pasteClipboardToMac: pasteClipboardToMac,
                     grabClipboardFromMac: grabClipboardFromMac,
-                    onClose: onClose
+                    onClose: onClose,
+                    screenSize: proxy.size
                 )
                 .padding(.horizontal, 12)
                 .padding(.bottom, 14)
@@ -491,6 +509,7 @@ struct ScreenShareViewerView: View {
                         saveCredential: saveRemoteUnlockCredential,
                         sendSavedCredential: sendSavedRemoteUnlockCredential,
                         deleteSavedCredential: deleteSavedRemoteUnlockCredential,
+                        requestSetup: requestRemoteUnlockSetup,
                         onReconnect: onForceReconnect,
                         onClose: onClose
                     )
@@ -1736,6 +1755,46 @@ enum ScreenShareInteractionMode: Equatable {
     case coPilot
 }
 
+/// Orientation of the floating mirror-control tray: a vertical (upward) stack
+/// or a horizontal (sideways) row.
+enum ScreenShareControlTrayOrientation: String, CaseIterable, Sendable {
+    case vertical
+    case horizontal
+}
+
+enum ScreenShareControlTrayPolicy {
+    /// Flips the tray between its vertical and horizontal layouts.
+    static func toggled(_ orientation: ScreenShareControlTrayOrientation) -> ScreenShareControlTrayOrientation {
+        orientation == .vertical ? .horizontal : .vertical
+    }
+
+    /// Resolves a tray orientation from a chevron drag once it clears the activation
+    /// threshold. A dominant horizontal drag opens the horizontal menu; an upward drag
+    /// opens the vertical menu. Small or downward drags resolve to `nil` (no change).
+    static func orientation(
+        forDragWidth dx: CGFloat,
+        height dy: CGFloat,
+        threshold: CGFloat
+    ) -> ScreenShareControlTrayOrientation? {
+        if abs(dx) > abs(dy), abs(dx) > threshold {
+            return .horizontal
+        }
+        if dy < -threshold {
+            return .vertical
+        }
+        return nil
+    }
+}
+
+enum ScreenShareTrackpadViewportPolicy {
+    /// In trackpad mode the user is actively nudging the pointer, so auto-follow
+    /// re-framing would pan the mirror on every pointer delta. The viewport stays put
+    /// while the trackpad drives the cursor; other modes keep smart auto-follow.
+    static func allowsAutoFollowOnFocusChange(interactionMode: ScreenShareInteractionMode) -> Bool {
+        interactionMode != .trackpad
+    }
+}
+
 enum ScreenShareSmartTextActivationPolicy {
     /// Decides whether to surface the "double-tap to type" coaching hint. The hint
     /// teaches the fast path at the exact moment it pays off: a text field is focused
@@ -1909,6 +1968,7 @@ private struct RemoteUnlockStatusOverlay: View {
     let saveCredential: (String) -> Void
     let sendSavedCredential: () -> Void
     let deleteSavedCredential: () -> Void
+    let requestSetup: () -> Void
     let onReconnect: () -> Void
     let onClose: () -> Void
     @State private var isSending = false
@@ -1921,6 +1981,14 @@ private struct RemoteUnlockStatusOverlay: View {
 
     private var canUseSavedCredential: Bool {
         state.capabilities.enabled && state.capabilities.allowsSavedCredentialUnlock
+    }
+
+    /// Product-ready presentation for the active blocker, resolved through the
+    /// central mapper so the overlay never renders a raw blocker identifier.
+    /// `nil` once the Mac can accept a credential (the ready state).
+    private var blockerPresentation: RemoteUnlockBlockerPresentation? {
+        guard !canSendCredential else { return nil }
+        return RemoteUnlockBlockerPresentationMap.presentation(for: state.capabilities)
     }
 
     private var title: String {
@@ -1937,15 +2005,65 @@ private struct RemoteUnlockStatusOverlay: View {
         }
     }
 
+    /// Short status label under the lock-state title. Action-oriented and free
+    /// of raw backend identifiers in every state.
+    private var statusSubtitle: String {
+        if canSendCredential { return "Remote Unlock ready" }
+        return blockerPresentation?.title ?? "Finishing setup"
+    }
+
     private var detail: String {
         if canSendCredential {
             if state.capabilities.certificationStatus == .certified {
-                return "Remote Unlock is certified on this Mac. Credential entry uses the dedicated remote-unlock lane; normal Mac control is paused while locked."
+                return "Remote Unlock is certified on this Mac. You can click and type while locked; credential entry uses the dedicated remote-unlock lane."
             }
-            return "Remote Unlock is ready on this Mac. The first successful locked unlock records hardware certification; normal Mac control is paused while locked."
+            return "Remote Unlock is ready on this Mac. You can click and type while locked; the first successful locked unlock records hardware certification."
         }
-        let firstBlocker = state.capabilities.blockers.first ?? "remote_unlock_not_certified"
-        return "Remote Unlock is unavailable on this Mac: \(firstBlocker). Normal Mac control is paused while locked."
+        return blockerPresentation?.message
+            ?? "Remote Unlock needs a little more setup on your Mac. Finish it in OpenBurnBar, then reconnect this device."
+    }
+
+    /// Picks the right setup affordance from the mapper's recommended action.
+    /// Input setup re-runs the Mac install (which also re-surfaces the Privacy
+    /// & Security approval), so both input-driver states share one button.
+    @ViewBuilder
+    private func setupActionButton(for presentation: RemoteUnlockBlockerPresentation) -> some View {
+        switch presentation.recommendedAction {
+        case .setUpMacInput, .approveInPrivacySettings:
+            remoteUnlockActionButton(
+                title: presentation.primaryActionTitle ?? "Set up input on Mac",
+                systemImage: "keyboard.badge.ellipsis",
+                identifier: "remoteUnlock.requestInputSetup",
+                action: requestSetup
+            )
+        case .reconnect, .grantRemoteDesktop:
+            remoteUnlockActionButton(
+                title: presentation.primaryActionTitle ?? "Reconnect after setup",
+                systemImage: "arrow.clockwise",
+                identifier: "remoteUnlock.reconnectAfterSetup",
+                action: onReconnect
+            )
+        case .finishOnMac:
+            EmptyView()
+        }
+    }
+
+    private func remoteUnlockActionButton(
+        title: String,
+        systemImage: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.black)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityIdentifier(identifier)
     }
 
     var body: some View {
@@ -1961,7 +2079,7 @@ private struct RemoteUnlockStatusOverlay: View {
                     Text(title)
                         .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text(state.backend.rawValue.replacingOccurrences(of: "_", with: " "))
+                    Text(statusSubtitle)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.62))
                 }
@@ -1991,6 +2109,19 @@ private struct RemoteUnlockStatusOverlay: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)
+
+            #if DEBUG
+            if let presentation = blockerPresentation, !presentation.diagnosticBlockers.isEmpty {
+                // Developer diagnostics only — never compiled into release UI.
+                // Exact blocker identifiers also land in os.Logger upstream.
+                Text("blockers: " + presentation.diagnosticBlockers.joined(separator: ", "))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("remoteUnlock.debugBlockers")
+            }
+            #endif
 
             if let diagnosticMessage, diagnosticMessage.isEmpty == false {
                 Label(diagnosticMessage, systemImage: "waveform.path.ecg")
@@ -2099,6 +2230,8 @@ private struct RemoteUnlockStatusOverlay: View {
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else if let presentation = blockerPresentation {
+                setupActionButton(for: presentation)
             }
         }
         .padding(16)
@@ -2117,12 +2250,12 @@ struct RemoteUnlockSimulatorHarnessView: View {
         HermesRealtimeRelayRemoteUnlockState(
             sessionId: "sim-remote-unlock-session",
             lockState: .loginWindow,
-            backend: .appleScreenSharingLoopback,
+            backend: .openBurnBarVirtualHID,
             capabilities: HermesRealtimeRelayRemoteUnlockCapabilities(
                 enabled: true,
                 certificationStatus: .certified,
-                activeBackend: .appleScreenSharingLoopback,
-                supportedBackends: [.appleScreenSharingLoopback],
+                activeBackend: .openBurnBarVirtualHID,
+                supportedBackends: [.openBurnBarVirtualHID],
                 supportedLockStates: [.loginWindow, .securityAgent, .screenLocked],
                 allowsCredentialPaste: true,
                 allowsSavedCredentialUnlock: true,
@@ -2194,6 +2327,9 @@ struct RemoteUnlockSimulatorHarnessView: View {
                         savedCredentialAvailable = false
                         status = "Saved credential removed"
                     },
+                    requestSetup: {
+                        status = "Mac input setup requested"
+                    },
                     onReconnect: {
                         status = "Remote Unlock session refreshed"
                     },
@@ -2213,6 +2349,13 @@ struct RemoteUnlockSimulatorHarnessView: View {
     }
 }
 #endif
+
+private struct DragOption {
+    let icon: String
+    let label: String
+    let disabled: Bool
+    let action: () -> Void
+}
 
 private struct MirrorControlPanel: View {
     @Binding var interactionMode: ScreenShareInteractionMode
@@ -2243,12 +2386,26 @@ private struct MirrorControlPanel: View {
     let pasteClipboardToMac: () -> Void
     let grabClipboardFromMac: () -> Void
     let onClose: () -> Void
+    let screenSize: CGSize
 
-    @State private var openGroup: MirrorControlGroup?
     @State private var tooltip: String?
 
-    // Related controls are shelved behind one primary button each, so the
-    // always-visible dock stays compact instead of showing every action at once.
+    // New tray states
+    @State private var trayExpanded = false
+    @State private var expansionDirection: ExpansionDirection = .upward
+    @State private var activeDragGroup: MirrorControlGroup? = nil
+    @State private var hoveredOptionIndex: Int? = nil
+    @State private var gestureStartTime = Date()
+
+    // Floating pill states
+    @State private var pillOffset: CGSize = .zero
+    @State private var activeDragOffset: CGSize = .zero
+
+    enum ExpansionDirection: String, CaseIterable, Sendable {
+        case upward
+        case sideways
+    }
+
     private enum MirrorControlGroup: String, CaseIterable, Identifiable {
         case mode, zoom, scroll, keyboard, screen
         var id: String { rawValue }
@@ -2265,11 +2422,11 @@ private struct MirrorControlPanel: View {
 
         var hint: String {
             switch self {
-            case .mode: return "Interaction mode — view, control, trackpad, Co-Pilot"
-            case .zoom: return "Zoom and Smart Zoom"
-            case .scroll: return "Scroll and paging"
-            case .keyboard: return "Keyboard and clipboard"
-            case .screen: return "Display, cursor and stats"
+            case .mode: return "Interaction mode — cycle on tap, hold for options"
+            case .zoom: return "Zoom and Smart Zoom — cycle on tap, hold for options"
+            case .scroll: return "Scroll and paging — cycle on tap, hold for options"
+            case .keyboard: return "Keyboard and clipboard — cycle on tap, hold for options"
+            case .screen: return "Display and stats — cycle on tap, hold for options"
             }
         }
 
@@ -2287,21 +2444,46 @@ private struct MirrorControlPanel: View {
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
             statusStrip
-            if let group = openGroup {
-                shelf(for: group)
+            
+            if trayExpanded {
+                if expansionDirection == .sideways {
+                    sidewaysDock
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                } else {
+                    upwardDock
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+            } else {
+                collapsedHandle
                     .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .opacity
+                        insertion: .opacity,
+                        removal: .scale(scale: 0.85).combined(with: .opacity)
                     ))
             }
-            primaryDock
         }
         .overlay(alignment: .top) { tooltipBubble }
-        .animation(.snappy(duration: 0.26), value: openGroup)
-        .onChange(of: openGroup) { _, newValue in
-            isCollapsed = (newValue == nil)
+        .offset(clampOffset(pillOffset + activeDragOffset))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: trayExpanded)
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: expansionDirection)
+        .onChange(of: trayExpanded) { _, newValue in
+            isCollapsed = !newValue
         }
-        .onAppear { isCollapsed = (openGroup == nil) }
+        .onChange(of: isCollapsed) { _, newValue in
+            if trayExpanded == newValue {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    trayExpanded = !newValue
+                }
+            }
+        }
+        .onAppear {
+            isCollapsed = !trayExpanded
+        }
         .task(id: tooltip) {
             guard tooltip != nil else { return }
             try? await Task.sleep(nanoseconds: 2_600_000_000)
@@ -2309,14 +2491,129 @@ private struct MirrorControlPanel: View {
         }
     }
 
-    // MARK: - Primary dock
+    private func clampOffset(_ offset: CGSize) -> CGSize {
+        let minX = -screenSize.width / 2 + 60
+        let maxX = screenSize.width / 2 - 60
+        let minY = -screenSize.height + 140
+        let maxY = 10.0
+        
+        return CGSize(
+            width: min(max(offset.width, minX), maxX),
+            height: min(max(offset.height, minY), maxY)
+        )
+    }
 
-    private var primaryDock: some View {
-        HStack(spacing: 10) {
-            ForEach(MirrorControlGroup.allCases) { group in
-                groupButton(group)
+    private var dockDragToCollapseGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                if value.translation.height > 35 {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        trayExpanded = false
+                    }
+                }
             }
+    }
+
+    // MARK: - Collapsed Handle
+    private var collapsedHandle: some View {
+        HStack(spacing: 8) {
+            // Chevron: draggable upwards or tappable to expand vertically
+            Image(systemName: "chevron.up")
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.12), in: Circle())
+                .contentShape(Circle())
+                .gesture(
+                    DragGesture(minimumDistance: 4)
+                        .onChanged { value in
+                            let dy = value.translation.height
+                            if dy < -8 { // Dragging upwards to the top
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                    expansionDirection = .upward
+                                    trayExpanded = true
+                                }
+                            }
+                        }
+                )
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                            expansionDirection = .upward
+                            trayExpanded = true
+                        }
+                    }
+                )
+
+            // Cog: cutely colored settings cog that opens the panel sideways on tap
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    expansionDirection = .sideways
+                    trayExpanded = true
+                }
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.08), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.4), Color(red: 0.56, green: 0.50, blue: 0.85).opacity(0.4)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .mirrorGlassBackground(cornerRadius: 28)
+        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 6)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    activeDragOffset = value.translation
+                }
+                .onEnded { value in
+                    pillOffset = clampOffset(pillOffset + value.translation)
+                    activeDragOffset = .zero
+                }
+        )
+    }
+
+    // MARK: - Sideways Dock (Horizontal)
+    private var sidewaysDock: some View {
+        HStack(spacing: 10) {
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    trayExpanded = false
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(.plain)
+
+            ForEach(MirrorControlGroup.allCases) { group in
+                interactiveGroupButton(group)
+            }
+
             Spacer(minLength: 6)
+
             Button(action: onClose) {
                 railIcon("xmark", selected: false, disabled: false)
             }
@@ -2333,318 +2630,410 @@ private struct MirrorControlPanel: View {
         .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Mirror controls")
+        .gesture(dockDragToCollapseGesture)
     }
 
-    private func groupButton(_ group: MirrorControlGroup) -> some View {
-        let isOpen = openGroup == group
-        return Button {
-            withAnimation(.snappy(duration: 0.26)) {
-                openGroup = isOpen ? nil : group
+    // MARK: - Upward Dock (Vertical)
+    private var upwardDock: some View {
+        VStack(spacing: 10) {
+            Button(action: onClose) {
+                railIcon("xmark", selected: false, disabled: false)
             }
-        } label: {
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close mirror")
+            .accessibilityHint("Disconnect and close the mirror")
+            .help("Close mirror")
+            .simultaneousGesture(longPress("Close mirror and disconnect"))
+
+            ForEach(MirrorControlGroup.allCases) { group in
+                interactiveGroupButton(group)
+            }
+
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    trayExpanded = false
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
+        .mirrorGlassBackground(cornerRadius: 24)
+        .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Mirror controls")
+        .gesture(dockDragToCollapseGesture)
+    }
+
+    // MARK: - Interactive Group Button & Gestures
+    private func handleDragChanged(_ value: DragGesture.Value, for group: MirrorControlGroup) {
+        if activeDragGroup == nil {
+            activeDragGroup = group
+            gestureStartTime = Date()
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        }
+        
+        let list = options(for: group)
+        if expansionDirection == .sideways {
+            let index = Int((-value.translation.height - 30) / 48)
+            if index >= 0 && index < list.count {
+                if hoveredOptionIndex != index {
+                    hoveredOptionIndex = index
+                    #if canImport(UIKit)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    #endif
+                }
+            } else {
+                hoveredOptionIndex = nil
+            }
+        } else {
+            let index = Int((-value.translation.width - 30) / 72)
+            if index >= 0 && index < list.count {
+                if hoveredOptionIndex != index {
+                    hoveredOptionIndex = index
+                    #if canImport(UIKit)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    #endif
+                }
+            } else {
+                hoveredOptionIndex = nil
+            }
+        }
+    }
+
+    private func handleDragEnded(_ value: DragGesture.Value, for group: MirrorControlGroup) {
+        let duration = Date().timeIntervalSince(gestureStartTime)
+        let distance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
+        
+        if duration < 0.3 && distance < 15 {
+            switch group {
+            case .mode: cycleMode()
+            case .zoom: cycleZoom()
+            case .scroll: cycleScroll()
+            case .keyboard: cycleKeyboard()
+            case .screen: cycleScreen()
+            }
+        } else if let index = hoveredOptionIndex {
+            let list = options(for: group)
+            if index >= 0 && index < list.count {
+                let item = list[index]
+                if !item.disabled {
+                    item.action()
+                    #if canImport(UIKit)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    #endif
+                }
+            }
+        }
+        
+        withAnimation(.snappy(duration: 0.2)) {
+            activeDragGroup = nil
+            hoveredOptionIndex = nil
+        }
+    }
+
+    private func interactiveGroupButton(_ group: MirrorControlGroup) -> some View {
+        let isDraggingThis = activeDragGroup == group
+        return ZStack {
             railIcon(
                 group == .mode ? activeModeIcon : group.icon,
-                selected: isOpen || groupActive(group),
+                selected: isDraggingThis || groupActive(group),
                 disabled: false
             )
+            .background(
+                Color.white.opacity(0.001)
+            )
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { handleDragChanged($0, for: group) }
+                    .onEnded { handleDragEnded($0, for: group) }
+            )
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(group.title)
-        .accessibilityHint(group.hint)
-        .accessibilityAddTraits(isOpen ? .isSelected : [])
-        .help(group.hint)
-        .simultaneousGesture(longPress(group.hint))
+        .overlay(alignment: expansionDirection == .sideways ? .bottom : .trailing) {
+            if isDraggingThis {
+                popOutHUD(for: group)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
     }
 
+    // MARK: - Pop Out Option List & UI
+    @ViewBuilder
+    private func popOutItemBackground(isHovered: Bool, disabled: Bool) -> some View {
+        if isHovered {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.ultraThinMaterial)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color(red: 0.17, green: 0.79, blue: 0.75), Color(red: 0.56, green: 0.50, blue: 0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(disabled ? 0.02 : 0.06))
+        }
+    }
+
+    @ViewBuilder
+    private func popOutHUD(for group: MirrorControlGroup) -> some View {
+        let list = options(for: group)
+        if expansionDirection == .sideways {
+            VStack(spacing: 8) {
+                ForEach(0..<list.count, id: \.self) { i in
+                    let item = list[i]
+                    let isHovered = hoveredOptionIndex == i
+                    HStack(spacing: 8) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 14, weight: .bold))
+                        Text(item.label)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(isHovered ? .white : .white.opacity(item.disabled ? 0.35 : 0.85))
+                    .padding(.horizontal, 12)
+                    .frame(height: 40)
+                    .background(
+                        popOutItemBackground(isHovered: isHovered, disabled: item.disabled)
+                    )
+                    .scaleEffect(isHovered ? 1.05 : 1.0)
+                }
+            }
+            .padding(6)
+            .mirrorGlassBackground(cornerRadius: 16)
+            .shadow(color: .black.opacity(0.35), radius: 10)
+            .offset(y: -CGFloat(list.count * 48 + 10))
+        } else {
+            HStack(spacing: 8) {
+                ForEach(0..<list.count, id: \.self) { i in
+                    let item = list[i]
+                    let isHovered = hoveredOptionIndex == i
+                    VStack(spacing: 4) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 14, weight: .bold))
+                        Text(item.label)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(isHovered ? .white : .white.opacity(item.disabled ? 0.35 : 0.85))
+                    .padding(.vertical, 6)
+                    .frame(width: 64, height: 50)
+                    .background(
+                        popOutItemBackground(isHovered: isHovered, disabled: item.disabled)
+                    )
+                    .scaleEffect(isHovered ? 1.05 : 1.0)
+                }
+            }
+            .padding(6)
+            .mirrorGlassBackground(cornerRadius: 16)
+            .shadow(color: .black.opacity(0.35), radius: 10)
+            .offset(x: -CGFloat(list.count * 72 + 10))
+        }
+    }
+
+    // MARK: - Action Options Map
+    private func options(for group: MirrorControlGroup) -> [DragOption] {
+        switch group {
+        case .mode:
+            return [
+                DragOption(icon: "hand.draw", label: "View Mode", disabled: false) {
+                    interactionMode = .view
+                    isTyping = false
+                },
+                DragOption(icon: "cursorarrow.click.2", label: controlStatus.label, disabled: !controlInputEnabled) {
+                    interactionMode = .control
+                    isTyping = false
+                },
+                DragOption(icon: "rectangle.and.hand.point.up.left", label: "Trackpad Mode", disabled: !controlInputEnabled) {
+                    interactionMode = .trackpad
+                    isTyping = false
+                },
+                DragOption(icon: "target", label: "Co-Pilot", disabled: !controlInputEnabled) {
+                    interactionMode = .coPilot
+                    isTyping = false
+                    coPilotTarget = nil
+                }
+            ]
+        case .zoom:
+            var list = [
+                DragOption(icon: "plus.magnifyingglass", label: "Zoom In", disabled: false) {
+                    zoomIn()
+                },
+                DragOption(icon: "minus.magnifyingglass", label: "Zoom Out", disabled: !isZoomed) {
+                    zoomOut()
+                }
+            ]
+            if isZoomed {
+                list.append(DragOption(icon: "arrow.counterclockwise", label: "Reset Zoom", disabled: false) {
+                    resetZoom()
+                })
+            }
+            list.append(DragOption(icon: "sparkles", label: "Smart Zoom", disabled: false) {
+                let nextMode: SmartZoomMode = (smartZoomMode == .off) ? .smart : .off
+                setSmartZoomMode(nextMode)
+            })
+            return list
+        case .scroll:
+            return [
+                DragOption(icon: "chevron.up", label: "Scroll Up", disabled: !controlInputEnabled) {
+                    sendScrollButton(-0.22)
+                },
+                DragOption(icon: "chevron.down", label: "Scroll Down", disabled: !controlInputEnabled) {
+                    sendScrollButton(0.22)
+                },
+                DragOption(icon: "arrow.up.to.line", label: "Page Up", disabled: !controlInputEnabled) {
+                    sendScrollButton(-0.45)
+                },
+                DragOption(icon: "arrow.down.to.line", label: "Page Down", disabled: !controlInputEnabled) {
+                    sendScrollButton(0.45)
+                },
+                DragOption(icon: "arrow.left.and.right", label: edgeScrollEnabled ? "Disable Edge" : "Enable Edge", disabled: false) {
+                    edgeScrollEnabled.toggle()
+                },
+                DragOption(icon: "speaker.wave.2", label: hardwareScrollEnabled ? "Disable Vol" : "Enable Vol", disabled: false) {
+                    hardwareScrollEnabled.toggle()
+                }
+            ]
+        case .keyboard:
+            return [
+                DragOption(icon: "keyboard", label: "Keyboard", disabled: !controlInputEnabled) {
+                    interactionMode = .control
+                    isTyping.toggle()
+                    if isTyping { focusTyping() }
+                },
+                DragOption(icon: "doc.on.clipboard", label: "Paste to Mac", disabled: !controlInputEnabled) {
+                    pasteClipboardToMac()
+                },
+                DragOption(icon: "arrow.down.doc", label: "Copy from Mac", disabled: !controlInputEnabled) {
+                    grabClipboardFromMac()
+                }
+            ]
+        case .screen:
+            var list: [DragOption] = []
+            if displayOptions.count > 1 {
+                list.append(DragOption(icon: "rectangle.connected.to.line.below", label: "Switch Display", disabled: false) {
+                    let nextIndex = (selectedDisplayIndex + 1) % displayOptions.count
+                    selectDisplay(displayOptions[nextIndex].id)
+                })
+            }
+            list.append(DragOption(icon: "cursorarrow", label: "Cursor Style", disabled: false) {
+                let nextStyle: MirrorCursorStyle
+                switch cursorStyle {
+                case .hidden: nextStyle = .mercury
+                case .mercury: nextStyle = .ember
+                case .ember: nextStyle = .aurora
+                case .aurora: nextStyle = .white
+                case .white: nextStyle = .hidden
+                }
+                cursorStyle = nextStyle
+            })
+            list.append(DragOption(icon: "waveform.path.ecg", label: statsVisible ? "Hide Stats" : "Show Stats", disabled: false) {
+                statsVisible.toggle()
+            })
+            return list
+        }
+    }
+
+    // MARK: - Option Cycling helpers
+    private func cycleMode() {
+        let modes: [ScreenShareInteractionMode]
+        if controlInputEnabled {
+            modes = [.view, .control, .trackpad, .coPilot]
+        } else {
+            modes = [.view]
+        }
+        if let index = modes.firstIndex(of: interactionMode) {
+            let nextIndex = (index + 1) % modes.count
+            withAnimation(.snappy) {
+                interactionMode = modes[nextIndex]
+                isTyping = false
+                if interactionMode == .coPilot {
+                    coPilotTarget = nil
+                }
+            }
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        }
+    }
+
+    private func cycleZoom() {
+        let modes: [SmartZoomMode] = [.off, .smart, .text, .window, .cursor]
+        if let index = modes.firstIndex(of: smartZoomMode) {
+            let nextIndex = (index + 1) % modes.count
+            setSmartZoomMode(modes[nextIndex])
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        }
+    }
+
+    private func cycleScroll() {
+        if !edgeScrollEnabled && !hardwareScrollEnabled {
+            edgeScrollEnabled = true
+        } else if edgeScrollEnabled && !hardwareScrollEnabled {
+            edgeScrollEnabled = false
+            hardwareScrollEnabled = true
+        } else if !edgeScrollEnabled && hardwareScrollEnabled {
+            edgeScrollEnabled = true
+            hardwareScrollEnabled = true
+        } else {
+            edgeScrollEnabled = false
+            hardwareScrollEnabled = false
+        }
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    private func cycleKeyboard() {
+        guard controlInputEnabled else { return }
+        if !isTyping {
+            withAnimation(.snappy) {
+                interactionMode = .control
+                isTyping = true
+            }
+            focusTyping()
+        } else {
+            withAnimation(.snappy) {
+                isTyping = false
+            }
+        }
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    private func cycleScreen() {
+        if displayOptions.count > 1 {
+            let nextIndex = (selectedDisplayIndex + 1) % displayOptions.count
+            selectDisplay(displayOptions[nextIndex].id)
+        } else {
+            statsVisible.toggle()
+        }
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    // MARK: - State queries & view assets
     private func groupActive(_ group: MirrorControlGroup) -> Bool {
         switch group {
         case .mode: return interactionMode != .view
         case .zoom: return isZoomed || smartZoomMode != .off
         case .scroll: return edgeScrollEnabled || hardwareScrollEnabled
         case .keyboard: return isTyping
-        case .screen: return statsVisible || cursorStyle == .hidden
+        case .screen: return statsVisible || cursorStyle != .hidden
         }
-    }
-
-    // MARK: - Shelf (cascading group contents)
-
-    private func shelf(for group: MirrorControlGroup) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                shelfTitle(group.title)
-                shelfContent(for: group)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-        }
-        .frame(maxWidth: .infinity)
-        .mirrorGlassBackground(cornerRadius: 22)
-        .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 8)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(group.title) options")
-    }
-
-    @ViewBuilder
-    private func shelfContent(for group: MirrorControlGroup) -> some View {
-        switch group {
-        case .mode: modeShelf
-        case .zoom: zoomShelf
-        case .scroll: scrollShelf
-        case .keyboard: keyboardShelf
-        case .screen: screenShelf
-        }
-    }
-
-    @ViewBuilder
-    private var modeShelf: some View {
-        leafButton(
-            "hand.draw", label: "View mode",
-            hint: "View only — pan and zoom without controlling the Mac",
-            selected: interactionMode == .view, collapsesShelf: true
-        ) {
-            withAnimation(.snappy) {
-                interactionMode = .view
-                isTyping = false
-            }
-        }
-        leafButton(
-            "target", label: "Agent Co-Pilot",
-            hint: "Tap a target and the agent acts on it for you",
-            selected: interactionMode == .coPilot,
-            disabled: controlInputEnabled == false, collapsesShelf: true
-        ) {
-            guard controlInputEnabled else { return }
-            withAnimation(.snappy) {
-                interactionMode = .coPilot
-                isTyping = false
-                coPilotTarget = nil
-            }
-        }
-        if controlInputEnabled, controlStatus.isLive == false {
-            leafButton(
-                "person.badge.key", label: "Trust this iPhone",
-                hint: "Authorize this iPhone to control the Mac",
-                collapsesShelf: true, action: onTrustControlDevice
-            )
-        }
-        leafButton(
-            controlInputEnabled ? "cursorarrow.click.2" : "lock",
-            label: controlStatus.label,
-            hint: "Direct control — tap and drag controls the Mac pointer",
-            selected: interactionMode == .control,
-            disabled: controlInputEnabled == false, collapsesShelf: true
-        ) {
-            guard controlInputEnabled else { return }
-            withAnimation(.snappy) {
-                interactionMode = .control
-                isTyping = false
-            }
-        }
-        leafButton(
-            "rectangle.and.hand.point.up.left", label: "Trackpad mode",
-            hint: "Trackpad — relative pointer movement like a laptop",
-            selected: interactionMode == .trackpad,
-            disabled: controlInputEnabled == false, collapsesShelf: true
-        ) {
-            guard controlInputEnabled else { return }
-            withAnimation(.snappy) {
-                interactionMode = .trackpad
-                isTyping = false
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var zoomShelf: some View {
-        leafButton(
-            "plus.magnifyingglass", label: "Zoom in",
-            hint: "Zoom into the mirrored screen", action: zoomIn
-        )
-        leafButton(
-            "minus.magnifyingglass", label: "Zoom out",
-            hint: "Zoom back out", disabled: isZoomed == false, action: zoomOut
-        )
-        if isZoomed {
-            leafButton(
-                "arrow.counterclockwise", label: "Reset zoom",
-                hint: "Return to fit-to-screen", action: resetZoom
-            )
-        }
-        smartZoomMenu
-    }
-
-    @ViewBuilder
-    private var scrollShelf: some View {
-        leafButton(
-            "chevron.up", label: "Scroll up", hint: "Scroll up a little",
-            disabled: controlInputEnabled == false
-        ) { sendScrollButton(-0.22) }
-        leafButton(
-            "chevron.down", label: "Scroll down", hint: "Scroll down a little",
-            disabled: controlInputEnabled == false
-        ) { sendScrollButton(0.22) }
-        leafButton(
-            "arrow.up.to.line", label: "Page up", hint: "Scroll up a full page",
-            disabled: controlInputEnabled == false
-        ) { sendScrollButton(-0.45) }
-        leafButton(
-            "arrow.down.to.line", label: "Page down", hint: "Scroll down a full page",
-            disabled: controlInputEnabled == false
-        ) { sendScrollButton(0.45) }
-        leafToggle(
-            "arrow.left.and.right", label: "Edge scroll",
-            hint: "Scroll by dragging near the screen edges", isOn: $edgeScrollEnabled
-        )
-        leafToggle(
-            "speaker.wave.2", label: "Volume scroll",
-            hint: "Use the hardware volume buttons to scroll", isOn: $hardwareScrollEnabled
-        )
-    }
-
-    @ViewBuilder
-    private var keyboardShelf: some View {
-        leafButton(
-            "keyboard", label: "Type on Mac",
-            hint: "Open the keyboard and type on the Mac",
-            selected: isTyping, disabled: controlInputEnabled == false
-        ) {
-            guard controlInputEnabled else { return }
-            withAnimation(.snappy) {
-                interactionMode = .control
-                isTyping.toggle()
-            }
-            if isTyping { focusTyping() }
-        }
-        leafButton(
-            "doc.on.clipboard", label: "To Mac",
-            hint: "Send this iPhone's clipboard to the Mac",
-            disabled: controlInputEnabled == false, action: pasteClipboardToMac
-        )
-        leafButton(
-            "arrow.down.doc", label: "From Mac",
-            hint: "Copy the Mac's clipboard to this iPhone",
-            disabled: controlInputEnabled == false, action: grabClipboardFromMac
-        )
-    }
-
-    @ViewBuilder
-    private var screenShelf: some View {
-        displayButton
-        cursorMenu
-        leafToggle(
-            "waveform.path.ecg", label: "Performance stats",
-            hint: "Show the bitrate and latency overlay", isOn: $statsVisible
-        )
-    }
-
-    // MARK: - Status strip
-
-    @ViewBuilder
-    private var statusStrip: some View {
-        if statsVisible || controlStatus.detail != nil {
-            HStack(spacing: 8) {
-                if statsVisible {
-                    compactStats
-                }
-                if let detail = controlStatus.detail {
-                    compactControlStatus(detail)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .transition(.opacity)
-        }
-    }
-
-    // MARK: - Tooltip (tap and hold)
-
-    @ViewBuilder
-    private var tooltipBubble: some View {
-        if let tooltip {
-            Text(tooltip)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
-                .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
-                .frame(maxWidth: 300)
-                .fixedSize(horizontal: false, vertical: true)
-                .offset(y: -54)
-                .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private func longPress(_ text: String) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.35).onEnded { _ in
-            presentTooltip(text)
-        }
-    }
-
-    private func presentTooltip(_ text: String) {
-        withAnimation(.snappy(duration: 0.2)) { tooltip = text }
-        #if canImport(UIKit)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        #endif
-    }
-
-    // MARK: - Leaf controls
-
-    private func leafButton(
-        _ systemName: String,
-        label: String,
-        hint: String,
-        selected: Bool = false,
-        disabled: Bool = false,
-        collapsesShelf: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            action()
-            if collapsesShelf {
-                withAnimation(.snappy(duration: 0.26)) { openGroup = nil }
-            }
-        } label: {
-            railIcon(systemName, selected: selected, disabled: disabled)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .accessibilityLabel(label)
-        .accessibilityHint(hint)
-        .help(hint)
-        .simultaneousGesture(longPress(hint))
-    }
-
-    private func leafToggle(
-        _ systemName: String,
-        label: String,
-        hint: String,
-        isOn: Binding<Bool>
-    ) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-        } label: {
-            railIcon(systemName, selected: isOn.wrappedValue, disabled: false)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
-        .accessibilityHint(hint)
-        .help(hint)
-        .simultaneousGesture(longPress(hint))
-    }
-
-    private func shelfTitle(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 10, weight: .heavy, design: .rounded))
-            .tracking(0.6)
-            .foregroundStyle(.white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .frame(height: 42)
-            .accessibilityHidden(true)
     }
 
     private var fallbackDisplays: [HermesRealtimeRelayDisplayDescriptor] {
@@ -2664,6 +3053,63 @@ private struct MirrorControlPanel: View {
         }
     }
 
+    private var displayOptions: [HermesRealtimeRelayDisplayDescriptor] {
+        displays.isEmpty ? fallbackDisplays : displays
+    }
+
+    private var selectedDisplayIndex: Int {
+        displayOptions.firstIndex {
+            $0.id == selectedDisplayId || (selectedDisplayId == nil && $0.isPrimary)
+        } ?? 0
+    }
+
+    private func longPress(_ text: String) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+            withAnimation(.snappy(duration: 0.2)) { tooltip = text }
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        }
+    }
+
+    private var tooltipBubble: some View {
+        Group {
+            if let tooltip {
+                Text(tooltip)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
+                    .frame(maxWidth: 300)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .offset(y: -54)
+                    .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var statusStrip: some View {
+        Group {
+            if statsVisible || controlStatus.detail != nil {
+                HStack(spacing: 8) {
+                    if statsVisible {
+                        compactStats
+                    }
+                    if let detail = controlStatus.detail {
+                        compactControlStatus(detail)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity)
+            }
+        }
+    }
+
     private var compactStats: some View {
         let mbps = Double(stats.bitsPerSecond) / 1_000_000.0
         return HStack(spacing: 8) {
@@ -2675,7 +3121,6 @@ private struct MirrorControlPanel: View {
         .padding(.horizontal, 12)
         .frame(height: 40)
         .background(Color.white.opacity(0.10), in: Capsule())
-        .accessibilityLabel("Performance \(String(format: "%.2f megabits per second", mbps)), round trip \(stats.roundTripMillis) milliseconds")
     }
 
     private func compactControlStatus(_ message: String) -> some View {
@@ -2687,128 +3132,11 @@ private struct MirrorControlPanel: View {
             .padding(.horizontal, 12)
             .frame(height: 40)
             .background(Color.white.opacity(0.10), in: Capsule())
-            .accessibilityLabel(message)
     }
 
     private func shortControlMessage(_ message: String) -> String {
         guard message.count > 72 else { return message }
         return String(message.prefix(69)) + "..."
-    }
-
-    private var displayOptions: [HermesRealtimeRelayDisplayDescriptor] {
-        displays.isEmpty ? fallbackDisplays : displays
-    }
-
-    private var selectedDisplayIndex: Int {
-        displayOptions.firstIndex {
-            $0.id == selectedDisplayId || (selectedDisplayId == nil && $0.isPrimary)
-        } ?? 0
-    }
-
-    private var displayButton: some View {
-        let isDisabled = displayOptions.count <= 1
-        return Button {
-            guard !isDisabled else { return }
-            let nextIndex = (selectedDisplayIndex + 1) % displayOptions.count
-            selectDisplay(displayOptions[nextIndex].id)
-        } label: {
-            railIcon("rectangle.connected.to.line.below", selected: displayOptions.count > 1, disabled: isDisabled)
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .contextMenu {
-            ForEach(displayOptions) { display in
-                Button {
-                    selectDisplay(display.id)
-                } label: {
-                    Label(display.name, systemImage: display.id == selectedDisplayId || (selectedDisplayId == nil && display.isPrimary) ? "checkmark.display" : "display")
-                }
-            }
-        }
-        .help(isDisabled ? "One display available" : "Switch display — long-press to choose")
-        .accessibilityLabel(isDisabled ? "One display available" : "Switch display")
-    }
-
-    private var cursorMenu: some View {
-        Menu {
-            ForEach(MirrorCursorStyle.allCases) { style in
-                Button {
-                    cursorStyle = style
-                } label: {
-                    Label(style.label, systemImage: cursorIcon(for: style))
-                }
-            }
-            Button {
-                cursorSize = max(18, cursorSize - 4)
-            } label: {
-                Label("Smaller cursor", systemImage: "minus.magnifyingglass")
-            }
-            Button {
-                cursorSize = min(42, cursorSize + 4)
-            } label: {
-                Label("Larger cursor", systemImage: "plus.magnifyingglass")
-            }
-        } label: {
-            railIcon(cursorIcon(for: cursorStyle), selected: interactionMode != .view && cursorStyle != .hidden, disabled: false)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .help("Cursor style and size")
-        .accessibilityLabel("Cursor options")
-    }
-
-    private func cursorIcon(for style: MirrorCursorStyle) -> String {
-        switch style {
-        case .mercury, .ember, .aurora, .white: return "cursorarrow"
-        case .hidden: return "cursorarrow.slash"
-        }
-    }
-
-    private var smartZoomMenu: some View {
-        Menu {
-            ForEach(SmartZoomMode.allCases) { mode in
-                Button {
-                    setSmartZoomMode(mode)
-                } label: {
-                    Label(mode.label, systemImage: mode.systemImage)
-                }
-            }
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                railIcon(
-                    smartZoomMode.systemImage,
-                    selected: smartZoomMode != .off,
-                    disabled: false
-                )
-                if smartZoomAutoFollowing {
-                    Text("Smart")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 0.17, green: 0.79, blue: 0.75),
-                                            Color(red: 0.56, green: 0.50, blue: 0.85)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        )
-                        .offset(x: -2, y: -2)
-                        .accessibilityHidden(true)
-                }
-            }
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .help("Smart Zoom: \(smartZoomMode.label)")
-        .accessibilityLabel("Smart Zoom: \(smartZoomMode.label)")
-        .accessibilityValue(smartZoomAutoFollowing ? "Auto-following" : "Idle")
     }
 
     private func railIcon(_ systemName: String, selected: Bool, disabled: Bool) -> some View {
@@ -2819,10 +3147,8 @@ private struct MirrorControlPanel: View {
             .background(
                 ZStack {
                     if selected {
-                        // High-end active glass keycap
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(.ultraThinMaterial)
-
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(
                                 LinearGradient(
@@ -2834,10 +3160,8 @@ private struct MirrorControlPanel: View {
                             )
                             .shadow(color: Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.5), radius: 6)
                     } else {
-                        // Subtle standard glass keycap
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.white.opacity(disabled ? 0.03 : 0.08))
-
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     }
@@ -3088,6 +3412,7 @@ private struct MirrorPointerCursor: View {
 private struct TrackpadGlassSurface: View {
     let isVisible: Bool
     let usePremiumSOTAUX: Bool
+    @Binding var sensitivity: Double
     let onActiveChange: (Bool) -> Void
     let onMove: (CGSize) -> Void
     let onClick: (Int) -> Void
@@ -3096,6 +3421,7 @@ private struct TrackpadGlassSurface: View {
     @State private var pressStartedAt: Date?
     @State private var touchLocation: CGPoint? = nil
     @State private var touchHistory: [CGPoint] = []
+    @State private var showSensitivitySlider = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -3154,6 +3480,11 @@ private struct TrackpadGlassSurface: View {
                 .foregroundStyle(.white.opacity(0.75))
                 .padding(16)
             }
+            .overlay(alignment: .topTrailing) {
+                trackpadSensitivityControl
+                    .padding(.top, 10)
+                    .padding(.trailing, 12)
+            }
             .opacity(isVisible ? 1 : 0.001)
             .position(x: proxy.size.width - width / 2 - 18, y: proxy.size.height - height / 2 - 34)
             .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -3174,7 +3505,11 @@ private struct TrackpadGlassSurface: View {
                         let delta = value.translation - lastTranslation
                         lastTranslation = value.translation
                         if abs(delta.width) > 0.5 || abs(delta.height) > 0.5 {
-                            onMove(delta)
+                            let scaled = CGSize(
+                                width: delta.width * sensitivity,
+                                height: delta.height * sensitivity
+                            )
+                            onMove(scaled)
                         }
                     }
                     .onEnded { value in
@@ -3218,6 +3553,64 @@ private struct TrackpadGlassSurface: View {
         generator.prepare()
         generator.impactOccurred()
         #endif
+    }
+
+    private var sensitivityLabel: String {
+        if sensitivity < 0.6 { return "Slow" }
+        if sensitivity < 1.15 { return "Normal" }
+        if sensitivity < 2.0 { return "Fast" }
+        return "Turbo"
+    }
+
+    private var sensitivityIcon: String {
+        if sensitivity < 0.6 { return "tortoise" }
+        if sensitivity < 1.15 { return "figure.walk" }
+        if sensitivity < 2.0 { return "hare" }
+        return "bolt"
+    }
+
+    @ViewBuilder
+    private var trackpadSensitivityControl: some View {
+        HStack(spacing: 6) {
+            if showSensitivitySlider {
+                HStack(spacing: 8) {
+                    Image(systemName: "tortoise")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                    Slider(
+                        value: $sensitivity,
+                        in: 0.3...3.0,
+                        step: 0.1
+                    )
+                    .tint(Color(red: 0.17, green: 0.79, blue: 0.75))
+                    .frame(width: 100)
+                    Image(systemName: "hare")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.5, anchor: .trailing).combined(with: .opacity),
+                    removal: .scale(scale: 0.8, anchor: .trailing).combined(with: .opacity)
+                ))
+            }
+
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                    showSensitivitySlider.toggle()
+                }
+            } label: {
+                Image(systemName: sensitivityIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .frame(width: 32, height: 32)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .accessibilityLabel("Trackpad sensitivity: \(sensitivityLabel)")
+            .accessibilityHint("Tap to adjust pointer speed")
+        }
     }
 
     @ViewBuilder

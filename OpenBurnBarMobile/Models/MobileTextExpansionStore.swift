@@ -11,10 +11,18 @@ final class MobileTextExpansionStore {
     private(set) var snippets: [TextExpansionSnippet] = []
     var statusMessage: String?
     private var syncTask: Task<Void, Never>?
+    private var firestoreListener: ListenerRegistration?
+    private var cachedVaultKey: Data?
+    private var cachedUID: String?
+
+    /// Darwin notification name for cross-process snippet updates.
+    /// The keyboard extension listens for this to reload instantly.
+    static let snippetsUpdatedNotification = "com.openburnbar.snippets.updated" as CFString
 
     init() {
         load()
         scheduleCloudSync()
+        startRealtimeListener()
     }
 
     func load() {
@@ -148,9 +156,19 @@ final class MobileTextExpansionStore {
         do {
             try TextExpansionSnapshotStore.write(TextExpansionSnapshot(snippets: snippets.filter(\.isActive)), to: url)
             statusMessage = "Saved"
+            // Notify the keyboard extension to reload immediately
+            Self.postSnippetUpdateNotification()
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    /// Posts a Darwin notification so the keyboard extension can reload snippets.
+    /// Darwin notifications are the only IPC mechanism available between an app
+    /// and its keyboard extension (no App Groups notifications, no NSNotificationCenter).
+    static func postSnippetUpdateNotification() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterPostNotification(center, CFNotificationName(snippetsUpdatedNotification), nil, nil, true)
     }
 
     private func scheduleCloudSync() {
@@ -290,6 +308,85 @@ final class MobileTextExpansionStore {
 
     private static func sorted(_ snippets: [TextExpansionSnippet]) -> [TextExpansionSnippet] {
         snippets.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    // MARK: - Real-Time Firestore Listener
+
+    /// Starts a Firestore snapshot listener on `text_snippets` so changes from
+    /// any device (Mac, other iPhones) are reflected on this device within seconds.
+    private func startRealtimeListener() {
+        guard firestoreListener == nil else { return }
+        guard UserDefaults.standard.object(forKey: "textExpansion.cloudSyncEnabled") as? Bool ?? true else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        let collection = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("text_snippets")
+
+        firestoreListener = collection.addSnapshotListener { [weak self] snapshot, error in
+            guard let self, let snapshot, error == nil else { return }
+            // Skip the initial snapshot (we already loaded from local)
+            guard !snapshot.metadata.hasPendingWrites else { return }
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.handleRealtimeUpdate(snapshot)
+            }
+        }
+    }
+
+    /// Processes a real-time Firestore snapshot update.
+    private func handleRealtimeUpdate(_ snapshot: QuerySnapshot) async {
+        do {
+            guard let uid = Auth.auth().currentUser?.uid else { return }
+
+            // Get or cache the vault key
+            if cachedVaultKey == nil || cachedUID != uid {
+                cachedVaultKey = try await unlockOrCreateCloudVaultKey(uid: uid)
+                cachedUID = uid
+            }
+            guard let key = cachedVaultKey else { return }
+
+            var merged = Dictionary(uniqueKeysWithValues: snippets.map { ($0.id, $0) })
+            var changed = false
+
+            for change in snapshot.documentChanges {
+                let doc = change.document
+                guard let remote = try? Self.decodeSnippet(documentID: doc.documentID, data: doc.data(), key: key) else {
+                    continue
+                }
+
+                switch change.type {
+                case .added, .modified:
+                    if remote.deletedAt != nil || !remote.isEnabled {
+                        if merged.removeValue(forKey: remote.id) != nil { changed = true }
+                    } else {
+                        let local = merged[remote.id]
+                        if local == nil || remote.updatedAt > (local?.updatedAt ?? .distantPast) {
+                            merged[remote.id] = remote
+                            changed = true
+                        }
+                    }
+                case .removed:
+                    if merged.removeValue(forKey: remote.id) != nil { changed = true }
+                }
+            }
+
+            if changed {
+                snippets = Self.sorted(Array(merged.values).filter(\.isActive))
+                saveLocalSnapshot()
+            }
+        } catch {
+            // Vault key not available yet — fall back to polling sync
+        }
+    }
+
+    /// Stops the real-time listener (call on deinit or sign-out).
+    func stopRealtimeListener() {
+        firestoreListener?.remove()
+        firestoreListener = nil
+        cachedVaultKey = nil
+        cachedUID = nil
     }
 
     private static func encodeSnippet(_ snippet: TextExpansionSnippet, uid: String, key: Data) throws -> [String: Any] {

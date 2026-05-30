@@ -31,6 +31,8 @@ final class SmartHubBridgeController {
     private var lastTimePeriod: SmartHubTimePeriod = .rolling5h
     private var lastDisplayConfig: SmartHubDisplayConfig?
     private var lastCastReassertedAt: Date = .distantPast
+    private var wakeRecoveryObserver: NSObjectProtocol?
+    private var activateRecoveryObserver: NSObjectProtocol?
 
     /// Auto-refresh cadence for provider quota while the bridge is running.
     /// 60 s keeps Claude (and other providers) fresh on the Nest Hub
@@ -85,6 +87,7 @@ final class SmartHubBridgeController {
         startSnapshotPump()
         startAutoRefresh()
         startCastWatchdog()
+        observeLifecycleForCastRecovery()
     }
 
     func stop() {
@@ -100,6 +103,14 @@ final class SmartHubBridgeController {
         BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceIDCastWatchdog)
         castWatchdog?.cancel()
         castWatchdog = nil
+        if let wakeRecoveryObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeRecoveryObserver)
+        }
+        wakeRecoveryObserver = nil
+        if let activateRecoveryObserver {
+            NotificationCenter.default.removeObserver(activateRecoveryObserver)
+        }
+        activateRecoveryObserver = nil
         SmartHubBridgeServer.shared.stop()
         lastEnabledState = false
     }
@@ -780,7 +791,8 @@ final class SmartHubBridgeController {
                 headlineValue: bridgeBucketHeadline(bucket),
                 subLabel: bridgeBucketSubLabel(bucket),
                 resetsLabel: bridgeBucketResetsLabel(bucket),
-                tone: tone(percent)
+                tone: tone(percent),
+                isCreditBalance: bucket.isCreditBalance
             )
         }
     }
@@ -1025,6 +1037,7 @@ final class SmartHubBridgeController {
         case .piAgent:    return "7C3AED"
         case .geminiCLI:  return "4285F4"
         case .antigravity: return "6C63FF"
+        case .cursorAgent: return "00E5FF"
         case .goose:      return "0D9488"
         case .openClaw:   return "FF6B6B"
         case .ollama:     return "6B7280"
@@ -1124,6 +1137,46 @@ final class SmartHubBridgeController {
         case 60..<85:   return .ember
         case 85..<100:  return .warning
         default:        return .ember
+        }
+    }
+
+    // MARK: - Lifecycle-triggered cast recovery
+    //
+    // The BackgroundCadenceCoordinator already slows the watchdog from
+    // 30 s to 150 s when the app is backgrounded and pauses it entirely
+    // when the display sleeps. Both transitions are almost guaranteed to
+    // kill the DashCast session (the Hub falls to ambient mode during
+    // Mac sleep, and the 150 s background cadence means a long gap
+    // before recovery). These observers fire the watchdog and auto-
+    // refresh immediately so the Hub recovers in seconds, not minutes.
+
+    private func observeLifecycleForCastRecovery() {
+        wakeRecoveryObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.settingsManager.smartHubQuotaDisplayEnabled else { return }
+                Self.log.info("lifecycle: display woke — firing cast watchdog + auto-refresh after settle delay")
+                // Brief delay so the network stack reconnects after sleep.
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { return }
+                BackgroundCadenceCoordinator.shared.fireNow(id: Self.cadenceIDCastWatchdog)
+                BackgroundCadenceCoordinator.shared.fireNow(id: Self.cadenceIDAutoRefresh)
+            }
+        }
+        activateRecoveryObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.settingsManager.smartHubQuotaDisplayEnabled else { return }
+                Self.log.info("lifecycle: app became active — firing cast watchdog + auto-refresh")
+                BackgroundCadenceCoordinator.shared.fireNow(id: Self.cadenceIDCastWatchdog)
+                BackgroundCadenceCoordinator.shared.fireNow(id: Self.cadenceIDAutoRefresh)
+            }
         }
     }
 

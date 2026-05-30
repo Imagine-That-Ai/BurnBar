@@ -624,33 +624,32 @@ final class RemoteUnlockCredentialController {
                     Self.debugTrace("remote_unlock_display_wake_failed requestID=\(credential.requestId) error=\(String(describing: error))")
                 }
 
-                var shouldRunPrivilegedFallback = true
-                do {
-                    try await AppleRemoteDesktopRFBClient().typeCredential(
-                        .init(username: NSUserName(), password: password)
-                    )
+                let backend = context.readiness.capabilities().activeBackend
+                if backend == .openBurnBarVirtualHID {
                     Self.log.info(
-                        "remote_unlock_ard_input_submitted requestID=\(credential.requestId, privacy: .public)"
+                        "remote_unlock_virtual_hid_input_start requestID=\(credential.requestId, privacy: .public)"
                     )
-                    Self.debugTrace("remote_unlock_ard_input_submitted requestID=\(credential.requestId)")
-                    try? await Task.sleep(nanoseconds: 1_100_000_000)
-                    let postARDState = context.readiness.currentState(
-                        sessionId: credential.sessionId,
-                        controlOwnerViewerId: context.authorizedPeerNodeId
-                    )
-                    shouldRunPrivilegedFallback = postARDState.lockState != .unlocked
+                    Self.debugTrace("remote_unlock_virtual_hid_input_start requestID=\(credential.requestId)")
+                    try await RemoteUnlockVirtualHIDClient().typeCredential(password)
+                } else {
                     Self.log.info(
-                        "remote_unlock_ard_input_observed requestID=\(credential.requestId, privacy: .public) lockState=\(postARDState.lockState.rawValue, privacy: .public) fallback=\(shouldRunPrivilegedFallback ? "yes" : "no", privacy: .public)"
+                        "remote_unlock_diagnostic_ard_start requestID=\(credential.requestId, privacy: .public) backend=\(backend.rawValue, privacy: .public)"
                     )
-                    Self.debugTrace("remote_unlock_ard_input_observed requestID=\(credential.requestId) lockState=\(postARDState.lockState.rawValue) fallback=\(shouldRunPrivilegedFallback ? "yes" : "no")")
-                } catch {
-                    Self.log.error(
-                        "remote_unlock_ard_input_failed requestID=\(credential.requestId, privacy: .public) error=\(String(describing: error), privacy: .public)"
-                    )
-                    Self.debugTrace("remote_unlock_ard_input_failed requestID=\(credential.requestId) error=\(String(describing: error))")
-                }
-
-                if shouldRunPrivilegedFallback {
+                    Self.debugTrace("remote_unlock_diagnostic_ard_start requestID=\(credential.requestId) backend=\(backend.rawValue)")
+                    do {
+                        try await AppleRemoteDesktopRFBClient().typeCredential(
+                            .init(username: NSUserName(), password: password)
+                        )
+                        Self.log.info(
+                            "remote_unlock_ard_input_submitted requestID=\(credential.requestId, privacy: .public)"
+                        )
+                        Self.debugTrace("remote_unlock_ard_input_submitted requestID=\(credential.requestId)")
+                    } catch {
+                        Self.log.error(
+                            "remote_unlock_ard_input_failed requestID=\(credential.requestId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+                        )
+                        Self.debugTrace("remote_unlock_ard_input_failed requestID=\(credential.requestId) error=\(String(describing: error))")
+                    }
                     Self.log.info(
                         "remote_unlock_privileged_worker_start requestID=\(credential.requestId, privacy: .public)"
                     )
@@ -666,6 +665,11 @@ final class RemoteUnlockCredentialController {
             Self.debugTrace("remote_unlock_credential_input_failed requestID=\(credential.requestId) detail=\(detail)")
             return result(.failed, detail: detail)
         }
+
+        // Re-wake the physical display so it redraws the (now hopefully unlocked) desktop instead of
+        // lingering on a stale, asleep lock screen. The credential path can unlock the session while
+        // the panel stays dark, which looks like "nothing happened" and forces a manual Touch ID.
+        try? await RemoteAccessAgentClient().wakeDisplay()
 
         try? await Task.sleep(nanoseconds: 700_000_000)
         let state = context.readiness.currentState(
@@ -725,12 +729,24 @@ final class RemoteUnlockCredentialController {
             case .writeFailed: return "remote_access_daemon_write_failed"
             }
         }
+        if let virtualHIDError = error as? RemoteUnlockVirtualHIDClientError {
+            switch virtualHIDError {
+            case .rejected(let detail): return detail
+            case .unavailable: return "virtual_hid_bridge_unavailable"
+            case .socketUnavailable: return "virtual_hid_bridge_socket_unavailable"
+            case .timedOut: return "virtual_hid_bridge_timed_out"
+            case .writeFailed: return "virtual_hid_bridge_write_failed"
+            case .readFailed: return "virtual_hid_bridge_read_failed"
+            case .responseTooLarge: return "virtual_hid_bridge_response_too_large"
+            case .socketPathTooLong: return "virtual_hid_bridge_socket_path_too_long"
+            }
+        }
         return "credential_input_failed"
     }
 }
 
-private struct RemoteAccessAgentClient {
-    private static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
+private struct RemoteAccessAgentClient: Sendable {
+    private static let defaultSocketPath = "/var/run/openburnbar-remote-access-agent.sock"
     private static let maximumResponseBytes = 16 * 1024
     // Must exceed the helper's worker-exit backstop so the app never gives up while the helper is
     // still legitimately typing the password at the login window. The previous 8s was *shorter*
@@ -738,10 +754,15 @@ private struct RemoteAccessAgentClient {
     // Mirrors RemoteAccessCredentialTimeoutPolicy.macClientSocketTimeoutSeconds. health/wakeDisplay
     // still return in milliseconds — this is only the maximum wait, not an added delay.
     private static let requestIOTimeoutSeconds: time_t = 20
+    private var socketPath: String = Self.defaultSocketPath
+
+    init(socketPath: String = Self.defaultSocketPath) {
+        self.socketPath = socketPath
+    }
 
     func typeCredential(_ password: String) async throws {
         try await Task.detached(priority: .userInitiated) {
-            try Self.send(
+            try send(
                 RemoteAccessAgentRequest(operation: "typeCredential", password: password)
             )
         }.value
@@ -749,19 +770,19 @@ private struct RemoteAccessAgentClient {
 
     func wakeDisplay() async throws {
         try await Task.detached(priority: .userInitiated) {
-            try Self.send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
+            try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
         }.value
     }
 
-    private static func send(_ request: RemoteAccessAgentRequest) throws {
+    private func send(_ request: RemoteAccessAgentRequest) throws {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RemoteAccessAgentClientError.socketUnavailable }
         defer { close(fd) }
-        configureSocket(fd)
+        Self.configureSocket(fd)
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
-        try Self.socketPath.withCString { path in
+        try socketPath.withCString { path in
             let capacity = MemoryLayout.size(ofValue: address.sun_path)
             guard strlen(path) < capacity else { throw RemoteAccessAgentClientError.socketPathTooLong }
             withUnsafeMutablePointer(to: &address.sun_path) { pointer in
@@ -827,6 +848,42 @@ private struct RemoteAccessAgentClient {
         withUnsafePointer(to: &timeout) { pointer in
             _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, pointer, timeoutLength)
             _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, pointer, timeoutLength)
+        }
+    }
+}
+
+private struct RemoteUnlockVirtualHIDClient: Sendable {
+    private static let socketPath = RemoteUnlockSetupProbe.virtualHIDBridgeSocketPath
+
+    func typeCredential(_ password: String) async throws {
+        do {
+            try await RemoteAccessAgentClient(socketPath: Self.socketPath).typeCredential(password)
+        } catch let error as RemoteAccessAgentClientError {
+            throw RemoteUnlockVirtualHIDClientError(error)
+        }
+    }
+}
+
+private enum RemoteUnlockVirtualHIDClientError: Error {
+    case rejected(String)
+    case unavailable
+    case socketUnavailable
+    case timedOut
+    case writeFailed
+    case readFailed
+    case responseTooLarge
+    case socketPathTooLong
+
+    init(_ error: RemoteAccessAgentClientError) {
+        switch error {
+        case .daemonRejected(let detail): self = .rejected(detail)
+        case .daemonUnavailable: self = .unavailable
+        case .socketUnavailable: self = .socketUnavailable
+        case .timedOut: self = .timedOut
+        case .writeFailed: self = .writeFailed
+        case .readFailed: self = .readFailed
+        case .responseTooLarge: self = .responseTooLarge
+        case .socketPathTooLong: self = .socketPathTooLong
         }
     }
 }

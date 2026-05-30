@@ -39,11 +39,7 @@ export type InsightConfidence = "low" | "medium" | "high";
 
 export type InsightSeverity = "info" | "low" | "medium" | "high" | "critical";
 
-export type InsightAnalysisInstruction =
-  | "defaultBrief"
-  | "answerFollowUp"
-  | "generateReport"
-  | "updateCanvas";
+export type InsightAnalysisInstruction = "defaultBrief" | "answerFollowUp" | "generateReport" | "updateCanvas";
 
 export type InsightAnalysisStatus =
   | "started"
@@ -179,13 +175,7 @@ export interface InsightRecommendation {
   severity: InsightSeverity;
 }
 
-export type InsightMissionLens =
-  | "accretion"
-  | "diligence"
-  | "techDebt"
-  | "routing"
-  | "quota"
-  | "focus";
+export type InsightMissionLens = "accretion" | "diligence" | "techDebt" | "routing" | "quota" | "focus";
 
 export type InsightMissionPriority = "low" | "medium" | "high" | "critical";
 export type InsightMissionEffort = "small" | "medium" | "large";
@@ -412,14 +402,7 @@ export const InsightJSONSchema = {
       finding: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "title",
-          "whyItMatters",
-          "evidence",
-          "confidence",
-          "severity",
-          "recommendedAction",
-        ],
+        required: ["title", "whyItMatters", "evidence", "confidence", "severity", "recommendedAction"],
         properties: {
           title: { type: "string", minLength: 1, maxLength: 120 },
           whyItMatters: { type: "string", minLength: 1, maxLength: 600 },
@@ -444,14 +427,7 @@ export const InsightJSONSchema = {
       recommendation: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "title",
-          "rationale",
-          "recommendedAction",
-          "evidence",
-          "confidence",
-          "severity",
-        ],
+        required: ["title", "rationale", "recommendedAction", "evidence", "confidence", "severity"],
         properties: {
           title: { type: "string", minLength: 1, maxLength: 120 },
           rationale: { type: "string", minLength: 1, maxLength: 600 },
@@ -530,5 +506,4 @@ export const InsightJSONSchema = {
   },
 } as const;
 
-export type InsightAnalysisResultSchemaV1 =
-  (typeof InsightJSONSchema)["analysisResultSchemaV1"];
+export type InsightAnalysisResultSchemaV1 = (typeof InsightJSONSchema)["analysisResultSchemaV1"];

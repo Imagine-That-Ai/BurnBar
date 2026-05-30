@@ -13,10 +13,7 @@ export async function openBurnBarApp(target: OpenBurnBarAppLaunchTarget): Promis
     throw new Error('OpenBurnBar app launching is currently supported on macOS only.');
   }
 
-  const urls =
-    target === 'search'
-      ? ['openburnbar://search', 'openburnbar://dashboard']
-      : ['openburnbar://dashboard'];
+  const urls = target === 'search' ? ['openburnbar://search', 'openburnbar://dashboard'] : ['openburnbar://dashboard'];
 
   for (const url of urls) {
     try {
@@ -30,10 +27,7 @@ export async function openBurnBarApp(target: OpenBurnBarAppLaunchTarget): Promis
   await execFileAsync('open', ['-b', OPENBURNBAR_MACOS_BUNDLE_ID]);
 }
 
-export async function openBurnBarAppOrWarn(
-  target: OpenBurnBarAppLaunchTarget,
-  missingMessage: string
-): Promise<void> {
+export async function openBurnBarAppOrWarn(target: OpenBurnBarAppLaunchTarget, missingMessage: string): Promise<void> {
   try {
     await openBurnBarApp(target);
   } catch {

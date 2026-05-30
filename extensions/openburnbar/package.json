@@ -206,7 +206,14 @@
         },
         "openburnbar.sidebar.statusLine": {
           "type": "string",
-          "enum": ["smart", "workspace", "models", "activeRun", "socket", "off"],
+          "enum": [
+            "smart",
+            "workspace",
+            "models",
+            "activeRun",
+            "socket",
+            "off"
+          ],
           "default": "smart",
           "description": "Controls what OpenBurnBar shows in the sidebar status line."
         }
@@ -217,12 +224,16 @@
     "build": "tsc -p ./tsconfig.json && node ./scripts/copy-webview-assets.mjs",
     "build:extension-host": "tsc -p ./tsconfig.extension-host.json",
     "clean": "rm -rf dist coverage",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "knip": "knip",
     "lint": "eslint src --ext .ts,.js",
     "lint:fix": "eslint src --ext .ts,.js --fix",
     "prepack": "npm run build",
     "pretest": "npm run build",
     "test": "npm run test:unit",
     "test:unit": "vitest run --coverage.enabled false",
+    "test:coverage": "vitest run --coverage",
     "test:replay": "vitest run --coverage.enabled false test/replayEval.test.ts",
     "test:extension-host": "npm run build && npm run build:extension-host && node ./test/extensionHost/runTest.mjs",
     "test:cursor-smoke": "node ./test/cursorSmoke/runSmoke.mjs",
@@ -236,9 +247,13 @@
     "@types/vscode": "^1.95.0",
     "@typescript-eslint/eslint-plugin": "^8.26.0",
     "@typescript-eslint/parser": "^8.26.0",
+    "@vitest/coverage-v8": "3.2.4",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.22.0",
+    "eslint-config-prettier": "10.1.8",
+    "knip": "5.88.1",
     "mocha": "^11.7.2",
+    "prettier": "3.8.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },

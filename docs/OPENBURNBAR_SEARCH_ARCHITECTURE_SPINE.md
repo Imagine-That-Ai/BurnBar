@@ -34,13 +34,16 @@ logs without changing the local search authority:
 - macOS writes `cloud_search_documents`, `cloud_search_chunks`, and
   `cloud_search_index_state` through Firebase Functions. These rows contain
   sealed titles/snippets/previews, body/content hashes, storage paths, HMAC
-  token hashes, keyed semantic hashes, and semantic posting edges. They do not
-  contain plaintext bodies. The commit callable verifies the encrypted Storage
-  object exists, has the expected byte size and content type, and matches the
-  document/body-hash path before the index row is accepted.
-- Hosted index commits are generation stamped. Large uploads can span multiple
-  Firestore batches, so the callable writes the active commit marker last and
-  search ignores chunks from uncommitted or stale commit IDs.
+  token hashes, keyed semantic hashes, exact token posting edges, and semantic
+  posting edges. Hosted search index v4 uses 16 KB transcript chunks, keeps up
+  to 1024 exact and keyed prefix token hashes on each chunk, and caps per-chunk
+  token posting writes. They do not contain plaintext bodies. The commit callable verifies the
+  encrypted Storage object exists, has the expected byte size and content type,
+  and matches the document/body-hash path before the index row is accepted.
+- Hosted index commits are generation stamped. Search validates candidate
+  chunks against the current `cloud_search_documents` body hash and storage
+  path, so per-conversation commits remain searchable while stale posting edges
+  are ignored.
 - iOS/iPadOS and Android register device public keys, read a wrapped cloud
   vault key from `cloud_vault_key_wrappers`, query by locally derived opaque
   token/semantic hashes, and decrypt returned titles/snippets/full bodies
@@ -62,6 +65,10 @@ logs without changing the local search authority:
   decrypt shim. Hosted MCP search derives search hashes locally, sends only
   opaque hashes to the hosted service, and decrypts returned snippets/bodies on
   the MCP host.
+- Hosted cloud search is database-level, not device-filtered. The hosted index
+  stores exact token posting edges plus semantic posting edges, then validates
+  candidate chunks against current document body hashes/storage paths before
+  returning sealed results.
 
 This is a privacy-preserving hosted index, not a replacement for local hybrid
 retrieval. Local `SearchService` remains the hot path for local corpus search;

@@ -93,8 +93,10 @@ entitlement; without it, the section shows an upsell rather than data.
   server never sees plaintext.
 - **Search path:** active mobile search derives encrypted token/semantic hashes on
   device, calls `searchEncryptedConversationIndex`, and renders matching hosted
-  conversations before any local page filter. The phone downloads the full
-  encrypted body only after a result is opened.
+  conversations before any local page filter. The callable searches Firestore
+  posting/chunk indexes with bounded reads; the phone does not download every
+  transcript to filter locally, and it downloads the full encrypted body only
+  after a result is opened.
 - **Local cache path:** opened or explicitly downloaded transcripts are re-sealed
   with the user's vault key into the iOS caches directory. Settings → Cloud
   exposes the storage cap (250 MB by default), current usage, and Clear cache;

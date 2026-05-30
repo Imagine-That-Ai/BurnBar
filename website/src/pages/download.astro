@@ -34,14 +34,11 @@ const macDownloadHref = macDownloadBaseUrl
           <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseLatest}</span>
           <h2>macOS app</h2>
           <p class="lead">
-            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later. Apple
-            Silicon supported.
+            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later. Apple Silicon
+            supported.
           </p>
         </div>
-        <a
-          class="btn btn--ember dlsec__primary"
-          href={macDownloadHref}
-        >
+        <a class="btn btn--ember dlsec__primary" href={macDownloadHref}>
           Download DMG · {SITE.macReleaseLatest}
           <span class="btn-arrow" aria-hidden="true">↓</span>
         </a>
@@ -191,11 +188,12 @@ npm run build</code></pre>
     <div class="container container--wide">
       <div class="dlsec__head">
         <div>
-          <span class="tag tag--planned tag--plain mono">In development</span>
+          <span class="tag tag--beta tag--plain mono">Feature-complete · Play Store pending</span>
           <h2>Android companion</h2>
           <p class="lead">
-            Source under <code>android/</code>. Read-only Firestore consumer today — renders burn
-            data other clients push to Firebase. No Play Store distribution path yet.
+            The full iPhone &amp; iPad experience, now on Android — your burn, your sessions, the
+            assistant, and Floo, all built and tested. The one thing left is a Play Store listing;
+            until then, build it from source under <code>android/</code>.
           </p>
         </div>
       </div>

@@ -43,11 +43,7 @@ import type {
 
 import { appendEntitlementEvent } from "./audit.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
-import {
-  type AppleJWSVerifier,
-  type DecodedTransaction,
-  getAppleJWSVerifier,
-} from "./verifier.js";
+import { type AppleJWSVerifier, type DecodedTransaction, getAppleJWSVerifier } from "./verifier.js";
 import {
   errorMessage,
   parseEntitlementBindingDoc,
@@ -117,7 +113,7 @@ export async function reconcileEntitlement(
   db: Firestore,
   cfg: AppStoreConfig,
   input: ReconcileInput,
-  overrides: ReconcileOverrides = {}
+  overrides: ReconcileOverrides = {},
 ): Promise<ReconcileResult> {
   const verifier = overrides.verifier ?? getAppleJWSVerifier(cfg);
   const fetchLive = overrides.fetchLive ?? fetchLiveSubscriptionStatus;
@@ -145,7 +141,7 @@ export async function reconcileEntitlement(
   if (!candidate) {
     throw new EntitlementReconcileError(
       "no_active_transaction",
-      `No verified transaction matched productId ${input.productID}.`
+      `No verified transaction matched productId ${input.productID}.`,
     );
   }
 
@@ -161,15 +157,13 @@ export async function reconcileEntitlement(
 
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(docRef);
-    const existing = snap.exists
-      ? parseHostedQuotaEntitlementDoc(snap.data())
-      : undefined;
+    const existing = snap.exists ? parseHostedQuotaEntitlementDoc(snap.data()) : undefined;
 
     if (existing && !shouldOverwrite(existing, next)) {
       tx.set(
         db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
         buildBurnBarProEntitlementMirror(existing),
-        { merge: true }
+        { merge: true },
       );
       return { changed: false, entitlement: existing };
     }
@@ -179,7 +173,7 @@ export async function reconcileEntitlement(
     tx.set(
       db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
       buildBurnBarProEntitlementMirror(merged),
-      { merge: true }
+      { merge: true },
     );
     return { changed: true, entitlement: merged };
   });
@@ -194,10 +188,7 @@ export async function reconcileEntitlement(
       notificationType: input.notificationType,
       notificationSubtype: input.notificationSubtype,
       transactionId: requireString(candidate.payload.transactionId, "transactionId"),
-      originalTransactionId: requireString(
-        candidate.payload.originalTransactionId,
-        "originalTransactionId"
-      ),
+      originalTransactionId: requireString(candidate.payload.originalTransactionId, "originalTransactionId"),
       productId: requireString(candidate.payload.productId, "productId"),
       environment: candidate.environment,
       expiresAt: result.entitlement.expiresAt,
@@ -216,9 +207,7 @@ export async function reconcileEntitlement(
   return { uid, entitlement: result.entitlement, changed: result.changed };
 }
 
-function buildBurnBarProEntitlementMirror(
-  hosted: HostedQuotaEntitlementDoc
-): Record<string, unknown> {
+function buildBurnBarProEntitlementMirror(hosted: HostedQuotaEntitlementDoc): Record<string, unknown> {
   return {
     id: BURNBAR_PRO_ENTITLEMENT_ID,
     active: hosted.active,
@@ -255,7 +244,7 @@ export async function beginBinding(
   db: Firestore,
   uid: string,
   productID: string,
-  clientPlatform?: EntitlementBindingDoc["clientPlatform"]
+  clientPlatform?: EntitlementBindingDoc["clientPlatform"],
 ): Promise<{ appAccountToken: string }> {
   if (!uid) throw new Error("uid is required");
   const token = uuid();
@@ -267,30 +256,20 @@ export async function beginBinding(
     clientPlatform,
     schemaVersion: BINDING_SCHEMA_VERSION,
   };
-  await db
-    .doc(`users/${uid}/entitlement_bindings/${token}`)
-    .create(stripUndefinedObject(doc));
+  await db.doc(`users/${uid}/entitlement_bindings/${token}`).create(stripUndefinedObject(doc));
   return { appAccountToken: token };
 }
 
-async function resolveUid(
-  db: Firestore,
-  input: ReconcileInput,
-  tx: DecodedTransaction
-): Promise<string> {
+async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTransaction): Promise<string> {
   const tokenRaw = tx.payload.appAccountToken;
   const token = typeof tokenRaw === "string" ? tokenRaw.toLowerCase() : "";
 
   if (token) {
-    const bindingUid = await consumeBindingByToken(
-      db,
-      token,
-      input.claimedUid
-    );
+    const bindingUid = await consumeBindingByToken(db, token, input.claimedUid);
     if (input.claimedUid && bindingUid !== input.claimedUid) {
       throw new EntitlementReconcileError(
         "binding_mismatch",
-        `appAccountToken ${redactToken(token)} is bound to a different user.`
+        `appAccountToken ${redactToken(token)} is bound to a different user.`,
       );
     }
     return bindingUid;
@@ -305,12 +284,12 @@ async function resolveUid(
   // originalTransactionId; if exactly one user owns it, attribute there.
   const fallbackUid = await findUidByOriginalTransaction(
     db,
-    requireString(tx.payload.originalTransactionId, "originalTransactionId")
+    requireString(tx.payload.originalTransactionId, "originalTransactionId"),
   );
   if (!fallbackUid) {
     throw new EntitlementReconcileError(
       "uid_unresolved",
-      "JWS has no appAccountToken and no caller UID; cannot attribute."
+      "JWS has no appAccountToken and no caller UID; cannot attribute.",
     );
   }
   return fallbackUid;
@@ -325,63 +304,37 @@ async function resolveUid(
  * search across `entitlement_bindings`. The collection is server-only
  * (rules deny clients), so this is safe.
  */
-async function consumeBindingByToken(
-  db: Firestore,
-  token: string,
-  claimedUid?: string
-): Promise<string> {
+async function consumeBindingByToken(db: Firestore, token: string, claimedUid?: string): Promise<string> {
   if (claimedUid) {
     const ref = db.doc(`users/${claimedUid}/entitlement_bindings/${token}`);
     const snap = await ref.get();
     if (snap.exists) {
       const d = parseEntitlementBindingDoc(snap.data());
       if (!d) {
-        throw new EntitlementReconcileError(
-          "binding_mismatch",
-          "binding doc is invalid"
-        );
+        throw new EntitlementReconcileError("binding_mismatch", "binding doc is invalid");
       }
       if (d.uid !== claimedUid) {
-        throw new EntitlementReconcileError(
-          "binding_mismatch",
-          "binding doc uid does not match caller"
-        );
+        throw new EntitlementReconcileError("binding_mismatch", "binding doc uid does not match caller");
       }
       if (!d.consumedAt) {
-        await ref.set(
-          { consumedAt: new Date().toISOString() },
-          { merge: true }
-        );
+        await ref.set({ consumedAt: new Date().toISOString() }, { merge: true });
       }
       return d.uid;
     }
     // The caller signed in but never minted a binding for this token —
     // someone else's token replayed under their UID.
-    throw new EntitlementReconcileError(
-      "binding_mismatch",
-      "caller has no binding for this appAccountToken"
-    );
+    throw new EntitlementReconcileError("binding_mismatch", "caller has no binding for this appAccountToken");
   }
 
   // S2S path: collection-group lookup.
-  const cg = await db
-    .collectionGroup("entitlement_bindings")
-    .where("id", "==", token)
-    .limit(1)
-    .get();
+  const cg = await db.collectionGroup("entitlement_bindings").where("id", "==", token).limit(1).get();
   const doc = cg.docs[0];
   if (!doc) {
-    throw new EntitlementReconcileError(
-      "binding_unknown",
-      `No binding for appAccountToken ${redactToken(token)}.`
-    );
+    throw new EntitlementReconcileError("binding_unknown", `No binding for appAccountToken ${redactToken(token)}.`);
   }
   const d = parseEntitlementBindingDoc(doc.data());
   if (!d) {
-    throw new EntitlementReconcileError(
-      "binding_mismatch",
-      "binding doc is invalid"
-    );
+    throw new EntitlementReconcileError("binding_mismatch", "binding doc is invalid");
   }
   if (!d.consumedAt) {
     await doc.ref.set({ consumedAt: new Date().toISOString() }, { merge: true });
@@ -389,10 +342,7 @@ async function consumeBindingByToken(
   return d.uid;
 }
 
-async function findUidByOriginalTransaction(
-  db: Firestore,
-  originalTransactionId: string
-): Promise<string | undefined> {
+async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {
   const cg = await db
     .collectionGroup("entitlements")
     .where("originalTransactionID", "==", originalTransactionId)
@@ -415,7 +365,7 @@ async function fetchLiveStatusVerified(
   verifier: AppleJWSVerifier,
   cfg: AppStoreConfig,
   seed: DecodedTransaction,
-  fetchLive: typeof fetchLiveSubscriptionStatus
+  fetchLive: typeof fetchLiveSubscriptionStatus,
 ): Promise<DecodedTransaction[]> {
   const original = seed.payload.originalTransactionId;
   if (!original) return [];
@@ -427,19 +377,14 @@ async function fetchLiveStatusVerified(
   } catch (err) {
     throw new EntitlementReconcileError(
       "asc_live_status_unavailable",
-      `App Store live subscription status unavailable: ${
-        err instanceof Error ? err.message : "unknown ASC error"
-      }`
+      `App Store live subscription status unavailable: ${err instanceof Error ? err.message : "unknown ASC error"}`,
     );
   }
 
   const verified: DecodedTransaction[] = [];
   for (const pair of live.pairs) {
     try {
-      const tx = await verifier.verifyTransaction(
-        pair.signedTransactionInfo,
-        seed.environment
-      );
+      const tx = await verifier.verifyTransaction(pair.signedTransactionInfo, seed.environment);
       assertBundle(cfg, tx);
       verified.push(tx);
     } catch (err) {
@@ -456,10 +401,7 @@ async function fetchLiveStatusVerified(
 // Selection
 // ---------------------------------------------------------------------------
 
-function pickWinning(
-  candidates: DecodedTransaction[],
-  productID: string
-): DecodedTransaction | undefined {
+function pickWinning(candidates: DecodedTransaction[], productID: string): DecodedTransaction | undefined {
   let best: DecodedTransaction | undefined;
   for (const c of candidates) {
     if (c.payload.productId !== productID) continue;
@@ -494,17 +436,11 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
   const p = candidate.payload;
   const now = new Date();
   const expiresMs = typeof p.expiresDate === "number" ? p.expiresDate : undefined;
-  const revokedMs =
-    typeof p.revocationDate === "number" ? p.revocationDate : undefined;
-  const active =
-    revokedMs === undefined &&
-    typeof expiresMs === "number" &&
-    expiresMs > now.getTime();
+  const revokedMs = typeof p.revocationDate === "number" ? p.revocationDate : undefined;
+  const active = revokedMs === undefined && typeof expiresMs === "number" && expiresMs > now.getTime();
 
   const ownership: EntitlementOwnershipType | undefined =
-    p.inAppOwnershipType === "PURCHASED" || p.inAppOwnershipType === "FAMILY_SHARED"
-      ? p.inAppOwnershipType
-      : undefined;
+    p.inAppOwnershipType === "PURCHASED" || p.inAppOwnershipType === "FAMILY_SHARED" ? p.inAppOwnershipType : undefined;
 
   const source: HostedQuotaEntitlementSource = "apple_jws_verified";
   const doc: HostedQuotaEntitlementDoc = {
@@ -512,14 +448,9 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
     active,
     productID,
     transactionID: requireString(p.transactionId, "transactionId"),
-    originalTransactionID: requireString(
-      p.originalTransactionId,
-      "originalTransactionId"
-    ),
+    originalTransactionID: requireString(p.originalTransactionId, "originalTransactionId"),
     environment: candidate.environment,
-    signedTransactionHash: createHash("sha256")
-      .update(candidate.raw)
-      .digest("hex"),
+    signedTransactionHash: createHash("sha256").update(candidate.raw).digest("hex"),
     lastVerifiedAt: now.toISOString(),
     source,
     verificationVersion: VERIFICATION_VERSION,
@@ -552,18 +483,12 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
 }
 
 /** Reject stale events: never let an older signedDate revive a newer doc. */
-function shouldOverwrite(
-  existing: HostedQuotaEntitlementDoc,
-  next: HostedQuotaEntitlementDoc
-): boolean {
+function shouldOverwrite(existing: HostedQuotaEntitlementDoc, next: HostedQuotaEntitlementDoc): boolean {
   // Prefer Apple's transaction watermark over local wall-clock time.
   // `lastVerifiedAt` is still useful for operator observability, but
   // replay protection must key off the signed payload date so a stale
   // event processed later cannot revive an expired or revoked state.
-  if (
-    typeof existing.signedDateMs === "number" &&
-    typeof next.signedDateMs === "number"
-  ) {
+  if (typeof existing.signedDateMs === "number" && typeof next.signedDateMs === "number") {
     return next.signedDateMs >= existing.signedDateMs;
   }
   if (!existing.lastVerifiedAt) return true;
@@ -572,7 +497,7 @@ function shouldOverwrite(
 
 function mergeWithExisting(
   existing: HostedQuotaEntitlementDoc | undefined,
-  next: HostedQuotaEntitlementDoc
+  next: HostedQuotaEntitlementDoc,
 ): HostedQuotaEntitlementDoc {
   if (!existing) return next;
   // Carry forward fields that legitimately change rarely (appAccountToken,
@@ -592,27 +517,18 @@ function mergeWithExisting(
 
 function assertBundle(cfg: AppStoreConfig, tx: DecodedTransaction): void {
   if (tx.payload.bundleId && tx.payload.bundleId !== cfg.bundleId) {
-    throw new EntitlementReconcileError(
-      "bundle_id_mismatch",
-      `JWS bundleId ${tx.payload.bundleId} != ${cfg.bundleId}`
-    );
+    throw new EntitlementReconcileError("bundle_id_mismatch", `JWS bundleId ${tx.payload.bundleId} != ${cfg.bundleId}`);
   }
 }
 
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value) {
-    throw new EntitlementReconcileError(
-      "missing_field",
-      `JWS payload is missing ${field}`
-    );
+    throw new EntitlementReconcileError("missing_field", `JWS payload is missing ${field}`);
   }
   return value;
 }
 
-function auditEventId(
-  input: ReconcileInput,
-  payload: JWSTransactionDecodedPayload
-): string {
+function auditEventId(input: ReconcileInput, payload: JWSTransactionDecodedPayload): string {
   if (input.notificationUUID) return `n_${input.notificationUUID}`;
   return `t_${payload.transactionId}_${payload.signedDate ?? 0}`;
 }
@@ -623,16 +539,9 @@ function auditEventId(
  * they leak the buyer's region and price tier; `appAccountToken` is
  * replaced with its SHA-256 because raw UUIDs are sensitive PII.
  */
-const REDACTED_PAYLOAD_FIELDS = new Set([
-  "storefront",
-  "storefrontId",
-  "currency",
-  "price",
-]);
+const REDACTED_PAYLOAD_FIELDS = new Set(["storefront", "storefrontId", "currency", "price"]);
 
-function redactPayload(
-  payload: JWSTransactionDecodedPayload
-): Record<string, unknown> {
+function redactPayload(payload: JWSTransactionDecodedPayload): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
     if (REDACTED_PAYLOAD_FIELDS.has(k)) continue;
@@ -641,9 +550,7 @@ function redactPayload(
   }
   const appAccountToken = payload.appAccountToken;
   if (typeof appAccountToken === "string" && appAccountToken) {
-    out.appAccountTokenHash = createHash("sha256")
-      .update(appAccountToken)
-      .digest("hex");
+    out.appAccountTokenHash = createHash("sha256").update(appAccountToken).digest("hex");
   }
   return out;
 }

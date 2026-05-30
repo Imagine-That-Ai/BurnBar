@@ -51,8 +51,8 @@ export const rebuildUsageRollups = onCall(
       });
       throw err;
     }
-  }
-));
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Callable: seedAndroidDemoAccount
@@ -72,5 +72,5 @@ export const seedAndroidDemoAccount = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     return seedAndroidDemoAccountForUser(db, uid);
-  }
-));
+  }),
+);

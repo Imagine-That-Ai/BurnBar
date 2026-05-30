@@ -20,10 +20,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import { logError } from "./logging.js";
-import type {
-  MediaFeature,
-  MediaQuotaUsageDoc,
-} from "./types.js";
+import type { MediaFeature, MediaQuotaUsageDoc } from "./types.js";
 
 const QUOTA_SCHEMA_VERSION = 1;
 const QUOTA_COLLECTION = "media_quota_usage";
@@ -175,5 +172,5 @@ export const recomputeMediaQuotaUsage = onSchedule(
         });
       }
     }
-  }
+  },
 );

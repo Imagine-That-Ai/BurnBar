@@ -13,7 +13,9 @@ class OpenBurnBarHealthTreeItem extends vscode.TreeItem {
   }
 }
 
-export class OpenBurnBarHealthTreeDataProvider implements vscode.TreeDataProvider<OpenBurnBarHealthTreeItem>, vscode.Disposable {
+export class OpenBurnBarHealthTreeDataProvider
+  implements vscode.TreeDataProvider<OpenBurnBarHealthTreeItem>, vscode.Disposable
+{
   private readonly eventEmitter = new vscode.EventEmitter<OpenBurnBarHealthTreeItem | undefined | null | void>();
   private readonly stateSubscription: vscode.Disposable;
 
@@ -43,15 +45,15 @@ export class OpenBurnBarHealthTreeDataProvider implements vscode.TreeDataProvide
 
 function iconFor(kind: BurnBarHealthRow['icon']): vscode.ThemeIcon {
   switch (kind) {
-  case 'pass':
-    return new vscode.ThemeIcon('pass');
-  case 'warning':
-    return new vscode.ThemeIcon('warning');
-  case 'pulse':
-    return new vscode.ThemeIcon('pulse');
-  case 'note':
-    return new vscode.ThemeIcon('circle-outline');
-  default:
-    return new vscode.ThemeIcon('question');
+    case 'pass':
+      return new vscode.ThemeIcon('pass');
+    case 'warning':
+      return new vscode.ThemeIcon('warning');
+    case 'pulse':
+      return new vscode.ThemeIcon('pulse');
+    case 'note':
+      return new vscode.ThemeIcon('circle-outline');
+    default:
+      return new vscode.ThemeIcon('question');
   }
 }

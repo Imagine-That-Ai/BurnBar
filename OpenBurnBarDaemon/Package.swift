@@ -18,6 +18,22 @@ let package = Package(
             name: "OpenBurnBarRemoteAccessAgent",
             targets: ["OpenBurnBarRemoteAccessAgent"]
         ),
+        .executable(
+            name: "OpenBurnBarVirtualHIDBridge",
+            targets: ["OpenBurnBarVirtualHIDBridge"]
+        ),
+        .executable(
+            name: "OpenBurnBarPrivilegedInputExecution",
+            targets: ["OpenBurnBarPrivilegedInputExecution"]
+        ),
+        .executable(
+            name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
+            targets: ["OpenBurnBarPrivilegedSocketRedTeamProbe"]
+        ),
+        .executable(
+            name: "OpenBurnBarPrivilegedInputKillSwitchWatchdog",
+            targets: ["OpenBurnBarPrivilegedInputKillSwitchWatchdog"]
+        ),
         .library(
             name: "OpenBurnBarRemoteAccessAgentCore",
             targets: ["OpenBurnBarRemoteAccessAgentCore"]
@@ -50,7 +66,16 @@ let package = Package(
         ),
         .target(
             name: "OpenBurnBarRemoteAccessAgentCore",
-            dependencies: []
+            dependencies: [
+                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-framework", "Security",
+                    "-framework", "CoreGraphics",
+                    "-framework", "IOKit"
+                ])
+            ]
         ),
         .executableTarget(
             name: "OpenBurnBarRemoteAccessAgent",
@@ -63,13 +88,40 @@ let package = Package(
                 ])
             ]
         ),
+        .executableTarget(
+            name: "OpenBurnBarVirtualHIDBridge",
+            dependencies: [
+                "OpenBurnBarRemoteAccessAgentCore",
+                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-framework", "SystemConfiguration"])
+            ]
+        ),
+        .executableTarget(
+            name: "OpenBurnBarPrivilegedInputExecution",
+            dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
+        ),
         .testTarget(
             name: "OpenBurnBarDaemonTests",
             dependencies: ["OpenBurnBarDaemon"]
         ),
+        .executableTarget(
+            name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
+            dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
+        ),
+        .executableTarget(
+            name: "OpenBurnBarPrivilegedInputKillSwitchWatchdog",
+            dependencies: [
+                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+            ]
+        ),
         .testTarget(
             name: "OpenBurnBarRemoteAccessAgentCoreTests",
-            dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
+            dependencies: [
+                "OpenBurnBarRemoteAccessAgentCore",
+                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+            ]
         )
     ]
 )

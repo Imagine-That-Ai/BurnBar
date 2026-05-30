@@ -494,6 +494,27 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(legacyIntelligent.routerMode, .sameModelFailover)
     }
 
+    func testNormalizeBackfillsNewDefaultPreferredModelsForExistingProviders() async throws {
+        let harness = try makeHarness(name: "preferred-model-backfill")
+
+        _ = try await harness.configStore.upsertProvider(BurnBarProviderSettings(
+            providerID: "anthropic",
+            isEnabled: true,
+            baseURL: "https://api.anthropic.com/v1",
+            preferredModelIDs: [
+                "claude-opus-4-7-family",
+                "claude-sonnet-4-6-family",
+                "claude-haiku-4-5-family"
+            ]
+        ))
+
+        let snapshot = try await harness.configStore.snapshot()
+        let preferred = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.preferredModelIDs)
+
+        XCTAssertTrue(preferred.contains("claude-opus-4-8-family"))
+        XCTAssertTrue(preferred.contains("claude-opus-4-7-family"))
+    }
+
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-config-store-\(name)-\(UUID().uuidString)", isDirectory: true)

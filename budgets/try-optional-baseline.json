@@ -1,0 +1,6 @@
+{
+  "total": 779,
+  "scope": "AgentLens/Services",
+  "generatedAt": "2026-05-30T17:04:32Z",
+  "note": "try? occurrences in AgentLens/Services. CI fails on increase."
+}

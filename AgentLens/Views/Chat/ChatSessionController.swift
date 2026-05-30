@@ -123,6 +123,9 @@ final class ChatSessionController {
     var chatModelAntigravity: String = "" {
         didSet { UserDefaults.standard.set(chatModelAntigravity, forKey: Self.udChatModelAntigravity) }
     }
+    var chatModelCursorAgent: String = "" {
+        didSet { UserDefaults.standard.set(chatModelCursorAgent, forKey: Self.udChatModelCursorAgent) }
+    }
     var hermesAvailable: Bool = false
     var openClawAvailable: Bool = false
     var piAgentAvailable: Bool = false
@@ -186,6 +189,7 @@ final class ChatSessionController {
     private static let udChatModelDroid = "chatPanel.model.droid"
     private static let udChatModelForge = "chatPanel.model.forge"
     private static let udChatModelAntigravity = "chatPanel.model.antigravity"
+    private static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
     /// Legacy keys (migrated once into per-backend keys).
     private static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
     private static let udThreadIDHermes = "chatPanelThreadIDHermes"
@@ -255,6 +259,7 @@ final class ChatSessionController {
         chatModelDroid = UserDefaults.standard.string(forKey: Self.udChatModelDroid) ?? ""
         chatModelForge = UserDefaults.standard.string(forKey: Self.udChatModelForge) ?? ""
         chatModelAntigravity = UserDefaults.standard.string(forKey: Self.udChatModelAntigravity) ?? ""
+        chatModelCursorAgent = UserDefaults.standard.string(forKey: Self.udChatModelCursorAgent) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -287,6 +292,7 @@ final class ChatSessionController {
         case .droid: return chatModelDroid
         case .forge: return chatModelForge
         case .antigravity: return chatModelAntigravity
+        case .cursorAgent: return chatModelCursorAgent
         }
     }
 
@@ -300,6 +306,7 @@ final class ChatSessionController {
         case .droid: chatModelDroid = value
         case .forge: chatModelForge = value
         case .antigravity: chatModelAntigravity = value
+        case .cursorAgent: chatModelCursorAgent = value
         }
     }
 
@@ -387,6 +394,7 @@ final class ChatSessionController {
         case .droid: return .droid
         case .forge: return .forge
         case .antigravity: return .antigravity
+        case .cursorAgent: return .cursorAgent
         }
     }
 
@@ -420,6 +428,8 @@ final class ChatSessionController {
             return chatModelForge.trimmingCharacters(in: .whitespacesAndNewlines)
         case .antigravity:
             return chatModelAntigravity.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .cursorAgent:
+            return chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -431,7 +441,7 @@ final class ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
             return []
         }
     }
@@ -741,7 +751,7 @@ final class ChatSessionController {
         case .piAgent:
             baseURL = piAgentGatewayBaseURL
             bearerToken = piAgentBearerToken
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 
@@ -820,13 +830,22 @@ final class ChatSessionController {
             AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
             messages = []
         }
+
+        if messages.isEmpty {
+            if backend.requiresCLIAssistantConsent {
+                chatViewMode = .cli
+            } else {
+                chatViewMode = .agent
+            }
+        }
+
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
         persistActiveThreadSlot()
-        refreshHistory()
-        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
-
-        ensureChatWorkspaceDirectoryExists()
         Task {
+            await Task.yield()
+            refreshHistory()
+            refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+            ensureChatWorkspaceDirectoryExists()
             await probeHermesAvailability()
             await probeOpenClawAvailability()
         }
@@ -917,7 +936,7 @@ final class ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? dataStore.chatThreadExists(id: legacy)) == true {
                 UserDefaults.standard.set(legacy, forKey: key)
@@ -1024,6 +1043,11 @@ final class ChatSessionController {
         persistActiveThreadSlot()
         messages = []
         conversationJumpTargets = []
+        if chatBackend.requiresCLIAssistantConsent {
+            chatViewMode = .cli
+        } else {
+            chatViewMode = .agent
+        }
         ensureChatWorkspaceDirectoryExists()
         refreshHistory()
     }
@@ -1056,6 +1080,14 @@ final class ChatSessionController {
             AppLogger.chat.silentFailure("openOrCreateChatThread", error: error)
             startNewChatThread()
             return
+        }
+
+        if messages.isEmpty {
+            if chatBackend.requiresCLIAssistantConsent {
+                chatViewMode = .cli
+            } else {
+                chatViewMode = .agent
+            }
         }
 
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
@@ -1286,11 +1318,11 @@ final class ChatSessionController {
                 refreshHistory()
                 return
             }
-        case .codex, .claude, .droid, .forge, .antigravity:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
             guard settingsManager.cliAssistantAllowed else {
                 let err = ChatMessageRecord(
                     role: .assistant,
-                    content: "Local CLI assistant is off. Enable Mac CLI assistants in Settings → Privacy, or complete the permission prompt from the chat button.",
+                    content: "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
                     cliUsed: nil
                 )
                 messages.append(err)
@@ -1343,6 +1375,21 @@ final class ChatSessionController {
                     try dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Antigravity not found)", error: error)
+                }
+                refreshHistory()
+                return
+            }
+            if chatBackend == .cursorAgent, await !cliBridge.isExecutableAvailable(named: "cursor-agent") {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: "Cursor Agent CLI was not found. Install Cursor Agent and ensure `cursor-agent` is on your PATH.",
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (Cursor Agent not found)", error: error)
                 }
                 refreshHistory()
                 return
@@ -1682,6 +1729,13 @@ final class ChatSessionController {
                             workspaceDirectory: self.chatWorkspaceURL,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .cursorAgent:
+                        return self.cliBridge.chatCursorAgentStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {
@@ -1800,7 +1854,7 @@ final class ChatSessionController {
             let modelLine = model.isEmpty ? "" : " Current requested model: \(model)."
             return "Hermes gateway is running, but OpenBurnBar could not read its live model catalog. Wait a few seconds and retry, or choose a live Hermes model from Settings → Chat.\(modelLine)"
         }
-        return "Hermes isn’t running. Add API_SERVER_ENABLED=true to ~/.hermes/.env, then in Terminal run: hermes gateway run. You don’t need to enter anything in OpenBurnBar unless you set API_SERVER_KEY in that file — then paste the same value in Settings → Chat under Hermes."
+        return "Hermes isn’t running. Click Open Hermes + Gateway and OpenBurnBar will enable the local API server and start the gateway. If you set API_SERVER_KEY in ~/.hermes/.env, OpenBurnBar will reuse it locally."
     }
 
     private func hermesHealthReachable() async -> Bool {
@@ -1904,6 +1958,9 @@ final class ChatSessionController {
             case .antigravity:
                 let m = chatModelAntigravity.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "antigravity"
                 return (.antigravity, "OpenBurnBar Antigravity Chat", m)
+            case .cursorAgent:
+                let m = chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "cursor-agent"
+                return (.cursorAgent, "OpenBurnBar Cursor Agent Chat", m)
             }
         }()
 

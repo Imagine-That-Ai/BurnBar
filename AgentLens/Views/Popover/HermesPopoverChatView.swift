@@ -335,8 +335,7 @@ struct AssistantsPopoverChatView: View {
     }
 
     private var shouldShowCLIPermissionCard: Bool {
-        (controller.chatBackend == .codex || controller.chatBackend == .claude)
-            && !settingsManager.cliAssistantAllowed
+        controller.chatBackend.requiresCLIAssistantConsent && !settingsManager.cliAssistantAllowed
     }
 
     private var cliPermissionCard: some View {
@@ -374,8 +373,7 @@ struct AssistantsPopoverChatView: View {
                 .buttonStyle(.borderless)
 
                 Button {
-                    settingsManager.cliAssistantAllowed = true
-                    settingsManager.cliAssistantConsentShown = true
+                    showCLIAssistantConsent = true
                 } label: {
                     Label("Allow", systemImage: "checkmark.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
@@ -577,6 +575,7 @@ struct AssistantsPopoverChatView: View {
         case .droid: return "Ask Droid…"
         case .forge: return "Ask Forge…"
         case .antigravity: return "Ask Antigravity…"
+        case .cursorAgent: return "Ask Cursor Agent…"
         }
     }
 

@@ -103,7 +103,7 @@ const statusTint = (s: Surface["status"]) => {
           ))
         }
       </ul>
-         <!-- Registry Config Console -->
+      <!-- Registry Config Console -->
       <div class="surfacematrix__console glass-card">
         <div class="console__header">
           <span class="console__dot"></span>
@@ -124,225 +124,455 @@ const statusTint = (s: Surface["status"]) => {
     </div>
   </section>
 
-      <!-- Pure CSS Interactive Step Dispatcher -->
-      <div class="extending__flow-wrapper">
-        <input type="radio" id="step-1" name="extending-steps" class="step-radio-state" checked />
-        <input type="radio" id="step-2" name="extending-steps" class="step-radio-state" />
-        <input type="radio" id="step-3" name="extending-steps" class="step-radio-state" />
+  <!-- Pure CSS Interactive Step Dispatcher -->
+  <div class="extending__flow-wrapper">
+    <input type="radio" id="step-1" name="extending-steps" class="step-radio-state" checked />
+    <input type="radio" id="step-2" name="extending-steps" class="step-radio-state" />
+    <input type="radio" id="step-3" name="extending-steps" class="step-radio-state" />
 
-        <!-- 1. Beautiful Interactive Pipeline Schematic Monitor -->
-        <div class="console-deck__header glass-card">
-          <div class="monitor-screen">
-            <div class="crt-scanlines"></div>
-            <div class="monitor-header">
-              <span class="monitor-title mono">[SYSTEM PORT STATUS // DATA PIPELINE CAST]</span>
-              <div class="monitor-indicators">
-                <span class="indicator-led pulse-fast green"></span>
-                <span class="indicator-label mono">DAEMON LINK: OK</span>
-              </div>
-            </div>
-            <div class="monitor-schematic">
-              <svg class="schematic-svg" viewBox="0 0 800 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255, 255, 255, 0.015)" stroke-width="1"/>
-                  </pattern>
-                  <linearGradient id="flow-glow-1" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stop-color="rgba(238, 24, 3, 0.9)" />
-                    <stop offset="100%" stop-color="rgba(250, 107, 6, 0.9)" />
-                  </linearGradient>
-                  <linearGradient id="flow-glow-2" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stop-color="rgba(250, 107, 6, 0.9)" />
-                    <stop offset="100%" stop-color="rgba(253, 196, 44, 0.9)" />
-                  </linearGradient>
-                  <linearGradient id="flow-glow-3" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stop-color="rgba(253, 196, 44, 0.9)" />
-                    <stop offset="100%" stop-color="rgba(61, 220, 132, 0.9)" />
-                  </linearGradient>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+    <!-- 1. Beautiful Interactive Pipeline Schematic Monitor -->
+    <div class="console-deck__header glass-card">
+      <div class="monitor-screen">
+        <div class="crt-scanlines"></div>
+        <div class="monitor-header">
+          <span class="monitor-title mono">[SYSTEM PORT STATUS // DATA PIPELINE CAST]</span>
+          <div class="monitor-indicators">
+            <span class="indicator-led pulse-fast green"></span>
+            <span class="indicator-label mono">DAEMON LINK: OK</span>
+          </div>
+        </div>
+        <div class="monitor-schematic">
+          <svg
+            class="schematic-svg"
+            viewBox="0 0 800 120"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path
+                  d="M 20 0 L 0 0 0 20"
+                  fill="none"
+                  stroke="rgba(255, 255, 255, 0.015)"
+                  stroke-width="1"></path>
+              </pattern>
+              <linearGradient id="flow-glow-1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="rgba(238, 24, 3, 0.9)"></stop>
+                <stop offset="100%" stop-color="rgba(250, 107, 6, 0.9)"></stop>
+              </linearGradient>
+              <linearGradient id="flow-glow-2" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="rgba(250, 107, 6, 0.9)"></stop>
+                <stop offset="100%" stop-color="rgba(253, 196, 44, 0.9)"></stop>
+              </linearGradient>
+              <linearGradient id="flow-glow-3" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="rgba(253, 196, 44, 0.9)"></stop>
+                <stop offset="100%" stop-color="rgba(61, 220, 132, 0.9)"></stop>
+              </linearGradient>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid-pattern)"></rect>
 
-                <!-- Daemon Core node -->
-                <circle cx="100" cy="60" r="32" class="schematic-core-bg" fill="rgba(250, 107, 6, 0.02)" stroke="rgba(250, 107, 6, 0.12)" stroke-width="1" />
-                <circle cx="100" cy="60" r="22" class="schematic-core-inner" fill="rgba(250, 107, 6, 0.06)" stroke="var(--core-fire)" stroke-width="1.5" />
-                <text x="100" y="63" text-anchor="middle" class="schematic-text mono core-text" fill="var(--text-bright)" font-size="9" font-weight="bold">DAEMON</text>
+            <!-- Daemon Core node -->
+            <circle
+              cx="100"
+              cy="60"
+              r="32"
+              class="schematic-core-bg"
+              fill="rgba(250, 107, 6, 0.02)"
+              stroke="rgba(250, 107, 6, 0.12)"
+              stroke-width="1"></circle>
+            <circle
+              cx="100"
+              cy="60"
+              r="22"
+              class="schematic-core-inner"
+              fill="rgba(250, 107, 6, 0.06)"
+              stroke="var(--core-fire)"
+              stroke-width="1.5"></circle>
+            <text
+              x="100"
+              y="63"
+              text-anchor="middle"
+              class="schematic-text mono core-text"
+              fill="var(--text-bright)"
+              font-size="9"
+              font-weight="bold">DAEMON</text
+            >
 
-                <!-- Channel lines connecting to active steps -->
-                <!-- Step 1 Wire -->
-                <path d="M 132 60 Q 220 30 300 30" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
-                <path d="M 132 60 Q 220 30 300 30" class="wire-active active-path-1" stroke="url(#flow-glow-1)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+            <!-- Channel lines connecting to active steps -->
+            <!-- Step 1 Wire -->
+            <path
+              d="M 132 60 Q 220 30 300 30"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1.5"></path>
+            <path
+              d="M 132 60 Q 220 30 300 30"
+              class="wire-active active-path-1"
+              stroke="url(#flow-glow-1)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-dasharray="8 12"></path>
 
-                <!-- Step 2 Wire -->
-                <path d="M 132 60 H 300" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
-                <path d="M 132 60 H 300" class="wire-active active-path-2" stroke="url(#flow-glow-2)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+            <!-- Step 2 Wire -->
+            <path d="M 132 60 H 300" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5"
+            ></path>
+            <path
+              d="M 132 60 H 300"
+              class="wire-active active-path-2"
+              stroke="url(#flow-glow-2)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-dasharray="8 12"></path>
 
-                <!-- Step 3 Wire -->
-                <path d="M 132 60 Q 220 90 300 90" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
-                <path d="M 132 60 Q 220 90 300 90" class="wire-active active-path-3" stroke="url(#flow-glow-3)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+            <!-- Step 3 Wire -->
+            <path
+              d="M 132 60 Q 220 90 300 90"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1.5"></path>
+            <path
+              d="M 132 60 Q 220 90 300 90"
+              class="wire-active active-path-3"
+              stroke="url(#flow-glow-3)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-dasharray="8 12"></path>
 
-                <!-- Step Nodes -->
-                <!-- Node 1 -->
-                <g class="node-group node-group-1">
-                  <rect x="300" y="15" width="140" height="30" rx="6" class="node-rect rect-1" fill="var(--ink-void)" stroke="var(--ink-line)" stroke-width="1.5" />
-                  <circle cx="316" cy="30" r="4" class="node-status status-1" fill="var(--core-red)" />
-                  <text x="330" y="34" class="schematic-text mono" fill="var(--text-mute)" font-size="8.5">01 // SCHEMA DECLARE</text>
-                </g>
+            <!-- Step Nodes -->
+            <!-- Node 1 -->
+            <g class="node-group node-group-1">
+              <rect
+                x="300"
+                y="15"
+                width="140"
+                height="30"
+                rx="6"
+                class="node-rect rect-1"
+                fill="var(--ink-void)"
+                stroke="var(--ink-line)"
+                stroke-width="1.5"></rect>
+              <circle cx="316" cy="30" r="4" class="node-status status-1" fill="var(--core-red)"
+              ></circle>
+              <text
+                x="330"
+                y="34"
+                class="schematic-text mono"
+                fill="var(--text-mute)"
+                font-size="8.5">01 // SCHEMA DECLARE</text
+              >
+            </g>
 
-                <!-- Node 2 -->
-                <g class="node-group node-group-2">
-                  <rect x="300" y="45" width="140" height="30" rx="6" class="node-rect rect-2" fill="var(--ink-void)" stroke="var(--ink-line)" stroke-width="1.5" />
-                  <circle cx="316" cy="60" r="4" class="node-status status-2" fill="var(--core-fire)" />
-                  <text x="330" y="64" class="schematic-text mono" fill="var(--text-mute)" font-size="8.5">02 // MODEL LAYOUT</text>
-                </g>
+            <!-- Node 2 -->
+            <g class="node-group node-group-2">
+              <rect
+                x="300"
+                y="45"
+                width="140"
+                height="30"
+                rx="6"
+                class="node-rect rect-2"
+                fill="var(--ink-void)"
+                stroke="var(--ink-line)"
+                stroke-width="1.5"></rect>
+              <circle cx="316" cy="60" r="4" class="node-status status-2" fill="var(--core-fire)"
+              ></circle>
+              <text
+                x="330"
+                y="64"
+                class="schematic-text mono"
+                fill="var(--text-mute)"
+                font-size="8.5">02 // MODEL LAYOUT</text
+              >
+            </g>
 
-                <!-- Node 3 -->
-                <g class="node-group node-group-3">
-                  <rect x="300" y="75" width="140" height="30" rx="6" class="node-rect rect-3" fill="var(--ink-void)" stroke="var(--ink-line)" stroke-width="1.5" />
-                  <circle cx="316" cy="90" r="4" class="node-status status-3" fill="var(--core-amber)" />
-                  <text x="330" y="94" class="schematic-text mono" fill="var(--text-mute)" font-size="8.5">03 // HARDWARE QA</text>
-                </g>
+            <!-- Node 3 -->
+            <g class="node-group node-group-3">
+              <rect
+                x="300"
+                y="75"
+                width="140"
+                height="30"
+                rx="6"
+                class="node-rect rect-3"
+                fill="var(--ink-void)"
+                stroke="var(--ink-line)"
+                stroke-width="1.5"></rect>
+              <circle cx="316" cy="90" r="4" class="node-status status-3" fill="var(--core-amber)"
+              ></circle>
+              <text
+                x="330"
+                y="94"
+                class="schematic-text mono"
+                fill="var(--text-mute)"
+                font-size="8.5">03 // HARDWARE QA</text
+              >
+            </g>
 
-                <!-- Channels from Steps to Destination Shipped Core -->
-                <!-- Step 1 Out -->
-                <path d="M 440 30 Q 510 30 580 60" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
-                <path d="M 440 30 Q 510 30 580 60" class="wire-active active-path-1" stroke="url(#flow-glow-1)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+            <!-- Channels from Steps to Destination Shipped Core -->
+            <!-- Step 1 Out -->
+            <path
+              d="M 440 30 Q 510 30 580 60"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1.5"></path>
+            <path
+              d="M 440 30 Q 510 30 580 60"
+              class="wire-active active-path-1"
+              stroke="url(#flow-glow-1)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-dasharray="8 12"></path>
 
-                <!-- Step 2 Out -->
-                <path d="M 440 60 H 580" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
-                <path d="M 440 60 H 580" class="wire-active active-path-2" stroke="url(#flow-glow-2)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+            <!-- Step 2 Out -->
+            <path d="M 440 60 H 580" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5"
+            ></path>
+            <path
+              d="M 440 60 H 580"
+              class="wire-active active-path-2"
+              stroke="url(#flow-glow-2)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-dasharray="8 12"></path>
 
-                <!-- Step 3 Out -->
-                <path d="M 440 90 Q 510 90 580 60" class="wire-bg" stroke="var(--ink-line)" stroke-width="1.5" />
-                <path d="M 440 90 Q 510 90 580 60" class="wire-active active-path-3" stroke="url(#flow-glow-3)" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" />
+            <!-- Step 3 Out -->
+            <path
+              d="M 440 90 Q 510 90 580 60"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1.5"></path>
+            <path
+              d="M 440 90 Q 510 90 580 60"
+              class="wire-active active-path-3"
+              stroke="url(#flow-glow-3)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-dasharray="8 12"></path>
 
-                <!-- Destination Core node -->
-                <circle cx="612" cy="60" r="32" class="schematic-dest-bg" fill="rgba(61, 220, 132, 0.02)" stroke="rgba(61, 220, 132, 0.12)" stroke-width="1" />
-                <circle cx="612" cy="60" r="22" class="schematic-dest-inner" fill="rgba(61, 220, 132, 0.06)" stroke="#3DDC84" stroke-width="1.5" />
-                <text x="612" y="63" text-anchor="middle" class="schematic-text mono dest-text" fill="var(--text-bright)" font-size="8.5" font-weight="bold">CASTED</text>
+            <!-- Destination Core node -->
+            <circle
+              cx="612"
+              cy="60"
+              r="32"
+              class="schematic-dest-bg"
+              fill="rgba(61, 220, 132, 0.02)"
+              stroke="rgba(61, 220, 132, 0.12)"
+              stroke-width="1"></circle>
+            <circle
+              cx="612"
+              cy="60"
+              r="22"
+              class="schematic-dest-inner"
+              fill="rgba(61, 220, 132, 0.06)"
+              stroke="#3DDC84"
+              stroke-width="1.5"></circle>
+            <text
+              x="612"
+              y="63"
+              text-anchor="middle"
+              class="schematic-text mono dest-text"
+              fill="var(--text-bright)"
+              font-size="8.5"
+              font-weight="bold">CASTED</text
+            >
 
-                <!-- Outbound flows to peripheral mockups -->
-                <path d="M 644 60 C 690 60 700 30 735 30" class="wire-bg" stroke="var(--ink-line)" stroke-width="1" />
-                <path d="M 644 60 C 690 60 700 60 735 60" class="wire-bg" stroke="var(--ink-line)" stroke-width="1" />
-                <path d="M 644 60 C 690 60 700 90 735 90" class="wire-bg" stroke="var(--ink-line)" stroke-width="1" />
+            <!-- Outbound flows to peripheral mockups -->
+            <path
+              d="M 644 60 C 690 60 700 30 735 30"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1"></path>
+            <path
+              d="M 644 60 C 690 60 700 60 735 60"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1"></path>
+            <path
+              d="M 644 60 C 690 60 700 90 735 90"
+              class="wire-bg"
+              stroke="var(--ink-line)"
+              stroke-width="1"></path>
 
-                <path d="M 644 60 C 690 60 700 30 735 30" class="wire-active active-cast-flow" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="6 10" />
-                <path d="M 644 60 C 690 60 700 60 735 60" class="wire-active active-cast-flow" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="6 10" />
-                <path d="M 644 60 C 690 60 700 90 735 90" class="wire-active active-cast-flow" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="6 10" />
+            <path
+              d="M 644 60 C 690 60 700 30 735 30"
+              class="wire-active active-cast-flow"
+              stroke="#3DDC84"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-dasharray="6 10"></path>
+            <path
+              d="M 644 60 C 690 60 700 60 735 60"
+              class="wire-active active-cast-flow"
+              stroke="#3DDC84"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-dasharray="6 10"></path>
+            <path
+              d="M 644 60 C 690 60 700 90 735 90"
+              class="wire-active active-cast-flow"
+              stroke="#3DDC84"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-dasharray="6 10"></path>
 
-                <circle cx="735" cy="30" r="2.5" fill="var(--text-dim)" />
-                <circle cx="735" cy="60" r="2.5" fill="var(--text-dim)" />
-                <circle cx="735" cy="90" r="2.5" fill="var(--text-dim)" />
+            <circle cx="735" cy="30" r="2.5" fill="var(--text-dim)"></circle>
+            <circle cx="735" cy="60" r="2.5" fill="var(--text-dim)"></circle>
+            <circle cx="735" cy="90" r="2.5" fill="var(--text-dim)"></circle>
 
-                <text x="746" y="33" class="schematic-text mono" fill="var(--text-dim)" font-size="8">tvOS</text>
-                <text x="746" y="63" class="schematic-text mono" fill="var(--text-dim)" font-size="8">iOS</text>
-                <text x="746" y="93" class="schematic-text mono" fill="var(--text-dim)" font-size="8">Nest</text>
+            <text x="746" y="33" class="schematic-text mono" fill="var(--text-dim)" font-size="8"
+              >tvOS</text
+            >
+            <text x="746" y="63" class="schematic-text mono" fill="var(--text-dim)" font-size="8"
+              >iOS</text
+            >
+            <text x="746" y="93" class="schematic-text mono" fill="var(--text-dim)" font-size="8"
+              >Nest</text
+            >
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Dual-Column Grid System -->
+    <div class="console-deck__main">
+      <!-- Left: Modular Steps Cassette Panels -->
+      <div class="console-deck__selectors">
+        <!-- Cassette 1 -->
+        <label for="step-1" class="step-cassette step-cassette--1 glass-card">
+          <div class="cassette__body">
+            <div class="cassette__glow-ring"></div>
+            <div class="cassette__icon-box">
+              <svg
+                class="cassette-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M4 6C4 4.9 7.6 4 12 4s8 .9 8 2M4 6c0 1.1 3.6 2 8 2s8-.9 8-2M4 6v12c0 1.1 3.6 2 8 2s8-.9 8-2V6"
+                ></path>
+                <path d="M20 12c0 1.1-3.6 2-8 2s-8-.9-8-2"></path>
               </svg>
             </div>
+            <div class="cassette__content">
+              <div class="cassette__header">
+                <span class="cassette__num mono">[01 // REGISTRY]</span>
+                <span class="cassette__status-dot"></span>
+              </div>
+              <h3>Declare the physical schema</h3>
+              <p>
+                Add a structured data row in <code>website/src/data/surfaces.ts</code>. It mounts
+                into the grid instantly.
+              </p>
+            </div>
+          </div>
+        </label>
+
+        <!-- Cassette 2 -->
+        <label for="step-2" class="step-cassette step-cassette--2 glass-card">
+          <div class="cassette__body">
+            <div class="cassette__glow-ring"></div>
+            <div class="cassette__icon-box">
+              <svg
+                class="cassette-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            </div>
+            <div class="cassette__content">
+              <div class="cassette__header">
+                <span class="cassette__num mono">[02 // VIEWPORT]</span>
+                <span class="cassette__status-dot"></span>
+              </div>
+              <h3>Define mockup telemetry</h3>
+              <p>
+                Establish coordinates and aspect ratios in <code>platform-surfaces.ts</code> to bind screen
+                shapes.
+              </p>
+            </div>
+          </div>
+        </label>
+
+        <!-- Cassette 3 -->
+        <label for="step-3" class="step-cassette step-cassette--3 glass-card">
+          <div class="cassette__body">
+            <div class="cassette__glow-ring"></div>
+            <div class="cassette__icon-box">
+              <svg
+                class="cassette-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+              </svg>
+            </div>
+            <div class="cassette__content">
+              <div class="cassette__header">
+                <span class="cassette__num mono">[03 // HARDWARE]</span>
+                <span class="cassette__status-dot"></span>
+              </div>
+              <h3>Commit network hardware QA</h3>
+              <p>
+                Execute diagnostics loopback, probe remote pixel densities, and verify encrypted
+                device handshakes.
+              </p>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <!-- Right: smudged-glass IDE and diagnostic terminal screen -->
+      <div class="console-deck__code-showcase glass-card">
+        <div class="crt-scanlines"></div>
+        <!-- IDE Header Bar -->
+        <div class="ide__header">
+          <div class="ide__dots">
+            <span class="ide__dot dot--red"></span>
+            <span class="ide__dot dot--yellow"></span>
+            <span class="ide__dot dot--green"></span>
+          </div>
+          <div class="ide__tabs">
+            <label for="step-1" class="ide__tab tab--1 mono">
+              <span class="tab-icon">ts</span> surfaces.ts
+            </label>
+            <label for="step-2" class="ide__tab tab--2 mono">
+              <span class="tab-icon">ts</span> platform-surfaces.ts
+            </label>
+            <label for="step-3" class="ide__tab tab--3 mono">
+              <span class="tab-icon">md</span> SMART_DISPLAY_DEVICE_QA.md
+            </label>
+          </div>
+          <div class="ide__actions">
+            <span class="ide__badge mono">READONLY</span>
           </div>
         </div>
 
-        <!-- 2. Dual-Column Grid System -->
-        <div class="console-deck__main">
-          <!-- Left: Modular Steps Cassette Panels -->
-          <div class="console-deck__selectors">
-            <!-- Cassette 1 -->
-            <label for="step-1" class="step-cassette step-cassette--1 glass-card">
-              <div class="cassette__body">
-                <div class="cassette__glow-ring"></div>
-                <div class="cassette__icon-box">
-                  <svg class="cassette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 6C4 4.9 7.6 4 12 4s8 .9 8 2M4 6c0 1.1 3.6 2 8 2s8-.9 8-2M4 6v12c0 1.1 3.6 2 8 2s8-.9 8-2V6" />
-                    <path d="M20 12c0 1.1-3.6 2-8 2s-8-.9-8-2" />
-                  </svg>
-                </div>
-                <div class="cassette__content">
-                  <div class="cassette__header">
-                    <span class="cassette__num mono">[01 // REGISTRY]</span>
-                    <span class="cassette__status-dot"></span>
-                  </div>
-                  <h3>Declare the physical schema</h3>
-                  <p>Add a structured data row in <code>website/src/data/surfaces.ts</code>. It mounts into the grid instantly.</p>
-                </div>
-              </div>
-            </label>
-
-            <!-- Cassette 2 -->
-            <label for="step-2" class="step-cassette step-cassette--2 glass-card">
-              <div class="cassette__body">
-                <div class="cassette__glow-ring"></div>
-                <div class="cassette__icon-box">
-                  <svg class="cassette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2" y="3" width="20" height="14" rx="2" />
-                    <line x1="8" y1="21" x2="16" y2="21" />
-                    <line x1="12" y1="17" x2="12" y2="21" />
-                  </svg>
-                </div>
-                <div class="cassette__content">
-                  <div class="cassette__header">
-                    <span class="cassette__num mono">[02 // VIEWPORT]</span>
-                    <span class="cassette__status-dot"></span>
-                  </div>
-                  <h3>Define mockup telemetry</h3>
-                  <p>Establish coordinates and aspect ratios in <code>platform-surfaces.ts</code> to bind screen shapes.</p>
-                </div>
-              </div>
-            </label>
-
-            <!-- Cassette 3 -->
-            <label for="step-3" class="step-cassette step-cassette--3 glass-card">
-              <div class="cassette__body">
-                <div class="cassette__glow-ring"></div>
-                <div class="cassette__icon-box">
-                  <svg class="cassette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                  </svg>
-                </div>
-                <div class="cassette__content">
-                  <div class="cassette__header">
-                    <span class="cassette__num mono">[03 // HARDWARE]</span>
-                    <span class="cassette__status-dot"></span>
-                  </div>
-                  <h3>Commit network hardware QA</h3>
-                  <p>Execute diagnostics loopback, probe remote pixel densities, and verify Iroh transport handshakes.</p>
-                </div>
-              </div>
-            </label>
-          </div>
-
-          <!-- Right: smudged-glass IDE and diagnostic terminal screen -->
-          <div class="console-deck__code-showcase glass-card">
-            <div class="crt-scanlines"></div>
-            <!-- IDE Header Bar -->
-            <div class="ide__header">
-              <div class="ide__dots">
-                <span class="ide__dot dot--red"></span>
-                <span class="ide__dot dot--yellow"></span>
-                <span class="ide__dot dot--green"></span>
-              </div>
-              <div class="ide__tabs">
-                <label for="step-1" class="ide__tab tab--1 mono">
-                  <span class="tab-icon">ts</span> surfaces.ts
-                </label>
-                <label for="step-2" class="ide__tab tab--2 mono">
-                  <span class="tab-icon">ts</span> platform-surfaces.ts
-                </label>
-                <label for="step-3" class="ide__tab tab--3 mono">
-                  <span class="tab-icon">md</span> SMART_DISPLAY_DEVICE_QA.md
-                </label>
-              </div>
-              <div class="ide__actions">
-                <span class="ide__badge mono">READONLY</span>
-              </div>
+        <!-- IDE Code & Terminal Window -->
+        <div class="ide__window">
+          <!-- STEP 1 CODE: surfaces.ts -->
+          <div class="ide__pane pane--1">
+            <div class="ide__line-numbers mono">
+              <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span
+              ><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span
+                >12</span
+              >
             </div>
-
-            <!-- IDE Code & Terminal Window -->
-            <div class="ide__window">
-              <!-- STEP 1 CODE: surfaces.ts -->
-              <div class="ide__pane pane--1">
-                <div class="ide__line-numbers mono">
-                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
-                </div>
-                <pre class="ide__code mono"><code><span class="keyword">export const</span> <span class="variable">SURFACES</span>: <span class="type">Surface</span>[] = [
+            <pre
+              class="ide__code mono"><code><span class="keyword">export const</span> <span class="variable">SURFACES</span>: <span class="type">Surface</span>[] = [
   <span class="comment">// ... previous surfaces ...</span>
   &#123;
     <span class="property">id</span>: <span class="string">"apple-tv"</span>,
@@ -356,14 +586,18 @@ const statusTint = (s: Surface["status"]) => {
     ]
   &#125;
 ];</code></pre>
-              </div>
+          </div>
 
-              <!-- STEP 2 CODE: platform-surfaces.ts -->
-              <div class="ide__pane pane--2">
-                <div class="ide__line-numbers mono">
-                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
-                </div>
-                <pre class="ide__code mono"><code><span class="keyword">export const</span> <span class="variable">PLATFORM_DEVICES</span>: <span class="type">PlatformDevice</span>[] = [
+          <!-- STEP 2 CODE: platform-surfaces.ts -->
+          <div class="ide__pane pane--2">
+            <div class="ide__line-numbers mono">
+              <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span
+              ><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span
+                >12</span
+              >
+            </div>
+            <pre
+              class="ide__code mono"><code><span class="keyword">export const</span> <span class="variable">PLATFORM_DEVICES</span>: <span class="type">PlatformDevice</span>[] = [
   <span class="comment">// ... previous devices ...</span>
   &#123;
     <span class="property">id</span>: <span class="string">"apple-tv-4k"</span>,
@@ -377,67 +611,96 @@ const statusTint = (s: Surface["status"]) => {
     ]
   &#125;
 ];</code></pre>
-              </div>
+          </div>
 
-              <!-- STEP 3 CODE: Split Markdown Checklist + Simulated Network Diagnostic Terminal -->
-              <div class="ide__pane pane--3 split-pane">
-                <div class="pane__file-view">
-                  <div class="ide__line-numbers mono">
-                    <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
-                  </div>
-                  <pre class="ide__code mono"><code><span class="heading"># Smart Display Hardware QA Matrix</span>
+          <!-- STEP 3 CODE: Split Markdown Checklist + Simulated Network Diagnostic Terminal -->
+          <div class="ide__pane pane--3 split-pane">
+            <div class="pane__file-view">
+              <div class="ide__line-numbers mono">
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+              </div>
+              <pre
+                class="ide__code mono"><code><span class="heading"># Smart Display Hardware QA Matrix</span>
 <span class="subheading">## tvOS [apple-tv]</span>
 - <span class="checkbox">[ ]</span> **Acceptance**: Run `scripts/qa-tvos-relay`
 - <span class="checkbox">[ ]</span> **Acceptance**: Validate Cast V2 connection
 - <span class="checkbox">[ ]</span> **Probe**: Screen size/aspect ratio validation</code></pre>
-                </div>
+            </div>
 
-                <div class="pane__terminal-view">
-                  <div class="terminal__header">
-                    <span class="terminal__indicator mono">SYS.DIAGNOSTIC.PROBE v1.0.4</span>
-                    <span class="terminal__status mono text-green">CONNECTED</span>
-                  </div>
-                  <div class="terminal__output mono">
-                    <div class="terminal__line"><span class="term-time">[00:42:01]</span> <span class="term-sys">[SYSTEM]</span> Spawning local network tvOS hardware probe...</div>
-                    <div class="terminal__line"><span class="term-time">[00:42:02]</span> <span class="term-sys">[SYSTEM]</span> Pinging Apple TV 4K at 192.168.1.144:8080...</div>
-                    <div class="terminal__line"><span class="term-time">[00:42:02]</span> <span class="term-info">[PROBE]</span>  Negotiating Ed25519 secure pairing... <span class="term-success">SUCCESS</span></div>
-                    <div class="terminal__line"><span class="term-time">[00:42:03]</span> <span class="term-info">[PROBE]</span>  Verifying iroh transport layer latency: 4.2ms... <span class="term-success">OPTIMAL</span></div>
-                    <div class="terminal__line"><span class="term-time">[00:42:04]</span> <span class="term-info">[PROBE]</span>  Validating Cast v2 local daemon loopback... <span class="term-success">SUCCESS</span></div>
-                    <div class="terminal__line"><span class="term-time">[00:42:04]</span> <span class="term-info">[PROBE]</span>  Resolving display aspect ratio: 16:9 (3840x2160)... <span class="term-success">MATCH</span></div>
-                    <div class="terminal__line"><span class="term-time">[00:42:05]</span> <span class="term-sys">[SYSTEM]</span> All acceptance checks passed. Committing tvOS status to SHIPPING.</div>
-                    <div class="terminal__line cursor-blink"><span class="term-time">[00:42:05]</span> <span class="term-sys">[SYSTEM]</span> Ready. _</div>
-                  </div>
+            <div class="pane__terminal-view">
+              <div class="terminal__header">
+                <span class="terminal__indicator mono">SYS.DIAGNOSTIC.PROBE v1.0.4</span>
+                <span class="terminal__status mono text-green">CONNECTED</span>
+              </div>
+              <div class="terminal__output mono">
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:01]</span>
+                  <span class="term-sys">[SYSTEM]</span> Spawning local network tvOS hardware probe...
+                </div>
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:02]</span>
+                  <span class="term-sys">[SYSTEM]</span> Pinging Apple TV 4K at 192.168.1.144:8080...
+                </div>
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:02]</span>
+                  <span class="term-info">[PROBE]</span> Negotiating secure pairing... <span
+                    class="term-success">SUCCESS</span
+                  >
+                </div>
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:03]</span>
+                  <span class="term-info">[PROBE]</span> Verifying encrypted link latency: 4.2ms...
+                  <span class="term-success">OPTIMAL</span>
+                </div>
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:04]</span>
+                  <span class="term-info">[PROBE]</span> Validating Cast v2 local daemon loopback... <span
+                    class="term-success">SUCCESS</span
+                  >
+                </div>
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:04]</span>
+                  <span class="term-info">[PROBE]</span> Resolving display aspect ratio: 16:9 (3840x2160)...
+                  <span class="term-success">MATCH</span>
+                </div>
+                <div class="terminal__line">
+                  <span class="term-time">[00:42:05]</span>
+                  <span class="term-sys">[SYSTEM]</span> All acceptance checks passed. Committing tvOS
+                  status to SHIPPING.
+                </div>
+                <div class="terminal__line cursor-blink">
+                  <span class="term-time">[00:42:05]</span>
+                  <span class="term-sys">[SYSTEM]</span> Ready. _
                 </div>
               </div>
-
             </div>
           </div>
         </div>
       </div>
     </div>
-  </section>
-
-  <section class="endcta endcta--inline">
-    <div class="container container--narrow">
-      <h2>Pick the screen you'll actually look at.</h2>
-      <p class="lead">
-        Free menu-bar app, $400 of hosted quota per month covered by the included plans, every
-        surface optional.
-      </p>
-      <div class="endcta__ctas">
-        <a class="btn btn--ember" href="/download"
-          >Download for macOS <span aria-hidden="true">→</span></a
-        >
-        <a
-          class="btn btn--ghost"
-          href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`}
-          target="_blank"
-          rel="noopener noreferrer">Smart display QA matrix</a
-        >
-      </div>
-    </div>
-  </section>
+  </div>
 </BaseLayout>
+
+<section class="endcta endcta--inline">
+  <div class="container container--narrow">
+    <h2>Pick the screen you'll actually look at.</h2>
+    <p class="lead">
+      Free menu-bar app, $400 of hosted quota per month covered by the included plans, every surface
+      optional.
+    </p>
+    <div class="endcta__ctas">
+      <a class="btn btn--ember" href="/download"
+        >Download for macOS <span aria-hidden="true">→</span></a
+      >
+      <a
+        class="btn btn--ghost"
+        href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`}
+        target="_blank"
+        rel="noopener noreferrer">Smart display QA matrix</a
+      >
+    </div>
+  </div>
+</section>
 
 <style>
   .pagehead--platforms {
@@ -633,17 +896,23 @@ const statusTint = (s: Surface["status"]) => {
   .console__dot {
     width: 6px;
     height: 6px;
-    background-color: #3DDC84;
+    background-color: #3ddc84;
     border-radius: 50%;
     box-shadow:
-      0 0 8px #3DDC84,
+      0 0 8px #3ddc84,
       0 0 16px rgba(61, 220, 132, 0.5);
     animation: consoleGlow 2s infinite alternate;
   }
 
   @keyframes consoleGlow {
-    0% { opacity: 0.5; transform: scale(0.9); }
-    100% { opacity: 1; transform: scale(1.1); }
+    0% {
+      opacity: 0.5;
+      transform: scale(0.9);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1.1);
+    }
   }
 
   .console__title {
@@ -754,10 +1023,7 @@ const statusTint = (s: Surface["status"]) => {
   .crt-scanlines {
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      rgba(18, 16, 16, 0) 50%,
-      rgba(0, 0, 0, 0.25) 50-0.2%
-    );
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50-0.2%);
     background-size: 100% 4px;
     pointer-events: none;
     z-index: 10;
@@ -766,8 +1032,12 @@ const statusTint = (s: Surface["status"]) => {
   }
 
   @keyframes crtFlicker {
-    0% { opacity: 0.1; }
-    100% { opacity: 0.14; }
+    0% {
+      opacity: 0.1;
+    }
+    100% {
+      opacity: 0.14;
+    }
   }
 
   .monitor-header {
@@ -796,8 +1066,10 @@ const statusTint = (s: Surface["status"]) => {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background-color: #3DDC84;
-    box-shadow: 0 0 8px #3DDC84, 0 0 16px rgba(61, 220, 132, 0.4);
+    background-color: #3ddc84;
+    box-shadow:
+      0 0 8px #3ddc84,
+      0 0 16px rgba(61, 220, 132, 0.4);
   }
 
   .indicator-led.pulse-fast {
@@ -805,13 +1077,17 @@ const statusTint = (s: Surface["status"]) => {
   }
 
   @keyframes ledPulse {
-    0% { opacity: 0.4; }
-    100% { opacity: 1; }
+    0% {
+      opacity: 0.4;
+    }
+    100% {
+      opacity: 1;
+    }
   }
 
   .indicator-label {
     font-size: 0.68rem;
-    color: #3DDC84;
+    color: #3ddc84;
     font-weight: 700;
   }
 
@@ -831,7 +1107,8 @@ const statusTint = (s: Surface["status"]) => {
     font-family: var(--font-mono);
   }
 
-  .core-text, .dest-text {
+  .core-text,
+  .dest-text {
     font-variation-settings: "wght" 800;
     letter-spacing: 0.02em;
   }
@@ -839,7 +1116,9 @@ const statusTint = (s: Surface["status"]) => {
   .wire-active {
     opacity: 0.06;
     stroke-width: 1.5px;
-    transition: opacity var(--dur-base) var(--ease), stroke-width var(--dur-base) var(--ease);
+    transition:
+      opacity var(--dur-base) var(--ease),
+      stroke-width var(--dur-base) var(--ease);
   }
 
   .active-cast-flow {
@@ -848,12 +1127,16 @@ const statusTint = (s: Surface["status"]) => {
   }
 
   .node-rect {
-    transition: stroke var(--dur-base) var(--ease), fill var(--dur-base) var(--ease);
+    transition:
+      stroke var(--dur-base) var(--ease),
+      fill var(--dur-base) var(--ease);
   }
 
   .node-status {
     opacity: 0.3;
-    transition: opacity var(--dur-base) var(--ease), r var(--dur-base) var(--ease);
+    transition:
+      opacity var(--dur-base) var(--ease),
+      r var(--dur-base) var(--ease);
   }
 
   .node-group text {
@@ -930,7 +1213,11 @@ const statusTint = (s: Surface["status"]) => {
     border-radius: 50%;
     left: 10px;
     top: 10px;
-    background: radial-gradient(circle, var(--cassette-glow, rgba(250, 107, 6, 0.12)) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      var(--cassette-glow, rgba(250, 107, 6, 0.12)) 0%,
+      transparent 70%
+    );
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dur-base) var(--ease);
@@ -1068,9 +1355,15 @@ const statusTint = (s: Surface["status"]) => {
     border-radius: 50%;
     opacity: 0.65;
   }
-  .dot--red { background-color: #EE1803; }
-  .dot--yellow { background-color: #FDC42C; }
-  .dot--green { background-color: #3DDC84; }
+  .dot--red {
+    background-color: #ee1803;
+  }
+  .dot--yellow {
+    background-color: #fdc42c;
+  }
+  .dot--green {
+    background-color: #3ddc84;
+  }
 
   .ide__tabs {
     display: flex;
@@ -1216,7 +1509,7 @@ const statusTint = (s: Surface["status"]) => {
   }
 
   .text-green {
-    color: #3DDC84;
+    color: #3ddc84;
     text-shadow: 0 0 6px rgba(61, 220, 132, 0.3);
   }
 
@@ -1251,7 +1544,7 @@ const statusTint = (s: Surface["status"]) => {
   }
 
   .term-success {
-    color: #3DDC84;
+    color: #3ddc84;
     font-weight: bold;
   }
 
@@ -1263,21 +1556,52 @@ const statusTint = (s: Surface["status"]) => {
   }
 
   @keyframes termCursor {
-    0%, 100% { opacity: 0; }
-    50% { opacity: 1; }
+    0%,
+    100% {
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   /* --- Furnace-Themed Syntax Highlighting --- */
-  .keyword { color: #EE1803; font-weight: 600; }
-  .variable { color: #ffffff; font-weight: 600; }
-  .type { color: #FDC42C; }
-  .property { color: #FA6B06; }
-  .string { color: #5FF5D2; }
-  .number { color: #3DDC84; }
-  .comment { color: rgba(255, 255, 255, 0.35); font-style: italic; }
-  .heading { color: var(--core-amber); font-weight: 700; }
-  .subheading { color: var(--core-fire); font-weight: 600; }
-  .checkbox { color: #EE1803; font-weight: bold; }
+  .keyword {
+    color: #ee1803;
+    font-weight: 600;
+  }
+  .variable {
+    color: #ffffff;
+    font-weight: 600;
+  }
+  .type {
+    color: #fdc42c;
+  }
+  .property {
+    color: #fa6b06;
+  }
+  .string {
+    color: #5ff5d2;
+  }
+  .number {
+    color: #3ddc84;
+  }
+  .comment {
+    color: rgba(255, 255, 255, 0.35);
+    font-style: italic;
+  }
+  .heading {
+    color: var(--core-amber);
+    font-weight: 700;
+  }
+  .subheading {
+    color: var(--core-fire);
+    font-weight: 600;
+  }
+  .checkbox {
+    color: #ee1803;
+    font-weight: bold;
+  }
 
   /* --- Pure CSS Interactive Cascade Logic --- */
 

@@ -20,18 +20,25 @@ actor SearchService {
     private let dataStore: DataStore
     private let semanticProvider: SemanticCandidateProviding?
     private let reranker: RetrievalRerankProviding?
-    private let sharedArtifactAccessContextProvider: @MainActor () -> SharedArtifactAccessContext?
-    private let nowProvider: () -> Date
+    private let sharedArtifactAccessContextProvider: @MainActor @Sendable () -> SharedArtifactAccessContext?
+    private let nowProvider: @Sendable () -> Date
 
     private var _lastHealthWriteError: String?
+    private var _lastTypedHealthWriteError: OpenBurnBarError?
 
     /// May be read from the main thread or tests while retrieval runs in the background.
     public var lastHealthWriteError: String? {
         get { _lastHealthWriteError }
     }
 
-    private func setLastHealthWriteError(_ value: String?) {
+    /// Typed counterpart to `lastHealthWriteError` for metrics and structured logging.
+    public var lastTypedHealthWriteError: OpenBurnBarError? {
+        get { _lastTypedHealthWriteError }
+    }
+
+    private func setLastHealthWriteError(_ value: String?, typed: OpenBurnBarError? = nil) {
         _lastHealthWriteError = value
+        _lastTypedHealthWriteError = typed
     }
 
     /// Preferred initializer when shared-artifact access should resolve against the live account; requires a
@@ -40,8 +47,8 @@ actor SearchService {
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
-        sharedArtifactAccessContextProvider: @escaping @MainActor () -> SharedArtifactAccessContext?,
-        nowProvider: @escaping () -> Date
+        sharedArtifactAccessContextProvider: @escaping @MainActor @Sendable () -> SharedArtifactAccessContext?,
+        nowProvider: @escaping @Sendable () -> Date
     ) {
         self.dataStore = dataStore
         self.semanticProvider = semanticProvider
@@ -51,11 +58,11 @@ actor SearchService {
     }
 
     /// Tests and call sites that do not use shared artifacts may omit the provider; context resolves to `nil`.
-    convenience init(
+    init(
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
-        nowProvider: @escaping () -> Date = { Date() }
+        nowProvider: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.init(
             dataStore: dataStore,
@@ -66,6 +73,8 @@ actor SearchService {
         )
     }
 
+    /// `nonisolated` because `dataStore` is an immutable `let` and `fetchConversations`
+    /// uses GRDB's synchronous `read` — no actor isolation needed.
     public nonisolated func recentConversations(limit: Int = 80) -> [ConversationRecord] {
         let bounded = max(1, min(limit, 1_000))
         return (try? dataStore.fetchConversations(limit: bounded)) ?? []
@@ -84,12 +93,22 @@ actor SearchService {
     }
 
     public func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
+        let now = nowProvider()
+        let cacheKey = SearchQueryCacheKey(query: query)
+        if let cachedResult = SearchQueryCache.shared.get(key: cacheKey, now: now) {
+            TelemetryService.shared.record(feature: .searchRetrieval, outcome: .success, durationMs: 0)
+            OpenBurnBarMetrics.histogram(name: "search_latency_ms", value: 0.0, labels: ["mode": cachedResult.plan.mode.rawValue])
+            return cachedResult
+        }
+
         let start = Date()
         let result = await runBurnBarQueryInGate(query)
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         let status: TelemetryOutcome = result.retrievalResults.isEmpty && result.aggregateOccurrenceCount == nil ? .degraded : .success
         TelemetryService.shared.record(feature: .searchRetrieval, outcome: status, durationMs: durationMs)
         OpenBurnBarMetrics.histogram(name: "search_latency_ms", value: Double(durationMs), labels: ["mode": result.plan.mode.rawValue])
+
+        SearchQueryCache.shared.set(key: cacheKey, result: result, now: now)
         return result
     }
 
@@ -158,4 +177,5 @@ actor SearchService {
 
     /// Core retrieval, invoked on the actor's serial executor; `sharedArtifactAccessContext` is
     /// pre-snapshoted on the main actor by callers.
+
 }

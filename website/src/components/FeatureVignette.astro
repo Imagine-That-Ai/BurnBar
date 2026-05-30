@@ -1,0 +1,1183 @@
+---
+/**
+ * FeatureVignette — a small, brand-aware SVG scene that gives each feature card
+ * a piece of "holy shit, that's done" art without a single raster asset.
+ *
+ * One stage, one furnace glow, one shared animation vocabulary. Each `id`
+ * paints a distinct evocative scene in the OpenBurnBar palette: mercury-cool
+ * device chrome, ember-hot energy (the connection, the action, the live bit).
+ *
+ * All scenes are decorative — the card already carries the readable title and
+ * blurb — so the figure is aria-hidden. Motion is gentle and fully disabled
+ * under `prefers-reduced-motion`. The stage pauses off-screen via
+ * `content-visibility`, so a wall of these stays cheap.
+ *
+ * Scene ids (kept in sync with the capability/moment data):
+ *   Floo capabilities — see · control · files · call · clipboard · unlock
+ *   Floo moments      — couch-watch · file-fly · faceid-unlock · keyboard-zoom
+ *   Control caps      — watch · browser · mac · approve · boundaries · record
+ */
+
+interface Props {
+  id: string;
+  /** Optional extra class hook for the wrapping figure. */
+  class?: string;
+}
+
+const { id, class: className = "" } = Astro.props;
+---
+
+<figure class={`fv fv--${id} ${className}`} data-fv aria-hidden="true">
+  <span class="fv__glow"></span>
+  <svg class="fv__svg" viewBox="0 0 320 150" role="presentation" focusable="false">
+    {/* ============================ FLOO: SEE ============================ */}
+    {
+      id === "see" && (
+        <g>
+          {/* Mac window (source) */}
+          <rect class="fv-win" x="16" y="34" width="150" height="84" rx="9" />
+          <circle class="fv-dot" cx="28" cy="44" r="2" />
+          <circle class="fv-dot" cx="36" cy="44" r="2" />
+          <circle class="fv-dot" cx="44" cy="44" r="2" />
+          <line class="fv-ln2" x1="16" y1="52" x2="166" y2="52" />
+          <rect class="fv-ln-f" x="28" y="62" width="80" height="6" rx="3" />
+          <rect class="fv-ln-f" x="28" y="76" width="120" height="5" rx="2.5" />
+          <rect class="fv-ln-f" x="28" y="88" width="104" height="5" rx="2.5" />
+          <rect class="fv-ln-f" x="28" y="100" width="64" height="5" rx="2.5" />
+          {/* Phone (mirror) */}
+          <rect class="fv-win" x="252" y="30" width="52" height="92" rx="11" />
+          <rect class="fv-scr" x="256" y="40" width="44" height="74" rx="5" />
+          <rect class="fv-notch" x="270" y="34" width="16" height="3" rx="1.5" />
+          {/* miniature mirror of the window on the phone */}
+          <rect class="fv-mirror" x="261" y="46" width="34" height="22" rx="3" />
+          <rect class="fv-ln-f" x="265" y="74" width="26" height="3" rx="1.5" />
+          <rect class="fv-ln-f" x="265" y="82" width="20" height="3" rx="1.5" />
+          {/* live beam */}
+          <line class="fv-link" x1="170" y1="74" x2="248" y2="72" />
+          <circle class="fv-beam-dot fv-hot" cx="170" cy="74" r="3" />
+          <text class="fv-mono-hot" x="186" y="66">live</text>
+        </g>
+      )
+    }
+
+    {/* ========================== FLOO: CONTROL ========================= */}
+    {
+      id === "control" && (
+        <g>
+          {/* Mac window (target) */}
+          <rect class="fv-win" x="96" y="30" width="160" height="90" rx="9" />
+          <circle class="fv-dot" cx="108" cy="40" r="2" />
+          <circle class="fv-dot" cx="116" cy="40" r="2" />
+          <circle class="fv-dot" cx="124" cy="40" r="2" />
+          <line class="fv-ln2" x1="96" y1="48" x2="256" y2="48" />
+          <rect class="fv-ln-f" x="108" y="58" width="70" height="5" rx="2.5" />
+          <rect class="fv-ln-f" x="108" y="70" width="120" height="5" rx="2.5" />
+          {/* the button being pressed */}
+          <rect class="fv-target" x="108" y="88" width="56" height="18" rx="6" />
+          <text class="fv-mono-hot" x="120" y="100">tap</text>
+          {/* tap ripple */}
+          <circle class="fv-ripple" cx="136" cy="97" r="8" />
+          {/* the reaching cursor */}
+          <path class="fv-cursor" d="M150 96 l0 22 l6 -6 l5 10 l4 -2 l-5 -10 l8 0 z" />
+        </g>
+      )
+    }
+
+    {/* =========================== FLOO: FILES ========================= */}
+    {
+      id === "files" && (
+        <g>
+          {/* Mac (left) */}
+          <rect class="fv-win" x="14" y="40" width="74" height="70" rx="9" />
+          <line class="fv-ln2" x1="14" y1="52" x2="88" y2="52" />
+          {/* Phone (right) */}
+          <rect class="fv-win" x="258" y="32" width="48" height="86" rx="10" />
+          <rect class="fv-scr" x="262" y="42" width="40" height="68" rx="5" />
+          {/* dashed travel rail */}
+          <line class="fv-rail" x1="96" y1="75" x2="252" y2="75" />
+          {/* file card in flight */}
+          <g class="fv-fly" style="--fv-travel:150px">
+            <rect class="fv-file" x="96" y="62" width="30" height="26" rx="4" />
+            <path class="fv-file-fold" d="M118 62 l8 8 l-8 0 z" />
+            <line class="fv-ln" x1="101" y1="74" x2="116" y2="74" />
+            <line class="fv-ln" x1="101" y1="80" x2="112" y2="80" />
+          </g>
+          <text class="fv-mono-hot" x="150" y="58">either way</text>
+        </g>
+      )
+    }
+
+    {/* ============================ FLOO: CALL ========================= */}
+    {
+      id === "call" && (
+        <g>
+          {/* Phone (left) with incoming call UI */}
+          <rect class="fv-win" x="20" y="26" width="56" height="98" rx="12" />
+          <rect class="fv-scr" x="24" y="36" width="48" height="80" rx="6" />
+          <circle class="fv-avatar" cx="48" cy="58" r="11" />
+          <circle class="fv-answer" cx="40" cy="98" r="6" />
+          <circle class="fv-decline" cx="56" cy="98" r="6" />
+          <path class="fv-handset" d="M45 96 q3 4 6 0" />
+          {/* Mac (right) */}
+          <rect class="fv-win" x="220" y="40" width="84" height="68" rx="9" />
+          <line class="fv-ln2" x1="220" y1="52" x2="304" y2="52" />
+          <path class="fv-handset-lg" d="M250 70 c0 10 8 18 18 18 l0 -7 c-2 -2 -6 -1 -8 -3 c-4 -4 -4 -8 -6 -10 c-1 -1 -4 0 -4 2 z" />
+          {/* ringing arcs */}
+          <path class="fv-wave fv-wave-1" d="M120 60 a30 30 0 0 1 0 40" />
+          <path class="fv-wave fv-wave-2" d="M138 50 a44 44 0 0 1 0 60" />
+          <path class="fv-wave fv-wave-3" d="M156 40 a58 58 0 0 1 0 80" />
+        </g>
+      )
+    }
+
+    {/* ========================= FLOO: CLIPBOARD ======================= */}
+    {
+      id === "clipboard" && (
+        <g>
+          {/* Mac (left) */}
+          <rect class="fv-win" x="14" y="38" width="92" height="74" rx="9" />
+          <line class="fv-ln2" x1="14" y1="50" x2="106" y2="50" />
+          <rect class="fv-chip-src" x="26" y="64" width="52" height="16" rx="4" />
+          <text class="fv-mono" x="33" y="75">copied</text>
+          {/* clipboard glyph (center) */}
+          <rect class="fv-clip" x="142" y="44" width="36" height="58" rx="6" />
+          <rect class="fv-clip-tab" x="152" y="40" width="16" height="8" rx="3" />
+          <line class="fv-ln" x1="150" y1="62" x2="170" y2="62" />
+          <line class="fv-ln" x1="150" y1="72" x2="170" y2="72" />
+          <line class="fv-ln" x1="150" y1="82" x2="164" y2="82" />
+          {/* Phone (right) */}
+          <rect class="fv-win" x="256" y="34" width="48" height="84" rx="10" />
+          <rect class="fv-scr" x="260" y="44" width="40" height="66" rx="5" />
+          {/* the chip that pastes onto the phone */}
+          <rect class="fv-chip-dst" x="266" y="62" width="28" height="13" rx="3" />
+          <line class="fv-hop" x1="80" y1="72" x2="142" y2="72" />
+          <line class="fv-hop" x1="178" y1="72" x2="256" y2="70" />
+        </g>
+      )
+    }
+
+    {/* ============================ FLOO: UNLOCK ======================= */}
+    {
+      id === "unlock" && (
+        <g>
+          {/* Mac (left) locked */}
+          <rect class="fv-win" x="16" y="34" width="150" height="84" rx="9" />
+          <rect class="fv-scr" x="16" y="34" width="150" height="84" rx="9" opacity="0.5" />
+          <g class="fv-lock">
+            <rect class="fv-lock-body" x="78" y="74" width="26" height="20" rx="4" />
+            <path class="fv-lock-shackle" d="M83 74 v-6 a8 8 0 0 1 16 0 v6" />
+            <circle class="fv-amb" cx="91" cy="83" r="2.2" />
+          </g>
+          <text class="fv-mono-hot" x="64" y="106">unlocked</text>
+          {/* Phone (right) Face ID */}
+          <rect class="fv-win" x="252" y="30" width="52" height="92" rx="11" />
+          <rect class="fv-scr" x="256" y="40" width="44" height="74" rx="5" />
+          <rect class="fv-faceid" x="266" y="54" width="24" height="24" rx="6" />
+          <circle class="fv-dot" cx="274" cy="63" r="1.4" />
+          <circle class="fv-dot" cx="282" cy="63" r="1.4" />
+          <path class="fv-ln" d="M273 70 q5 4 10 0" />
+          <line class="fv-scanline" x1="266" y1="66" x2="290" y2="66" />
+          <line class="fv-link" x1="170" y1="76" x2="248" y2="72" />
+        </g>
+      )
+    }
+
+    {/* ===================== FLOO MOMENT: COUCH-WATCH ================== */}
+    {
+      id === "couch-watch" && (
+        <g>
+          {/* Phone with a running-agent screen */}
+          <rect class="fv-win" x="118" y="20" width="84" height="110" rx="14" />
+          <rect class="fv-scr" x="124" y="32" width="72" height="86" rx="7" />
+          <rect class="fv-notch" x="150" y="26" width="20" height="3.5" rx="1.75" />
+          {/* live header */}
+          <circle class="fv-live fv-hot" cx="134" cy="44" r="3" />
+          <text class="fv-mono-hot" x="142" y="47">running</text>
+          {/* progress ring */}
+          <circle class="fv-ring-track" cx="160" cy="76" r="17" />
+          <circle class="fv-ring" cx="160" cy="76" r="17" />
+          <text class="fv-mono-pct" x="160" y="79">74%</text>
+          {/* log lines */}
+          <rect class="fv-ln-f" x="132" y="102" width="44" height="4" rx="2" />
+          <rect class="fv-ln-f" x="132" y="110" width="32" height="4" rx="2" />
+        </g>
+      )
+    }
+
+    {/* ====================== FLOO MOMENT: FILE-FLY =================== */}
+    {
+      id === "file-fly" && (
+        <g>
+          {/* Phone (left) */}
+          <rect class="fv-win" x="16" y="34" width="48" height="84" rx="10" />
+          <rect class="fv-scr" x="20" y="44" width="40" height="66" rx="5" />
+          {/* Mac (right) */}
+          <rect class="fv-win" x="236" y="40" width="74" height="70" rx="9" />
+          <line class="fv-ln2" x1="236" y1="52" x2="310" y2="52" />
+          <line class="fv-rail" x1="70" y1="76" x2="232" y2="76" />
+          {/* photo thumbnail in flight */}
+          <g class="fv-fly" style="--fv-travel:158px">
+            <rect class="fv-photo" x="70" y="62" width="30" height="26" rx="4" />
+            <circle class="fv-amb" cx="78" cy="70" r="2.4" />
+            <path class="fv-photo-hill" d="M73 86 l7 -8 l5 5 l6 -8 l5 11 z" />
+          </g>
+          <text class="fv-mono-hot" x="150" y="58">in a tap</text>
+        </g>
+      )
+    }
+
+    {/* ==================== FLOO MOMENT: FACEID-UNLOCK ================ */}
+    {
+      id === "faceid-unlock" && (
+        <g>
+          {/* Mac lock screen (left) */}
+          <rect class="fv-win" x="14" y="30" width="158" height="90" rx="10" />
+          <rect class="fv-scr" x="14" y="30" width="158" height="90" rx="10" opacity="0.55" />
+          <text class="fv-clock" x="93" y="66">9:41</text>
+          <g class="fv-lock">
+            <rect class="fv-lock-body" x="82" y="80" width="22" height="17" rx="3.5" />
+            <path class="fv-lock-shackle" d="M86.5 80 v-5 a6.5 6.5 0 0 1 13 0 v5" />
+          </g>
+          {/* Phone with Face ID check (right) */}
+          <rect class="fv-win" x="254" y="28" width="50" height="94" rx="11" />
+          <rect class="fv-scr" x="258" y="38" width="42" height="76" rx="5" />
+          <circle class="fv-faceid-ring" cx="279" cy="72" r="16" />
+          <path class="fv-check" d="M271 72 l5 6 l11 -13" />
+          <line class="fv-link" x1="176" y1="74" x2="250" y2="72" />
+        </g>
+      )
+    }
+
+    {/* =================== FLOO MOMENT: KEYBOARD-ZOOM ================= */}
+    {
+      id === "keyboard-zoom" && (
+        <g>
+          {/* Phone */}
+          <rect class="fv-win" x="116" y="16" width="88" height="118" rx="15" />
+          <rect class="fv-scr" x="122" y="28" width="76" height="98" rx="7" />
+          <rect class="fv-notch" x="148" y="22" width="20" height="3.5" rx="1.75" />
+          {/* focused field + zoom reticle */}
+          <rect class="fv-field" x="132" y="42" width="56" height="16" rx="5" />
+          <line class="fv-caret" x1="140" y1="46" x2="140" y2="54" />
+          <rect class="fv-reticle" x="126" y="36" width="68" height="28" rx="8" />
+          {/* keyboard rising */}
+          <g class="fv-keyboard">
+            <rect class="fv-kb" x="124" y="82" width="72" height="42" rx="5" />
+            <rect class="fv-key" x="129" y="87" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="141" y="87" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="153" y="87" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="165" y="87" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="177" y="87" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="129" y="99" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="141" y="99" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="153" y="99" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="165" y="99" width="9" height="8" rx="2" />
+            <rect class="fv-key" x="177" y="99" width="9" height="8" rx="2" />
+            <rect class="fv-key-hot" x="135" y="111" width="50" height="8" rx="2.5" />
+          </g>
+        </g>
+      )
+    }
+
+    {/* ========================= CONTROL: WATCH ======================= */}
+    {
+      id === "watch" && (
+        <g>
+          {/* action log window */}
+          <rect class="fv-win" x="40" y="26" width="240" height="98" rx="10" />
+          <circle class="fv-dot" cx="52" cy="36" r="2" />
+          <circle class="fv-dot" cx="60" cy="36" r="2" />
+          <circle class="fv-dot" cx="68" cy="36" r="2" />
+          <line class="fv-ln2" x1="40" y1="44" x2="280" y2="44" />
+          <circle class="fv-live fv-hot" cx="262" cy="36" r="3" />
+          {/* moving highlight bar over rows */}
+          <rect class="fv-rowscan" x="48" y="52" width="224" height="14" rx="4" />
+          <g class="fv-rows">
+            <text class="fv-mono" x="56" y="62">click  · "Run"</text>
+            <text class="fv-mono" x="56" y="78">type   · query</text>
+            <text class="fv-mono" x="56" y="94">scroll · results</text>
+            <text class="fv-mono" x="56" y="110">read   · table</text>
+          </g>
+        </g>
+      )
+    }
+
+    {/* ======================== CONTROL: BROWSER ====================== */}
+    {
+      id === "browser" && (
+        <g>
+          {/* browser window */}
+          <rect class="fv-win" x="44" y="24" width="232" height="102" rx="10" />
+          <circle class="fv-dot" cx="56" cy="34" r="2" />
+          <circle class="fv-dot" cx="64" cy="34" r="2" />
+          <circle class="fv-dot" cx="72" cy="34" r="2" />
+          <rect class="fv-urlbar" x="84" y="29" width="180" height="11" rx="5.5" />
+          <line class="fv-ln2" x1="44" y1="46" x2="276" y2="46" />
+          {/* form being auto-filled */}
+          <rect class="fv-formrow" x="64" y="58" width="120" height="13" rx="4" />
+          <rect class="fv-formrow fv-formrow-done" x="64" y="78" width="120" height="13" rx="4" />
+          <rect class="fv-formrow" x="64" y="98" width="120" height="13" rx="4" />
+          <path class="fv-tick fv-tick-1" d="M196 64 l3 4 l7 -8" />
+          <path class="fv-tick fv-tick-2" d="M196 84 l3 4 l7 -8" />
+          <path class="fv-tick fv-tick-3" d="M196 104 l3 4 l7 -8" />
+          <path class="fv-cursor" d="M224 72 l0 22 l6 -6 l5 10 l4 -2 l-5 -10 l8 0 z" />
+        </g>
+      )
+    }
+
+    {/* ========================== CONTROL: MAC ======================== */}
+    {
+      id === "mac" && (
+        <g>
+          {/* stacked app windows */}
+          <rect class="fv-win fv-win-back" x="58" y="50" width="118" height="76" rx="9" />
+          <rect class="fv-win fv-win-back" x="92" y="38" width="118" height="80" rx="9" />
+          <rect class="fv-win" x="128" y="26" width="134" height="88" rx="9" />
+          <circle class="fv-dot" cx="140" cy="36" r="2" />
+          <circle class="fv-dot" cx="148" cy="36" r="2" />
+          <circle class="fv-dot" cx="156" cy="36" r="2" />
+          <line class="fv-ln2" x1="128" y1="44" x2="262" y2="44" />
+          <rect class="fv-ln-f" x="140" y="54" width="70" height="5" rx="2.5" />
+          <rect class="fv-ln-f" x="140" y="66" width="110" height="5" rx="2.5" />
+          <rect class="fv-target" x="140" y="82" width="50" height="16" rx="5" />
+          {/* grant badge */}
+          <rect class="fv-grant" x="206" y="80" width="46" height="16" rx="8" />
+          <text class="fv-mono-hot" x="213" y="91">granted</text>
+          {/* controlled pointer travelling across the apps */}
+          <path class="fv-pointer" d="M0 0 l0 16 l4.4 -4.4 l3.6 7.4 l3 -1.4 l-3.6 -7.2 l6 0 z" />
+        </g>
+      )
+    }
+
+    {/* ======================== CONTROL: APPROVE ====================== */}
+    {
+      id === "approve" && (
+        <g>
+          {/* proposed-action card */}
+          <rect class="fv-win" x="74" y="28" width="172" height="94" rx="11" />
+          <text class="fv-mono" x="88" y="48">proposed step</text>
+          <rect class="fv-ln-f" x="88" y="56" width="120" height="6" rx="3" />
+          <rect class="fv-ln-f" x="88" y="68" width="92" height="5" rx="2.5" />
+          {/* approve / reject */}
+          <rect class="fv-approve" x="88" y="90" width="68" height="20" rx="7" />
+          <path class="fv-check-sm" d="M100 100 l4 4 l9 -9" />
+          <text class="fv-mono-hot" x="118" y="103">allow</text>
+          <rect class="fv-reject" x="166" y="90" width="64" height="20" rx="7" />
+          <path class="fv-x" d="M178 96 l9 9 m0 -9 l-9 9" />
+          {/* step queue ticks */}
+          <circle class="fv-step fv-step-on" cx="92" cy="36" r="2.4" />
+          <circle class="fv-step fv-step-on" cx="102" cy="36" r="2.4" />
+          <circle class="fv-step" cx="112" cy="36" r="2.4" />
+          <circle class="fv-step" cx="122" cy="36" r="2.4" />
+        </g>
+      )
+    }
+
+    {/* ====================== CONTROL: BOUNDARIES ===================== */}
+    {
+      id === "boundaries" && (
+        <g>
+          {/* window */}
+          <rect class="fv-win" x="52" y="26" width="216" height="98" rx="10" />
+          <circle class="fv-dot" cx="64" cy="36" r="2" />
+          <circle class="fv-dot" cx="72" cy="36" r="2" />
+          <circle class="fv-dot" cx="80" cy="36" r="2" />
+          <line class="fv-ln2" x1="52" y1="44" x2="268" y2="44" />
+          <rect class="fv-ln-f" x="64" y="54" width="80" height="5" rx="2.5" />
+          <rect class="fv-ln-f" x="64" y="66" width="120" height="5" rx="2.5" />
+          {/* off-limits zone with hatching */}
+          <defs>
+            <pattern id="fvHatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line class="fv-hatch" x1="0" y1="0" x2="0" y2="7" />
+            </pattern>
+          </defs>
+          <rect class="fv-deny-zone" x="158" y="78" width="98" height="34" rx="6" />
+          <rect class="fv-deny-fill" x="158" y="78" width="98" height="34" rx="6" fill="url(#fvHatch)" />
+          <circle class="fv-deny-mark" cx="207" cy="95" r="9" />
+          <line class="fv-deny-slash" x1="201" y1="89" x2="213" y2="101" />
+          {/* pointer recoiling off the boundary */}
+          <path class="fv-bounce" d="M0 0 l0 16 l4.4 -4.4 l3.6 7.4 l3 -1.4 l-3.6 -7.2 l6 0 z" />
+        </g>
+      )
+    }
+
+    {/* ========================= CONTROL: RECORD ====================== */}
+    {
+      id === "record" && (
+        <g>
+          {/* chained audit blocks */}
+          <g class="fv-chain">
+            <rect class="fv-block" x="26" y="58" width="58" height="36" rx="6" />
+            <text class="fv-hash" x="34" y="74">a91f…</text>
+            <text class="fv-hash-dim" x="34" y="86">#001</text>
+          </g>
+          <line class="fv-chainlink" x1="84" y1="76" x2="116" y2="76" />
+          <g class="fv-chain">
+            <rect class="fv-block" x="116" y="58" width="58" height="36" rx="6" />
+            <text class="fv-hash" x="124" y="74">c47b…</text>
+            <text class="fv-hash-dim" x="124" y="86">#002</text>
+          </g>
+          <line class="fv-chainlink" x1="174" y1="76" x2="206" y2="76" />
+          {/* the freshly appended block */}
+          <g class="fv-chain fv-block-new">
+            <rect class="fv-block fv-block-hot" x="206" y="58" width="58" height="36" rx="6" />
+            <text class="fv-hash-hot" x="214" y="74">e0d2…</text>
+            <text class="fv-hash-dim" x="214" y="86">#003</text>
+          </g>
+          {/* seal */}
+          <g class="fv-seal">
+            <rect class="fv-lock-body" x="151" y="30" width="18" height="13" rx="3" />
+            <path class="fv-lock-shackle" d="M154.5 30 v-4 a5.5 5.5 0 0 1 11 0 v4" />
+          </g>
+          <text class="fv-mono" x="116" y="118">sealed · append-only</text>
+        </g>
+      )
+    }
+  </svg>
+</figure>
+
+<style>
+  /* ----------------------------- stage ----------------------------- */
+  .fv {
+    position: relative;
+    margin: 0 0 var(--s-2);
+    width: 100%;
+    aspect-ratio: 320 / 150;
+    border-radius: var(--r-md);
+    overflow: hidden;
+    isolation: isolate;
+    border: 1px solid var(--ink-line);
+    background:
+      radial-gradient(70% 80% at 12% 0%, rgba(250, 107, 6, 0.1), transparent 62%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(5, 5, 8, 0.6));
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    content-visibility: auto;
+    contain-intrinsic-size: 320px 150px;
+  }
+  .fv__glow {
+    position: absolute;
+    inset: -30% 40% 50% -20%;
+    background: radial-gradient(closest-side, rgba(253, 196, 44, 0.12), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .fv__svg {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  /* warm the art when the host card is hovered */
+  :global(.floocard:hover) .fv,
+  :global(.ctrlcard:hover) .fv,
+  :global(.moment:hover) .fv {
+    border-color: rgba(250, 107, 6, 0.28);
+  }
+
+  /* ----------------------- shared SVG primitives ------------------- */
+  .fv-win {
+    fill: rgba(255, 255, 255, 0.035);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1.2;
+  }
+  .fv-win-back {
+    opacity: 0.4;
+  }
+  .fv-scr {
+    fill: #07060a;
+    stroke: rgba(255, 255, 255, 0.06);
+    stroke-width: 1;
+  }
+  .fv-mirror {
+    fill: rgba(250, 107, 6, 0.16);
+    stroke: rgba(253, 196, 44, 0.5);
+    stroke-width: 1;
+  }
+  .fv-notch {
+    fill: rgba(255, 255, 255, 0.22);
+  }
+  .fv-dot {
+    fill: var(--text-dim);
+  }
+  .fv-ln {
+    stroke: var(--text-dim);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    fill: none;
+  }
+  .fv-ln2 {
+    stroke: var(--ink-line-bright);
+    stroke-width: 1.1;
+  }
+  .fv-ln-f {
+    fill: rgba(255, 255, 255, 0.16);
+  }
+  .fv-hot {
+    fill: var(--core-fire);
+  }
+  .fv-amb {
+    fill: var(--core-amber);
+  }
+  .fv-mono {
+    fill: var(--text-mute);
+    font:
+      600 7px var(--font-mono),
+      monospace;
+    letter-spacing: 0.02em;
+  }
+  .fv-mono-hot {
+    fill: var(--core-amber);
+    font:
+      600 7.5px var(--font-mono),
+      monospace;
+    letter-spacing: 0.04em;
+  }
+
+  /* connection beam / dashed link */
+  .fv-link,
+  .fv-rail,
+  .fv-hop {
+    stroke: var(--core-fire);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    fill: none;
+    stroke-dasharray: 3 5;
+    animation: fvDash 1.1s linear infinite;
+  }
+  .fv-rail {
+    stroke: rgba(253, 196, 44, 0.55);
+  }
+  .fv-hop {
+    stroke-width: 1.3;
+    stroke: rgba(250, 107, 6, 0.7);
+  }
+  .fv-beam-dot {
+    animation: fvPulse 1.6s ease-in-out infinite;
+  }
+
+  /* ---- control (cursor reach) ---- */
+  .fv-target {
+    fill: rgba(250, 107, 6, 0.14);
+    stroke: var(--core-fire);
+    stroke-width: 1.2;
+  }
+  .fv-cursor {
+    fill: #fff;
+    stroke: #07060a;
+    stroke-width: 0.8;
+    transform-box: fill-box;
+    transform-origin: top left;
+    animation: fvPress 2.4s ease-in-out infinite;
+  }
+  .fv-ripple {
+    fill: none;
+    stroke: var(--core-amber);
+    stroke-width: 1.4;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvRipple 2.4s ease-out infinite;
+  }
+
+  /* ---- files / file-fly ---- */
+  .fv-file,
+  .fv-photo {
+    fill: rgba(255, 255, 255, 0.06);
+    stroke: var(--core-amber);
+    stroke-width: 1.2;
+  }
+  .fv-file-fold,
+  .fv-photo-hill {
+    fill: var(--core-fire);
+  }
+  .fv-photo-hill {
+    fill: none;
+    stroke: var(--core-amber);
+    stroke-width: 1.2;
+    stroke-linejoin: round;
+  }
+  .fv-fly {
+    transform-box: view-box;
+    animation: fvFly 3s ease-in-out infinite;
+  }
+
+  /* ---- call ---- */
+  .fv-avatar {
+    fill: rgba(255, 255, 255, 0.12);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1;
+  }
+  .fv-answer {
+    fill: var(--core-amber);
+  }
+  .fv-decline {
+    fill: var(--core-red);
+  }
+  .fv-handset,
+  .fv-handset-lg {
+    fill: none;
+    stroke: #07060a;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+  .fv-handset-lg {
+    fill: var(--core-amber);
+    stroke: none;
+  }
+  .fv-wave {
+    fill: none;
+    stroke: var(--core-fire);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvWave 2.1s ease-out infinite;
+  }
+  .fv-wave-2 {
+    animation-delay: 0.25s;
+  }
+  .fv-wave-3 {
+    animation-delay: 0.5s;
+  }
+
+  /* ---- clipboard ---- */
+  .fv-clip {
+    fill: rgba(255, 255, 255, 0.04);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1.2;
+  }
+  .fv-clip-tab {
+    fill: rgba(255, 255, 255, 0.14);
+  }
+  .fv-chip-src {
+    fill: rgba(250, 107, 6, 0.16);
+    stroke: var(--core-fire);
+    stroke-width: 1;
+  }
+  .fv-chip-dst {
+    fill: rgba(250, 107, 6, 0.16);
+    stroke: var(--core-amber);
+    stroke-width: 1;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvPaste 2.6s ease-in-out infinite;
+  }
+
+  /* ---- locks / unlock ---- */
+  .fv-lock-body {
+    fill: rgba(253, 196, 44, 0.16);
+    stroke: var(--core-amber);
+    stroke-width: 1.3;
+  }
+  .fv-lock-shackle {
+    fill: none;
+    stroke: var(--core-amber);
+    stroke-width: 1.3;
+    transform-box: fill-box;
+    transform-origin: bottom center;
+    animation: fvShackle 3s ease-in-out infinite;
+  }
+  .fv-faceid,
+  .fv-faceid-ring {
+    fill: none;
+    stroke: var(--core-fire);
+    stroke-width: 1.4;
+  }
+  .fv-faceid-ring {
+    stroke-dasharray: 4 4;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvSpin 6s linear infinite;
+  }
+  .fv-scanline {
+    stroke: var(--core-amber);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvScan 2.4s ease-in-out infinite;
+  }
+  .fv-check {
+    fill: none;
+    stroke: var(--core-amber);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 30;
+    stroke-dashoffset: 30;
+    animation: fvDraw 2.8s ease-in-out infinite;
+  }
+  .fv-clock {
+    fill: rgba(255, 255, 255, 0.55);
+    font:
+      600 16px var(--font-display),
+      sans-serif;
+    text-anchor: middle;
+  }
+
+  /* ---- couch-watch (progress ring) ---- */
+  .fv-ring-track {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.1);
+    stroke-width: 4;
+  }
+  .fv-ring {
+    fill: none;
+    stroke: var(--core-fire);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 107;
+    stroke-dashoffset: 28;
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: rotate(-90deg);
+    animation: fvProgress 3.4s ease-in-out infinite;
+  }
+  .fv-mono-pct {
+    fill: var(--core-amber);
+    font:
+      600 9px var(--font-mono),
+      monospace;
+    text-anchor: middle;
+  }
+  .fv-live {
+    animation: fvPulse 1.4s ease-in-out infinite;
+  }
+
+  /* ---- keyboard-zoom ---- */
+  .fv-field {
+    fill: rgba(255, 255, 255, 0.05);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1;
+  }
+  .fv-reticle {
+    fill: none;
+    stroke: var(--core-fire);
+    stroke-width: 1.4;
+    stroke-dasharray: 5 4;
+    animation: fvPulse 2s ease-in-out infinite;
+  }
+  .fv-caret {
+    stroke: var(--core-amber);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    animation: fvBlink 1.1s steps(1) infinite;
+  }
+  .fv-keyboard {
+    transform-box: view-box;
+    animation: fvRise 3.4s ease-in-out infinite;
+  }
+  .fv-kb {
+    fill: rgba(255, 255, 255, 0.05);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1;
+  }
+  .fv-key {
+    fill: rgba(255, 255, 255, 0.12);
+  }
+  .fv-key-hot {
+    fill: var(--core-fire);
+  }
+
+  /* ---- watch (log scan) ---- */
+  .fv-rowscan {
+    fill: rgba(250, 107, 6, 0.12);
+    stroke: rgba(250, 107, 6, 0.4);
+    stroke-width: 1;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvRowScan 4s ease-in-out infinite;
+  }
+
+  /* ---- browser ---- */
+  .fv-urlbar {
+    fill: rgba(255, 255, 255, 0.06);
+  }
+  .fv-formrow {
+    fill: rgba(255, 255, 255, 0.06);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1;
+  }
+  .fv-formrow-done {
+    fill: rgba(250, 107, 6, 0.1);
+    stroke: rgba(250, 107, 6, 0.4);
+  }
+  .fv-tick {
+    fill: none;
+    stroke: var(--core-amber);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 16;
+    stroke-dashoffset: 16;
+    animation: fvDraw 3.2s ease-in-out infinite;
+  }
+  .fv-tick-2 {
+    animation-delay: 0.5s;
+  }
+  .fv-tick-3 {
+    animation-delay: 1s;
+  }
+
+  /* ---- mac (pointer across apps) ---- */
+  .fv-grant {
+    fill: rgba(250, 107, 6, 0.14);
+    stroke: var(--core-fire);
+    stroke-width: 1;
+  }
+  .fv-pointer {
+    fill: #fff;
+    stroke: #07060a;
+    stroke-width: 0.8;
+    transform-box: view-box;
+    animation: fvPointerRoam 4s ease-in-out infinite;
+  }
+
+  /* ---- approve ---- */
+  .fv-approve {
+    fill: rgba(250, 107, 6, 0.16);
+    stroke: var(--core-fire);
+    stroke-width: 1.2;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fvTapGlow 3s ease-in-out infinite;
+  }
+  .fv-reject {
+    fill: rgba(255, 255, 255, 0.04);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1;
+  }
+  .fv-check-sm {
+    fill: none;
+    stroke: var(--core-amber);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .fv-x {
+    fill: none;
+    stroke: var(--text-dim);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+  .fv-step {
+    fill: rgba(255, 255, 255, 0.18);
+  }
+  .fv-step-on {
+    fill: var(--core-fire);
+  }
+
+  /* ---- boundaries ---- */
+  .fv-deny-zone {
+    fill: rgba(238, 24, 3, 0.07);
+    stroke: var(--core-red);
+    stroke-width: 1.2;
+    stroke-dasharray: 4 3;
+  }
+  .fv-hatch {
+    stroke: rgba(238, 24, 3, 0.4);
+    stroke-width: 1;
+  }
+  .fv-deny-mark {
+    fill: none;
+    stroke: var(--core-red);
+    stroke-width: 1.6;
+  }
+  .fv-deny-slash {
+    stroke: var(--core-red);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+  .fv-bounce {
+    fill: #fff;
+    stroke: #07060a;
+    stroke-width: 0.8;
+    transform-box: view-box;
+    animation: fvBounce 2.6s ease-in-out infinite;
+  }
+
+  /* ---- record (audit chain) ---- */
+  .fv-block {
+    fill: rgba(255, 255, 255, 0.04);
+    stroke: var(--ink-line-bright);
+    stroke-width: 1.2;
+  }
+  .fv-block-hot {
+    fill: rgba(250, 107, 6, 0.12);
+    stroke: var(--core-fire);
+  }
+  .fv-hash {
+    fill: var(--text-mute);
+    font:
+      600 7px var(--font-mono),
+      monospace;
+  }
+  .fv-hash-hot {
+    fill: var(--core-amber);
+    font:
+      600 7px var(--font-mono),
+      monospace;
+  }
+  .fv-hash-dim {
+    fill: var(--text-dim);
+    font:
+      600 6px var(--font-mono),
+      monospace;
+  }
+  .fv-chainlink {
+    stroke: var(--core-fire);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-dasharray: 3 4;
+    animation: fvDash 1.1s linear infinite;
+  }
+  .fv-block-new {
+    transform-box: view-box;
+    animation: fvAppend 3.2s ease-in-out infinite;
+  }
+  .fv-seal {
+    transform-box: view-box;
+    animation: fvPulse 2.4s ease-in-out infinite;
+  }
+
+  /* ------------------------- keyframes ----------------------------- */
+  @keyframes fvDash {
+    to {
+      stroke-dashoffset: -16;
+    }
+  }
+  @keyframes fvPulse {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes fvPress {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    45% {
+      transform: translate(-6px, -8px);
+    }
+    55% {
+      transform: translate(-6px, -8px);
+    }
+  }
+  @keyframes fvRipple {
+    0%,
+    40% {
+      transform: scale(0.4);
+      opacity: 0;
+    }
+    55% {
+      opacity: 0.9;
+    }
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+  @keyframes fvFly {
+    0%,
+    8% {
+      transform: translateX(0);
+      opacity: 0;
+    }
+    18% {
+      opacity: 1;
+    }
+    82% {
+      opacity: 1;
+    }
+    92%,
+    100% {
+      transform: translateX(var(--fv-travel, 150px));
+      opacity: 0;
+    }
+  }
+  @keyframes fvWave {
+    0% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    30% {
+      opacity: 0.9;
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.25);
+    }
+  }
+  @keyframes fvPaste {
+    0%,
+    30% {
+      opacity: 0;
+      transform: scale(0.7);
+    }
+    45%,
+    85% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1);
+    }
+  }
+  @keyframes fvShackle {
+    0%,
+    45% {
+      transform: translateY(0);
+    }
+    62%,
+    100% {
+      transform: translateY(-4px) rotate(-12deg);
+    }
+  }
+  @keyframes fvSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes fvScan {
+    0%,
+    100% {
+      transform: translateY(-7px);
+      opacity: 0.3;
+    }
+    50% {
+      transform: translateY(9px);
+      opacity: 1;
+    }
+  }
+  @keyframes fvDraw {
+    0%,
+    30% {
+      stroke-dashoffset: var(--fv-dash, 30);
+    }
+    55%,
+    90% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: var(--fv-dash, 30);
+    }
+  }
+  @keyframes fvProgress {
+    0% {
+      stroke-dashoffset: 90;
+    }
+    60%,
+    100% {
+      stroke-dashoffset: 28;
+    }
+  }
+  @keyframes fvBlink {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes fvRise {
+    0%,
+    100% {
+      transform: translateY(44px);
+    }
+    35%,
+    72% {
+      transform: translateY(0);
+    }
+  }
+  @keyframes fvRowScan {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    25% {
+      transform: translateY(16px);
+    }
+    50% {
+      transform: translateY(32px);
+    }
+    75% {
+      transform: translateY(48px);
+    }
+  }
+  @keyframes fvPointerRoam {
+    0%,
+    100% {
+      transform: translate(132px, 84px);
+    }
+    30% {
+      transform: translate(150px, 56px);
+    }
+    60% {
+      transform: translate(206px, 78px);
+    }
+  }
+  @keyframes fvTapGlow {
+    0%,
+    100% {
+      filter: none;
+    }
+    50% {
+      filter: drop-shadow(0 0 5px rgba(250, 107, 6, 0.7));
+    }
+  }
+  @keyframes fvBounce {
+    0%,
+    100% {
+      transform: translate(96px, 92px);
+    }
+    40% {
+      transform: translate(150px, 88px);
+    }
+    52% {
+      transform: translate(140px, 90px);
+    }
+  }
+  @keyframes fvAppend {
+    0%,
+    20% {
+      transform: translateX(22px);
+      opacity: 0;
+    }
+    40%,
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  /* ------------------------ reduced motion ------------------------- */
+  @media (prefers-reduced-motion: reduce) {
+    .fv__svg * {
+      animation: none !important;
+    }
+    .fv-check,
+    .fv-tick {
+      stroke-dashoffset: 0 !important;
+    }
+    .fv-ring {
+      stroke-dashoffset: 28 !important;
+    }
+    .fv-wave {
+      opacity: 0.5 !important;
+    }
+    .fv-keyboard {
+      transform: translateY(0) !important;
+    }
+    .fv-caret {
+      opacity: 1 !important;
+    }
+  }
+</style>

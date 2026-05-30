@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Budget envelope split + error-debt gates (ADR 006)
+- Split `ops/*_budget_status` into a **public envelope** (`state/current`, signed-in read, level + caps only) and **operator metrics** (`metrics/current`, operator read, USD projections). Cloud Functions write both docs; clients listen on the public path only.
+- **Supersedes** the 2026-05-28 operator-only hardening that blocked signed-in envelope reads — see [ADR 006](docs/architecture/006-budget-envelope-visibility.md).
+- `MediaBudgetStatusStore` (Mac) + `MobileMediaBudgetStatusStore` (iOS) with error-code classification and last-known cache; `MacMediaCapabilityGate.shared` reads live budget; `media_kill_switch` Remote Config wired via `mediaRemoteConfig.ts`.
+- CI ratchets for empty `catch {}` (**97** baseline) and `try?` in Services (**779** on branch) via `tools/error-debt/count-error-debt.py`; informational SwiftLint step in the PR harness.
+- Firestore rules tests for CU + media budget public/operator/unauth matrix.
+
+### Security — Computer Use WS3 verifiable audit (2026-05-30 remediation)
+
+- Terminal **`signed_head.json`**: Ed25519 signature over `{sessionId, lastEntryIndex, headHashHex, closedAt}` using the trusted-device export key; written on session close, panic halt, and export.
+- **`openburnbar-cli audit-verify`** offline verifier: parent-hash walk, signed-head check, optional `ots verify`, and `--max-entry-index` completeness (“no actions after panic P”).
+- Export requests accept **`anchorOpenTimestamps`** to mint `chain.jsonl.ots` before packaging; server cross-check remains `validateOpenTimestampsProof`.
+- Keychain export signer provider moved to **`OpenBurnBarComputerUseCore`** for shared Mac app + daemon use.
+- Runbook: [`docs/runbooks/computer-use-audit-disputes.md`](docs/runbooks/computer-use-audit-disputes.md).
+
+### Security — Privileged input WS1 minimal TCB (2026-05-30 remediation)
+
+- New **`OpenBurnBarPrivilegedInputExecution`** launchd Mach service holds the sole `hid.virtual.device` entitlement; Virtual HID bridge is a socket-only adapter that forwards dispatch over XPC with the peer audit token re-validated on the leaf.
+- App clients prefer **XPC** (`PrivilegedInputXPCClient`); legacy Unix socket path retained for migration. `PrivilegedInputDispatchRequest` / envelope types are schema-stable for WS2 capability tokens.
+- Root **Remote Access Agent** narrowed to wake display, worker launcher, and `requestCapabilityToken` stub; no HID/network/keychain entitlements on privileged helpers.
+- **Hardened Runtime** enabled on privileged helper targets in `project.yml`.
+- **Developer-ID release lane:** `DeveloperIDReleaseCapability` + entitlements smoke tests document intentional omission of keychain/iCloud/Sign in with Apple (no silent feature breakage).
+- Isolation tests assert input-execution has no network/keychain and bridge/agent have no HID.
+- See [`docs/security/PRIVILEGED_SOCKET_AUTH.md`](docs/security/PRIVILEGED_SOCKET_AUTH.md).
+
+### Security — Capability tokens & attestation (WS2, 2026-05-30 remediation)
+
+- **`CapabilityToken`** in `OpenBurnBarComputerUseCore` (schema-synced): domain-tagged (`remote_unlock` | `computer_use`), short TTL, single-use nonce, `allowedActionKinds`, `scopeHash`, optional `attestationHashBlake3`, Ed25519-signed compact JSON.
+- **Remote Unlock:** certification-provisioned issuer key (Keychain); trust material published for **offline** bridge verification; tokens minted only while a pending attested unlock session is active; Virtual HID `"input"` requires a valid token layered on the action-kind policy gate.
+- **Computer Use:** in-process PDP mint via `ComputerUseCapabilityTokenService` for post-unlock mac input bursts.
+- **`PhoneControlAuthorityValidator`:** authority TTL (`authorityMaxLifetime`), optional attestation binding on `HermesRealtimeRelayAuthorityEnvelope`, peer/escrow revocation propagation.
+- Tests: `CapabilityTokenVerifierTests`, `VirtualHIDBridgeCapabilityGateTests`, `PhoneControlAuthorityValidatorAttestationTests`.
+
+### Security — Privileged socket P0 (2026-05-30 remediation)
+
+- Virtual HID bridge and root Remote Access Agent sockets now require **first-party code signature** (audit token + designated requirement) in addition to console-user UID checks. Unsigned local processes can no longer drive arbitrary HID `"input"`.
+- Bridge `"input"` is **fail-closed** on certified Remote Unlock action kinds (pointer click/move, escape/delete/return/tab keys) **and** capability tokens (WS2).
+- Structured audit events: `privileged_socket_peer_rejected`, `privileged_bridge_input_accepted/rejected`.
+- Leaf-reaching panic kill flag at `/var/run/openburnbar-privileged-input-kill`.
+- See [`docs/security/PRIVILEGED_SOCKET_AUTH.md`](docs/security/PRIVILEGED_SOCKET_AUTH.md).
+
+### Added — Cloud backup catch-up guardrails
+  usage meter for conversations, included transcript storage, and searchable
+  index size without exposing infrastructure costs.
+- Enabling conversation backup now starts a resumable full catch-up
+  automatically; completed records continue to use `logSyncedAt` as the local
+  “already backed up” marker so only new or changed conversations upload after
+  catch-up.
+- Session-log backup now checks included plan limits before uploading encrypted
+  blobs or search metadata, and Settings maps raw backend failures such as
+  `INTERNAL` into actionable user-facing messages.
+
+### Added — Burn tab view switcher (iOS · iPad · Android)
+- The Burn tab now has a **view switcher** so you can pick how your burn is
+  visualized. The original layout is the default **Cards** view; four new views
+  join it: **Orbit** (an orbital ring constellation around a central fleet
+  score), **Grid** (a dense grid of per-provider gauge tiles), **Ranked** (a
+  spend leaderboard with bars normalized to the top spender), and **Trends**
+  (per-provider burn sparklines over the selected window). The shared header
+  (fleet score, urgent banner, period/mode chips) stays put; only the content
+  region swaps. The choice is remembered per device (iOS `@AppStorage`, Android
+  `QuotaPreferences` DataStore). New views reuse existing quota/rollup data —
+  no backend changes.
+
+### Added — Cursor Agent integration
+- **First-class Cursor Agent CLI and provider**: Fully added `cursor-agent` as a first-class local agent provider. Implemented `CursorAgentParser` to parse precise session tokens, models, and conversation transcripts from `~/.cursor-agent/sessions/` in both nested and flat JSONL schemas. Included custom branding visual identity (electric cyan `#00E5FF`), CLI execution profile, argument builder options, and stream runner routing.
+
+### Fixed — Smart display recovery and Claude data freshness
+- **Instant cast recovery on wake / activate**: The Nest Hub cast watchdog now
+  fires immediately when the Mac wakes from sleep (with a 3-second network settle
+  delay) or when OpenBurnBar becomes the active app. Previously the watchdog ran
+  at a 150-second cadence when backgrounded, leaving the Hub stuck on Ambient Mode
+  for minutes after a Mac sleep or any event that evicted the DashCast session.
+- **Claude context-window fallback on Pixel Clock / Nest Hub**: When Claude's
+  statusline snapshot has no `rate_limits` key (common when the CLI is idle or
+  between sessions), the quota adapter now surfaces the `context_window` data
+  (usage percentage, token counts, model name, session cost) instead of falling
+  through to the JSONL scanner and showing "0% / no recent activity." Stale
+  context-window snapshots are rendered with `.estimated` confidence so the
+  display always reflects the most recent Claude session state.
+
+### Fixed — Streams hosted search recall and cost
+- Streams cloud search now uses database-level encrypted token/semantic posting
+  lookups instead of relying on the phone to download and filter the corpus.
+- The encrypted search callable now validates candidate chunks against the
+  current document body hash/storage path, so one-conversation-at-a-time Mac
+  sync commits no longer make only the latest commit searchable.
+- New search index commits write exact token postings as well as semantic
+  postings, improving name/exact-term recall while keeping Firestore reads
+  bounded.
+- macOS hosted search indexing is now versioned at v4, splits long transcripts
+  into smaller 16 KB chunks, keeps up to 1024 exact and keyed prefix token
+  hashes per chunk, and caps token posting writes per chunk. This forces
+  existing cloud session logs to re-index so names buried late in long
+  transcripts or inside long path/user tokens remain searchable without making
+  every token a Firestore posting.
+
 ### Added — Universal provider auto-discovery
 - **Anthropic `/v1/models` live discovery** — `BurnBarLiveModelCatalog.anthropicLiveModels()` hits Anthropic's `/v1/models` endpoint with `anthropic-version: 2023-06-01`, supporting both Console API keys (`x-api-key` header) and OAuth tokens (`Authorization: Bearer` header). Pagination is fully handled via `has_more` / `last_id` / `after_id` cursors.
 - **Factory Droid CLI live discovery** — `BurnBarLiveModelCatalog.factoryDroidLiveModels()` runs `droid exec --help` via the injectable `FactoryDroidProcessRunning` protocol and parses the output with `CLIRuntimeModelCatalog.parseDroidExecHelp`.

@@ -1321,7 +1321,7 @@ struct HermesSquareRoot: View {
             HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
         case .pi:
             PiConversationListView(service: piService)
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
                 CLIAgentConversationListView(runtime: cliRuntime)
             } else {
@@ -1337,7 +1337,7 @@ struct HermesSquareRoot: View {
             HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .new)
         case .pi:
             PiChatThreadView(service: piService, route: .new)
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent:
             runtimeNativeView(for: runtime)
         }
     }

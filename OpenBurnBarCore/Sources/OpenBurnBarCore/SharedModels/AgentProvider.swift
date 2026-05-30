@@ -33,6 +33,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case warp = "Warp"
     case xAI = "xAI"
     case mimo = "MiMo"
+    case cursorAgent = "Cursor Agent"
 
     public var id: String { rawValue }
 
@@ -67,7 +68,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .goose,
         .ollama,
         .windsurf,
-        .warp
+        .warp,
+        .cursorAgent
     ]
 
     /// Providers that expose a real quota/rate-limit signal either through an
@@ -90,6 +92,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .antigravity,
         .xAI,
         .mimo,
+        .cursorAgent,
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -115,6 +118,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .antigravity,
         .xAI,
         .mimo,
+        .cursorAgent,
     ]
 
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
@@ -139,6 +143,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .kimi
         case .xAI:
             return .xAI
+        case .cursorAgent:
+            return ProviderID(rawValue: "cursor-agent")
         default:
             return ProviderID(rawValue: persistedToken)
         }
@@ -176,6 +182,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .openCode
         case "xai":
             return .xAI
+        case "cursor-agent":
+            return .cursorAgent
         default:
             return AgentProvider.allCases.first { $0.providerID == providerID }
         }
@@ -226,6 +234,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .factory
         case "cursor":
             return .cursor
+        case "cursor-agent", "cursoragent":
+            return .cursorAgent
         case "copilot":
             return .copilot
         case "aider":
@@ -291,6 +301,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .openCode:   return "OpenCodeLogo"
         case .xAI:        return "GrokLogo"
         case .mimo:       return "MimoLogo"
+        case .cursorAgent: return "CursorLogo"
         }
     }
 
@@ -325,6 +336,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .openCode: return "chevron.left.forwardslash.chevron.right"
         case .xAI: return "bolt.fill"
         case .mimo: return "sparkles"
+        case .cursorAgent: return "cursor.rays"
         }
     }
 

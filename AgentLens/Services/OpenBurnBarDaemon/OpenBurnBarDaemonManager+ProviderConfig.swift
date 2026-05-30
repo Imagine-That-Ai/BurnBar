@@ -96,6 +96,43 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+
+    /// Bulk advertisement toggle for an entire provider — mute (or unmute)
+    /// every supplied model id in a single config write so the user can turn a
+    /// whole provider off and then cherry-pick a few models back on.
+    func setProviderModelsAdvertisement(
+        providerID: String,
+        modelIDs: [String],
+        isEnabled: Bool
+    ) async {
+        guard !modelIDs.isEmpty else { return }
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model advertisement can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            var snapshot = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+            }
+            guard let index = snapshot.providers.firstIndex(where: { $0.providerID == providerID }) else {
+                return
+            }
+            var settings = snapshot.providers[index]
+            settings.setModelsAdvertisement(modelIDs: modelIDs, isEnabled: isEnabled)
+            snapshot.providers[index] = settings
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+            }
+        }
+    }
+
     func addProviderCredentialSlot(
         providerID: String,
         label: String,
@@ -470,6 +507,70 @@ extension OpenBurnBarDaemonManager {
                     BurnBarProviderModelAliasRemoveRequest(
                         providerID: providerID,
                         aliasID: aliasID
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+    }
+
+    @discardableResult
+    func setProviderModelDisplayName(
+        providerID: String,
+        modelID: String,
+        displayName: String
+    ) async -> Bool {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before display names can be updated."
+                return false
+            }
+        }
+
+        do {
+            try await performRequiredBusyWork {
+                let socketURL = paths.socketURL
+                _ = try await daemonRPC {
+                    try OpenBurnBarDaemonSocketClient.setProviderModelDisplayName(
+                        BurnBarProviderModelDisplayNameSetRequest(
+                            providerID: providerID,
+                            modelID: modelID,
+                            displayName: displayName
+                        ),
+                        at: socketURL
+                    )
+                }
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeProviderModelDisplayName(
+        providerID: String,
+        modelID: String
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before display names can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.clearProviderModelDisplayName(
+                    BurnBarProviderModelDisplayNameClearRequest(
+                        providerID: providerID,
+                        modelID: modelID
                     ),
                     at: socketURL
                 )

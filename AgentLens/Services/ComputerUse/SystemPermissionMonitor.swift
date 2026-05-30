@@ -224,6 +224,8 @@ public final class SystemPermissionMonitor {
     private func refreshAll(emitting: Bool) async {
         await checkBucket(kind: .screenRecording, status: readScreenRecordingStatus(), emitting: emitting)
         await checkBucket(kind: .accessibility, status: readAccessibilityStatus(), emitting: emitting)
+        await checkBucket(kind: .remoteDesktop, status: readRemoteDesktopStatus(), emitting: emitting)
+        await checkBucket(kind: .systemExtension, status: readSystemExtensionStatus(), emitting: emitting)
         await checkBucket(kind: .camera, status: readCameraStatus(), emitting: emitting)
         await checkBucket(kind: .microphone, status: readMicrophoneStatus(), emitting: emitting)
         await checkBucket(kind: .fullDiskAccess, status: readFullDiskAccessStatus(), emitting: emitting)
@@ -309,6 +311,17 @@ public final class SystemPermissionMonitor {
 
     private func readAccessibilityStatus() -> SystemPermissionStatus {
         AXIsProcessTrusted() ? .granted : .needsAccess
+    }
+
+    private func readRemoteDesktopStatus() -> SystemPermissionStatus {
+        RemoteUnlockSetupProbe().remoteDesktopPermissionGranted ? .granted : .needsAccess
+    }
+
+    private func readSystemExtensionStatus() -> SystemPermissionStatus {
+        let probe = RemoteUnlockSetupProbe()
+        if probe.virtualHIDDriverActive { return .granted }
+        if probe.virtualHIDDriverPolicyRejected { return .denied }
+        return .needsAccess
     }
 
     private func readCameraStatus() -> SystemPermissionStatus {

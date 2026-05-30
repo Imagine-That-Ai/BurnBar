@@ -15,12 +15,7 @@
  * return JSON like `{"detail":"…","status":401}` for bad keys.
  */
 
-import type {
-  ProviderAdapter,
-  CredentialTestResult,
-  QuotaRefreshResult,
-  QuotaBucket,
-} from "../types.js";
+import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { isRecord, stringField } from "../guards.js";
 
 const PROVIDER = "factory" as const;
@@ -47,10 +42,7 @@ interface FactoryFetchResult {
   errorCode?: string;
 }
 
-async function factoryFetch(
-  url: string,
-  token: string
-): Promise<FactoryFetchResult> {
+async function factoryFetch(url: string, token: string): Promise<FactoryFetchResult> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -139,10 +131,7 @@ export const factoryAdapter: ProviderAdapter = {
     }
 
     const kind = inferKind(trimmed);
-    const result = await factoryFetch(
-      `${API_HOST}${VALIDATE_PATH}`,
-      trimmed
-    );
+    const result = await factoryFetch(`${API_HOST}${VALIDATE_PATH}`, trimmed);
     void parseFactoryAuthMePayload(result.data);
     if (!result.ok) {
       return {
@@ -165,15 +154,9 @@ export const factoryAdapter: ProviderAdapter = {
     };
   },
 
-  async fetchQuota(
-    credential: string,
-    sourceId: string
-  ): Promise<QuotaRefreshResult> {
+  async fetchQuota(credential: string, sourceId: string): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
-    const result = await factoryFetch(
-      `${API_HOST}${USAGE_PATH}`,
-      trimmed
-    );
+    const result = await factoryFetch(`${API_HOST}${USAGE_PATH}`, trimmed);
     const payload = parseFactoryUsagePayload(result.data);
     if (!result.ok) {
       return {
@@ -211,7 +194,7 @@ export const factoryAdapter: ProviderAdapter = {
 function bucketFromLane(
   name: string,
   lane: FactoryUsageLane | undefined,
-  windowEnd: string | undefined
+  windowEnd: string | undefined,
 ): QuotaBucket | undefined {
   if (!lane) return undefined;
   const used = numberFrom(lane.userTokens) ?? 0;
@@ -277,9 +260,7 @@ function stringFrom(raw: unknown): string | undefined {
 }
 
 function stripUndefined(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined)
-  );
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined));
 }
 
 export const __testing__ = {

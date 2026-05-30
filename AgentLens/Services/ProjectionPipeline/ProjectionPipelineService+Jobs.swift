@@ -133,6 +133,9 @@ extension ProjectionPipelineService {
             }
 
             report.leasedJobs += 1
+            if report.leasedJobs % ProjectionPipelineRuntimeTuning.sweepYieldInterval == 0 {
+                await Task.yield()
+            }
 
             do {
                 try await process(leasedJob)

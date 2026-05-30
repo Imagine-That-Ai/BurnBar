@@ -14,16 +14,9 @@ import { logError, logInfo, logWarn } from "../logging.js";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
 
-import {
-  APP_STORE_SECRETS,
-  hostedQuotaProductID,
-  loadAppStoreRuntimeConfig,
-} from "./config.js";
+import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
-import {
-  EntitlementReconcileError,
-  reconcileEntitlement,
-} from "./reconciler.js";
+import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { JWSVerificationFailure } from "./verifier.js";
 
 const REGION = "us-central1";
@@ -83,17 +76,11 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
         if (result.changed) updated += 1;
       } catch (err) {
         failed += 1;
-        if (
-          err instanceof JWSVerificationFailure ||
-          err instanceof EntitlementReconcileError
-        ) {
+        if (err instanceof JWSVerificationFailure || err instanceof EntitlementReconcileError) {
           logWarn({
             event: "appstore.scheduled.reconcile_soft_failed",
             path: doc.ref.path,
-            code:
-              err instanceof EntitlementReconcileError
-                ? err.code
-                : "jws_invalid",
+            code: err instanceof EntitlementReconcileError ? err.code : "jws_invalid",
           });
         } else {
           logError({
@@ -112,5 +99,5 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
       updated,
       failed,
     });
-  }
+  },
 );
