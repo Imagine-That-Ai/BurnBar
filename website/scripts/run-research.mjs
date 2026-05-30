@@ -50,6 +50,56 @@ const ROOT = path.resolve(__dirname, "..");
 const SEED_DIR = path.join(ROOT, "scripts", "rundown-seed");
 const OUT_DIR = path.join(ROOT, "src", "data", "router-rundown-history");
 const FUNCTIONS_LIB = path.resolve(ROOT, "..", "functions", "lib", "modelLandscape.js");
+const DEFAULT_RESEARCH_TIMEOUT_MS = 45_000;
+
+function researchTimeoutMs() {
+  const raw = process.env.OPENBURNBAR_RESEARCH_TIMEOUT_MS;
+  if (!raw) return DEFAULT_RESEARCH_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1_000) {
+    console.warn(`[research] ignoring invalid OPENBURNBAR_RESEARCH_TIMEOUT_MS=${JSON.stringify(raw)}`);
+    return DEFAULT_RESEARCH_TIMEOUT_MS;
+  }
+  return parsed;
+}
+
+function timeoutError(ms) {
+  const error = new Error(`model landscape research timed out after ${ms}ms`);
+  error.name = "ResearchTimeoutError";
+  return error;
+}
+
+function installFetchTimeout(ms) {
+  if (typeof globalThis.fetch !== "function") return;
+  const realFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = (input, init = {}) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(timeoutError(ms)), ms);
+    const upstreamSignal = init.signal;
+    if (upstreamSignal) {
+      if (upstreamSignal.aborted) {
+        controller.abort(upstreamSignal.reason);
+      } else {
+        upstreamSignal.addEventListener("abort", () => controller.abort(upstreamSignal.reason), { once: true });
+      }
+    }
+    return realFetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+  };
+}
+
+async function withTimeout(promise, ms) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(timeoutError(ms)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function loadCatalog() {
   // Operator-maintained metadata: keyed by modelID, attaches display name,
@@ -156,6 +206,8 @@ async function main() {
 
   console.log("[research] running live research against public endpoints…");
   const now = new Date();
+  const timeoutMs = researchTimeoutMs();
+  installFetchTimeout(timeoutMs);
 
   // If the operator hasn't bound a manual fixture explicitly, fall back to the
   // committed seed snapshot for today (or a date-less `snapshots-latest.json`
@@ -169,7 +221,10 @@ async function main() {
     }
   }
 
-  const result = await modelLandscape.collectModelLandscapeBenchmarks(process.env, now);
+  const result = await withTimeout(
+    modelLandscape.collectModelLandscapeBenchmarks(process.env, now),
+    timeoutMs,
+  );
 
   console.log("[research] source statuses:");
   for (const s of result.statuses) {

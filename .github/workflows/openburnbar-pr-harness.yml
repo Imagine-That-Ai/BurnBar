@@ -4,6 +4,7 @@ permissions:
   contents: read
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -467,8 +468,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request' &&
       needs.path-filter.outputs.hermes_iroh == 'true' &&
-      vars.ANDROID_E2E_ENABLED == 'true' &&
-      secrets.GOOGLE_SERVICES_JSON_BASE64 != ''
+      vars.ANDROID_E2E_ENABLED == 'true'
     runs-on: macos-26
     timeout-minutes: 45
     continue-on-error: true

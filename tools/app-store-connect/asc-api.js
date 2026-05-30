@@ -1372,6 +1372,47 @@ async function getSubscription() {
   }
 }
 
+async function getAllSubscriptions() {
+  const response = await api(
+    "GET",
+    `/apps/${APP.appleId}/subscriptionGroups${query({
+      include: "subscriptions",
+      limit: 200,
+    })}`
+  );
+  return (response.included || [])
+    .filter((entry) => entry.type === "subscriptions")
+    .map((entry) => ({
+      id: entry.id,
+      productId: entry.attributes?.productId,
+      name: entry.attributes?.name,
+      state: entry.attributes?.state,
+      subscriptionPeriod: entry.attributes?.subscriptionPeriod,
+      groupId: entry.relationships?.group?.data?.id,
+    }))
+    .filter((entry) => entry.productId)
+    .sort((a, b) => a.productId.localeCompare(b.productId));
+}
+
+async function getAllInAppPurchases() {
+  const response = await api(
+    "GET",
+    `/apps/${APP.appleId}/inAppPurchasesV2${query({
+      limit: 200,
+    })}`
+  );
+  return (response.data || [])
+    .map((entry) => ({
+      id: entry.id,
+      productId: entry.attributes?.productId,
+      name: entry.attributes?.name,
+      type: entry.attributes?.inAppPurchaseType,
+      state: entry.attributes?.state,
+    }))
+    .filter((entry) => entry.productId)
+    .sort((a, b) => a.productId.localeCompare(b.productId));
+}
+
 const SUBSCRIPTION_LOCALIZATION = {
   name: "Hosted Quota Sync Monthly",
   description: "Hosted Codex quota refresh for OpenBurnBar Cloud.",
@@ -1574,6 +1615,8 @@ async function printStatus() {
   const localization = await getVersionLocalization(version.id);
   const screenshots = await getScreenshotSets(localization.id);
   const subscription = await getSubscription();
+  const subscriptions = await getAllSubscriptions();
+  const inAppPurchases = await getAllInAppPurchases();
   const linkedBuild = await getLinkedBuild(version.id);
   const linkedBuildReadback = linkedBuild?.id ? await getBuild(linkedBuild.id) : null;
   const reviewDetail = await getReviewDetail(version.id);
@@ -1629,6 +1672,8 @@ async function printStatus() {
             (entry) => entry.type === "subscriptionAppStoreReviewScreenshots"
           ),
         },
+        subscriptions,
+        inAppPurchases,
       },
       null,
       2
