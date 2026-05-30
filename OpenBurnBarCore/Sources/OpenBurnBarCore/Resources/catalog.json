@@ -2589,9 +2589,9 @@
           "capabilityClassID": "mimo-v2.5-pro",
           "capabilityClassRank": 85,
           "pricing": {
-            "inputPerMToken": 1,
-            "outputPerMToken": 3,
-            "cacheReadPerMToken": 0.2
+            "inputPerMToken": 0.435,
+            "outputPerMToken": 0.87,
+            "cacheReadPerMToken": 0.0036
           }
         },
         {
@@ -2616,9 +2616,9 @@
           "capabilityClassID": "mimo-v2.5",
           "capabilityClassRank": 65,
           "pricing": {
-            "inputPerMToken": 0.5,
-            "outputPerMToken": 1.5,
-            "cacheReadPerMToken": 0.1
+            "inputPerMToken": 0.14,
+            "outputPerMToken": 0.28,
+            "cacheReadPerMToken": 0.0028
           }
         },
         {
@@ -2644,9 +2644,9 @@
           "capabilityClassID": "mimo-v2-pro",
           "capabilityClassRank": 80,
           "pricing": {
-            "inputPerMToken": 0.8,
-            "outputPerMToken": 2.4,
-            "cacheReadPerMToken": 0.16
+            "inputPerMToken": 1,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.2
           }
         },
         {
@@ -2670,9 +2670,37 @@
           "capabilityClassID": "mimo-v2-omni",
           "capabilityClassRank": 60,
           "pricing": {
-            "inputPerMToken": 0.5,
-            "outputPerMToken": 1.5,
-            "cacheReadPerMToken": 0.1
+            "inputPerMToken": 0.4,
+            "outputPerMToken": 2,
+            "cacheReadPerMToken": 0.08
+          }
+        },
+        {
+          "id": "off-v2-flash-family",
+          "displayName": "MiMo V2 Flash",
+          "visibility": "public",
+          "aliases": [
+            "off-v2-flash"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "off",
+                "v2",
+                "flash"
+              ],
+              "any": [],
+              "none": [
+                "v2.5"
+              ]
+            }
+          ],
+          "capabilityClassID": "off-v2-flash",
+          "capabilityClassRank": 40,
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.3,
+            "cacheReadPerMToken": 0.01
           }
         }
       ]

@@ -155,5 +155,26 @@
     "providerID": "deepseek",
     "providerDisplay": "DeepSeek",
     "tier": "mid"
+  },
+  {
+    "modelID": "mimo-v2.5-pro",
+    "modelDisplay": "MiMo V2.5 Pro",
+    "providerID": "mimo",
+    "providerDisplay": "Xiaomi MiMo",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "mimo-v2.5",
+    "modelDisplay": "MiMo V2.5",
+    "providerID": "mimo",
+    "providerDisplay": "Xiaomi MiMo",
+    "tier": "mid"
+  },
+  {
+    "modelID": "off-v2-flash",
+    "modelDisplay": "MiMo V2 Flash",
+    "providerID": "mimo",
+    "providerDisplay": "Xiaomi MiMo",
+    "tier": "mini"
   }
 ]
