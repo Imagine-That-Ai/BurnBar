@@ -9,16 +9,16 @@ import OpenBurnBarCore
 //   -> chunk_embeddings + retrieval_health
 
 actor ProjectionPipelineService {
-    private let dataStore: DataStore
-    private let leaseOwner: String
-    nonisolated private let nowProvider: @Sendable () -> Date
-    private let chunker: ProjectionChunker
-    private let chunkEmbedder: any ChunkEmbeddingProviding
-    private let embeddingModelID: String
-    private let embeddingVersionID: String
-    private let paginationPageSize: Int
-    private var isSweeping = false
-    private var didSeedBackfill = false
+    let dataStore: DataStore
+    let leaseOwner: String
+    nonisolated let nowProvider: @Sendable () -> Date
+    let chunker: ProjectionChunker
+    let chunkEmbedder: any ChunkEmbeddingProviding
+    let embeddingModelID: String
+    let embeddingVersionID: String
+    let paginationPageSize: Int
+    var isSweeping = false
+    var didSeedBackfill = false
 
     /// Captures the last ChunkDiffResult from processProjection for test verification.
     /// This enables tests to assert on write-amplification invariants directly.
@@ -97,7 +97,7 @@ actor ProjectionPipelineService {
         }
     }
 
-    private func projectConversation(_ conversation: ConversationRecord, sourceVersionID: String) async throws {
+    func projectConversation(_ conversation: ConversationRecord, sourceVersionID: String) async throws {
         let now = nowProvider()
         let title = projectedConversationTitle(conversation)
         let subtitle = "\(conversation.provider.rawValue) • \(conversation.projectName)"
@@ -200,7 +200,7 @@ actor ProjectionPipelineService {
         }
     }
 
-    private func projectArtifact(_ artifact: SourceArtifactRecord, sourceVersionID: String) async throws {
+    func projectArtifact(_ artifact: SourceArtifactRecord, sourceVersionID: String) async throws {
         let now = nowProvider()
         let projectName = URL(fileURLWithPath: artifact.rootPath).lastPathComponent
         let preview = artifact.body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -299,13 +299,13 @@ actor ProjectionPipelineService {
         }
     }
 
-    private func projectedConversationTitle(_ conversation: ConversationRecord) -> String {
+    func projectedConversationTitle(_ conversation: ConversationRecord) -> String {
         let inferred = conversation.inferredTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if inferred.isEmpty == false { return inferred }
         return conversation.sessionId
     }
 
-    private func projectedConversationPreview(_ conversation: ConversationRecord) -> String {
+    func projectedConversationPreview(_ conversation: ConversationRecord) -> String {
         let assistant = conversation.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         if assistant.isEmpty == false {
             return String(assistant.prefix(320))

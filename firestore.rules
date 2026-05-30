@@ -186,7 +186,8 @@ service cloud.firestore {
         && entitlement.productID in [
           "com.openburnbar.hostedQuotaSync.cloud.monthly",
           "com.openburnbar.hostedQuotaSync.monthly",
-          "com.openburnbar.pro.monthly"
+          "com.openburnbar.pro.monthly",
+          "com.openburnbar.pro.annual"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -217,7 +218,9 @@ service cloud.firestore {
       return entitlement.active == true
         && entitlement.productID in [
           "com.openburnbar.hostedMediaSync.monthly",
-          "com.openburnbar.pro.monthly"
+          "com.openburnbar.proMax.bundle.monthly",
+          "com.openburnbar.proMax.monthly",
+          "com.openburnbar.proMax.annual"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -229,8 +232,8 @@ service cloud.firestore {
           && activeMediaEntitlementData(get(hostedMediaEntitlementPath(userId)).data)
         )
         || (
-          exists(burnBarProEntitlementPath(userId))
-          && activePremiumEntitlementData(get(burnBarProEntitlementPath(userId)).data)
+          exists(burnBarProMaxEntitlementPath(userId))
+          && activeMediaEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -252,7 +255,8 @@ service cloud.firestore {
 	          "com.openburnbar.computerUse.monthly",
 	          "com.openburnbar.hostedComputerUseSync.monthly",
 	          "com.openburnbar.proMax.bundle.monthly",
-	          "com.openburnbar.proMax.monthly"
+	          "com.openburnbar.proMax.monthly",
+	          "com.openburnbar.proMax.annual"
 	        ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;

@@ -9,6 +9,8 @@ import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.Date
@@ -26,6 +28,8 @@ data class DeviceRecord(
 
 class DevicesStore : ViewModel() {
     private val db: FirebaseFirestore = Firebase.firestore
+    private val securityClient = ComputerUseSecurityCallableClient()
+    private val escrowRegistry = AndroidEscrowDeviceRegistry()
 
     private val _devices = MutableStateFlow<List<DeviceRecord>>(emptyList())
     val devices: StateFlow<List<DeviceRecord>> = _devices.asStateFlow()
@@ -106,13 +110,8 @@ class DevicesStore : ViewModel() {
         viewModelScope.launch {
             _actionInFlightFor.value = currentDevice?.id
             try {
-                // Firestore update or cloud function call
                 val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
-                val deviceId = currentDevice?.id ?: return@launch
-                db.collection("users").document(uid)
-                    .collection("devices").document(deviceId)
-                    .update(mapOf("trustState" to "trusted", "updatedAt" to Date()))
-                    .await()
+                escrowRegistry.trustSelf(uid = uid)
                 load()
             } catch (e: Exception) {
                 _lastError.value = e.message
@@ -145,11 +144,7 @@ class DevicesStore : ViewModel() {
         viewModelScope.launch {
             _actionInFlightFor.value = device.id
             try {
-                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
-                db.collection("users").document(uid)
-                    .collection("devices").document(device.id)
-                    .update(mapOf("trustState" to "revoked", "updatedAt" to Date()))
-                    .await()
+                securityClient.revokeEscrowDeviceTrust(device.id)
                 load()
             } catch (e: Exception) {
                 _lastError.value = e.message

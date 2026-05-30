@@ -10,9 +10,14 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const budgetSrc = readFileSync(join(root, "src/computerUseBudget.ts"), "utf8");
+const mediaBudgetSrc = readFileSync(join(root, "src/mediaBudget.ts"), "utf8");
 const rcSrc = readFileSync(join(root, "src/computerUseRemoteConfig.ts"), "utf8");
 
 assert.match(budgetSrc, /syncKillSwitchForBudgetLevel/);
+assert.match(budgetSrc, /computer_use_budget_soft_usd/);
+assert.match(budgetSrc, /computer_use_budget_soft_cap_usd/);
+assert.match(mediaBudgetSrc, /media_budget_soft_usd/);
+assert.match(mediaBudgetSrc, /media_budget_soft_cap_usd/);
 assert.match(rcSrc, /computer_use_kill_switch/);
 assert.match(rcSrc, /budget_hard_cap/);
 assert.match(rcSrc, /ops\/computer_use_budget_status\/events/);

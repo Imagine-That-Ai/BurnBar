@@ -35,11 +35,21 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
   try {
     const template = await getRemoteConfig().getTemplate();
     const params = template.parameters ?? {};
-    const soft = parseFloat(remoteConfigStringValue(params.computer_use_budget_soft_cap_usd?.defaultValue) ?? "");
-    const hard = parseFloat(remoteConfigStringValue(params.computer_use_budget_hard_cap_usd?.defaultValue) ?? "");
+    const firstNumber = (keys: string[]): number | undefined => {
+      for (const key of keys) {
+        const parsed = parseFloat(remoteConfigStringValue(params[key]?.defaultValue) ?? "");
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      }
+      return undefined;
+    };
+    const soft = firstNumber(["computer_use_budget_soft_usd", "computer_use_budget_soft_cap_usd"]);
+    const hard = firstNumber(["computer_use_budget_hard_usd", "computer_use_budget_hard_cap_usd"]);
+    if (soft != null && hard != null && hard <= soft) {
+      return { softCapUSD: SOFT_CAP_USD, hardCapUSD: HARD_CAP_USD };
+    }
     return {
-      softCapUSD: Number.isFinite(soft) ? soft : SOFT_CAP_USD,
-      hardCapUSD: Number.isFinite(hard) ? hard : HARD_CAP_USD,
+      softCapUSD: soft ?? SOFT_CAP_USD,
+      hardCapUSD: hard ?? HARD_CAP_USD,
     };
   } catch (_e) {
     return { softCapUSD: SOFT_CAP_USD, hardCapUSD: HARD_CAP_USD };

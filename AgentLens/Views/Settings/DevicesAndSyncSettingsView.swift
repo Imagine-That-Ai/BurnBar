@@ -185,14 +185,36 @@ struct DevicesAndSyncSettingsView: View {
 // MARK: - Cloud Sync Detail
 
 struct CloudSyncStatusDetailView: View {
+    @State private var appCheckMonitor = AppCheckAttestationMonitor.shared
+
     var body: some View {
         SettingsDetailContainer(
             title: MacCopy.cloudSyncSectionTitle,
             subtitle: "OpenBurnBar uses Firebase for cross-device sync. The transfer pipeline is end-to-end encrypted with device trust and provider readback."
         ) {
+            if let warning = appCheckMonitor.lastWarningMessage {
+                GlassCard {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                        Text(warning)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { appCheckMonitor.clearWarning() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                }
+            }
+
             MercuryEnvelopeCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text(MacCopy.cloudSyncHealthy)
+                    Text(appCheckMonitor.lastWarningMessage == nil ? MacCopy.cloudSyncHealthy : MacCopy.cloudSyncDegraded)
                         .fontWeight(.semibold)
                     Text(MacCopy.transferConfirmCopy)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)

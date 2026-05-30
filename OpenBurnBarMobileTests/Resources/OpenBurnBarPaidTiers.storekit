@@ -1,0 +1,148 @@
+{
+  "identifier": "OpenBurnBarPaidTiers",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "4.99",
+      "familyShareable": false,
+      "internalID": "ACT100",
+      "localizations": [
+        {
+          "description": "Adds 100 prepaid hosted Agent Control actions to the current BurnBar Cloud Pro month.",
+          "displayName": "Agent Control 100 Actions",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.agentControl.actions100",
+      "referenceName": "Agent Control 100 Actions",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "4.99",
+      "familyShareable": false,
+      "internalID": "FLOO50GB",
+      "localizations": [
+        {
+          "description": "Adds 50 prepaid Floo relay GB to the current BurnBar Cloud Pro month.",
+          "displayName": "Floo Relay 50 GB",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.floo.relay50gb",
+      "referenceName": "Floo Relay 50 GB",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {},
+  "subscriptionGroups": [
+    {
+      "id": "BURNBARCLOUD",
+      "localizations": [
+        {
+          "description": "BurnBar Cloud and BurnBar Cloud Pro subscriptions.",
+          "displayName": "BurnBar Cloud",
+          "locale": "en_US"
+        }
+      ],
+      "name": "BurnBar Cloud",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "7.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "CLOUDMONTH1",
+          "introductoryOffer": {
+            "duration": "P2W",
+            "numberOfPeriods": 1,
+            "paymentMode": "freeTrial"
+          },
+          "localizations": [
+            {
+              "description": "Sync quota, encrypted history, cloud search, Intelligence Brief, and agent memory across your devices.",
+              "displayName": "BurnBar Cloud",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.pro.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "BurnBar Cloud Monthly",
+          "subscriptionGroupID": "BURNBARCLOUD",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "79",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "CLOUDYEAR1",
+          "introductoryOffer": {
+            "duration": "P2W",
+            "numberOfPeriods": 1,
+            "paymentMode": "freeTrial"
+          },
+          "localizations": [
+            {
+              "description": "BurnBar Cloud with annual billing.",
+              "displayName": "BurnBar Cloud Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.pro.annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "BurnBar Cloud Annual",
+          "subscriptionGroupID": "BURNBARCLOUD",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "24.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "CLOUDPROMONTH1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "BurnBar Cloud plus Floo and supervised Agent Control.",
+              "displayName": "BurnBar Cloud Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.proMax.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "BurnBar Cloud Pro Monthly",
+          "subscriptionGroupID": "BURNBARCLOUD",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "249",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "CLOUDPROYEAR1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "BurnBar Cloud Pro with annual billing.",
+              "displayName": "BurnBar Cloud Pro Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.proMax.annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "BurnBar Cloud Pro Annual",
+          "subscriptionGroupID": "BURNBARCLOUD",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}

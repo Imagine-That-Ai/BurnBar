@@ -81,6 +81,22 @@ async function seedBurnBarProEntitlement(uid) {
   });
 }
 
+async function seedBurnBarProMaxEntitlement(
+  uid,
+  productID = "com.openburnbar.proMax.monthly"
+) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/entitlements/burnbar_pro_max`), {
+      id: "burnbar_pro_max",
+      active: true,
+      productID,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      expireAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+      schemaVersion: 2,
+    });
+  });
+}
+
 async function seedHostedComputerUseEntitlement(
   uid,
   entitlementId = "hosted_computer_use_sync",
@@ -298,8 +314,9 @@ test("current and legacy computer use subscription product ids satisfy the clien
   const cases = [
     ["computer-use-current", "hosted_computer_use_sync", "com.openburnbar.computerUse.monthly"],
     ["computer-use-legacy", "hosted_computer_use_sync", "com.openburnbar.hostedComputerUseSync.monthly"],
-    ["pro-max-current", "burnbar_pro_max", "com.openburnbar.proMax.bundle.monthly"],
-    ["pro-max-legacy", "burnbar_pro_max", "com.openburnbar.proMax.monthly"],
+    ["pro-max-monthly", "burnbar_pro_max", "com.openburnbar.proMax.monthly"],
+    ["pro-max-annual", "burnbar_pro_max", "com.openburnbar.proMax.annual"],
+    ["pro-max-legacy", "burnbar_pro_max", "com.openburnbar.proMax.bundle.monthly"],
   ];
 
   for (const [uid, entitlementId, productID] of cases) {
@@ -323,6 +340,80 @@ test("current and legacy computer use subscription product ids satisfy the clien
       })
     );
   }
+});
+
+test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async () => {
+  const cloudDb = authedDb("cloud-only-media");
+  await seedBurnBarProEntitlement("cloud-only-media");
+  await assertFails(
+    setDoc(doc(cloudDb, "users/cloud-only-media/media_attachment_manifests/manifest-1"), {
+      id: "manifest-1",
+      blobHash: "b".repeat(64),
+      filename: "screen.png",
+      mime: "image/png",
+      size: 1234,
+      peerDeviceIdHash: "peer-hash",
+      direction: "macToIos",
+      schemaVersion: 1,
+    })
+  );
+
+  const proDb = authedDb("cloud-pro-media");
+  await seedBurnBarProMaxEntitlement("cloud-pro-media");
+  await assertSucceeds(
+    setDoc(doc(proDb, "users/cloud-pro-media/media_attachment_manifests/manifest-1"), {
+      id: "manifest-1",
+      blobHash: "b".repeat(64),
+      filename: "screen.png",
+      mime: "image/png",
+      size: 1234,
+      peerDeviceIdHash: "peer-hash",
+      direction: "macToIos",
+      schemaVersion: 1,
+    })
+  );
+});
+
+test("BurnBar Cloud does not unlock computer-use authority but Cloud Pro does", async () => {
+  const cloudUid = "cloud-only-control";
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${cloudUid}/escrow_devices/phone-1`), {
+      deviceId: "phone-1",
+      platform: "iOS",
+      deviceName: "Grant Phone",
+      trustState: "trusted",
+      updatedAt: serverTimestamp(),
+    });
+  });
+  await seedBurnBarProEntitlement(cloudUid);
+  await assertFails(
+    setDoc(doc(authedDb(cloudUid), `users/${cloudUid}/agent_grant_authorities/phone-1`), {
+      sourceDeviceId: "phone-1",
+      peerNodeId: `${cloudUid}-peer-${"a".repeat(24)}`,
+      publicKeyBase64: "A".repeat(44),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  const proUid = "cloud-pro-control";
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${proUid}/escrow_devices/phone-1`), {
+      deviceId: "phone-1",
+      platform: "iOS",
+      deviceName: "Grant Phone",
+      trustState: "trusted",
+      updatedAt: serverTimestamp(),
+    });
+  });
+  await seedBurnBarProMaxEntitlement(proUid, "com.openburnbar.proMax.annual");
+  await assertSucceeds(
+    setDoc(doc(authedDb(proUid), `users/${proUid}/agent_grant_authorities/phone-1`), {
+      sourceDeviceId: "phone-1",
+      peerNodeId: `${proUid}-peer-${"a".repeat(24)}`,
+      publicKeyBase64: "A".repeat(44),
+      updatedAt: serverTimestamp(),
+    })
+  );
 });
 
 test("owner can write free usage rows without hosted cloud entitlement", async () => {

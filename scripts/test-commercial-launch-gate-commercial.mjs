@@ -4,12 +4,17 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   COMMERCIAL_PRODUCTS,
   evaluateEnvRequirements,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
 } from "./commercial-launch-gate.mjs";
+
+const launchGateSource = readFileSync(new URL("./commercial-launch-gate.mjs", import.meta.url), "utf8");
+assert.match(launchGateSource, /verifyCloudProTopUp/);
+assert.match(launchGateSource, /verifyGooglePlayCloudProTopUp/);
 
 {
   const coverage = evaluateRequiredProductIDs(

@@ -11,7 +11,7 @@ import Security
 public final class RemoteUnlockCapabilitySigningKeyStore: @unchecked Sendable {
     public static let shared = RemoteUnlockCapabilitySigningKeyStore()
 
-    public struct KeyMaterial: Sendable, Equatable {
+    public struct KeyMaterial: Sendable {
         public var keyId: String
         public var publicKey: Curve25519.Signing.PublicKey
         public var privateKey: Curve25519.Signing.PrivateKey

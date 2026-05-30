@@ -11,13 +11,17 @@ private enum CloudStoreLegalURLs {
 }
 
 private enum CloudSubscriptionDisclosure {
-    static let title = "OpenBurnBar Cloud Monthly"
-    static let period = "1 month, auto-renews monthly"
-    static let included = "Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, Hermes Remote Relay, and Hosted Remote MCP."
+    static let title = "BurnBar Cloud and BurnBar Cloud Pro"
+    static let period = "Monthly or annual auto-renewable subscriptions"
+    static let included = "BurnBar Cloud includes sync, encrypted history backup, cloud search, Intelligence Brief fallback, remote relay, and Hosted Remote MCP. BurnBar Cloud Pro adds Floo live control, supervised Agent Control, 500 hosted actions, and 50 relay GB."
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
     static let reviewVisiblePlans = [
-        "OpenBurnBar Cloud Monthly - 1 month - hosted quota refresh, session sync, conversation backup, and remote relay.",
-        "Hosted Quota Sync Monthly - 1 month - legacy hosted quota sync entitlement for existing App Store review catalog continuity."
+        "BurnBar Cloud Monthly - 1 month - $7.99 - 14-day intro free trial for new subscribers.",
+        "BurnBar Cloud Annual - 1 year - $79 - 14-day intro free trial for new subscribers.",
+        "BurnBar Cloud Pro Monthly - 1 month - $24.99 - no intro trial.",
+        "BurnBar Cloud Pro Annual - 1 year - $249 - no intro trial.",
+        "Agent Control 100 Actions - consumable top-up - $4.99.",
+        "Floo Relay 50 GB - consumable top-up - $4.99."
     ]
     static let reviewVisiblePlanSummary = "All App Store Connect subscriptions for this app are available here: \(reviewVisiblePlans.joined(separator: " "))"
 }
@@ -73,6 +77,13 @@ struct CloudStoreView: View {
                             .padding(.horizontal, MobileTheme.Spacing.lg)
                             .settingsAnchor(SettingsAnchor.cloudPlan)
                             .staggeredEntrance(delay: 0.05)
+
+                        if store.isActivePro {
+                            CloudStoreTopUpTile(store: store)
+                                .padding(.horizontal, MobileTheme.Spacing.lg)
+                                .settingsAnchor(SettingsAnchor.cloudPlan)
+                                .staggeredEntrance(delay: 0.08)
+                        }
                     } else {
                         CloudStorePlanTile(store: store)
                             .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -110,7 +121,7 @@ struct CloudStoreView: View {
 
                     if !store.isActive {
                         CloudStoreSubscriptionDetails(
-                            priceText: store.product?.displayPrice ?? "$4.99"
+                            priceText: store.displayPrice(for: OpenBurnBarProductCatalog.subscriptions[0])
                         )
                         .padding(.horizontal, MobileTheme.Spacing.lg)
                         .staggeredEntrance(delay: 0.23)
@@ -239,25 +250,25 @@ private struct CloudStorePosterHero: View {
         if store.isActive {
             return "Your quota, your conversations, your agents — synced across every device."
         }
-        return "Hosted Codex refresh. Chat that follows you. Mac AI anywhere. From $4.99/mo."
+        return "Sync, search, and connect your agent memory across devices. Cloud starts at $7.99/mo."
     }
 }
 
 // MARK: - Plan Tile (free state)
 
 private struct CloudStorePlanTile: View {
-    let store: HostedQuotaSubscriptionStore
+    @Bindable var store: HostedQuotaSubscriptionStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
             HStack(alignment: .firstTextBaseline) {
-                Text("MEMBERSHIP")
+                Text("PLANS")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.bold)
                     .tracking(2.4)
                     .foregroundStyle(MobileTheme.ember)
                 Spacer(minLength: 0)
-                Text("MONTHLY")
+                Text("APPLE BILLING")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .tracking(1.4)
                     .padding(.horizontal, 8)
@@ -271,26 +282,142 @@ private struct CloudStorePlanTile: View {
                     )
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(store.product?.displayPrice ?? "$4.99")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text("/ month")
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+            VStack(spacing: MobileTheme.Spacing.sm) {
+                ForEach(OpenBurnBarProductCatalog.subscriptions) { plan in
+                    CloudStorePaidProductRow(
+                        catalogProduct: plan,
+                        priceText: store.displayPrice(for: plan),
+                        isPurchasing: store.isPurchasing
+                    ) {
+                        Haptics.medium()
+                        Task { await store.purchase(productID: plan.id) }
+                    }
                 }
-                Text("OpenBurnBar Cloud — Apple-verified, billed monthly. Cancel anytime in Settings → Apple ID.")
-                    .font(MobileTheme.Typography.caption)
+            }
+
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
+                Text("CLOUD PRO TOP-UPS")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.bold)
+                    .tracking(1.4)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(OpenBurnBarProductCatalog.topUps) { topUp in
+                    CloudStorePaidProductRow(
+                        catalogProduct: topUp,
+                        priceText: store.displayPrice(for: topUp),
+                        isPurchasing: store.isPurchasing,
+                        isDisabled: !store.isActivePro
+                    ) {
+                        Haptics.medium()
+                        Task { await store.purchase(productID: topUp.id) }
+                    }
+                }
+
+                if !store.isActivePro {
+                    Text("Top-ups unlock after BurnBar Cloud Pro is active.")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(MercuryFoilCardModifier())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("OpenBurnBar Cloud monthly plan, \(store.product?.displayPrice ?? "$4.99") per month. Billed by Apple, cancel anytime.")
+        .accessibilityLabel("BurnBar Cloud and BurnBar Cloud Pro plans. Billed by Apple, cancel anytime.")
+    }
+}
+
+private struct CloudStorePaidProductRow: View {
+    let catalogProduct: OpenBurnBarStoreProduct
+    let priceText: String
+    let isPurchasing: Bool
+    var isDisabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(catalogProduct.title)
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text(catalogProduct.cadence)
+                            .font(MobileTheme.Typography.tiny)
+                            .fontWeight(.bold)
+                            .tracking(0.8)
+                            .foregroundStyle(MobileTheme.ember)
+                    }
+                    Text(catalogProduct.included)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: MobileTheme.Spacing.sm)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(priceText)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Image(systemName: catalogProduct.role == .topUp ? "plus.circle.fill" : "creditcard.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(isDisabled ? MobileTheme.Colors.textMuted : MobileTheme.ember)
+                }
+            }
+            .padding(MobileTheme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .fill(MobileTheme.Colors.surface.opacity(isDisabled ? 0.40 : 0.72))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .stroke(MobileTheme.ember.opacity(isDisabled ? 0.12 : 0.28), lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isPurchasing || isDisabled)
+        .accessibilityIdentifier("cloudStore.product.\(catalogProduct.id)")
+        .accessibilityLabel("\(catalogProduct.title), \(catalogProduct.cadence), \(priceText). \(catalogProduct.disclosure)")
+    }
+}
+
+private struct CloudStoreTopUpTile: View {
+    @Bindable var store: HostedQuotaSubscriptionStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            Text("CLOUD PRO TOP-UPS")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.bold)
+                .tracking(2.0)
+                .foregroundStyle(MobileTheme.ember)
+
+            ForEach(OpenBurnBarProductCatalog.topUps) { topUp in
+                CloudStorePaidProductRow(
+                    catalogProduct: topUp,
+                    priceText: store.displayPrice(for: topUp),
+                    isPurchasing: store.isPurchasing
+                ) {
+                    Haptics.medium()
+                    Task { await store.purchase(productID: topUp.id) }
+                }
+            }
+
+            if let credit = store.lastTopUpCredit, credit.credited {
+                Text("Top-up credited: \(credit.units) units for \(credit.monthKey).")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.ember)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(MobileTheme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(MercuryFoilCardModifier())
+        .accessibilityIdentifier("cloudStore.topUps")
     }
 }
 
@@ -1005,7 +1132,7 @@ private struct CloudStoreTrustCard: View {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
                 Link(destination: URL(string: "https://burnbar.ai/pricing")!) {
                     HStack(spacing: 6) {
-                        Text("Read the Hosted Quota Sync technical doc")
+                        Text("Read the BurnBar Cloud pricing details")
                         Image(systemName: "arrow.up.right.square.fill")
                     }
                     .font(MobileTheme.Typography.caption)

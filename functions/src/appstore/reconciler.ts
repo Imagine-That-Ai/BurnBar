@@ -368,7 +368,7 @@ async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTrans
  * search across `entitlement_bindings`. The collection is server-only
  * (rules deny clients), so this is safe.
  */
-async function consumeBindingByToken(db: Firestore, token: string, claimedUid?: string): Promise<string> {
+export async function consumeBindingByToken(db: Firestore, token: string, claimedUid?: string): Promise<string> {
   if (claimedUid) {
     const ref = db.doc(`users/${claimedUid}/entitlement_bindings/${token}`);
     const snap = await ref.get();

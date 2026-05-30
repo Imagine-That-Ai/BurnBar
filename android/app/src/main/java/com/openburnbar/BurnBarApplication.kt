@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
-import com.openburnbar.data.budget.BudgetNotificationCenter
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
@@ -182,6 +182,13 @@ class BurnBarApplication : Application() {
                 tearDownPairingListener()
                 stopMediaControlCoordinator()
             } else {
+                applicationScope.launch {
+                    runCatching {
+                        ComputerUseSecurityCallableClient().bindAppCheckAttestation()
+                    }.onFailure { error ->
+                        Log.w("BurnBar", "App Check attestation bind failed: ${error.message}")
+                    }
+                }
                 restartPairingListener(uid)
             }
         }

@@ -395,4 +395,51 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         )
     }
 }
+
+extension PhoneControlAuthorityValidator.ValidationError {
+    var relayControlDeniedReason: HermesRealtimeRelayControlDenied.Reason {
+        switch self {
+        case .signatureFailed, .missingPeerPubKey, .intentHashMismatch,
+             .attestationMismatch, .peerRevoked, .escrowDeviceRevoked:
+            return .signatureFailure
+        case .counterReplay:
+            return .counterReplay
+        case .staleTimestamp, .expiredAuthority:
+            return .staleTimestamp
+        }
+    }
+
+    var agentGrantDenialReason: AgentGrantDenialReason {
+        switch self {
+        case .counterReplay:
+            return .counterReplay
+        case .staleTimestamp:
+            return .staleTimestamp
+        case .expiredAuthority:
+            return .expired
+        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch,
+             .attestationMismatch, .peerRevoked, .escrowDeviceRevoked:
+            return .signatureFailure
+        }
+    }
+
+    var auditDetailToken: String {
+        switch self {
+        case .missingPeerPubKey, .signatureFailed, .intentHashMismatch:
+            return "signature_failure"
+        case .counterReplay:
+            return "counter_replay"
+        case .staleTimestamp:
+            return "stale_timestamp"
+        case .expiredAuthority:
+            return "expired_authority"
+        case .attestationMismatch:
+            return "attestation_mismatch"
+        case .peerRevoked:
+            return "peer_revoked"
+        case .escrowDeviceRevoked:
+            return "escrow_device_revoked"
+        }
+    }
+}
 #endif

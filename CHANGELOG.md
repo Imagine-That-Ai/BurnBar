@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — Computer Use WS4 client migration (2026-05-30 remediation)
+
+- Mac, iOS, and Android clients route escrow device registration and trust elevation through `registerEscrowDevice`, `approveEscrowDeviceTrust`, and `revokeEscrowDeviceTrust` callables instead of direct Firestore writes to `trustState: trusted`.
+- `bindAppCheckAttestation` runs after sign-in on all platforms; clients force-refresh the Firebase ID token so `obb_app_check` custom claims propagate before high-risk Computer Use callables.
+- Mac and mobile Settings surfaces show user-visible App Check attestation bind failures (not silent log-only warnings).
+- Privileged-socket red-team drill documented in [`docs/security/PRIVILEGED_SOCKET_AUTH.md`](docs/security/PRIVILEGED_SOCKET_AUTH.md) (`RUN_PRIVILEGED_SOCKET_REDTEAM=1`).
+
 ### Added — Budget envelope split + error-debt gates (ADR 006)
 - Split `ops/*_budget_status` into a **public envelope** (`state/current`, signed-in read, level + caps only) and **operator metrics** (`metrics/current`, operator read, USD projections). Cloud Functions write both docs; clients listen on the public path only.
 - **Supersedes** the 2026-05-28 operator-only hardening that blocked signed-in envelope reads — see [ADR 006](docs/architecture/006-budget-envelope-visibility.md).

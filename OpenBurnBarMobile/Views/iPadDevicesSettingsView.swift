@@ -4,6 +4,7 @@ import OpenBurnBarCore
 struct iPadDevicesSettingsView: View {
     @Bindable var store: DevicesStore
     @State private var smartHub = SmartHubStore()
+    @State private var appCheckMonitor = MobileAppCheckAttestationMonitor.shared
     @State private var newName = ""
     @State private var showRenameSheet = false
     @State private var showRevokeConfirmation = false
@@ -26,6 +27,19 @@ struct iPadDevicesSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+                if let warning = appCheckMonitor.lastWarningMessage {
+                    settingsCard {
+                        HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+                            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.warning)
+                            Spacer(minLength: 0)
+                            Button("Dismiss") { appCheckMonitor.clearWarning() }
+                                .font(MobileTheme.Typography.caption)
+                        }
+                    }
+                }
+
                 if let error = store.lastError {
                     settingsCard {
                         Label(error.label, systemImage: "exclamationmark.triangle.fill")

@@ -48,6 +48,7 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
     }
 
     private func remoteProxy() throws -> PrivilegedInputExecutionXPCProtocol {
+#if os(macOS)
         lock.lock()
         defer { lock.unlock() }
 
@@ -75,5 +76,8 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
             throw ClientError.remoteProxyUnavailable
         }
         return proxy
+#else
+        throw ClientError.connectionUnavailable
+#endif
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 import OpenBurnBarCore
 
 extension SearchService {
-        private func retrieveInGate(_ query: RetrievalQuery, sharedArtifactAccessContext: SharedArtifactAccessContext?) async -> [RetrievalResult] {
+        func retrieveInGate(_ query: RetrievalQuery, sharedArtifactAccessContext: SharedArtifactAccessContext?) async -> [RetrievalResult] {
             let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.isEmpty == false else { return [] }
             let queryStartedAt = OpenBurnBarPerformanceTimer.now()

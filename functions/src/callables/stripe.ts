@@ -26,11 +26,13 @@ import {
   googlePlayExpiryMillis,
   applyStripeCheckoutSession,
   applyStripeSubscription,
+  creditCloudProTopUp,
   writeBurnBarProEntitlement,
 } from "./shared.js";
 import { google } from "googleapis";
 import Stripe from "stripe";
 import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
+import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
@@ -122,6 +124,20 @@ function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: 
     return { entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID, canonicalProductID: productID };
   }
   throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
+}
+
+function googlePlayTopUpKind(productID: string): CloudProTopUpKind {
+  const cfg = getConfig();
+  if (
+    productID === cfg.googlePlayAgentControl100ActionsProductID ||
+    productID === cfg.agentControl100ActionsProductID
+  ) {
+    return "agent_control_actions_100";
+  }
+  if (productID === cfg.googlePlayFlooRelay50GBProductID || productID === cfg.flooRelay50GBProductID) {
+    return "floo_relay_50gb";
+  }
+  throw new HttpsError("invalid-argument", "Unsupported Google Play top-up product.");
 }
 
 export const createStripeBurnBarProCheckoutSession = onCall(
@@ -304,6 +320,102 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       );
 
       return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };
+    },
+  ),
+);
+
+export const verifyGooglePlayCloudProTopUp = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler(
+    "verifyGooglePlayCloudProTopUp",
+    async (
+      request: CallableRequest<{
+        purchaseToken?: unknown;
+        productID?: unknown;
+      }>,
+    ): Promise<{
+      credited: boolean;
+      monthKey: string;
+      units: number;
+      kind: CloudProTopUpKind;
+      purchaseState: number | undefined;
+      consumed: boolean;
+    }> => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before verifying Google Play top-ups.");
+      enforceAuthAndAppCheck(request, uid);
+      await assertActiveBurnBarCloudProEntitlement(uid);
+
+      const cfg = getConfig();
+      const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true);
+      const productID = boundedTrimmedString(request.data.productID, "productID", 256, true);
+      const kind = googlePlayTopUpKind(productID);
+      const tokenHash = sha256Hex(purchaseToken);
+
+      const authClient = await google.auth.getClient({
+        scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+      });
+      const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
+      const response = await androidpublisher.purchases.products.get({
+        packageName: cfg.googlePlayPackageName,
+        productId: productID,
+        token: purchaseToken,
+      });
+      const purchase = jsonObject(response.data);
+      const purchaseState =
+        typeof purchase.purchaseState === "number" && Number.isFinite(purchase.purchaseState)
+          ? purchase.purchaseState
+          : undefined;
+      const consumptionState =
+        typeof purchase.consumptionState === "number" && Number.isFinite(purchase.consumptionState)
+          ? purchase.consumptionState
+          : undefined;
+      if (purchaseState !== 0) {
+        throw new HttpsError("failed-precondition", "Google Play top-up purchase is not in the purchased state.", {
+          productID,
+          purchaseTokenHash: tokenHash,
+          purchaseState,
+        });
+      }
+
+      const credited = await creditCloudProTopUp({
+        uid,
+        kind,
+        source: "google_play",
+        externalPaymentID: tokenHash,
+      });
+      let consumed = false;
+      if (consumptionState !== 1) {
+        await androidpublisher.purchases.products.consume({
+          packageName: cfg.googlePlayPackageName,
+          productId: productID,
+          token: purchaseToken,
+        });
+        consumed = true;
+      }
+
+      await db.doc(`users/${uid}/billing/google_play_topups/${tokenHash}`).set(
+        stripUndefinedObject({
+          uid,
+          productID,
+          kind,
+          purchaseTokenHash: tokenHash,
+          purchaseState,
+          consumptionState,
+          orderId: typeof purchase.orderId === "string" ? purchase.orderId : undefined,
+          credited,
+          consumed,
+          lastVerifiedAt: nowISO(),
+          schemaVersion: 1,
+        }),
+        { merge: true },
+      );
+
+      return { ...credited, purchaseState, consumed };
     },
   ),
 );
