@@ -23,6 +23,7 @@ jobs:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+      HAS_LIVE_GCP_PROBE: ${{ vars.OPENBURNBAR_GCP_APP_CHECK_PROBE == 'true' }}
 
     steps:
       - name: Check out repository
@@ -114,10 +115,15 @@ jobs:
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: App Check config smoke
-        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true' && env.HAS_LIVE_GCP_PROBE == 'true'
         env:
           INTERNAL_RUN: ${{ env.INTERNAL_RUN }}
+          OPENBURNBAR_APP_CHECK_SMOKE_REQUIRED: "1"
         run: bash ./scripts/ci/app-check-smoke.sh
+
+      - name: Skip App Check live smoke without GCP probe credentials
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true' && env.HAS_LIVE_GCP_PROBE != 'true'
+        run: echo "Skipping App Check live smoke because repository variable OPENBURNBAR_GCP_APP_CHECK_PROBE is not enabled."
 
       - name: Skip Firebase config injection for fork PRs
         if: env.INTERNAL_RUN != 'true'
@@ -147,24 +153,27 @@ jobs:
 
       - name: Build OpenBurnBar Functions
         run: |
-          START=$(date +%s%3N)
+          now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+          START=$(now_ms)
           npm --prefix functions run build
-          END=$(date +%s%3N)
+          END=$(now_ms)
           echo "functions_build_ms=$((END - START))" >> "$GITHUB_ENV"
           echo "Functions build: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions unit tests (pure, no emulator)
         run: |
-          START=$(date +%s%3N)
+          now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+          START=$(now_ms)
           npm --prefix functions run test:unit
-          END=$(date +%s%3N)
+          END=$(now_ms)
           echo "Functions unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions tests
         run: |
-          START=$(date +%s%3N)
+          now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+          START=$(now_ms)
           npm --prefix functions test
-          END=$(date +%s%3N)
+          END=$(now_ms)
           echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Swift tests
@@ -249,9 +258,10 @@ jobs:
 
       - name: Run OpenBurnBar TypeScript unit tests
         run: |
-          START=$(date +%s%3N)
+          now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+          START=$(now_ms)
           ./scripts/test-openburnbar-ts.sh
-          END=$(date +%s%3N)
+          END=$(now_ms)
           echo "TypeScript unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar replay evals
@@ -301,7 +311,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-          distribution: temurin
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
@@ -342,11 +351,12 @@ jobs:
       - name: Lint Kotlin (ktlint)
         run: |
           set -euo pipefail
-          START=$(date +%s%3N)
+          now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+          START=$(now_ms)
           # ktlint exits non-zero when violations are found.
           # Run ktlintCheck on all modules; output is printed to stdout by Gradle.
           cd android && ./gradlew ktlintCheck --no-daemon
-          END=$(date +%s%3N)
+          END=$(now_ms)
           echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run Android unit tests
@@ -372,10 +382,14 @@ jobs:
           swift test --filter 'ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests'
 
       - name: Commercial launch gate (internal)
-        if: env.INTERNAL_RUN == 'true'
+        if: env.INTERNAL_RUN == 'true' && env.HAS_LIVE_GCP_PROBE == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/commercial-launch-gate.mjs
+
+      - name: Skip commercial launch gate without live probe credentials
+        if: env.INTERNAL_RUN == 'true' && env.HAS_LIVE_GCP_PROBE != 'true'
+        run: echo "Skipping commercial launch gate in CI because repository variable OPENBURNBAR_GCP_APP_CHECK_PROBE is not enabled; run scripts/capture-commercial-launch-evidence.mjs from an authenticated operator session."
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

@@ -118,9 +118,7 @@ function buildConfig(): EnvConfig {
       configString(stripe, "burnbar_pro_price_id") ??
       "",
     stripeBurnBarCloudAnnualPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_annual_price_id") ??
-      "",
+      process.env.STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID ?? configString(stripe, "burnbar_cloud_annual_price_id") ?? "",
     stripeBurnBarCloudProMonthlyPriceID:
       process.env.STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID ??
       configString(stripe, "burnbar_cloud_pro_monthly_price_id") ??
@@ -134,9 +132,7 @@ function buildConfig(): EnvConfig {
       configString(stripe, "agent_control_100_actions_price_id") ??
       "",
     stripeFlooRelay50GBPriceID:
-      process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID ??
-      configString(stripe, "floo_relay_50gb_price_id") ??
-      "",
+      process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID ?? configString(stripe, "floo_relay_50gb_price_id") ?? "",
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? configString(stripe, "secret_key") ?? "",
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? configString(stripe, "webhook_secret") ?? "",
     googlePlayPackageName:

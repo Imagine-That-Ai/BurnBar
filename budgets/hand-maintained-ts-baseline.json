@@ -1,7 +1,7 @@
 {
-  "loc": 25312,
-  "exportedInterfaces": 334,
-  "fileCount": 97,
-  "generatedAt": "2026-05-30T18:00:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; raised for WS4 computerUseSecurity + appCheckAttestation callables."
+  "loc": 25824,
+  "exportedInterfaces": 346,
+  "fileCount": 99,
+  "generatedAt": "2026-05-30T22:40:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; raised for commercial launch billing, entitlement, and security hardening surfaces."
 }

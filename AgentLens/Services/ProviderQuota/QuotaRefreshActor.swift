@@ -121,14 +121,15 @@ actor QuotaRefreshActor {
 
     func fetchAllSnapshots(dataStoreActor: DataStoreActor) async -> ProviderQuotaRefreshBatch {
         let context = await makeContext(dataStoreActor: dataStoreActor)
-        let providerSnapshots = await fetchProviderSnapshots(for: refreshProviders, context: context)
+        let quotaRefreshProviders = refreshProviders.filter { Self.supportsAutomaticQuotaRefresh($0) }
+        let providerSnapshots = await fetchProviderSnapshots(for: quotaRefreshProviders, context: context)
         var accountSnapshots = await fetchAccountSnapshots(
             using: context,
-            providers: Set(refreshProviders)
+            providers: Set(quotaRefreshProviders)
         )
         let switcherSnapshots = await fetchSwitcherProfileSnapshots(
             using: context,
-            providers: Set(refreshProviders)
+            providers: Set(quotaRefreshProviders)
         )
         accountSnapshots.merge(switcherSnapshots) { _, replacement in replacement }
         return ProviderQuotaRefreshBatch(
@@ -254,6 +255,10 @@ actor QuotaRefreshActor {
         }
 
         return snapshots
+    }
+
+    private static func supportsAutomaticQuotaRefresh(_ provider: AgentProvider) -> Bool {
+        provider != .openAI
     }
 
     private func fetchAccountSnapshots(

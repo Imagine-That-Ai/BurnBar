@@ -3,10 +3,14 @@
 set -eu
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-plist_path="$repo_root/AgentLens/Resources/GoogleService-Info.plist"
-marker_path="$repo_root/AgentLens/Resources/.firebase-ci-injected"
-export PLIST_PATH="$plist_path"
-export MARKER_PATH="$marker_path"
+agent_plist_path="$repo_root/AgentLens/Resources/GoogleService-Info.plist"
+agent_marker_path="$repo_root/AgentLens/Resources/.firebase-ci-injected"
+mobile_plist_path="$repo_root/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+mobile_marker_path="$repo_root/OpenBurnBarMobile/Resources/.firebase-ci-injected"
+export AGENT_PLIST_PATH="$agent_plist_path"
+export AGENT_MARKER_PATH="$agent_marker_path"
+export MOBILE_PLIST_PATH="$mobile_plist_path"
+export MOBILE_MARKER_PATH="$mobile_marker_path"
 
 if [ -z "${FIREBASE_PLIST_BASE64:-}" ]; then
     echo "::error::FIREBASE_PLIST_BASE64 is required."
@@ -26,7 +30,10 @@ import os
 import plistlib
 from pathlib import Path
 
-plist_path = Path(os.environ["PLIST_PATH"])
+agent_plist_path = Path(os.environ["AGENT_PLIST_PATH"])
+agent_marker_path = Path(os.environ["AGENT_MARKER_PATH"])
+mobile_plist_path = Path(os.environ["MOBILE_PLIST_PATH"])
+mobile_marker_path = Path(os.environ["MOBILE_MARKER_PATH"])
 encoded = os.environ["FIREBASE_PLIST_BASE64"]
 
 try:
@@ -54,13 +61,19 @@ if missing:
         + ", ".join(missing)
     )
 
-plist_path.parent.mkdir(parents=True, exist_ok=True)
-plist_path.write_bytes(decoded)
-Path(os.environ["MARKER_PATH"]).write_text("ci\n", encoding="utf-8")
+for plist_path, marker_path in (
+    (agent_plist_path, agent_marker_path),
+    (mobile_plist_path, mobile_marker_path),
+):
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+    plist_path.write_bytes(decoded)
+    marker_path.write_text("ci\n", encoding="utf-8")
 PY
 
-/usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
-/usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $FIREBASE_APP_CHECK_DEBUG_TOKEN" "$plist_path"
+for plist_path in "$agent_plist_path" "$mobile_plist_path"; do
+    /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
+    /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $FIREBASE_APP_CHECK_DEBUG_TOKEN" "$plist_path"
+done
 
 if [ -n "${GITHUB_ENV:-}" ]; then
     {
@@ -70,5 +83,6 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 
 echo "Firebase config injected at AgentLens/Resources/GoogleService-Info.plist"
+echo "Firebase config injected at OpenBurnBarMobile/Resources/GoogleService-Info.plist"
 echo "Validated keys: GOOGLE_APP_ID, PROJECT_ID, REVERSED_CLIENT_ID"
 echo "App Check debug token configured for CI runtime"

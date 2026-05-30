@@ -93,6 +93,10 @@ async function* walkCodeFiles(repoRoot, directory, seen = new Set()) {
 }
 
 async function loadTypeScriptParser(repoRoot) {
+  if (process.env.OPENBURNBAR_UNSAFE_CAST_USE_TYPESCRIPT_PARSER !== "1") {
+    return null;
+  }
+
   const candidates = [path.join(repoRoot, "functions", "package.json"), path.join(repoRoot, "extensions", "openburnbar", "package.json"), path.join(repoRoot, "package.json")];
   for (const candidate of candidates) {
     try {

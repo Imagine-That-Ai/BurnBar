@@ -20,9 +20,14 @@ public final class RemoteUnlockCapabilitySigningKeyStore: @unchecked Sendable {
     private let service = "com.openburnbar.remote-unlock.capability-token-issuer"
     private let account = "default"
     private let queue = DispatchQueue(label: "com.openburnbar.remote-unlock.capability-issuer")
+    private let queueSpecificKey = DispatchSpecificKey<Bool>()
+
+    private init() {
+        queue.setSpecific(key: queueSpecificKey, value: true)
+    }
 
     public func copyOrCreateKeyMaterial() throws -> KeyMaterial {
-        try queue.sync {
+        try syncOnQueue {
             if let data = try copyPrivateKeyData() {
                 return try material(fromPrivateKeyData: data)
             }
@@ -44,6 +49,13 @@ public final class RemoteUnlockCapabilitySigningKeyStore: @unchecked Sendable {
 
     public func revokePublishedTrust() throws {
         try publishIssuerTrust(revoked: true)
+    }
+
+    private func syncOnQueue<T>(_ work: () throws -> T) rethrows -> T {
+        if DispatchQueue.getSpecific(key: queueSpecificKey) == true {
+            return try work()
+        }
+        return try queue.sync(execute: work)
     }
 
     private func material(fromPrivateKeyData data: Data) throws -> KeyMaterial {

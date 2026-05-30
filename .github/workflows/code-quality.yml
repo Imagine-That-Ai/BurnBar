@@ -137,13 +137,16 @@ jobs:
 
       - name: Time functions build
         run: |
-          START=$(date +%s%3N)
+          now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
+          START=$(now_ms)
           npm ci --prefix functions
           npm run build --prefix functions
-          END=$(date +%s%3N)
+          END=$(now_ms)
           DURATION=$(( END - START ))
-          echo "### Build Performance" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Package | Duration |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---------|----------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| functions (npm ci + tsc) | ${DURATION}ms |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Build Performance"
+            echo ""
+            echo "| Package | Duration |"
+            echo "|---------|----------|"
+            echo "| functions (npm ci + tsc) | ${DURATION}ms |"
+          } >> "$GITHUB_STEP_SUMMARY"
