@@ -1006,12 +1006,14 @@ struct OpenBurnBarApp: App {
     @MainActor
     private static func validateAppCheckIfNeeded() async {
         guard AccountManager.shared.isCloudSyncEnabled else { return }
+        guard Auth.auth().currentUser?.isAnonymous == false else { return }
         do {
             let token = try await AppCheck.appCheck().token(forcingRefresh: false)
             guard !token.token.isEmpty else {
                 postAppCheckWarning("App Check returned an empty token.")
                 return
             }
+            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
         } catch {
             postAppCheckWarning("App Check token fetch failed: \(error.localizedDescription)")
         }
