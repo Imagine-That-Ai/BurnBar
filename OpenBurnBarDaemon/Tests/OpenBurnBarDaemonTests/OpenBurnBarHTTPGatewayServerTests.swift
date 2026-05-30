@@ -27,6 +27,19 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
     }
 
+    private func enqueueAnthropicModelCatalog(_ modelIDs: [String], times: Int = 1) {
+        let rows = modelIDs.map { id in
+            #"{"id":"\#(id)","display_name":"\#(id)","type":"model"}"#
+        }.joined(separator: ",")
+        for _ in 0..<times {
+            GatewayUpstreamURLProtocol.enqueue(
+                status: 200,
+                body: #"{"data":[\#(rows)],"has_more":false}"#,
+                path: "/anthropic/v1/models"
+            )
+        }
+    }
+
     private func enqueueOllamaCloudCatalog(_ modelIDs: [String], times: Int = 1, path: String? = nil) {
         let rows = modelIDs.map { id in
             #"<li x-test-model><a href="/library/\#(id)" class="group w-full"><span>\#(id)</span><span>cloud</span></a></li>"#
@@ -414,7 +427,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "gpt-5.5"
         })
         XCTAssertEqual(factory["provider_name"] as? String, "Factory Droid")
-        XCTAssertEqual(factory["display_name"] as? String, "GPT-5.5 via Factory · Factory Droid · via OpenBurnBar · Reasoning: default")
+        XCTAssertEqual(factory["display_name"] as? String, "GPT-5.5 · Factory Droid Standard · via OpenBurnBar · Reasoning: CLI default")
         XCTAssertEqual(factory["source_kind"] as? String, "factory_droid_cli")
         XCTAssertEqual(factory["served_by"] as? String, "Factory Droid CLI")
         XCTAssertEqual(factory["usage_lane"] as? String, "standard")
@@ -1294,6 +1307,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayModelsAdvertisesAnthropicRoutesWithRealBridgeEndpoints() async throws {
         let harness = try GatewayHarness()
         try await harness.configureAnthropicProviderForGateway()
+        enqueueAnthropicModelCatalog(["claude-sonnet-4-6-20250514"], times: 2)
         try await harness.start()
         defer { Task { await harness.stop() } }
 
@@ -1324,7 +1338,13 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         })
         XCTAssertEqual(codexClaude["supported_in_api"] as? Bool, true)
         XCTAssertEqual(codexClaude["context_window"] as? Int, 200_000)
-        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
+        let discoveryRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(discoveryRequests.map(\.path), ["/anthropic/v1/models", "/anthropic/v1/models"])
+        XCTAssertEqual(
+            Set(discoveryRequests.compactMap(\.xApiKey)),
+            Set(["sk-ant-api03-primary-key", "sk-ant-api03-backup-key"])
+        )
+        XCTAssertTrue(discoveryRequests.allSatisfy { $0.anthropicVersion == "2023-06-01" })
     }
 
     func testGatewayChatCompletionsRoutesAdvertisedClaudeThroughAnthropicBridge() async throws {
