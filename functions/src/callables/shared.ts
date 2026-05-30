@@ -2,7 +2,7 @@
  * @fileoverview Shared helpers, constants, and provider registry for Cloud Function callables.
  */
 
-import { Timestamp, type WriteBatch } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
@@ -45,6 +45,17 @@ import {
 } from "../guards.js";
 import { logError } from "../logging.js";
 import { auth, db } from "../adminRuntime.js";
+import {
+  allowanceDocPath,
+  CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+  CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
+  CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
+  CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
+  CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
+  monthKeyForDate,
+  unitsForCloudProTopUp,
+  type CloudProTopUpKind,
+} from "../cloudProAllowanceCore.js";
 
 // ---------------------------------------------------------------------------
 // Provider adapter registry
@@ -659,6 +670,12 @@ export async function assertActiveBurnBarProEntitlement(uid: string): Promise<vo
   );
 }
 
+export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promise<void> {
+  const proMaxSnap = await db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get();
+  if (isActivePremiumEntitlement(proMaxSnap.data())) return;
+  throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
+}
+
 export function isActiveHostedQuotaEntitlement(raw: Record<string, unknown> | undefined): boolean {
   if (!raw || raw.active !== true) return false;
   if (raw.productID !== getConfig().hostedQuotaProductID) return false;
@@ -672,7 +689,14 @@ export function isActivePremiumEntitlement(raw: Record<string, unknown> | undefi
   if (
     productID !== getConfig().hostedQuotaProductID &&
     productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID
+    productID !== getConfig().burnBarProAnnualProductID &&
+    productID !== getConfig().burnBarProMaxProductID &&
+    productID !== getConfig().burnBarProMaxAnnualProductID &&
+    productID !== getConfig().googlePlaySubscriptionProductID &&
+    productID !== getConfig().googlePlayCloudMonthlyProductID &&
+    productID !== getConfig().googlePlayCloudAnnualProductID &&
+    productID !== getConfig().googlePlayCloudProMonthlyProductID &&
+    productID !== getConfig().googlePlayCloudProAnnualProductID
   ) {
     return false;
   }
@@ -844,6 +868,16 @@ export function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undef
 export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe.Checkout.Session): Promise<void> {
   const uid = session.metadata?.firebaseUID ?? session.client_reference_id ?? undefined;
   if (!uid) return;
+  if (session.metadata?.topUpKind) {
+    if (session.payment_status !== "paid") return;
+    await creditCloudProTopUp({
+      uid,
+      kind: stripeTopUpKind(session.metadata.topUpKind),
+      source: "stripe_checkout",
+      externalPaymentID: session.id,
+    });
+    return;
+  }
   let subscription: Stripe.Subscription | undefined;
   if (typeof session.subscription === "string") {
     subscription = await stripe.subscriptions.retrieve(session.subscription);
@@ -853,6 +887,63 @@ export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe
   if (subscription) {
     await applyStripeSubscription(stripe, subscription, uid);
   }
+}
+
+export async function creditCloudProTopUp(args: {
+  uid: string;
+  kind: CloudProTopUpKind;
+  source: string;
+  externalPaymentID: string;
+  quantity?: number;
+}): Promise<{ credited: boolean; monthKey: string; units: number; kind: CloudProTopUpKind }> {
+  await assertActiveBurnBarCloudProEntitlement(args.uid);
+  const monthKey = monthKeyForDate(new Date());
+  const allowanceRef = db.doc(allowanceDocPath(args.uid, monthKey));
+  const topUpRef = allowanceRef
+    .collection("topups")
+    .doc(requiredIdentifier(`${args.source}_${args.externalPaymentID}`, "externalPaymentID"));
+  const topUp = unitsForCloudProTopUp(args.kind, args.quantity);
+
+  return db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(topUpRef);
+    if (existing.exists) {
+      return { credited: false, monthKey, units: topUp.units, kind: args.kind };
+    }
+
+    const incrementField = topUp.meter === "relay_gb" ? "topupRelayGBPurchased" : "topupActionsPurchased";
+    const now = Timestamp.now();
+    transaction.set(
+      allowanceRef,
+      {
+        includedHostedActions: CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
+        includedRelayGB: CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY,
+        monthlyHostedActionCap: CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
+        monthlyRelayGBCap: CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
+        [incrementField]: FieldValue.increment(topUp.units),
+        updatedAt: now,
+        schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+      },
+      { merge: true },
+    );
+    transaction.set(topUpRef, {
+      uid: args.uid,
+      monthKey,
+      kind: args.kind,
+      meter: topUp.meter,
+      units: topUp.units,
+      source: args.source,
+      externalPaymentID: args.externalPaymentID,
+      quantity: args.quantity ?? 1,
+      creditedAt: now,
+      schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+    });
+    return { credited: true, monthKey, units: topUp.units, kind: args.kind };
+  });
+}
+
+function stripeTopUpKind(raw: string): CloudProTopUpKind {
+  if (raw === "agent_control_actions_100" || raw === "floo_relay_50gb") return raw;
+  throw new HttpsError("invalid-argument", "Unsupported Stripe top-up kind.");
 }
 
 export async function applyStripeSubscription(

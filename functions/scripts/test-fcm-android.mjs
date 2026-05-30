@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 const { pushAndroidFcm } = await import("../lib/fcmAndroidSender.js");
-const { resolveFanOut } = await import("../lib/voipPush.js");
+const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voipPush.js");
 
 // ---------------------------------------------------------------------------
 // pushAndroidFcm — happy path
@@ -145,6 +145,42 @@ const { resolveFanOut } = await import("../lib/voipPush.js");
   });
   assert.equal(fanOut.apnsToken, "apns-hex");
   assert.equal(fanOut.fcmToken, undefined);
+}
+
+// ---------------------------------------------------------------------------
+// macHasActiveMediaEntitlement — Cloud Pro gates Mercury media, Cloud does not
+// ---------------------------------------------------------------------------
+{
+  const future = { toMillis: () => Date.now() + 86_400_000 };
+  const firestore = makeFakeFirestore({
+    "users/u1/entitlements/burnbar_pro": {
+      active: true,
+      expireAt: future,
+    },
+  });
+  assert.equal(await macHasActiveMediaEntitlement("u1", firestore), false);
+}
+
+{
+  const future = { toMillis: () => Date.now() + 86_400_000 };
+  const firestore = makeFakeFirestore({
+    "users/u1/entitlements/burnbar_pro_max": {
+      active: true,
+      expireAt: future,
+    },
+  });
+  assert.equal(await macHasActiveMediaEntitlement("u1", firestore), true);
+}
+
+{
+  const future = { toMillis: () => Date.now() + 86_400_000 };
+  const firestore = makeFakeFirestore({
+    "users/u1/entitlements/hosted_media_sync": {
+      active: true,
+      expireAt: future,
+    },
+  });
+  assert.equal(await macHasActiveMediaEntitlement("u1", firestore), true);
 }
 
 console.log("Android FCM sender + fan-out resolver ok");
