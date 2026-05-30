@@ -338,6 +338,35 @@ private enum RemoteAccessCredentialWorker {
         try RemoteAccessTyper.typeCredential(password)
     }
 
+    /// Diagnostic worker: runs only the focus sequence (no password, no Return) so an operator can
+    /// confirm whether our synthetic events reach loginwindow and reveal the password field.
+    static func runFocusProbe() throws {
+        agentLog("focus probe worker running uid=\(getuid()) euid=\(geteuid()) gid=\(getgid())")
+        try dropPrivilegesToConsoleUserIfNeeded()
+        try RemoteAccessTyper.focusProbe()
+    }
+
+    static func launchFocusProbe() throws {
+        let executablePath = Bundle.main.executableURL?.path ?? CommandLine.arguments[0]
+        guard let consoleUser = resolveConsoleUser() else {
+            throw AgentError.consoleUserUnavailable
+        }
+        let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+        defer { wakeLease.release() }
+
+        let loginPID = loginWindowPID(for: consoleUser.uid)
+        agentLog(
+            "launch focus probe worker uid=\(consoleUser.uid) loginWindowPID=\(loginPID.map { String($0) } ?? "nil")"
+        )
+        try runLaunchctl(
+            arguments: RemoteAccessCredentialWorkerLaunchPlan.focusProbeArguments(
+                executablePath: executablePath,
+                consoleUserUID: consoleUser.uid,
+                loginWindowPID: loginPID
+            )
+        )
+    }
+
     static func launch(password: String) throws {
         let executablePath = Bundle.main.executableURL?.path ?? CommandLine.arguments[0]
         guard let consoleUser = resolveConsoleUser() else {
@@ -644,6 +673,28 @@ private enum RemoteAccessTyper {
         }
 
         agentLog("credential worker complete attempts=\(maxAttempts) result=keystrokes_delivered_still_locked")
+    }
+
+    /// Diagnostic: run the focus sequence only — no password keystrokes, no Return — and log the
+    /// lock state before and after, so an operator can confirm whether our synthetic events reach
+    /// the login window and reveal the password field. Never submits a login attempt.
+    static func focusProbe() throws {
+        guard let source = CGEventSource(stateID: keyboardEventSourceStateID()) else {
+            throw AgentError.eventSourceUnavailable
+        }
+        source.localEventsSuppressionInterval = 0
+        let before = isScreenLocked()
+        agentLog(
+            "focus probe begin lockState=\(lockStateDescription(before)) source=\(RemoteAccessCredentialEventSourcePolicy.keyboardEventSource.rawValue) tap=\(RemoteAccessCredentialEventSourcePolicy.keyboardEventTap.rawValue)"
+        )
+
+        let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
+        defer { wakeLease.release() }
+
+        try focusCredentialField(source: source)
+
+        let after = isScreenLocked()
+        agentLog("focus probe complete lockState=\(lockStateDescription(after))")
     }
 
     private static func focusCredentialField(source: CGEventSource) throws {

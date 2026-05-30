@@ -22,7 +22,9 @@ public enum OpenBurnBarModelDisplayName {
         if let route, !containsSegment(model, route) {
             append(route, to: &segments)
         }
-        append(reasoning, to: &segments)
+        if !containsSegment(model, "Reasoning:") {
+            append(reasoning, to: &segments)
+        }
         return segments.joined(separator: " · ")
     }
 
