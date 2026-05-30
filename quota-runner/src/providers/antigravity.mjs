@@ -1,4 +1,4 @@
-import { readFile, access } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import os from "node:os";
 import { valueBucket } from "./shared.mjs";
@@ -42,23 +42,6 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
   const now = new Date();
 
   try {
-    await access(historyPath);
-  } catch {
-    return {
-      provider: "antigravity",
-      sourceKind: "unavailable",
-      sourceId: credential.trim() ? "hosted-runner" : "self-hosted-runner",
-      fetchedAt: now.toISOString(),
-      source: "Antigravity CLI history",
-      confidence: "unavailable",
-      managementURL: null,
-      statusMessage:
-        "Antigravity history log not found at ~/.gemini/antigravity-cli/history.jsonl",
-      buckets: [],
-    };
-  }
-
-  try {
     // --- Read active model from settings.json ---
     let activeModelName = DEFAULT_MODEL;
     try {
@@ -72,7 +55,26 @@ export async function fetchAntigravityQuota({ credential, accountID }) {
     }
 
     // --- Parse history events in rolling 5h quota window ---
-    const data = await readFile(historyPath, "utf8");
+    let data;
+    try {
+      data = await readFile(historyPath, "utf8");
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        return {
+          provider: "antigravity",
+          sourceKind: "unavailable",
+          sourceId: credential.trim() ? "hosted-runner" : "self-hosted-runner",
+          fetchedAt: now.toISOString(),
+          source: "Antigravity CLI history",
+          confidence: "unavailable",
+          managementURL: null,
+          statusMessage:
+            "Antigravity history log not found at ~/.gemini/antigravity-cli/history.jsonl",
+          buckets: [],
+        };
+      }
+      throw error;
+    }
     const lines = data.split(/\r?\n/);
     const cutoff = now.getTime() - QUOTA_WINDOW_MS;
 

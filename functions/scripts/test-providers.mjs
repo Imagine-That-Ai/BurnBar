@@ -321,7 +321,9 @@ installFetch(() =>
 // ---------------------------------------------------------------------------
 
 installFetch(({ url }) => {
-  assert.match(url, /api\.xiaomimimo\.com\/v1\/models/);
+  const parsed = new URL(String(url));
+  assert.equal(parsed.hostname, "api.xiaomimimo.com");
+  assert.equal(parsed.pathname, "/v1/models");
   return jsonResponse({ data: [{ id: "mimo-v2.5" }] });
 });
 {

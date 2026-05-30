@@ -4,7 +4,23 @@ import { readAccessToken } from "./oauth.js";
 export const DEFAULT_ENDPOINT = "https://mcp.burnbar.ai/mcp";
 const PROTOCOL_VERSION = "2025-11-25";
 
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+}
+
+export function validatedMcpEndpoint(endpoint: string): URL {
+  const url = new URL(endpoint);
+  if (url.username || url.password) {
+    throw new Error("OpenBurnBar MCP endpoint must not include URL credentials.");
+  }
+  if (url.protocol === "https:") return url;
+  if (url.protocol === "http:" && isLoopbackHost(url.hostname)) return url;
+  throw new Error("OpenBurnBar MCP endpoint must be HTTPS, except loopback HTTP for local development.");
+}
+
 export async function forwardMcpMessage(message: unknown, endpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT): Promise<unknown> {
+  const target = validatedMcpEndpoint(endpoint);
   const token = readAccessToken();
   if (!token) {
     return {
@@ -16,7 +32,7 @@ export async function forwardMcpMessage(message: unknown, endpoint = process.env
       }
     };
   }
-  const res = await fetch(endpoint, {
+  const res = await fetch(target, {
     method: "POST",
     headers: {
       "accept": "application/json, text/event-stream",

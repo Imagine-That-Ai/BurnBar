@@ -35,6 +35,20 @@ const replacements = [
   [/\(\s*error\s+as\s+Error\s*\)\?\.message/g, 'errorMessage(error)'],
 ];
 
+function addErrorMessageToGuardsImport(source) {
+  return source.replace(
+    /import\s+\{([^}]+)\}\s+from\s+(['"])\.\/guards\.js\2;?/,
+    (_match, names, quote) => {
+      const imports = names
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+      if (!imports.includes('errorMessage')) imports.push('errorMessage');
+      return `import { ${imports.join(', ')} } from ${quote}./guards.js${quote};`;
+    }
+  );
+}
+
 let changed = 0;
 for (const rel of TARGET_DIRS) {
   for (const file of walk(path.join(ROOT, rel))) {
@@ -47,13 +61,7 @@ for (const rel of TARGET_DIRS) {
 
     if (next.includes('errorMessage(') && !/import[\s\S]*errorMessage/.test(next)) {
       if (next.includes('from "./guards.js"') || next.includes("from './guards.js'")) {
-        next = next.replace(
-          /from ['"]\.\/guards\.js['"];?/,
-          (match) => match.includes('errorMessage')
-            ? match
-            : match.replace('}', '').replace('from "./guards.js"', 'errorMessage, isRecord } from "./guards.js"')
-                .replace("from './guards.js'", "errorMessage, isRecord } from './guards.js'")
-        );
+        next = addErrorMessageToGuardsImport(next);
         if (!next.includes('errorMessage')) {
           next = next.replace(
             /import\s+\{([^}]+)\}\s+from\s+['"]\.\/guards\.js['"];/,
