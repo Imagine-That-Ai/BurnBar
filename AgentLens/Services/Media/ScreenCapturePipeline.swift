@@ -126,27 +126,38 @@ final class ScreenCapturePipeline: NSObject {
             throw Failure.streamConfigurationFailed(error.localizedDescription)
         }
         let filter: SCContentFilter
+        let isIndependentWindowCapture: Bool
+        var sourceRect: CGRect?
         if let windowID = configuration.windowID,
            let window = content.windows.first(where: { $0.windowID == windowID }) {
             filter = SCContentFilter(desktopIndependentWindow: window)
+            isIndependentWindowCapture = true
         } else {
-            let display = configuration.displayId.flatMap { wanted in
-                content.displays.first { String($0.displayID) == wanted }
-            } ?? content.displays.first
+            let fallbackWindowFrame = configuration.windowID.flatMap { Self.cgWindowFrame(windowID: $0) }
+            let display = Self.display(
+                matching: configuration.displayId,
+                windowFrame: fallbackWindowFrame,
+                in: content.displays
+            )
             guard let display else {
                 Self.log.error("screen_capture_shareable_content_empty displays=\(content.displays.count, privacy: .public) windows=\(content.windows.count, privacy: .public)")
                 throw Failure.noShareableContent
             }
             let excludedApplications = Self.displayCaptureExcludedApplications(in: content)
             filter = SCContentFilter(display: display, excludingApplications: excludedApplications, exceptingWindows: [])
+            isIndependentWindowCapture = false
+            if let fallbackWindowFrame {
+                sourceRect = Self.sourceRect(forWindowFrame: fallbackWindowFrame, displayFrame: display.frame)
+                if let sourceRect {
+                    Self.log.info("screen_capture_window_source_crop windowID=\(self.configuration.windowID ?? 0, privacy: .public) x=\(sourceRect.origin.x, privacy: .public) y=\(sourceRect.origin.y, privacy: .public) w=\(sourceRect.width, privacy: .public) h=\(sourceRect.height, privacy: .public)")
+                }
+            }
         }
-        let cfg = SCStreamConfiguration()
-        cfg.width = configuration.width
-        cfg.height = configuration.height
-        cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(configuration.frameRate))
-        cfg.queueDepth = 5
-        cfg.pixelFormat = kCVPixelFormatType_32BGRA
-        cfg.showsCursor = true
+        let cfg = Self.makeStreamConfiguration(
+            for: configuration,
+            isIndependentWindowCapture: isIndependentWindowCapture,
+            sourceRect: sourceRect
+        )
 
         let newStream = SCStream(filter: filter, configuration: cfg, delegate: nil)
         try newStream.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
@@ -167,6 +178,71 @@ final class ScreenCapturePipeline: NSObject {
     }
 
     #if canImport(ScreenCaptureKit)
+    static func makeStreamConfiguration(
+        for configuration: Configuration,
+        isIndependentWindowCapture: Bool,
+        sourceRect: CGRect? = nil
+    ) -> SCStreamConfiguration {
+        let cfg = SCStreamConfiguration()
+        cfg.width = configuration.width
+        cfg.height = configuration.height
+        cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(configuration.frameRate))
+        cfg.queueDepth = 5
+        cfg.pixelFormat = kCVPixelFormatType_32BGRA
+        cfg.showsCursor = true
+        if let sourceRect, sourceRect.width > 0, sourceRect.height > 0 {
+            cfg.sourceRect = sourceRect
+        }
+        if isIndependentWindowCapture {
+            cfg.scalesToFit = true
+        }
+        return cfg
+    }
+
+    static func sourceRect(forWindowFrame windowFrame: CGRect, displayFrame: CGRect) -> CGRect? {
+        guard windowFrame.width > 0, windowFrame.height > 0,
+              displayFrame.width > 0, displayFrame.height > 0 else { return nil }
+        let clamped = windowFrame.intersection(displayFrame)
+        guard !clamped.isNull, !clamped.isEmpty,
+              clamped.width > 0, clamped.height > 0 else { return nil }
+        return CGRect(
+            x: max(0, clamped.minX - displayFrame.minX),
+            y: max(0, clamped.minY - displayFrame.minY),
+            width: clamped.width,
+            height: clamped.height
+        )
+    }
+
+    private static func display(
+        matching displayId: String?,
+        windowFrame: CGRect?,
+        in displays: [SCDisplay]
+    ) -> SCDisplay? {
+        if let displayId,
+           let display = displays.first(where: { String($0.displayID) == displayId }) {
+            return display
+        }
+        if let windowFrame {
+            let best = displays
+                .map { display in
+                    (display, windowFrame.intersection(display.frame).areaForCapture)
+                }
+                .max { lhs, rhs in lhs.1 < rhs.1 }
+            if let best, best.1 > 0 {
+                return best.0
+            }
+        }
+        return displays.first
+    }
+
+    private static func cgWindowFrame(windowID: CGWindowID) -> CGRect? {
+        guard let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID) as? [[String: Any]],
+              let window = windows.first,
+              let bounds = window[kCGWindowBounds as String] as? NSDictionary
+        else { return nil }
+        return CGRect(dictionaryRepresentation: bounds)
+    }
+
     static func shouldExcludeApplicationFromDisplayCapture(
         bundleIdentifier: String?,
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
@@ -234,6 +310,13 @@ extension ScreenCapturePipeline: SCStreamOutput {
 private extension String {
     var nilIfEmptyForCapture: String? {
         isEmpty ? nil : self
+    }
+}
+
+private extension CGRect {
+    var areaForCapture: CGFloat {
+        guard !isNull, !isEmpty, width > 0, height > 0 else { return 0 }
+        return width * height
     }
 }
 #endif

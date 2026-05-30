@@ -259,6 +259,10 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         coordinator.phoneControlAuthorizedPeerNodeProvider = provider
     }
 
+    func setPhoneControlKeyboardTargetWindowProvider(_ provider: (@MainActor @Sendable () -> CGWindowID?)?) {
+        coordinator.phoneControlKeyboardTargetWindowProvider = provider
+    }
+
     func setRemoteUnlockResultHandler(
         _ handler: (@MainActor @Sendable (HermesRealtimeRelayRemoteUnlockResult) async -> Void)?
     ) {

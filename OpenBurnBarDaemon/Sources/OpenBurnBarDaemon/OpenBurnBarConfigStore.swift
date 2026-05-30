@@ -470,7 +470,7 @@ public actor BurnBarConfigStore {
         }
 
         let defaults: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
-            ("anthropic", "claude-opus-4-7", [.high, .xhigh, .max]),
+            ("anthropic", "claude-opus-4-8", [.high, .xhigh, .max]),
             ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh])
         ]
 
@@ -730,16 +730,14 @@ public actor BurnBarConfigStore {
         legacySecret: String?
     ) -> String? {
         let activeSlots = resolvedSlots.filter { resolved in
-            guard resolved.slot.isEnabled else { return false }
             guard let key = resolved.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
                 return false
             }
-            if let cooldown = resolved.slot.cooldownUntil, cooldown > Date() {
-                return false
-            }
-            return resolved.slot.status != .exhausted
-                && resolved.slot.status != .missingSecret
-                && resolved.slot.status != .disabled
+            return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
+                slot: resolved.slot,
+                hasCredential: true,
+                providerEnabled: settings.isEnabled
+            )
         }
 
         if let preferredSlotID = settings.preferredCredentialSlotID,

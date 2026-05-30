@@ -2,6 +2,7 @@
 import AppKit
 import Darwin
 import Foundation
+import OSLog
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 
@@ -463,6 +464,11 @@ public final class RemoteClipboardController {
 
 @MainActor
 final class RemoteUnlockCredentialController {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "RemoteUnlock")
+    private static func debugTrace(_ message: String) {
+        NSLog("OpenBurnBarMercury \(message)")
+    }
+
     struct RuntimeContext {
         var validator: PhoneControlAuthorityValidator
         var activeSessionId: ComputerUseSessionID?
@@ -524,16 +530,19 @@ final class RemoteUnlockCredentialController {
 
         let capabilities = context.readiness.capabilities()
         guard capabilities.enabled else {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=remote_unlock_not_certified")
             return result(.denied, detail: "remote_unlock_not_certified")
         }
         guard context.isDirectPhoneControl,
               let manifestPeer = context.state?.manifest.phoneViewerNodeId,
               manifestPeer == credential.authority.peerNodeId else {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=untrusted_controller direct=\(context.isDirectPhoneControl) manifestPeer=\(context.state?.manifest.phoneViewerNodeId ?? "nil") credentialPeer=\(credential.authority.peerNodeId)")
             return result(.denied, detail: "untrusted_controller")
         }
         if let authorized = context.authorizedPeerNodeId,
            !authorized.isEmpty,
            authorized != credential.authority.peerNodeId {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=control_owned_by_other_viewer authorized=\(authorized) credentialPeer=\(credential.authority.peerNodeId)")
             return result(.denied, detail: "control_owned_by_other_viewer")
         }
 
@@ -545,8 +554,10 @@ final class RemoteUnlockCredentialController {
                 now: validationNow
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=\(validationDetail(for: error))")
             return result(.denied, detail: validationDetail(for: error))
         } catch {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=signature_failure")
             return result(.denied, detail: "signature_failure")
         }
 
@@ -555,6 +566,7 @@ final class RemoteUnlockCredentialController {
             peerNodeId: credential.authority.peerNodeId,
             now: validationNow
         ) else {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=session_mismatch")
             return result(.denied, detail: "session_mismatch")
         }
 
@@ -562,10 +574,12 @@ final class RemoteUnlockCredentialController {
         case .allowed:
             break
         case .denied(let reason):
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=\(reason)")
             return result(.denied, detail: reason)
         }
 
         guard credential.recipientKeyId == capabilities.credentialRecipientKeyId else {
+            Self.debugTrace("remote_unlock_credential_denied requestID=\(credential.requestId) detail=recipient_key_mismatch")
             return result(.denied, detail: "recipient_key_mismatch")
         }
 
@@ -577,6 +591,7 @@ final class RemoteUnlockCredentialController {
                 recipientPrivateKey: privateKey
             )
         } catch {
+            Self.debugTrace("remote_unlock_credential_failed requestID=\(credential.requestId) detail=credential_decryption_failed")
             return result(.failed, detail: "credential_decryption_failed")
         }
 
@@ -585,15 +600,71 @@ final class RemoteUnlockCredentialController {
             controlOwnerViewerId: context.authorizedPeerNodeId
         ).lockState
 
+        Self.log.info(
+            "remote_unlock_credential_input_start requestID=\(credential.requestId, privacy: .public) sessionID=\(credential.sessionId, privacy: .public) peerNodeID=\(credential.authority.peerNodeId, privacy: .public) lockState=\(lockState.rawValue, privacy: .public)"
+        )
+        Self.debugTrace("remote_unlock_credential_input_start requestID=\(credential.requestId) sessionID=\(credential.sessionId) peerNodeID=\(credential.authority.peerNodeId) lockState=\(lockState.rawValue)")
+
         do {
             if lockState == .unlocked {
                 _ = try inputController.type(text: password)
                 _ = try inputController.key("Return")
             } else {
-                try await RemoteAccessAgentClient().typeCredential(password)
+                let helper = RemoteAccessAgentClient()
+                do {
+                    try await helper.wakeDisplay()
+                    Self.log.info(
+                        "remote_unlock_display_wake_submitted requestID=\(credential.requestId, privacy: .public)"
+                    )
+                    Self.debugTrace("remote_unlock_display_wake_submitted requestID=\(credential.requestId)")
+                } catch {
+                    Self.log.error(
+                        "remote_unlock_display_wake_failed requestID=\(credential.requestId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+                    )
+                    Self.debugTrace("remote_unlock_display_wake_failed requestID=\(credential.requestId) error=\(String(describing: error))")
+                }
+
+                var shouldRunPrivilegedFallback = true
+                do {
+                    try await AppleRemoteDesktopRFBClient().typeCredential(
+                        .init(username: NSUserName(), password: password)
+                    )
+                    Self.log.info(
+                        "remote_unlock_ard_input_submitted requestID=\(credential.requestId, privacy: .public)"
+                    )
+                    Self.debugTrace("remote_unlock_ard_input_submitted requestID=\(credential.requestId)")
+                    try? await Task.sleep(nanoseconds: 1_100_000_000)
+                    let postARDState = context.readiness.currentState(
+                        sessionId: credential.sessionId,
+                        controlOwnerViewerId: context.authorizedPeerNodeId
+                    )
+                    shouldRunPrivilegedFallback = postARDState.lockState != .unlocked
+                    Self.log.info(
+                        "remote_unlock_ard_input_observed requestID=\(credential.requestId, privacy: .public) lockState=\(postARDState.lockState.rawValue, privacy: .public) fallback=\(shouldRunPrivilegedFallback ? "yes" : "no", privacy: .public)"
+                    )
+                    Self.debugTrace("remote_unlock_ard_input_observed requestID=\(credential.requestId) lockState=\(postARDState.lockState.rawValue) fallback=\(shouldRunPrivilegedFallback ? "yes" : "no")")
+                } catch {
+                    Self.log.error(
+                        "remote_unlock_ard_input_failed requestID=\(credential.requestId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+                    )
+                    Self.debugTrace("remote_unlock_ard_input_failed requestID=\(credential.requestId) error=\(String(describing: error))")
+                }
+
+                if shouldRunPrivilegedFallback {
+                    Self.log.info(
+                        "remote_unlock_privileged_worker_start requestID=\(credential.requestId, privacy: .public)"
+                    )
+                    Self.debugTrace("remote_unlock_privileged_worker_start requestID=\(credential.requestId)")
+                    try await helper.typeCredential(password)
+                }
             }
         } catch {
-            return result(.failed, detail: remoteUnlockInputDetail(for: error))
+            let detail = remoteUnlockInputDetail(for: error)
+            Self.log.error(
+                "remote_unlock_credential_input_failed requestID=\(credential.requestId, privacy: .public) detail=\(detail, privacy: .public)"
+            )
+            Self.debugTrace("remote_unlock_credential_input_failed requestID=\(credential.requestId) detail=\(detail)")
+            return result(.failed, detail: detail)
         }
 
         try? await Task.sleep(nanoseconds: 700_000_000)
@@ -602,6 +673,10 @@ final class RemoteUnlockCredentialController {
             controlOwnerViewerId: context.authorizedPeerNodeId
         )
         let unlocked = state.lockState == .unlocked
+        Self.log.info(
+            "remote_unlock_credential_input_finished requestID=\(credential.requestId, privacy: .public) status=\(unlocked ? "unlocked" : "accepted", privacy: .public) lockState=\(state.lockState.rawValue, privacy: .public)"
+        )
+        Self.debugTrace("remote_unlock_credential_input_finished requestID=\(credential.requestId) status=\(unlocked ? "unlocked" : "accepted") lockState=\(state.lockState.rawValue)")
         if unlocked, let keyMaterial = try? keyStore.copyOrCreateKeyMaterial() {
             context.readiness.recordCertification(
                 fileVaultSSHSupported: state.capabilities.fileVaultSSHSupported,
@@ -635,6 +710,7 @@ final class RemoteUnlockCredentialController {
             case .eventCreationFailed: return "event_creation_failed"
             case .dragEndpointMissing: return "drag_endpoint_missing"
             case .unknownKey: return "unknown_key"
+            case .windowNotFound: return "window_not_found"
             }
         }
         if let daemonError = error as? RemoteAccessAgentClientError {
@@ -645,6 +721,7 @@ final class RemoteUnlockCredentialController {
             case .responseTooLarge: return "remote_access_daemon_response_too_large"
             case .socketPathTooLong: return "remote_access_daemon_socket_path_too_long"
             case .socketUnavailable: return "remote_access_daemon_socket_unavailable"
+            case .timedOut: return "remote_access_daemon_timed_out"
             case .writeFailed: return "remote_access_daemon_write_failed"
             }
         }
@@ -655,6 +732,12 @@ final class RemoteUnlockCredentialController {
 private struct RemoteAccessAgentClient {
     private static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
     private static let maximumResponseBytes = 16 * 1024
+    // Must exceed the helper's worker-exit backstop so the app never gives up while the helper is
+    // still legitimately typing the password at the login window. The previous 8s was *shorter*
+    // than the helper's own timeout budget, contributing to the "did not acknowledge" failures.
+    // Mirrors RemoteAccessCredentialTimeoutPolicy.macClientSocketTimeoutSeconds. health/wakeDisplay
+    // still return in milliseconds — this is only the maximum wait, not an added delay.
+    private static let requestIOTimeoutSeconds: time_t = 20
 
     func typeCredential(_ password: String) async throws {
         try await Task.detached(priority: .userInitiated) {
@@ -664,10 +747,17 @@ private struct RemoteAccessAgentClient {
         }.value
     }
 
+    func wakeDisplay() async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try Self.send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
+        }.value
+    }
+
     private static func send(_ request: RemoteAccessAgentRequest) throws {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RemoteAccessAgentClientError.socketUnavailable }
         defer { close(fd) }
+        configureSocket(fd)
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
@@ -697,11 +787,13 @@ private struct RemoteAccessAgentClient {
                 let written = Darwin.write(fd, base.advanced(by: offset), payload.count - offset)
                 guard written >= 0 else {
                     if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { throw RemoteAccessAgentClientError.timedOut }
                     throw RemoteAccessAgentClientError.writeFailed
                 }
                 offset += written
             }
         }
+        _ = shutdown(fd, SHUT_WR)
 
         var buffer = [UInt8](repeating: 0, count: 4096)
         var data = Data()
@@ -710,6 +802,7 @@ private struct RemoteAccessAgentClient {
             if count == 0 { break }
             guard count > 0 else {
                 if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK { throw RemoteAccessAgentClientError.timedOut }
                 throw RemoteAccessAgentClientError.readFailed
             }
             data.append(buffer, count: count)
@@ -722,11 +815,25 @@ private struct RemoteAccessAgentClient {
             throw RemoteAccessAgentClientError.daemonRejected(response.error ?? "remote_access_daemon_rejected")
         }
     }
+
+    private static func configureSocket(_ fd: Int32) {
+        var noSigPipe: Int32 = 1
+        withUnsafePointer(to: &noSigPipe) { pointer in
+            _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, pointer, socklen_t(MemoryLayout<Int32>.size))
+        }
+
+        var timeout = timeval(tv_sec: requestIOTimeoutSeconds, tv_usec: 0)
+        let timeoutLength = socklen_t(MemoryLayout<timeval>.size)
+        withUnsafePointer(to: &timeout) { pointer in
+            _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, pointer, timeoutLength)
+            _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, pointer, timeoutLength)
+        }
+    }
 }
 
 private struct RemoteAccessAgentRequest: Encodable, Sendable {
     var operation: String
-    var password: String
+    var password: String?
 }
 
 private struct RemoteAccessAgentResponse: Decodable {
@@ -741,6 +848,7 @@ private enum RemoteAccessAgentClientError: Error {
     case responseTooLarge
     case socketPathTooLong
     case socketUnavailable
+    case timedOut
     case writeFailed
 }
 #endif

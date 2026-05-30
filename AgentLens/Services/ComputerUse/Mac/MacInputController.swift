@@ -27,6 +27,7 @@ public final class MacInputController: @unchecked Sendable {
         case eventCreationFailed
         case dragEndpointMissing
         case unknownKey(String)
+        case windowNotFound(CGWindowID)
     }
 
     public init() {}
@@ -111,6 +112,36 @@ public final class MacInputController: @unchecked Sendable {
             }
             event.post(tap: .cghidEventTap)
         }
+        return Date().timeIntervalSince(started) * 1000.0
+    }
+
+    /// Raise and focus a specific macOS window before keyboard events are
+    /// posted. The inline terminal mirror uses this so phone-originated typing
+    /// keeps landing in the Terminal window that is being captured, even if the
+    /// user briefly activates another app on the Mac.
+    @discardableResult
+    public func focusWindow(windowID: CGWindowID) throws -> Double {
+        guard isAccessibilityTrusted() else { throw InputError.accessibilityNotTrusted }
+        guard let descriptor = Self.windowDescriptor(windowID: windowID) else {
+            throw InputError.windowNotFound(windowID)
+        }
+
+        let started = Date()
+        NSRunningApplication(processIdentifier: descriptor.processIdentifier)?
+            .activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+
+        let appElement = AXUIElementCreateApplication(descriptor.processIdentifier)
+        guard let window = Self.matchingAccessibilityWindow(
+            appElement: appElement,
+            descriptor: descriptor
+        ) else {
+            throw InputError.windowNotFound(windowID)
+        }
+
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, window)
+        AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         return Date().timeIntervalSince(started) * 1000.0
     }
 
@@ -235,6 +266,106 @@ public final class MacInputController: @unchecked Sendable {
         if normalized.contains(.shift) { flags.insert(.maskShift) }
         if normalized.contains(.function) { flags.insert(.maskSecondaryFn) }
         return flags
+    }
+
+    private struct WindowDescriptor {
+        let windowID: CGWindowID
+        let processIdentifier: pid_t
+        let title: String?
+        let bounds: CGRect?
+    }
+
+    private static func windowDescriptor(windowID: CGWindowID) -> WindowDescriptor? {
+        guard let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID) as? [[String: Any]],
+              let info = windows.first,
+              let ownerPID = info[kCGWindowOwnerPID as String] as? NSNumber else {
+            return nil
+        }
+        let title = info[kCGWindowName as String] as? String
+        let bounds: CGRect?
+        if let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary {
+            bounds = CGRect(dictionaryRepresentation: boundsDictionary as CFDictionary)
+        } else {
+            bounds = nil
+        }
+        return WindowDescriptor(
+            windowID: windowID,
+            processIdentifier: ownerPID.int32Value,
+            title: title,
+            bounds: bounds
+        )
+    }
+
+    private static func matchingAccessibilityWindow(
+        appElement: AXUIElement,
+        descriptor: WindowDescriptor
+    ) -> AXUIElement? {
+        guard let windows = accessibilityWindows(for: appElement) else { return nil }
+        if let bounds = descriptor.bounds,
+           let frameMatch = windows.first(where: { window in
+               guard let position = axCGPoint(window, kAXPositionAttribute as CFString),
+                     let size = axCGSize(window, kAXSizeAttribute as CFString) else {
+                   return false
+               }
+               let frame = CGRect(origin: position, size: size)
+               return abs(frame.origin.x - bounds.origin.x) <= 3
+                   && abs(frame.origin.y - bounds.origin.y) <= 3
+                   && abs(frame.width - bounds.width) <= 6
+                   && abs(frame.height - bounds.height) <= 6
+           }) {
+            return frameMatch
+        }
+        if let title = descriptor.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty,
+           let titleMatch = windows.first(where: {
+               axString($0, kAXTitleAttribute as CFString) == title
+           }) {
+            return titleMatch
+        }
+        return windows.first
+    }
+
+    private static func accessibilityWindows(for appElement: AXUIElement) -> [AXUIElement]? {
+        var raw: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &raw)
+        guard error == .success,
+              let raw,
+              let windows = raw as? [AXUIElement] else {
+            return nil
+        }
+        return windows
+    }
+
+    private static func axString(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &raw) == .success else { return nil }
+        return raw as? String
+    }
+
+    private static func axCGPoint(_ element: AXUIElement, _ attribute: CFString) -> CGPoint? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &raw) == .success,
+              let value = raw,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+        let axValue = unsafeBitCast(value, to: AXValue.self)
+        var point = CGPoint.zero
+        guard AXValueGetValue(axValue, .cgPoint, &point) else { return nil }
+        return point
+    }
+
+    private static func axCGSize(_ element: AXUIElement, _ attribute: CFString) -> CGSize? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &raw) == .success,
+              let value = raw,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+        let axValue = unsafeBitCast(value, to: AXValue.self)
+        var size = CGSize.zero
+        guard AXValueGetValue(axValue, .cgSize, &size) else { return nil }
+        return size
     }
 }
 

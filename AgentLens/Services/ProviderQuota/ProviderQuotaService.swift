@@ -14,7 +14,8 @@ struct DaemonCredentialSlotAccountProjection {
 
             return configuration.credentialSlots.enumerated().map { index, slot in
                 let isEnabled = configuration.isEnabled && slot.isEnabled
-                let status = accountStatus(for: slot.status, isEnabled: isEnabled)
+                let effectiveSlotStatus = slot.effectiveRoutingStatus(now: now)
+                let status = accountStatus(for: effectiveSlotStatus, isEnabled: isEnabled)
                 let hasRefreshState = slot.lastQuotaRemainingPercent != nil
                     || slot.lastQuotaResetsAt != nil
                     || slot.lastStatusMessage != nil
@@ -923,7 +924,7 @@ final class ProviderQuotaService {
         }
 
         if let slot {
-            switch slot.status {
+            switch slot.effectiveRoutingStatus() {
             case .ready:
                 break
             case .coolingDown:

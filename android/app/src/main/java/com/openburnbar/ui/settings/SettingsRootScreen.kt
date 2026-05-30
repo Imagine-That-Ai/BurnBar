@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Wallpaper
@@ -48,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,6 +76,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.openburnbar.data.cloud.CloudTranscriptCache
+import com.openburnbar.data.cloud.CloudTranscriptCacheSettings
+import com.openburnbar.data.cloud.CloudTranscriptCacheSnapshot
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.AuroraSettingsToggle
 import com.openburnbar.ui.components.ProviderLogo
@@ -85,6 +90,7 @@ import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
+import kotlin.math.roundToInt
 
 /**
  * Top-level Android Settings surface. Owns the [SettingsRouter] and switches
@@ -127,6 +133,10 @@ fun SettingsRootScreen(
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
             SettingsPageRoute.TEXT_EXPANSION -> TextExpansionSettingsScreen(
+                onBack = { router.page = SettingsPageRoute.ROOT }
+            )
+            SettingsPageRoute.TRANSCRIPT_CACHE -> TranscriptCacheSettingsScreen(
+                router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
         }
@@ -267,6 +277,14 @@ private fun SettingsRootList(
                 subtitle = "Sync usage and conversations to OpenBurnBar Cloud",
                 pageRoute = SettingsPageRoute.ROOT,
                 onTap = {}
+            ),
+            RootRow(
+                anchor = SettingsAnchor.TRANSCRIPT_CACHE,
+                icon = Icons.Filled.Storage,
+                title = "Transcript Cache",
+                subtitle = "Encrypted stream downloads, default 250 MB",
+                pageRoute = SettingsPageRoute.TRANSCRIPT_CACHE,
+                onTap = { router.page = SettingsPageRoute.TRANSCRIPT_CACHE }
             ),
             RootRow(
                 anchor = SettingsAnchor.CONNECTED_DEVICES,
@@ -790,6 +808,200 @@ private fun SettingsProviderLogoStack(
             ProviderLogo(provider = provider, size = 28.dp)
         }
     }
+}
+
+@Composable
+private fun TranscriptCacheSettingsScreen(
+    router: SettingsRouter,
+    onBack: () -> Unit,
+) {
+    val isDark = isSystemInDarkTheme()
+    val useWebsiteBackground by rememberWebsiteBackground()
+    var limitMegabytes by rememberSaveable { mutableStateOf(CloudTranscriptCacheSettings.maxMegabytes()) }
+    var snapshot by remember { mutableStateOf(CloudTranscriptCache.snapshot()) }
+    var status by remember { mutableStateOf<String?>(null) }
+
+    fun refreshSnapshot() {
+        snapshot = CloudTranscriptCache.snapshot()
+    }
+
+    fun setLimit(value: Int) {
+        val clamped = CloudTranscriptCacheSettings.clampMegabytes(value)
+        limitMegabytes = clamped
+        CloudTranscriptCacheSettings.setMaxMegabytes(clamped)
+        CloudTranscriptCache.trimToLimit()
+        refreshSnapshot()
+        status = if (clamped <= 0) "Cache off" else "Cache limit saved"
+    }
+
+    LaunchedEffect(router.pendingAnchor) {
+        val pending = router.pendingAnchor
+        if (pending == SettingsAnchor.TRANSCRIPT_CACHE) {
+            router.consumePendingAnchor(pending)
+            kotlinx.coroutines.delay(1_400)
+            router.clearHighlight(pending)
+        }
+    }
+
+    val haloColor by animateColorAsState(
+        targetValue = if (router.highlightedAnchor == SettingsAnchor.TRANSCRIPT_CACHE) {
+            Color(0xFFFFA800).copy(alpha = 0.18f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 350),
+        label = "transcript-cache-halo"
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (useWebsiteBackground) {
+            WebsiteBackground(accentColor = AuroraColors.hermesMercury)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .background(
+                    if (useWebsiteBackground) Color.Transparent
+                    else if (isDark) AuroraColors.darkBackground
+                    else AuroraColors.lightBackground
+                )
+                .padding(horizontal = AuroraSpacing.lg.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+        ) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Text(
+                    text = "Transcript Cache",
+                    style = AuroraType.displayLarge,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(AuroraRadius.lg.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.35f else 0.6f)
+            ) {
+                Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.lg.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(AuroraSpacing.md.dp),
+                        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.Storage,
+                                contentDescription = null,
+                                tint = AuroraColors.blaze,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Cache limit",
+                                    fontSize = AuroraTypography.body.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = cacheLimitLabel(limitMegabytes),
+                                    fontSize = AuroraTypography.caption.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Slider(
+                            value = limitMegabytes.toFloat(),
+                            onValueChange = { raw ->
+                                val rounded = ((raw / 50f).roundToInt() * 50)
+                                    .coerceIn(0, CloudTranscriptCacheSettings.MAXIMUM_MEGABYTES)
+                                if (rounded != limitMegabytes) setLimit(rounded)
+                            },
+                            valueRange = 0f..CloudTranscriptCacheSettings.MAXIMUM_MEGABYTES.toFloat()
+                        )
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Used",
+                                fontSize = AuroraTypography.caption.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            Text(
+                                text = cacheUsageLabel(snapshot),
+                                fontSize = AuroraTypography.caption.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                            TextButton(
+                                onClick = {
+                                    CloudTranscriptCache.clear()
+                                    refreshSnapshot()
+                                    status = "Cache cleared"
+                                },
+                                enabled = snapshot.usageBytes > 0L
+                            ) {
+                                Text("Clear cache")
+                            }
+                            TextButton(
+                                onClick = { setLimit(CloudTranscriptCacheSettings.DEFAULT_MAX_MEGABYTES) },
+                                enabled = limitMegabytes != CloudTranscriptCacheSettings.DEFAULT_MAX_MEGABYTES
+                            ) {
+                                Text("Use 250 MB")
+                            }
+                        }
+
+                        status?.let {
+                            Text(
+                                text = it,
+                                fontSize = AuroraTypography.caption.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Text(
+                            text = "Encrypted on this device. Off downloads transcripts only when opened.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        }
+    }
+}
+
+private fun cacheLimitLabel(limitMegabytes: Int): String {
+    if (limitMegabytes <= 0) return "Off"
+    return CloudTranscriptCacheSettings.formatBytes(
+        limitMegabytes.toLong() * CloudTranscriptCacheSettings.BYTES_PER_MEGABYTE
+    )
+}
+
+private fun cacheUsageLabel(snapshot: CloudTranscriptCacheSnapshot): String {
+    val used = CloudTranscriptCacheSettings.formatBytes(snapshot.usageBytes)
+    if (snapshot.isDisabled) return "$used / Off"
+    return "$used / ${CloudTranscriptCacheSettings.formatBytes(snapshot.maxBytes)}"
 }
 
 @Composable

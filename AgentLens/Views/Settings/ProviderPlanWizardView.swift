@@ -1218,14 +1218,15 @@ struct ProviderPlanWizardView: View {
 
     @ViewBuilder
     private func planCard(_ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot, provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let effectiveStatus = slot.effectiveRoutingStatus()
         VStack(spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Circle()
-                    .fill(slotStatusColor(for: slot.status))
+                    .fill(slotStatusColor(for: effectiveStatus))
                     .frame(width: 8, height: 8)
                     .overlay(
                         Circle()
-                            .stroke(slotStatusColor(for: slot.status).opacity(0.35), lineWidth: 4)
+                            .stroke(slotStatusColor(for: effectiveStatus).opacity(0.35), lineWidth: 4)
                             .frame(width: 16, height: 16)
                     )
 
@@ -3614,7 +3615,7 @@ struct ProviderPlanWizardView: View {
 extension OpenBurnBarDaemonProviderConfiguration {
     var routeReadyCredentialSlots: [CredentialSlot] {
         credentialSlots.filter { slot in
-            slot.isEnabled && slot.status == .ready
+            slot.canAttemptRoute()
         }
     }
 

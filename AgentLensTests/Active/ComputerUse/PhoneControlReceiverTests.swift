@@ -8,6 +8,30 @@ import OpenBurnBarMedia
 @testable import OpenBurnBar
 
 final class PhoneControlReceiverTests: XCTestCase {
+    func testKeyboardPhoneActionsRetargetCapturedTerminalWindow() {
+        XCTAssertTrue(ComputerUseSessionCoordinator.shouldRetargetPhoneKeyboardAction(
+            .macInput(MacInputAction(kind: .type, text: "hello"))
+        ))
+        XCTAssertTrue(ComputerUseSessionCoordinator.shouldRetargetPhoneKeyboardAction(
+            .macInput(MacInputAction(kind: .shortcut, key: "Return"))
+        ))
+        XCTAssertTrue(ComputerUseSessionCoordinator.shouldRetargetPhoneKeyboardAction(
+            .macInput(MacInputAction(kind: .key, key: "Tab"))
+        ))
+    }
+
+    func testPointerPhoneActionsDoNotStealFocusBackToTerminal() {
+        XCTAssertFalse(ComputerUseSessionCoordinator.shouldRetargetPhoneKeyboardAction(
+            .macInput(MacInputAction(kind: .click, displayX: 100, displayY: 120))
+        ))
+        XCTAssertFalse(ComputerUseSessionCoordinator.shouldRetargetPhoneKeyboardAction(
+            .macInput(MacInputAction(kind: .scroll, displayX: 100, displayY: 120, dragEndX: 100, dragEndY: 60))
+        ))
+        XCTAssertFalse(ComputerUseSessionCoordinator.shouldRetargetPhoneKeyboardAction(
+            .phoneIntent(PhoneControlIntent(kind: .panic))
+        ))
+    }
+
     @MainActor
     func testChaosSoftCapUpdateDoesNotShrinkActiveSessionActionCap() async throws {
         let browserCapture = BrowserActionCapture()

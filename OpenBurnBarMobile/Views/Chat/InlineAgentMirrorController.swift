@@ -161,28 +161,35 @@ final class InlineAgentMirrorController: ObservableObject {
             return
         }
 
-        let relay = pickRelay(from: hermesService)
-        guard let relay else {
+        phase = .connectingStream
+
+        let transport = HermesIrohRelayTransport.shared
+        let preferredRelay = await hermesService.preferredRelayConnection(refreshIfMissing: true)
+        guard let relayTarget = InlineAgentMirrorRelayResolver.resolve(
+            preferredRelay: preferredRelay,
+            activeMediaControlConnectionID: transport.currentMediaControlConnectionID,
+            activeMediaControlPhase: transport.currentMediaControlPhase
+        ) else {
             phase = .noRelay("Open BurnBar on your Mac and enable Hermes Remote Relay to mirror the CLI here.")
             return
         }
 
-        if hermesService.selectedConnection.id != relay.id {
+        if let relay = relayTarget.relay,
+           hermesService.selectedConnection.id != relay.id {
             _ = hermesService.selectConnection(relay, refresh: false)
         }
 
         activeUID = uid
-        activeConnectionID = relay.id
-        phase = .connectingStream
+        activeConnectionID = relayTarget.connectionID
 
         do {
-            try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            try await transport.ensureMediaControlStream(connectionID: relayTarget.connectionID)
         } catch {
             phase = .error(error.localizedDescription)
             return
         }
 
-        guard let coordinator = HermesIrohRelayTransport.shared.currentMediaControlCoordinator else {
+        guard let coordinator = transport.currentMediaControlCoordinator else {
             phase = .error("Mac mirror stream did not start. Try toggling CLI again.")
             return
         }
@@ -190,26 +197,14 @@ final class InlineAgentMirrorController: ObservableObject {
         installHandlers(on: coordinator)
 
         do {
-            try await coordinator.ensureResponsive(uid: uid, connectionID: relay.id)
+            try await coordinator.ensureResponsive(uid: uid, connectionID: relayTarget.connectionID)
         } catch {
             phase = .error(error.localizedDescription)
             return
         }
 
-        await sendMirrorRequest(coordinator: coordinator, uid: uid, connectionID: relay.id)
+        await sendMirrorRequest(coordinator: coordinator, uid: uid, connectionID: relayTarget.connectionID)
     }
-
-    private func pickRelay(from hermesService: HermesService) -> HermesConnectionRecord? {
-        if hermesService.selectedConnection.mode == .relayLink &&
-            hermesService.selectedConnection.id != HermesConnectionRecord.localDefault.id {
-            return hermesService.selectedConnection
-        }
-        if let suggested = hermesService.suggestedRelayConnection {
-            return suggested
-        }
-        return hermesService.relayConnections.first
-    }
-
     private func sendMirrorRequest(
         coordinator: MediaControlStreamCoordinator,
         uid: String,
@@ -486,6 +481,55 @@ final class InlineAgentMirrorController: ObservableObject {
 
     private func deviceDisplayName() -> String {
         UIDevice.current.name
+    }
+}
+
+struct InlineAgentMirrorRelayTarget: Equatable {
+    enum Source: Equatable {
+        case preferredRelay
+        case activeMediaControl
+    }
+
+    let connectionID: String
+    let relay: HermesConnectionRecord?
+    let source: Source
+}
+
+enum InlineAgentMirrorRelayResolver {
+    static func resolve(
+        preferredRelay: HermesConnectionRecord?,
+        activeMediaControlConnectionID: String?,
+        activeMediaControlPhase: MediaControlStreamCoordinator.Phase
+    ) -> InlineAgentMirrorRelayTarget? {
+        if let preferredRelay {
+            return InlineAgentMirrorRelayTarget(
+                connectionID: preferredRelay.id,
+                relay: preferredRelay,
+                source: .preferredRelay
+            )
+        }
+
+        guard isUsableActiveMediaControlPhase(activeMediaControlPhase),
+              let activeMediaControlConnectionID = activeMediaControlConnectionID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !activeMediaControlConnectionID.isEmpty else {
+            return nil
+        }
+
+        return InlineAgentMirrorRelayTarget(
+            connectionID: activeMediaControlConnectionID,
+            relay: nil,
+            source: .activeMediaControl
+        )
+    }
+
+    static func isUsableActiveMediaControlPhase(_ phase: MediaControlStreamCoordinator.Phase) -> Bool {
+        switch phase {
+        case .live, .dialing, .reconnecting:
+            return true
+        case .idle, .stopped, .failed:
+            return false
+        }
     }
 }
 #endif

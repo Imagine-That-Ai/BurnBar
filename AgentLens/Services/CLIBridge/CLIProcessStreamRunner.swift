@@ -179,37 +179,52 @@ struct CLIProcessStreamRunner: Sendable {
             return
         }
 
+        let stderrReader = AsyncPipeLineReader(pipe: stderrPipe)
+        let stdoutReader = AsyncPipeLineReader(pipe: stdoutPipe)
+
         let stderrTask = Task.detached(priority: .utility) {
-            await Self.drainPipe(stderrPipe, into: supervisor, source: .stderr)
+            do {
+                for try await line in stderrReader.lines() {
+                    supervisor.ingest(line, source: .stderr)
+                }
+            } catch {
+                // stderr is best-effort telemetry; stdout/process exit drives command outcome.
+            }
         }
 
-        let readHandle = stdoutPipe.fileHandleForReading
         var parserError: CLIBridgeError?
-        while !Task.isCancelled, let line = readHandle.readLine() {
-            supervisor.ingest(line + "\n", source: .stdout)
-            if quotaRecorder.snapshot() != nil {
-                if process.isRunning {
-                    process.terminate()
-                }
-                break
-            }
+        do {
+            for try await line in stdoutReader.lines() {
+                try Task.checkCancellation()
 
-            let parsed = parseLine(line)
-            for event in parsed.events {
-                continuation.yield(event)
-            }
-            if let error = parsed.error {
-                parserError = error
-            }
-            if parsed.terminate {
-                if process.isRunning {
-                    process.terminate()
+                supervisor.ingest(line, source: .stdout)
+                if quotaRecorder.snapshot() != nil {
+                    if process.isRunning {
+                        process.terminate()
+                    }
+                    break
                 }
-                break
+
+                let parsed = parseLine(line)
+                for event in parsed.events {
+                    continuation.yield(event)
+                }
+                if let error = parsed.error {
+                    parserError = error
+                }
+                if parsed.terminate {
+                    if process.isRunning {
+                        process.terminate()
+                    }
+                    break
+                }
             }
+        } catch {
+            // Cancellation or pipe error — fall through to cleanup.
         }
 
         process.waitUntilExit()
+        stderrTask.cancel()
         await stderrTask.value
         await runtime.clearRunningProcess(token: processToken)
         let failed = quotaRecorder.snapshot() != nil
@@ -274,9 +289,13 @@ struct CLIProcessStreamRunner: Sendable {
         into supervisor: CLITerminalSessionSupervisor,
         source: CLITerminalSessionOutputSource
     ) async {
-        let readHandle = pipe.fileHandleForReading
-        while let line = readHandle.readLine() {
-            supervisor.ingest(line + "\n", source: source)
+        let reader = AsyncPipeLineReader(pipe: pipe)
+        do {
+            for try await line in reader.lines() {
+                supervisor.ingest(line, source: source)
+            }
+        } catch {
+            // Pipe drains are best-effort cleanup paths.
         }
     }
 }

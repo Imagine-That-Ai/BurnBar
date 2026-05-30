@@ -78,6 +78,7 @@ enum class SettingsPageRoute {
     WALLPAPER_GENERATOR,
     BUDGET_PREFS,
     TEXT_EXPANSION,
+    TRANSCRIPT_CACHE,
 }
 
 /**
@@ -90,6 +91,7 @@ enum class SettingsPageRoute {
 object SettingsAnchor {
     // Root
     const val CLOUD_SYNC = "root.cloudSync"
+    const val TRANSCRIPT_CACHE = "root.transcriptCache"
     const val PROVIDERS_ROW = "root.providers"
     const val CONNECTED_DEVICES = "root.connectedDevices"
     const val SMART_DISPLAYS_ROW = "root.smartDisplays"

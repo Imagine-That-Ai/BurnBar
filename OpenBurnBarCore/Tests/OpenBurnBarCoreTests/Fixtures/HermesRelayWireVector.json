@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "iFHV8rMfV4ZffBBQj0pspNFjQ7CVrMersSN+rFS59Ar7Ab2DBFZRrvBsmoQ2YDw=",
+  "chunkCiphertext" : "3UKs4kW1sOS2WCUccpTyd3g6DHcZ7nRMI\/5oNgttOWPeP82z3uwaH\/30IU6HqV4=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "XHDf72EDi\/IqzjcvPFXeJ+zNAc0ixF1Y7N+bLEuXVnkKjkHo1e7i5Sa6ODNqKwkQcwbjjLtjV2EIC\/RZZ52FWNKmqCKNS2iT9HbAHUUiITO+dmyIkArdqdDQ1FPXwZRo+Hk3CSVIEf0nnBPSl0XTOn+CYnly\/88rrpsednJF6FM6JnnjV84w+67jJRVrkqCzsMIquODP",
+  "payloadCiphertext" : "GkepwHP4VjG6zbyg4qO8cb\/lcj6PkCW9rX\/RnYWHrnXEShcX1\/M5lHqmR9OCfkG1A0WMkiQO1fdIDt4LmQmQ0jo1pfXn8zN7RbvAz3yT5sPoYykDk4gD5MSF1eibA6d2\/CmywvQn\/k7zcDyutbkL7DrVmLm49QqcTKCnJ3g3A1+BEKH2BSsid5YOWUm2PpQTTkrvCNQH",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BODLjbUIRUOHbnXea4GUcdHfJo14onBlF7OQla\/w91okbO0MrVbsL3taapTchj2Nrrzp2x+VDeV1bqU51JA\/cVHHydHOlcBSXXNSm9f++NSYSG6OCiAEnAi9gb4ql77y5Hke+SLRNTf24IBXdXmHhpAcpoXW8LUaazpeu2I="
+  "wrappedKey" : "BK7AGQv5q0+OXrpbwuAz+ovAvZTgUvbblJvAGX8LYAKST8gJ3N8HWQLaxDlqEkUTsC4tQT57k3+JTOELpNfoLMKeK253A8mPrC4dxJMkf7JfyarYf90hPJGXmlQlUQgQt+9TxwJ1VdvcfJtfCtHYtY7nzDvbFQ6cebyrLL8="
 }

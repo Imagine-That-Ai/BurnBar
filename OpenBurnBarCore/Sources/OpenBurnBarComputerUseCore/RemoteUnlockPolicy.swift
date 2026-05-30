@@ -98,9 +98,10 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
             : .unavailable
         return HermesRealtimeRelayRemoteUnlockCapabilities(
             enabled: runtimeReady,
-            certificationStatus: runtimeReady
-                ? .certified
-                : certificationStatus(for: snapshot, certificationBlockers: certificationBlockers),
+            certificationStatus: certificationStatus(
+                for: snapshot,
+                certificationBlockers: certificationBlockers
+            ),
             certifiedAt: snapshot.certifiedAt,
             certifiedOSBuild: snapshot.certifiedOSBuild,
             activeBackend: activeBackend,
@@ -200,6 +201,12 @@ public struct RemoteUnlockPolicy: Sendable, Equatable {
     ) -> HermesRealtimeRelayRemoteUnlockCertificationStatus {
         if certificationBlockers.isEmpty { return .certified }
         if !snapshot.featureFlagEnabled { return .uncertified }
+        if snapshot.certifiedAt == nil,
+           snapshot.lastLockScreenProbeSucceeded == false,
+           snapshot.lastCredentialInputProbeSucceeded == false,
+           snapshot.lastUnlockProbeSucceeded == false {
+            return .uncertified
+        }
         if snapshot.certifiedOSBuild != nil, snapshot.certifiedOSBuild != snapshot.currentOSBuild {
             return .stale
         }

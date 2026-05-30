@@ -1114,6 +1114,76 @@ final class FirestoreNormalizationTests: XCTestCase {
                        "lastRefreshAt should decode from ISO 8601 string")
     }
 
+    func test_conversationQueryResponseDecodesSanitizedCallableTimestamps() throws {
+        let payload: [String: Any] = [
+            "rows": [
+                [
+                    "id": "session_doc_1",
+                    "provider": "codex",
+                    "projectName": "BurnBar",
+                    "sourceType": "codex",
+                    "deviceId": "mac-1",
+                    "model": "gpt-5",
+                    "facetSchemaVersion": 1,
+                    "messageCount": 4,
+                    "userWordCount": 120,
+                    "assistantWordCount": 240,
+                    "inputTokens": 1_000,
+                    "outputTokens": 2_000,
+                    "cacheCreationTokens": 100,
+                    "cacheReadTokens": 200,
+                    "totalTokens": 3_300,
+                    "costUSD": 0.42,
+                    "workingDirectory": "/Users/alberto/BurnBar",
+                    "toolTags": ["shell", "swift"],
+                    "durationSeconds": 61,
+                    "storagePath": "users/u/session_logs/session_doc_1.json.enc",
+                    "bodyHash": "body-hash",
+                    "startTime": "2026-05-29T18:16:23.123Z",
+                    "endTime": "2026-05-29T18:17:24Z",
+                    "updatedAt": "2026-05-29T18:18:25.456Z"
+                ]
+            ],
+            "nextCursor": NSNull(),
+            "sort": "updatedAt",
+            "direction": "desc",
+            "aggregates": [
+                "count": 1,
+                "totalCostUSD": 0.42,
+                "totalTokens": 3_300
+            ]
+        ]
+
+        let response = try FunctionsRepository.decodeConversationQueryResponse(payload)
+
+        XCTAssertEqual(response.rows.count, 1)
+        XCTAssertNil(response.nextCursor)
+        XCTAssertEqual(response.sort, "updatedAt")
+        XCTAssertEqual(response.direction, "desc")
+        XCTAssertEqual(response.aggregates?.count, 1)
+        XCTAssertEqual(response.aggregates?.totalCostUSD ?? 0, 0.42, accuracy: 0.0001)
+        XCTAssertEqual(response.aggregates?.totalTokens, 3_300)
+
+        let row = try XCTUnwrap(response.rows.first)
+        XCTAssertEqual(row.id, "session_doc_1")
+        XCTAssertEqual(row.totalTokens, 3_300)
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let basic = ISO8601DateFormatter()
+        basic.formatOptions = [.withInternetDateTime]
+
+        XCTAssertEqual(row.startTime?.timeIntervalSinceReferenceDate ?? 0,
+                       try XCTUnwrap(fractional.date(from: "2026-05-29T18:16:23.123Z")).timeIntervalSinceReferenceDate,
+                       accuracy: 0.001)
+        XCTAssertEqual(row.endTime?.timeIntervalSinceReferenceDate ?? 0,
+                       try XCTUnwrap(basic.date(from: "2026-05-29T18:17:24Z")).timeIntervalSinceReferenceDate,
+                       accuracy: 0.001)
+        XCTAssertEqual(row.updatedAt?.timeIntervalSinceReferenceDate ?? 0,
+                       try XCTUnwrap(fractional.date(from: "2026-05-29T18:18:25.456Z")).timeIntervalSinceReferenceDate,
+                       accuracy: 0.001)
+    }
+
     private func providerAccount(id: String, providerID: ProviderID, label: String, sortKey: Double, now: Date) -> ProviderAccountDoc {
         ProviderAccountDoc(
             id: id,

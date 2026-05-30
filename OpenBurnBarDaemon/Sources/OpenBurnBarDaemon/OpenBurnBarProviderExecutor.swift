@@ -148,9 +148,20 @@ public enum BurnBarProxyStreaming {
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
         let stream = AsyncThrowingStream<Data, Error> { continuation in
             let task = Task {
+                var buffer = Data()
+                buffer.reserveCapacity(4096)
+
                 do {
-                    for try await line in bytes.lines {
-                        continuation.yield(Data((line + "\n").utf8))
+                    // Preserve blank SSE separator lines; AsyncBytes.lines drops
+                    // them, which prevents downstream event parsers from dispatching.
+                    for try await byte in bytes {
+                        if let chunk = appendBytePreservingStreamFraming(byte, to: &buffer) {
+                            continuation.yield(chunk)
+                        }
+                    }
+
+                    if let chunk = flushBytePreservingStreamFramingBuffer(&buffer) {
+                        continuation.yield(chunk)
                     }
                     continuation.finish()
                 } catch {
@@ -165,6 +176,19 @@ public enum BurnBarProxyStreaming {
             contentType: contentType,
             chunks: stream
         )
+    }
+
+    static func appendBytePreservingStreamFraming(_ byte: UInt8, to buffer: inout Data) -> Data? {
+        buffer.append(byte)
+        guard byte == 0x0A || buffer.count >= 4096 else { return nil }
+        return flushBytePreservingStreamFramingBuffer(&buffer)
+    }
+
+    static func flushBytePreservingStreamFramingBuffer(_ buffer: inout Data) -> Data? {
+        guard !buffer.isEmpty else { return nil }
+        let chunk = buffer
+        buffer.removeAll(keepingCapacity: true)
+        return chunk
     }
 }
 

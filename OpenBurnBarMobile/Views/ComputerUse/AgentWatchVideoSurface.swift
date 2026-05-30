@@ -14,6 +14,7 @@ import OpenBurnBarMedia
 @MainActor
 final class AgentWatchVideoCoordinator: ObservableObject {
     let displayLayer: AVSampleBufferDisplayLayer
+    @Published var displayAspectRatio: CGFloat?
     private var pipeline: VideoReceivePipeline?
 
     init() {
@@ -36,6 +37,17 @@ final class AgentWatchVideoCoordinator: ObservableObject {
     }
 
     private func enqueue(sampleBuffer: CMSampleBuffer) {
+        if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
+            let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
+            let width = CGFloat(dimensions.width)
+            let height = CGFloat(dimensions.height)
+            if width > 0, height > 0 {
+                let aspectRatio = width / height
+                if displayAspectRatio.map({ abs($0 - aspectRatio) > 0.0001 }) ?? true {
+                    displayAspectRatio = aspectRatio
+                }
+            }
+        }
         if displayLayer.isReadyForMoreMediaData {
             displayLayer.enqueue(sampleBuffer)
         }

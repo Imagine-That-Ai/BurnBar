@@ -39,6 +39,35 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
     }
 }
 
+extension OpenBurnBarDaemonProviderConfiguration.CredentialSlot {
+    func effectiveRoutingStatus(now: Date = Date()) -> BurnBarProviderCredentialSlotStatus {
+        BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(
+            status: status,
+            isEnabled: isEnabled,
+            cooldownUntil: cooldownUntil,
+            lastQuotaRemainingPercent: lastQuotaRemainingPercent,
+            lastQuotaResetsAt: lastQuotaResetsAt,
+            lastStatusMessage: lastStatusMessage,
+            updatedAt: updatedAt,
+            now: now
+        )
+    }
+
+    func canAttemptRoute(hasCredential: Bool = true, now: Date = Date()) -> Bool {
+        BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
+            status: status,
+            isEnabled: isEnabled,
+            hasCredential: hasCredential,
+            cooldownUntil: cooldownUntil,
+            lastQuotaRemainingPercent: lastQuotaRemainingPercent,
+            lastQuotaResetsAt: lastQuotaResetsAt,
+            lastStatusMessage: lastStatusMessage,
+            updatedAt: updatedAt,
+            now: now
+        )
+    }
+}
+
 struct OpenBurnBarDaemonRecentUsage: Equatable, Identifiable {
     let idempotencyKey: String
     let provider: AgentProvider

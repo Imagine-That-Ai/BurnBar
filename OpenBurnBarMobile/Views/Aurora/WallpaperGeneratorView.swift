@@ -45,6 +45,9 @@ struct WallpaperGeneratorView: View {
     @State private var isSavingStill = false
     @State private var isSavingLive = false
     @State private var saveResult: SaveResult?
+    @State private var logoOffsets: [CGSize] = Array(repeating: .zero, count: 3)
+    @State private var activeDragIndex: Int? = nil
+    @State private var dragStartOffset: CGSize = .zero
     @State private var previewPhase: CGFloat = 0
     @State private var isHolding = false
     @State private var holdStartDate: Date?
@@ -170,6 +173,9 @@ struct WallpaperGeneratorView: View {
             SaveResultSheet(result: result, colorScheme: effectiveStyle.isDark ? .dark : .light)
         }
         .preferredColorScheme(selectedStyle == .appDefault ? nil : (selectedStyle.isDark ? .dark : .light))
+        .onChange(of: currentMode) {
+            logoOffsets = Array(repeating: .zero, count: 3)
+        }
     }
 
     // MARK: - Wallpaper Canvas
@@ -187,7 +193,8 @@ struct WallpaperGeneratorView: View {
                 colorPalette: effectiveStyle.swarmPalette,
                 motionSpeedMultiplier: isHolding ? 2.5 : 1.0,
                 enabledProviderGlyphs: selectedProviderGlyphs,
-                currentMode: $currentMode
+                currentMode: $currentMode,
+                logoOffsets: logoOffsets
             )
 
             // Subtle radial vignette
@@ -224,30 +231,67 @@ struct WallpaperGeneratorView: View {
     // MARK: - Gesture Overlay (Tap + Hold)
 
     private var gestureOverlay: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        if !isHolding {
-                            isHolding = true
-                            holdStartDate = Date()
-                            dismissTapHint()
+        GeometryReader { geo in
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if !isHolding {
+                                isHolding = true
+                                holdStartDate = Date()
+                                dismissTapHint()
+                            }
+
+                            // Detect and pan shapes / logos dynamically
+                            if activeDragIndex == nil {
+                                let centers = getActiveCenters(size: geo.size)
+                                var bestIndex: Int? = nil
+                                var bestDist = Double.infinity
+                                for (index, center) in centers.enumerated() {
+                                    if index < logoOffsets.count {
+                                        let pannedCenter = CGPoint(
+                                            x: center.x + logoOffsets[index].width,
+                                            y: center.y + logoOffsets[index].height
+                                        )
+                                        let dx = value.startLocation.x - pannedCenter.x
+                                        let dy = value.startLocation.y - pannedCenter.y
+                                        let dist = sqrt(dx * dx + dy * dy)
+                                        if dist < 120 && dist < bestDist {
+                                            bestIndex = index
+                                            bestDist = dist
+                                        }
+                                    }
+                                }
+                                if let index = bestIndex {
+                                    activeDragIndex = index
+                                    dragStartOffset = logoOffsets[index]
+                                }
+                            }
+
+                            if let index = activeDragIndex {
+                                logoOffsets[index] = CGSize(
+                                    width: dragStartOffset.width + value.translation.width,
+                                    height: dragStartOffset.height + value.translation.height
+                                )
+                            }
                         }
-                    }
-                    .onEnded { _ in
-                        let wasTap = holdStartDate.map { Date().timeIntervalSince($0) < 0.35 } ?? false
-                        isHolding = false
-                        holdStartDate = nil
-                        if wasTap {
-                            // Tap → cycle to next swarm shape
-                            NotificationCenter.default.post(name: .cycleSwarmShapeRequested, object: nil)
-                            #if canImport(UIKit)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            #endif
+                        .onEnded { _ in
+                            let wasTap = holdStartDate.map { Date().timeIntervalSince($0) < 0.35 } ?? false
+                            isHolding = false
+                            holdStartDate = nil
+                            activeDragIndex = nil
+
+                            if wasTap {
+                                // Tap → cycle to next swarm shape
+                                NotificationCenter.default.post(name: .cycleSwarmShapeRequested, object: nil)
+                                #if canImport(UIKit)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                #endif
+                            }
                         }
-                    }
-            )
+                )
+        }
     }
 
     // MARK: - Tap Hint
@@ -256,7 +300,7 @@ struct WallpaperGeneratorView: View {
         HStack(spacing: 8) {
             Image(systemName: "hand.tap.fill")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Tap to explore · Hold to speed up")
+            Text("Tap to cycle · Drag to pan · Hold to speed up")
                 .font(.system(size: 13, weight: .medium, design: .rounded))
         }
         .padding(.horizontal, 16)
@@ -777,7 +821,8 @@ struct WallpaperGeneratorView: View {
                 pace: .cinematic,
                 colorDriver: colorDriver,
                 colorPalette: effectiveStyle.swarmPalette,
-                enabledProviderGlyphs: selectedProviderGlyphs
+                enabledProviderGlyphs: selectedProviderGlyphs,
+                logoOffsets: logoOffsets
             )
             RadialGradient(
                 colors: [.clear, effectiveStyle.backgroundColor.opacity(0.7)],
@@ -834,7 +879,7 @@ struct WallpaperGeneratorView: View {
 
         let screenBounds = UIScreen.main.bounds
         let scale = UIScreen.main.scale
-        
+
         let width = Int(screenBounds.width * scale)
         let height = Int(screenBounds.height * scale)
         let evenWidth = (width % 2 == 0) ? width : width + 1
@@ -911,7 +956,7 @@ struct WallpaperGeneratorView: View {
             stillImageTimeItem.dataType = kCMMetadataBaseDataType_SInt8 as String
 
             let timedMetadataGroup = AVTimedMetadataGroup(items: [stillImageTimeItem], timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 100)))
-            
+
             while !metadataInput.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 10_000_000)
             }
@@ -932,6 +977,7 @@ struct WallpaperGeneratorView: View {
             simulation.setColorDriver(colorDriver)
             simulation.setAutoCyclingEnabled(false)
             simulation.assignMode(currentMode)
+            simulation.panOffsets = logoOffsets
 
             // Pre-advance simulation by 600 steps
             var currentTime = Date()
@@ -1020,7 +1066,7 @@ struct WallpaperGeneratorView: View {
                     let request = PHAssetCreationRequest.forAsset()
                     let imageOptions = PHAssetResourceCreationOptions()
                     let videoOptions = PHAssetResourceCreationOptions()
-                    
+
                     request.addResource(with: .photo, fileURL: stillURL, options: imageOptions)
                     request.addResource(with: .pairedVideo, fileURL: tempURL, options: videoOptions)
                 } completionHandler: { success, error in
@@ -1042,6 +1088,84 @@ struct WallpaperGeneratorView: View {
             try? FileManager.default.removeItem(at: stillURL)
         }
         #endif
+    }
+
+    private func getActiveCenters(size: CGSize) -> [CGPoint] {
+        if case .shapeProviderLogo = currentMode {
+            return getLogoCenters(count: selectedProviderGlyphs.count, size: size)
+        } else if currentMode != .swarm {
+            let width = Double(size.width)
+            let height = Double(size.height)
+            var centerX = width * 0.5
+            var centerY = height * 0.45
+
+            if width > 960 {
+                switch currentMode {
+                case .shapeRings:
+                    centerX = width * 0.78
+                    centerY = height * 0.30
+                case .shapeBurnBarLogo:
+                    centerX = width * 0.75
+                    centerY = height * 0.32
+                case .shapeRouterFlow:
+                    centerX = width * 0.5
+                    centerY = height * 0.26
+                default:
+                    centerX = width * 0.74
+                    centerY = height * 0.28
+                }
+            } else {
+                switch currentMode {
+                case .shapeRings:
+                    centerY = height * 0.24
+                case .shapeBurnBarLogo:
+                    centerY = height * 0.24
+                case .shapeRouterFlow:
+                    centerX = width * 0.5
+                    centerY = height * 0.24
+                default:
+                    centerY = height * 0.22
+                }
+            }
+            return [CGPoint(x: centerX, y: centerY)]
+        }
+        return []
+    }
+
+    private func getLogoCenters(count: Int, size: CGSize) -> [CGPoint] {
+        guard count > 0 else { return [] }
+
+        let width = Double(size.width)
+        let height = Double(size.height)
+
+        if count == 1 {
+            return [
+                CGPoint(
+                    x: width > 960 ? width * 0.74 : width * 0.5,
+                    y: width > 960 ? height * 0.30 : height * 0.24
+                )
+            ]
+        }
+
+        let maxColumns = width >= 1320 ? 5 : (width >= 920 ? 4 : 2)
+        let columns = min(count, maxColumns)
+        let rows = Int(ceil(Double(count) / Double(columns)))
+        let xStep = min(300.0, max(180.0, width * 0.78 / Double(max(columns - 1, 1))))
+        let yStep = min(210.0, max(130.0, height * 0.44 / Double(max(rows - 1, 1))))
+        let gridHeight = yStep * Double(max(rows - 1, 0))
+        let gridCenterY = height * (rows > 1 ? 0.40 : 0.34)
+
+        var centers: [CGPoint] = []
+        for index in 0..<count {
+            let row = index / columns
+            let column = index % columns
+            let rowCount = min(columns, count - row * columns)
+            let rowWidth = xStep * Double(max(rowCount - 1, 0))
+            let x = width * 0.5 - rowWidth / 2.0 + xStep * Double(column)
+            let y = gridCenterY - gridHeight / 2.0 + yStep * Double(row)
+            centers.append(CGPoint(x: x, y: y))
+        }
+        return centers
     }
 }
 
@@ -1091,7 +1215,7 @@ struct SaveResultSheet: View {
                         )
                     )
                     .frame(width: 80, height: 80)
-                
+
                 Image(systemName: iconName)
                     .font(.system(size: 36, weight: .semibold))
                     .foregroundStyle(
@@ -1109,7 +1233,7 @@ struct SaveResultSheet: View {
                 Text(titleText)
                     .font(.title2.bold())
                     .foregroundStyle(colorScheme == .dark ? .white : .black)
-                
+
                 Text(messageText)
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
@@ -1139,7 +1263,7 @@ struct SaveResultSheet: View {
                         )
                         .foregroundStyle(.white)
                     }
-                    
+
                     Button(action: openPhotosApp) {
                         HStack {
                             Image(systemName: "photo.fill.on.rectangle.fill")
@@ -1151,7 +1275,7 @@ struct SaveResultSheet: View {
                         .background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
                         .foregroundStyle(colorScheme == .dark ? .white : .black)
                     }
-                    
+
                 case .permissionDenied:
                     Button(action: openAppSettings) {
                         HStack {
@@ -1171,7 +1295,7 @@ struct SaveResultSheet: View {
                         )
                         .foregroundStyle(.white)
                     }
-                    
+
                 case .error:
                     Button(action: { dismiss() }) {
                         Text("Dismiss")
@@ -1182,7 +1306,7 @@ struct SaveResultSheet: View {
                             .foregroundStyle(colorScheme == .dark ? .white : .black)
                     }
                 }
-                
+
                 if case .permissionDenied = result {
                     Button("Cancel") {
                         dismiss()

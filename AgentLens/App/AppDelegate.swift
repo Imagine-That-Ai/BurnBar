@@ -72,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard enforceSingleOpenBurnBarInstance() else { return }
         OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
 
         NSAppleEventManager.shared().setEventHandler(
@@ -89,6 +90,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         updateWallpaperState()
         setupPowerMonitoring()
         setupScreenChangeObserver()
+    }
+
+    private func enforceSingleOpenBurnBarInstance() -> Bool {
+        guard !OpenBurnBarRuntime.isRunningTests,
+              ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_MULTIPLE_INSTANCES"] != "1",
+              let bundleIdentifier = Bundle.main.bundleIdentifier else {
+            return true
+        }
+
+        let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+        let currentBundleURL = Bundle.main.bundleURL.standardizedFileURL
+        let installedBundleURL = URL(fileURLWithPath: "/Applications/OpenBurnBar.app").standardizedFileURL
+        let isInstalledApp = currentBundleURL == installedBundleURL
+        let peers = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            .filter { $0.processIdentifier != currentProcessIdentifier }
+
+        if isInstalledApp {
+            for peer in peers where peer.bundleURL?.standardizedFileURL != installedBundleURL {
+                NSLog("OpenBurnBar: terminating stale duplicate instance at %@", peer.bundleURL?.path ?? "unknown")
+                peer.terminate()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if !peer.isTerminated {
+                        peer.forceTerminate()
+                    }
+                }
+            }
+            return true
+        }
+
+        if peers.contains(where: { $0.bundleURL?.standardizedFileURL == installedBundleURL }) {
+            NSLog("OpenBurnBar: exiting stale duplicate instance at %@", currentBundleURL.path)
+            NSApp.terminate(nil)
+            return false
+        }
+
+        return true
     }
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {

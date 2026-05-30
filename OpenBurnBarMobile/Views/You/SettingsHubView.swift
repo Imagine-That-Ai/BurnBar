@@ -17,6 +17,12 @@ struct SettingsHubView: View {
     @State private var showDeleteAccountConfirmation = false
     @State private var accountDeletionError: String?
     @State private var showSignIn = false
+    @State private var transcriptCacheLimitMegabytes = CloudTranscriptCacheSettings.shared.maxMegabytes
+    @State private var transcriptCacheSnapshot = CloudTranscriptCacheSnapshot(
+        usageBytes: 0,
+        maxBytes: CloudTranscriptCacheSettings.shared.maxBytes
+    )
+    @State private var transcriptCacheStatus: String?
     @Environment(SettingsRouter.self) private var environmentRouter: SettingsRouter?
     @State private var localRouter = SettingsRouter()
 
@@ -94,6 +100,15 @@ struct SettingsHubView: View {
             if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
                 didLoadLocalSubscription = true
                 await localSubscriptionStore.load()
+            }
+            await refreshTranscriptCacheSnapshot()
+        }
+        .onChange(of: transcriptCacheLimitMegabytes) { _, newValue in
+            CloudTranscriptCacheSettings.shared.maxMegabytes = newValue
+            transcriptCacheStatus = newValue <= 0 ? "Cache off" : "Cache limit saved"
+            Task {
+                await CloudTranscriptCache.shared.trimToLimit()
+                await refreshTranscriptCacheSnapshot()
             }
         }
     }
@@ -245,7 +260,16 @@ struct SettingsHubView: View {
                         cloudSettingsRow
                     }
                     .settingsAnchor(SettingsAnchor.cloudRow)
-                } header: { groupHeader("Cloud") }
+
+                    transcriptCacheSettingsControl
+                        .settingsAnchor(SettingsAnchor.transcriptCache)
+                } header: {
+                    groupHeader("Cloud")
+                } footer: {
+                    Text("Transcript cache stores encrypted stream downloads on this device only. Default limit is 250 MB.")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
                 .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
@@ -442,6 +466,84 @@ struct SettingsHubView: View {
             return "Upgrade — \(priceText)/mo"
         }
         return "Quota, backups, Hermes — anywhere"
+    }
+
+    @ViewBuilder
+    private var transcriptCacheSettingsControl: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Stepper(value: $transcriptCacheLimitMegabytes, in: 0...CloudTranscriptCacheSettings.maximumMegabytes, step: 50) {
+                HStack(spacing: 10) {
+                    Image(systemName: "internaldrive")
+                        .foregroundStyle(MobileTheme.ember)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Transcript cache")
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text(transcriptCacheLimitLabel)
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                }
+            }
+
+            HStack {
+                Label("Used", systemImage: "chart.pie")
+                    .font(MobileTheme.Typography.caption)
+                Spacer()
+                Text(transcriptCacheUsageLabel)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .monospacedDigit()
+            }
+
+            HStack(spacing: 12) {
+                Button(role: .destructive) {
+                    Task {
+                        try? await CloudTranscriptCache.shared.clear()
+                        transcriptCacheStatus = "Cache cleared"
+                        await refreshTranscriptCacheSnapshot()
+                    }
+                } label: {
+                    Label("Clear cache", systemImage: "trash")
+                }
+                .disabled(transcriptCacheSnapshot.usageBytes == 0)
+
+                Button {
+                    transcriptCacheLimitMegabytes = CloudTranscriptCacheSettings.defaultMaxMegabytes
+                } label: {
+                    Label("Use default", systemImage: "arrow.counterclockwise")
+                }
+                .disabled(transcriptCacheLimitMegabytes == CloudTranscriptCacheSettings.defaultMaxMegabytes)
+            }
+            .font(MobileTheme.Typography.caption)
+
+            if let transcriptCacheStatus {
+                Text(transcriptCacheStatus)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+        }
+        .onAppear {
+            transcriptCacheLimitMegabytes = CloudTranscriptCacheSettings.shared.maxMegabytes
+        }
+    }
+
+    private var transcriptCacheLimitLabel: String {
+        if transcriptCacheLimitMegabytes <= 0 { return "Off" }
+        return CloudTranscriptCacheSettings.formatBytes(
+            Int64(transcriptCacheLimitMegabytes) * CloudTranscriptCacheSettings.bytesPerMegabyte
+        )
+    }
+
+    private var transcriptCacheUsageLabel: String {
+        if transcriptCacheSnapshot.isDisabled {
+            return "\(CloudTranscriptCacheSettings.formatBytes(transcriptCacheSnapshot.usageBytes)) / Off"
+        }
+        return "\(CloudTranscriptCacheSettings.formatBytes(transcriptCacheSnapshot.usageBytes)) / \(CloudTranscriptCacheSettings.formatBytes(transcriptCacheSnapshot.maxBytes))"
+    }
+
+    private func refreshTranscriptCacheSnapshot() async {
+        transcriptCacheSnapshot = await CloudTranscriptCache.shared.snapshot()
     }
 
     private func groupHeader(_ title: String) -> some View {

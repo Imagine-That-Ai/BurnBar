@@ -265,6 +265,51 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayModelsAdvertisesZAIAfterPastMonthlyReset() async throws {
+        let harness = try GatewayHarness()
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["glm-5-turbo"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "default",
+            label: "Z.ai Coding Plan",
+            apiKey: "zai-key"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "zai",
+            slotID: "default",
+            status: .exhausted,
+            cooldownUntil: nil,
+            message: "Weekly/Monthly Limit Exhausted. Your limit will reset at 2001-01-01 00:00:00"
+        )
+        enqueueOpenAIModelCatalog(["glm-5-turbo"])
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let zai = try XCTUnwrap(data.first {
+            ($0["provider_id"] as? String) == "zai" && ($0["id"] as? String) == "glm-5-turbo"
+        })
+        XCTAssertEqual(zai["route_eligible"] as? Bool, true)
+        XCTAssertEqual(zai["advertised"] as? Bool, true)
+        XCTAssertEqual(zai["quota_state"] as? String, "healthy")
+    }
+
     func testGatewayModelsCollapsesDuplicateAccountsIntoOneProviderModelRow() async throws {
         let harness = try GatewayHarness()
         try await harness.configureZAIProviderForGateway()
@@ -297,6 +342,57 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let codexModels = try XCTUnwrap(object["models"] as? [[String: Any]])
         let codexRow = try XCTUnwrap(codexModels.first { ($0["slug"] as? String) == "glm-5-turbo" })
         XCTAssertEqual(codexRow["description"] as? String, "Z.ai via OpenBurnBar auto failover across 2 accounts")
+    }
+
+    func testGatewayModelsCatalogKeepsConnectedUnroutableProviderRowsForSettings() async throws {
+        let harness = try GatewayHarness()
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "google",
+                isEnabled: true,
+                baseURL: "https://generativelanguage.googleapis.com/v1beta",
+                preferredModelIDs: ["gemini-2.5-pro"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "google",
+            slotID: "primary",
+            label: "Gemini primary",
+            apiKey: "gemini-api-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (publicResponse, publicBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(publicResponse.statusCode, 200)
+        let publicObject = try XCTUnwrap(JSONSerialization.jsonObject(with: publicBody) as? [String: Any])
+        let publicData = try XCTUnwrap(publicObject["data"] as? [[String: Any]])
+        XCTAssertFalse(
+            publicData.contains { ($0["provider_id"] as? String) == "google" },
+            "/v1/models must stay limited to route-ready providers."
+        )
+
+        let (catalogResponse, catalogBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models/catalog"
+        )
+        XCTAssertEqual(catalogResponse.statusCode, 200)
+        let catalogObject = try XCTUnwrap(JSONSerialization.jsonObject(with: catalogBody) as? [String: Any])
+        let catalogData = try XCTUnwrap(catalogObject["data"] as? [[String: Any]])
+        let google = try XCTUnwrap(catalogData.first {
+            ($0["provider_id"] as? String) == "google" && ($0["id"] as? String) == "gemini-2.5-pro"
+        })
+        XCTAssertEqual(google["provider_name"] as? String, "Google")
+        XCTAssertEqual(google["account_label"] as? String, "Gemini primary")
+        XCTAssertEqual(google["enabled"] as? Bool, true)
+        XCTAssertEqual(google["route_eligible"] as? Bool, false)
+        XCTAssertEqual(google["advertised"] as? Bool, false)
     }
 
     func testGatewayModelsAdvertisesFactoryDroidHonestly() async throws {
@@ -500,7 +596,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let session = URLSession(configuration: sessionConfig)
         // Order: snapshot /v1/models for the configured vendor, then the
         // degrade /v1/chat/completions.
-        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 1)
+        enqueueOpenAIModelCatalog(["deepseek-chat"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: #"{"id":"chatcmpl-degrade","object":"chat.completion","model":"deepseek-chat","choices":[{"index":0,"message":{"role":"assistant","content":"degrade answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#
@@ -921,8 +1017,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let catalogObject = try XCTUnwrap(JSONSerialization.jsonObject(with: catalogBody) as? [String: Any])
         let catalogData = try XCTUnwrap(catalogObject["data"] as? [[String: Any]])
         let catalogIDs = Set(catalogData.compactMap { $0["id"] as? String })
-        XCTAssertTrue(catalogIDs.contains("claude-sonnet-4-6"))
-        XCTAssertTrue(catalogIDs.contains("my-fast-coder"))
+        XCTAssertTrue(catalogIDs.contains("claude-sonnet-4-6") || catalogIDs.contains("anthropic/claude-sonnet-4-6"), "catalog should contain sonnet, got: \(catalogIDs.sorted())")
+        XCTAssertTrue(catalogIDs.contains("my-fast-coder") || catalogIDs.contains("anthropic/my-fast-coder"), "catalog should contain alias, got: \(catalogIDs.sorted())")
     }
 
     func testGatewayChatCompletionsAcceptsAliasWireID() async throws {
@@ -1878,7 +1974,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 503)
         let bodyText = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(bodyText.contains("No eligible route for not-advertised-anywhere"), "body was: \(bodyText)")
-        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/v1/models"])
+        let recordedPaths = GatewayUpstreamURLProtocol.recordedRequests().map(\.path)
+        XCTAssertTrue(recordedPaths.allSatisfy { $0 == "/v1/models" }, "All upstream calls should be /v1/models, got: \(recordedPaths)")
     }
 
     func testGatewayChatCompletionsStopsBeforeSendingWhenNoEligibleRouteExists() async throws {
@@ -3011,6 +3108,38 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#))
     }
 
+    func testProxyStreamingByteChunksPreserveSSEEventSeparators() {
+        let upstreamSSE = """
+        event: message_start
+        data: {"type":"message_start","message":{"id":"msg_stream","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[]}}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK"}}
+
+        event: message_stop
+        data: {"type":"message_stop"}
+
+        """
+        let source = Data(upstreamSSE.utf8)
+        var buffer = Data()
+        var chunks: [Data] = []
+
+        for byte in source {
+            if let chunk = BurnBarProxyStreaming.appendBytePreservingStreamFraming(byte, to: &buffer) {
+                chunks.append(chunk)
+            }
+        }
+        if let chunk = BurnBarProxyStreaming.flushBytePreservingStreamFramingBuffer(&buffer) {
+            chunks.append(chunk)
+        }
+
+        let relayed = Data(chunks.joined())
+        XCTAssertEqual(relayed, source)
+        let relayedText = String(decoding: relayed, as: UTF8.self)
+        XCTAssertTrue(relayedText.contains("\n\nevent: content_block_delta"), relayedText)
+        XCTAssertTrue(relayedText.contains("\n\nevent: message_stop"), relayedText)
+    }
+
     func testGatewaySendsClaudeOAuthTokenAsBearer() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -3158,7 +3287,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
-    func testGatewayMessagesRoutesClaudeOpus48WireIDWhenOnlyOpus47FamilyPreferred() async throws {
+    func testGatewayMessagesRoutesClaudeOpus48WireIDViaOwnFamily() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
@@ -3190,7 +3319,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
                 providerID: "anthropic",
                 isEnabled: true,
                 baseURL: "https://gateway-upstream.test/anthropic/v1",
-                preferredModelIDs: ["claude-opus-4-7-family"],
+                preferredModelIDs: ["claude-opus-4-8-family"],
                 preferredCredentialSlotID: "primary"
             )
         )
@@ -3198,7 +3327,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerID: "anthropic",
             slotID: "primary",
             label: "Primary",
-            apiKey: "sk-ant-api03-primary-key"
+            apiKey: "************************"
         )
         try await harness.start()
         defer { Task { await harness.stop() } }

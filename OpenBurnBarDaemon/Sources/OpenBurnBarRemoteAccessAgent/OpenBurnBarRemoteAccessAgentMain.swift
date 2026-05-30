@@ -1,5 +1,7 @@
 import ApplicationServices
+import CoreGraphics
 import Darwin
+import Dispatch
 import Foundation
 import IOKit.pwr_mgt
 import OpenBurnBarRemoteAccessAgentCore
@@ -9,6 +11,18 @@ private let agentVersion = "1"
 private let defaultSocketPath = "/var/run/openburnbar-remote-access-agent.sock"
 private let maximumRequestBytes = 16 * 1024
 private let maximumCredentialUTF8Bytes = 1_024
+private let requestIOTimeoutSeconds: time_t = 2
+/// Backstop only — the worker self-bounds its own focus+type+retry work well under this. Killing
+/// the worker before it finishes typing is what produced `login_session_worker_timed_out`, so this
+/// is derived from the shared nesting policy rather than a hand-tuned magic number.
+private let credentialWorkerExitTimeoutNanoseconds: UInt64 =
+    RemoteAccessCredentialTimeoutPolicy.workerExitTimeoutNanoseconds
+
+private func agentLog(_ message: String) {
+    let line = "remote_access_agent \(Date().timeIntervalSince1970): \(message)\n"
+    guard let data = line.data(using: .utf8) else { return }
+    FileHandle.standardOutput.write(data)
+}
 
 private struct AgentRequest: Decodable {
     var operation: String
@@ -24,8 +38,30 @@ private struct AgentResponse: Encodable {
 @main
 struct OpenBurnBarRemoteAccessAgentMain {
     static func main() throws {
+        signal(SIGPIPE, SIG_IGN)
+
         if CommandLine.arguments.contains("--type-credential-worker") {
-            try RemoteAccessCredentialWorker.run()
+            // Surface worker failures in the main log (stdout), not only the .err stderr crash trace,
+            // so the loginwindow keystroke path is diagnosable from one place, then exit non-zero so
+            // the parent reports the failure instead of a false success.
+            do {
+                try RemoteAccessCredentialWorker.run()
+            } catch {
+                let detail = (error as? AgentError)?.rawValue ?? String(describing: error)
+                agentLog("credential worker error detail=\(detail)")
+                exit(1)
+            }
+            return
+        }
+
+        if CommandLine.arguments.contains("--focus-probe-worker") {
+            do {
+                try RemoteAccessCredentialWorker.runFocusProbe()
+            } catch {
+                let detail = (error as? AgentError)?.rawValue ?? String(describing: error)
+                agentLog("focus probe worker error detail=\(detail)")
+                exit(1)
+            }
             return
         }
 
@@ -33,15 +69,14 @@ struct OpenBurnBarRemoteAccessAgentMain {
         let server = try RemoteAccessAgentServer(socketPath: socketPath)
         try server.run()
     }
+}
 
-    private static func argumentValue(_ name: String) -> String? {
-        let args = CommandLine.arguments
-        guard let index = args.firstIndex(of: name),
-              args.indices.contains(index + 1) else {
-            return nil
-        }
-        return args[index + 1]
+private func argumentValue(_ name: String, in args: [String] = CommandLine.arguments) -> String? {
+    guard let index = args.firstIndex(of: name),
+          args.indices.contains(index + 1) else {
+        return nil
     }
+    return args[index + 1]
 }
 
 private final class RemoteAccessAgentServer {
@@ -92,8 +127,11 @@ private final class RemoteAccessAgentServer {
                 // Transient accept errors (e.g. the peer hung up) must not kill the server.
                 continue
             }
-            handle(client)
-            close(client)
+            configureClientTimeouts(client)
+            Thread.detachNewThread { [self] in
+                handle(client)
+                close(client)
+            }
         }
     }
 
@@ -123,7 +161,7 @@ private final class RemoteAccessAgentServer {
         // then keep re-asserting ownership from the run loop once a user appears.
         refreshSocketOwner()
 
-        guard listen(socketFD, 16) == 0 else {
+        guard listen(socketFD, SOMAXCONN) == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
     }
@@ -142,6 +180,20 @@ private final class RemoteAccessAgentServer {
         _ = chmod(socketPath, S_IRUSR | S_IWUSR)
     }
 
+    private func configureClientTimeouts(_ client: Int32) {
+        var noSigPipe: Int32 = 1
+        withUnsafePointer(to: &noSigPipe) { pointer in
+            _ = setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, pointer, socklen_t(MemoryLayout<Int32>.size))
+        }
+
+        var timeout = timeval(tv_sec: requestIOTimeoutSeconds, tv_usec: 0)
+        let timeoutLength = socklen_t(MemoryLayout<timeval>.size)
+        withUnsafePointer(to: &timeout) { pointer in
+            _ = setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, pointer, timeoutLength)
+            _ = setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, pointer, timeoutLength)
+        }
+    }
+
     private func handle(_ client: Int32) {
         do {
             try validatePeer(client)
@@ -156,7 +208,16 @@ private final class RemoteAccessAgentServer {
                 try write(AgentResponse(ok: true, error: nil), to: client)
             case "typeCredential":
                 let password = try validatedPassword(request.password)
+                agentLog("typeCredential request accepted")
                 try RemoteAccessCredentialWorker.launch(password: password)
+                try write(AgentResponse(ok: true, error: nil), to: client)
+            case "focusProbe":
+                // Diagnostic only: runs the focus sequence (pointer nudge + escape + backspaces) at
+                // the login window without typing a password or pressing Return, so an operator can
+                // confirm whether our synthetic events reach loginwindow and reveal the password
+                // field. Safe to run while locked — it can never submit a login attempt.
+                agentLog("focusProbe request accepted")
+                try RemoteAccessCredentialWorker.launchFocusProbe()
                 try write(AgentResponse(ok: true, error: nil), to: client)
             default:
                 try write(AgentResponse(ok: false, error: "unsupported_operation"), to: client)
@@ -189,6 +250,7 @@ private final class RemoteAccessAgentServer {
             if count == 0 { break }
             guard count > 0 else {
                 if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK { throw AgentError.requestTimedOut }
                 throw POSIXError(.init(rawValue: errno) ?? .EIO)
             }
             data.append(buffer, count: count)
@@ -209,6 +271,7 @@ private final class RemoteAccessAgentServer {
                 let written = Darwin.write(client, base.advanced(by: offset), data.count - offset)
                 guard written >= 0 else {
                     if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK { throw AgentError.requestTimedOut }
                     throw POSIXError(.init(rawValue: errno) ?? .EIO)
                 }
                 offset += written
@@ -261,7 +324,8 @@ private func consoleDeviceOwner() -> (uid: UInt32, gid: UInt32)? {
 
 private enum RemoteAccessCredentialWorker {
     static func run() throws {
-        let passwordData = FileHandle.standardInput.readDataToEndOfFile()
+        agentLog("credential worker running uid=\(getuid()) euid=\(geteuid()) gid=\(getgid())")
+        let passwordData = try credentialData()
         guard passwordData.count <= maximumCredentialUTF8Bytes,
               let password = String(data: passwordData, encoding: .utf8),
               !password.isEmpty else {
@@ -270,6 +334,7 @@ private enum RemoteAccessCredentialWorker {
         guard !password.unicodeScalars.contains(where: { $0.value == 0 }) else {
             throw AgentError.credentialInvalid
         }
+        try dropPrivilegesToConsoleUserIfNeeded()
         try RemoteAccessTyper.typeCredential(password)
     }
 
@@ -281,82 +346,189 @@ private enum RemoteAccessCredentialWorker {
         let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
         defer { wakeLease.release() }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        if let loginWindowPID = loginWindowPID(for: consoleUser.uid) {
-            process.arguments = [
-                "bsexec",
-                "\(loginWindowPID)",
-                executablePath,
-                "--type-credential-worker"
-            ]
-        } else {
-            process.arguments = [
-                "asuser",
-                "\(consoleUser.uid)",
-                executablePath,
-                "--type-credential-worker"
-            ]
-        }
-
-        let input = Pipe()
-        process.standardInput = input
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            throw AgentError.workerLaunchFailed
-        }
-
         guard let passwordData = password.data(using: .utf8) else {
             throw AgentError.credentialInvalid
         }
-        do {
-            try input.fileHandleForWriting.write(contentsOf: passwordData)
-            try input.fileHandleForWriting.close()
-        } catch {
-            process.terminate()
-            throw AgentError.workerInputFailed
+        let loginPID = loginWindowPID(for: consoleUser.uid)
+        agentLog(
+            "launch credential worker uid=\(consoleUser.uid) loginWindowPID=\(loginPID.map { String($0) } ?? "nil")"
+        )
+        try withCredentialFile(passwordData, owner: consoleUser) { credentialFilePath in
+            try runLaunchctl(
+                arguments: RemoteAccessCredentialWorkerLaunchPlan.launchctlArguments(
+                    executablePath: executablePath,
+                    consoleUserUID: consoleUser.uid,
+                    loginWindowPID: loginPID,
+                    credentialFilePath: credentialFilePath
+                )
+            )
+        }
+    }
+
+    private static func runLaunchctl(arguments: [String]) throws {
+        let executable = "/bin/launchctl"
+        var cArguments: [UnsafeMutablePointer<CChar>?] = ([executable] + arguments).map { strdup($0) }
+        cArguments.append(nil)
+        defer {
+            for argument in cArguments {
+                free(argument)
+            }
         }
 
-        process.waitUntilExit()
-        guard process.terminationReason == .exit,
-              process.terminationStatus == 0 else {
+        var pid = pid_t()
+        let spawnStatus = cArguments.withUnsafeMutableBufferPointer { buffer in
+            posix_spawn(&pid, executable, nil, nil, buffer.baseAddress, nil)
+        }
+        guard spawnStatus == 0 else { throw AgentError.workerLaunchFailed }
+
+        let deadline = DispatchTime.now().uptimeNanoseconds + credentialWorkerExitTimeoutNanoseconds
+        var status: Int32 = 0
+        while true {
+            let result = waitpid(pid, &status, WNOHANG)
+            if result == pid { break }
+            if result < 0 {
+                if errno == EINTR { continue }
+                throw AgentError.workerFailed
+            }
+            if DispatchTime.now().uptimeNanoseconds >= deadline {
+                killCredentialWorker(pid)
+                throw AgentError.workerTimedOut
+            }
+            usleep(50_000)
+        }
+
+        let exitedNormally = (status & 0x7f) == 0
+        let exitCode = (status >> 8) & 0xff
+        guard exitedNormally, exitCode == 0 else {
             throw AgentError.workerFailed
         }
     }
 
-    private static func loginWindowPID(for uid: uid_t) -> Int32? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-axo", "pid=,uid=,comm="]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-        do {
-            try process.run()
-        } catch {
-            return nil
+    private static func killCredentialWorker(_ pid: pid_t) {
+        _ = kill(pid, SIGTERM)
+        let deadline = DispatchTime.now().uptimeNanoseconds + 250_000_000
+        var status: Int32 = 0
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            let result = waitpid(pid, &status, WNOHANG)
+            if result == pid || (result < 0 && errno != EINTR) { return }
+            usleep(25_000)
         }
-        process.waitUntilExit()
-        guard process.terminationReason == .exit,
-              process.terminationStatus == 0 else { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
-        for line in text.split(separator: "\n") {
-            let fields = line.split(maxSplits: 2, whereSeparator: \.isWhitespace)
-            guard fields.count == 3,
-                  let pid = Int32(fields[0]),
-                  let processUID = UInt32(fields[1]),
-                  processUID == uid,
-                  fields[2].hasSuffix("/loginwindow.app/Contents/MacOS/loginwindow") else {
+        _ = kill(pid, SIGKILL)
+        while waitpid(pid, &status, 0) < 0, errno == EINTR {}
+    }
+
+    private static func credentialData() throws -> Data {
+        guard let path = argumentValue("--credential-file") else {
+            return FileHandle.standardInput.readDataToEndOfFile()
+        }
+        guard path.hasPrefix("/var/run/openburnbar-remote-access-agent.credential.") else {
+            throw AgentError.credentialInvalid
+        }
+        defer { _ = unlink(path) }
+        do {
+            return try Data(contentsOf: URL(fileURLWithPath: path))
+        } catch {
+            throw AgentError.credentialFileReadFailed
+        }
+    }
+
+    private static func dropPrivilegesToConsoleUserIfNeeded() throws {
+        guard geteuid() == 0 else {
+            agentLog("credential worker already non-root uid=\(getuid()) euid=\(geteuid()) gid=\(getgid())")
+            return
+        }
+        guard let consoleUser = resolveConsoleUser() else {
+            throw AgentError.consoleUserUnavailable
+        }
+        guard setgid(gid_t(consoleUser.gid)) == 0,
+              setuid(uid_t(consoleUser.uid)) == 0 else {
+            throw AgentError.workerPrivilegeDropFailed
+        }
+        agentLog("credential worker dropped privileges uid=\(getuid()) euid=\(geteuid()) gid=\(getgid())")
+    }
+
+    private static func withCredentialFile(
+        _ passwordData: Data,
+        owner: RemoteAccessConsoleUser,
+        _ body: (String) throws -> Void
+    ) throws {
+        var template = Array("/var/run/openburnbar-remote-access-agent.credential.XXXXXX".utf8CString)
+        let fd = template.withUnsafeMutableBufferPointer { buffer -> Int32 in
+            guard let baseAddress = buffer.baseAddress else { return -1 }
+            return mkstemp(baseAddress)
+        }
+        guard fd >= 0 else { throw AgentError.credentialFileUnavailable }
+
+        let path = String(cString: template)
+        var shouldClose = true
+        defer {
+            if shouldClose { close(fd) }
+            _ = unlink(path)
+        }
+
+        guard fchmod(fd, S_IRUSR | S_IWUSR) == 0,
+              fchown(fd, uid_t(owner.uid), gid_t(owner.gid)) == 0 else {
+            throw AgentError.credentialFileUnavailable
+        }
+
+        try passwordData.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.bindMemory(to: UInt8.self).baseAddress else { return }
+            var offset = 0
+            while offset < passwordData.count {
+                let written = Darwin.write(fd, base.advanced(by: offset), passwordData.count - offset)
+                guard written >= 0 else {
+                    if errno == EINTR { continue }
+                    throw AgentError.workerInputFailed
+                }
+                offset += written
+            }
+        }
+
+        guard close(fd) == 0 else { throw AgentError.workerInputFailed }
+        shouldClose = false
+        try body(path)
+    }
+
+    private static func loginWindowPID(for uid: uid_t) -> Int32? {
+        let bytesNeeded = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+        guard bytesNeeded > 0 else { return nil }
+
+        var pids = [pid_t](
+            repeating: 0,
+            count: Int(bytesNeeded) / MemoryLayout<pid_t>.stride
+        )
+        let bytesWritten = pids.withUnsafeMutableBytes { buffer in
+            proc_listpids(UInt32(PROC_ALL_PIDS), 0, buffer.baseAddress, Int32(buffer.count))
+        }
+        guard bytesWritten > 0 else { return nil }
+
+        let pidCount = min(pids.count, Int(bytesWritten) / MemoryLayout<pid_t>.stride)
+        for pid in pids.prefix(pidCount) where pid > 0 {
+            var info = proc_bsdinfo()
+            let infoSize = MemoryLayout<proc_bsdinfo>.stride
+            let infoResult = withUnsafeMutablePointer(to: &info) { pointer in
+                proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, pointer, Int32(infoSize))
+            }
+            guard infoResult == Int32(infoSize),
+                  info.pbi_uid == uid,
+                  let path = processPath(pid),
+                  path.hasSuffix("/loginwindow.app/Contents/MacOS/loginwindow") else {
                 continue
             }
             return pid
         }
         return nil
+    }
+
+    private static func processPath(_ pid: pid_t) -> String? {
+        // Mirrors PROC_PIDPATHINFO_MAXSIZE from <sys/proc_info.h>, which is
+        // a C macro and is not imported into Swift on macOS 26.5.
+        var buffer = [CChar](repeating: 0, count: 4 * 1_024)
+        let length = buffer.withUnsafeMutableBufferPointer { pointer in
+            proc_pidpath(pid, pointer.baseAddress, UInt32(pointer.count))
+        }
+        guard length > 0 else { return nil }
+        return String(cString: buffer)
     }
 }
 
@@ -402,32 +574,142 @@ private enum RemoteAccessDisplayWake {
 
 private enum RemoteAccessTyper {
     static func typeCredential(_ password: String) throws {
-        guard let source = CGEventSource(stateID: .hidSystemState) else {
+        guard let source = CGEventSource(stateID: keyboardEventSourceStateID()) else {
             throw AgentError.eventSourceUnavailable
         }
         source.localEventsSuppressionInterval = 0
+        agentLog(
+            "credential worker posting keys source=\(RemoteAccessCredentialEventSourcePolicy.keyboardEventSource.rawValue) tap=\(RemoteAccessCredentialEventSourcePolicy.keyboardEventTap.rawValue)"
+        )
 
         let wakeLease = RemoteAccessDisplayWake.prepareForCredentialEntry()
         defer { wakeLease.release() }
 
-        try focusCredentialField(source: source)
-        if let plan = RemoteAccessKeystrokePlanner.planForANSIUSKeyboard(password) {
-            for keystroke in plan {
-                try post(keystroke, source: source)
-                usleep(18_000)
+        let keystrokes = RemoteAccessKeystrokePlanner.planForANSIUSKeyboard(password)
+        let keyCount = keystrokes?.count ?? password.count
+        let maxAttempts = max(1, RemoteAccessCredentialTimeoutPolicy.maximumUnlockAttempts)
+
+        for attempt in 1...maxAttempts {
+            // A retry must never type onto an already-unlocked desktop. Past the first attempt, only
+            // proceed while the screen is still *confirmed* locked.
+            if attempt > 1 {
+                let locked = isScreenLocked()
+                guard locked == true else {
+                    agentLog(
+                        "credential worker stop attempt=\(attempt) reason=not_confirmed_locked lockState=\(lockStateDescription(locked))"
+                    )
+                    return
+                }
             }
-        } else {
-            for character in password {
-                try post(character: String(character), source: source)
-                usleep(18_000)
+
+            agentLog(
+                "credential worker focus attempt=\(attempt)/\(maxAttempts) preSubmitKeyPresses=\(RemoteAccessCredentialEventSourcePolicy.preCredentialSubmitKeyPresses)"
+            )
+            try focusCredentialField(source: source)
+
+            agentLog(
+                "credential worker typing attempt=\(attempt) keyCount=\(keyCount) plan=\(keystrokes != nil ? "ansi_us" : "unicode")"
+            )
+            if let keystrokes {
+                for keystroke in keystrokes {
+                    try post(keystroke, source: source)
+                    usleep(RemoteAccessCredentialEventSourcePolicy.interCharacterSettleMicroseconds)
+                }
+            } else {
+                for character in password {
+                    try post(character: String(character), source: source)
+                    usleep(RemoteAccessCredentialEventSourcePolicy.interCharacterSettleMicroseconds)
+                }
+            }
+
+            usleep(RemoteAccessCredentialEventSourcePolicy.preReturnSettleMicroseconds)
+            try postReturn(source: source)
+            agentLog("credential worker submitted attempt=\(attempt)")
+
+            usleep(RemoteAccessCredentialEventSourcePolicy.postSubmitVerifyDelayMicroseconds)
+            let locked = isScreenLocked()
+            agentLog("credential worker verify attempt=\(attempt) lockState=\(lockStateDescription(locked))")
+            switch locked {
+            case .some(false):
+                agentLog("credential worker complete attempt=\(attempt) result=unlocked")
+                return
+            case .none:
+                // Lock state unreadable: keystrokes were delivered once and we must not blindly
+                // retype (the screen may already be unlocked). Report keystrokes delivered.
+                agentLog("credential worker complete attempt=\(attempt) result=delivered_lock_state_unknown")
+                return
+            case .some(true):
+                continue // Still locked — try again if attempts remain.
             }
         }
-        try postReturn(source: source)
+
+        agentLog("credential worker complete attempts=\(maxAttempts) result=keystrokes_delivered_still_locked")
     }
 
     private static func focusCredentialField(source: CGEventSource) throws {
-        try postVirtualKey(36, source: source)
-        usleep(180_000)
+        // 1. Wake the lock UI with a pointer move (never a click — a mis-aimed click can collapse the
+        //    password lane). Combined with the IOPM user-activity assertion, this reveals the
+        //    "enter password" field on Touch-ID-first lock screens.
+        try nudgePointer(source: source, normalizedPoint: RemoteAccessCredentialEventSourcePolicy.pointerNudgePoint)
+        usleep(RemoteAccessCredentialEventSourcePolicy.pointerNudgeSettleMicroseconds)
+        agentLog("credential worker focus step=pointer_nudge done")
+
+        // 2. Escape dismisses the transient "Touch ID or enter password" affordance and drops focus
+        //    onto the password lane.
+        try postVirtualKey(53, source: source)
+        usleep(RemoteAccessCredentialEventSourcePolicy.escapeSettleMicroseconds)
+        agentLog("credential worker focus step=escape done")
+
+        // 3. Backspaces focus/clear the password lane. A Backspace on an empty field is a no-op and
+        //    never submits, so this is safe even when focus is already correct or stray characters
+        //    remain from a prior partial attempt.
+        for _ in 0..<RemoteAccessCredentialEventSourcePolicy.focusClearKeyPresses {
+            try postVirtualKey(51, source: source)
+            usleep(RemoteAccessCredentialEventSourcePolicy.focusKeySettleMicroseconds)
+        }
+        agentLog(
+            "credential worker focus step=clear backspaces=\(RemoteAccessCredentialEventSourcePolicy.focusClearKeyPresses) done"
+        )
+
+        usleep(RemoteAccessCredentialEventSourcePolicy.preTypeSettleMicroseconds)
+    }
+
+    /// Post a single pointer *move* to wake the lock UI without activating any control.
+    private static func nudgePointer(
+        source: CGEventSource,
+        normalizedPoint: RemoteAccessNormalizedPoint
+    ) throws {
+        let displayBounds = CGDisplayBounds(CGMainDisplayID())
+        let point = CGPoint(
+            x: displayBounds.minX + displayBounds.width * normalizedPoint.x,
+            y: displayBounds.minY + displayBounds.height * normalizedPoint.y
+        )
+        guard let move = CGEvent(
+            mouseEventSource: source,
+            mouseType: .mouseMoved,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else {
+            throw AgentError.eventCreationFailed
+        }
+        move.post(tap: keyboardEventTap())
+    }
+
+    /// Whether the GUI session's screen is locked. `nil` when the lock flag cannot be read, in which
+    /// case the worker conservatively stops retrying rather than risk typing onto an unlocked desktop.
+    private static func isScreenLocked() -> Bool? {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return nil }
+        if let locked = session["CGSSessionScreenIsLocked"] as? Bool { return locked }
+        if let locked = session["CGSSessionScreenIsLocked"] as? NSNumber { return locked.boolValue }
+        return nil
+    }
+
+    private static func lockStateDescription(_ locked: Bool?) -> String {
+        switch locked {
+        case .some(true): return "locked"
+        case .some(false): return "unlocked"
+        case .none: return "unknown"
+        }
     }
 
     private static func post(_ keystroke: RemoteAccessKeystroke, source: CGEventSource) throws {
@@ -448,8 +730,9 @@ private enum RemoteAccessTyper {
             down.flags = down.flags.union(flags)
             up.flags = up.flags.union(flags)
         }
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        let tap = keyboardEventTap()
+        down.post(tap: tap)
+        up.post(tap: tap)
     }
 
     private static func post(character: String, source: CGEventSource) throws {
@@ -461,12 +744,27 @@ private enum RemoteAccessTyper {
         }
         down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
         up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        let tap = keyboardEventTap()
+        down.post(tap: tap)
+        up.post(tap: tap)
     }
 
     private static func postReturn(source: CGEventSource) throws {
         try postVirtualKey(36, source: source)
+    }
+
+    private static func keyboardEventSourceStateID() -> CGEventSourceStateID {
+        switch RemoteAccessCredentialEventSourcePolicy.keyboardEventSource {
+        case .combinedSessionState:
+            return .combinedSessionState
+        }
+    }
+
+    private static func keyboardEventTap() -> CGEventTapLocation {
+        switch RemoteAccessCredentialEventSourcePolicy.keyboardEventTap {
+        case .sessionEventTap:
+            return .cgSessionEventTap
+        }
     }
 }
 
@@ -481,8 +779,13 @@ private enum AgentError: String, Error {
     case peerIdentityUnavailable = "peer_identity_unavailable"
     case peerNotConsoleUser = "peer_not_console_user"
     case requestTooLarge = "request_too_large"
+    case requestTimedOut = "request_timed_out"
     case socketPathTooLong = "socket_path_too_long"
+    case credentialFileReadFailed = "credential_file_read_failed"
+    case credentialFileUnavailable = "credential_file_unavailable"
     case workerFailed = "login_session_worker_failed"
     case workerInputFailed = "login_session_worker_input_failed"
     case workerLaunchFailed = "login_session_worker_launch_failed"
+    case workerPrivilegeDropFailed = "login_session_worker_privilege_drop_failed"
+    case workerTimedOut = "login_session_worker_timed_out"
 }

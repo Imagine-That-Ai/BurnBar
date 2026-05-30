@@ -254,7 +254,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(aliasRoute.resolvedModelID, "claude-opus-4-7")
     }
 
-    func testRouterRoutesClaudeOpus48WireIDsThroughExistingAnthropicFamily() async throws {
+    func testRouterRoutesClaudeOpus48WireIDsThroughOwnFamily() async throws {
         let harness = try makeHarness(name: "anthropic-opus-48-wire-id")
         try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
         _ = try await harness.configStore.upsertProvider(
@@ -262,7 +262,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "anthropic",
                 isEnabled: true,
                 baseURL: "https://api.anthropic.com/v1",
-                preferredModelIDs: ["claude-opus-4-7-family"]
+                preferredModelIDs: ["claude-opus-4-8-family"]
             )
         )
 
@@ -270,9 +270,34 @@ final class BurnBarProviderRouterTests: XCTestCase {
             let route = try await harness.router.route(modelName: requestedModel)
             XCTAssertEqual(route.requestedModel, requestedModel)
             XCTAssertEqual(route.resolvedModelID, requestedModel)
-            XCTAssertEqual(route.canonicalModelID, "claude-opus-4-7")
+            XCTAssertEqual(route.canonicalModelID, "claude-opus-4-8")
             XCTAssertEqual(route.modelCapabilityClassID, "anthropic:opus")
         }
+    }
+
+    func testRouterRoutesClaudeOpus48Through47FamilyViaMatcher() async throws {
+        let harness = try makeHarness(name: "anthropic-opus-48-fallback")
+        try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-opus-4-7-family", "claude-opus-4-8-family"]
+            )
+        )
+
+        // When 4.8 is explicitly requested, it should route through the 4.8 family
+        let route48 = try await harness.router.route(modelName: "claude-opus-4-8")
+        XCTAssertEqual(route48.resolvedModelID, "claude-opus-4-8")
+        XCTAssertEqual(route48.canonicalModelID, "claude-opus-4-8")
+        XCTAssertEqual(route48.modelCapabilityClassID, "anthropic:opus")
+
+        // When 4.7 is explicitly requested, it should route through the 4.7 family
+        let route47 = try await harness.router.route(modelName: "claude-opus-4-7")
+        XCTAssertEqual(route47.resolvedModelID, "claude-opus-4-7")
+        XCTAssertEqual(route47.canonicalModelID, "claude-opus-4-7")
+        XCTAssertEqual(route47.modelCapabilityClassID, "anthropic:opus")
     }
 
     func testRouterTreatsFactoryAsRoutableDroidProvider() async throws {
@@ -462,6 +487,85 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let snapshot = try await harness.configStore.snapshot()
         let slotStatus = snapshot.providerSettings(id: "zai")?.credentialSlots.first(where: { $0.slotID == "slot-a" })?.status
         XCTAssertEqual(slotStatus, .exhausted)
+    }
+
+    func testRouterRetriesStaleExhaustedDeepSeekSlot() async throws {
+        let harness = try makeHarness(name: "stale-deepseek-exhaustion")
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "deepseek-key"
+        )
+        _ = try await harness.configStore.replaceSnapshot(
+            BurnBarProviderConfigurationSnapshot(
+                providers: [
+                    BurnBarProviderSettings(
+                        providerID: "deepseek",
+                        isEnabled: true,
+                        baseURL: "https://api.deepseek.com/v1",
+                        preferredModelIDs: ["deepseek-chat"],
+                        preferredCredentialSlotID: "default",
+                        credentialSlots: [
+                            BurnBarProviderCredentialSlot(
+                                slotID: "default",
+                                label: "Default plan",
+                                status: .exhausted,
+                                lastStatusMessage: "OpenBurnBar provider request failed with status 402: Insufficient Balance",
+                                updatedAt: Date().addingTimeInterval(-31 * 60)
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+
+        let route = try await harness.router.route(modelName: "deepseek-chat", preferredProviderID: "deepseek")
+        XCTAssertEqual(route.providerID, "deepseek")
+        XCTAssertEqual(route.credentialSlotID, "default")
+    }
+
+    func testRouterKeepsRecentExhaustedDeepSeekSlotBlocked() async throws {
+        let harness = try makeHarness(name: "recent-deepseek-exhaustion")
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "deepseek-key"
+        )
+        _ = try await harness.configStore.replaceSnapshot(
+            BurnBarProviderConfigurationSnapshot(
+                providers: [
+                    BurnBarProviderSettings(
+                        providerID: "deepseek",
+                        isEnabled: true,
+                        baseURL: "https://api.deepseek.com/v1",
+                        preferredModelIDs: ["deepseek-chat"],
+                        preferredCredentialSlotID: "default",
+                        credentialSlots: [
+                            BurnBarProviderCredentialSlot(
+                                slotID: "default",
+                                label: "Default plan",
+                                status: .exhausted,
+                                lastStatusMessage: "OpenBurnBar provider request failed with status 402: Insufficient Balance",
+                                updatedAt: Date().addingTimeInterval(-5 * 60)
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "deepseek-chat", preferredProviderID: "deepseek")
+            XCTFail("Expected recent exhausted slot to stay blocked")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .credentialsUnavailable(let providerID, let reason) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(providerID, "deepseek")
+            XCTAssertTrue(reason.contains("exhausted"))
+        }
     }
 
     func testRouterDoesNotMarkFactorySlotExhaustedForStrictStandardLaneFailure() async throws {

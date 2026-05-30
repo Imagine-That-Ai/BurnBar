@@ -142,6 +142,15 @@ enum SettingsManifest {
             keywords: ["cloud", "subscription", "premium", "sync", "backup"]
         ),
         SettingsItem(
+            id: "hub.cloud.transcriptCache",
+            section: .cloud,
+            pageRoute: .hubRoot,
+            anchorID: SettingsAnchor.transcriptCache,
+            title: "Transcript cache",
+            subtitle: "Choose how much encrypted stream history this device stores",
+            keywords: ["streams", "cache", "offline", "download", "storage", "conversations", "transcripts"]
+        ),
+        SettingsItem(
             id: "cloud.membership",
             section: .cloud,
             pageRoute: .cloud,
@@ -395,6 +404,7 @@ enum SettingsManifest {
         SettingsAnchor.sessionPings,
         SettingsAnchor.openSystemNotifications,
         SettingsAnchor.cloudRow,
+        SettingsAnchor.transcriptCache,
         SettingsAnchor.cloudMembership,
         SettingsAnchor.cloudPlan,
         SettingsAnchor.cloudRestore,

@@ -15,10 +15,10 @@ final class BurnBarModelVariantConfigStoreTests: XCTestCase {
         let anthropic = snapshot.providerSettings(id: "anthropic")
         let openai = snapshot.providerSettings(id: "openai")
 
-        let opusVariantIDs = Set(anthropic?.variants(forBaseModelID: "claude-opus-4-7").map(\.variantID) ?? [])
-        XCTAssertTrue(opusVariantIDs.contains("claude-opus-4-7-high"))
-        XCTAssertTrue(opusVariantIDs.contains("claude-opus-4-7-xhigh"))
-        XCTAssertTrue(opusVariantIDs.contains("claude-opus-4-7-max"))
+        let opusVariantIDs = Set(anthropic?.variants(forBaseModelID: "claude-opus-4-8").map(\.variantID) ?? [])
+        XCTAssertTrue(opusVariantIDs.contains("claude-opus-4-8-high"))
+        XCTAssertTrue(opusVariantIDs.contains("claude-opus-4-8-xhigh"))
+        XCTAssertTrue(opusVariantIDs.contains("claude-opus-4-8-max"))
 
         let codexVariantIDs = Set(openai?.variants(forBaseModelID: "gpt-5.3-codex").map(\.variantID) ?? [])
         XCTAssertTrue(codexVariantIDs.contains("gpt-5.3-codex-low"))

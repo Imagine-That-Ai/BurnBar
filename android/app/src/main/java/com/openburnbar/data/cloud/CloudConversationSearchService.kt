@@ -6,6 +6,7 @@ import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.firebase.FunctionsRepository
 import java.net.URL
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -27,6 +28,19 @@ class CloudConversationSearchService(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
     private val firestore = Firebase.firestore
+
+    fun isSignedIn(): Boolean = auth.currentUser != null
+
+    suspend fun prepareCallableAuth(forceRefresh: Boolean = false): Boolean {
+        val user = auth.currentUser ?: return false
+        return try {
+            user.getIdToken(forceRefresh).await().token?.isNotBlank() == true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     suspend fun search(query: String, limit: Int = 25): List<CloudConversationSearchRow> {
         val uid = auth.currentUser?.uid ?: return emptyList()
@@ -91,13 +105,36 @@ class CloudConversationSearchService(
         registerDevice(uid, keypair)
         val vaultKey = unlockVaultKey(uid, keypair)
             ?: throw IllegalStateException("This device does not have the cloud vault key yet.")
-        val downloadURL = functions.encryptedSessionBlobDownloadURL(row.storagePath)
-        val bytes = withContext(Dispatchers.IO) {
+        val cachedBytes = CloudTranscriptCache.cachedEnvelopeBytes(row.storagePath, row.bodyHash)
+        val envelopeBytes = cachedBytes ?: downloadEnvelopeBytes(row.storagePath)
+
+        return runCatching {
+            openBodyEnvelope(envelopeBytes, row.bodyHash, vaultKey)
+        }.getOrElse { error ->
+            if (cachedBytes == null) throw error
+            CloudTranscriptCache.remove(row.storagePath, row.bodyHash)
+            val freshBytes = downloadEnvelopeBytes(row.storagePath)
+            openBodyEnvelope(freshBytes, row.bodyHash, vaultKey).also {
+                CloudTranscriptCache.storeEnvelopeBytes(row.storagePath, row.bodyHash, freshBytes)
+            }
+        }.also {
+            if (cachedBytes == null) {
+                CloudTranscriptCache.storeEnvelopeBytes(row.storagePath, row.bodyHash, envelopeBytes)
+            }
+        }
+    }
+
+    private suspend fun downloadEnvelopeBytes(storagePath: String): ByteArray {
+        val downloadURL = functions.encryptedSessionBlobDownloadURL(storagePath)
+        return withContext(Dispatchers.IO) {
             URL(downloadURL).openStream().use { it.readBytes() }
         }
+    }
+
+    private fun openBodyEnvelope(bytes: ByteArray, bodyHash: String, vaultKey: ByteArray): String {
         val envelope = parseBlobEnvelope(bytes.toString(Charsets.UTF_8))
         val plaintext = CloudVaultCrypto.openBlob(envelope, vaultKey)
-        require(CloudVaultCrypto.sha256Hex(plaintext) == row.bodyHash) {
+        require(CloudVaultCrypto.sha256Hex(plaintext) == bodyHash) {
             "Encrypted conversation body hash mismatch"
         }
         return plaintext.toString(Charsets.UTF_8)
