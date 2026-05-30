@@ -45,10 +45,7 @@ import {
   JWSVerificationFailure,
 } from "../lib/appstore/verifier.js";
 
-import {
-  appendEntitlementEvent,
-  __testing__ as auditTesting,
-} from "../lib/appstore/audit.js";
+import { appendEntitlementEvent, __testing__ as auditTesting } from "../lib/appstore/audit.js";
 
 import { __testing__ as quotaTesting } from "../lib/quota.js";
 
@@ -60,6 +57,10 @@ import {
 } from "../lib/appstore/reconciler.js";
 
 import { Environment } from "@apple/app-store-server-library";
+
+const LEGACY_HOSTED_PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+const CLOUD_PRODUCT_ID = "com.openburnbar.pro.monthly";
+const CLOUD_PRO_PRODUCT_ID = "com.openburnbar.proMax.monthly";
 
 // ---------------------------------------------------------------------------
 // 1. Apple root certificate fingerprint pinning
@@ -132,7 +133,7 @@ test("AppleJWSVerifier rejects empty bundleId", () => {
         enableOnlineChecks: false,
         asc: { keyId: "k", issuerId: "i", privateKeyP8: "p" },
       }),
-    /bundleId/
+    /bundleId/,
   );
 });
 
@@ -158,10 +159,7 @@ test("AppleJWSVerifier refuses Production without an appAppleId", () => {
     asc: { keyId: "k", issuerId: "i", privateKeyP8: "p" },
     // appAppleId intentionally absent.
   });
-  assert.throws(
-    () => v.warmUp(),
-    /appAppleId is required for the Production environment/
-  );
+  assert.throws(() => v.warmUp(), /appAppleId is required for the Production environment/);
 });
 
 test("AppleJWSVerifier accepts Production when appAppleId is set", () => {
@@ -205,10 +203,7 @@ test("pickWinning selects the most recent signedDate", () => {
 });
 
 test("pickWinning returns undefined when no candidate matches productId", () => {
-  const winner = reconcilerTesting.pickWinning(
-    [fakeTx({ productId: "x", signedDate: 1 })],
-    "y"
-  );
+  const winner = reconcilerTesting.pickWinning([fakeTx({ productId: "x", signedDate: 1 })], "y");
   assert.equal(winner, undefined);
 });
 
@@ -217,7 +212,7 @@ test("pickWinning returns undefined when no candidate matches productId", () => 
 // ---------------------------------------------------------------------------
 
 test("buildEntitlementDoc surfaces all v2 invariants", () => {
-  const productID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
   const expires = Date.now() + 30 * 24 * 60 * 60 * 1000;
   const candidate = fakeTx({
     productId: productID,
@@ -293,6 +288,36 @@ test("buildEntitlementDoc strips undefined fields", () => {
   assert.ok(!("expiresAt" in doc), "expiresAt should be absent, not undefined");
   assert.ok(!("appAccountToken" in doc));
   assert.ok(!("ownershipType" in doc));
+});
+
+test("appStoreEntitlementTarget maps locked Cloud product families", () => {
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget(LEGACY_HOSTED_PRODUCT_ID), {
+    sourceEntitlementID: "hosted_quota_sync",
+    mirrorEntitlementID: "burnbar_pro",
+  });
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget(CLOUD_PRODUCT_ID), {
+    sourceEntitlementID: "burnbar_pro",
+    mirrorEntitlementID: "burnbar_pro",
+  });
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget(CLOUD_PRO_PRODUCT_ID), {
+    sourceEntitlementID: "burnbar_pro_max",
+    mirrorEntitlementID: "burnbar_pro_max",
+  });
+});
+
+test("buildEntitlementDoc accepts explicit entitlement ids", () => {
+  const doc = reconcilerTesting.buildEntitlementDoc({
+    entitlementID: "burnbar_pro_max",
+    productID: CLOUD_PRO_PRODUCT_ID,
+    candidate: fakeTx({
+      productId: CLOUD_PRO_PRODUCT_ID,
+      transactionId: "tx-pro",
+      originalTransactionId: "otx-pro",
+      expiresDate: Date.now() + 86_400_000,
+    }),
+  });
+  assert.equal(doc.id, "burnbar_pro_max");
+  assert.equal(doc.productID, CLOUD_PRO_PRODUCT_ID);
 });
 
 // ---------------------------------------------------------------------------
@@ -426,14 +451,8 @@ test("audit.redact drops undefined values", () => {
 });
 
 test("audit.sanitizeDocId removes slashes and exotic chars", () => {
-  assert.equal(
-    auditTesting.sanitizeDocId("foo/bar\\baz space"),
-    "foo_bar_baz-space"
-  );
-  assert.equal(
-    auditTesting.sanitizeDocId("legal_id.value-1"),
-    "legal_id.value-1"
-  );
+  assert.equal(auditTesting.sanitizeDocId("foo/bar\\baz space"), "foo_bar_baz-space");
+  assert.equal(auditTesting.sanitizeDocId("legal_id.value-1"), "legal_id.value-1");
   // 200-char cap
   assert.equal(auditTesting.sanitizeDocId("a".repeat(500)).length, 200);
 });
@@ -506,7 +525,7 @@ test("appendEntitlementEvent rethrows non-AlreadyExists errors", async () => {
       rawJWS: "x",
       decoded: {},
     }),
-    /disk full/
+    /disk full/,
   );
 });
 
@@ -536,23 +555,14 @@ test("beginBinding mints a UUID and writes a binding doc with that id", async ()
   const writes = [];
   const db = makeFakeFirestore(writes);
   const out = await beginBinding(db, "uid-7", "p-1", "ios");
-  assert.match(
-    out.appAccountToken,
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-  );
+  assert.match(out.appAccountToken, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   assert.equal(writes.length, 1);
-  assert.equal(
-    writes[0].path,
-    `users/uid-7/entitlement_bindings/${out.appAccountToken}`
-  );
+  assert.equal(writes[0].path, `users/uid-7/entitlement_bindings/${out.appAccountToken}`);
   assert.equal(writes[0].data.uid, "uid-7");
   assert.equal(writes[0].data.productID, "p-1");
   assert.equal(writes[0].data.clientPlatform, "ios");
   assert.equal(writes[0].data.id, out.appAccountToken);
-  assert.equal(
-    writes[0].data.schemaVersion,
-    reconcilerTesting.BINDING_SCHEMA_VERSION
-  );
+  assert.equal(writes[0].data.schemaVersion, reconcilerTesting.BINDING_SCHEMA_VERSION);
 });
 
 test("beginBinding rejects empty uid", async () => {
@@ -594,22 +604,13 @@ test("redactToken keeps only the first/last 4 chars", () => {
 
 test("auditEventId prefers notificationUUID when present", () => {
   assert.equal(
-    reconcilerTesting.auditEventId(
-      { notificationUUID: "n-1" },
-      { transactionId: "t", signedDate: 5 }
-    ),
-    "n_n-1"
+    reconcilerTesting.auditEventId({ notificationUUID: "n-1" }, { transactionId: "t", signedDate: 5 }),
+    "n_n-1",
   );
 });
 
 test("auditEventId falls back to transactionId.signedDate", () => {
-  assert.equal(
-    reconcilerTesting.auditEventId(
-      {},
-      { transactionId: "tx-99", signedDate: 1234 }
-    ),
-    "t_tx-99_1234"
-  );
+  assert.equal(reconcilerTesting.auditEventId({}, { transactionId: "tx-99", signedDate: 1234 }), "t_tx-99_1234");
 });
 
 // ---------------------------------------------------------------------------
@@ -617,7 +618,7 @@ test("auditEventId falls back to transactionId.signedDate", () => {
 // ---------------------------------------------------------------------------
 
 test("reconcileEntitlement happy path: writes a v2 doc + audit event", async () => {
-  const productID = "p-monthly";
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
   const reads = new Map();
@@ -659,7 +660,7 @@ test("reconcileEntitlement happy path: writes a v2 doc + audit event", async () 
       source: "client_callable",
       productID,
     },
-    { verifier, fetchLive }
+    { verifier, fetchLive },
   );
 
   assert.equal(result.uid, "uid-7");
@@ -668,9 +669,7 @@ test("reconcileEntitlement happy path: writes a v2 doc + audit event", async () 
   assert.equal(result.entitlement.transactionID, "tx-A");
   assert.equal(result.entitlement.source, "apple_jws_verified");
   // We expect at least: txn set + audit create.
-  const entitlementWrite = writes.find((w) =>
-    w.path.endsWith("/entitlements/hosted_quota_sync")
-  );
+  const entitlementWrite = writes.find((w) => w.path.endsWith("/entitlements/hosted_quota_sync"));
   assert.ok(entitlementWrite, "entitlement doc was written");
   const auditWrite = writes.find((w) => w.path.includes("/entitlement_events/"));
   assert.ok(auditWrite, "audit event was written");
@@ -702,20 +701,16 @@ test("reconcileEntitlement rejects on bundleId mismatch", async () => {
         source: "client_callable",
         productID: "p",
       },
-      { verifier, fetchLive }
+      { verifier, fetchLive },
     ),
-    /bundle_id_mismatch/
+    /bundle_id_mismatch/,
   );
   // No entitlement doc should have been written.
-  assert.equal(
-    writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync"))
-      .length,
-    0
-  );
+  assert.equal(writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync")).length, 0);
 });
 
 test("reconcileEntitlement rejects when claimedUid disagrees with binding", async () => {
-  const productID = "p";
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
   const reads = new Map();
@@ -757,14 +752,14 @@ test("reconcileEntitlement rejects when claimedUid disagrees with binding", asyn
         source: "client_callable",
         productID,
       },
-      { verifier, fetchLive }
+      { verifier, fetchLive },
     ),
-    /binding_mismatch/
+    /binding_mismatch/,
   );
 });
 
 test("reconcileEntitlement is idempotent on replay (no extra writes)", async () => {
-  const productID = "p";
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
   const reads = new Map();
@@ -809,20 +804,18 @@ test("reconcileEntitlement is idempotent on replay (no extra writes)", async () 
       source: "client_callable",
       productID,
     },
-    { verifier, fetchLive }
+    { verifier, fetchLive },
   );
 
   assert.equal(result.changed, false, "old signedDate must not overwrite new doc");
   // The audit event still gets appended (we want the forensic record),
   // but the entitlement itself is untouched.
-  const entitlementWrites = writes.filter((w) =>
-    w.path.endsWith("/entitlements/hosted_quota_sync")
-  );
+  const entitlementWrites = writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync"));
   assert.equal(entitlementWrites.length, 0);
 });
 
 test("reconcileEntitlement honours ASC live state over inbound JWS", async () => {
-  const productID = "p";
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
   const db = makeReconcilerDb(writes, new Map());
@@ -862,14 +855,14 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
       source: "client_callable",
       productID,
     },
-    { verifier, fetchLive }
+    { verifier, fetchLive },
   );
 
   assert.equal(result.entitlement.transactionID, "tx-new");
 });
 
 test("reconcileEntitlement fails closed when ASC live status is unavailable", async () => {
-  const productID = "p";
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
   const reads = new Map();
@@ -909,15 +902,12 @@ test("reconcileEntitlement fails closed when ASC live status is unavailable", as
         source: "client_callable",
         productID,
       },
-      { verifier, fetchLive }
+      { verifier, fetchLive },
     ),
-    /asc_live_status_unavailable/
+    /asc_live_status_unavailable/,
   );
 
-  assert.equal(
-    writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync")).length,
-    0
-  );
+  assert.equal(writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync")).length, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -957,7 +947,7 @@ test("hosted runner snapshots are server-attributed and sanitized", () => {
       ],
     },
     account,
-    "2026-05-05T00:00:00.000Z"
+    "2026-05-05T00:00:00.000Z",
   );
 
   assert.equal(snapshot.provider, "codex");
@@ -983,9 +973,9 @@ test("hosted runner snapshot normalization rejects empty bucket sets", () => {
           label: "Hosted Codex",
           storageScope: "server_private",
         },
-        "2026-05-05T00:00:00.000Z"
+        "2026-05-05T00:00:00.000Z",
       ),
-    /no quota buckets/
+    /no quota buckets/,
   );
 });
 
@@ -1187,10 +1177,12 @@ function makeReconcilerDb(writes, reads) {
         where() {
           return {
             async get() {
-              return collectionGroupSnaps.get(`__cg__/${name}`) ?? {
-                empty: true,
-                docs: [],
-              };
+              return (
+                collectionGroupSnaps.get(`__cg__/${name}`) ?? {
+                  empty: true,
+                  docs: [],
+                }
+              );
             },
             where() {
               return this;

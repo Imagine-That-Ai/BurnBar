@@ -27,7 +27,7 @@ import { logError, logInfo } from "../logging.js";
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
+import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { getAppleJWSVerifier, JWSVerificationFailure } from "./verifier.js";
 
@@ -81,7 +81,6 @@ export const appStoreServerNotificationsV2 = onRequest(
       return;
     }
     const cfg = loadAppStoreRuntimeConfig();
-    const productID = hostedQuotaProductID();
     const verifier = getAppleJWSVerifier(cfg);
 
     let notification;
@@ -138,7 +137,6 @@ export const appStoreServerNotificationsV2 = onRequest(
         // No claimed UID for S2S — we resolve uid via the binding doc.
         claimedUid: undefined,
         source: "apple_s2s",
-        productID,
       });
       res.status(200).send();
     } catch (err) {

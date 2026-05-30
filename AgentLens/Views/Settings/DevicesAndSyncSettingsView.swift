@@ -611,31 +611,13 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
     }
 
     func approve(deviceID: String) async throws {
-        guard let uid else { throw MacDeviceTrustError.notAuthenticated }
-        try await db.collection("users").document(uid).collection("escrow_devices")
-            .document(deviceID).setData([
-                "trustState": EscrowDeviceTrustState.trusted.rawValue,
-                "approvedAt": FieldValue.serverTimestamp(),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+        guard uid != nil else { throw MacDeviceTrustError.notAuthenticated }
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(deviceId: deviceID)
     }
 
     func revoke(deviceID: String) async throws {
-        guard let uid else { throw MacDeviceTrustError.notAuthenticated }
-        try await db.collection("users").document(uid).collection("escrow_devices")
-            .document(deviceID).setData([
-                "trustState": EscrowDeviceTrustState.revoked.rawValue,
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
-        let grants = try await db.collection("users").document(uid).collection("escrow_grants")
-            .whereField("targetDeviceId", isEqualTo: deviceID)
-            .whereField("status", isEqualTo: EscrowGrantStatus.granted.rawValue).getDocuments()
-        for doc in grants.documents {
-            try await doc.reference.setData([
-                "status": EscrowGrantStatus.revoked.rawValue,
-                "revokedAt": FieldValue.serverTimestamp()
-            ], merge: true)
-        }
+        guard uid != nil else { throw MacDeviceTrustError.notAuthenticated }
+        try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(deviceId: deviceID)
     }
 }
 

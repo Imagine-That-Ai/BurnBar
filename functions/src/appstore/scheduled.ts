@@ -14,7 +14,7 @@ import { logError, logInfo, logWarn } from "../logging.js";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
+import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { JWSVerificationFailure } from "./verifier.js";
@@ -39,14 +39,8 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
   async () => {
     const db = getFirestore();
     const cfg = loadAppStoreRuntimeConfig();
-    const productID = hostedQuotaProductID();
 
-    const cg = await db
-      .collectionGroup("entitlements")
-      .where("id", "==", "hosted_quota_sync")
-      .where("active", "==", true)
-      .limit(250)
-      .get();
+    const cg = await db.collectionGroup("entitlements").where("active", "==", true).limit(250).get();
 
     let ok = 0;
     let updated = 0;
@@ -70,7 +64,7 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
           signedTransactionJWS: seedJWS,
           signedRenewalInfoJWS: live.pairs[0]?.signedRenewalInfo,
           source: "scheduled_reconcile",
-          productID,
+          productID: data.productID,
         });
         ok += 1;
         if (result.changed) updated += 1;

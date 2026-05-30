@@ -15,7 +15,6 @@ import { isRecord, numberField, stringField } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 
 const MEDIA_SKU = "com.openburnbar.hostedMediaSync.monthly";
-const PRO_SKU = "com.openburnbar.pro.monthly";
 const QUOTA_SKU_DOC_ID = "hosted_quota_sync";
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 const GRANDFATHER_WINDOW_DAYS = 90;
@@ -40,6 +39,11 @@ function nowPlusDays(days: number): Timestamp {
   return Timestamp.fromMillis(millis);
 }
 
+function isCloudProProductID(productID: string): boolean {
+  const cfg = getConfig();
+  return productID === cfg.burnBarProMaxProductID || productID === cfg.burnBarProMaxAnnualProductID;
+}
+
 export const grantMediaGrandfather = onCall(
   { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("grantMediaGrandfather", async (request) => {
@@ -62,7 +66,7 @@ export const grantMediaGrandfather = onCall(
       if (segments.length !== 4 || segments[0] !== "users") continue;
       const uid = segments[1];
       const entitlementId = segments[3];
-      if (entitlementId !== QUOTA_SKU_DOC_ID && entitlementId !== "burnbar_pro") continue;
+      if (entitlementId !== QUOTA_SKU_DOC_ID) continue;
 
       const mediaRef = firestore.doc(`users/${uid}/entitlements/${MEDIA_ENTITLEMENT_DOC_ID}`);
       const existing = await mediaRef.get();
@@ -77,14 +81,14 @@ export const grantMediaGrandfather = onCall(
 
       const grant: MediaEntitlementDoc = {
         active: true,
-        productID: entitlementId === "burnbar_pro" ? PRO_SKU : MEDIA_SKU,
+        productID: MEDIA_SKU,
         expireAt: nowPlusDays(GRANDFATHER_WINDOW_DAYS),
         features: {
           fileTransfer: true,
           screenShare: false,
           videoCall: false,
         },
-        grantedBy: entitlementId === "burnbar_pro" ? "umbrella" : "grandfather",
+        grantedBy: "grandfather",
         schemaVersion: SCHEMA_VERSION,
       };
       await mediaRef.set(grant, { merge: true });
@@ -124,7 +128,7 @@ export const validateMediaPurchase = onCall(
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
     const data = parseValidateRequest(request.data);
-    if (!data || (data.productID !== MEDIA_SKU && data.productID !== PRO_SKU)) {
+    if (!data || (data.productID !== MEDIA_SKU && !isCloudProProductID(data.productID))) {
       throw new HttpsError("invalid-argument", "Unsupported product.");
     }
     if (!Number.isFinite(data.expireAtMillis) || data.expireAtMillis < Date.now()) {
@@ -137,16 +141,17 @@ export const validateMediaPurchase = onCall(
     const firestore = getFirestore();
     const ref = firestore.doc(`users/${request.auth.uid}/entitlements/${MEDIA_ENTITLEMENT_DOC_ID}`);
 
+    const cloudProProduct = isCloudProProductID(data.productID);
     const grant: MediaEntitlementDoc = {
       active: true,
       productID: data.productID,
       expireAt: Timestamp.fromMillis(data.expireAtMillis),
       features: {
         fileTransfer: true,
-        screenShare: data.productID === PRO_SKU,
-        videoCall: data.productID === PRO_SKU,
+        screenShare: cloudProProduct,
+        videoCall: cloudProProduct,
       },
-      grantedBy: data.productID === PRO_SKU ? "umbrella" : "purchase",
+      grantedBy: cloudProProduct ? "umbrella" : "purchase",
       schemaVersion: SCHEMA_VERSION,
     };
     await ref.set(grant, { merge: true });

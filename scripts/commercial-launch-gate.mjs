@@ -78,6 +78,8 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "recomputeMediaQuotaUsage",
   "refreshAllProviderQuotas",
   "refreshProviderAccountQuota",
+  "reserveAgentControlActionBudget",
+  "reserveFlooRelayBudget",
   "restoreHostedQuotaEntitlement",
   "rollupComputerUseDaily",
   "rollupMediaSessionDaily",

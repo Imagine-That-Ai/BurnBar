@@ -20,6 +20,7 @@ import {
   requireConfiguredStripe,
   requireConfiguredStripeWebhookSecret,
   boundedHttpsURL,
+  assertActiveBurnBarCloudProEntitlement,
   getOrCreateStripeCustomer,
   googlePlayLineItemForProduct,
   googlePlayExpiryMillis,
@@ -52,10 +53,7 @@ function requireConfiguredPriceID(priceID: string, label: string): string {
   return priceID;
 }
 
-function subscriptionCheckoutSelection(data: {
-  tier?: unknown;
-  cadence?: unknown;
-}): {
+function subscriptionCheckoutSelection(data: { tier?: unknown; cadence?: unknown }): {
   priceID: string;
   entitlementID: string;
   tier: StripeCheckoutTier;
@@ -92,10 +90,7 @@ function topUpCheckoutSelection(kind: StripeTopUpKind): { priceID: string; kind:
     case "agent_control_actions_100":
       return {
         kind,
-        priceID: requireConfiguredPriceID(
-          cfg.stripeAgentControl100ActionsPriceID,
-          "Agent Control 100 hosted actions",
-        ),
+        priceID: requireConfiguredPriceID(cfg.stripeAgentControl100ActionsPriceID, "Agent Control 100 hosted actions"),
       };
     case "floo_relay_50gb":
       return {
@@ -162,6 +157,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       );
 
       if (topUpKind) {
+        await assertActiveBurnBarCloudProEntitlement(uid);
         const topUp = topUpCheckoutSelection(topUpKind);
         const session = await stripe.checkout.sessions.create({
           mode: "payment",
