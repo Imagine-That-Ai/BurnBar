@@ -7,11 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Universal provider auto-discovery
+- **Anthropic `/v1/models` live discovery** — `BurnBarLiveModelCatalog.anthropicLiveModels()` hits Anthropic's `/v1/models` endpoint with `anthropic-version: 2023-06-01`, supporting both Console API keys (`x-api-key` header) and OAuth tokens (`Authorization: Bearer` header). Pagination is fully handled via `has_more` / `last_id` / `after_id` cursors.
+- **Factory Droid CLI live discovery** — `BurnBarLiveModelCatalog.factoryDroidLiveModels()` runs `droid exec --help` via the injectable `FactoryDroidProcessRunning` protocol and parses the output with `CLIRuntimeModelCatalog.parseDroidExecHelp`.
+- **Pluggable discovery dispatch** — `liveModels()` now dispatches by format family: `.openaiCompat` → `openAICompatLiveModels()`, `.anthropic` → `anthropicLiveModels()`, `factory` → `factoryDroidLiveModels()`. Unknown format families return `nil` (static catalog only).
+- **Anthropic dated-ID normalization** — `normalizeAnthropicModelID()` strips trailing `-YYYYMMDD` suffixes from Anthropic snapshot model IDs (e.g. `claude-opus-4-8-20260514` → `claude-opus-4-8`), ensuring live-discovered models match catalog families.
+- **`droidProcessRunner` injectable dependency** — `BurnBarLiveModelCatalog.init` now accepts `droidProcessRunner: any FactoryDroidProcessRunning` (defaults to `FactoryDroidSystemProcessRunner`), enabling test doubles for Factory CLI discovery.
+- **19 discovery tests** — `OpenBurnBarLiveModelDiscoveryTests` covers normalization, parsing, pagination, deduplication, display name fallback, credential header selection, and CLI output parsing.
+
+### Added — Opus 4.8 as first-class model + catalog promotion
+- **`claude-opus-4-8-family` is now a canonical model** with its own `canonicalModelID: "claude-opus-4-8"` and `capabilityClassRank: 110` (above Opus 4.7's rank 100), making it the flagship Anthropic model.
+- **`claude-opus-4-7-family` no longer borrows 4.8 aliases** — the 4.7 family's aliases and matchers are scoped to 4.7 only (with `"4.8"` in the `"none"` exclusion list), so requests for `claude-opus-4-8` route through the 4.8 family, not the 4.7 family.
+- **Factory provider gains `factory-claude-opus-4-8-family`** with the same canonical model and capability class, keeping both 4.7 and 4.8 available through Factory.
+- **Variant seed default updated** from `claude-opus-4-7` to `claude-opus-4-8` — new daemon installations seed thinking-level variants on Opus 4.8.
+- **Display mirrors updated** — `openburnbar_models.json` in both AgentLens and OpenBurnBarMobile now list Opus 4.8 as the flagship Anthropic model, with Opus 4.7 still present.
+- **`AnthropicInsightAdapter.defaultModels`** flagship entry updated from `claude-opus-4-7` to `claude-opus-4-8`.
+- **`CrossEncoderConfiguration`** now lists both Opus 4.8 and Opus 4.7 as available Claude models.
+- **Router test added** — `testRouterRoutesClaudeOpus48WireIDsThroughOwnFamily` verifies that Opus 4.8 routes through its own canonical model with `canonicalModelID == "claude-opus-4-8"`, and `testRouterRoutesClaudeOpus48Through47FamilyViaMatcher` verifies both 4.7 and 4.8 route correctly when both families are configured.
+- **Gateway test updated** — `testGatewayMessagesRoutesClaudeOpus48WireIDViaOwnFamily` replaces the old stopgap test that routed 4.8 through the 4.7 family.
+
+### Fixed — Mobile Terminal relay
+- The iOS/iPadOS inline Terminal mirror now refreshes Mac relay discovery before
+  showing “No Mac available,” so Grok Build and other runtime threads can reuse
+  the same live Hermes Remote Relay without relying on stale in-memory cache.
+- Interactive Terminal capture now recognizes Terminal sessions opened in an
+  existing retitled window/tab and falls back to the frontmost Terminal window
+  after polling, avoiding the tiny full-desktop mirror when the Mac could not
+  resolve a brand-new Terminal window ID.
+- Terminal-window capture now enables ScreenCaptureKit's independent-window
+  scale-to-fit mode, so the live phone viewer receives a Terminal-sized frame
+  instead of a small window floating inside a mostly black 1920x1080 canvas.
+- If ScreenCaptureKit cannot reopen the Terminal as an independent window, the
+  Mac mirror now crops the display source to the resolved Terminal window before
+  encoding, keeping black padding minimal even on the fallback path.
+- The inline Terminal viewer now uses a softer first-frame zoom and collapses
+  the special-key strip into a single expandable button, keeping the prompt and
+  chat input area visible.
+- The inline Terminal viewer now treats first-frame zoom as a small readability
+  nudge instead of height-fill zoom and refocuses the captured Mac Terminal
+  window before phone-originated typing/shortcuts, preventing text from landing
+  in the wrong Mac input.
+
 ### Fixed — Mercury Remote Unlock display wake
 - The privileged Remote Unlock helper now explicitly wakes a sleeping display
   and holds a short no-display-sleep assertion before typing the Mac password,
   preventing the first synthetic key press from being consumed by display wake
   instead of focusing the login-window password field.
+- The credential worker now uses the session-scoped CoreGraphics event source
+  inside the loginwindow bootstrap, avoiding a macOS 26.5 SkyLight deadlock that
+  made one-tap unlock report “sent” while no keystrokes reached the login
+  window.
+- The root helper now enters the loginwindow bootstrap directly with
+  `launchctl bsexec` for credential workers and then explicitly drops the worker
+  to the logged-in console user before posting keys, preventing a root-owned
+  worker from reporting “sent” while loginwindow ignores the password events.
+- The helper now passes credentials to the loginwindow worker through a
+  short-lived `0600` file and launches `launchctl` with `posix_spawn` plus a
+  hard timeout, avoiding Foundation `Process`/stdin hangs inside the privileged
+  daemon.
+- The Remote Unlock helper and Mac app now use bounded socket I/O and ignore broken
+  pipe failures so stale helper clients cannot wedge the local unlock lane.
+- The macOS “Launch at Login” setting now registers/unregisters the app with
+  `SMAppService.mainApp` instead of only writing a preference, keeping the Mac
+  relay process available for Mercury/Remote Unlock after login.
 
 ### Added — Streams conversation cockpit (import, faceted cloud query, export)
 - **Every indexed provider transcript now flows into the encrypted hosted
@@ -40,6 +98,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundle with `conversations.json`, a `README.md` index, and one Markdown file per
   transcript via `ConversationBundleExporter`); iOS and Android share a single
   conversation as formatted Markdown. CLI-agent import remains the inbound path.
+- **Mobile lightweight search:** Streams now routes active cockpit/session search
+  through the encrypted hosted search index before local page filtering, returns
+  up to 50 matching conversations without downloading full bodies, and pages the
+  cockpit manifest list at the callable's 100-row cap with an explicit Load more
+  affordance for older records.
+- **On-device transcript cache:** iOS Streams now re-seals downloaded transcript
+  bodies into an encrypted local cache with a user-adjustable storage cap
+  (default 250 MB), visible usage, clear-cache control, and a Download loaded
+  action for warming the currently loaded cockpit rows. The same cache size
+  control is now searchable from iOS Settings, and Android Settings adds a
+  matching encrypted transcript-cache limit/usage/clear screen.
 
 ### Fixed — Gateway token burn & reliability
 - **The local proxy now accepts legacy Ollama Cloud model aliases.** Requests

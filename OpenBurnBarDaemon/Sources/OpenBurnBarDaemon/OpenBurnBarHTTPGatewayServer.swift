@@ -408,7 +408,7 @@ public actor BurnBarHTTPGatewayServer {
                 }
                 let canAdvertise = await canAdvertiseModel(model, catalog: catalog)
                 let advertised = model.routeEligible && model.advertisementEnabled && canAdvertise
-                if advertised || (includeUnadvertised && (model.routeEligible || !model.advertisementEnabled)) {
+                if advertised || (includeUnadvertised && model.enabled) {
                     entries.append(GatewayModelCatalogEntry(model: model, advertised: advertised))
                 }
             }

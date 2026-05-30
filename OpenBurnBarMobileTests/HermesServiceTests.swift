@@ -469,6 +469,99 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(service.hasPendingRelaySuggestion)
     }
 
+    func testPreferredRelayConnectionRefreshesDiscoveryBeforeFailingEmptyCache() async {
+        let relay = relayConnection()
+        let repository = FakeHermesConnectionRepository(connections: [relay])
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: FakeHermesRelayTransport()
+        )
+        service.connections = [.localDefault]
+        service.selectedConnection = .localDefault
+
+        let preferred = await service.preferredRelayConnection(refreshIfMissing: true)
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertEqual(preferred?.id, relay.id)
+        XCTAssertEqual(service.suggestedRelayConnection?.id, relay.id)
+    }
+
+    func testPreferredRelayConnectionKeepsSelectedRelayWhenDiscoveryRefreshFails() async {
+        let relay = relayConnection()
+        let repository = FakeHermesConnectionRepository(error: URLError(.timedOut))
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: FakeHermesRelayTransport()
+        )
+        service.connections = [.localDefault]
+        service.selectedConnection = relay
+
+        let preferred = await service.preferredRelayConnection(refreshIfMissing: true)
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertEqual(preferred?.id, relay.id)
+        XCTAssertEqual(service.selectedConnection.id, relay.id)
+    }
+
+    func testPreferredRelayConnectionSkipsStaleSelectedRelay() async {
+        let stale = HermesConnectionRecord(
+            id: "relay-stale",
+            displayName: "Stale Relay",
+            mode: .relayLink,
+            status: .offline,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date().addingTimeInterval(-60 * 60),
+            updatedAt: Date().addingTimeInterval(-60 * 60)
+        )
+        let fresh = relayConnection()
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, stale, fresh]
+        service.selectedConnection = stale
+
+        let preferred = await service.preferredRelayConnection(refreshIfMissing: false)
+
+        XCTAssertEqual(preferred?.id, fresh.id)
+    }
+
+    func testInlineMirrorRelayResolverUsesActiveMediaControlWhenRelayDiscoveryIsEmpty() {
+        let target = InlineAgentMirrorRelayResolver.resolve(
+            preferredRelay: nil,
+            activeMediaControlConnectionID: " relay-live ",
+            activeMediaControlPhase: .live
+        )
+
+        XCTAssertEqual(target?.connectionID, "relay-live")
+        XCTAssertEqual(target?.source, .activeMediaControl)
+        XCTAssertNil(target?.relay)
+    }
+
+    func testInlineMirrorRelayResolverPrefersDiscoveredRelayOverActiveMediaControl() {
+        let relay = relayConnection()
+
+        let target = InlineAgentMirrorRelayResolver.resolve(
+            preferredRelay: relay,
+            activeMediaControlConnectionID: "relay-live",
+            activeMediaControlPhase: .live
+        )
+
+        XCTAssertEqual(target?.connectionID, relay.id)
+        XCTAssertEqual(target?.source, .preferredRelay)
+        XCTAssertEqual(target?.relay?.id, relay.id)
+    }
+
+    func testInlineMirrorRelayResolverRejectsStoppedMediaControlWithoutRelay() {
+        let target = InlineAgentMirrorRelayResolver.resolve(
+            preferredRelay: nil,
+            activeMediaControlConnectionID: "relay-stopped",
+            activeMediaControlPhase: .stopped
+        )
+
+        XCTAssertNil(target)
+    }
+
     func testSendAutoSelectsAvailableRelayWhenLocalHostIsOffline() async {
         let relayTransport = FakeHermesRelayTransport()
         relayTransport.streamingEvents = [

@@ -27,6 +27,15 @@ object SettingsManifest {
             keywords = listOf("sync", "cloud", "firebase", "backup"),
         ),
         SettingsItem(
+            id = "root.transcriptCache",
+            section = SettingsSection.CLOUD,
+            pageRoute = SettingsPageRoute.TRANSCRIPT_CACHE,
+            anchorId = SettingsAnchor.TRANSCRIPT_CACHE,
+            title = "Transcript Cache",
+            subtitle = "Choose how much encrypted stream history this device stores",
+            keywords = listOf("streams", "cache", "offline", "download", "storage", "conversations", "transcripts"),
+        ),
+        SettingsItem(
             id = "root.providers",
             section = SettingsSection.PROVIDERS,
             pageRoute = SettingsPageRoute.ROOT,
@@ -278,6 +287,7 @@ object SettingsManifest {
      */
     val visibleAnchorIds: Set<String> = setOf(
         SettingsAnchor.CLOUD_SYNC,
+        SettingsAnchor.TRANSCRIPT_CACHE,
         SettingsAnchor.PROVIDERS_ROW,
         SettingsAnchor.CONNECTED_DEVICES,
         SettingsAnchor.SMART_DISPLAYS_ROW,

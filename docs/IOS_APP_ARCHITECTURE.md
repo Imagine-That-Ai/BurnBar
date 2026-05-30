@@ -91,6 +91,15 @@ entitlement; without it, the section shows an upsell rather than data.
   cursor pagination, and KPI aggregates. The store decrypts titles, snippets, and
   on-demand full bodies locally through `CloudConversationSearchService`; the
   server never sees plaintext.
+- **Search path:** active mobile search derives encrypted token/semantic hashes on
+  device, calls `searchEncryptedConversationIndex`, and renders matching hosted
+  conversations before any local page filter. The phone downloads the full
+  encrypted body only after a result is opened.
+- **Local cache path:** opened or explicitly downloaded transcripts are re-sealed
+  with the user's vault key into the iOS caches directory. Settings → Cloud
+  exposes the storage cap (250 MB by default), current usage, and Clear cache;
+  the cockpit filter sheet also keeps the Download loaded control for warming
+  the currently visible rows without plaintext-at-rest.
 - **UI:** `ConversationCockpitSection` renders a KPI header (totals, tokens,
   cost), a facet bar (provider / model / project / date), result rows, and a
   detail sheet with the decrypted transcript and a **Share as Markdown** action.

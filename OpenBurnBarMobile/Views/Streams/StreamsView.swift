@@ -107,7 +107,8 @@ struct StreamsView: View {
                 hit: hit,
                 decryptedBody: cloudConversationBody,
                 error: cloudConversationError,
-                isLoading: isLoadingCloudConversation
+                isLoading: isLoadingCloudConversation,
+                onRetry: { Task { await loadCloudConversation(hit) } }
             )
             .task(id: hit.id) {
                 await loadCloudConversation(hit)
@@ -158,9 +159,13 @@ struct StreamsView: View {
         ConversationCockpitSection(
             store: cockpit,
             searchText: searchText,
+            streamSearchHits: activity.searchHits,
+            cloudSearchHits: activity.cloudSearchHits,
+            isSearching: activity.isSearching,
             isEntitled: isCloudEntitled,
             bottomPadding: listBottomPadding,
             onSelectRow: { selectedCockpitRow = $0 },
+            onSelectCloudHit: selectCloudConversation,
             onOpenFilters: { showCockpitFilters = true },
             onSaveQuery: { showSaveQuery = true },
             onOpenStore: { showCloudStore = true }
@@ -210,34 +215,36 @@ struct StreamsView: View {
             LazyVStack(spacing: 10) {
                 if activity.isLoading && activity.usages.isEmpty {
                     sessionSkeleton
-                } else if filteredUsages.isEmpty {
-                    AuroraStatePane(
-                        kind: .empty,
-                        icon: searchText.isEmpty ? "doc.text.magnifyingglass" : "magnifyingglass",
-                        title: searchText.isEmpty ? "No sessions yet" : "No matches",
-                        message: searchText.isEmpty
-                            ? "Sessions will appear here as soon as your Mac syncs."
-                            : "Try a different model, provider, project, or enable searchable stream backup on your Mac for full transcript search."
-                    )
-                    .frame(minHeight: 320)
-                } else if shouldShowCloudConversationResults {
+                } else if searchResultMode == .cloudConversationHits {
                     ForEach(activity.cloudSearchHits) { hit in
-                        Button {
-                            selectedCloudConversation = hit
-                            cloudConversationBody = nil
-                            cloudConversationError = nil
-                        } label: {
+                        Button { selectCloudConversation(hit) } label: {
                             CloudConversationSearchResultRow(hit: hit)
                         }
                         .buttonStyle(.plain)
                     }
-                } else if shouldShowCloudSearchResults {
+                } else if searchResultMode == .streamHits {
                     ForEach(activity.searchHits) { hit in
                         NavigationLink(value: hit.usage) {
                             StreamSearchResultRow(hit: hit)
                         }
                         .buttonStyle(.plain)
                     }
+                } else if searchResultMode == .searching {
+                    ProgressView()
+                        .tint(MobileTheme.ember)
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                        .padding(.vertical, 28)
+                } else if searchResultMode == .empty || filteredUsages.isEmpty {
+                    let hasSearch = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    AuroraStatePane(
+                        kind: .empty,
+                        icon: hasSearch ? "magnifyingglass" : "doc.text.magnifyingglass",
+                        title: hasSearch ? "No matches" : "No sessions yet",
+                        message: hasSearch
+                            ? "Try a different model, provider, project, or searchable transcript term."
+                            : "Sessions will appear here as soon as your Mac syncs."
+                    )
+                    .frame(minHeight: 320)
                 } else {
                     ForEach(groupedByDay, id: \.day) { group in
                         Section {
@@ -288,12 +295,13 @@ struct StreamsView: View {
             : MobileTheme.Spacing.xxl
     }
 
-    private var shouldShowCloudSearchResults: Bool {
-        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !activity.searchHits.isEmpty
-    }
-
-    private var shouldShowCloudConversationResults: Bool {
-        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !activity.cloudSearchHits.isEmpty
+    private var searchResultMode: StreamsSearchResultMode {
+        StreamsSearchResultState(
+            query: searchText,
+            isSearching: activity.isSearching,
+            cloudConversationHitCount: activity.cloudSearchHits.count,
+            streamHitCount: activity.searchHits.count
+        ).mode
     }
 
     private var sessionSkeleton: some View {
@@ -302,6 +310,12 @@ struct StreamsView: View {
                 AuroraLoadingShimmer(height: 76, cornerRadius: 14)
             }
         }
+    }
+
+    private func selectCloudConversation(_ hit: CloudConversationSearchRow) {
+        selectedCloudConversation = hit
+        cloudConversationBody = nil
+        cloudConversationError = nil
     }
 
     private func loadCloudConversation(_ hit: CloudConversationSearchRow) async {
@@ -537,6 +551,7 @@ private struct CloudConversationDetailSheet: View {
     let decryptedBody: String?
     let error: String?
     let isLoading: Bool
+    let onRetry: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -557,7 +572,14 @@ private struct CloudConversationDetailSheet: View {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: 180)
                     } else if let error {
-                        AuroraStatePane(kind: .error, icon: "exclamationmark.lock", title: "Could not decrypt", message: error)
+                        AuroraStatePane(
+                            kind: .error,
+                            icon: "exclamationmark.lock",
+                            title: "Could not decrypt",
+                            message: error,
+                            ctaLabel: "Try Again",
+                            onCTA: onRetry
+                        )
                             .frame(minHeight: 220)
                     } else {
                         Text(decryptedBody ?? hit.snippet)
@@ -765,6 +787,31 @@ private struct StreamsFilterSheet: View {
     }
 }
 
+enum StreamsSearchResultMode: Equatable {
+    case inactive
+    case cloudConversationHits
+    case streamHits
+    case searching
+    case empty
+}
+
+struct StreamsSearchResultState: Equatable {
+    let query: String
+    let isSearching: Bool
+    let cloudConversationHitCount: Int
+    let streamHitCount: Int
+
+    var mode: StreamsSearchResultMode {
+        guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
+            return .inactive
+        }
+        if cloudConversationHitCount > 0 { return .cloudConversationHits }
+        if streamHitCount > 0 { return .streamHits }
+        if isSearching { return .searching }
+        return .empty
+    }
+}
+
 // MARK: - Conversation Cockpit
 //
 // The cockpit transforms Streams into a faceted database over every backed-up
@@ -776,9 +823,13 @@ private struct StreamsFilterSheet: View {
 private struct ConversationCockpitSection: View {
     let store: ConversationCockpitStore
     let searchText: String
+    let streamSearchHits: [StreamSearchHit]
+    let cloudSearchHits: [CloudConversationSearchRow]
+    let isSearching: Bool
     let isEntitled: Bool
     let bottomPadding: CGFloat
     let onSelectRow: (CockpitConversationRow) -> Void
+    let onSelectCloudHit: (CloudConversationSearchRow) -> Void
     let onOpenFilters: () -> Void
     let onSaveQuery: () -> Void
     let onOpenStore: () -> Void
@@ -821,6 +872,15 @@ private struct ConversationCockpitSection: View {
         }
     }
 
+    private var searchResultMode: StreamsSearchResultMode {
+        StreamsSearchResultState(
+            query: searchText,
+            isSearching: isSearching,
+            cloudConversationHitCount: cloudSearchHits.count,
+            streamHitCount: streamSearchHits.count
+        ).mode
+    }
+
     private var entitledBody: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
@@ -848,7 +908,9 @@ private struct ConversationCockpitSection: View {
 
     @ViewBuilder
     private var content: some View {
-        if store.isLoading && store.rows.isEmpty {
+        if searchResultMode != .inactive {
+            remoteSearchContent
+        } else if store.isLoading && store.rows.isEmpty {
             VStack(spacing: 10) {
                 ForEach(0..<6, id: \.self) { _ in
                     AuroraLoadingShimmer(height: 86, cornerRadius: 16)
@@ -884,12 +946,67 @@ private struct ConversationCockpitSection: View {
                 .onAppear { store.loadNextPageIfNeeded(currentRow: row) }
             }
             if store.isPaginating {
-                ProgressView()
-                    .tint(MobileTheme.ember)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                paginationProgress
+            } else if store.hasMore {
+                loadMoreButton
             }
         }
+    }
+
+    @ViewBuilder
+    private var remoteSearchContent: some View {
+        switch searchResultMode {
+        case .inactive:
+            EmptyView()
+        case .cloudConversationHits:
+            ForEach(cloudSearchHits) { hit in
+                Button { onSelectCloudHit(hit) } label: {
+                    CloudConversationSearchResultRow(hit: hit)
+                }
+                .buttonStyle(.plain)
+            }
+        case .streamHits:
+            ForEach(streamSearchHits) { hit in
+                NavigationLink(value: hit.usage) {
+                    StreamSearchResultRow(hit: hit)
+                }
+                .buttonStyle(.plain)
+            }
+        case .searching:
+            ProgressView()
+                .tint(MobileTheme.ember)
+                .frame(maxWidth: .infinity, minHeight: 260)
+                .padding(.vertical, 24)
+        case .empty:
+            AuroraStatePane(
+                kind: .empty,
+                icon: "magnifyingglass",
+                title: "No matches",
+                message: "Try a different model, provider, project, or searchable transcript term."
+            )
+            .frame(minHeight: 300)
+        }
+    }
+
+    private var paginationProgress: some View {
+        ProgressView()
+            .tint(MobileTheme.ember)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+    }
+
+    private var loadMoreButton: some View {
+        Button {
+            Task { await store.loadNextPage() }
+        } label: {
+            Label("Load more", systemImage: "arrow.down.circle")
+                .font(MobileTheme.Typography.body)
+                .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.ember)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
     }
 
     private var hasNarrowingInput: Bool {
@@ -1592,6 +1709,13 @@ private struct CockpitFilterSheet: View {
     @State private var useDateRange = false
     @State private var fromDate = Date()
     @State private var toDate = Date()
+    @State private var cacheLimitMegabytes = CloudTranscriptCacheSettings.shared.maxMegabytes
+    @State private var cacheSnapshot = CloudTranscriptCacheSnapshot(
+        usageBytes: 0,
+        maxBytes: CloudTranscriptCacheSettings.shared.maxBytes
+    )
+    @State private var isCachingLoadedTranscripts = false
+    @State private var cacheStatus: String?
 
     var body: some View {
         NavigationStack {
@@ -1612,12 +1736,73 @@ private struct CockpitFilterSheet: View {
                 } footer: {
                     Text("Date filtering sorts by start time. Other sort fields apply once the date filter is cleared.")
                 }
+                Section {
+                    Stepper(value: $cacheLimitMegabytes, in: 0...CloudTranscriptCacheSettings.maximumMegabytes, step: 50) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "internaldrive")
+                                .foregroundStyle(MobileTheme.ember)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Cache limit")
+                                Text(cacheLimitLabel)
+                                    .font(MobileTheme.Typography.tiny)
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            }
+                        }
+                    }
+
+                    HStack {
+                        Label("Used", systemImage: "chart.pie")
+                        Spacer()
+                        Text(cacheUsageLabel)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .monospacedDigit()
+                    }
+
+                    Button {
+                        Task { await cacheLoadedTranscripts() }
+                    } label: {
+                        Label(
+                            isCachingLoadedTranscripts ? "Downloading" : "Download loaded",
+                            systemImage: "arrow.down.circle"
+                        )
+                    }
+                    .disabled(isCachingLoadedTranscripts || store.rows.isEmpty || cacheSnapshot.isDisabled)
+
+                    Button(role: .destructive) {
+                        Task {
+                            try? await CloudTranscriptCache.shared.clear()
+                            cacheStatus = "Cache cleared"
+                            await refreshCacheSnapshot()
+                        }
+                    } label: {
+                        Label("Clear cache", systemImage: "trash")
+                    }
+                    .disabled(cacheSnapshot.usageBytes == 0)
+
+                    if let cacheStatus {
+                        Text(cacheStatus)
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                } header: {
+                    Text("Transcript cache")
+                } footer: {
+                    Text("Encrypted on this device. Default 250 MB.")
+                }
             }
             .scrollContentBackground(.hidden)
             .background(AuroraBackdrop(density: .subtle).ignoresSafeArea())
             .navigationTitle("Cockpit Filters")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear(perform: hydrate)
+            .task { await refreshCacheSnapshot() }
+            .onChange(of: cacheLimitMegabytes) { _, newValue in
+                CloudTranscriptCacheSettings.shared.maxMegabytes = newValue
+                Task {
+                    await CloudTranscriptCache.shared.trimToLimit()
+                    await refreshCacheSnapshot()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Apply") { apply() }
@@ -1639,6 +1824,7 @@ private struct CockpitFilterSheet: View {
         useDateRange = store.dateFrom != nil || store.dateTo != nil
         fromDate = store.dateFrom ?? Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         toDate = store.dateTo ?? Date()
+        cacheLimitMegabytes = CloudTranscriptCacheSettings.shared.maxMegabytes
     }
 
     private func apply() {
@@ -1651,5 +1837,39 @@ private struct CockpitFilterSheet: View {
             store.dateTo = nil
         }
         dismiss()
+    }
+
+    private var cacheLimitLabel: String {
+        if cacheLimitMegabytes <= 0 { return "Off" }
+        return CloudTranscriptCacheSettings.formatBytes(
+            Int64(cacheLimitMegabytes) * CloudTranscriptCacheSettings.bytesPerMegabyte
+        )
+    }
+
+    private var cacheUsageLabel: String {
+        if cacheSnapshot.isDisabled {
+            return "\(CloudTranscriptCacheSettings.formatBytes(cacheSnapshot.usageBytes)) / Off"
+        }
+        return "\(CloudTranscriptCacheSettings.formatBytes(cacheSnapshot.usageBytes)) / \(CloudTranscriptCacheSettings.formatBytes(cacheSnapshot.maxBytes))"
+    }
+
+    private func refreshCacheSnapshot() async {
+        cacheSnapshot = await CloudTranscriptCache.shared.snapshot()
+    }
+
+    private func cacheLoadedTranscripts() async {
+        guard !isCachingLoadedTranscripts else { return }
+        isCachingLoadedTranscripts = true
+        cacheStatus = nil
+        defer { isCachingLoadedTranscripts = false }
+
+        let result = await store.cacheLoadedTranscripts()
+        await refreshCacheSnapshot()
+        var parts: [String] = []
+        if result.available > 0 { parts.append("\(result.available) available offline") }
+        if result.skipped > 0 { parts.append("\(result.skipped) missing body") }
+        if result.failed > 0 { parts.append("\(result.failed) failed") }
+        if result.limitReached { parts.append("limit reached") }
+        cacheStatus = parts.isEmpty ? "No loaded conversations to cache" : parts.joined(separator: " · ")
     }
 }

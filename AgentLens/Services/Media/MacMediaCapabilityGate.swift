@@ -399,11 +399,7 @@ final class MacRemoteUnlockReadinessService {
         }
         let osBuild = currentOSBuild()
         let featureFlag = (defaults.object(forKey: Keys.featureEnabled) as? Bool) ?? true
-        let screenSharingAvailable = FileManager.default.fileExists(
-            atPath: "/System/Library/CoreServices/RemoteManagement/ARDAgent.app"
-        ) || FileManager.default.fileExists(
-            atPath: "/System/Library/CoreServices/Applications/Screen Sharing.app"
-        )
+        let screenSharingAvailable = RemoteUnlockSystemScreenSharingProbe().status().isAvailable
         let agentHealthy = RemoteAccessAgentHealthProbe.isHealthy()
         let daemonInstalled = agentHealthy || FileManager.default.fileExists(
             atPath: "/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist"

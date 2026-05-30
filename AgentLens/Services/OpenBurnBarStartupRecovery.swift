@@ -600,6 +600,9 @@ final class OpenBurnBarRuntimeContext {
                 self.computerUseRuntimeController?.setPhoneControlAuthorizedPeerNodeProvider { [weak self] in
                     self?.mercuryRouter?.activeMirrorControlAuthorityPeerNodeID
                 }
+                self.computerUseRuntimeController?.setPhoneControlKeyboardTargetWindowProvider { [weak self] in
+                    self?.mercuryRouter?.activeMirrorControlTerminalWindowID
+                }
                 self.computerUseRuntimeController?.setRemoteUnlockResultHandler { [weak self] result in
                     self?.mercuryRouter?.handleRemoteUnlockCredentialResult(result)
                 }

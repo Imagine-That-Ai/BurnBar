@@ -36,7 +36,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
     }
 
     public static let defaultModels: [InsightCatalogModel] = [
-        .init(id: "claude-opus-4-7", displayName: "Claude Opus 4.7", providerKey: "anthropic",
+        .init(id: "claude-opus-4-8", displayName: "Claude Opus 4.8", providerKey: "anthropic",
               egressTier: .userKey, capabilities: .init(supportsStrictJSONSchema: true,
                                                         supportsJSONObject: true,
                                                         supportsThinking: true,

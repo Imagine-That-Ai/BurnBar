@@ -60,6 +60,8 @@ for plist in \
     fi
     /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist" >/dev/null 2>&1 || true
     /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $token" "$plist"
+    /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "$plist" >/dev/null 2>&1 || true
+    /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string $token" "$plist"
     echo "[ok] stamped App Check debug token into $plist"
 done
 

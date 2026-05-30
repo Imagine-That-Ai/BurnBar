@@ -48,6 +48,8 @@ enum ScreenSharePhoneControlStatus: Equatable {
 /// frames bypass UIKit's drawing path.
 @MainActor
 struct ScreenShareViewerView: View {
+    private static let smartTextFramingAnimation: Animation = .easeInOut(duration: 0.22)
+
     @ObservedObject var coordinator: ScreenShareViewerCoordinator
     let resetToken: String?
     let controlStatus: ScreenSharePhoneControlStatus
@@ -61,6 +63,7 @@ struct ScreenShareViewerView: View {
     let lastLiveAt: Date?
     let remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
     let savedRemoteUnlockCredentialAvailable: Bool
+    let remoteUnlockDiagnosticMessage: String?
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let sendTapIntent: (Double, Double, Int) -> Void
@@ -89,6 +92,9 @@ struct ScreenShareViewerView: View {
     @State private var smartTextCoachVisible: Bool = false
     @State private var keyboardHeight: CGFloat = 0
     @State private var lastSmartTextNormalizedPoint: CGPoint?
+    @State private var lastSmartTextFocusedRect: HermesRealtimeRelayNormalizedRect?
+    @State private var lastSmartTextGestureStartedAt: Date?
+    @State private var deferredControlTapSmartZoomTask: Task<Void, Never>?
     @State private var lastLayoutSize: CGSize?
     @State private var interactionMode: ScreenShareInteractionMode = .view
     @State private var isTyping = false
@@ -136,6 +142,7 @@ struct ScreenShareViewerView: View {
         lastLiveAt: Date? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
         savedRemoteUnlockCredentialAvailable: Bool = false,
+        remoteUnlockDiagnosticMessage: String? = nil,
         remoteUnlockPasswordDraft: Binding<String> = .constant(""),
         usePremiumSOTAUX: Bool = false,
         onForceReconnect: @escaping () -> Void = {},
@@ -170,6 +177,7 @@ struct ScreenShareViewerView: View {
         self.lastLiveAt = lastLiveAt
         self.remoteUnlockState = remoteUnlockState
         self.savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable
+        self.remoteUnlockDiagnosticMessage = remoteUnlockDiagnosticMessage
         self._remoteUnlockPasswordDraft = remoteUnlockPasswordDraft
         self.usePremiumSOTAUX = usePremiumSOTAUX
         self.onForceReconnect = onForceReconnect
@@ -218,6 +226,11 @@ struct ScreenShareViewerView: View {
                     in: proxy.size
                 )
                 let contentRect = renderedContentRect(in: proxy.size)
+                let remoteUnlockActive = activeRemoteUnlockState != nil
+                let streamIsLive = {
+                    if case .live = streamPhase { return true }
+                    return false
+                }()
 
                 DisplayLayerHost(coordinator: coordinator)
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -230,7 +243,7 @@ struct ScreenShareViewerView: View {
                         statsVisible.toggle()
                     }
                     .onTapGesture(count: 2) {
-                        guard interactionMode != .trackpad else { return }
+                        guard ScreenShareViewportGesturePolicy.allowsQuickZoom(interactionMode: interactionMode) else { return }
                         beginManualZoomOverride()
                         withAnimation(.snappy) {
                             viewport.toggleQuickZoom(in: proxy.size)
@@ -243,14 +256,23 @@ struct ScreenShareViewerView: View {
                     .onChange(of: proxy.size) { _, newSize in
                         viewport.reclamp(in: newSize)
                         lastLayoutSize = newSize
-                        applySmartZoomDecision(viewportSize: newSize, contentRect: renderedContentRect(in: newSize))
+                        if isTyping || lastSmartTextNormalizedPoint != nil {
+                            applyKeyboardAwareFraming()
+                        } else {
+                            applySmartZoomDecision(viewportSize: newSize, contentRect: renderedContentRect(in: newSize))
+                        }
                     }
                     .animation(.snappy, value: viewport)
 
-                if coordinator.displayAspectRatio == nil || streamPhase != .live {
+                if ScreenShareStreamStateOverlayPolicy.shouldShow(
+                    displayAspectRatioKnown: coordinator.displayAspectRatio != nil,
+                    streamIsLive: streamIsLive,
+                    remoteUnlockActive: remoteUnlockActive
+                ) {
                     StreamStateOverlay(
                         phase: streamPhase,
                         isAwaitingFrame: coordinator.displayAspectRatio == nil,
+                        remoteUnlockActive: remoteUnlockActive,
                         usePremiumSOTAUX: usePremiumSOTAUX,
                         reconnectAttemptStartedAt: reconnectAttemptStartedAt,
                         lastFailureReason: lastFailureReason,
@@ -464,6 +486,7 @@ struct ScreenShareViewerView: View {
                         state: activeRemoteUnlockState,
                         password: $remoteUnlockPasswordDraft,
                         savedCredentialAvailable: savedRemoteUnlockCredentialAvailable,
+                        diagnosticMessage: remoteUnlockDiagnosticMessage,
                         sendCredential: sendRemoteUnlockCredential,
                         saveCredential: saveRemoteUnlockCredential,
                         sendSavedCredential: sendSavedRemoteUnlockCredential,
@@ -502,6 +525,10 @@ struct ScreenShareViewerView: View {
                 lastControlClickPoint = nil
                 lastControlClickAt = nil
                 lastSmartTextNormalizedPoint = nil
+                lastSmartTextFocusedRect = nil
+                lastSmartTextGestureStartedAt = nil
+                deferredControlTapSmartZoomTask?.cancel()
+                deferredControlTapSmartZoomTask = nil
                 smartTextCoachVisible = false
                 cancelPendingControlRightClick()
                 controlRightClickSentForCurrentPress = false
@@ -518,6 +545,8 @@ struct ScreenShareViewerView: View {
                 interactionMode = .view
                 isTyping = false
                 controlPanTranslation = .zero
+                deferredControlTapSmartZoomTask?.cancel()
+                deferredControlTapSmartZoomTask = nil
                 cancelPendingControlRightClick()
                 controlRightClickSentForCurrentPress = false
             }
@@ -529,12 +558,23 @@ struct ScreenShareViewerView: View {
                 typingFocusTask?.cancel()
                 typingFocusTask = nil
                 lastSmartTextNormalizedPoint = nil
+                lastSmartTextFocusedRect = nil
+                lastSmartTextGestureStartedAt = nil
+                deferredControlTapSmartZoomTask?.cancel()
+                deferredControlTapSmartZoomTask = nil
             }
             recomputeSmartTextCoach()
         }
         .onChange(of: coordinator.latestFocusContext) { _, _ in
-            if isTyping, lastSmartTextNormalizedPoint != nil {
+            if isTyping || lastSmartTextNormalizedPoint != nil {
                 applyKeyboardAwareFraming()
+            } else if ScreenShareSmartTextTargetPolicy.shouldDeferGenericSmartZoom(
+                interactionMode: interactionMode,
+                lastControlClickAt: lastControlClickAt,
+                now: Date()
+            ) {
+                // A first tap may become a double-tap; keep the viewport still so the
+                // second tap is measured against the same content geometry.
             } else {
                 applySmartZoomDecisionUsingCurrentLayout()
             }
@@ -542,6 +582,8 @@ struct ScreenShareViewerView: View {
         }
         .onChange(of: interactionMode) { _, newValue in
             if newValue != .control {
+                deferredControlTapSmartZoomTask?.cancel()
+                deferredControlTapSmartZoomTask = nil
                 cancelPendingControlRightClick()
                 controlRightClickSentForCurrentPress = false
             }
@@ -561,6 +603,8 @@ struct ScreenShareViewerView: View {
         }
         .onDisappear {
             cancelPendingControlRightClick()
+            deferredControlTapSmartZoomTask?.cancel()
+            deferredControlTapSmartZoomTask = nil
             typingFocusTask?.cancel()
             typingFocusTask = nil
         }
@@ -584,12 +628,23 @@ struct ScreenShareViewerView: View {
         guard let size = lastLayoutSize, size.width > 0, size.height > 0 else { return }
         let contentRect = renderedContentRect(in: size)
         let inset = keyboardInset(in: size)
-        if let point = activeTypingTargetNormalizedPoint() ?? lastSmartTextNormalizedPoint {
+        if let rect = activeTypingTargetRect() {
+            lastSmartTextFocusedRect = rect
+        }
+        let target = ScreenShareSmartTextTargetPolicy.preferredTarget(
+            focusedRect: lastSmartTextFocusedRect,
+            tappedPoint: lastSmartTextNormalizedPoint
+        )
+        switch target {
+        case .focusedRect(let rect):
+            applyFocusedTextZoom(to: rect, in: size, contentRect: contentRect, bottomInset: inset)
+        case .tappedPoint(let point):
             applyDoubleTapZoom(toNormalized: point, in: size, contentRect: contentRect, bottomInset: inset)
-        } else if isTyping {
+        case nil:
+            guard isTyping else { return }
             // Keyboard opened without a specific target (e.g. the Type button): lift the
             // current framing above the keyboard so the top of the screen is used.
-            withAnimation(.snappy) {
+            withAnimation(Self.smartTextFramingAnimation) {
                 viewport.offset = ScreenShareViewportState.clamp(
                     offset: CGSize(width: viewport.offset.width, height: -inset / 2),
                     scale: viewport.scale,
@@ -598,6 +653,19 @@ struct ScreenShareViewerView: View {
                 )
             }
         }
+    }
+
+    private func applyFocusedTextZoom(to rect: HermesRealtimeRelayNormalizedRect, in size: CGSize, contentRect: CGRect, bottomInset: CGFloat) {
+        guard size.width > 0, size.height > 0, contentRect.width > 0, contentRect.height > 0 else { return }
+        let decision = ScreenShareSmartZoomReducer.fitRectDecision(
+            normalizedRect: rect,
+            viewportSize: size,
+            contentRect: contentRect,
+            fillRatio: ScreenShareSmartZoomReducer.textFillRatio,
+            scaleRange: ScreenShareSmartZoomReducer.textScaleRange,
+            bottomInset: bottomInset
+        )
+        applySmartTextDecision(decision)
     }
 
     private func applyDoubleTapZoom(toNormalized point: CGPoint, in size: CGSize, contentRect: CGRect, bottomInset: CGFloat) {
@@ -609,16 +677,45 @@ struct ScreenShareViewerView: View {
             scale: max(viewport.scale, ScreenShareSmartZoomReducer.doubleTapEntryScale),
             bottomInset: bottomInset
         )
-        withAnimation(.snappy) {
+        applySmartTextDecision(decision)
+    }
+
+    private func applySmartTextDecision(_ decision: ScreenShareSmartZoomReducer.Decision) {
+        guard decision.isAutoFollowing else { return }
+        guard ScreenShareSmartTextTargetPolicy.shouldApply(
+            currentScale: viewport.scale,
+            currentOffset: viewport.offset,
+            nextScale: decision.scale,
+            nextOffset: decision.offset
+        ) else {
+            smartZoomAutoFollowing = true
+            return
+        }
+        withAnimation(Self.smartTextFramingAnimation) {
             viewport.scale = decision.scale
             viewport.offset = decision.offset
         }
         smartZoomAutoFollowing = true
     }
 
-    private func activeTypingTargetNormalizedPoint(now: Date = Date()) -> CGPoint? {
+    private func activeTypingTargetRect(now: Date = Date()) -> HermesRealtimeRelayNormalizedRect? {
         guard isTyping,
-              let context = coordinator.latestFocusContext,
+              let rect = activeTextFocusRect(now: now, requireGestureFreshness: true) else {
+            return nil
+        }
+        return rect
+    }
+
+    private func activeTextFocusRect(
+        now: Date = Date(),
+        requireGestureFreshness: Bool
+    ) -> HermesRealtimeRelayNormalizedRect? {
+        guard let context = coordinator.latestFocusContext,
+              (requireGestureFreshness == false ||
+              ScreenShareSmartTextTargetPolicy.acceptsFocusContext(
+                receivedAt: context.receivedAt,
+                gestureStartedAt: lastSmartTextGestureStartedAt
+              )),
               ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
                 context: context,
                 selectedDisplayId: selectedDisplayId,
@@ -627,7 +724,7 @@ struct ScreenShareViewerView: View {
               let rect = context.normalizedRect else {
             return nil
         }
-        return ScreenShareSmartZoomReducer.normalizedCenter(of: rect)
+        return rect
     }
 
     private func applySmartZoomDecisionUsingCurrentLayout() {
@@ -661,23 +758,40 @@ struct ScreenShareViewerView: View {
     }
 
     @MainActor
-    private func triggerSmartTextDoubleTap(at point: CGPoint, in size: CGSize, contentRect: CGRect) {
+    private func triggerSmartTextDoubleTap(normalized target: CGPoint, in size: CGSize, contentRect: CGRect, gestureStartedAt: Date) {
         guard controlInputEnabled else { return }
+        deferredControlTapSmartZoomTask?.cancel()
+        deferredControlTapSmartZoomTask = nil
         smartTextDoubleTapLearned = true
         if smartTextCoachVisible {
             withAnimation(.snappy) { smartTextCoachVisible = false }
         }
+        lastSmartTextGestureStartedAt = gestureStartedAt
+        lastSmartTextFocusedRect = activeTextFocusRect(requireGestureFreshness: false)
         if size.width > 0, size.height > 0,
            contentRect.width > 0, contentRect.height > 0 {
-            // Zoom straight to the tapped point — this is an explicit gesture, so it
-            // zooms even when Smart Zoom mode is off. Remember the target so the framing
-            // can re-center above the keyboard once it animates up.
-            let normalized = viewport.normalizedPoint(for: point, in: size, contentRect: contentRect)
-            let target = CGPoint(x: normalized.x, y: normalized.y)
+            // The first frame uses the user's tapped point. The Mac's focused-element
+            // rect then refines this to exact field geometry as soon as it arrives.
             lastSmartTextNormalizedPoint = target
-            applyDoubleTapZoom(toNormalized: target, in: size, contentRect: contentRect, bottomInset: keyboardInset(in: size))
         }
+        interactionMode = .control
+        isTyping = true
+        applyKeyboardAwareFraming()
         focusTypingBar()
+    }
+
+    private func scheduleGenericSmartZoomAfterControlTap(_ tappedAt: Date) {
+        deferredControlTapSmartZoomTask?.cancel()
+        deferredControlTapSmartZoomTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: ScreenShareSmartTextTargetPolicy.genericSmartZoomDelayNanoseconds)
+            guard Task.isCancelled == false else { return }
+            guard lastControlClickAt == tappedAt,
+                  isTyping == false,
+                  lastSmartTextNormalizedPoint == nil else {
+                return
+            }
+            applySmartZoomDecisionUsingCurrentLayout()
+        }
     }
 
     private func recomputeSmartTextCoach() {
@@ -805,10 +919,19 @@ struct ScreenShareViewerView: View {
                         // Second tap of a double-tap: jump straight into the field now,
                         // instead of waiting for the Mac's focus context to round-trip.
                         // Reset the timestamp so a third tap starts a fresh pair.
+                        let doubleTapStartedAt = lastControlClickAt ?? tappedAt
+                        deferredControlTapSmartZoomTask?.cancel()
+                        deferredControlTapSmartZoomTask = nil
                         lastControlClickAt = nil
-                        triggerSmartTextDoubleTap(at: clickPoint, in: size, contentRect: contentRect)
+                        triggerSmartTextDoubleTap(
+                            normalized: CGPoint(x: normalized.x, y: normalized.y),
+                            in: size,
+                            contentRect: contentRect,
+                            gestureStartedAt: doubleTapStartedAt
+                        )
                     } else {
                         lastControlClickAt = tappedAt
+                        scheduleGenericSmartZoomAfterControlTap(tappedAt)
                     }
                     return
                 }
@@ -970,11 +1093,17 @@ struct ScreenShareViewerView: View {
     private func focusTypingBar() {
         guard controlInputEnabled else { return }
         typingFocusTask?.cancel()
+        interactionMode = .control
+        if isTyping == false {
+            isTyping = true
+        }
         typingFocusTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 80_000_000)
             guard Task.isCancelled == false else { return }
             interactionMode = .control
-            isTyping = true
+            if isTyping == false {
+                isTyping = true
+            }
         }
     }
 
@@ -1089,6 +1218,7 @@ struct RemoteKeyboardCaptureView: UIViewRepresentable {
     @Binding var isActive: Bool
     let onText: (String) -> Void
     let onKey: (String) -> Void
+    var keepsFocus: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -1162,7 +1292,14 @@ struct RemoteKeyboardCaptureView: UIViewRepresentable {
         func textViewDidEndEditing(_ textView: UITextView) {
             textView.text = ""
             if parent.isActive {
-                parent.isActive = false
+                if parent.keepsFocus {
+                    Task { @MainActor [weak textView] in
+                        guard self.parent.isActive else { return }
+                        textView?.becomeFirstResponder()
+                    }
+                } else {
+                    parent.isActive = false
+                }
             }
         }
 
@@ -1619,6 +1756,69 @@ enum ScreenShareSmartTextActivationPolicy {
     }
 }
 
+enum ScreenShareSmartTextFramingTarget: Equatable {
+    case focusedRect(HermesRealtimeRelayNormalizedRect)
+    case tappedPoint(CGPoint)
+}
+
+enum ScreenShareSmartTextTargetPolicy {
+    static let focusContextGestureGrace: TimeInterval = 0.08
+    static let applyScaleEpsilon: CGFloat = 0.001
+    static let applyOffsetEpsilon: CGFloat = 0.5
+    static let genericSmartZoomDelay: TimeInterval = ScreenShareControlInputPolicy.doubleTapMaxInterval + 0.03
+    static var genericSmartZoomDelayNanoseconds: UInt64 {
+        UInt64((genericSmartZoomDelay * 1_000_000_000).rounded())
+    }
+
+    static func preferredTarget(
+        focusedRect: HermesRealtimeRelayNormalizedRect?,
+        tappedPoint: CGPoint?
+    ) -> ScreenShareSmartTextFramingTarget? {
+        if let focusedRect {
+            return .focusedRect(focusedRect)
+        }
+        if let tappedPoint {
+            return .tappedPoint(tappedPoint)
+        }
+        return nil
+    }
+
+    static func acceptsFocusContext(receivedAt: Date, gestureStartedAt: Date?) -> Bool {
+        guard let gestureStartedAt else { return true }
+        return receivedAt >= gestureStartedAt.addingTimeInterval(-focusContextGestureGrace)
+    }
+
+    static func shouldDeferGenericSmartZoom(
+        interactionMode: ScreenShareInteractionMode,
+        lastControlClickAt: Date?,
+        now: Date
+    ) -> Bool {
+        guard interactionMode == .control,
+              let lastControlClickAt else {
+            return false
+        }
+        let elapsed = now.timeIntervalSince(lastControlClickAt)
+        return elapsed >= 0 && elapsed <= genericSmartZoomDelay
+    }
+
+    static func shouldApply(
+        currentScale: CGFloat,
+        currentOffset: CGSize,
+        nextScale: CGFloat,
+        nextOffset: CGSize
+    ) -> Bool {
+        abs(currentScale - nextScale) > applyScaleEpsilon ||
+        abs(currentOffset.width - nextOffset.width) > applyOffsetEpsilon ||
+        abs(currentOffset.height - nextOffset.height) > applyOffsetEpsilon
+    }
+}
+
+enum ScreenShareViewportGesturePolicy {
+    static func allowsQuickZoom(interactionMode: ScreenShareInteractionMode) -> Bool {
+        interactionMode == .view
+    }
+}
+
 enum ScreenShareControlInputPolicy {
     static let rightClickHoldDuration: TimeInterval = 0.55
     static let trackpadTapTravelLimit: CGFloat = 8
@@ -1704,6 +1904,7 @@ private struct RemoteUnlockStatusOverlay: View {
     let state: HermesRealtimeRelayRemoteUnlockState
     @Binding var password: String
     let savedCredentialAvailable: Bool
+    let diagnosticMessage: String?
     let sendCredential: (String) -> Void
     let saveCredential: (String) -> Void
     let sendSavedCredential: () -> Void
@@ -1790,6 +1991,19 @@ private struct RemoteUnlockStatusOverlay: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let diagnosticMessage, diagnosticMessage.isEmpty == false {
+                Label(diagnosticMessage, systemImage: "waveform.path.ecg")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.76))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityIdentifier("remoteUnlock.diagnostic")
+            }
 
             if canSendCredential {
                 VStack(alignment: .leading, spacing: 10) {
@@ -1965,6 +2179,7 @@ struct RemoteUnlockSimulatorHarnessView: View {
                     state: state,
                     password: $password,
                     savedCredentialAvailable: savedCredentialAvailable,
+                    diagnosticMessage: status,
                     sendCredential: { credential in
                         status = credential.isEmpty ? "Password missing" : "Typed password queued for loginwindow"
                     },
@@ -3032,6 +3247,7 @@ private struct TrackpadGlassSurface: View {
 private struct StreamStateOverlay: View {
     let phase: MediaControlStreamCoordinator.Phase
     let isAwaitingFrame: Bool
+    let remoteUnlockActive: Bool
     let usePremiumSOTAUX: Bool
     let reconnectAttemptStartedAt: Date?
     let lastFailureReason: String?
@@ -3139,8 +3355,17 @@ private struct StreamStateOverlay: View {
     }
 
     private var isAwaitingLiveFrame: Bool {
-        if case .live = phase, isAwaitingFrame { return true }
-        return false
+        let streamIsLive: Bool
+        if case .live = phase {
+            streamIsLive = true
+        } else {
+            streamIsLive = false
+        }
+        return ScreenShareStreamStateOverlayPolicy.shouldStartAwaitingFrameWatchdog(
+            streamIsLive: streamIsLive,
+            isAwaitingFrame: isAwaitingFrame,
+            remoteUnlockActive: remoteUnlockActive
+        )
     }
 
     // MARK: - Connecting State
@@ -3541,6 +3766,25 @@ private struct StreamStateOverlay: View {
         awaitingFrameSince = nil
         automaticRetryTask?.cancel()
         automaticRetryTask = nil
+    }
+}
+
+enum ScreenShareStreamStateOverlayPolicy {
+    static func shouldShow(
+        displayAspectRatioKnown: Bool,
+        streamIsLive: Bool,
+        remoteUnlockActive: Bool
+    ) -> Bool {
+        guard remoteUnlockActive == false else { return false }
+        return displayAspectRatioKnown == false || streamIsLive == false
+    }
+
+    static func shouldStartAwaitingFrameWatchdog(
+        streamIsLive: Bool,
+        isAwaitingFrame: Bool,
+        remoteUnlockActive: Bool
+    ) -> Bool {
+        streamIsLive && isAwaitingFrame && remoteUnlockActive == false
     }
 }
 

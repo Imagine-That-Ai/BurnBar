@@ -43,6 +43,7 @@ public struct SwarmCanvasView: View {
     public let maxFrameRate: Double?
     public let rendersAsynchronously: Bool
     public let currentMode: Binding<SwarmFormationMode>?
+    public let logoOffsets: [CGSize]
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -77,7 +78,8 @@ public struct SwarmCanvasView: View {
         excludeBrandShapesFromSwarm: Bool = false,
         maxFrameRate: Double? = nil,
         rendersAsynchronously: Bool = false,
-        currentMode: Binding<SwarmFormationMode>? = nil
+        currentMode: Binding<SwarmFormationMode>? = nil,
+        logoOffsets: [CGSize] = Array(repeating: .zero, count: 3)
     ) {
         let normalizedProviderGlyphs = enabledProviderGlyphs.map(SwarmProviderGlyphSelection.normalized) ?? SwarmProviderGlyphSelection.allProviders
 
@@ -101,6 +103,7 @@ public struct SwarmCanvasView: View {
         self.maxFrameRate = maxFrameRate
         self.rendersAsynchronously = rendersAsynchronously
         self.currentMode = currentMode
+        self.logoOffsets = logoOffsets
 
         let sim = SwarmSimulation(
             particleCount: particleCount ?? Self.adaptiveParticleCount,
@@ -115,6 +118,7 @@ public struct SwarmCanvasView: View {
         sim.motionSpeedMultiplier = motionSpeedMultiplier.clamped(to: 0.35...2.5)
         sim.setColorDriver(colorDriver)
         sim.enableSwarmSparkles = enableSwarmSparkles
+        sim.panOffsets = logoOffsets
         _simulation = State(initialValue: sim)
     }
 
@@ -122,6 +126,7 @@ public struct SwarmCanvasView: View {
         let fps = Self.sanitizedFrameRate(maxFrameRate, fallback: isBatteryThrottled ? 15.0 : 60.0)
         TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion)) { timeline in
             Canvas(rendersAsynchronously: rendersAsynchronously) { context, size in
+                simulation.panOffsets = logoOffsets
                 simulation.advance(
                     to: timeline.date,
                     bounds: size,
@@ -402,6 +407,7 @@ public final class SwarmSimulation {
         var resolvedLogoColor: RGBA?
         var toneSeed: Double?
         var flowProgress: Double        // for router-flow bezier travel
+        var slotIndex: Int?
     }
 
     private struct ResolvedGlyphTextKey: Hashable {
@@ -455,6 +461,7 @@ public final class SwarmSimulation {
 
     var pointer: CGPoint?
     public var enableSwarmSparkles: Bool = true
+    public var panOffsets: [CGSize] = Array(repeating: .zero, count: 3)
     var motionSpeedMultiplier: Double = 1.0 {
         didSet {
             motionSpeedMultiplier = motionSpeedMultiplier.clamped(to: 0.35...2.5)
@@ -697,8 +704,18 @@ public final class SwarmSimulation {
             }
 
             if let tx = p.tx, let ty = p.ty {
-                let dx = tx - p.x
-                let dy = ty - p.y
+                let offset = p.slotIndex.map { slotIdx in
+                    if slotIdx < panOffsets.count {
+                        return panOffsets[slotIdx]
+                    }
+                    return .zero
+                } ?? .zero
+
+                let targetX = tx + Double(offset.width)
+                let targetY = ty + Double(offset.height)
+
+                let dx = targetX - p.x
+                let dy = targetY - p.y
                 let dist = sqrt(dx * dx + dy * dy)
                 if dist > 1 {
                     p.vx += (dx / dist) * morphAttract * attract * motionSpeedMultiplier
@@ -970,6 +987,7 @@ public final class SwarmSimulation {
                 let pt = shapePoints[slot]
                 particles[particleIdx].tx = centerX + pt.x * scale
                 particles[particleIdx].ty = centerY + pt.y * scale
+                particles[particleIdx].slotIndex = 0
                 applyFormationMetadata(
                     at: particleIdx,
                     role: shapeRoles[slot],
@@ -1033,6 +1051,7 @@ public final class SwarmSimulation {
                 particles[particleIdx].tx = logoSlot.centerX + Double(pt.point.x) * logoSlot.scale
                 particles[particleIdx].ty = logoSlot.centerY + Double(pt.point.y) * logoSlot.scale
                 particles[particleIdx].isGlyph = false
+                particles[particleIdx].slotIndex = specIndex
                 applyFormationMetadata(
                     at: particleIdx,
                     role: pt.role ?? "logo-flame-inner",
@@ -1052,6 +1071,7 @@ public final class SwarmSimulation {
         particles[index].logoColor = nil
         particles[index].resolvedLogoColor = nil
         particles[index].toneSeed = nil
+        particles[index].slotIndex = nil
     }
 
     private func applyFormationMetadata(
@@ -1635,7 +1655,8 @@ public final class SwarmSimulation {
             logoColor: nil,
             resolvedLogoColor: nil,
             toneSeed: nil,
-            flowProgress: Double.random(in: 0...1)
+            flowProgress: Double.random(in: 0...1),
+            slotIndex: nil
         )
     }
 

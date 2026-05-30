@@ -190,7 +190,7 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-opus-4-7", providerID: "anthropic"), "anthropic:opus")
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-opus-4-8", providerID: "anthropic"), "anthropic:opus")
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-opus-4-8[1m]", providerID: "anthropic"), "anthropic:opus")
-        XCTAssertEqual(catalog.canonicalModelID(forModelName: "claude-opus-4-8[1m]", providerID: "anthropic"), "claude-opus-4-7")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "claude-opus-4-8[1m]", providerID: "anthropic"), "claude-opus-4-8")
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-sonnet-4-6", providerID: "anthropic"), "anthropic:sonnet")
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-haiku-4-5", providerID: "anthropic"), "anthropic:haiku")
     }

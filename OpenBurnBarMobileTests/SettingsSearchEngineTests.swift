@@ -145,6 +145,13 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertEqual(SettingsManifest.anchorIndex[SettingsAnchor.providerOpenCode], .providerConnections)
     }
 
+    func test_manifest_findsTranscriptCacheSetting() {
+        let result = SettingsSearchEngine.search("transcript cache", in: SettingsManifest.all).first
+        XCTAssertEqual(result?.id, "hub.cloud.transcriptCache")
+        XCTAssertEqual(result?.pageRoute, .hubRoot)
+        XCTAssertEqual(result?.anchorID, SettingsAnchor.transcriptCache)
+    }
+
     func test_manifest_findsEveryConnectableProviderWithExactProviderAnchor() {
         for provider in AgentProvider.mobileAccountConnectableProviders {
             let expectedID = provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
