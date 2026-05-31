@@ -4674,7 +4674,18 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         Self.lock.lock()
         let requestPath = request.url?.path ?? ""
         let response: Response
-        if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil || $0.path == requestPath }) {
+        var shouldRecordRequest = true
+        if let index = Self.queuedResponses.firstIndex(where: { $0.path == requestPath }) {
+            response = Self.queuedResponses.remove(at: index)
+        } else if requestPath == "/anthropic/v1/models" {
+            response = Response(
+                status: 200,
+                body: Data(Self.defaultAnthropicModelCatalogBody.utf8),
+                delayNanoseconds: 0,
+                path: requestPath
+            )
+            shouldRecordRequest = false
+        } else if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil }) {
             response = Self.queuedResponses.remove(at: index)
         } else {
             response = Response(
@@ -4684,20 +4695,22 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                 path: nil
             )
         }
-        Self.requests.append(
-            GatewayUpstreamRequest(
-                authorization: request.value(forHTTPHeaderField: "Authorization"),
-                path: request.url?.path ?? "",
-                query: request.url?.query,
-                body: Self.bodyString(from: request),
-                xApiKey: request.value(forHTTPHeaderField: "x-api-key"),
-                anthropicVersion: request.value(forHTTPHeaderField: "anthropic-version"),
-                anthropicBeta: request.value(forHTTPHeaderField: "anthropic-beta"),
-                userAgent: request.value(forHTTPHeaderField: "User-Agent"),
-                xApp: request.value(forHTTPHeaderField: "x-app"),
-                directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+        if shouldRecordRequest {
+            Self.requests.append(
+                GatewayUpstreamRequest(
+                    authorization: request.value(forHTTPHeaderField: "Authorization"),
+                    path: request.url?.path ?? "",
+                    query: request.url?.query,
+                    body: Self.bodyString(from: request),
+                    xApiKey: request.value(forHTTPHeaderField: "x-api-key"),
+                    anthropicVersion: request.value(forHTTPHeaderField: "anthropic-version"),
+                    anthropicBeta: request.value(forHTTPHeaderField: "anthropic-beta"),
+                    userAgent: request.value(forHTTPHeaderField: "User-Agent"),
+                    xApp: request.value(forHTTPHeaderField: "x-app"),
+                    directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+                )
             )
-        )
+        }
         Self.lock.unlock()
 
         if response.delayNanoseconds > 0 {
@@ -4741,4 +4754,18 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         }
         return String(data: data, encoding: .utf8) ?? ""
     }
+
+    private static let defaultAnthropicModelCatalogBody = """
+    {
+      "data": [
+        {"id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6", "type": "model"},
+        {"id": "claude-opus-4-8", "display_name": "Claude Opus 4.8", "type": "model"},
+        {"id": "claude-opus-4-7", "display_name": "Claude Opus 4.7", "type": "model"},
+        {"id": "claude-haiku-4-5", "display_name": "Claude Haiku 4.5", "type": "model"},
+        {"id": "anth-shared-pro", "display_name": "Shared Claude Pro", "type": "model"},
+        {"id": "anth-shared-base", "display_name": "Shared Claude Base", "type": "model"}
+      ],
+      "has_more": false
+    }
+    """
 }
