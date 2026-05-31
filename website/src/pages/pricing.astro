@@ -104,7 +104,6 @@ const headlineSave = Math.max(cloudSave, proSave);
 
         <!-- CLOUD — most popular -->
         <article class="plan plan--popular" data-animate-onview>
-          <span class="plan__ribbon mono">Most popular</span>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <circle cx="60" cy="60" r="14" stroke="currentColor" stroke-width="2"></circle>
             <circle
@@ -124,7 +123,7 @@ const headlineSave = Math.max(cloudSave, proSave);
             <circle cx="106" cy="60" r="3.5" fill="currentColor"></circle>
           </svg>
           <header class="plan__head">
-            <span class="plan__badge mono">{cloud.name}</span>
+            <span class="plan__badge plan__badge--hot mono">Most popular</span>
             <div class="plan__title">
               <span class="plan__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none">
@@ -199,7 +198,7 @@ const headlineSave = Math.max(cloudSave, proSave);
               stroke-linecap="round"></path>
           </svg>
           <header class="plan__head">
-            <span class="plan__badge mono">{cloudPro.name}</span>
+            <span class="plan__badge mono">For power users</span>
             <div class="plan__title">
               <span class="plan__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none">
@@ -617,23 +616,6 @@ const headlineSave = Math.max(cloudSave, proSave);
     transform: translateY(-10px);
   }
 
-  .plan__ribbon {
-    position: absolute;
-    top: 0;
-    right: var(--s-5);
-    transform: translateY(-50%);
-    z-index: 2;
-    font-size: 0.66rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    padding: 0.4rem 0.85rem;
-    border-radius: var(--r-pill);
-    color: var(--ink-void);
-    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
-    box-shadow: 0 8px 22px -6px rgba(250, 107, 6, 0.6);
-    font-weight: 700;
-  }
-
   .plan__motif {
     position: absolute;
     top: var(--s-4);
@@ -665,6 +647,14 @@ const headlineSave = Math.max(cloudSave, proSave);
     color: var(--bb-accent);
     border: 1px solid color-mix(in oklab, var(--bb-accent) 32%, var(--ink-line));
     background: color-mix(in oklab, var(--bb-accent) 8%, transparent);
+  }
+  /* the highlighted tier wears a filled badge for instant hierarchy */
+  .plan__badge--hot {
+    color: var(--ink-void);
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
+    box-shadow: 0 6px 18px -6px rgba(250, 107, 6, 0.55);
+    font-weight: 700;
   }
   .plan__title {
     display: flex;

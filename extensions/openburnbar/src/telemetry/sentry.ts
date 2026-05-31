@@ -87,10 +87,7 @@ export async function initSentry(extensionVersion: string, environment: string):
     // Strip auth tokens from URL breadcrumbs.
     beforeBreadcrumb(breadcrumb) {
       if (breadcrumb.data?.url && typeof breadcrumb.data.url === 'string') {
-        breadcrumb.data.url = breadcrumb.data.url.replace(
-          /([?&](?:token|key|secret|auth))=[^&]+/gi,
-          '$1=[REDACTED]'
-        );
+        breadcrumb.data.url = breadcrumb.data.url.replace(/([?&](?:token|key|secret|auth))=[^&]+/gi, '$1=[REDACTED]');
       }
       return breadcrumb;
     },
@@ -103,7 +100,7 @@ export async function initSentry(extensionVersion: string, environment: string):
         return null;
       }
       return event;
-    },
+    }
   });
 
   _initialized = true;
@@ -119,10 +116,7 @@ export async function initSentry(extensionVersion: string, environment: string):
  * @param err      The error to capture. Non-Error values are wrapped.
  * @param context  Structured key/value pairs added as Sentry extras.
  */
-export function captureExtensionError(
-  err: unknown,
-  context?: Record<string, unknown>
-): void {
+export function captureExtensionError(err: unknown, context?: Record<string, unknown>): void {
   const error = err instanceof Error ? err : new Error(String(err));
 
   if (!_initialized || !_sentry) {
