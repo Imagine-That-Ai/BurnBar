@@ -11,6 +11,11 @@
       "entry": ["src/extension.ts"],
       "project": ["src/**/*.ts"],
       "ignore": ["dist/**", ".vscode-test/**", "node_modules/**"]
+    },
+    "website": {
+      "entry": ["src/pages/**/*.{astro,ts}", "astro.config.*"],
+      "project": ["src/**/*.{astro,ts}"],
+      "ignore": ["dist/**", "node_modules/**"]
     }
   },
 
@@ -26,7 +31,6 @@
     "crates/**",
     "scripts/**",
     "tools/**",
-    "website/**",
     "services/**",
     "firestore-rules-tests/**",
     "quota-runner/**",

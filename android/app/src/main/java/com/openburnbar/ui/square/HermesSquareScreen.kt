@@ -62,6 +62,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -96,6 +97,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.HermesService
+import com.openburnbar.data.assistants.CLIAgentRelayChatTransport
+import com.openburnbar.data.assistants.CLIAgentSessionActionKind
+import com.openburnbar.data.assistants.CLIAgentSessionActionRequest
+import com.openburnbar.data.assistants.CLIAgentSessionActionStatus
 import com.openburnbar.data.missions.ApprovalAsk
 import com.openburnbar.data.missions.ApprovalDecision
 import com.openburnbar.data.missions.ApprovalPolicy
@@ -665,6 +670,7 @@ fun HermesSquareScreen(
     selectedCliSession?.let { session ->
         CLIAgentSessionSheet(
             session = session,
+            hermesService = hermesService,
             onDismiss = { selectedCliSession = null }
         )
     }
@@ -979,8 +985,50 @@ private data class ColorLabelOption(
 @Composable
 private fun CLIAgentSessionSheet(
     session: CLIAgentSessionRecord,
+    hermesService: HermesService,
     onDismiss: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val transport = remember(hermesService) { CLIAgentRelayChatTransport(hermesService) }
+    var isStarting by remember(session.id) { mutableStateOf(false) }
+    var actionMessage by remember(session.id) { mutableStateOf<String?>(null) }
+    var actionIsError by remember(session.id) { mutableStateOf(false) }
+
+    fun startSessionAction(action: CLIAgentSessionActionKind, targetRuntime: String? = null) {
+        if (isStarting) return
+        isStarting = true
+        actionIsError = false
+        actionMessage = "Sending ${session.title} to your Mac..."
+        scope.launch {
+            try {
+                val response = transport.performSessionAction(
+                    CLIAgentSessionActionRequest(
+                        sessionID = session.resumeLookupID,
+                        action = action,
+                        targetRuntime = targetRuntime ?: session.agent,
+                    )
+                )
+                actionIsError = response.status == CLIAgentSessionActionStatus.ERROR
+                actionMessage = if (actionIsError) {
+                    response.errorRecovery ?: response.errorCode ?: "The Mac could not restart this session."
+                } else {
+                    when (response.status) {
+                        CLIAgentSessionActionStatus.NATIVE_RESUME -> "Native resume opened on your Mac."
+                        CLIAgentSessionActionStatus.HANDOFF -> "Handoff package opened on your Mac."
+                        CLIAgentSessionActionStatus.PACKAGE_ONLY -> "Resume package is open on your Mac."
+                        CLIAgentSessionActionStatus.SPAWNED -> "Mac session opened."
+                        CLIAgentSessionActionStatus.ERROR -> "The Mac could not restart this session."
+                    }
+                }
+            } catch (t: Throwable) {
+                actionIsError = true
+                actionMessage = t.message ?: "The Mac could not restart this session."
+            } finally {
+                isStarting = false
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1032,6 +1080,33 @@ private fun CLIAgentSessionSheet(
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { startSessionAction(CLIAgentSessionActionKind.RESUME) },
+                            enabled = !isStarting,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(if (isStarting) "Starting..." else "Resume on Mac")
+                        }
+                        TextButton(
+                            onClick = { startSessionAction(CLIAgentSessionActionKind.PACKAGE_ONLY) },
+                            enabled = !isStarting,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Open package")
+                        }
+                    }
+                    Text(
+                        text = actionMessage ?: if (session.canResume) "Native resume is available when the Mac validates this handle." else "This provider uses a Mac-local handoff package.",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (actionIsError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 if (session.messages.isEmpty()) {
                     Text(

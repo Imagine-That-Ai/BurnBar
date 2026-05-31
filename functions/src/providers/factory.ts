@@ -17,6 +17,7 @@
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { isRecord, stringField } from "../guards.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "factory" as const;
 
@@ -45,7 +46,7 @@ interface FactoryFetchResult {
 async function factoryFetch(url: string, token: string): Promise<FactoryFetchResult> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await providerFetch(PROVIDER, "api", url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

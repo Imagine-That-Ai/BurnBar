@@ -3,6 +3,7 @@ import { readAccessToken } from "./oauth.js";
 
 export const DEFAULT_ENDPOINT = "https://mcp.burnbar.ai/mcp";
 const PROTOCOL_VERSION = "2025-11-25";
+const TRUSTED_HTTPS_HOSTS = new Set(["mcp.burnbar.ai"]);
 
 function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
@@ -14,9 +15,10 @@ export function validatedMcpEndpoint(endpoint: string): URL {
   if (url.username || url.password) {
     throw new Error("OpenBurnBar MCP endpoint must not include URL credentials.");
   }
-  if (url.protocol === "https:") return url;
+  if (url.protocol === "https:" && TRUSTED_HTTPS_HOSTS.has(url.hostname.toLowerCase())) return url;
+  if (url.protocol === "https:" && process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT === "true") return url;
   if (url.protocol === "http:" && isLoopbackHost(url.hostname)) return url;
-  throw new Error("OpenBurnBar MCP endpoint must be HTTPS, except loopback HTTP for local development.");
+  throw new Error("OpenBurnBar MCP endpoint must be https://mcp.burnbar.ai, an explicitly allowed custom HTTPS endpoint, or loopback HTTP for local development.");
 }
 
 export async function forwardMcpMessage(message: unknown, endpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT): Promise<unknown> {

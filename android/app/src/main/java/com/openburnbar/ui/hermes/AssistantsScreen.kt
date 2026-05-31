@@ -137,7 +137,9 @@ fun AssistantsScreen(
             AssistantRuntimeID.OPEN_CLAW,
             AssistantRuntimeID.DROID,
             AssistantRuntimeID.FORGE,
-            AssistantRuntimeID.ANTIGRAVITY -> CliAgentChatView(
+            AssistantRuntimeID.ANTIGRAVITY,
+            AssistantRuntimeID.GROK,
+            AssistantRuntimeID.CURSOR_AGENT -> CliAgentChatView(
                 runtime = runtime,
                 historyStore = historyStore,
                 relayChatTransport = cliRelayChatTransport,
@@ -466,6 +468,8 @@ private fun bridgeCopy(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.DROID -> "Droid runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.FORGE -> "Forge runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
+    AssistantRuntimeID.GROK -> "Grok runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
+    AssistantRuntimeID.CURSOR_AGENT -> "Cursor Agent runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     else -> ""
 }
 
@@ -478,6 +482,8 @@ private fun gradientForRuntime(runtime: AssistantRuntimeID): Brush = when (runti
     AssistantRuntimeID.DROID -> Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6D5DF6)))
     AssistantRuntimeID.FORGE -> Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFEA580C)))
     AssistantRuntimeID.ANTIGRAVITY -> Brush.linearGradient(listOf(Color(0xFF6C63FF), Color(0xFF8F8AFF)))
+    AssistantRuntimeID.GROK -> Brush.linearGradient(listOf(Color(0xFF111827), Color(0xFF0EA5E9)))
+    AssistantRuntimeID.CURSOR_AGENT -> Brush.linearGradient(listOf(Color(0xFF0F172A), Color(0xFF64748B)))
 }
 
 private fun foregroundForRuntime(runtime: AssistantRuntimeID): Color = when (runtime) {

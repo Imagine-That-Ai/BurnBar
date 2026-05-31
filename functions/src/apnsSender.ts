@@ -24,6 +24,7 @@ import { connect as http2Connect, type ClientHttp2Session } from "node:http2";
 import { Timestamp } from "firebase-admin/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { pushWithResilience } from "./resilienceHelpers.js";
 
 const APNS_KEY_ID = defineSecret("APNS_KEY_ID");
 const APNS_TEAM_ID = defineSecret("APNS_TEAM_ID");
@@ -97,12 +98,43 @@ export interface SendResult {
   reason?: string;
 }
 
+/** Thrown for transient APNs outcomes so pushWithResilience can retry; mapped to SendResult at boundary. */
+export class ApnsRetryableError extends Error {
+  constructor(
+    message: string,
+    readonly apnsStatusCode?: number,
+  ) {
+    super(message);
+    this.name = "ApnsRetryableError";
+  }
+}
+
 /**
  * Push the given payload to APNs. Returns a structured result the
- * Firestore handler uses to update the source document. Pure function
- * so unit tests can mock `http2Connect` indirection if needed.
+ * Firestore handler uses to update the source document.
  */
 export async function pushToAPNs(args: {
+  deviceTokenHex: string;
+  payload: Record<string, unknown>;
+  documentId: string;
+  topicOverride?: string;
+  hostOverride?: string;
+}): Promise<SendResult> {
+  try {
+    return await pushWithResilience("apns.voip", () => sendVoipPush(args));
+  } catch (err) {
+    if (err instanceof ApnsRetryableError) {
+      return {
+        status: "retry",
+        apnsStatusCode: err.apnsStatusCode,
+        reason: err.message,
+      };
+    }
+    return { status: "retry", reason: errorMessage(err) };
+  }
+}
+
+async function sendVoipPush(args: {
   deviceTokenHex: string;
   payload: Record<string, unknown>;
   documentId: string;
@@ -113,20 +145,17 @@ export async function pushToAPNs(args: {
   const topic = args.topicOverride ?? APNS_VOIP_TOPIC.value();
   const jwt = mintJWT();
 
-  return new Promise<SendResult>((resolve) => {
+  return new Promise<SendResult>((resolve, reject) => {
     let session: ClientHttp2Session | null = null;
     try {
       session = http2Connect(url.origin);
     } catch (err) {
-      resolve({
-        status: "retry",
-        reason: `http2 connect: ${errorMessage(err)}`,
-      });
+      reject(new ApnsRetryableError(`http2 connect: ${errorMessage(err)}`));
       return;
     }
 
     session.on("error", (err) => {
-      resolve({ status: "retry", reason: `session error: ${err.message}` });
+      reject(new ApnsRetryableError(`session error: ${err.message}`));
     });
 
     // Apple's apns-id MUST be a canonical UUID (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
@@ -176,16 +205,12 @@ export async function pushToAPNs(args: {
         resolve({ status: "rejected", apnsStatusCode: responseStatus, reason });
         return;
       }
-      // 429, 5xx → retry.
-      resolve({ status: "retry", apnsStatusCode: responseStatus, reason });
+      // 429, 5xx → retry (throw so pushWithResilience can apply policy).
+      reject(new ApnsRetryableError(reason ?? `apns http ${responseStatus}`, responseStatus));
     });
     req.on("error", (err) => {
       session?.close();
-      resolve({
-        status: "retry",
-        apnsStatusCode: responseStatus || undefined,
-        reason: err.message,
-      });
+      reject(new ApnsRetryableError(err.message, responseStatus || undefined));
     });
     req.setEncoding("utf8");
     req.end(JSON.stringify(args.payload));

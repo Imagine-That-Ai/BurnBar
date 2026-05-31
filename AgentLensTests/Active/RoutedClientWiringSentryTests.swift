@@ -249,10 +249,65 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         XCTAssertFalse(secondInstance.routedClientWiring.autoRepairEnabled)
     }
 
+    @MainActor
+    func test_sweepRefreshesStaleDroidModelCache() async throws {
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        let staleModels = [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5.4",
+                displayName: "GPT-5.4",
+                providerID: "openai",
+                providerName: "OpenAI",
+                routeEligible: true
+            )
+        ]
+        let refreshedModels = [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5.5",
+                displayName: "GPT-5.5",
+                providerID: "openai",
+                providerName: "OpenAI",
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "claude-opus-4-8",
+                displayName: "Claude Opus 4.8",
+                providerID: "anthropic",
+                providerName: "Anthropic",
+                formatFamily: "anthropic",
+                servedEndpoints: ["/v1/messages", "/v1/chat/completions"],
+                routeEligible: true
+            )
+        ]
+        _ = try makeWiring().wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: staleModels
+        )
+
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.droid.rawValue)
+        sentry = makeSentry(advertisedModels: refreshedModels)
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        let status = makeWiring().modelSyncStatus(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: refreshedModels
+        )
+        XCTAssertEqual(status, .current(modelIDs: ["gpt-5.5", "claude-opus-4-8"]))
+        let root = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
+        let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
+        XCTAssertEqual(customModels.map { $0["model"] as? String }, ["gpt-5.5", "claude-opus-4-8"])
+        XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "droid"))
+    }
+
     // MARK: - Helpers
 
     @MainActor
-    private func makeSentry() -> RoutedClientWiringSentry {
+    private func makeSentry(
+        advertisedModels: [RoutingClientAdvertisedModel]? = nil
+    ) -> RoutedClientWiringSentry {
         let home = tempHome!
         return RoutedClientWiringSentry(
             configuration: RoutedClientWiringSentry.Configuration(
@@ -267,6 +322,12 @@ final class RoutedClientWiringSentryTests: XCTestCase {
                     home: home,
                     now: { Date(timeIntervalSince1970: 1_700_000_000) }
                 )
+            },
+            advertisedModelsProvider: { wiring, gateway, _ in
+                if let advertisedModels {
+                    return advertisedModels
+                }
+                return await wiring.advertisedModels(gateway: gateway)
             }
         )
     }

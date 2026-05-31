@@ -19,7 +19,10 @@ export REMOTE_MCP_TOKEN_HMAC_SECRET=...
 ./scripts/deploy-hosted-mcp.sh
 ```
 
-The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, and
+Hermes realtime relay (separate sidecar): [`scripts/deploy-hermes-relay.sh`](../scripts/deploy-hermes-relay.sh) — set `HERMES_RELAY_URL` and it gates on `/healthz` after your Cloud Run deploy.
+
+The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, gates on
+`/healthz` (override with `MCP_HEALTH_PATH=/readyz` when checking branded DNS), and
 sets the resource audience to `https://mcp.burnbar.ai/mcp`. The signing
 secret must live in Secret Manager as `REMOTE_MCP_TOKEN_HMAC_SECRET`; Cloud
 Functions reads it through `defineSecret(...)`, and Cloud Run receives it via

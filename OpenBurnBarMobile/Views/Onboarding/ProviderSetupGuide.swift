@@ -266,7 +266,7 @@ extension ProviderSetupGuide {
                     GuideStep(3, "Paste the JSON contents below", detail: "Hosted: stored encrypted server-side. Self-hosted: stays on your runner.")
                 ],
                 credentialPlaceholder: "{\"OPENAI_API_KEY\": \"...\"}",
-                credentialFooterMarkdown: "Hosted sync requires the OpenBurnBar **Hosted Quota Sync** subscription. Self-hosted needs a runner URL.",
+                credentialFooterMarkdown: "Hosted sync requires **BurnBar Cloud**. Self-hosted needs a runner URL.",
                 supportsHosted: true,
                 supportsSelfHosted: true
             )

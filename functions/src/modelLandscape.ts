@@ -374,7 +374,8 @@ async function fetchJSON(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, {
+      const { resilientFetch } = await import("./resilienceHelpers.js");
+      const response = await resilientFetch(`model-landscape.${attempt}`, url, {
         method: "GET",
         headers: { Accept: "application/json", ...headers },
       });

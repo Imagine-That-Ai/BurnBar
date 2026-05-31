@@ -14,6 +14,7 @@ import type {
   ProviderAccountConnectContext,
 } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "mimo" as const;
 
@@ -93,7 +94,7 @@ async function mimoFetch(url: string, token: string, authStyle: "bearer" | "api-
 
   let response: Response;
   try {
-    response = await fetch(url, { method: "GET", headers });
+    response = await providerFetch(PROVIDER, "api", url, { method: "GET", headers });
   } catch (err) {
     return { ok: false, error: String(err), errorCode: "network_error" };
   }

@@ -45,6 +45,6 @@ export const SUPPORT_MACROS: SupportMacro[] = [
     id: "trial-conversion",
     title: "Trial or introductory offer",
     summary:
-      "There is no free trial configured. If that changes, pricing and store metadata must say so in plain English."
+      "BurnBar Cloud monthly and annual include a 14-day introductory free trial for new subscribers. BurnBar Cloud Pro and top-ups do not include an introductory trial."
   }
 ];

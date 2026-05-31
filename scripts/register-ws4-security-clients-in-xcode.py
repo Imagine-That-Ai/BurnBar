@@ -47,13 +47,39 @@ def pbx_quote(value: str) -> str:
 
 
 def find_mobile_services_group(text: str) -> str:
-    m = re.search(
-        r"([0-9A-F]{24}) /\* Services \*/ = \{\s*isa = PBXGroup;\s*children = \(\n(?:.*?\n)*?\s*path = OpenBurnBarMobile/Services;",
-        text,
-        re.DOTALL,
+    child_marker = f"{MOBILE_COMPUTER_USE_GROUP} /* ComputerUse */"
+    lines = text.splitlines()
+    child_line = next(
+        (index for index, line in enumerate(lines) if child_marker in line and " = {" not in line),
+        None,
     )
+    if child_line is None:
+        raise RuntimeError("OpenBurnBarMobile Services/ComputerUse child not found")
+
+    group_start = None
+    for index in range(child_line, -1, -1):
+        if "/* Services */ = {" in lines[index]:
+            group_start = index
+            break
+    if group_start is None:
+        raise RuntimeError("OpenBurnBarMobile/Services group start not found")
+
+    group_end = None
+    for index in range(child_line, len(lines)):
+        if lines[index].strip() == "};":
+            group_end = index
+            break
+    if group_end is None:
+        raise RuntimeError("OpenBurnBarMobile/Services group end not found")
+
+    group_lines = lines[group_start : group_end + 1]
+    if not any("path = Services;" in line for line in group_lines):
+        raise RuntimeError("OpenBurnBarMobile/Services group path not found")
+
+    header = group_lines[0].split(" = {", 1)[0]
+    m = re.search(r"([0-9A-F]{24}) /\* Services \*/$", header)
     if not m:
-        raise RuntimeError("OpenBurnBarMobile/Services group not found")
+        raise RuntimeError("OpenBurnBarMobile/Services group id not found")
     return m.group(1)
 
 
@@ -89,6 +115,18 @@ def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str)
     return text[: m.start()] + m.group(1) + m.group(2) + f"\t\t\t\t{needle}\n" + m.group(3) + text[m.end() :]
 
 
+def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
+    for line in text.splitlines():
+        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
+            continue
+        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
+            continue
+        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
+            continue
+        return line.strip().split(" ", 1)[0]
+    return None
+
+
 def main() -> int:
     text = PROJ.read_text(encoding="utf-8")
     mobile_services = find_mobile_services_group(text)
@@ -96,28 +134,26 @@ def main() -> int:
 
     for path, phase_id, group_hint, source_root_path in ENTRIES:
         name = Path(path).name
-        if f"/* {name} */ = {{isa = PBXFileReference" in text:
-            print(f"skip existing: {path}")
-            continue
-
         group_id = mobile_services if group_hint is None else group_hint
-        file_id = stable_id(path, "fileref")
+        file_id = find_existing_file_id(text, name, source_root_path) or stable_id(path, "fileref")
         build_id = stable_id(path, "buildfile")
-        if source_root_path:
-            file_line = (
-                f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
-                f'name = {name}; path = {pbx_quote(source_root_path)}; sourceTree = SOURCE_ROOT; }};\n'
-            )
-        else:
-            file_line = (
-                f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
-                f"path = {pbx_quote(name)}; sourceTree = \"<group>\"; }};\n"
-            )
+        if file_id == stable_id(path, "fileref"):
+            if source_root_path:
+                file_line = (
+                    f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
+                    f'name = {name}; path = {pbx_quote(source_root_path)}; sourceTree = SOURCE_ROOT; }};\n'
+                )
+            else:
+                file_line = (
+                    f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
+                    f"path = {pbx_quote(name)}; sourceTree = \"<group>\"; }};\n"
+                )
+            text = text.replace("/* End PBXFileReference section */", file_line + "/* End PBXFileReference section */", 1)
         build_line = (
             f"\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* {name} */; }};\n"
         )
-        text = text.replace("/* End PBXBuildFile section */", build_line + "/* End PBXBuildFile section */", 1)
-        text = text.replace("/* End PBXFileReference section */", file_line + "/* End PBXFileReference section */", 1)
+        if build_id not in text:
+            text = text.replace("/* End PBXBuildFile section */", build_line + "/* End PBXBuildFile section */", 1)
         group_ref = f"{file_id} /* {name} */,"
         text = insert_into_group(text, str(group_id), group_ref, name)
         text = insert_into_phase(text, phase_id, build_line.strip(), name)

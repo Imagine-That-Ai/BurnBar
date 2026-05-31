@@ -72,6 +72,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
 import { wrapCallableHandler } from "./logging.js";
+import { resilientFetch } from "./resilienceHelpers.js";
 
 /**
  * Lazy Firestore handle. The module is loaded inside the deployed
@@ -328,7 +329,10 @@ async function callOpenRouter(args: {
 
   let response: Response;
   try {
-    response = await fetch(`${args.baseURL.replace(/\/$/, "")}/chat/completions`, {
+    response = await resilientFetch(
+      "insights.openrouter.chat",
+      `${args.baseURL.replace(/\/$/, "")}/chat/completions`,
+      {
       method: "POST",
       headers: {
         Authorization: `Bearer ${args.apiKey}`,
@@ -339,7 +343,8 @@ async function callOpenRouter(args: {
       },
       body: JSON.stringify(body),
       signal: args.signal,
-    });
+    },
+    );
   } catch (error) {
     throw new HttpsError("unavailable", `OpenRouter transport failed: ${errorMessage(error)}`);
   }

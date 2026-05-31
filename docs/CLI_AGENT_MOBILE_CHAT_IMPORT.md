@@ -79,13 +79,17 @@ guessing whether anything happened.
 - Project/model/options can be adjusted without blocking text entry.
 - CLI model pickers are runtime-scoped and Mac-sourced. Mobile asks the selected
   Mac relay for `cliAgentModelCatalog` before showing Codex, Claude Code, Droid,
-  Forge, or Antigravity options; if the paired Mac cannot enumerate or verify
-  the catalog, the picker shows a refresh/error state instead of falling back to
-  a bundled list. Codex and Claude Code currently publish only the paired Mac
-  CLI default/profile because their CLIs accept `--model` but do not expose a
-  reliable enumerable model catalog. Antigravity publishes the paired Mac
-  `agy` profile/default row because `agy 1.0.2` exposes no model-list command.
-  Forge rows come from `forge agent list`. Droid rows come from
+  Forge, Grok, or Antigravity options; if the paired Mac cannot enumerate or
+  verify the catalog, the picker shows a refresh/error state instead of falling
+  back to a bundled list. Codex rows come from `codex debug models` when that
+  command is available, then fall back to the paired Mac CLI default/profile.
+  Grok rows come from `grok models` when available. Claude Code currently
+  publishes only the paired Mac CLI default/profile because the CLI accepts
+  `--model` but does not expose a reliable enumerable model catalog.
+  Antigravity reflects the paired Mac `agy` profile model from
+  `~/.gemini/antigravity-cli/settings.json`; until `agy` exposes a model-list
+  command, that profile row is the intentionally limited catalog. Forge rows
+  come from `forge agent list`. Droid rows come from
   `droid exec --help` and are split by spend source: `Droid Standard quota` and
   `Droid Core quota` rows consume Droid CLI quota, while `API/OAuth via
   OpenBurnBar` rows are Droid custom models that route through

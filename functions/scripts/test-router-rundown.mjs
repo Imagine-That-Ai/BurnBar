@@ -125,7 +125,7 @@ const statuses = [
 {
   const source = await readFile(new URL("../src/scheduled.ts", import.meta.url), "utf8");
   assert.match(source, /buildAndPersistRouterRundown/);
-  assert.match(source, /await buildAndPersistRouterRundown\(db, now\)/);
+  assert.match(source, /scheduledFirestore\("router_rundown\.build", \(\) => buildAndPersistRouterRundown\(db, now\)\)/);
 }
 
 console.log("router rundown policy ok");

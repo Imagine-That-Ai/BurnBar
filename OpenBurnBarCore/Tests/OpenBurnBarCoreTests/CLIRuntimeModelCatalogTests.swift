@@ -77,6 +77,51 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(Set(rows.map(\.source)), [.forgeAgent])
     }
 
+    func test_codexDebugModelsParserUsesLiveCatalogRows() throws {
+        let json = """
+        {
+          "models": [
+            {"slug": "gpt-5-5", "display_name": "GPT-5.5", "visibility": "list", "default_reasoning_level": "medium"},
+            {"slug": "gpt-5-3-codex-spark", "display_name": "GPT-5.3-Codex-Spark", "visibility": "list", "default_reasoning_level": "high"},
+            {"slug": "codex-auto-review", "display_name": "Codex Auto Review", "visibility": "hide"}
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let rows = CLIRuntimeModelCatalog.parseCodexDebugModels(json)
+
+        XCTAssertEqual(rows.map(\.modelID), ["gpt-5.5", "gpt-5.3-codex-spark"])
+        XCTAssertEqual(rows.map(\.source), [.codexModelCatalog, .codexModelCatalog])
+        XCTAssertEqual(rows[0].displayName, "GPT-5.5 · OpenAI · via OpenBurnBar · Reasoning: medium")
+        XCTAssertEqual(rows[1].displayName, "GPT-5.3-Codex-Spark · OpenAI · via OpenBurnBar · Reasoning: high")
+    }
+
+    func test_grokModelsParserUsesAvailableModelsSection() {
+        let output = """
+        You are logged in with grok.com.
+
+        Default model: grok-build
+
+        Available models:
+          * grok-build (default)
+          * grok-build-next
+        """
+
+        let rows = CLIRuntimeModelCatalog.parseGrokModels(output)
+
+        XCTAssertEqual(rows.map(\.modelID), ["grok-build", "grok-build-next"])
+        XCTAssertEqual(rows.map(\.source), [.grokModelCatalog, .grokModelCatalog])
+        XCTAssertEqual(rows[0].displayName, "grok-build · xAI · via OpenBurnBar · Reasoning: CLI default")
+    }
+
+    func test_antigravityProfileOptionReflectsSelectedModel() {
+        let row = CLIRuntimeModelCatalog.antigravityProfileOption(modelName: "Claude Sonnet 4.6 (Thinking)")
+
+        XCTAssertEqual(row.modelID, "Claude Sonnet 4.6 (Thinking)")
+        XCTAssertEqual(row.source, .antigravityProfile)
+        XCTAssertEqual(row.displayName, "Claude Sonnet 4.6 (Thinking) · Google · via OpenBurnBar · Reasoning: CLI default")
+    }
+
     func test_userFacingDisplayNameFormatterNamesProviderRouteAndReasoning() {
         XCTAssertEqual(
             OpenBurnBarModelDisplayName.compose(

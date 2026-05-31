@@ -6,10 +6,53 @@ import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
 private let burnBarProProductID = "com.openburnbar.pro.monthly"
-private let burnBarProMaxProductID = "com.openburnbar.proMax.monthly"
+private let burnBarProMaxProductID = "com.openburnbar.proMax.v2.monthly"
 
 @MainActor
 final class HostedQuotaSubscriptionStoreTests: XCTestCase {
+    func testCatalogMatchesLockedCommercialProductIDs() {
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudMonthlyProductID, "com.openburnbar.pro.monthly")
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudAnnualProductID, "com.openburnbar.pro.annual")
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudProMonthlyProductID, "com.openburnbar.proMax.v2.monthly")
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudProAnnualProductID, "com.openburnbar.proMax.annual")
+        XCTAssertEqual(OpenBurnBarProductCatalog.agentControl100ActionsProductID, "com.openburnbar.agentControl.actions100")
+        XCTAssertEqual(OpenBurnBarProductCatalog.flooRelay50GBProductID, "com.openburnbar.floo.relay50gb")
+        XCTAssertEqual(OpenBurnBarProductCatalog.legacyHostedQuotaProductID, "com.openburnbar.hostedQuotaSync.cloud.monthly")
+        XCTAssertEqual(OpenBurnBarProductCatalog.legacyProMaxBundleProductID, "com.openburnbar.proMax.bundle.monthly")
+
+        XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.id), [
+            "com.openburnbar.pro.monthly",
+            "com.openburnbar.pro.annual",
+            "com.openburnbar.proMax.v2.monthly",
+            "com.openburnbar.proMax.annual",
+        ])
+        XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.fallbackDisplayPrice), [
+            "$7.99",
+            "$79",
+            "$24.99",
+            "$249",
+        ])
+        XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.entitlementID), [
+            "burnbar_pro",
+            "burnbar_pro",
+            "burnbar_pro_max",
+            "burnbar_pro_max",
+        ])
+        XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.id), [
+            "com.openburnbar.agentControl.actions100",
+            "com.openburnbar.floo.relay50gb",
+        ])
+        XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.fallbackDisplayPrice), ["$4.99", "$4.99"])
+        XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.topUpKind), [
+            "agent_control_actions_100",
+            "floo_relay_50gb",
+        ])
+        XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
+        XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
+        XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
+        XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
+    }
+
     func testLoadReadsPaidTierProductsFromStoreKitConfiguration() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }

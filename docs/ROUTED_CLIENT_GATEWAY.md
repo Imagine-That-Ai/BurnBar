@@ -101,6 +101,13 @@ Anthropic ships a new default CLI model name, add the wire ID to the bundled
 `catalog.json` family row and restart the daemon so the running bundle picks
 up the change.
 
+Anthropic live discovery also protects the zero-touch path. If `/v1/models`
+returns a new Claude model before `catalog.json` has a curated family row,
+the gateway can resolve that exact live ID dynamically as a hidden routeable
+model. Add the static catalog row later for better pricing, capability class,
+and display metadata; users should not need a catalog edit just to call the
+new model through the proxy.
+
 A request whose route cannot prove an exact canonical model identity returns `503` before contacting upstream. Within a compatible pool,
 in-flight failover only retries routes whose `canonicalModelID` matches the
 requested canonical model. When a real upstream route proves that a
@@ -252,9 +259,11 @@ filters to route-eligible models served by `/v1/chat/completions` or
 not one per account; account-level failover remains behind the gateway. Stale
 OpenBurnBar or local VibeProxy entries on the gateway port are removed during
 each sync, so Droid only sees the current BurnBar catalog. The shared
-OpenAI-style probe runs after the write. After creating or renaming a custom
-model alias in Settings → Agents → Models, run **Sync to Droid** so Factory
-picks up the new wire id.
+OpenAI-style probe runs after the write. Enrolled Droid targets are also
+refreshed by the routed-client sentry whenever their cached model list no
+longer matches `/v1/models`, so new provider models and aliases normally land
+without a manual Sync press. Keep the manual Sync action as a visible recovery
+control after custom alias edits or local config conflicts.
 
 ## Custom model aliases
 

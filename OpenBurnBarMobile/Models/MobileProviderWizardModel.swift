@@ -420,7 +420,7 @@ final class MobileProviderWizardModel {
             }
             if Task.isCancelled { return }
             guard subscriptionStore.isActive else {
-                errorMessage = "Hosted Quota Sync subscription is not active."
+                errorMessage = "BurnBar Cloud subscription is not active."
                 advance(to: .failed)
                 return
             }
