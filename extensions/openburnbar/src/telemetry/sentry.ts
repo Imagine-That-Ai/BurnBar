@@ -52,9 +52,18 @@ async function getSentry(): Promise<SentryNodeModule | undefined> {
 export async function initSentry(extensionVersion: string, environment: string): Promise<void> {
   if (_initialized) return;
 
-  const dsn = process.env.BURNBAR_EXTENSION_SENTRY_DSN;
+  // DSN sources (first non-empty wins):
+  //  1. Injected at build time by CI (BURNBAR_EXTENSION_SENTRY_DSN env → sed replacement)
+  //  2. Runtime env var (developers running from source with env set)
+  // DSNs are public ingest endpoints — safe to embed in the compiled bundle.
+  const dsn =
+    // __SENTRY_DSN__ is replaced by scripts/ci/inject-sentry-config-extension.sh
+    // before tsc runs in CI. Falls back to the env var for local dev.
+    ('__SENTRY_DSN__'.startsWith('https://') ? '__SENTRY_DSN__' : undefined) ??
+    process.env.BURNBAR_EXTENSION_SENTRY_DSN;
+
   if (!dsn) {
-    logger.debug('Sentry disabled: BURNBAR_EXTENSION_SENTRY_DSN not set');
+    logger.debug('Sentry disabled: no DSN configured');
     return;
   }
 

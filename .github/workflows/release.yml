@@ -217,6 +217,11 @@ jobs:
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
 
+      - name: Inject extension Sentry DSN
+        env:
+          BURNBAR_EXTENSION_SENTRY_DSN: ${{ secrets.BURNBAR_EXTENSION_SENTRY_DSN }}
+        run: bash scripts/ci/inject-sentry-config-extension.sh
+
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
 
