@@ -3,10 +3,10 @@
 set -eu
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-plist_path="$repo_root/AgentLens/Resources/GoogleService-Info.plist"
-marker_path="$repo_root/AgentLens/Resources/.firebase-ci-injected"
-export PLIST_PATH="$plist_path"
-export MARKER_PATH="$marker_path"
+plist_paths="$repo_root/AgentLens/Resources/GoogleService-Info.plist:$repo_root/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+marker_paths="$repo_root/AgentLens/Resources/.firebase-ci-injected:$repo_root/OpenBurnBarMobile/Resources/.firebase-ci-injected"
+export PLIST_PATHS="$plist_paths"
+export MARKER_PATHS="$marker_paths"
 
 if [ -z "${FIREBASE_PLIST_BASE64:-}" ]; then
     echo "::error::FIREBASE_PLIST_BASE64 is required."
@@ -26,7 +26,8 @@ import os
 import plistlib
 from pathlib import Path
 
-plist_path = Path(os.environ["PLIST_PATH"])
+plist_paths = [Path(path) for path in os.environ["PLIST_PATHS"].split(":") if path]
+marker_paths = [Path(path) for path in os.environ["MARKER_PATHS"].split(":") if path]
 encoded = os.environ["FIREBASE_PLIST_BASE64"]
 
 try:
@@ -54,13 +55,22 @@ if missing:
         + ", ".join(missing)
     )
 
-plist_path.parent.mkdir(parents=True, exist_ok=True)
-plist_path.write_bytes(decoded)
-Path(os.environ["MARKER_PATH"]).write_text("ci\n", encoding="utf-8")
+for plist_path in plist_paths:
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+    plist_path.write_bytes(decoded)
+
+for marker_path in marker_paths:
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text("ci\n", encoding="utf-8")
 PY
 
-/usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
-/usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $FIREBASE_APP_CHECK_DEBUG_TOKEN" "$plist_path"
+old_ifs="$IFS"
+IFS=:
+for plist_path in $plist_paths; do
+    /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
+    /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $FIREBASE_APP_CHECK_DEBUG_TOKEN" "$plist_path"
+done
+IFS="$old_ifs"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
     {
@@ -69,6 +79,8 @@ if [ -n "${GITHUB_ENV:-}" ]; then
     } >> "$GITHUB_ENV"
 fi
 
-echo "Firebase config injected at AgentLens/Resources/GoogleService-Info.plist"
+echo "Firebase config injected at:"
+echo "  AgentLens/Resources/GoogleService-Info.plist"
+echo "  OpenBurnBarMobile/Resources/GoogleService-Info.plist"
 echo "Validated keys: GOOGLE_APP_ID, PROJECT_ID, REVERSED_CLIENT_ID"
 echo "App Check debug token configured for CI runtime"
