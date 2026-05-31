@@ -11,12 +11,10 @@ const { items, open } = Astro.props;
 <div class="accordion">
   {
     items.map((item) => (
-      <details name="faq" open={open === item.id}>
+      <details name="faq" id={item.id} data-category={item.category} open={open === item.id}>
         <summary>
           <span class="acc__q">{item.question}</span>
-          <span class="acc__chev" aria-hidden="true">
-            +
-          </span>
+          <span class="acc__chev" aria-hidden="true" />
         </summary>
         <div class="acc__body">
           {item.answer.split("\n\n").map((p) => (
@@ -35,6 +33,7 @@ const { items, open } = Astro.props;
   }
   details {
     border-bottom: 1px solid var(--ink-line);
+    scroll-margin-top: 8.5rem;
   }
   summary {
     list-style: none;
@@ -42,7 +41,7 @@ const { items, open } = Astro.props;
     padding: var(--s-5) 0;
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     gap: var(--s-4);
     transition: color var(--dur-base) var(--ease-out);
   }
@@ -58,30 +57,123 @@ const { items, open } = Astro.props;
       "wght" 500;
     letter-spacing: -0.012em;
     text-wrap: balance;
+    transition: color var(--dur-base) var(--ease-out);
   }
+
+  /* + / − chevron drawn with two bars */
   .acc__chev {
-    font-family: var(--font-mono);
-    color: var(--ember-bright);
-    font-size: 1.1rem;
+    position: relative;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    transition:
+      border-color var(--dur-base) var(--ease-out),
+      transform var(--dur-base) var(--ease-out);
+  }
+  .acc__chev::before,
+  .acc__chev::after {
+    content: "";
+    position: absolute;
+    background: var(--ember-bright);
+    border-radius: 2px;
     transition: transform var(--dur-base) var(--ease-out);
-    line-height: 1;
+  }
+  .acc__chev::before {
+    top: 50%;
+    left: 4px;
+    right: 4px;
+    height: 1.5px;
+    transform: translateY(-50%);
+  }
+  .acc__chev::after {
+    left: 50%;
+    top: 4px;
+    bottom: 4px;
+    width: 1.5px;
+    transform: translateX(-50%);
   }
   details[open] .acc__chev {
-    transform: rotate(45deg);
+    transform: rotate(180deg);
+    border-color: color-mix(in oklab, var(--ember-core) 60%, var(--ink-line));
   }
+  details[open] .acc__chev::after {
+    transform: translateX(-50%) scaleY(0);
+  }
+
   summary:hover .acc__q {
     color: var(--ember-bright);
   }
+  summary:hover .acc__chev {
+    border-color: color-mix(in oklab, var(--ember-core) 60%, var(--ink-line));
+  }
+
   .acc__body {
     padding-bottom: var(--s-5);
     color: var(--text-base);
     display: grid;
     gap: var(--s-3);
-    max-width: 64ch;
+    max-width: 68ch;
     font-size: 1rem;
     line-height: var(--leading-base);
   }
   .acc__body p {
     white-space: pre-wrap;
+  }
+
+  /* Universal smooth open: fade + slide the body in when revealed. */
+  details[open] .acc__body {
+    animation: accReveal 420ms var(--ease-out) both;
+  }
+  @keyframes accReveal {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Progressive enhancement: true height expand/collapse where supported. */
+  @supports (interpolate-size: allow-keywords) {
+    :root {
+      interpolate-size: allow-keywords;
+    }
+    details::details-content {
+      block-size: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition:
+        block-size 360ms var(--ease-out),
+        opacity 300ms var(--ease-out),
+        content-visibility 360ms allow-discrete;
+    }
+    details[open]::details-content {
+      block-size: auto;
+      opacity: 1;
+    }
+    /* the universal fade is redundant once height animates */
+    details[open] .acc__body {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .acc__chev,
+    .acc__chev::before,
+    .acc__chev::after,
+    summary,
+    .acc__q {
+      transition: none !important;
+    }
+    details[open] .acc__body {
+      animation: none !important;
+    }
+    details::details-content {
+      transition: none !important;
+    }
   }
 </style>

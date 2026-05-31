@@ -24,7 +24,7 @@ const REDACT_PATTERNS: ReadonlyArray<[RegExp, string | ((match: string) => strin
   // IPv4 addresses that look like internal infrastructure
   [/\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[INTERNAL_IP_REDACTED]'],
   // Long hex strings that look like secrets (32+ hex chars)
-  [/\b[0-9a-f]{32,}\b/gi, (match: string) => match.length > 40 ? '[HEX_REDACTED]' : match],
+  [/\b[0-9a-f]{32,}\b/gi, (match: string) => (match.length > 40 ? '[HEX_REDACTED]' : match)]
 ];
 
 /**
@@ -75,5 +75,5 @@ export const logger = {
     if (process.env.OPENBURNBAR_DEBUG === 'true') {
       writeInfoLine('[OpenBurnBar:debug]', message, args);
     }
-  },
+  }
 };

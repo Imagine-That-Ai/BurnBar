@@ -5,9 +5,15 @@ import { SITE } from "@data/site";
 const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
-const cloudProAllowance = cloudPro.allowance!;
+const allowance = cloudPro.allowance!;
 const actionTopUp = SITE.pricing.topUps[0]!;
 const relayTopUp = SITE.pricing.topUps[1]!;
+
+const savePct = (monthly: string, annual: string) =>
+  Math.round((1 - Number(annual) / (Number(monthly) * 12)) * 100);
+const cloudSave = savePct(cloud.priceMonthlyUSD, cloud.priceAnnualUSD!);
+const proSave = savePct(cloudPro.priceMonthlyUSD, cloudPro.priceAnnualUSD!);
+const headlineSave = Math.max(cloudSave, proSave);
 ---
 
 <BaseLayout
@@ -17,13 +23,25 @@ const relayTopUp = SITE.pricing.topUps[1]!;
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Pricing</span>
-      <h1 class="pagehead__h">Free where it should be. Paid where it costs us money.</h1>
+      <h1 class="pagehead__h">Free where it should be.<br />Paid where it costs us money.</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          The local product is free. Cloud is for sync and encrypted history. Cloud Pro adds live
-          phone-to-Mac workflows and supervised agent work, with prepaid allowance controls for the
-          hosted resources that cost real money.
+          The local product is free, forever. Cloud syncs your quota and encrypted history. Cloud
+          Pro adds live phone-to-Mac workflows and supervised agent work — with prepaid allowances
+          for the hosted resources that cost real money.
         </p>
+      </div>
+
+      <!-- Monthly / Annual billing toggle -->
+      <div class="billing" role="group" aria-label="Billing period">
+        <span class="billing__slider" aria-hidden="true"></span>
+        <button class="billing__opt is-active" data-billing-set="monthly" aria-pressed="true">
+          Monthly
+        </button>
+        <button class="billing__opt" data-billing-set="annual" aria-pressed="false">
+          Annual
+          <span class="billing__save mono">save&nbsp;~{headlineSave}%</span>
+        </button>
       </div>
     </div>
   </section>
@@ -31,114 +49,245 @@ const relayTopUp = SITE.pricing.topUps[1]!;
   <section class="plans">
     <div class="container container--wide">
       <div class="plans__grid">
-        <article class="plan glass-pane">
+        <!-- FREE -->
+        <article class="plan" data-animate-onview>
+          <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <path
+              d="M60 14c6 16 24 22 24 46a24 24 0 1 1-48 0c0-12 6-19 13-25 2 11 11 11 11 21"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"></path>
+          </svg>
           <header class="plan__head">
-            <span class="tag tag--exact tag--plain mono">Free, local-first</span>
-            <h2 class="plan__name">{free.shortName}</h2>
+            <span class="plan__badge mono">Free · Local</span>
+            <div class="plan__title">
+              <span class="plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 3c1.4 3.4 5 4.4 5 9a5 5 0 1 1-10 0c0-2.4 1.2-3.8 2.6-5 .5 2.4 2.4 2.4 2.4 4"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linejoin="round"></path>
+                </svg>
+              </span>
+              <h2 class="plan__name">{free.shortName}</h2>
+            </div>
             <div class="plan__price">
               <span class="plan__amount mono">$0</span>
-              <span class="plan__period">forever · no account</span>
+              <span class="plan__per"
+                >forever<br /><span class="plan__per-dim">no account</span></span
+              >
             </div>
             <p class="plan__sub">{free.summary}</p>
           </header>
+
           <ul class="plan__list">
-            <li>Local SQLite tracking, no telemetry</li>
+            <li>Local SQLite tracking, zero telemetry</li>
             <li>Cost &amp; token rollups — today / week / month / all-time</li>
-            <li>Provider, model, session, project, stream views</li>
-            <li>Smart insights &amp; configurable daily digest</li>
             <li>Quota windows for 11 providers</li>
-            <li>Self-hosted quota runner for Claude Code &amp; Codex</li>
             <li>Daemon, CLI, Cursor / VS Code panel</li>
-            <li>iOS &amp; iPadOS companion (with Firebase sign-in)</li>
-            <li>Optional Firebase sync — metadata only by default</li>
-            <li>Optional iCloud session-log mirror (uses your Apple ID)</li>
-            <li>Hermes assistant (local backends)</li>
-            <li>Smart-display surfaces (Nest Hub, Pixel Clock)</li>
+            <li>iOS, iPadOS &amp; Android companions</li>
           </ul>
-          <a class="btn btn--ghost" href="/download">Get OpenBurnBar</a>
+
+          <div class="plan__included">
+            <span class="plan__inc-label mono">Included</span>
+            <ul class="plan__specs">
+              <li>Smart insights &amp; configurable daily digest</li>
+              <li>Self-hosted quota runner — Claude Code &amp; Codex</li>
+              <li>Hermes assistant on local backends</li>
+              <li>Optional Firebase sync — metadata only</li>
+            </ul>
+          </div>
+
+          <a class="btn btn--ghost plan__cta" href="/download">Get OpenBurnBar</a>
         </article>
 
-        <article class="plan plan--ember glass-pane glass-pane--elevated">
+        <!-- CLOUD — most popular -->
+        <article class="plan plan--popular" data-animate-onview>
+          <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <circle cx="60" cy="60" r="14" stroke="currentColor" stroke-width="2"></circle>
+            <circle
+              cx="60"
+              cy="60"
+              r="30"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-dasharray="4 6"></circle>
+            <circle
+              cx="60"
+              cy="60"
+              r="46"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-dasharray="2 8"></circle>
+            <circle cx="106" cy="60" r="3.5" fill="currentColor"></circle>
+          </svg>
           <header class="plan__head">
-            <span class="tag tag--ember tag--plain mono">{cloud.name}</span>
-            <h2 class="plan__name">{cloud.shortName}</h2>
+            <span class="plan__badge plan__badge--hot mono">Most popular</span>
+            <div class="plan__title">
+              <span class="plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.4A3.5 3.5 0 0 1 17 18H7Z"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linejoin="round"></path>
+                  <path
+                    d="M12 16v-5m0 0-1.8 1.8M12 11l1.8 1.8"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"></path>
+                </svg>
+              </span>
+              <h2 class="plan__name">{cloud.shortName}</h2>
+            </div>
             <div class="plan__price">
-              <span class="plan__amount mono">${cloud.priceMonthlyUSD}</span>
-              <span class="plan__period">/month · ${cloud.priceAnnualUSD}/year</span>
+              <span class="plan__amount plan__amount--ember mono" data-billing="monthly">
+                ${cloud.priceMonthlyUSD}<span class="plan__unit">/mo</span>
+              </span>
+              <span class="plan__amount plan__amount--ember mono" data-billing="annual">
+                ${cloud.priceAnnualUSD}<span class="plan__unit">/yr</span>
+              </span>
+              <span class="plan__per">
+                <span class="plan__save mono" data-billing="annual"
+                  >${(Number(cloud.priceAnnualUSD) / 12).toFixed(2)}/mo · save {cloudSave}%</span
+                >
+                <span class="plan__per-dim" data-billing="monthly"
+                  >${cloud.priceAnnualUSD}/yr available</span
+                >
+              </span>
             </div>
             <p class="plan__sub">{cloud.summary}</p>
           </header>
+
           <ul class="plan__list">
-            <li>
-              <strong>Hosted quota refresh</strong> — refresh supported quota from any signed-in device.
-              OpenBurnBar runs the hosted runner with account-level rate limits.
-            </li>
-            <li>
-              <strong>Conversation backup &amp; resume</strong> — chat titles, previews, and message bodies
-              restored across iPhone, iPad, and Mac.
-            </li>
-            <li>
-              <strong>Encrypted session history</strong> — complete agent runs mirrored to cloud, searchable
-              across devices.
-            </li>
-            <li>
-              <strong>Agent memory sync</strong> — keep project context and assistant history available
-              on every signed-in device.
-            </li>
-            <li>
-              <strong>Verified entitlement</strong> — purchases are checked server-side before any hosted
-              capability turns on.
-            </li>
+            <li>Hosted quota refresh from any signed-in device</li>
+            <li>Conversation backup &amp; resume across iPhone, iPad &amp; Mac</li>
+            <li>Encrypted session history, searchable everywhere</li>
+            <li>Agent memory sync across every device</li>
+            <li>Verified entitlement — checked server-side</li>
           </ul>
-          <a class="btn btn--ember" href="/download">
+
+          <div class="plan__included">
+            <span class="plan__inc-label mono">Included</span>
+            <ul class="plan__specs">
+              <li>Everything in Free, local-first</li>
+              <li>14-day introductory free trial for new subscribers</li>
+              <li class="plan__specs-code mono">{cloud.productIds.join(" · ")}</li>
+            </ul>
+          </div>
+
+          <a class="btn btn--ember plan__cta" href="/download">
             {cloud.cta}
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
-          <p class="plan__small mono">
-            products · <code>{cloud.productIds.join(" · ")}</code>
-          </p>
         </article>
 
-        <article class="plan plan--pro glass-pane glass-pane--elevated">
+        <!-- CLOUD PRO -->
+        <article class="plan plan--pro" data-animate-onview>
+          <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <rect x="24" y="34" width="50" height="34" rx="4" stroke="currentColor" stroke-width="2"
+            ></rect>
+            <rect x="66" y="52" width="28" height="42" rx="4" stroke="currentColor" stroke-width="2"
+            ></rect>
+            <path
+              d="M49 68v8M40 90h18"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"></path>
+          </svg>
           <header class="plan__head">
-            <span class="tag tag--estimated tag--plain mono">{cloudPro.name}</span>
-            <h2 class="plan__name">{cloudPro.shortName}</h2>
+            <span class="plan__badge mono">For power users</span>
+            <div class="plan__title">
+              <span class="plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect
+                    x="3"
+                    y="5"
+                    width="11"
+                    height="8.5"
+                    rx="1.4"
+                    stroke="currentColor"
+                    stroke-width="1.6"></rect>
+                  <rect
+                    x="15"
+                    y="9"
+                    width="6"
+                    height="10"
+                    rx="1.4"
+                    stroke="currentColor"
+                    stroke-width="1.6"></rect>
+                  <path
+                    d="M8.5 16.5h3"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"></path>
+                </svg>
+              </span>
+              <h2 class="plan__name">{cloudPro.shortName}</h2>
+            </div>
             <div class="plan__price">
-              <span class="plan__amount mono">${cloudPro.priceMonthlyUSD}</span>
-              <span class="plan__period">/month · ${cloudPro.priceAnnualUSD}/year</span>
+              <span class="plan__amount mono" data-billing="monthly">
+                ${cloudPro.priceMonthlyUSD}<span class="plan__unit">/mo</span>
+              </span>
+              <span class="plan__amount mono" data-billing="annual">
+                ${cloudPro.priceAnnualUSD}<span class="plan__unit">/yr</span>
+              </span>
+              <span class="plan__per">
+                <span class="plan__save mono" data-billing="annual"
+                  >${(Number(cloudPro.priceAnnualUSD) / 12).toFixed(2)}/mo · save {proSave}%</span
+                >
+                <span class="plan__per-dim" data-billing="monthly"
+                  >${cloudPro.priceAnnualUSD}/yr available</span
+                >
+              </span>
             </div>
             <p class="plan__sub">{cloudPro.summary}</p>
           </header>
-          <ul class="plan__list">
-            <li>
-              <strong>Everything in BurnBar Cloud</strong> — sync, backup, and encrypted history.
-            </li>
-            <li>
-              <strong>Floo</strong> — see and use your Mac from your phone, send files, call, share clipboard,
-              and use remote unlock where shipped.
-            </li>
-            <li>
-              <strong>Agent Control</strong> — let agents work under your grant with approval boundaries,
-              off-limits zones, and an action record.
-            </li>
-            <li>
-              <strong>Included allowance</strong> — {cloudProAllowance.hostedAgentActionsMonthly}
-              hosted Agent Control actions and {cloudProAllowance.relayGBMonthly} relay-accounting GB
-              each month.
-            </li>
-            <li>
-              <strong>Prepaid overage only</strong> — extra hosted actions and relay are purchased before
-              use; BYOK actions do not consume hosted action credits.
-            </li>
+
+          <ul class="plan__list plan__list--pro">
+            <li>Everything in BurnBar Cloud</li>
+            <li>Floo — see &amp; use your Mac from your phone</li>
+            <li>Agent Control — agents work under your grant</li>
+            <li>Live screen, files, calls &amp; shared clipboard</li>
+            <li>Tamper-proof action record · per-task grants</li>
           </ul>
-          <a class="btn btn--ember" href="/download">
+
+          <div class="plan__included">
+            <span class="plan__inc-label mono">Included each month</span>
+            <ul class="plan__specs">
+              <li>{allowance.hostedAgentActionsMonthly} hosted Agent Control actions</li>
+              <li>{allowance.relayGBMonthly} relay-accounting GB</li>
+              <li>Prepaid overage only · BYOK never spends credits</li>
+            </ul>
+          </div>
+
+          <a class="btn btn--ember plan__cta" href="/download">
             {cloudPro.cta}
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
-          <p class="plan__small mono">
-            products · <code>{cloudPro.productIds.join(" · ")}</code>
-          </p>
         </article>
+      </div>
+
+      <!-- Top-ups -->
+      <div class="topups" data-animate-onview>
+        <span class="topups__label mono">Cloud Pro top-ups · prepaid, before use</span>
+        <div class="topups__chips">
+          <div class="topup">
+            <span class="topup__amt mono">+{actionTopUp.unit}</span>
+            <span class="topup__price mono">${actionTopUp.priceUSD}</span>
+          </div>
+          <div class="topup">
+            <span class="topup__amt mono">+{relayTopUp.unit}</span>
+            <span class="topup__price mono">${relayTopUp.priceUSD}</span>
+          </div>
+          <p class="topup__note">
+            Monthly caps still apply ({allowance.hostedAgentActionMonthlyCap.toLocaleString()} actions
+            · {allowance.relayGBMonthlyCap} GB). When allowance and top-ups run out, hosted work pauses
+            instead of silently spending more.
+          </p>
+        </div>
       </div>
     </div>
   </section>
@@ -178,11 +327,11 @@ const relayTopUp = SITE.pricing.topUps[1]!;
         <div>
           <dt>How do top-ups work?</dt>
           <dd>
-            Cloud Pro includes {cloudProAllowance.hostedAgentActionsMonthly} hosted Agent Control actions
-            and {cloudProAllowance.relayGBMonthly} relay-accounting GB each month. Extra hosted actions
-            are ${actionTopUp.priceUSD} for {actionTopUp.unit}; extra relay is ${
-              relayTopUp.priceUSD
-            } for {relayTopUp.unit}. Monthly caps still apply.
+            Cloud Pro includes {allowance.hostedAgentActionsMonthly} hosted Agent Control actions and
+            {allowance.relayGBMonthly} relay-accounting GB each month. Extra hosted actions are ${
+              actionTopUp.priceUSD
+            } for {actionTopUp.unit}; extra relay is ${relayTopUp.priceUSD} for {relayTopUp.unit}.
+            Monthly caps still apply.
           </dd>
         </div>
         <div>
@@ -240,128 +389,513 @@ const relayTopUp = SITE.pricing.topUps[1]!;
   </section>
 </BaseLayout>
 
+<script>
+  import "../scripts/animateOnView.ts";
+
+  const grid = document.querySelector<HTMLElement>(".plans__grid");
+  const billing = document.querySelector<HTMLElement>(".billing");
+  if (grid && billing) {
+    const opts = Array.from(billing.querySelectorAll<HTMLButtonElement>("[data-billing-set]"));
+    for (const btn of opts) {
+      btn.addEventListener("click", () => {
+        const annual = btn.dataset.billingSet === "annual";
+        grid.classList.toggle("is-annual", annual);
+        billing.classList.toggle("is-annual", annual);
+        for (const b of opts) {
+          const on = b === btn;
+          b.classList.toggle("is-active", on);
+          b.setAttribute("aria-pressed", String(on));
+        }
+      });
+    }
+  }
+</script>
+
 <style>
+  @property --bb-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+  }
+
   .pagehead {
     padding-block: var(--s-9) var(--s-6);
   }
   .pagehead__inner {
-    max-width: 960px;
+    max-width: 60rem;
     margin: 0 auto;
+    display: grid;
+    justify-items: center;
+    text-align: center;
   }
   .pagehead__h {
     margin-top: var(--s-3);
-    max-width: 22ch;
+    max-width: 20ch;
   }
   .pagehead .lead {
-    margin-top: var(--s-4);
-    max-width: 60ch;
+    margin-top: var(--s-2);
+    max-width: 58ch;
   }
 
+  /* ---------- billing toggle ---------- */
+  .billing {
+    position: relative;
+    display: inline-flex;
+    margin-top: var(--s-6);
+    padding: 5px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--ink-line);
+    background: rgba(8, 8, 12, 0.6);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  }
+  .billing__opt {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--r-pill);
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-mute);
+    transition: color var(--dur-base) var(--ease);
+    white-space: nowrap;
+  }
+  .billing__opt.is-active {
+    color: var(--ink-void);
+  }
+  .billing__slider {
+    position: absolute;
+    z-index: 0;
+    top: 5px;
+    left: 5px;
+    bottom: 5px;
+    width: calc(50% - 5px);
+    border-radius: var(--r-pill);
+    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
+    box-shadow:
+      0 6px 18px -4px rgba(250, 107, 6, 0.5),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.4);
+    transition: transform var(--dur-base) var(--ease);
+  }
+  .billing.is-annual .billing__slider {
+    transform: translateX(100%);
+  }
+  .billing__save {
+    font-size: 0.66rem;
+    letter-spacing: 0.02em;
+    padding: 2px 6px;
+    border-radius: var(--r-pill);
+    color: var(--status-exact);
+    border: 1px solid color-mix(in oklab, var(--status-exact) 40%, transparent);
+    background: color-mix(in oklab, var(--status-exact) 12%, transparent);
+    transition:
+      color var(--dur-base) var(--ease),
+      border-color var(--dur-base) var(--ease),
+      background var(--dur-base) var(--ease);
+  }
+  .billing__opt.is-active .billing__save {
+    color: var(--ink-void);
+    border-color: rgba(7, 6, 10, 0.3);
+    background: rgba(7, 6, 10, 0.16);
+  }
+
+  /* ---------- plans grid ---------- */
   .plans {
-    padding-block: var(--s-6) var(--s-9);
+    padding-block: var(--s-5) var(--s-9);
   }
   .plans__grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--s-5);
+    align-items: stretch;
   }
+
   .plan {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
     padding: var(--s-6);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-4);
-    background: rgba(10, 10, 15, 0.72);
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.05), transparent 60%),
+      rgba(10, 10, 15, 0.72);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     display: grid;
+    grid-template-rows: auto auto 1fr auto;
     gap: var(--s-5);
-    align-content: start;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+    box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+    transition:
+      opacity 760ms var(--ease),
+      translate 760ms var(--ease),
+      transform var(--dur-base) var(--ease),
+      border-color var(--dur-base) var(--ease),
+      box-shadow var(--dur-base) var(--ease);
+    color: var(--bb-accent, var(--ember-bright));
   }
-  .plan--ember {
-    border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08));
-    border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
-    background: rgba(20, 12, 10, 0.82);
+  .plan:hover {
+    transform: translateY(-6px);
+    border-color: color-mix(
+      in oklab,
+      var(--bb-accent, var(--ember-core)) 30%,
+      rgba(255, 255, 255, 0.08)
+    );
     box-shadow:
-      0 0 60px -20px rgba(255, 106, 26, 0.3),
-      0 12px 40px 0 rgba(0, 0, 0, 0.55);
+      0 0 50px -22px var(--bb-glow, rgba(250, 107, 6, 0.5)),
+      0 32px 70px -20px rgba(0, 0, 0, 0.75);
+  }
+
+  /* per-tier accent */
+  .plan {
+    --bb-accent: rgba(255, 255, 255, 0.85);
+    --bb-glow: rgba(255, 255, 255, 0.18);
+  }
+  .plan--popular {
+    --bb-accent: var(--core-fire);
+    --bb-glow: rgba(250, 107, 6, 0.5);
+    border-color: color-mix(in oklab, var(--core-fire) 30%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--core-fire) 45%, rgba(255, 255, 255, 0.16));
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(250, 107, 6, 0.14), transparent 60%),
+      rgba(20, 12, 10, 0.82);
+    box-shadow:
+      0 0 70px -24px rgba(250, 107, 6, 0.4),
+      0 32px 70px -18px rgba(0, 0, 0, 0.78);
   }
   .plan--pro {
-    border-color: color-mix(in oklab, var(--mercury-core) 28%, rgba(255, 255, 255, 0.08));
-    border-top-color: color-mix(in oklab, var(--mercury-core) 42%, rgba(255, 255, 255, 0.16));
-    background: rgba(8, 18, 18, 0.82);
-    box-shadow:
-      0 0 60px -20px rgba(60, 214, 192, 0.24),
-      0 12px 40px 0 rgba(0, 0, 0, 0.55);
+    --bb-accent: var(--status-exact);
+    --bb-glow: rgba(60, 214, 192, 0.42);
+    border-color: color-mix(in oklab, var(--status-exact) 26%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--status-exact) 40%, rgba(255, 255, 255, 0.16));
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(60, 214, 192, 0.1), transparent 60%),
+      rgba(8, 18, 18, 0.82);
   }
+
+  /* animated conic ring on the popular card */
+  .plan--popular::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+      from var(--bb-angle),
+      transparent 0deg,
+      var(--core-red) 40deg,
+      var(--core-fire) 80deg,
+      var(--core-amber) 110deg,
+      transparent 150deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: ringspin 7s linear infinite;
+    opacity: 0.9;
+  }
+  @keyframes ringspin {
+    to {
+      --bb-angle: 360deg;
+    }
+  }
+
+  .plan--popular {
+    transform: none;
+  }
+  .plan--popular:hover {
+    transform: translateY(-10px);
+  }
+
+  .plan__motif {
+    position: absolute;
+    top: var(--s-4);
+    right: var(--s-4);
+    width: 116px;
+    height: 116px;
+    color: var(--bb-accent);
+    opacity: 0.06;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .plan--popular .plan__motif {
+    opacity: 0.1;
+  }
+
   .plan__head {
     display: grid;
     gap: var(--s-3);
+    position: relative;
+    z-index: 1;
+  }
+  .plan__badge {
+    justify-self: start;
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 0.32rem 0.7rem;
+    border-radius: var(--r-pill);
+    color: var(--bb-accent);
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 32%, var(--ink-line));
+    background: color-mix(in oklab, var(--bb-accent) 8%, transparent);
+  }
+  /* the highlighted tier wears a filled badge for instant hierarchy */
+  .plan__badge--hot {
+    color: var(--ink-void);
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
+    box-shadow: 0 6px 18px -6px rgba(250, 107, 6, 0.55);
+    font-weight: 700;
+  }
+  .plan__title {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .plan__icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--r-2);
+    color: var(--bb-accent);
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--ink-line));
+    background: color-mix(in oklab, var(--bb-accent) 9%, rgba(255, 255, 255, 0.02));
+  }
+  .plan__icon svg {
+    width: 20px;
+    height: 20px;
   }
   .plan__name {
     font-family: var(--font-display);
     color: var(--text-bright);
-    font-size: clamp(1.6rem, 1.2rem + 1vw, 2rem);
+    font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
     font-variation-settings:
       "opsz" 80,
-      "wght" 500;
+      "wght" 540;
     letter-spacing: -0.02em;
   }
+
   .plan__price {
     display: flex;
     align-items: baseline;
-    gap: var(--s-3);
     flex-wrap: wrap;
+    gap: var(--s-2) var(--s-3);
+    margin-top: var(--s-2);
   }
   .plan__amount {
     font-family: var(--font-display);
-    font-size: clamp(2.8rem, 2.2rem + 2vw, 4.2rem);
+    font-size: clamp(2.6rem, 2rem + 2.2vw, 3.7rem);
     color: var(--text-bright);
-    line-height: 1;
+    line-height: 0.95;
     font-variation-settings:
       "opsz" 144,
-      "wght" 460;
+      "wght" 560;
     letter-spacing: -0.04em;
   }
-  .plan__period {
-    color: var(--text-mute);
+  .plan__amount--ember {
+    background: linear-gradient(120deg, var(--core-amber), var(--core-fire) 55%, var(--core-red));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  .plan__unit {
     font-size: 0.9rem;
+    letter-spacing: 0;
+    color: var(--text-mute);
+    margin-left: 0.25rem;
+    -webkit-text-fill-color: var(--text-mute);
+  }
+  .plan__per {
+    display: grid;
+    gap: 2px;
+    font-size: 0.84rem;
+    color: var(--text-mute);
+    line-height: 1.3;
+  }
+  .plan__per-dim {
+    color: var(--text-dim);
+  }
+  .plan__save {
+    color: var(--status-exact);
+    font-size: 0.78rem;
   }
   .plan__sub {
     color: var(--text-mute);
+    font-size: 0.95rem;
+    margin-top: var(--s-1);
   }
+
+  /* feature checklist */
   .plan__list {
     display: grid;
     gap: var(--s-3);
-    font-size: 0.95rem;
+    align-content: start;
+    position: relative;
+    z-index: 1;
   }
   .plan__list li {
-    color: var(--text-base);
-    padding-left: 1.1em;
     position: relative;
-    line-height: 1.5;
+    padding-left: 1.85rem;
+    color: var(--text-base);
+    font-size: 0.94rem;
+    line-height: 1.45;
   }
   .plan__list li::before {
-    content: "+";
+    content: "";
     position: absolute;
     left: 0;
-    color: var(--ember-bright);
-    font-family: var(--font-mono);
+    top: 0.05em;
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 50%;
+    border: 1px solid color-mix(in oklab, var(--bb-accent) 45%, var(--ink-line));
+    background: color-mix(in oklab, var(--bb-accent) 12%, transparent);
   }
-  .plan__list strong {
-    color: var(--text-bright);
+  .plan__list li::after {
+    content: "";
+    position: absolute;
+    left: 0.4rem;
+    top: 0.32em;
+    width: 0.34rem;
+    height: 0.6rem;
+    border: solid var(--bb-accent);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
   }
-  .plan__small {
-    font-size: 0.78rem;
+
+  .plan__included {
+    display: grid;
+    gap: var(--s-3);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--ink-line);
+    position: relative;
+    z-index: 1;
+  }
+  .plan__inc-label {
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
     color: var(--text-dim);
-    letter-spacing: 0.04em;
   }
+  .plan__specs {
+    display: grid;
+    gap: var(--s-2);
+    font-size: 0.88rem;
+    color: var(--text-mute);
+  }
+  .plan__specs li {
+    padding-left: 1rem;
+    position: relative;
+  }
+  .plan__specs li::before {
+    content: "·";
+    position: absolute;
+    left: 0.2rem;
+    color: var(--bb-accent);
+  }
+  .plan__specs-code {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.02em;
+    overflow-wrap: anywhere;
+  }
+  .plan__specs-code::before {
+    content: "";
+  }
+
+  .plan__cta {
+    width: 100%;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* billing-aware visibility — driven solely by the grid's .is-annual class */
+  [data-billing="annual"] {
+    display: none;
+  }
+  .plans__grid.is-annual [data-billing="monthly"] {
+    display: none;
+  }
+  .plans__grid.is-annual [data-billing="annual"] {
+    display: inline;
+  }
+
+  /* ---------- top-ups ---------- */
+  .topups {
+    margin-top: var(--s-7);
+    display: grid;
+    gap: var(--s-4);
+    padding: var(--s-5) var(--s-6);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: rgba(10, 10, 15, 0.5);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+  }
+  .topups__label {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .topups__chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-3) var(--s-4);
+  }
+  .topup {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--status-exact) 22%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 7%, transparent);
+  }
+  .topup__amt {
+    color: var(--text-bright);
+    font-size: 0.86rem;
+  }
+  .topup__price {
+    color: var(--status-exact);
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+  .topup__note {
+    flex: 1 1 16rem;
+    min-width: 14rem;
+    color: var(--text-mute);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
   @media (max-width: 980px) {
     .plans__grid {
       grid-template-columns: 1fr;
+      max-width: 30rem;
+      margin-inline: auto;
+    }
+    .plan--popular {
+      transform: none;
+    }
+    .plan--popular:hover {
+      transform: translateY(-6px);
     }
   }
 
+  /* ---------- caveats ---------- */
   .paidcaveats {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
@@ -373,11 +907,11 @@ const relayTopUp = SITE.pricing.topUps[1]!;
   }
   .defs {
     display: grid;
-    gap: var(--s-5);
+    gap: var(--s-4);
   }
   .defs > div {
     display: grid;
-    grid-template-columns: 1fr 1.5fr;
+    grid-template-columns: 1fr 1.4fr;
     gap: var(--s-5);
     padding: var(--s-4) var(--s-5);
     background: rgba(10, 10, 15, 0.4);
@@ -387,11 +921,15 @@ const relayTopUp = SITE.pricing.topUps[1]!;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--r-3);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transition: border-color var(--dur-base) var(--ease);
+  }
+  .defs > div:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 28%, var(--ink-line));
   }
   .defs dt {
     font-family: var(--font-display);
     color: var(--text-bright);
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-variation-settings:
       "opsz" 36,
       "wght" 540;
@@ -399,6 +937,8 @@ const relayTopUp = SITE.pricing.topUps[1]!;
   }
   .defs dd {
     color: var(--text-base);
+    font-size: 0.95rem;
+    line-height: 1.55;
   }
   @media (max-width: 720px) {
     .defs > div {
@@ -411,9 +951,7 @@ const relayTopUp = SITE.pricing.topUps[1]!;
     padding-block: var(--s-9);
     text-align: center;
     background: radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
-  }
-  .endcta--inline h2 {
-    margin-bottom: var(--s-3);
+    border-top: 1px solid var(--ink-line);
   }
   .endcta__ctas {
     display: flex;
@@ -428,5 +966,55 @@ const relayTopUp = SITE.pricing.topUps[1]!;
     gap: var(--s-5);
     justify-items: center;
     padding: var(--s-4) 0;
+  }
+
+  /* ---------- reveal motion ---------- */
+  /* Keep cards visible by default; JS only adds the one-shot entrance animation. */
+  @keyframes pricingReveal {
+    from {
+      opacity: 0;
+      translate: 0 30px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  [data-animate-onview] {
+    opacity: 1;
+    translate: 0 0;
+  }
+  [data-animate-onview].is-visible {
+    animation: pricingReveal 760ms var(--ease) both;
+  }
+  .topups[data-animate-onview] {
+    animation-duration: 760ms;
+  }
+  .plans__grid .plan:nth-child(2) {
+    transition-delay: 90ms;
+  }
+  .plans__grid .plan:nth-child(3) {
+    transition-delay: 180ms;
+  }
+  .plans__grid .plan:hover {
+    transition-delay: 0s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .billing__slider,
+    .billing__opt,
+    .plan,
+    .topups {
+      transition: none !important;
+    }
+    .plan--popular::before {
+      animation: none;
+    }
+    [data-animate-onview],
+    [data-animate-onview].is-visible {
+      animation: none !important;
+      opacity: 1 !important;
+      translate: none !important;
+    }
   }
 </style>
