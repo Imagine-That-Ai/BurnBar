@@ -68,188 +68,268 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     <div class="rundown__headline">
       <span class="eyebrow eyebrow--ember mono">Daily Model Board</span>
       <h2 class="rundown__h" data-rundown-title>
-        {isPreview ? "Today's model-board recommendation — at a glance." : `Rundown · ${rundown.date}`}
+        {
+          isPreview
+            ? "Today's model-board recommendation — at a glance."
+            : `Rundown · ${rundown.date}`
+        }
       </h2>
       <p class="rundown__sub mono">
-        <span data-rundown-state class="rundown__state rundown__state--loading mono">loading live data…</span>
-        <span data-rundown-meta>Generated {generatedLabel} · schema v{rundown.schemaVersion} · model board · runtime constraints win</span>
+        <span data-rundown-state class="rundown__state rundown__state--loading mono"
+          >loading live data…</span
+        >
+        <span data-rundown-meta
+          >Generated {generatedLabel} · schema v{rundown.schemaVersion} · model board · runtime constraints
+          win</span
+        >
       </p>
     </div>
 
     <ul class="rundown__sources" aria-label="Source freshness today">
-      {rundown.sourceStatuses.map((source) => (
-        <li class={`srctag srctag--${freshnessTone(source.status)}`}>
-          <img class="srctag__logo" src={source.logo} alt="" width="20" height="20" loading="lazy" />
-          <div class="srctag__body">
-            <strong class="srctag__name">{source.attribution}</strong>
-            <span class="srctag__age mono">
-              {source.status === "fresh" && "fresh"}
-              {source.status === "stale" && `stale · ${formatAge(source.ageHours)}`}
-              {source.status === "unavailable" && "unavailable"}
-              {source.status === "error" && "error"}
-            </span>
-          </div>
-          <span class={`srctag__dot srctag__dot--${freshnessTone(source.status)}`} aria-hidden="true"></span>
-        </li>
-      ))}
+      {
+        rundown.sourceStatuses.map((source) => (
+          <li class={`srctag srctag--${freshnessTone(source.status)}`}>
+            <img
+              class="srctag__logo"
+              src={source.logo}
+              alt=""
+              width="20"
+              height="20"
+              loading="lazy"
+            />
+            <div class="srctag__body">
+              <strong class="srctag__name">{source.attribution}</strong>
+              <span class="srctag__age mono">
+                {source.status === "fresh" && "fresh"}
+                {source.status === "stale" && `stale · ${formatAge(source.ageHours)}`}
+                {source.status === "unavailable" && "unavailable"}
+                {source.status === "error" && "error"}
+              </span>
+            </div>
+            <span
+              class={`srctag__dot srctag__dot--${freshnessTone(source.status)}`}
+              aria-hidden="true"
+            />
+          </li>
+        ))
+      }
     </ul>
   </header>
 
   <p class="rundown__advisory">
-    A daily board of language models runs research and analysis tasks across
-    the benchmark feed, then BurnBar reduces their findings to this deterministic
-    recommendation. Benchmark data is <strong>advisory only</strong>; user pins,
-    auth, quota, safety, availability, and exact-model failover rules still win
-    at runtime.
+    A daily board of language models runs research and analysis tasks across the benchmark feed,
+    then BurnBar reduces their findings to this deterministic recommendation. Benchmark data is <strong
+      >advisory only</strong
+    >; user pins, auth, quota, safety, availability, and exact-model failover rules still win at
+    runtime.
   </p>
 
-  {sortedTasks.length === 0 && (
-    <p class="rundown__empty">
-      No benchmark evidence was reported for any task category on this day.
-      Sources may have been unavailable or rate-limited; routing falls back to
-      user-pinned defaults until the next refresh.
-    </p>
-  )}
+  {
+    sortedTasks.length === 0 && (
+      <p class="rundown__empty">
+        No benchmark evidence was reported for any task category on this day. Sources may have been
+        unavailable or rate-limited; routing falls back to user-pinned defaults until the next
+        refresh.
+      </p>
+    )
+  }
 
   <!-- task cockpit -->
   <ol class="rundown__tasks">
-    {sortedTasks.map((task) => (
-      <li class="taskcard" id={`task-${task.taskID}`}>
-        <header class="taskcard__head">
-          <div class="taskcard__headline">
-            <span class={`pill pill--${task.taskID}`}>{task.taskLabel}</span>
-            <p class="taskcard__blurb">{task.taskBlurb}</p>
-          </div>
-          {task.note && <p class="taskcard__note mono">{task.note}</p>}
-        </header>
+    {
+      sortedTasks.map((task) => (
+        <li class="taskcard" id={`task-${task.taskID}`}>
+          <header class="taskcard__head">
+            <div class="taskcard__headline">
+              <span class={`pill pill--${task.taskID}`}>{task.taskLabel}</span>
+              <p class="taskcard__blurb">{task.taskBlurb}</p>
+            </div>
+            {task.note && <p class="taskcard__note mono">{task.note}</p>}
+          </header>
 
-        <p class="taskcard__lede">{task.topPickRationale}</p>
+          <p class="taskcard__lede">{task.topPickRationale}</p>
 
-        <!-- ranked rows -->
-        <ol class="ranks">
-          {task.recommendations.map((rec) => (
-            <li class={`rankrow rankrow--rank${rec.rank} rankrow--${freshnessTone(rec.freshness)}`}>
-              <div class="rankrow__lead">
-                <span class="rankrow__num mono">#{rec.rank}</span>
-                {rec.providerLogo && (
-                  <img class="rankrow__logo" src={rec.providerLogo} alt="" width="36" height="36" loading="lazy" />
-                )}
-                <div class="rankrow__id">
-                  <strong class="rankrow__model">{rec.modelDisplay}</strong>
-                  <span class="rankrow__provider mono">{rec.providerDisplay}{rec.providerFamily ? ` · ${rec.providerFamily}` : ""}</span>
-                </div>
-              </div>
-
-              <div class="rankrow__score">
-                <span class="rankrow__scorenum">{pct(displayScore(rec))}</span>
-                <span class="rankrow__scorelab mono">selection / 100</span>
-                <span class="rankrow__cov mono">evidence {pct(rec.score)} · coverage {pct(rec.evidenceCoverage)}%</span>
-              </div>
-
-              <ul class="rankrow__chips" aria-label="Signal chips">
-                <li class={`chip chip--${rec.signals.benchmarkScore != null ? "on" : "off"}`}>
-                  <span class="chip__k mono">bench</span><span class="chip__v">{pct(rec.signals.benchmarkScore)}</span>
-                </li>
-                <li class={`chip chip--${rec.signals.benchmarkFreshness != null ? freshnessTone(rec.freshness) : "off"}`}>
-                  <span class="chip__k mono">fresh</span><span class="chip__v">{pct(rec.signals.benchmarkFreshness)}</span>
-                </li>
-                <li class={`chip chip--${rec.signals.reliability != null ? "on" : "off"}`}>
-                  <span class="chip__k mono">rel</span><span class="chip__v">{pct(rec.signals.reliability)}</span>
-                </li>
-                <li class={`chip chip--${rec.signals.latency != null ? "on" : "off"}`}>
-                  <span class="chip__k mono">latency</span><span class="chip__v">{pct(rec.signals.latency)}</span>
-                </li>
-                <li class={`chip chip--${rec.signals.cost != null ? "on" : "off"}`}>
-                  <span class="chip__k mono">cost</span><span class="chip__v">{pct(rec.signals.cost)}</span>
-                </li>
-                <li class={`chip chip--${rec.signals.contextWindowTokens != null ? "on" : "off"}`}>
-                  <span class="chip__k mono">ctx</span><span class="chip__v">{tokens(rec.signals.contextWindowTokens)}</span>
-                </li>
-                <li class={`chip chip--${rec.signals.availability === "common" ? "on" : rec.signals.availability === "limited" ? "warn" : "off"}`}>
-                  <span class="chip__k mono">avail</span><span class="chip__v">{rec.signals.availability}</span>
-                </li>
-                {rec.signals.routable === false && (
-                  <li class="chip chip--burn">
-                    <span class="chip__k mono">runtime</span><span class="chip__v">not routable</span>
-                  </li>
-                )}
-                {rec.favoriteRank != null && (
-                  <li class="chip chip--on">
-                    <span class="chip__k mono">board</span><span class="chip__v">favorite #{rec.favoriteRank}</span>
-                  </li>
-                )}
-              </ul>
-
-              <div class="rankrow__body">
-                <div class="rankrow__rationale">
-                  <h4 class="rankrow__rh mono">Board verdict</h4>
-                  <ul class="rankrow__rlist">
-                    {rec.selectionReason && <li>{rec.selectionReason}</li>}
-                    {rec.explanation.map((line) => <li>{line}</li>)}
-                  </ul>
-                </div>
-
-                <div class="rankrow__cites">
-                  <h4 class="rankrow__rh mono">Source citations</h4>
-                  {rec.citations.length === 0 && (
-                    <p class="rankrow__none mono">No benchmark snapshot from any active source today.</p>
+          <ol class="ranks">
+            {task.recommendations.map((rec) => (
+              <li
+                class={`rankrow rankrow--rank${rec.rank} rankrow--${freshnessTone(rec.freshness)}`}
+              >
+                <div class="rankrow__lead">
+                  <span class="rankrow__num mono">#{rec.rank}</span>
+                  {rec.providerLogo && (
+                    <img
+                      class="rankrow__logo"
+                      src={rec.providerLogo}
+                      alt=""
+                      width="36"
+                      height="36"
+                      loading="lazy"
+                    />
                   )}
-                  <ul class="cites">
-                    {rec.citations.map((cite) => (
-                      <li class={`cite cite--${freshnessTone(cite.freshness)}`}>
-                        <img class="cite__logo" src={cite.logo} alt="" width="22" height="22" loading="lazy" />
-                        <div class="cite__body">
-                          <a class="cite__name" href={cite.sourceURL ?? "/router#sources"} target="_blank" rel="noopener noreferrer">{cite.attribution}</a>
-                          <div class="cite__meta mono">
-                            {cite.rank != null && <span>rank {cite.rank}</span>}
-                            {cite.score != null && <span>score {pct(cite.score)}</span>}
-                            <span>{formatAge(cite.ageHours)}</span>
-                            <span class="cite__fresh">{cite.freshness}</span>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <div class="rankrow__id">
+                    <strong class="rankrow__model">{rec.modelDisplay}</strong>
+                    <span class="rankrow__provider mono">
+                      {rec.providerDisplay}
+                      {rec.providerFamily ? ` · ${rec.providerFamily}` : ""}
+                    </span>
+                  </div>
                 </div>
 
-                {rec.limitations.length > 0 && (
-                  <div class="rankrow__lims">
-                    <h4 class="rankrow__rh mono">Limitations</h4>
-                    <ul class="rankrow__llist">
-                      {rec.limitations.map((line) => <li>{line}</li>)}
+                <div class="rankrow__score">
+                  <span class="rankrow__scorenum">{pct(displayScore(rec))}</span>
+                  <span class="rankrow__scorelab mono">selection / 100</span>
+                  <span class="rankrow__cov mono">
+                    evidence {pct(rec.score)} · coverage {pct(rec.evidenceCoverage)}%
+                  </span>
+                </div>
+
+                <ul class="rankrow__chips" aria-label="Signal chips">
+                  <li class={`chip chip--${rec.signals.benchmarkScore != null ? "on" : "off"}`}>
+                    <span class="chip__k mono">bench</span>
+                    <span class="chip__v">{pct(rec.signals.benchmarkScore)}</span>
+                  </li>
+                  <li
+                    class={`chip chip--${rec.signals.benchmarkFreshness != null ? freshnessTone(rec.freshness) : "off"}`}
+                  >
+                    <span class="chip__k mono">fresh</span>
+                    <span class="chip__v">{pct(rec.signals.benchmarkFreshness)}</span>
+                  </li>
+                  <li class={`chip chip--${rec.signals.reliability != null ? "on" : "off"}`}>
+                    <span class="chip__k mono">rel</span>
+                    <span class="chip__v">{pct(rec.signals.reliability)}</span>
+                  </li>
+                  <li class={`chip chip--${rec.signals.latency != null ? "on" : "off"}`}>
+                    <span class="chip__k mono">latency</span>
+                    <span class="chip__v">{pct(rec.signals.latency)}</span>
+                  </li>
+                  <li class={`chip chip--${rec.signals.cost != null ? "on" : "off"}`}>
+                    <span class="chip__k mono">cost</span>
+                    <span class="chip__v">{pct(rec.signals.cost)}</span>
+                  </li>
+                  <li
+                    class={`chip chip--${rec.signals.contextWindowTokens != null ? "on" : "off"}`}
+                  >
+                    <span class="chip__k mono">ctx</span>
+                    <span class="chip__v">{tokens(rec.signals.contextWindowTokens)}</span>
+                  </li>
+                  <li
+                    class={`chip chip--${rec.signals.availability === "common" ? "on" : rec.signals.availability === "limited" ? "warn" : "off"}`}
+                  >
+                    <span class="chip__k mono">avail</span>
+                    <span class="chip__v">{rec.signals.availability}</span>
+                  </li>
+                  {rec.signals.routable === false && (
+                    <li class="chip chip--burn">
+                      <span class="chip__k mono">runtime</span>
+                      <span class="chip__v">not routable</span>
+                    </li>
+                  )}
+                  {rec.favoriteRank != null && (
+                    <li class="chip chip--on">
+                      <span class="chip__k mono">board</span>
+                      <span class="chip__v">favorite #{rec.favoriteRank}</span>
+                    </li>
+                  )}
+                </ul>
+
+                <div class="rankrow__body">
+                  <div class="rankrow__rationale">
+                    <h4 class="rankrow__rh mono">Board verdict</h4>
+                    <ul class="rankrow__rlist">
+                      {rec.selectionReason && <li>{rec.selectionReason}</li>}
+                      {rec.explanation.map((line) => (
+                        <li>{line}</li>
+                      ))}
                     </ul>
                   </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
 
-        {task.rejectedAlternatives.length > 0 && (
-          <details class="rejects">
-            <summary>
-              <span class="rejects__sum">Why other candidates didn't make the board pick</span>
-              <span class="rejects__count mono">{task.rejectedAlternatives.length} dropped</span>
-            </summary>
-            <ul class="rejects__list">
-              {task.rejectedAlternatives.map((r) => (
-                <li class="reject">
-                  {r.providerLogo && (
-                    <img class="reject__logo" src={r.providerLogo} alt="" width="22" height="22" loading="lazy" />
-                  )}
-                  <div>
-                    <strong>{r.modelDisplay}</strong>
-                    <span class="reject__provider mono"> · {r.providerDisplay}</span>
-                    <p class="reject__reason">{r.reason}</p>
-                    {r.evidence && <p class="reject__ev mono">{r.evidence}</p>}
+                  <div class="rankrow__cites">
+                    <h4 class="rankrow__rh mono">Source citations</h4>
+                    {rec.citations.length === 0 && (
+                      <p class="rankrow__none mono">
+                        No benchmark snapshot from any active source today.
+                      </p>
+                    )}
+                    <ul class="cites">
+                      {rec.citations.map((cite) => (
+                        <li class={`cite cite--${freshnessTone(cite.freshness)}`}>
+                          <img
+                            class="cite__logo"
+                            src={cite.logo}
+                            alt=""
+                            width="22"
+                            height="22"
+                            loading="lazy"
+                          />
+                          <div class="cite__body">
+                            <a
+                              class="cite__name"
+                              href={cite.sourceURL ?? "/router#sources"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {cite.attribution}
+                            </a>
+                            <div class="cite__meta mono">
+                              {cite.rank != null && <span>rank {cite.rank}</span>}
+                              {cite.score != null && <span>score {pct(cite.score)}</span>}
+                              <span>{formatAge(cite.ageHours)}</span>
+                              <span class="cite__fresh">{cite.freshness}</span>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </li>
-    ))}
+
+                  {rec.limitations.length > 0 && (
+                    <div class="rankrow__lims">
+                      <h4 class="rankrow__rh mono">Limitations</h4>
+                      <ul class="rankrow__llist">
+                        {rec.limitations.map((line) => (
+                          <li>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          {task.rejectedAlternatives.length > 0 && (
+            <details class="rejects">
+              <summary>
+                <span class="rejects__sum">Why other candidates didn't make the board pick</span>
+                <span class="rejects__count mono">{task.rejectedAlternatives.length} dropped</span>
+              </summary>
+              <ul class="rejects__list">
+                {task.rejectedAlternatives.map((r) => (
+                  <li class="reject">
+                    {r.providerLogo && (
+                      <img
+                        class="reject__logo"
+                        src={r.providerLogo}
+                        alt=""
+                        width="22"
+                        height="22"
+                        loading="lazy"
+                      />
+                    )}
+                    <div>
+                      <strong>{r.modelDisplay}</strong>
+                      <span class="reject__provider mono"> · {r.providerDisplay}</span>
+                      <p class="reject__reason">{r.reason}</p>
+                      {r.evidence && <p class="reject__ev mono">{r.evidence}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </li>
+      ))
+    }
   </ol>
 
   <footer class="rundown__foot">
@@ -260,38 +340,53 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
       </ul>
     </div>
 
-    {rundown.notes.length > 0 && (
-      <div class="rundown__notes">
-        <h3 class="rundown__lh mono">Operator notes</h3>
-        <ul>
-          {rundown.notes.map((line) => <li>{line}</li>)}
-        </ul>
-      </div>
-    )}
+    {
+      rundown.notes.length > 0 && (
+        <div class="rundown__notes">
+          <h3 class="rundown__lh mono">Operator notes</h3>
+          <ul>
+            {rundown.notes.map((line) => (
+              <li>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
 
-    {archive.length > 0 && (
-      <div class="rundown__archive">
-        <h3 class="rundown__lh mono">Archive</h3>
-        <ul class="rundown__archlist">
-          {archive.map((d) => (
-            <li><a href={`/router/daily/${d}`}><span class="mono">{d}</span><span class="rundown__archarrow" aria-hidden="true">→</span></a></li>
-          ))}
-          <li><a class="rundown__archall" href="/router/daily">all dated rundowns →</a></li>
-        </ul>
-      </div>
-    )}
+    {
+      archive.length > 0 && (
+        <div class="rundown__archive">
+          <h3 class="rundown__lh mono">Archive</h3>
+          <ul class="rundown__archlist">
+            {archive.map((d) => (
+              <li>
+                <a href={`/router/daily/${d}`}>
+                  <span class="mono">{d}</span>
+                  <span class="rundown__archarrow" aria-hidden="true">
+                    →
+                  </span>
+                </a>
+              </li>
+            ))}
+            <li>
+              <a class="rundown__archall" href="/router/daily">
+                all dated rundowns →
+              </a>
+            </li>
+          </ul>
+        </div>
+      )
+    }
   </footer>
 </section>
 
 <script src="/router-rundown-hydrate.js" defer></script>
 
-
 <style>
   .rundown {
     border: 1px solid var(--ink-line);
     border-radius: var(--r-4);
-    background:
-      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
     padding: clamp(var(--s-5), 2.5vw, var(--s-7));
     display: grid;
     gap: var(--s-6);
@@ -322,17 +417,24 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     border-radius: 50%;
     background: var(--status-unavailable);
   }
-  .rundown__state--loading::before { background: var(--mercury-base); }
+  .rundown__state--loading::before {
+    background: var(--mercury-base);
+  }
   .rundown__state--live {
     color: var(--status-exact);
     border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
   }
-  .rundown__state--live::before { background: var(--status-exact); box-shadow: 0 0 8px var(--status-exact); }
+  .rundown__state--live::before {
+    background: var(--status-exact);
+    box-shadow: 0 0 8px var(--status-exact);
+  }
   .rundown__state--fallback {
     color: var(--status-estimated);
     border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line));
   }
-  .rundown__state--fallback::before { background: var(--status-estimated); }
+  .rundown__state--fallback::before {
+    background: var(--status-estimated);
+  }
   .rundown::before {
     content: "";
     position: absolute;
@@ -352,12 +454,16 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     align-items: end;
   }
   @media (max-width: 880px) {
-    .rundown__head { grid-template-columns: 1fr; }
+    .rundown__head {
+      grid-template-columns: 1fr;
+    }
   }
   .rundown__h {
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem);
-    font-variation-settings: "opsz" 80, "wght" 460;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 460;
     letter-spacing: -0.022em;
     margin-top: var(--s-3);
     color: var(--text-bright);
@@ -399,17 +505,46 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     padding: 2px;
     object-fit: contain;
   }
-  .srctag__name { color: var(--text-bright); display: block; font-size: 0.82rem; }
-  .srctag__age { color: var(--text-mute); font-size: 0.7rem; letter-spacing: 0.04em; }
-  .srctag__dot { width: 8px; height: 8px; border-radius: var(--r-pill); }
-  .srctag--fresh { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line)); }
-  .srctag--fresh .srctag__dot { background: var(--status-exact); box-shadow: 0 0 8px var(--status-exact); }
-  .srctag--warn { border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line)); }
-  .srctag--warn .srctag__dot { background: var(--status-estimated); }
-  .srctag--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
-  .srctag--stale .srctag__dot { background: var(--mercury-base); }
-  .srctag--off { opacity: 0.7; }
-  .srctag--off .srctag__dot { background: var(--status-unavailable); }
+  .srctag__name {
+    color: var(--text-bright);
+    display: block;
+    font-size: 0.82rem;
+  }
+  .srctag__age {
+    color: var(--text-mute);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
+  .srctag__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--r-pill);
+  }
+  .srctag--fresh {
+    border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
+  }
+  .srctag--fresh .srctag__dot {
+    background: var(--status-exact);
+    box-shadow: 0 0 8px var(--status-exact);
+  }
+  .srctag--warn {
+    border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line));
+  }
+  .srctag--warn .srctag__dot {
+    background: var(--status-estimated);
+  }
+  .srctag--stale {
+    border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line));
+  }
+  .srctag--stale .srctag__dot {
+    background: var(--mercury-base);
+  }
+  .srctag--off {
+    opacity: 0.7;
+  }
+  .srctag--off .srctag__dot {
+    background: var(--status-unavailable);
+  }
 
   /* ── advisory bar ── */
   .rundown__advisory {
@@ -417,11 +552,13 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     border: 1px dashed color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
     border-radius: var(--r-3);
     color: var(--text-base);
-    background:
-      linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
+    background: linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
     font-size: 0.86rem;
   }
-  .rundown__advisory strong { color: var(--ember-bright); font-variation-settings: "wght" 540; }
+  .rundown__advisory strong {
+    color: var(--ember-bright);
+    font-variation-settings: "wght" 540;
+  }
 
   .rundown__empty {
     padding: var(--s-5);
@@ -432,7 +569,13 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   }
 
   /* ── tasks ── */
-  .rundown__tasks { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-5); }
+  .rundown__tasks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: var(--s-5);
+  }
 
   .taskcard {
     border: 1px solid var(--ink-line);
@@ -446,8 +589,16 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     display: grid;
     gap: var(--s-2);
   }
-  .taskcard__headline { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
-  .taskcard__blurb { color: var(--text-mute); font-size: 0.88rem; }
+  .taskcard__headline {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+  }
+  .taskcard__blurb {
+    color: var(--text-mute);
+    font-size: 0.88rem;
+  }
   .taskcard__note {
     color: var(--status-estimated);
     font-size: 0.78rem;
@@ -456,7 +607,10 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   .taskcard__lede {
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 60, "wght" 380, "ital" 1;
+    font-variation-settings:
+      "opsz" 60,
+      "wght" 380,
+      "ital" 1;
     font-style: italic;
     font-size: 1.05rem;
     line-height: 1.4;
@@ -478,14 +632,40 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     text-transform: uppercase;
     font-variation-settings: "wght" 500;
   }
-  .pill--terminal { border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line)); background: color-mix(in oklab, var(--mercury-bright) 12%, var(--ink-base)); color: var(--mercury-bright); }
-  .pill--design { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line)); background: color-mix(in oklab, var(--status-exact) 12%, var(--ink-base)); color: var(--status-exact); }
-  .pill--analysis { border-color: color-mix(in oklab, var(--status-estimated) 35%, var(--ink-line)); background: color-mix(in oklab, var(--status-estimated) 12%, var(--ink-base)); color: var(--status-estimated); }
-  .pill--general { border-color: var(--ink-line); background: var(--ink-surface); color: var(--text-mute); }
-  .pill--agent { border-color: color-mix(in oklab, var(--ember-glow) 40%, var(--ink-line)); background: color-mix(in oklab, var(--ember-glow) 14%, var(--ink-base)); color: var(--ember-glow); }
+  .pill--terminal {
+    border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 12%, var(--ink-base));
+    color: var(--mercury-bright);
+  }
+  .pill--design {
+    border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 12%, var(--ink-base));
+    color: var(--status-exact);
+  }
+  .pill--analysis {
+    border-color: color-mix(in oklab, var(--status-estimated) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-estimated) 12%, var(--ink-base));
+    color: var(--status-estimated);
+  }
+  .pill--general {
+    border-color: var(--ink-line);
+    background: var(--ink-surface);
+    color: var(--text-mute);
+  }
+  .pill--agent {
+    border-color: color-mix(in oklab, var(--ember-glow) 40%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-glow) 14%, var(--ink-base));
+    color: var(--ember-glow);
+  }
 
   /* ── ranks ── */
-  .ranks { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-3); }
+  .ranks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
 
   .rankrow {
     border: 1px solid var(--ink-line);
@@ -499,8 +679,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
       "chips chips"
       "body  body";
     gap: var(--s-3) var(--s-4);
-    transition: border-color var(--dur-fast) var(--ease-out),
-                background var(--dur-fast) var(--ease-out);
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      background var(--dur-fast) var(--ease-out);
   }
   @media (max-width: 720px) {
     .rankrow {
@@ -515,14 +696,21 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
 
   .rankrow--rank1 {
     border-color: color-mix(in oklab, var(--ember-core) 55%, var(--ink-line));
-    background:
-      linear-gradient(180deg, color-mix(in oklab, var(--ember-core) 10%, var(--ink-surface)) 0%, var(--ink-surface) 70%);
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ember-core) 10%, var(--ink-surface)) 0%,
+      var(--ink-surface) 70%
+    );
     box-shadow:
       inset 0 1px 0 rgba(255, 181, 71, 0.05),
       0 0 0 1px color-mix(in oklab, var(--ember-core) 18%, transparent);
   }
-  .rankrow--rank1 .rankrow__num { color: var(--ember-bright); }
-  .rankrow--off { opacity: 0.85; }
+  .rankrow--rank1 .rankrow__num {
+    color: var(--ember-bright);
+  }
+  .rankrow--off {
+    opacity: 0.85;
+  }
 
   .rankrow__lead {
     grid-area: lead;
@@ -532,7 +720,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     align-items: center;
     min-width: 0;
   }
-  .rankrow__id { min-width: 0; }
+  .rankrow__id {
+    min-width: 0;
+  }
   .rankrow__num {
     font-family: var(--font-mono);
     font-size: 1.1rem;
@@ -553,7 +743,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     display: block;
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 60, "wght": 480;
+    font-variation-settings:
+      "opsz" 60,
+      "wght" 480;
     font-size: 1.18rem;
     letter-spacing: -0.014em;
     line-height: 1.15;
@@ -577,13 +769,17 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   .rankrow__scorenum {
     font-family: var(--font-display);
     font-size: clamp(2rem, 1.6rem + 1.4vw, 2.6rem);
-    font-variation-settings: "opsz" 144, "wght" 420;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 420;
     color: var(--text-bright);
     line-height: 1;
     letter-spacing: -0.04em;
     font-feature-settings: "tnum" 1;
   }
-  .rankrow--rank1 .rankrow__scorenum { color: var(--ember-bright); }
+  .rankrow--rank1 .rankrow__scorenum {
+    color: var(--ember-bright);
+  }
   .rankrow__scorelab {
     color: var(--text-dim);
     font-size: 0.7rem;
@@ -626,14 +822,30 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     color: var(--text-bright);
     font-variation-settings: "wght" 520;
   }
-  .chip--off { opacity: 0.55; }
-  .chip--off .chip__v { color: var(--text-mute); }
-  .chip--warn { border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line)); }
-  .chip--warn .chip__v { color: var(--status-estimated); }
-  .chip--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
-  .chip--stale .chip__v { color: var(--mercury-base); }
-  .chip--burn { border-color: color-mix(in oklab, var(--status-burn) 40%, var(--ink-line)); }
-  .chip--burn .chip__v { color: var(--status-burn); }
+  .chip--off {
+    opacity: 0.55;
+  }
+  .chip--off .chip__v {
+    color: var(--text-mute);
+  }
+  .chip--warn {
+    border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line));
+  }
+  .chip--warn .chip__v {
+    color: var(--status-estimated);
+  }
+  .chip--stale {
+    border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line));
+  }
+  .chip--stale .chip__v {
+    color: var(--mercury-base);
+  }
+  .chip--burn {
+    border-color: color-mix(in oklab, var(--status-burn) 40%, var(--ink-line));
+  }
+  .chip--burn .chip__v {
+    color: var(--status-burn);
+  }
 
   /* body */
   .rankrow__body {
@@ -645,7 +857,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     padding-top: var(--s-3);
   }
   @media (max-width: 880px) {
-    .rankrow__body { grid-template-columns: 1fr; }
+    .rankrow__body {
+      grid-template-columns: 1fr;
+    }
   }
   .rankrow__rh {
     color: var(--text-dim);
@@ -654,7 +868,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     text-transform: uppercase;
     margin-bottom: var(--s-2);
   }
-  .rankrow__rlist, .rankrow__llist {
+  .rankrow__rlist,
+  .rankrow__llist {
     margin: 0;
     padding: 0;
     list-style: none;
@@ -663,12 +878,28 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     font-size: 0.86rem;
     color: var(--text-base);
   }
-  .rankrow__rlist li::before { content: "·  "; color: var(--ember-bright); }
-  .rankrow__llist li::before { content: "!  "; color: var(--status-estimated); font-family: var(--font-mono); }
-  .rankrow__llist li { color: var(--text-mute); font-size: 0.82rem; }
+  .rankrow__rlist li::before {
+    content: "·  ";
+    color: var(--ember-bright);
+  }
+  .rankrow__llist li::before {
+    content: "!  ";
+    color: var(--status-estimated);
+    font-family: var(--font-mono);
+  }
+  .rankrow__llist li {
+    color: var(--text-mute);
+    font-size: 0.82rem;
+  }
 
   /* citations */
-  .cites { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-2); }
+  .cites {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: var(--s-2);
+  }
   .cite {
     display: grid;
     grid-template-columns: 28px 1fr;
@@ -695,7 +926,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     font-variation-settings: "wght" 500;
     text-decoration: none;
   }
-  .cite__name:hover { color: var(--ember-bright); }
+  .cite__name:hover {
+    color: var(--ember-bright);
+  }
   .cite__meta {
     color: var(--text-dim);
     font-size: 0.7rem;
@@ -704,10 +937,18 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     flex-wrap: wrap;
     gap: var(--s-3);
   }
-  .cite__fresh { color: var(--text-mute); }
-  .cite--warn { border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line)); }
-  .cite--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
-  .cite--off { opacity: 0.7; }
+  .cite__fresh {
+    color: var(--text-mute);
+  }
+  .cite--warn {
+    border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line));
+  }
+  .cite--stale {
+    border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line));
+  }
+  .cite--off {
+    opacity: 0.7;
+  }
 
   .rankrow__none {
     color: var(--text-dim);
@@ -733,14 +974,28 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     font-size: 0.86rem;
     font-variation-settings: "wght" 460;
   }
-  .rejects summary::-webkit-details-marker { display: none; }
+  .rejects summary::-webkit-details-marker {
+    display: none;
+  }
   .rejects summary::before {
     content: "▸ ";
     color: var(--ember-bright);
   }
-  .rejects[open] summary::before { content: "▾ "; }
-  .rejects__count { color: var(--text-dim); font-size: 0.74rem; letter-spacing: 0.06em; }
-  .rejects__list { list-style: none; padding: var(--s-3) 0 0; margin: 0; display: grid; gap: var(--s-3); }
+  .rejects[open] summary::before {
+    content: "▾ ";
+  }
+  .rejects__count {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+  }
+  .rejects__list {
+    list-style: none;
+    padding: var(--s-3) 0 0;
+    margin: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
   .reject {
     display: grid;
     grid-template-columns: 28px 1fr;
@@ -760,10 +1015,24 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     border: 1px solid var(--ink-line);
     object-fit: contain;
   }
-  .reject strong { color: var(--text-bright); }
-  .reject__provider { color: var(--text-mute); font-size: 0.78rem; }
-  .reject__reason { color: var(--text-base); font-size: 0.86rem; margin-top: 4px; }
-  .reject__ev { color: var(--text-dim); font-size: 0.74rem; letter-spacing: 0.04em; margin-top: 2px; }
+  .reject strong {
+    color: var(--text-bright);
+  }
+  .reject__provider {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+  }
+  .reject__reason {
+    color: var(--text-base);
+    font-size: 0.86rem;
+    margin-top: 4px;
+  }
+  .reject__ev {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+  }
 
   /* footer */
   .rundown__foot {
@@ -774,7 +1043,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     border-top: 1px dashed var(--ink-line);
   }
   @media (max-width: 880px) {
-    .rundown__foot { grid-template-columns: 1fr; }
+    .rundown__foot {
+      grid-template-columns: 1fr;
+    }
   }
   .rundown__lh {
     color: var(--text-dim);
@@ -783,7 +1054,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     text-transform: uppercase;
     margin-bottom: var(--s-2);
   }
-  .rundown__lims ul, .rundown__notes ul {
+  .rundown__lims ul,
+  .rundown__notes ul {
     list-style: none;
     padding: 0;
     margin: 0;
@@ -793,8 +1065,14 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     color: var(--text-mute);
     line-height: 1.45;
   }
-  .rundown__lims li::before { content: "—  "; color: var(--ember-glow); }
-  .rundown__notes li::before { content: "·  "; color: var(--ember-bright); }
+  .rundown__lims li::before {
+    content: "—  ";
+    color: var(--ember-glow);
+  }
+  .rundown__notes li::before {
+    content: "·  ";
+    color: var(--ember-bright);
+  }
   .rundown__archive {
     border: 1px solid var(--ink-line);
     border-radius: var(--r-3);
@@ -819,7 +1097,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     font-size: 0.84rem;
     border-bottom: 1px dashed var(--ink-line-soft);
   }
-  .rundown__archlist a:hover { color: var(--ember-bright); }
+  .rundown__archlist a:hover {
+    color: var(--ember-bright);
+  }
   .rundown__archall {
     color: var(--ember-bright) !important;
     margin-top: var(--s-2);
@@ -828,10 +1108,19 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     font-size: 0.74rem !important;
     letter-spacing: 0.08em;
   }
-  .rundown__archarrow { color: var(--text-dim); }
+  .rundown__archarrow {
+    color: var(--text-dim);
+  }
 
   /* preview variant — same look, just less verbose body */
-  .rundown--preview .rankrow__body { display: none; }
-  .rundown--preview .rejects { display: none; }
-  .rundown--preview .rundown__foot { padding-top: 0; border-top: 0; }
+  .rundown--preview .rankrow__body {
+    display: none;
+  }
+  .rundown--preview .rejects {
+    display: none;
+  }
+  .rundown--preview .rundown__foot {
+    padding-top: 0;
+    border-top: 0;
+  }
 </style>

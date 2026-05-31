@@ -50,10 +50,12 @@ jobs:
           LINES_ADDED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$1} END {print sum}')
           LINES_REMOVED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$2} END {print sum}')
 
-          echo "stats=$STATS" >> "$GITHUB_OUTPUT"
-          echo "files=$FILES" >> "$GITHUB_OUTPUT"
-          echo "added=$LINES_ADDED" >> "$GITHUB_OUTPUT"
-          echo "removed=$LINES_REMOVED" >> "$GITHUB_OUTPUT"
+          {
+            echo "stats=$STATS"
+            echo "files=$FILES"
+            echo "added=$LINES_ADDED"
+            echo "removed=$LINES_REMOVED"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run security-focused diff analysis
         id: security_scan
@@ -69,20 +71,23 @@ jobs:
             ISSUES="${ISSUES}\n- Potential hardcoded credential detected in diff"
           fi
 
+          ADDED_LINES=$(git diff "$BASE...$HEAD" | grep '^+' || true)
+
           # Check for TODO/FIXME without issue references
-          NEW_TODOS=$(git diff "$BASE...$HEAD" | grep '^+' | grep -cE 'TODO|FIXME' || echo 0)
+          NEW_TODOS=$(printf '%s\n' "$ADDED_LINES" | grep -cE 'TODO|FIXME' || true)
           if [[ "$NEW_TODOS" -gt 0 ]]; then
             ISSUES="${ISSUES}\n- ${NEW_TODOS} new TODO/FIXME comment(s) added without issue references"
           fi
 
           # Check for force unwraps in Swift
-          NEW_FORCE=$(git diff "$BASE...$HEAD" | grep '^+' | grep -cE '!\.' || echo 0)
+          NEW_FORCE=$(printf '%s\n' "$ADDED_LINES" | grep -cE '!\.' || true)
           if [[ "$NEW_FORCE" -gt 5 ]]; then
             ISSUES="${ISSUES}\n- ${NEW_FORCE} force-unwrap operator(s) added (consider using guard/if let)"
           fi
 
           # Check for console.log in production TS/JS (not test files)
-          PROD_LOGS=$(git diff "$BASE...$HEAD" -- '*.ts' '*.js' ':!*.test.*' ':!*.spec.*' ':!*__tests__*' | grep '^+' | grep -cE 'console\.(log|debug)\(' || echo 0)
+          PROD_TS_ADDED=$(git diff "$BASE...$HEAD" -- '*.ts' '*.js' ':!*.test.*' ':!*.spec.*' ':!*__tests__*' | grep '^+' || true)
+          PROD_LOGS=$(printf '%s\n' "$PROD_TS_ADDED" | grep -cE 'console\.(log|debug)\(' || true)
           if [[ "$PROD_LOGS" -gt 0 ]]; then
             ISSUES="${ISSUES}\n- ${PROD_LOGS} console.log/debug call(s) in production code (use the logger module)"
           fi
@@ -110,8 +115,9 @@ jobs:
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           # Check if any source files changed without corresponding tests
-          SRC_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -E '\.(swift|kt|ts)$' | grep -v -E '(test|spec|Test|Spec)' | wc -l | tr -d ' ')
-          TEST_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -E '(test|spec|Test|Spec)\.(swift|kt|ts)$' | wc -l | tr -d ' ')
+          CHANGED_FILES=$(git diff --name-only "$BASE...$HEAD")
+          SRC_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.(swift|kt|ts)$' | grep -cvE '(test|spec|Test|Spec)' || true)
+          TEST_CHANGED=$(printf '%s\n' "$CHANGED_FILES" | grep -cE '(test|spec|Test|Spec)\.(swift|kt|ts)$' || true)
 
           echo "src_changed=$SRC_CHANGED" >> "$GITHUB_OUTPUT"
           echo "test_changed=$TEST_CHANGED" >> "$GITHUB_OUTPUT"

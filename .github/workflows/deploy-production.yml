@@ -64,7 +64,6 @@ jobs:
           bash scripts/ci/verify-resilience-wiring.sh
 
       - name: Sentry release (Functions)
-        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -72,6 +71,10 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
+          if [[ -z "${SENTRY_AUTH_TOKEN:-}" || -z "${SENTRY_ORG:-}" ]]; then
+            echo "::notice::SENTRY_AUTH_TOKEN or SENTRY_ORG not set — skipping Sentry release"
+            exit 0
+          fi
           curl -sL https://sentry.io/get-cli/ | bash
           RELEASE_NAME="openburnbar-functions@${TAG}"
           sentry-cli releases new --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true

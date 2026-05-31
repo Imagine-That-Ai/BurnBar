@@ -201,14 +201,16 @@ jobs:
       - name: Report test timing
         if: always()
         run: |
-          echo "### Test Timing Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -f openburnbar-coverage.json ]]; then
-            echo "Swift coverage data collected ✓" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "| Suite | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| SwiftUI unit tests | ✓ |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Test Timing Summary"
+            echo ""
+            if [[ -f openburnbar-coverage.json ]]; then
+              echo "Swift coverage data collected ✓"
+            fi
+            echo "| Suite | Status |"
+            echo "|-------|--------|"
+            echo "| SwiftUI unit tests | ✓ |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh

@@ -11,14 +11,14 @@ export const GET: APIRoute = () => {
     status: "ok",
     service: "burnbar-website",
     timestamp: new Date().toISOString(),
-    version: import.meta.env.PUBLIC_SITE_VERSION ?? "unknown",
+    version: import.meta.env.PUBLIC_SITE_VERSION ?? "unknown"
   };
 
   return new Response(JSON.stringify(status), {
     status: 200,
     headers: {
       "Content-Type": "application/json",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-    },
+      "Cache-Control": "no-cache, no-store, must-revalidate"
+    }
   });
 };

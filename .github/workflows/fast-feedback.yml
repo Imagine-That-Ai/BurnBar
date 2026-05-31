@@ -40,7 +40,7 @@ jobs:
         run: npm ci --prefix functions
 
       - name: TypeScript type check
-        run: npx --prefix functions tsc --noEmit
+        run: cd functions && npx tsc --noEmit
 
       - name: ESLint
         run: npm run lint --prefix functions
@@ -51,10 +51,12 @@ jobs:
       - name: Summarize
         if: always()
         run: |
-          echo "### Functions Fast Check" >> "$GITHUB_STEP_SUMMARY"
-          echo "- TypeScript: ✓" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ESLint: ✓" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Unit tests: ✓" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Functions Fast Check"
+            echo "- TypeScript: ✓"
+            echo "- ESLint: ✓"
+            echo "- Unit tests: ✓"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Extension: lint + typecheck + unit tests ─────────────────────────────
   extension-fast:
@@ -74,7 +76,7 @@ jobs:
         run: npm ci --prefix extensions/openburnbar
 
       - name: TypeScript type check
-        run: npx --prefix extensions/openburnbar tsc --noEmit
+        run: cd extensions/openburnbar && npx tsc --noEmit
 
       - name: ESLint
         run: npm run lint --prefix extensions/openburnbar
@@ -129,10 +131,10 @@ jobs:
           fi
           echo "All shell scripts pass syntax validation."
 
-      - uses: awalsh128/cache-apt-pkgs-action@a6c77d3965efe46161a2d8b08d43ebb3a4b88f3f # v1.4.2
-        with:
-          packages: shellcheck
-          version: 1.0
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
 
       - name: ShellCheck
         run: |
