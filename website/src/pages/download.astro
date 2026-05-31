@@ -23,14 +23,20 @@ const macDownloadHref = macDownloadBaseUrl
           unpacked.
         </p>
       </div>
+      <nav class="jump" aria-label="Jump to platform">
+        <a href="#macos">macOS</a>
+        <a href="#ios">iOS · iPadOS</a>
+        <a href="#editor">Editor</a>
+        <a href="#android">Android</a>
+      </nav>
     </div>
   </section>
 
   <!-- MACOS -->
   <section id="macos" class="dlsec">
-    <div class="container container--wide">
+    <div class="container dlsec__shell">
       <div class="dlsec__head">
-        <div>
+        <div class="dlsec__intro">
           <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseLatest}</span>
           <h2>macOS app</h2>
           <p class="lead">
@@ -44,28 +50,28 @@ const macDownloadHref = macDownloadBaseUrl
         </a>
       </div>
 
-      <ol class="steps">
-        <li class="glass-pane">
-          <div class="step__num mono">01</div>
-          <div class="step__body">
+      <ol class="steps" data-animate-onview>
+        <li class="step">
+          <span class="step__num mono">1</span>
+          <div class="step__card">
             <h3>Download &amp; open the DMG</h3>
             <p>
-              Latest direct-download release is served from OpenBurnBar's download host. Each
-              direct-download release ships Developer ID signed, notarized, stapled, with SHA-256
-              and SHA-512 checksums next to it.
+              The latest direct-download release is served from OpenBurnBar's download host. Each
+              one ships Developer ID signed, notarized, stapled, with SHA-256 and SHA-512 checksums
+              next to it.
             </p>
           </div>
         </li>
-        <li class="glass-pane">
-          <div class="step__num mono">02</div>
-          <div class="step__body">
+        <li class="step">
+          <span class="step__num mono">2</span>
+          <div class="step__card">
             <h3>Drag OpenBurnBar.app to <code>/Applications</code></h3>
             <p>That's the install. No installer, no admin password.</p>
           </div>
         </li>
-        <li class="glass-pane">
-          <div class="step__num mono">03</div>
-          <div class="step__body">
+        <li class="step">
+          <span class="step__num mono">3</span>
+          <div class="step__card">
             <h3>Launch &amp; find the menu bar</h3>
             <p>
               OpenBurnBar lives in the menu bar — no Dock icon. Click the flame to open the popover.
@@ -73,9 +79,9 @@ const macDownloadHref = macDownloadBaseUrl
             </p>
           </div>
         </li>
-        <li class="glass-pane">
-          <div class="step__num mono">04</div>
-          <div class="step__body">
+        <li class="step">
+          <span class="step__num mono">4</span>
+          <div class="step__card">
             <h3>Watch the burn</h3>
             <p>
               The app reads logs in <code>~/.claude/</code>, <code>~/.codex/</code>,
@@ -101,9 +107,9 @@ make install</code></pre>
 
   <!-- iOS -->
   <section id="ios" class="dlsec dlsec--quiet">
-    <div class="container container--wide">
+    <div class="container dlsec__shell">
       <div class="dlsec__head">
-        <div>
+        <div class="dlsec__intro">
           <span class="tag tag--review tag--plain mono">In App Store review</span>
           <h2>iPhone &amp; iPad companion</h2>
           <p class="lead">
@@ -111,9 +117,9 @@ make install</code></pre>
             what the Mac records. Native widgets, Live Activity, Siri shortcut.
           </p>
         </div>
-        <a class="btn btn--ghost dlsec__primary" href="#ios-newsletter" aria-disabled="true">
-          App Store link · pending review
-        </a>
+        <span class="btn btn--ghost dlsec__primary is-disabled" aria-disabled="true">
+          App Store · pending review
+        </span>
       </div>
 
       <div class="callout">
@@ -122,16 +128,16 @@ make install</code></pre>
           OpenBurnBar 1.0 is submitted to App Store Connect with manual release enabled — Apple's approval
           doesn't auto-publish. We'll flip the switch and update this page the moment it's live.
         </p>
-        <p>App Store subscriptions are gated on the same review.</p>
+        <p class="muted small">App Store subscriptions are gated on the same review.</p>
       </div>
     </div>
   </section>
 
   <!-- Editor -->
   <section id="editor" class="dlsec">
-    <div class="container container--wide">
+    <div class="container dlsec__shell">
       <div class="dlsec__head">
-        <div>
+        <div class="dlsec__intro">
           <span class="tag tag--estimated tag--plain mono">{SITE.cursorExtStatus}</span>
           <h2>Cursor &amp; VS Code extension</h2>
           <p class="lead">
@@ -141,26 +147,26 @@ make install</code></pre>
         </div>
       </div>
 
-      <ol class="steps">
-        <li class="glass-pane">
-          <div class="step__num mono">01</div>
-          <div class="step__body">
+      <ol class="steps" data-animate-onview>
+        <li class="step">
+          <span class="step__num mono">1</span>
+          <div class="step__card">
             <h3>Install &amp; launch OpenBurnBar on macOS</h3>
             <p>The daemon must be running — it's how the extension reads data.</p>
           </div>
         </li>
-        <li class="glass-pane">
-          <div class="step__num mono">02</div>
-          <div class="step__body">
+        <li class="step">
+          <span class="step__num mono">2</span>
+          <div class="step__card">
             <h3>Build the extension</h3>
             <pre><code class="mono">cd extensions/openburnbar
 npm ci
 npm run build</code></pre>
           </div>
         </li>
-        <li class="glass-pane">
-          <div class="step__num mono">03</div>
-          <div class="step__body">
+        <li class="step">
+          <span class="step__num mono">3</span>
+          <div class="step__card">
             <h3>Load unpacked into your editor</h3>
             <p>
               In Cursor or VS Code: <em>Extensions → "Install from VSIX…"</em> or
@@ -169,9 +175,9 @@ npm run build</code></pre>
             </p>
           </div>
         </li>
-        <li class="glass-pane">
-          <div class="step__num mono">04</div>
-          <div class="step__body">
+        <li class="step">
+          <span class="step__num mono">4</span>
+          <div class="step__card">
             <h3>Open the OpenBurnBar activity bar</h3>
             <p>
               The panel surfaces burn for the active workspace and the routed-provider gateway when
@@ -185,9 +191,9 @@ npm run build</code></pre>
 
   <!-- Android -->
   <section id="android" class="dlsec dlsec--quiet">
-    <div class="container container--wide">
+    <div class="container dlsec__shell">
       <div class="dlsec__head">
-        <div>
+        <div class="dlsec__intro">
           <span class="tag tag--beta tag--plain mono">Feature-complete · Play Store pending</span>
           <h2>Android companion</h2>
           <p class="lead">
@@ -207,8 +213,8 @@ npm run build</code></pre>
         <span class="eyebrow eyebrow--ember">Requirements &amp; provenance</span>
         <h2>What you need, what we ship.</h2>
       </header>
-      <div class="reqs__grid">
-        <article class="glass-pane">
+      <div class="reqs__grid" data-animate-onview>
+        <article class="reqcard">
           <h4>macOS</h4>
           <ul>
             <li>{SITE.macMin} or later</li>
@@ -219,7 +225,7 @@ npm run build</code></pre>
             <li>SPDX SBOM per release</li>
           </ul>
         </article>
-        <article class="glass-pane">
+        <article class="reqcard">
           <h4>iOS / iPadOS</h4>
           <ul>
             <li>{SITE.iosMin} or later</li>
@@ -228,7 +234,7 @@ npm run build</code></pre>
             <li>Live Activity needs iOS 16.1+</li>
           </ul>
         </article>
-        <article class="glass-pane">
+        <article class="reqcard">
           <h4>Editor extension</h4>
           <ul>
             <li>Cursor or VS Code ^1.95.0</li>
@@ -254,12 +260,16 @@ npm run build</code></pre>
   </section>
 </BaseLayout>
 
+<script>
+  import "../scripts/animateOnView.ts";
+</script>
+
 <style>
   .pagehead {
     padding-block: var(--s-9) var(--s-6);
   }
   .pagehead__inner {
-    max-width: 960px;
+    max-width: 60rem;
     margin: 0 auto;
     text-align: center;
     display: grid;
@@ -271,8 +281,36 @@ npm run build</code></pre>
   }
   .pagehead .lead {
     margin-top: var(--s-4);
-    max-width: 60ch;
+    max-width: 58ch;
   }
+
+  /* platform jump links */
+  .jump {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--s-2);
+    margin-top: var(--s-5);
+  }
+  .jump a {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    color: var(--text-mute);
+    padding: 0.4rem 0.9rem;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--ink-line);
+    background: rgba(10, 10, 15, 0.5);
+    transition:
+      color var(--dur-base) var(--ease),
+      border-color var(--dur-base) var(--ease);
+  }
+  .jump a:hover {
+    color: var(--ember-bright);
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+  }
+
+  /* ---------- section shell — keeps content tasteful, not full-bleed ---------- */
   .dlsec {
     padding-block: var(--s-8);
     border-top: 1px solid var(--ink-line);
@@ -280,112 +318,139 @@ npm run build</code></pre>
   .dlsec--quiet {
     background: var(--ink-base);
   }
+  .dlsec__shell {
+    max-width: 60rem;
+  }
   .dlsec__head {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: flex-end;
     gap: var(--s-5);
     margin-bottom: var(--s-6);
     flex-wrap: wrap;
+  }
+  .dlsec__intro {
+    flex: 1 1 28rem;
   }
   .dlsec__head h2 {
     margin-top: var(--s-3);
   }
   .dlsec__head .lead {
     margin-top: var(--s-3);
-    max-width: 56ch;
+    max-width: 52ch;
+    font-size: 1.1rem;
   }
   .dlsec__primary {
     white-space: nowrap;
   }
-  @media (max-width: 720px) {
-    .dlsec__primary {
-      white-space: normal;
-      text-align: center;
-      align-self: stretch;
-      width: 100%;
-    }
-    .dlsec__head {
-      flex-direction: column;
-      align-items: stretch;
-    }
-    .steps li {
-      grid-template-columns: minmax(0, 1fr);
-      gap: var(--s-2);
-    }
-    .step__num {
-      font-size: 0.85rem;
-    }
-    pre {
-      font-size: 0.78rem;
-    }
+  .dlsec__primary.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
   }
+
+  /* ---------- elegant numbered timeline ---------- */
   .steps {
+    position: relative;
     display: grid;
-    gap: var(--s-4);
-    counter-reset: step;
+    gap: var(--s-3);
+    max-width: 46rem;
   }
-  .steps li {
+  /* the connector line runs through the node centers (left 20px) */
+  .steps::before {
+    content: "";
+    position: absolute;
+    left: 19px;
+    top: 18px;
+    bottom: 18px;
+    width: 2px;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--ember-core) 55%, transparent),
+      color-mix(in oklab, var(--ember-core) 12%, transparent)
+    );
+  }
+  .step {
+    position: relative;
     display: grid;
-    grid-template-columns: 60px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr);
     gap: var(--s-4);
-    padding: var(--s-5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.72);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     align-items: start;
   }
-  .step__body {
-    min-width: 0;
+  .step__num {
+    position: relative;
+    z-index: 1;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    font-size: 0.95rem;
+    color: var(--ember-bright);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    background:
+      radial-gradient(circle at 50% 35%, rgba(250, 107, 6, 0.18), transparent 70%), var(--ink-void);
+    box-shadow: inset 0 0 0 4px rgba(5, 5, 8, 0.9);
+  }
+  .step__card {
+    padding: var(--s-4) var(--s-5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: var(--r-3);
+    background: rgba(10, 10, 15, 0.66);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
     display: grid;
     gap: var(--s-2);
+    min-width: 0;
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease);
   }
-  .step__body :global(pre) {
-    margin: var(--s-2) 0 0;
+  .step__card:hover {
+    transform: translateX(3px);
+    border-color: color-mix(in oklab, var(--ember-core) 28%, rgba(255, 255, 255, 0.08));
   }
-  .step__num {
-    color: var(--ember-bright);
-    font-size: 0.95rem;
-    letter-spacing: 0.12em;
-  }
-  .steps h3 {
+  .step__card h3 {
     font-family: var(--font-display);
     color: var(--text-bright);
-    font-size: 1.1rem;
+    font-size: var(--t-h4);
     font-variation-settings:
       "opsz" 36,
       "wght" 540;
-    margin-bottom: var(--s-2);
   }
-  .steps p {
+  .step__card p {
     color: var(--text-base);
+    font-size: 0.95rem;
   }
+  .step__card :global(pre) {
+    margin: var(--s-1) 0 0;
+  }
+
   pre {
     background: var(--ink-surface);
     border: 1px solid var(--ink-line);
-    border-radius: var(--r-3);
+    border-radius: var(--r-2);
     padding: var(--s-3) var(--s-4);
     overflow-x: auto;
-    margin: var(--s-3) 0;
   }
   pre code {
     background: transparent;
     border: 0;
     padding: 0;
   }
+
+  /* build-from-source disclosure */
   .alt {
     margin-top: var(--s-5);
+    max-width: 46rem;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.72);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    background: rgba(10, 10, 15, 0.66);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
   .alt summary {
     cursor: pointer;
@@ -398,6 +463,9 @@ npm run build</code></pre>
     justify-content: space-between;
     align-items: center;
   }
+  .alt summary::-webkit-details-marker {
+    display: none;
+  }
   .alt summary::after {
     content: "+";
     color: var(--ember-bright);
@@ -409,24 +477,50 @@ npm run build</code></pre>
   .alt__body {
     padding: 0 var(--s-5) var(--s-5);
   }
+
+  /* callout (iOS in-review) */
   .callout {
+    max-width: 46rem;
     padding: var(--s-5);
     border-left: 3px solid var(--ember-bright);
     border-top: 1px solid rgba(255, 255, 255, 0.12);
     border-right: 1px solid rgba(255, 255, 255, 0.06);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(15, 10, 10, 0.72);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    background: rgba(15, 10, 10, 0.66);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
     border-radius: 0 var(--r-3) var(--r-3) 0;
     display: grid;
-    gap: var(--s-3);
+    gap: var(--s-2);
   }
   .callout strong {
     color: var(--text-bright);
   }
 
+  @media (max-width: 720px) {
+    .pagehead__h {
+      max-width: 11ch;
+      font-size: 2.75rem;
+      letter-spacing: 0;
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+    .dlsec__head {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .dlsec__primary {
+      white-space: normal;
+      text-align: center;
+      width: 100%;
+    }
+    pre {
+      font-size: 0.78rem;
+    }
+  }
+
+  /* ---------- system requirements ---------- */
   .reqs {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
@@ -442,17 +536,21 @@ npm run build</code></pre>
     grid-template-columns: repeat(3, 1fr);
     gap: var(--s-4);
   }
-  .reqs__grid article {
+  .reqcard {
     padding: var(--s-5);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.72);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+    background: rgba(10, 10, 15, 0.66);
+    backdrop-filter: blur(22px) saturate(170%);
+    -webkit-backdrop-filter: blur(22px) saturate(170%);
+    box-shadow: 0 18px 48px -22px rgba(0, 0, 0, 0.7);
+    transition: border-color var(--dur-base) var(--ease);
   }
-  .reqs__grid h4 {
+  .reqcard:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 26%, rgba(255, 255, 255, 0.08));
+  }
+  .reqcard h4 {
     font-family: var(--font-display);
     color: var(--text-bright);
     font-size: 1.05rem;
@@ -461,17 +559,17 @@ npm run build</code></pre>
       "opsz" 36,
       "wght" 540;
   }
-  .reqs__grid ul {
+  .reqcard ul {
     display: grid;
     gap: var(--s-2);
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     color: var(--text-base);
   }
-  .reqs__grid li {
-    padding-left: 1em;
+  .reqcard li {
+    padding-left: 1.1em;
     position: relative;
   }
-  .reqs__grid li::before {
+  .reqcard li::before {
     content: "→";
     color: var(--ember-bright);
     position: absolute;
@@ -507,5 +605,57 @@ npm run build</code></pre>
     gap: var(--s-5);
     justify-items: center;
     padding: var(--s-4) 0;
+  }
+
+  /* ---------- reveal motion ---------- */
+  @keyframes downloadReveal {
+    from {
+      opacity: 0;
+      translate: 0 22px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  .steps[data-animate-onview] .step,
+  .reqs__grid[data-animate-onview] .reqcard {
+    opacity: 1;
+    translate: 0 0;
+  }
+  .steps[data-animate-onview].is-visible .step,
+  .reqs__grid[data-animate-onview].is-visible .reqcard {
+    animation: downloadReveal 640ms var(--ease) both;
+  }
+  .steps[data-animate-onview].is-visible .step:nth-child(2) {
+    animation-delay: 80ms;
+  }
+  .steps[data-animate-onview].is-visible .step:nth-child(3) {
+    animation-delay: 160ms;
+  }
+  .steps[data-animate-onview].is-visible .step:nth-child(4) {
+    animation-delay: 240ms;
+  }
+  .reqs__grid[data-animate-onview].is-visible .reqcard:nth-child(2) {
+    animation-delay: 90ms;
+  }
+  .reqs__grid[data-animate-onview].is-visible .reqcard:nth-child(3) {
+    animation-delay: 180ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .step,
+    .reqcard,
+    .step__card {
+      transition: none !important;
+      animation: none !important;
+    }
+    .steps[data-animate-onview] .step,
+    .reqs__grid[data-animate-onview] .reqcard,
+    .steps[data-animate-onview].is-visible .step,
+    .reqs__grid[data-animate-onview].is-visible .reqcard {
+      opacity: 1 !important;
+      translate: none !important;
+    }
   }
 </style>

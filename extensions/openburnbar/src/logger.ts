@@ -8,11 +8,11 @@
 /** Patterns that indicate sensitive data that should be redacted in logs. */
 const REDACT_PATTERNS: ReadonlyArray<[RegExp, string | ((match: string) => string)]> = [
   // API keys and tokens
-  [/([Aa]pi[_-]?[Kk]ey|[Tt]oken|[Ss]ecret|[Pp]assword|[Aa]uth)["\s:=]+["']?[\w\-\.]{8,}["']?/g, '$1=[REDACTED]'],
+  [/([Aa]pi[_-]?[Kk]ey|[Tt]oken|[Ss]ecret|[Pp]assword|[Aa]uth)["\s:=]+["']?[\w.-]{8,}["']?/g, '$1=[REDACTED]'],
   // Firebase tokens (long base64-like strings > 30 chars)
-  [/eyJ[\w\-\.]{28,}/g, '[JWT_REDACTED]'],
+  [/eyJ[\w.-]{28,}/g, '[JWT_REDACTED]'],
   // Email addresses
-  [/[\w.+\-]+@[\w\-]+\.[\w.]{2,}/g, '[EMAIL_REDACTED]'],
+  [/[\w.+-]+@[\w-]+\.[\w.]{2,}/g, '[EMAIL_REDACTED]'],
   // IPv4 addresses that look like internal infrastructure
   [/\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[INTERNAL_IP_REDACTED]'],
   // Long hex strings that look like secrets (32+ hex chars)
