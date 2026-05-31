@@ -652,11 +652,13 @@ final class MediaControlStreamCoordinator: ObservableObject {
             media: HermesRealtimeRelayMediaPayload(presence: beat)
         )
         let sentAt = Date()
+        let previousPendingHeartbeatSentAt = pendingHeartbeatSentAt
+        pendingHeartbeatSentAt = sentAt
         do {
             try await send(frame: frame, timeout: timeout)
-            pendingHeartbeatSentAt = sentAt
             return true
         } catch {
+            pendingHeartbeatSentAt = previousPendingHeartbeatSentAt
             // The supervisor owns reconnects; heartbeat failure only means no
             // fresh RTT sample for the HUD.
             return false
