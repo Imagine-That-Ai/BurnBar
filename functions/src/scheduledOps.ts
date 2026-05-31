@@ -6,10 +6,7 @@ import { captureException } from "./sentry.js";
 import { logError, logInfo } from "./logging.js";
 import { firestoreWithResilience } from "./resilienceHelpers.js";
 
-export async function runScheduledJob<T>(
-  name: string,
-  fn: () => Promise<T>,
-): Promise<T | undefined> {
+export async function runScheduledJob<T>(name: string, fn: () => Promise<T>): Promise<T | undefined> {
   logInfo({ event: "scheduled_job_start", job: name });
   try {
     const result = await fn();

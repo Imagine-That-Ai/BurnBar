@@ -31,43 +31,43 @@ export const onUsageWritten = onDocumentWritten(
   },
   async (event) =>
     runFirestoreTrigger("onUsageWritten", async () => {
-    const uid = event.params.uid;
-    const db = getFirestore();
-    const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-    const before = event.data?.before.exists ? parseUsageEventDoc(event.data.before.data()) : undefined;
-    const after = event.data?.after.exists ? parseUsageEventDoc(event.data.after.data()) : undefined;
+      const uid = event.params.uid;
+      const db = getFirestore();
+      const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+      const before = event.data?.before.exists ? parseUsageEventDoc(event.data.before.data()) : undefined;
+      const after = event.data?.after.exists ? parseUsageEventDoc(event.data.after.data()) : undefined;
 
-    // Mark dirty BEFORE attempting the counter delta so that even if the
-    // transaction fails (contention, quota, etc.), the scheduled
-    // rebuildRollups worker still picks up this user and recomputes from
-    // whatever counter state exists.
-    const now = new Date().toISOString();
-    const snap = await jobRef.get();
-    const existing = snap.exists ? parseRollupJobDoc(snap.data()) : null;
-    if (!existing?.dirty) {
-      await jobRef.set({ dirty: true, dirtiedAt: now }, { merge: true });
-    }
+      // Mark dirty BEFORE attempting the counter delta so that even if the
+      // transaction fails (contention, quota, etc.), the scheduled
+      // rebuildRollups worker still picks up this user and recomputes from
+      // whatever counter state exists.
+      const now = new Date().toISOString();
+      const snap = await jobRef.get();
+      const existing = snap.exists ? parseRollupJobDoc(snap.data()) : null;
+      if (!existing?.dirty) {
+        await jobRef.set({ dirty: true, dirtiedAt: now }, { merge: true });
+      }
 
-    try {
-      await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);
-    } catch (err) {
-      logError({
-        event: "usage.counter_delta_failed",
-        uid,
-        usage_doc: event.params.usageDoc,
-        error: errorMessage(err),
-      });
-      await jobRef.set(
-        {
-          lastErrorCode: errorMessage(err),
-        },
-        { merge: true },
-      );
-      // Dirty flag is already set — the scheduled worker will pick this up
-      // and fall back to a raw-usage rebuild instead of trusting counters.
-      // We intentionally do NOT re-throw: the trigger has done its job
-      // (queued the rollup job). Letting it throw would cause unnecessary
-      // retries that just re-attempt the same failing transaction.
-    }
+      try {
+        await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);
+      } catch (err) {
+        logError({
+          event: "usage.counter_delta_failed",
+          uid,
+          usage_doc: event.params.usageDoc,
+          error: errorMessage(err),
+        });
+        await jobRef.set(
+          {
+            lastErrorCode: errorMessage(err),
+          },
+          { merge: true },
+        );
+        // Dirty flag is already set — the scheduled worker will pick this up
+        // and fall back to a raw-usage rebuild instead of trusting counters.
+        // We intentionally do NOT re-throw: the trigger has done its job
+        // (queued the rollup job). Letting it throw would cause unnecessary
+        // retries that just re-attempt the same failing transaction.
+      }
     }),
 );
