@@ -126,10 +126,7 @@ private class FakePayloadStreamer(
         rawEvents.forEach { onRawEvent(it) }
     }
 
-    override suspend fun sendCLIAgentSessionActionPayload(
-        body: ByteArray,
-        sessionID: String,
-    ): String {
+    override suspend fun sendCLIAgentSessionActionPayload(body: ByteArray, sessionID: String): String {
         bodyString = String(body, Charsets.UTF_8)
         this.sessionID = sessionID
         return """{"status":"error","argv":[]}"""
