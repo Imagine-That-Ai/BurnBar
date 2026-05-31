@@ -20,6 +20,8 @@ interface CLIAgentRelayChatTransporting {
         presentationMode: CLIAgentChatPresentationMode,
         onEvent: suspend (CLIAgentRelayChatEvent) -> Unit,
     )
+
+    suspend fun performSessionAction(request: CLIAgentSessionActionRequest): CLIAgentSessionActionResponse
 }
 
 interface CLIAgentRelayChatPayloadStreamer {
@@ -30,6 +32,11 @@ interface CLIAgentRelayChatPayloadStreamer {
         sessionID: String,
         onRawEvent: suspend (String) -> Unit,
     )
+
+    suspend fun sendCLIAgentSessionActionPayload(
+        body: ByteArray,
+        sessionID: String,
+    ): String
 }
 
 private class HermesServiceCLIAgentRelayChatPayloadStreamer(
@@ -49,6 +56,15 @@ private class HermesServiceCLIAgentRelayChatPayloadStreamer(
             onRawEvent = onRawEvent,
         )
     }
+
+    override suspend fun sendCLIAgentSessionActionPayload(
+        body: ByteArray,
+        sessionID: String,
+    ): String =
+        hermesService.sendCLIAgentSessionActionPayload(
+            body = body,
+            sessionID = sessionID,
+        )
 }
 
 class CLIAgentRelayChatTransport(
@@ -98,6 +114,15 @@ class CLIAgentRelayChatTransport(
             }
         }
         decodeError?.let { throw it }
+    }
+
+    override suspend fun performSessionAction(request: CLIAgentSessionActionRequest): CLIAgentSessionActionResponse {
+        val body = request.toJsonByteArray()
+        val raw = payloadStreamer.sendCLIAgentSessionActionPayload(
+            body = body,
+            sessionID = "cli-session-action-${request.sessionID}",
+        )
+        return CLIAgentSessionActionResponse.decode(raw)
     }
 }
 
@@ -156,6 +181,85 @@ enum class CLIAgentRelayTranscriptPieceKind(val wire: String) {
     }
 }
 
+enum class CLIAgentSessionActionKind(val wire: String) {
+    RESUME("resume"),
+    HANDOFF("handoff"),
+    PACKAGE_ONLY("package_only");
+
+    companion object {
+        fun fromWire(value: String?): CLIAgentSessionActionKind =
+            values().firstOrNull { it.wire == value } ?: RESUME
+    }
+}
+
+data class CLIAgentSessionActionRequest(
+    val sessionID: String,
+    val action: CLIAgentSessionActionKind = CLIAgentSessionActionKind.RESUME,
+    val targetRuntime: String? = null,
+    val targetModelID: String? = null,
+    val presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.MAC_VISIBLE_CLI,
+) {
+    fun toJsonByteArray(): ByteArray {
+        val json = JSONObject()
+            .put("sessionID", sessionID)
+            .put("action", action.wire)
+            .put("presentationMode", presentationMode.wire)
+        json.putIfPresent("targetRuntime", targetRuntime)
+        json.putIfPresent("targetModelID", targetModelID)
+        return json.toString().toByteArray(Charsets.UTF_8)
+    }
+}
+
+enum class CLIAgentSessionActionStatus(val wire: String) {
+    NATIVE_RESUME("native_resume"),
+    HANDOFF("handoff"),
+    PACKAGE_ONLY("package_only"),
+    SPAWNED("spawned"),
+    ERROR("error");
+
+    companion object {
+        fun fromWire(value: String?): CLIAgentSessionActionStatus =
+            values().firstOrNull { it.wire == value } ?: ERROR
+    }
+}
+
+data class CLIAgentSessionActionResponse(
+    val status: CLIAgentSessionActionStatus,
+    val targetRuntime: String?,
+    val argv: List<String>,
+    val briefingPath: String?,
+    val workingDirectory: String?,
+    val pid: Int?,
+    val cleanupAfterSeconds: Int?,
+    val note: String?,
+    val errorCode: String?,
+    val errorRecovery: String?,
+) {
+    companion object {
+        fun decode(raw: String): CLIAgentSessionActionResponse {
+            val json = JSONObject(raw)
+            val argvJSON = json.optJSONArray("argv") ?: JSONArray()
+            val argv = buildList {
+                for (i in 0 until argvJSON.length()) {
+                    add(argvJSON.optString(i))
+                }
+            }
+            return CLIAgentSessionActionResponse(
+                status = CLIAgentSessionActionStatus.fromWire(json.optString("status")),
+                targetRuntime = json.optNullableString("targetRuntime"),
+                argv = argv,
+                briefingPath = json.optNullableString("briefingPath"),
+                workingDirectory = json.optNullableString("workingDirectory"),
+                pid = json.optNullableInt("pid"),
+                cleanupAfterSeconds = json.optNullableInt("cleanupAfterSeconds"),
+                note = json.optNullableString("note"),
+                errorCode = json.optNullableString("errorCode"),
+                errorRecovery = json.optNullableString("errorRecovery"),
+            )
+        }
+    }
+}
+
 data class CLIAgentRelayTranscriptPiece(
     val id: String,
     val kind: CLIAgentRelayTranscriptPieceKind,
@@ -201,6 +305,11 @@ private fun JSONObject.putIfPresent(key: String, value: String?) {
 private fun JSONObject.optNullableString(key: String): String? {
     if (!has(key) || isNull(key)) return null
     return optString(key).takeIf { it.isNotEmpty() }
+}
+
+private fun JSONObject.optNullableInt(key: String): Int? {
+    if (!has(key) || isNull(key)) return null
+    return optInt(key)
 }
 
 private fun JSONArray?.toTranscriptPieces(): List<CLIAgentRelayTranscriptPiece> {

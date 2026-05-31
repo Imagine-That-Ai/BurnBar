@@ -210,6 +210,7 @@ Run this drill quarterly and before public launch. Record the command output in
 4. List Cloud Run revisions for `openburnbar-quota-runner`.
 5. Confirm the Stripe, Apple, and Google Play rollback owner has console access.
 6. Run `scripts/capture-commercial-launch-evidence.mjs`.
+7. Run `bash scripts/ci/verify-ops-readiness.sh` and `node scripts/commercial-launch-gate.mjs` (expect `opsAlerts.ok`).
 
 The drill passes when an on-call operator can execute each command, identify the
 safe rollback target, and explain which customer-facing surfaces remain live.

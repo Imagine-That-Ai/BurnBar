@@ -289,6 +289,7 @@ public enum HermesRelayOperation: String, Codable, Sendable, Equatable, CaseIter
     case chatCompletions
     case cliAgentChat
     case cliAgentModelCatalog
+    case cliAgentSessionAction
     case models
     case sessions
     case sessionDetail
@@ -429,6 +430,79 @@ public struct CLIAgentRelayChatEvent: Codable, Sendable, Equatable {
 
     public var isError: Bool {
         kind == .failed
+    }
+}
+
+public enum CLIAgentSessionActionKind: String, Codable, Sendable, Equatable, Hashable, CaseIterable {
+    case resume
+    case handoff
+    case packageOnly = "package_only"
+}
+
+public struct CLIAgentSessionActionRequest: Codable, Sendable, Equatable, Hashable {
+    public var sessionID: String
+    public var action: CLIAgentSessionActionKind
+    public var targetRuntime: String?
+    public var targetModelID: String?
+    public var presentationMode: CLIAgentChatPresentationMode
+
+    public init(
+        sessionID: String,
+        action: CLIAgentSessionActionKind = .resume,
+        targetRuntime: String? = nil,
+        targetModelID: String? = nil,
+        presentationMode: CLIAgentChatPresentationMode = .macVisibleCLI
+    ) {
+        self.sessionID = sessionID
+        self.action = action
+        self.targetRuntime = targetRuntime
+        self.targetModelID = targetModelID
+        self.presentationMode = presentationMode
+    }
+}
+
+public enum CLIAgentSessionActionStatus: String, Codable, Sendable, Equatable, Hashable, CaseIterable {
+    case nativeResume = "native_resume"
+    case handoff
+    case packageOnly = "package_only"
+    case spawned
+    case error
+}
+
+public struct CLIAgentSessionActionResponse: Codable, Sendable, Equatable, Hashable {
+    public var status: CLIAgentSessionActionStatus
+    public var targetRuntime: String?
+    public var argv: [String]
+    public var briefingPath: String?
+    public var workingDirectory: String?
+    public var pid: Int?
+    public var cleanupAfterSeconds: Int?
+    public var note: String?
+    public var errorCode: String?
+    public var errorRecovery: String?
+
+    public init(
+        status: CLIAgentSessionActionStatus,
+        targetRuntime: String? = nil,
+        argv: [String] = [],
+        briefingPath: String? = nil,
+        workingDirectory: String? = nil,
+        pid: Int? = nil,
+        cleanupAfterSeconds: Int? = nil,
+        note: String? = nil,
+        errorCode: String? = nil,
+        errorRecovery: String? = nil
+    ) {
+        self.status = status
+        self.targetRuntime = targetRuntime
+        self.argv = argv
+        self.briefingPath = briefingPath
+        self.workingDirectory = workingDirectory
+        self.pid = pid
+        self.cleanupAfterSeconds = cleanupAfterSeconds
+        self.note = note
+        self.errorCode = errorCode
+        self.errorRecovery = errorRecovery
     }
 }
 

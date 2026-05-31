@@ -117,7 +117,7 @@ struct CloudUpsellBanner: View {
     ZStack {
         UnifiedDesignSystem.Colors.background.ignoresSafeArea()
         VStack {
-            CloudUpsellBanner(priceText: "$4.99", onTap: {}, onDismiss: {})
+            CloudUpsellBanner(priceText: "$7.99", onTap: {}, onDismiss: {})
                 .padding()
             Spacer()
         }

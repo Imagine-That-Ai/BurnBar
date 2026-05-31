@@ -141,14 +141,14 @@ treats Kimi as exact, which matches the running code.
 |---|---|
 | Free tier — full local product | `docs/PRIVACY.md:21,34`, `docs/HOSTED_QUOTA_SYNC.md:38-68` |
 | BurnBar Cloud — `$7.99/mo`, `$79/yr`, `com.openburnbar.pro.monthly`, `com.openburnbar.pro.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
-| BurnBar Cloud Pro — `$24.99/mo`, `$249/yr`, `com.openburnbar.proMax.monthly`, `com.openburnbar.proMax.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
+| BurnBar Cloud Pro — `$24.99/mo`, `$249/yr`, `com.openburnbar.proMax.v2.monthly`, `com.openburnbar.proMax.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
 | Legacy Hosted Quota Sync `$4.99` is grandfathered only, not a new purchase tier | `GTMMasterPlan.MD:91-99`, `functions/src/callables/shared.ts`, `functions/src/appstore/reconciler.ts` |
 | Cloud Pro allowance — 500 hosted actions and 50 relay-accounting GB monthly | `GTMMasterPlan.MD:38-79`, `functions/src/cloudProAllowanceCore.ts` |
 | Cloud Pro monthly caps — 2,000 hosted actions and 300 relay-accounting GB | `GTMMasterPlan.MD:38-79`, `functions/src/cloudProAllowanceCore.ts` |
 | Top-ups — `$4.99` for 100 hosted actions, `$4.99` for 50 relay-accounting GB | `GTMMasterPlan.MD:59-75`, `functions/src/cloudProAllowanceCore.ts`, `functions/src/callables/stripe.ts` |
 | Hosted quota refresh, conversation backup, cloud search, and synced memory are Group A / Cloud features | `GTMMasterPlan.MD:28-34`, `functions/src/callables/shared.ts` |
 | Floo and Agent Control are Group B / Cloud Pro features | `GTMMasterPlan.MD:28-34`, `functions/src/callables/shared.ts`, `functions/src/voipPush.ts` |
-| No free trial configured | `GTMMasterPlan.MD:82-86` |
+| BurnBar Cloud monthly and annual include a 14-day introductory free trial for new subscribers; Cloud Pro and top-ups do not | `GTMMasterPlan.MD:303-312`, `GTMMasterPlan.MD:331-339` |
 | Refund and cancellation handling follows Apple, Google Play, or Stripe platform state | `GTMMasterPlan.MD:584-593`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
 | Subscription state on launch | `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md:13-17` says `WAITING_FOR_REVIEW` as of 2026-05-09. **[verify]** Apple has approved before the site claims iOS availability |
 

@@ -343,6 +343,18 @@ data class AgentIdentity(
                     AgentCapabilities.FULL_CLI.union(AgentCapabilities.CODE_EXECUTION).union(AgentCapabilities.MCP_UI),
                     AgentDispatchTransport.MacRelay("antigravity")
                 )
+                AssistantRuntimeID.GROK -> Quad(
+                    "111827",
+                    "Grok CLI via your Mac.",
+                    AgentCapabilities.FULL_CLI.union(AgentCapabilities.CODE_EXECUTION).union(AgentCapabilities.MCP_UI),
+                    AgentDispatchTransport.MacRelay("grok")
+                )
+                AssistantRuntimeID.CURSOR_AGENT -> Quad(
+                    "0F172A",
+                    "Cursor Agent via your Mac.",
+                    AgentCapabilities.FULL_CLI.union(AgentCapabilities.CODE_EXECUTION).union(AgentCapabilities.MCP_UI),
+                    AgentDispatchTransport.MacRelay("cursorAgent")
+                )
             }
             return AgentIdentity(
                 id = builtInURI(runtime),

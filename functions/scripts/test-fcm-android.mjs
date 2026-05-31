@@ -166,10 +166,23 @@ const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voi
   const firestore = makeFakeFirestore({
     "users/u1/entitlements/burnbar_pro_max": {
       active: true,
+      productID: "com.openburnbar.proMax.v2.monthly",
       expireAt: future,
     },
   });
   assert.equal(await macHasActiveMediaEntitlement("u1", firestore), true);
+}
+
+{
+  const future = { toMillis: () => Date.now() + 86_400_000 };
+  const firestore = makeFakeFirestore({
+    "users/u1/entitlements/burnbar_pro_max": {
+      active: true,
+      productID: "com.openburnbar.pro.monthly",
+      expireAt: future,
+    },
+  });
+  assert.equal(await macHasActiveMediaEntitlement("u1", firestore), false);
 }
 
 {

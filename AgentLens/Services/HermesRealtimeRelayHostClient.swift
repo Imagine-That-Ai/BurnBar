@@ -28,6 +28,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     private var readyConnectionID: String?
     var cliChatDispatcher: CLIAgentRelayChatDispatcher?
     var cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
+    var cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?
 
     init(
         accountManager: AccountManager = .shared,
@@ -82,6 +83,9 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             var capabilities = ["chat_completions", "cli_agent_chat", "remote_relay", HermesRealtimeRelayProtocol.capability]
             if cliModelCatalogDispatcher != nil {
                 capabilities.append("cli_agent_model_catalog")
+            }
+            if cliSessionActionDispatcher != nil {
+                capabilities.append("cli_agent_session_action")
             }
             let frame = HermesRealtimeRelayFrame(
                 type: .hostRegister,
@@ -245,6 +249,17 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                 )
                 return
             }
+            if operation == .cliAgentSessionAction {
+                try await forwardCLIAgentSessionAction(
+                    payload: encryptedPayload,
+                    uid: uid,
+                    connectionID: connectionID,
+                    requestID: requestID,
+                    keyData: keyData,
+                    socket: socket
+                )
+                return
+            }
 
             let body = try await forwardUnary(operation: operation, payload: encryptedPayload)
             var sequence = 0
@@ -337,6 +352,36 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         try await sendComplete(uid: uid, connectionID: connectionID, requestID: requestID, chunkCount: 1, socket: socket)
     }
 
+    private func forwardCLIAgentSessionAction(
+        payload: HermesRelayEncryptedRequestPayload,
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        keyData: Data,
+        socket: URLSessionWebSocketTask
+    ) async throws {
+        guard let cliSessionActionDispatcher else {
+            throw HermesRealtimeRelayHostError.cliAgentSessionActionUnavailable
+        }
+        guard let body = payload.body?.data(using: .utf8) else {
+            throw HermesRealtimeRelayHostError.invalidPath
+        }
+        let request = try decoder.decode(CLIAgentSessionActionRequest.self, from: body)
+        let response = try await cliSessionActionDispatcher(request)
+        let data = try encoder.encode(response)
+        try await sendChunk(
+            data: String(data: data, encoding: .utf8) ?? "{}",
+            sequence: 0,
+            kind: .data,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            keyData: keyData,
+            socket: socket
+        )
+        try await sendComplete(uid: uid, connectionID: connectionID, requestID: requestID, chunkCount: 1, socket: socket)
+    }
+
     private func forwardStreamingChat(
         payload: HermesRelayEncryptedRequestPayload,
         uid: String,
@@ -402,7 +447,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         switch operation {
         case .chatCompletions:
             path = "v1/chat/completions"
-        case .cliAgentChat, .cliAgentModelCatalog:
+        case .cliAgentChat, .cliAgentModelCatalog, .cliAgentSessionAction:
             throw HermesRealtimeRelayHostError.invalidPath
         case .models:
             path = "v1/models"
@@ -447,7 +492,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         switch operation {
         case .chatCompletions, .models:
             return true
-        case .cliAgentChat, .cliAgentModelCatalog, .sessions, .profiles, .jobs, .sessionDetail:
+        case .cliAgentChat, .cliAgentModelCatalog, .cliAgentSessionAction, .sessions, .profiles, .jobs, .sessionDetail:
             return false
         }
     }
@@ -625,6 +670,7 @@ private enum HermesRealtimeRelayHostError: LocalizedError {
     case registrationTimedOut
     case cliAgentChatUnavailable
     case cliModelCatalogUnavailable
+    case cliAgentSessionActionUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -640,6 +686,8 @@ private enum HermesRealtimeRelayHostError: LocalizedError {
             return "Codex and Claude chat relay is not available on this Mac yet."
         case .cliModelCatalogUnavailable:
             return "CLI model catalog discovery is not available on this Mac yet."
+        case .cliAgentSessionActionUnavailable:
+            return "CLI session restart and handoff is not available on this Mac yet."
         }
     }
 }

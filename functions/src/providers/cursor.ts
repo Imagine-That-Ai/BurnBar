@@ -13,6 +13,7 @@
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "cursor" as const;
 const DASHBOARD_URL = "https://www.cursor.com/api/dashboard";
@@ -24,7 +25,7 @@ function redact(token: string): string {
 
 async function cursorFetch(url: string, cookie: string): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   try {
-    const res = await fetch(url, {
+    const res = await providerFetch(PROVIDER, "dashboard", url, {
       method: "GET",
       headers: {
         Cookie: cookie,

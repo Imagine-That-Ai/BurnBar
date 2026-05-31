@@ -95,6 +95,8 @@ test("resume CLI sends local opaque query hashes for fuzzy OBB Resume", async ()
   const originalFetch = globalThis.fetch;
   let capturedArgs: Record<string, unknown> | undefined;
   let capturedTool: string | undefined;
+  const previousAllowCustomEndpoint = process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT;
+  process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT = "true";
   globalThis.fetch = (async (_url, init) => {
     const body = JSON.parse(String(init?.body)) as {
       params?: { name?: string; arguments?: Record<string, unknown> };
@@ -139,12 +141,18 @@ test("resume CLI sends local opaque query hashes for fuzzy OBB Resume", async ()
     assert.ok((capturedArgs.tokenHashes as unknown[]).length > 0);
   } finally {
     globalThis.fetch = originalFetch;
+    if (previousAllowCustomEndpoint === undefined) {
+      delete process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT;
+    } else {
+      process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT = previousAllowCustomEndpoint;
+    }
   }
 });
 
 test("MCP endpoint validation rejects token exfiltration targets", () => {
   assert.equal(validatedMcpEndpoint("https://mcp.burnbar.ai/mcp").href, "https://mcp.burnbar.ai/mcp");
   assert.equal(validatedMcpEndpoint("http://127.0.0.1:8080/mcp").href, "http://127.0.0.1:8080/mcp");
+  assert.throws(() => validatedMcpEndpoint("https://example.com/mcp"), /explicitly allowed custom HTTPS/);
   assert.throws(() => validatedMcpEndpoint("http://example.com/mcp"), /HTTPS/);
   assert.throws(() => validatedMcpEndpoint("https://token@example.com/mcp"), /credentials/);
 });

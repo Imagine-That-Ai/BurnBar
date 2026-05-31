@@ -36,7 +36,7 @@ class ComputerUseSecurityCallableClient(
         publicKeyFingerprint?.takeIf { it.isNotBlank() }?.let { payload["publicKeyFingerprint"] = it }
         keyVersion?.let { payload["keyVersion"] = it }
         val result = functions.getHttpsCallable("registerEscrowDevice").call(payload).await()
-        requireOk(result.data, "Escrow device registration failed.")
+        requireOk(result.getData(), "Escrow device registration failed.")
     }
 
     suspend fun approveEscrowDeviceTrust(deviceId: String) {
@@ -44,7 +44,7 @@ class ComputerUseSecurityCallableClient(
         val result = functions.getHttpsCallable("approveEscrowDeviceTrust")
             .call(mapOf("deviceId" to deviceId))
             .await()
-        requireOk(result.data, "Escrow device trust approval failed.")
+        requireOk(result.getData(), "Escrow device trust approval failed.")
     }
 
     suspend fun revokeEscrowDeviceTrust(deviceId: String) {
@@ -52,7 +52,7 @@ class ComputerUseSecurityCallableClient(
         val result = functions.getHttpsCallable("revokeEscrowDeviceTrust")
             .call(mapOf("deviceId" to deviceId))
             .await()
-        requireOk(result.data, "Escrow device trust revocation failed.")
+        requireOk(result.getData(), "Escrow device trust revocation failed.")
     }
 
     private suspend fun refreshAuthClaimsAfterBind() {

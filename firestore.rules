@@ -219,7 +219,7 @@ service cloud.firestore {
         && entitlement.productID in [
           "com.openburnbar.hostedMediaSync.monthly",
           "com.openburnbar.proMax.bundle.monthly",
-          "com.openburnbar.proMax.monthly",
+          "com.openburnbar.proMax.v2.monthly",
           "com.openburnbar.proMax.annual"
         ]
         && entitlement.expireAt is timestamp
@@ -255,7 +255,7 @@ service cloud.firestore {
 	          "com.openburnbar.computerUse.monthly",
 	          "com.openburnbar.hostedComputerUseSync.monthly",
 	          "com.openburnbar.proMax.bundle.monthly",
-	          "com.openburnbar.proMax.monthly",
+	          "com.openburnbar.proMax.v2.monthly",
 	          "com.openburnbar.proMax.annual"
 	        ]
         && entitlement.expireAt is timestamp
@@ -809,7 +809,7 @@ service cloud.firestore {
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
-        && request.resource.data.agent in ["codex", "claude", "openclaw", "antigravity"]
+        && request.resource.data.agent in ["codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && (!("sourceKind" in request.resource.data) || request.resource.data.sourceKind in ["live_chat", "archived_log"])
         && request.resource.data.title is string
         && request.resource.data.title.size() <= 512
@@ -908,7 +908,7 @@ service cloud.firestore {
         && request.resource.data.prompt is string
         && request.resource.data.prompt.size() <= 20000
         && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom", "chat"]
-        && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity"]
+        && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && (!("requestedModelID" in request.resource.data) || (request.resource.data.requestedModelID is string && request.resource.data.requestedModelID.size() <= 240))
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
         && (!("sourceSkillID" in request.resource.data) || (request.resource.data.sourceSkillID is string && request.resource.data.sourceSkillID.size() <= 80))
@@ -923,7 +923,7 @@ service cloud.firestore {
         && (!("commandsAllowed" in request.resource.data) || request.resource.data.commandsAllowed is bool)
         && (!("fileEditsAllowed" in request.resource.data) || request.resource.data.fileEditsAllowed is bool)
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity"])
+        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
         && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
         && (!("selectedModelID" in request.resource.data) || (request.resource.data.selectedModelID is string && request.resource.data.selectedModelID.size() <= 240))
         && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
@@ -1094,7 +1094,7 @@ service cloud.firestore {
           && (!("skillStepID" in request.resource.data) || (request.resource.data.skillStepID is string && request.resource.data.skillStepID.size() <= 80))
           && validCliAgentMissionEventSource(userId, requestId, eventId)
           && request.resource.data.isError is bool
-          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity"])
+          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
           && (!("toolName" in request.resource.data) || (request.resource.data.toolName is string && request.resource.data.toolName.size() <= 160))
           && (!("artifactPath" in request.resource.data) || (request.resource.data.artifactPath is string && request.resource.data.artifactPath.size() <= 512))
           && (!("changedFilePath" in request.resource.data) || (request.resource.data.changedFilePath is string && request.resource.data.changedFilePath.size() <= 512));
@@ -1487,7 +1487,7 @@ service cloud.firestore {
         && request.resource.data.threadId is string
         && request.resource.data.threadId.size() <= 512
         && request.resource.data.threadId == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.threadId
-        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge"]
+        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && request.resource.data.runtime == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.runtime
         && request.resource.data.sourceKind in ["cli_session", "mobile_assistant_chat"]
         && request.resource.data.sourceKind == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.sourceKind
@@ -1820,7 +1820,7 @@ service cloud.firestore {
           && receipt.receiptId is string
           && receipt.receiptId.size() <= 160
           && receipt.requestId == requestId
-          && receipt.runtime in ["hermes", "pi", "codex", "claude", "openclaw"]
+          && receipt.runtime in ["hermes", "pi", "codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
           && receipt.threadId is string
           && receipt.threadId.size() <= 240
           && receipt.status in ["queued", "applied", "revoked", "denied", "expired"]
@@ -1868,7 +1868,7 @@ service cloud.firestore {
           "receipt"
         ])
         && request.resource.data.requestId == requestId
-        && request.resource.data.runtime in ["hermes", "pi", "codex", "claude", "openclaw"]
+        && request.resource.data.runtime in ["hermes", "pi", "codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && request.resource.data.threadId is string
         && request.resource.data.threadId.size() <= 240
         && request.resource.data.preset in ["off", "low", "workspace", "desktop", "all", "yolo"]

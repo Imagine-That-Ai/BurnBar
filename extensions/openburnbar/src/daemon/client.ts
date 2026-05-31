@@ -360,9 +360,15 @@ export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
     method: BurnBarRPCMethod,
     params?: unknown
   ): BurnBarRPCRequestEnvelope | BurnBarRPCRequestEnvelopeWithParams<unknown> {
+    // Generate a per-request trace ID for distributed tracing.
+    // The daemon includes this in its own logs under the same trace ID,
+    // allowing correlation across the extension → daemon → cloud boundary.
+    const traceId = `ext-${randomUUID()}`;
+
     const base = {
       id: randomUUID(),
       method,
+      traceId,
       ...(this.authToken ? { authToken: this.authToken } : {})
     };
 

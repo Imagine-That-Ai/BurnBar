@@ -382,7 +382,7 @@ async function main() {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       const dbAdmin = ctx.firestore();
       // remove the per-feature entitlement and grant only the umbrella.
-      await setDoc(doc(dbAdmin, `users/${bobUid}/entitlements/burnbar_pro_max`), entitlementGranted("com.openburnbar.proMax.monthly"));
+      await setDoc(doc(dbAdmin, `users/${bobUid}/entitlements/burnbar_pro_max`), entitlementGranted("com.openburnbar.proMax.v2.monthly"));
     });
     const bobDB = testEnv.authenticatedContext(bobUid).firestore();
     await assertSucceeds(

@@ -5,6 +5,15 @@ import { join } from "node:path";
 
 const SERVICE = "com.openburnbar.mcp-remote";
 const ACCOUNT = "default";
+const MAX_TOKEN_LENGTH = 8192;
+
+function validatedTokenForStorage(token: string): string {
+  const trimmed = token.trim();
+  if (!trimmed || trimmed.length > MAX_TOKEN_LENGTH || /[\r\n\0]/u.test(trimmed)) {
+    throw new Error("OpenBurnBar MCP access token is empty, too large, or contains control characters.");
+  }
+  return trimmed;
+}
 
 function fallbackPath(): string {
   const dir = join(homedir(), ".openburnbar");
@@ -30,15 +39,16 @@ export function readAccessToken(): string | undefined {
 }
 
 export function writeAccessToken(token: string): void {
+  const safeToken = validatedTokenForStorage(token);
   if (process.platform === "darwin") {
     try {
-      execFileSync("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT, "-w", token], { stdio: "ignore" });
+      execFileSync("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT, "-w", safeToken], { stdio: "ignore" });
       return;
     } catch {
       // Use the fallback path only when Keychain is unavailable.
     }
   }
   const path = fallbackPath();
-  writeFileSync(path, `${token}\n`, { mode: 0o600 });
+  writeFileSync(path, `${safeToken}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
 }

@@ -27,6 +27,8 @@
     "upload-review-attachment": "node asc-api.js upload-review-attachment",
     "prepare-review-metadata": "node asc-api.js prepare-review-metadata",
     "fix-review-rejection": "node asc-api.js fix-review-rejection",
+    "prepare-commercial-iaps": "node prepare-commercial-iaps.js",
+    "test:commercial-iaps": "node test-prepare-commercial-iaps.mjs",
     "seed-review-account": "node seed-review-account.js"
   },
   "dependencies": {

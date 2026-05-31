@@ -23,6 +23,7 @@ object HermesRelayOperationName {
     const val CHAT_COMPLETIONS = "chatCompletions"
     const val CLI_AGENT_CHAT = "cliAgentChat"
     const val CLI_AGENT_MODEL_CATALOG = "cliAgentModelCatalog"
+    const val CLI_AGENT_SESSION_ACTION = "cliAgentSessionAction"
     const val MODELS = "models"
     const val SESSIONS = "sessions"
     const val SESSION_DETAIL = "sessionDetail"

@@ -12,8 +12,8 @@ import { join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { BILLING_ALERT_POLICIES } from "../functions/scripts/billing-alert-policy-definitions.mjs";
 import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
+import { checkBillingAlerts, checkOpsAlerts } from "./lib/ops-alerts-gate.mjs";
 
 export { evaluateFirebaseAppCheckEnforcement };
 
@@ -27,8 +27,8 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   cloudMonthly: "com.openburnbar.pro.monthly",
   cloudAnnual: "com.openburnbar.pro.annual",
-  cloudProMonthly: "com.openburnbar.proMax.monthly",
-  appleCloudProMonthly: "com.openburnbar.proMax.bundle.monthly",
+  cloudProMonthly: "com.openburnbar.proMax.v2.monthly",
+  legacyAppleCloudProBundleMonthly: "com.openburnbar.proMax.bundle.monthly",
   cloudProAnnual: "com.openburnbar.proMax.annual",
   agentControlActions100: "com.openburnbar.agentControl.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
@@ -36,7 +36,7 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
 const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.cloudMonthly,
   COMMERCIAL_PRODUCTS.cloudAnnual,
-  COMMERCIAL_PRODUCTS.appleCloudProMonthly,
+  COMMERCIAL_PRODUCTS.cloudProMonthly,
   COMMERCIAL_PRODUCTS.cloudProAnnual,
 ];
 const REQUIRED_TOP_UP_PRODUCT_IDS = [
@@ -47,6 +47,13 @@ const REQUIRED_COMMERCIAL_PRODUCT_IDS = [
   ...REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS,
   ...REQUIRED_TOP_UP_PRODUCT_IDS,
 ];
+const APP_STORE_PRODUCT_READY_STATES = new Set([
+  "READY_TO_SUBMIT",
+  "WAITING_FOR_REVIEW",
+  "IN_REVIEW",
+  "APPROVED",
+  "READY_FOR_SALE",
+]);
 const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
 const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
   process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME || "hermes-realtime-relay-redis-prod-secure";
@@ -127,13 +134,13 @@ const REQUIRED_HOSTED_QUOTA_ENV = {
   HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT: "300",
   HOSTED_QUOTA_PRODUCT_ID: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
-  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.appleCloudProMonthly,
+  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
 };
 const REQUIRED_COMMERCIAL_ENV_VALUES = {
   STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
   BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
-  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.appleCloudProMonthly,
+  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
   BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
   AGENT_CONTROL_100_ACTIONS_PRODUCT_ID: COMMERCIAL_PRODUCTS.agentControlActions100,
   FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
@@ -215,6 +222,36 @@ function appStoreProductIDsFromStatus(status) {
   for (const item of status.products || []) push(item?.productId || item?.productID);
   for (const item of status.commercialProducts || []) push(item?.productId || item?.productID);
   return ids;
+}
+
+export function evaluateAppStoreProductReadiness(status, requiredProductIDs) {
+  const products = [];
+  if (status.subscription) products.push(status.subscription);
+  for (const item of status.subscriptions || []) products.push(item);
+  for (const item of status.inAppPurchases || []) products.push(item);
+  for (const item of status.products || []) products.push(item);
+  for (const item of status.commercialProducts || []) products.push(item);
+  const byProductID = new Map();
+  for (const product of products) {
+    const productId = product?.productId || product?.productID;
+    if (typeof productId === "string" && productId.trim()) byProductID.set(productId.trim(), product);
+  }
+  const checks = requiredProductIDs.map((productId) => {
+    const product = byProductID.get(productId);
+    const state = product?.state || null;
+    return {
+      productId,
+      ok: APP_STORE_PRODUCT_READY_STATES.has(state),
+      state,
+      id: product?.id || null,
+      name: product?.name || null,
+    };
+  });
+  return {
+    ok: checks.every((check) => check.ok),
+    allowedStates: [...APP_STORE_PRODUCT_READY_STATES],
+    checks,
+  };
 }
 
 export function evaluateEnvRequirements(env, requiredValues, requiredPresent = []) {
@@ -329,12 +366,17 @@ function checkAppStore() {
     observedProductIDs,
     REQUIRED_COMMERCIAL_PRODUCT_IDS
   );
+  const productReadiness = evaluateAppStoreProductReadiness(
+    status,
+    REQUIRED_COMMERCIAL_PRODUCT_IDS
+  );
   const legacyGrandfatherPresent = observedProductIDs.includes(LEGACY_HOSTED_QUOTA_PRODUCT_ID);
   return {
     ok:
       manualRelease &&
       buildReady &&
       productCoverage.ok &&
+      productReadiness.ok &&
       legacyGrandfatherPresent &&
       ["WAITING_FOR_REVIEW", REQUIRED_IOS_STATE, LIVE_IOS_STATE].includes(state) &&
       ["WAITING_FOR_REVIEW", "APPROVED", "READY_FOR_SALE"].includes(subscriptionState),
@@ -343,6 +385,7 @@ function checkAppStore() {
     manualRelease,
     buildReady,
     productCoverage,
+    productReadiness,
     legacyGrandfatherPresent,
     versionString: status.iosVersion?.versionString,
     versionId: status.iosVersion?.id,
@@ -423,12 +466,21 @@ function checkFirebaseAppCheckEnforcement() {
   const serviceName = `projects/${projectNumber.stdout.trim()}/services/firestore.googleapis.com`;
   const result = run("curl", [
     "-fsS",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "45",
+    "--retry",
+    "2",
+    "--retry-delay",
+    "2",
+    "--retry-all-errors",
     "-H",
     `Authorization: Bearer ${token.stdout.trim()}`,
     "-H",
     `x-goog-user-project: ${PROJECT}`,
     `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
-  ]);
+  ], { timeout: 180_000 });
   if (!result.ok) {
     return {
       ok: false,
@@ -533,6 +585,27 @@ function checkLatestMergedPrGate() {
   if (!pulls.ok) return { ok: false, error: pulls.stderr || pulls.stdout };
   const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
   if (!merged?.head?.sha) return { ok: false, error: "no merged PR found" };
+
+  const originMain = run("git", ["rev-parse", "origin/main"]);
+  if (originMain.ok) {
+    const mainSha = originMain.stdout.trim();
+    if (mainSha && merged.head.sha !== mainSha) {
+      const ancestor = run("git", ["merge-base", "--is-ancestor", merged.head.sha, mainSha]);
+      if (ancestor.ok) {
+        return {
+          ok: true,
+          pr: merged.number,
+          headSha: merged.head.sha,
+          supersededByMain: mainSha,
+          skipped: true,
+          reason:
+            "Latest merged PR head is already contained in a newer origin/main commit; mainRequiredGate is authoritative.",
+          openburnbarPr: null,
+          functionalQa: null,
+        };
+      }
+    }
+  }
 
   const runs = run("gh", [
     "api",
@@ -903,66 +976,6 @@ function checkRemoteConfigCaps() {
   }
 }
 
-function metricTypesForPolicy(policy) {
-  const filters = (policy.conditions || [])
-    .map((condition) => condition.conditionThreshold?.filter || "")
-    .filter(Boolean);
-  const metricTypes = new Set();
-  for (const filter of filters) {
-    for (const match of filter.matchAll(/metric\.type="([^"]+)"/g)) {
-      metricTypes.add(match[1]);
-    }
-  }
-  return [...metricTypes].sort();
-}
-
-function checkBillingAlerts() {
-  const result = run("gcloud", [
-    "monitoring",
-    "policies",
-    "list",
-    "--project",
-    PROJECT,
-    "--format=json",
-  ]);
-  if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
-  const policies = JSON.parse(result.stdout || "[]");
-  const byDisplayName = new Map();
-  for (const policy of policies) {
-    const entries = byDisplayName.get(policy.displayName) || [];
-    entries.push(policy);
-    byDisplayName.set(policy.displayName, entries);
-  }
-
-  const required = BILLING_ALERT_POLICIES.map((expected) => {
-    const matches = byDisplayName.get(expected.displayName) || [];
-    const policy = matches[0];
-    const metricTypes = policy ? metricTypesForPolicy(policy) : [];
-    const missingMetricTypes = expected.requiredMetricTypes.filter(
-      (metricType) => !metricTypes.includes(metricType)
-    );
-    return {
-      displayName: expected.displayName,
-      present: matches.length === 1,
-      duplicateCount: Math.max(0, matches.length - 1),
-      enabled: policy?.enabled === true,
-      notificationChannels: policy?.notificationChannels || [],
-      metricTypes,
-      missingMetricTypes,
-      ok:
-        matches.length === 1 &&
-        policy?.enabled === true &&
-        (policy.notificationChannels || []).length > 0 &&
-        missingMetricTypes.length === 0,
-    };
-  });
-
-  return {
-    ok: required.every((policy) => policy.ok),
-    required,
-  };
-}
-
 function checkFirebaseFunctionsInventory() {
   const result = run("firebase", [
     "functions:list",
@@ -1029,6 +1042,7 @@ async function main() {
     hostedQuotaRuntime: checkHostedQuotaRuntime(),
     commercialBillingRuntime: checkCommercialBillingRuntime(),
     remoteConfigCaps: checkRemoteConfigCaps(),
+    opsAlerts: checkOpsAlerts(),
     billingAlerts: checkBillingAlerts(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
   };

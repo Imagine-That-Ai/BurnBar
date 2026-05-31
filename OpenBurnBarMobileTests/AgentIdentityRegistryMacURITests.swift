@@ -386,7 +386,7 @@ final class MediaControlStreamPresenceTests: XCTestCase {
 
     func testEnsureResponsiveRestartsHalfStaleStreamBeforeMirrorTraffic() async throws {
         let firstStream = MediaControlFakeStream()
-        let secondStream = MediaControlFakeStream()
+        let secondStream = MediaControlFakeStream(autoReplyToPresenceHeartbeat: true)
         let receiver = makeReceiver()
         var dialCount = 0
         let coordinator = MediaControlStreamCoordinator(
@@ -413,9 +413,8 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         }
 
         try await waitUntil { dialCount >= 2 }
-        try await waitUntilHeartbeatCount(secondStream, count: 1)
-        await secondStream.pushInbound(macPresenceFrame(uid: "user-1", connectionID: "conn-1"))
         try await ensureTask.value
+        try await waitUntilHeartbeatCount(secondStream, count: 1)
 
         let firstCloseCount = await firstStream.closeCount
         XCTAssertEqual(firstCloseCount, 1, "the half-stale stream must be closed before redial")
@@ -945,9 +944,11 @@ private actor MediaControlFakeStream: IrohRelayStream {
     private var isClosed = false
     private var closeCallCount = 0
     private let sendHangAfterFrameCount: Int?
+    private let autoReplyToPresenceHeartbeat: Bool
 
-    init(sendHangAfterFrameCount: Int? = nil) {
+    init(sendHangAfterFrameCount: Int? = nil, autoReplyToPresenceHeartbeat: Bool = false) {
         self.sendHangAfterFrameCount = sendHangAfterFrameCount
+        self.autoReplyToPresenceHeartbeat = autoReplyToPresenceHeartbeat
     }
 
     var sentFrames: [HermesRealtimeRelayFrame] { outboundFrames }
@@ -959,6 +960,25 @@ private actor MediaControlFakeStream: IrohRelayStream {
             try await Task.sleep(nanoseconds: 60_000_000_000)
         }
         outboundFrames.append(frame)
+        if autoReplyToPresenceHeartbeat, frame.type == .mediaPresenceHeartbeat {
+            pushInbound(
+                HermesRealtimeRelayFrame(
+                    type: .mediaPresenceHeartbeat,
+                    uid: frame.uid,
+                    connectionId: frame.connectionId,
+                    media: HermesRealtimeRelayMediaPayload(
+                        presence: HermesRealtimeRelayPresenceHeartbeat(
+                            sentAt: Date(timeIntervalSince1970: 1_700_000_000),
+                            deviceDisplayName: "Alberto's Mac",
+                            capabilities: [
+                                MercuryPeer.Feature.mirrorHost.rawValue,
+                                MercuryPeer.Feature.fileReceive.rawValue
+                            ]
+                        )
+                    )
+                )
+            )
+        }
     }
 
     func receive() async throws -> HermesRealtimeRelayFrame? {

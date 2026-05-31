@@ -29,6 +29,15 @@ Cross-surface logging uses a shared correlation shape:
 - Crashlytics **off by default** (`burnbar.diagnostics` prefs `crashlytics_enabled`).
 - Aligns with [`docs/PRIVACY.md`](PRIVACY.md).
 
+## Ops verification (CI)
+
+```bash
+bash scripts/ci/verify-ops-readiness.sh   # callable logging + resilience + manifests
+bash scripts/ci/post-deploy-health-gate.sh  # after production Functions deploy
+```
+
+See [runbooks/oncall.md](runbooks/oncall.md) and [ops/EVENT_CATALOG.md](ops/EVENT_CATALOG.md).
+
 ## Incident playbook
 
 1. Grab `trace_id` from macOS Console or Functions log JSON.

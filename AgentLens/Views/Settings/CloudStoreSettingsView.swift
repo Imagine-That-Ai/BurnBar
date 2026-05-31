@@ -846,7 +846,7 @@ struct CloudStoreSettingsView: View {
                     .font(.system(size: 44, weight: .bold, design: .rounded))
                     .foregroundStyle(DesignSystem.Colors.primaryGradient)
 
-                Text("Hosted Codex refresh. Chat that follows you. Mac AI anywhere. From $4.99/mo.")
+                Text("Hosted quota refresh. Chat that follows you. Mac AI anywhere. From $7.99/mo.")
                     .font(.system(size: 13))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -882,7 +882,7 @@ struct CloudStoreSettingsView: View {
                 }
 
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("$4.99")
+                    Text("$7.99")
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)
                     Text("/ month")
@@ -954,7 +954,7 @@ struct CloudStoreSettingsView: View {
                 .font(.system(size: 10, weight: .heavy))
                 .tracking(1.8)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text("OpenBurnBar Cloud Monthly is an auto-renewable 1 month subscription. Each billing period includes Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay. Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
+            Text("BurnBar Cloud Monthly is an auto-renewable 1 month subscription. Each billing period includes hosted quota refresh, conversation backup and resume, encrypted session history, cloud search, synced agent memory, and remote relay. Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1287,14 +1287,14 @@ private struct MacCloudStoreLegalLinks: View {
 
 @MainActor
 private final class MacHostedQuotaPurchaseStore: ObservableObject {
-    static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
+    static let productID = "com.openburnbar.pro.monthly"
     static let entitlementProductIDs: Set<String> = [
         "com.openburnbar.hostedQuotaSync.cloud.monthly",
         "com.openburnbar.hostedQuotaSync.monthly",
         "com.openburnbar.computerUse.monthly",
         "com.openburnbar.proMax.bundle.monthly",
         "com.openburnbar.hostedComputerUseSync.monthly",
-        "com.openburnbar.proMax.monthly",
+        "com.openburnbar.proMax.v2.monthly",
         "com.openburnbar.pro.monthly"
     ]
 
