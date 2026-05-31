@@ -32,21 +32,16 @@ if (dsn) {
     tracesSampleRate: environment === "production" ? 0.1 : 1.0,
 
     // Attach breadcrumbs from console output (scrubbed by our logging.ts layer).
-    integrations: [
-      Sentry.extraErrorDataIntegration({ depth: 5 }),
-      Sentry.requestDataIntegration(),
-    ],
+    integrations: [Sentry.extraErrorDataIntegration({ depth: 5 }), Sentry.requestDataIntegration()],
 
     // Filter events that are noise rather than actionable bugs.
     beforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
       // Drop rate-limit errors (429) — these are expected under load.
-      const statusCode =
-        typeof event.extra?.statusCode === "number" ? event.extra.statusCode : undefined;
+      const statusCode = typeof event.extra?.statusCode === "number" ? event.extra.statusCode : undefined;
       if (
         statusCode === 429 ||
         (typeof event.message === "string" &&
-          (event.message.includes("rate limit") ||
-            event.message.includes("RESOURCE_EXHAUSTED")))
+          (event.message.includes("rate limit") || event.message.includes("RESOURCE_EXHAUSTED")))
       ) {
         return null;
       }
@@ -56,10 +51,7 @@ if (dsn) {
     // Breadcrumb scrubbing: remove auth tokens from URL breadcrumbs.
     beforeBreadcrumb(breadcrumb: Breadcrumb) {
       if (breadcrumb.data?.url && typeof breadcrumb.data.url === "string") {
-        breadcrumb.data.url = breadcrumb.data.url.replace(
-          /([?&](?:token|key|secret))=[^&]+/gi,
-          "$1=[REDACTED]"
-        );
+        breadcrumb.data.url = breadcrumb.data.url.replace(/([?&](?:token|key|secret))=[^&]+/gi, "$1=[REDACTED]");
       }
       return breadcrumb;
     },
@@ -74,10 +66,7 @@ if (dsn) {
  * Captures an exception in Sentry with additional context.
  * Safe to call even if Sentry is not initialized.
  */
-export function captureException(
-  err: unknown,
-  context?: Record<string, unknown>
-): void {
+export function captureException(err: unknown, context?: Record<string, unknown>): void {
   if (!dsn) return;
   Sentry.withScope((scope) => {
     if (context) {
@@ -107,10 +96,7 @@ export function setSentryUser(uid: string): void {
  * Useful for Cloud Function handlers where errors should be captured
  * even if the calling code swallows them.
  */
-export async function withSentry<T>(
-  fn: () => Promise<T>,
-  context?: Record<string, unknown>
-): Promise<T> {
+export async function withSentry<T>(fn: () => Promise<T>, context?: Record<string, unknown>): Promise<T> {
   try {
     return await fn();
   } catch (err) {

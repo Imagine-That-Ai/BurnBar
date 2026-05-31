@@ -149,12 +149,7 @@ const firestoreBulkhead = bulkhead(50, 25);
 const firestoreTimeout = timeout(10_000, TimeoutStrategy.Cooperative);
 
 /** Firestore resilience policy. */
-export const firestorePolicy: IPolicy = wrap(
-  firestoreTimeout,
-  firestoreBulkhead,
-  firestoreRetry,
-  firestoreBreaker
-);
+export const firestorePolicy: IPolicy = wrap(firestoreTimeout, firestoreBulkhead, firestoreRetry, firestoreBreaker);
 
 // ── Quota refresh circuit breaker ─────────────────────────────────────────────
 
@@ -183,11 +178,7 @@ export const quotaPolicy: IPolicy = wrap(quotaTimeout, quotaRetry, quotaBreaker)
  * Wraps any async operation with the given policy and a descriptive label.
  * Logs failures with context for easier debugging.
  */
-export async function withResilience<T>(
-  policy: IPolicy,
-  label: string,
-  fn: () => Promise<T>
-): Promise<T> {
+export async function withResilience<T>(policy: IPolicy, label: string, fn: () => Promise<T>): Promise<T> {
   try {
     return await policy.execute(fn);
   } catch (err) {
