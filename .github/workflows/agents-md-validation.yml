@@ -84,37 +84,34 @@ jobs:
         run: |
           set -euo pipefail
           echo "==> Checking internal file links in AGENTS.md..."
-          ERRORS=0
+          python3 - <<'PY'
+          import pathlib
+          import re
 
-          # Extract markdown links that reference local files (not URLs)
-          while IFS= read -r line; do
-            # Match [text](path) where path doesn't start with http
-            while [[ "$line" =~ \[([^\]]+)\]\(([^)http][^)]*)\) ]]; do
-              path="${BASH_REMATCH[2]}"
-              # Remove anchor fragments
-              path="${path%%#*}"
-              line="${line#*${BASH_REMATCH[0]}}"
-              if [[ -n "$path" && ! -e "$path" ]]; then
-                echo "FAIL: Broken link target: '$path'" >&2
-                ERRORS=$((ERRORS + 1))
-              elif [[ -n "$path" ]]; then
-                echo "OK: $path"
-              fi
-            done
-          done < AGENTS.md
+          errors = 0
+          text = pathlib.Path("AGENTS.md").read_text(encoding="utf-8")
+          for _label, raw_path in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text):
+              if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw_path):
+                  continue
+              path = raw_path.split("#", 1)[0]
+              if not path:
+                  continue
+              if pathlib.Path(path).exists():
+                  print(f"OK: {path}")
+              else:
+                  print(f"FAIL: Broken link target: '{path}'")
+                  errors += 1
 
-          if [[ $ERRORS -gt 0 ]]; then
-            echo "::warning::$ERRORS broken internal link(s) found in AGENTS.md."
-            # Warn, don't fail, because some links may be intentionally forward-referencing
-          fi
+          if errors:
+              print(f"::warning::{errors} broken internal link(s) found in AGENTS.md.")
+          PY
 
       - name: Check AGENTS.md freshness relative to key scripts
         run: |
           set -euo pipefail
           echo "==> Checking AGENTS.md was updated alongside key scripts..."
 
-          # Get the last-modified commit for AGENTS.md
-          AGENTS_COMMIT=$(git log -1 --format="%H" -- AGENTS.md)
+          # Get the last-modified timestamp for AGENTS.md
           AGENTS_DATE=$(git log -1 --format="%ct" -- AGENTS.md)
 
           # Check if key scripts are newer than AGENTS.md by more than 30 days
