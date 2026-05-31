@@ -83,7 +83,7 @@ async function seedBurnBarProEntitlement(uid) {
 
 async function seedBurnBarProMaxEntitlement(
   uid,
-  productID = "com.openburnbar.proMax.monthly"
+  productID = "com.openburnbar.proMax.v2.monthly"
 ) {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), `users/${uid}/entitlements/burnbar_pro_max`), {
@@ -314,7 +314,7 @@ test("current and legacy computer use subscription product ids satisfy the clien
   const cases = [
     ["computer-use-current", "hosted_computer_use_sync", "com.openburnbar.computerUse.monthly"],
     ["computer-use-legacy", "hosted_computer_use_sync", "com.openburnbar.hostedComputerUseSync.monthly"],
-    ["pro-max-monthly", "burnbar_pro_max", "com.openburnbar.proMax.monthly"],
+    ["pro-max-monthly", "burnbar_pro_max", "com.openburnbar.proMax.v2.monthly"],
     ["pro-max-annual", "burnbar_pro_max", "com.openburnbar.proMax.annual"],
     ["pro-max-legacy", "burnbar_pro_max", "com.openburnbar.proMax.bundle.monthly"],
   ];

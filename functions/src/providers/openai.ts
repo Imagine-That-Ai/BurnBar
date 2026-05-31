@@ -8,6 +8,7 @@
  */
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "openai" as const;
 const MODELS_URL = "https://api.openai.com/v1/models";
@@ -23,7 +24,7 @@ async function openAIFetch(
   token: string,
 ): Promise<{ ok: boolean; data?: unknown; status?: number; error?: string }> {
   try {
-    const res = await fetch(url, {
+    const res = await providerFetch(PROVIDER, "api", url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

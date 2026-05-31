@@ -23,6 +23,7 @@ import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 const CLOUD_PRO_ENTITLEMENT_DOC_ID = "burnbar_pro_max";
 const CLOUD_PRO_PRODUCT_IDS = new Set([
+  "com.openburnbar.proMax.v2.monthly",
   "com.openburnbar.proMax.monthly",
   "com.openburnbar.proMax.annual",
   "com.openburnbar.proMax.bundle.monthly",

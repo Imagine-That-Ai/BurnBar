@@ -151,6 +151,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
     case forgeAgent
     case antigravityProfile
     case cursorAgentProfile
+    case codexModelCatalog
+    case grokModelCatalog
 
     public var displayLabel: String {
         switch self {
@@ -170,6 +172,10 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Antigravity CLI profile"
         case .cursorAgentProfile:
             return "Cursor Agent CLI profile"
+        case .codexModelCatalog:
+            return "Codex live catalog"
+        case .grokModelCatalog:
+            return "Grok live catalog"
         }
     }
 
@@ -191,6 +197,10 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Uses this Mac's Google Antigravity CLI auth and quota."
         case .cursorAgentProfile:
             return "Uses this Mac's Cursor Agent CLI auth and quota."
+        case .codexModelCatalog:
+            return "Discovered from this Mac's Codex CLI model catalog."
+        case .grokModelCatalog:
+            return "Discovered from this Mac's Grok Build CLI model catalog."
         }
     }
 
@@ -281,18 +291,7 @@ public enum CLIRuntimeModelCatalog {
                 "Anthropic via Claude Code CLI"
             )
         case .antigravity:
-            return option(
-                "",
-                OpenBurnBarModelDisplayName.compose(
-                    modelName: "Antigravity default",
-                    providerName: "Google",
-                    providerID: "google",
-                    reasoningLevel: "CLI default"
-                ),
-                "google",
-                "Google via Antigravity CLI",
-                source: .antigravityProfile
-            )
+            return antigravityProfileOption(modelName: nil)
         case .grok:
             return option(
                 "grok-build-0.1",
@@ -418,6 +417,103 @@ public enum CLIRuntimeModelCatalog {
         return rows
     }
 
+    public static func parseCodexDebugModels(_ data: Data) -> [CLIRuntimeModelOption] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = object["models"] as? [[String: Any]] else {
+            return []
+        }
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for model in models {
+            let visibility = (model["visibility"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard visibility != "hide" else { continue }
+            let rawSlug = ((model["slug"] as? String)
+                ?? (model["id"] as? String)
+                ?? (model["model"] as? String)
+                ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelID = normalizedCodexModel(rawSlug)
+            guard !modelID.isEmpty, seen.insert(modelID.lowercased()).inserted else { continue }
+            let display = ((model["display_name"] as? String)
+                ?? (model["name"] as? String)
+                ?? modelID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let reasoning = (model["default_reasoning_level"] as? String)?.nonEmpty ?? "CLI default"
+            rows.append(option(
+                modelID,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: display.isEmpty ? modelID : display,
+                    providerName: "OpenAI",
+                    providerID: "openai",
+                    reasoningLevel: reasoning
+                ),
+                "openai",
+                "OpenAI via Codex CLI",
+                tier: inferredTier(modelID: modelID, displayName: display),
+                source: .codexModelCatalog
+            ))
+        }
+        return rows
+    }
+
+    public static func parseGrokModels(_ text: String) -> [CLIRuntimeModelOption] {
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        var inModels = false
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if trimmed.lowercased() == "available models:" {
+                inModels = true
+                continue
+            }
+            guard inModels else { continue }
+            let stripped = trimmed
+                .replacingOccurrences(of: #"^[*\-•]\s*"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelID = stripped
+                .replacingOccurrences(of: #"\s+\(default\)$"#, with: "", options: [.regularExpression, .caseInsensitive])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !modelID.isEmpty, seen.insert(modelID.lowercased()).inserted else { continue }
+            rows.append(option(
+                modelID,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: modelID,
+                    providerName: "xAI",
+                    providerID: "xai",
+                    reasoningLevel: "CLI default"
+                ),
+                "xai",
+                "xAI via Grok Build CLI",
+                tier: inferredTier(modelID: modelID, displayName: modelID),
+                source: .grokModelCatalog
+            ))
+        }
+        return rows
+    }
+
+    public static func antigravityProfileOption(modelName: String?) -> CLIRuntimeModelOption {
+        let selected = modelName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
+            ?? "Antigravity default"
+        return option(
+            selected == "Antigravity default" ? "" : selected,
+            OpenBurnBarModelDisplayName.compose(
+                modelName: selected,
+                providerName: "Google",
+                providerID: "google",
+                reasoningLevel: "CLI default"
+            ),
+            "google",
+            "Google via Antigravity CLI",
+            source: .antigravityProfile
+        )
+    }
+
     public static func normalizedCodexModel(_ model: String, fallback: String = "") -> String {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModel.isEmpty else { return fallback }
@@ -434,6 +530,7 @@ public enum CLIRuntimeModelCatalog {
         "gpt-5-4-nano": "gpt-5.4-nano",
         "gpt-5-4-pro": "gpt-5.4-pro",
         "gpt-5-3-codex": "gpt-5.3-codex",
+        "gpt-5-3-codex-spark": "gpt-5.3-codex-spark",
         "gpt-5-3-codex-fast": "gpt-5.3-codex-fast",
         "gpt-5-2-codex": "gpt-5.2-codex",
         "gpt-5-2-pro": "gpt-5.2-pro",

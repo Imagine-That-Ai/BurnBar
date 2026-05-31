@@ -303,7 +303,7 @@ struct MobileProviderWizardView: View {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                 HStack {
                     Label(
-                        model.subscriptionStore.isActive ? "Hosted Quota Sync active" : "Hosted Quota Sync required",
+                        model.subscriptionStore.isActive ? "BurnBar Cloud active" : "BurnBar Cloud required",
                         systemImage: model.subscriptionStore.isActive ? "checkmark.seal.fill" : "lock.fill"
                     )
                     .foregroundStyle(model.subscriptionStore.isActive ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
@@ -693,7 +693,7 @@ struct MobileProviderWizardView: View {
                 }
                 .accessibilityIdentifier("a11y.wizard.continueSyncMode")
                 if model.syncMode == .hosted && !model.subscriptionStore.isActive {
-                    Text("Subscribe to Hosted Quota Sync to continue.")
+                    Text("Subscribe to BurnBar Cloud to continue.")
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.warning)
                         .multilineTextAlignment(.center)

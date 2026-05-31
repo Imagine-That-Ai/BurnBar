@@ -62,6 +62,7 @@ final class IrohRelayRequestHandler: Sendable {
     private let controlDispatcher: ControlFrameDispatcher?
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
+    private let cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?
     private let auditLogger: (any IrohTransportAuditLogging)?
 
     @MainActor
@@ -74,6 +75,7 @@ final class IrohRelayRequestHandler: Sendable {
         controlDispatcher: ControlFrameDispatcher? = nil,
         cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil,
         cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher? = nil,
+        cliSessionActionDispatcher: CLIAgentSessionActionDispatcher? = nil,
         auditLogger: (any IrohTransportAuditLogging)? = nil
     ) {
         self.relayKeyStore = relayKeyStore
@@ -84,6 +86,7 @@ final class IrohRelayRequestHandler: Sendable {
         self.controlDispatcher = controlDispatcher
         self.cliChatDispatcher = cliChatDispatcher
         self.cliModelCatalogDispatcher = cliModelCatalogDispatcher
+        self.cliSessionActionDispatcher = cliSessionActionDispatcher
         self.auditLogger = auditLogger
     }
 
@@ -358,6 +361,17 @@ final class IrohRelayRequestHandler: Sendable {
             )
             return
         }
+        if operation == .cliAgentSessionAction {
+            try await forwardCLIAgentSessionAction(
+                payload: encryptedPayload,
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                keyData: keyData,
+                stream: stream
+            )
+            return
+        }
 
         let body = try await forwardUnary(operation: operation, payload: encryptedPayload)
         var sequence = 0
@@ -499,6 +513,60 @@ final class IrohRelayRequestHandler: Sendable {
             connectionID: connectionID,
             requestID: requestID,
             extra: ["count": String(response.options.count)]
+        )
+    }
+
+    private func forwardCLIAgentSessionAction(
+        payload: HermesRelayEncryptedRequestPayload,
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        keyData: Data,
+        stream: any IrohRelayStream
+    ) async throws {
+        guard let cliSessionActionDispatcher else {
+            throw IrohRelayHostError.cliAgentSessionActionUnavailable
+        }
+        guard let body = payload.body?.data(using: .utf8) else {
+            throw IrohRelayHostError.invalidPath
+        }
+        let request = try JSONDecoder().decode(CLIAgentSessionActionRequest.self, from: body)
+        await auditStage(
+            "host_forward_cli_session_action_start",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: [
+                "sessionID": request.sessionID,
+                "targetRuntime": request.targetRuntime ?? "",
+                "action": request.action.rawValue
+            ]
+        )
+        let response = try await cliSessionActionDispatcher(request)
+        let data = try JSONEncoder().encode(response)
+        try await sendChunk(
+            data: String(data: data, encoding: .utf8) ?? "{}",
+            sequence: 0,
+            kind: .data,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            keyData: keyData,
+            stream: stream
+        )
+        try await sendComplete(
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            chunkCount: 1,
+            stream: stream
+        )
+        await auditStage(
+            "host_forward_cli_session_action_complete",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: ["status": response.status.rawValue]
         )
     }
 
@@ -780,7 +848,7 @@ final class IrohRelayRequestHandler: Sendable {
         switch operation {
         case .chatCompletions:
             path = "v1/chat/completions"
-        case .cliAgentChat, .cliAgentModelCatalog:
+        case .cliAgentChat, .cliAgentModelCatalog, .cliAgentSessionAction:
             throw IrohRelayHostError.invalidPath
         case .models:
             path = "v1/models"
@@ -830,7 +898,7 @@ final class IrohRelayRequestHandler: Sendable {
         switch operation {
         case .chatCompletions, .models:
             return true
-        case .cliAgentChat, .cliAgentModelCatalog, .sessions, .profiles, .jobs, .sessionDetail:
+        case .cliAgentChat, .cliAgentModelCatalog, .cliAgentSessionAction, .sessions, .profiles, .jobs, .sessionDetail:
             return false
         }
     }
@@ -1359,6 +1427,7 @@ enum IrohRelayHostError: LocalizedError {
     case streamSendTimeout(stage: String)
     case cliAgentChatUnavailable
     case cliModelCatalogUnavailable
+    case cliAgentSessionActionUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -1380,6 +1449,8 @@ enum IrohRelayHostError: LocalizedError {
             return "Codex and Claude chat relay is not available on this Mac yet."
         case .cliModelCatalogUnavailable:
             return "CLI model catalog discovery is not available on this Mac yet."
+        case .cliAgentSessionActionUnavailable:
+            return "CLI session restart and handoff is not available on this Mac yet."
         }
     }
 }

@@ -4,7 +4,7 @@ Submit the Computer Use IAPs to App Store Connect.
 
 Creates / updates the two SKUs from the master plan:
   * com.openburnbar.hostedComputerUseSync.monthly  $14.99 / month
-  * com.openburnbar.proMax.monthly                  $24.99 / month
+  * com.openburnbar.proMax.v2.monthly                  $24.99 / month
 
 Uses the App Store Connect REST API. Requires three environment vars:
   ASC_KEY_ID         issuer's key id (10-char)
@@ -58,7 +58,7 @@ SUBSCRIPTIONS = [
         ),
     },
     {
-        "productId": "com.openburnbar.proMax.monthly",
+        "productId": "com.openburnbar.proMax.v2.monthly",
         "name": "OpenBurnBar Pro Max Monthly",
         "groupReferenceName": "OpenBurnBar Pro Max",
         "groupLocalizedDisplayName": "OpenBurnBar Pro Max",

@@ -260,6 +260,7 @@ final class OpenBurnBarRuntimeContext {
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
             let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery()
+            let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(daemonManager: daemonManager)
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
@@ -268,6 +269,9 @@ final class OpenBurnBarRuntimeContext {
                 },
                 cliModelCatalogDispatcher: { request in
                     try await cliModelCatalogDiscovery.modelCatalog(for: request)
+                },
+                cliSessionActionDispatcher: { request in
+                    try await cliSessionActionDispatcher.perform(request)
                 }
             )
             hermesRelayHostService = hermesRelayHost

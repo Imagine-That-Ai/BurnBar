@@ -193,7 +193,10 @@ debt-check: ## Enforce debt budgets + refresh tech-debt metrics
 	@./scripts/debt/check-try-optional-budget.sh
 	@./scripts/ci/update-tech-debt-metrics.sh
 
-ci: debt-check lint test-full ## Full CI check (matches GitHub PR harness intent)
+ops-check: ## Callable logging, resilience wiring, ops manifest sanity
+	@bash scripts/ci/verify-ops-readiness.sh
+
+ci: debt-check ops-check lint test-full ## Full CI check (matches GitHub PR harness intent)
 
 release-checksums: ## Compute SHA256/SHA512 checksums for release artifacts
 	@APP_PATH="$(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)"; \

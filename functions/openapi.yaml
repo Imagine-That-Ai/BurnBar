@@ -1,0 +1,375 @@
+openapi: 3.1.0
+info:
+  title: OpenBurnBar Cloud Functions API
+  version: 1.0.0
+  description: |
+    HTTP endpoints exposed by the OpenBurnBar Firebase Cloud Functions backend.
+    All health endpoints are public (no auth required). Callable endpoints require
+    Firebase App Check attestation via a Bearer token in the Authorization header.
+
+servers:
+  - url: http://localhost:5001/openburnbar-dev/us-central1
+    description: Firebase Functions Emulator (local development)
+  - url: https://us-central1-openburnbar.cloudfunctions.net
+    description: Firebase Functions production (us-central1)
+
+paths:
+  /healthLive:
+    get:
+      summary: Liveness probe
+      description: |
+        Returns 200 if the function process is alive. Suitable for load-balancer
+        liveness checks. No dependencies are probed — fast and always available.
+      operationId: healthLive
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Function process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: alive
+                timestamp: '2026-05-30T00:00:00.000Z'
+
+  /healthReady:
+    get:
+      summary: Readiness probe
+      description: |
+        Probes Firestore connectivity within a 3-second timeout. Returns 200 when
+        all dependencies are healthy and 503 when degraded. Suitable for load-balancer
+        readiness checks and deployment smoke tests.
+      operationId: healthReady
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Function is ready — all dependencies healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: ready
+                timestamp: '2026-05-30T00:00:00.000Z'
+                version: '1.0.0'
+                latency_ms: 42
+                checks:
+                  firestore: ok
+        '503':
+          description: Function is not ready — one or more dependencies degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: degraded
+                timestamp: '2026-05-30T00:00:00.000Z'
+                version: '1.0.0'
+                checks:
+                  firestore: error
+                error: Firestore connectivity check failed
+
+  /healthCheck:
+    get:
+      summary: Combined health check
+      description: |
+        Returns the full health status including version, uptime, and all
+        dependency health. Used by monitoring dashboards and deployment scripts.
+        Returns 200 when healthy, 503 when any dependency is degraded.
+      operationId: healthCheck
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: All systems healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: ok
+                timestamp: '2026-05-30T00:00:00.000Z'
+                version: '1.0.0'
+                uptime_ms: 12345
+                checks:
+                  firestore: ok
+                latency_ms: 38
+        '503':
+          description: One or more systems degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: degraded
+                timestamp: '2026-05-30T00:00:00.000Z'
+                version: '1.0.0'
+                uptime_ms: 12345
+                checks:
+                  firestore: error
+
+  /latestRouterRundown:
+    get:
+      summary: Latest AI model router rundown
+      description: |
+        Returns the most recently generated router rundown document describing
+        available AI models, benchmarks, and routing recommendations.
+        Requires Firebase App Check attestation.
+      operationId: latestRouterRundown
+      tags:
+        - Router
+      security:
+        - AppCheckBearer: []
+      responses:
+        '200':
+          description: Router rundown document
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Router rundown payload (schema varies by version)
+        '403':
+          description: App Check attestation failed or missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /startCliLink:
+    post:
+      summary: Start a CLI link session
+      description: |
+        Initiates a CLI-to-cloud link session for pairing a local CLI agent
+        with the OpenBurnBar cloud backend.
+        Requires Firebase App Check attestation.
+      operationId: startCliLink
+      tags:
+        - CLI Link
+      security:
+        - AppCheckBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: CLI link session initiation payload
+      responses:
+        '200':
+          description: CLI link session created
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Session token and link parameters
+        '403':
+          description: App Check attestation failed or missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /pollCliLink:
+    get:
+      summary: Poll CLI link session status
+      description: |
+        Polls the status of a pending CLI link session.
+        Requires Firebase App Check attestation.
+      operationId: pollCliLink
+      tags:
+        - CLI Link
+      security:
+        - AppCheckBearer: []
+      parameters:
+        - in: query
+          name: sessionId
+          required: true
+          schema:
+            type: string
+          description: The CLI link session ID returned by startCliLink
+      responses:
+        '200':
+          description: CLI link session status
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Session status and any linked credentials
+        '403':
+          description: App Check attestation failed or missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /appStoreServerNotificationsV2:
+    post:
+      summary: Apple App Store Server Notifications V2 webhook
+      description: |
+        Receives signed App Store Server Notification V2 payloads from Apple.
+        Validates the JWS signature and processes subscription lifecycle events
+        (purchase, renewal, cancellation, refund, etc.).
+        This endpoint is called by Apple — not by app clients.
+      operationId: appStoreServerNotificationsV2
+      tags:
+        - App Store
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signedPayload:
+                  type: string
+                  description: JWS-signed App Store Server Notification payload
+              required:
+                - signedPayload
+      responses:
+        '200':
+          description: Notification processed successfully
+        '400':
+          description: Invalid or unrecognized notification payload
+
+  /stripeBurnBarProWebhook:
+    post:
+      summary: Stripe webhook for BurnBar Pro billing events
+      description: |
+        Receives Stripe webhook events for BurnBar Pro subscription lifecycle
+        (checkout completed, subscription updated, invoice paid, etc.).
+        Validates the Stripe-Signature header before processing.
+        This endpoint is called by Stripe — not by app clients.
+      operationId: stripeBurnBarProWebhook
+      tags:
+        - Billing
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stripe event payload
+      responses:
+        '200':
+          description: Webhook processed successfully
+        '400':
+          description: Invalid signature or unrecognized event type
+
+components:
+  schemas:
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [alive]
+          description: Always "alive" when the function process is up
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the response
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded]
+          description: "'ready' when all checks pass, 'degraded' when any check fails"
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          description: Deployed function version (FUNCTION_VERSION env var)
+        latency_ms:
+          type: integer
+          description: Firestore probe latency in milliseconds (only present on success)
+        checks:
+          type: object
+          properties:
+            firestore:
+              type: string
+              enum: [ok, error]
+        error:
+          type: string
+          description: Human-readable error message (only present on degraded status)
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime_ms
+        - checks
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: "'ok' when all checks pass, 'degraded' when any check fails"
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          description: Deployed function version (FUNCTION_VERSION env var)
+        uptime_ms:
+          type: integer
+          description: Process uptime in milliseconds
+        checks:
+          type: object
+          properties:
+            firestore:
+              type: string
+              enum: [ok, error]
+        latency_ms:
+          type: integer
+          description: Firestore probe latency in milliseconds (only present when probe succeeded)
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+
+  securitySchemes:
+    AppCheckBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Firebase App Check token obtained from the Firebase App Check SDK.
+        Required for all non-health callable endpoints. The server validates
+        the token against the Firebase App Check service before processing
+        the request.
+
+tags:
+  - name: Health
+    description: Liveness, readiness, and combined health check endpoints (public, no auth)
+  - name: Router
+    description: AI model router rundown and recommendation endpoints
+  - name: CLI Link
+    description: CLI-to-cloud pairing session management
+  - name: App Store
+    description: Apple App Store Server Notifications webhook receiver
+  - name: Billing
+    description: Stripe billing webhook receiver

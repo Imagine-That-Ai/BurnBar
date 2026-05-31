@@ -40,7 +40,8 @@ enum class SkillRunDeliveryMode(val wire: String, val displayLabel: String) {
 
 enum class CLIAgentChatPresentationMode(val wire: String, val displayLabel: String) {
     NATIVE_CHAT("native_chat", "Chat"),
-    MAC_VISIBLE_CLI("mac_visible_cli", "Mac CLI");
+    MAC_VISIBLE_CLI("mac_visible_cli", "Mac CLI"),
+    MAC_INTERACTIVE_CLI("mac_interactive_cli", "Mac interactive CLI");
 
     companion object {
         fun fromWire(value: String?): CLIAgentChatPresentationMode =

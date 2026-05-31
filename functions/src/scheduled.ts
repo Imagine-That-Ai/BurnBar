@@ -22,6 +22,7 @@ import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import type { Provider } from "./types.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
 import { logError } from "./logging.js";
+import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 
@@ -37,14 +38,14 @@ export const rebuildRollups = onSchedule(
     region: "us-central1",
     // Use the default compute service account; no special invoker needed.
   },
-  async (_event) => {
+  async (_event) =>
+    runScheduledJob("rebuildRollups", async () => {
     const db = getFirestore();
     const { rollupBatchSize } = getConfig();
 
-    // Collection group query for dirty jobs.
-    const dirtyQuery = db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize);
-
-    const snapshot = await dirtyQuery.get();
+    const snapshot = await scheduledFirestore("rollup_jobs.dirty", () =>
+      db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize).get(),
+    );
     if (snapshot.empty) {
       return;
     }
@@ -78,7 +79,7 @@ export const rebuildRollups = onSchedule(
         await jobRef.set({ lastErrorCode: errorMessage(err) }, { merge: true });
       }
     }
-  },
+    }),
 );
 
 /**
@@ -95,7 +96,8 @@ export const refreshAllProviderQuotas = onSchedule(
     region: "us-central1",
     secrets: HOSTED_RUNNER_SECRETS,
   },
-  async (_event) => {
+  async (_event) =>
+    runScheduledJob("refreshAllProviderQuotas", async () => {
     const db = getFirestore();
     const { quotaRefreshBatchSize } = getConfig();
 
@@ -208,7 +210,7 @@ export const refreshAllProviderQuotas = onSchedule(
         });
       }
     }
-  },
+    }),
 );
 
 /**
@@ -229,7 +231,8 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
     // starve the rundown write at the end.
     timeoutSeconds: 300,
   },
-  async (_event) => {
+  async (_event) =>
+    runScheduledJob("refreshModelLandscapeBenchmarks", async () => {
     const db = getFirestore();
     const now = new Date();
     const result = await collectModelLandscapeBenchmarks(
@@ -239,7 +242,7 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
       },
       now,
     );
-    await writeModelLandscapeBenchmarks(db, result);
-    await buildAndPersistRouterRundown(db, now);
-  },
+    await scheduledFirestore("model_landscape.write", () => writeModelLandscapeBenchmarks(db, result));
+    await scheduledFirestore("router_rundown.build", () => buildAndPersistRouterRundown(db, now));
+    }),
 );

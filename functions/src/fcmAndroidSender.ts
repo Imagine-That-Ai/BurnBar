@@ -25,6 +25,7 @@ import { errorCode, errorMessage, isRecord, stringValue } from "./guards.js";
 import { Timestamp } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { pushWithResilience } from "./resilienceHelpers.js";
 
 export interface SendResult {
   status: "sent" | "rejected" | "retry";
@@ -83,7 +84,7 @@ export async function pushAndroidFcm(args: {
 
   const send = args.sender ?? ((msg) => getMessaging().send(msg));
   try {
-    const messageId = await send(message);
+    const messageId = await pushWithResilience("fcm.mercury", () => send(message));
     return { status: "sent", messageId };
   } catch (err) {
     const code = errorCode(err);

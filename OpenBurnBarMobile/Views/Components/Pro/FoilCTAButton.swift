@@ -108,7 +108,7 @@ struct FoilCTAButton: View {
     ZStack {
         ProTheme.Palette.obsidian.ignoresSafeArea()
         VStack(spacing: 16) {
-            FoilCTAButton(title: "Become a Member", subtitle: "$4.99 / month") {}
+            FoilCTAButton(title: "Become a Member", subtitle: "$7.99 / month") {}
             FoilCTAButton(title: "Continue on iPhone", icon: "iphone") {}
             FoilCTAButton(title: "Processing", isLoading: true) {}
         }

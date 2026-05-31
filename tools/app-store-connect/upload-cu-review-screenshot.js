@@ -24,18 +24,48 @@ const url = require('url');
 
 const KEY_ID = process.env.APP_STORE_ASC_KEY_ID;
 const ISSUER_ID = process.env.APP_STORE_ASC_ISSUER_ID;
+const KEY_P8 = process.env.APP_STORE_ASC_KEY_P8;
 const KEY_PATH = process.env.APP_STORE_ASC_KEY_PATH;
+const APP_ID = process.env.APP_STORE_APPLE_APP_ID || '6766366964';
 
 const args = process.argv.slice(2);
-const IMAGE = (() => {
+const IMAGE_OVERRIDE = (() => {
   const i = args.indexOf('--image');
   return i >= 0 ? args[i + 1] : null;
 })();
 const APPLY = args.includes('--apply');
 
-const TARGET_SUBS = [
-  '6770276669', // com.openburnbar.hostedComputerUseSync.monthly
-  '6770276926', // com.openburnbar.proMax.monthly
+const TARGET_PRODUCT_IDS = [
+  'com.openburnbar.pro.monthly',
+  'com.openburnbar.pro.annual',
+  'com.openburnbar.proMax.v2.monthly',
+  'com.openburnbar.proMax.annual',
+];
+const TOP_UP_PRODUCTS = [
+  {
+    productId: 'com.openburnbar.agentControl.actions100',
+    name: 'Agent Control 100 Actions',
+    description: 'Adds 100 hosted Agent Control actions.',
+  },
+  {
+    productId: 'com.openburnbar.floo.relay50gb',
+    name: 'Floo Relay 50 GB',
+    description: 'Adds 50 GB of Floo relay bandwidth.',
+  },
+];
+const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
+  'com.openburnbar.pro.monthly': 'review-final/burnbar-cloud-review.jpg',
+  'com.openburnbar.pro.annual': 'review-final/burnbar-cloud-review.jpg',
+  'com.openburnbar.proMax.v2.monthly': 'review-final/burnbar-cloud-pro-review.jpg',
+  'com.openburnbar.proMax.annual': 'review-final/burnbar-cloud-pro-review.jpg',
+  'com.openburnbar.agentControl.actions100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.floo.relay50gb': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+};
+const TRUSTED_UPLOAD_HOST_SUFFIXES = [
+  '.apple.com',
+  '.mzstatic.com',
+  '.icloud-content.com',
+  '.amazonaws.com',
 ];
 const TRUSTED_UPLOAD_HOST_SUFFIXES = [
   '.apple.com',
@@ -47,7 +77,8 @@ const TRUSTED_UPLOAD_HOST_SUFFIXES = [
 function b64u(s) { return Buffer.from(s).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
 function derToJose(d){let o=0;if(d[o++]!==0x30)throw'';let l=d[o++];if(l&0x80){const n=l&0x7f;l=0;for(let i=0;i<n;i++)l=(l<<8)|d[o++];}if(d[o++]!==0x02)throw'';let rL=d[o++],r=d.slice(o,o+rL);o+=rL;if(d[o++]!==0x02)throw'';let sL=d[o++],s=d.slice(o,o+sL);if(r[0]===0)r=r.slice(1);if(s[0]===0)s=s.slice(1);const out=Buffer.alloc(64,0);r.copy(out,32-r.length);s.copy(out,64-s.length);return out;}
 function makeToken(){
-  const keyPem = fs.readFileSync(KEY_PATH,'utf8');
+  const keyPem = KEY_P8 || (KEY_PATH && fs.readFileSync(KEY_PATH,'utf8'));
+  if (!keyPem) throw new Error('APP_STORE_ASC_KEY_P8 or APP_STORE_ASC_KEY_PATH required');
   const header=b64u(JSON.stringify({alg:'ES256',kid:KEY_ID,typ:'JWT'}));
   const now=Math.floor(Date.now()/1000);
   const claims=b64u(JSON.stringify({iss:ISSUER_ID,iat:now,exp:now+1200,aud:'appstoreconnect-v1'}));
@@ -163,23 +194,179 @@ async function uploadFor(subId, imagePath, token, dryRun) {
   console.log('  commit OK');
 }
 
+function defaultImagePath(productId) {
+  if (IMAGE_OVERRIDE) return IMAGE_OVERRIDE;
+  return path.join(process.cwd(), '.appstore-screenshots', REVIEW_SCREENSHOT_BY_PRODUCT_ID[productId]);
+}
+
+async function listCommercialSubscriptions(token) {
+  const resp = await ascApi(
+    'GET',
+    `/v1/apps/${APP_ID}/subscriptionGroups?limit=200&include=subscriptions`,
+    undefined,
+    token,
+  );
+  const subscriptions = (resp.included || [])
+    .filter((entry) => entry.type === 'subscriptions')
+    .map((entry) => ({
+      id: entry.id,
+      productId: entry.attributes && entry.attributes.productId,
+      name: entry.attributes && entry.attributes.name,
+      state: entry.attributes && entry.attributes.state,
+    }));
+  const byProductId = new Map(subscriptions.map((subscription) => [subscription.productId, subscription]));
+  return TARGET_PRODUCT_IDS.map((productId) => {
+    const subscription = byProductId.get(productId);
+    return subscription || { productId, missing: true };
+  });
+}
+
+async function listCommercialInAppPurchases(token) {
+  const resp = await ascApi(
+    'GET',
+    `/v1/apps/${APP_ID}/inAppPurchasesV2?limit=200`,
+    undefined,
+    token,
+  );
+  const purchases = (resp.data || [])
+    .map((entry) => ({
+      id: entry.id,
+      productId: entry.attributes && entry.attributes.productId,
+      name: entry.attributes && entry.attributes.name,
+      state: entry.attributes && entry.attributes.state,
+      type: entry.attributes && entry.attributes.inAppPurchaseType,
+    }));
+  const byProductId = new Map(purchases.map((purchase) => [purchase.productId, purchase]));
+  return TOP_UP_PRODUCTS.map((product) => {
+    const purchase = byProductId.get(product.productId);
+    return purchase ? { ...product, ...purchase } : { ...product, missing: true };
+  });
+}
+
+async function ensureInAppPurchaseLocalization(iap, token, dryRun) {
+  if (dryRun) {
+    console.log(`  [DRY] would ensure in-app purchase localization en-US: ${iap.name}`);
+    return;
+  }
+  const existing = await ascApi(
+    'GET',
+    `/v2/inAppPurchases/${iap.id}/inAppPurchaseLocalizations?limit=20`,
+    undefined,
+    token,
+  );
+  const current = (existing.data || []).find((entry) => entry.attributes && entry.attributes.locale === 'en-US');
+  if (current) {
+    const attrs = current.attributes || {};
+    if (attrs.name === iap.name && attrs.description === iap.description) {
+      console.log(`  in-app purchase localization en-US already exists`);
+      return;
+    }
+    await ascApi('PATCH', `/v1/inAppPurchaseLocalizations/${current.id}`, {
+      data: {
+        id: current.id,
+        type: 'inAppPurchaseLocalizations',
+        attributes: { name: iap.name, description: iap.description },
+      },
+    }, token);
+    console.log(`  in-app purchase localization en-US updated`);
+    return;
+  }
+  await ascApi('POST', '/v1/inAppPurchaseLocalizations', {
+    data: {
+      type: 'inAppPurchaseLocalizations',
+      attributes: { locale: 'en-US', name: iap.name, description: iap.description },
+      relationships: {
+        inAppPurchaseV2: { data: { type: 'inAppPurchases', id: iap.id } },
+      },
+    },
+  }, token);
+  console.log(`  in-app purchase localization en-US created`);
+}
+
+async function deleteExistingInAppPurchaseReviewScreenshots(iapId, token) {
+  const response = await ascApi(
+    'GET',
+    `/v2/inAppPurchases/${iapId}?include=appStoreReviewScreenshot`,
+    undefined,
+    token,
+  );
+  const existing = (response.included || [])
+    .filter((entry) => entry.type === 'inAppPurchaseAppStoreReviewScreenshots');
+  for (const screenshot of existing) {
+    await ascApi('DELETE', `/v1/inAppPurchaseAppStoreReviewScreenshots/${screenshot.id}`, undefined, token);
+    console.log(`  deleted prior in-app purchase screenshot ${screenshot.id}`);
+  }
+}
+
+async function uploadInAppPurchaseScreenshotFor(iap, imagePath, token, dryRun) {
+  console.log(`\n→ in-app purchase ${iap.productId}`);
+  const fileName = path.basename(imagePath);
+  const bytes = fs.readFileSync(imagePath);
+  const fileSize = bytes.length;
+  if (dryRun) {
+    console.log(`  [DRY] would upload ${fileName} (${fileSize} bytes) for IAP ${iap.id}`);
+    return;
+  }
+  await deleteExistingInAppPurchaseReviewScreenshots(iap.id, token);
+  const created = await ascApi('POST', '/v1/inAppPurchaseAppStoreReviewScreenshots', {
+    data: {
+      type: 'inAppPurchaseAppStoreReviewScreenshots',
+      attributes: { fileName, fileSize },
+      relationships: {
+        inAppPurchaseV2: { data: { type: 'inAppPurchases', id: iap.id } },
+      },
+    },
+  }, token);
+  const reservation = created.data;
+  console.log(`  reservation id=${reservation.id}`);
+  const ops = reservation.attributes.uploadOperations || [];
+  for (const op of ops) {
+    const slice = bytes.slice(op.offset, op.offset + op.length);
+    await putBytes(op.url, op.requestHeaders, slice);
+    console.log(`  PUT chunk offset=${op.offset} length=${op.length} OK`);
+  }
+  const md5 = crypto.createHash('md5').update(bytes).digest('hex');
+  await ascApi('PATCH', `/v1/inAppPurchaseAppStoreReviewScreenshots/${reservation.id}`, {
+    data: {
+      id: reservation.id,
+      type: 'inAppPurchaseAppStoreReviewScreenshots',
+      attributes: { uploaded: true, sourceFileChecksum: md5 },
+    },
+  }, token);
+  console.log('  commit OK');
+}
+
 (async () => {
-  if (!IMAGE) {
-    console.error('--image PATH required (1024×1024 PNG recommended)');
-    process.exit(2);
-  }
-  if (!fs.existsSync(IMAGE)) {
-    console.error(`image not found: ${IMAGE}`);
-    process.exit(2);
-  }
-  if (!KEY_ID || !ISSUER_ID || !KEY_PATH) {
-    console.error('APP_STORE_ASC_KEY_ID, APP_STORE_ASC_ISSUER_ID, APP_STORE_ASC_KEY_PATH required');
+  if (!KEY_ID || !ISSUER_ID || !(KEY_P8 || KEY_PATH)) {
+    console.error('APP_STORE_ASC_KEY_ID, APP_STORE_ASC_ISSUER_ID, APP_STORE_ASC_KEY_P8|PATH required');
     process.exit(2);
   }
   const token = makeToken();
-  console.log(`mode: ${APPLY ? 'APPLY' : 'DRY-RUN'}  image=${IMAGE}`);
-  for (const sub of TARGET_SUBS) {
-    await uploadFor(sub, IMAGE, token, !APPLY);
+  console.log(`mode: ${APPLY ? 'APPLY' : 'DRY-RUN'}  app=${APP_ID}`);
+  const targets = await listCommercialSubscriptions(token);
+  for (const target of targets) {
+    if (target.missing) {
+      console.log(`\n→ ${target.productId}`);
+      console.log('  missing subscription; skipping review screenshot upload');
+      continue;
+    }
+    const imagePath = defaultImagePath(target.productId);
+    if (!fs.existsSync(imagePath)) throw new Error(`image not found: ${imagePath}`);
+    console.log(`  target ${target.productId} (${target.name || 'unnamed'}, state=${target.state || 'unknown'})`);
+    await uploadFor(target.id, imagePath, token, !APPLY);
+  }
+  const topUps = await listCommercialInAppPurchases(token);
+  for (const topUp of topUps) {
+    if (topUp.missing) {
+      console.log(`\n→ ${topUp.productId}`);
+      console.log('  missing in-app purchase; skipping localization and review screenshot upload');
+      continue;
+    }
+    const imagePath = defaultImagePath(topUp.productId);
+    if (!fs.existsSync(imagePath)) throw new Error(`image not found: ${imagePath}`);
+    console.log(`  target ${topUp.productId} (${topUp.name || 'unnamed'}, state=${topUp.state || 'unknown'})`);
+    await ensureInAppPurchaseLocalization(topUp, token, !APPLY);
+    await uploadInAppPurchaseScreenshotFor(topUp, imagePath, token, !APPLY);
   }
   console.log(APPLY
     ? '\nReview screenshots uploaded. Check ASC state in a few seconds.'

@@ -1,0 +1,96 @@
+# SwiftFormat configuration for OpenBurnBar
+# Compatible with SwiftLint rules in .swiftlint.yml
+# Docs: https://github.com/nicklockwood/SwiftFormat
+
+# ── Swift version ─────────────────────────────────────────────────────────────
+--swiftversion 5.9
+
+# ── Indentation ───────────────────────────────────────────────────────────────
+--indent 4
+--tabwidth 4
+--smarttabs enabled
+--indentcase false
+--ifdef no-indent
+
+# ── Line breaks ───────────────────────────────────────────────────────────────
+--linebreaks lf
+--maxwidth 120
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--closingparen balanced
+--wrapreturntype if-multiline
+--wrapternary before-operators
+
+# ── Trailing commas & semicolons ──────────────────────────────────────────────
+--commas always
+--semicolons never
+
+# ── Blank lines ───────────────────────────────────────────────────────────────
+--emptybraces no-space
+--linebreakbeforebraces auto
+--maxblanklines 1
+--noblanklinesbetweenimports enabled
+
+# ── Imports ───────────────────────────────────────────────────────────────────
+--importgrouping testable-last
+
+# ── Spacing ───────────────────────────────────────────────────────────────────
+--operatorfunc spaced
+--ranges no-space
+--trimwhitespace always
+
+# ── File header ───────────────────────────────────────────────────────────────
+--header ignore
+
+# ── Organisation ─────────────────────────────────────────────────────────────
+--organizetypes class,actor,struct,enum,extension,protocol
+--extensionacl on-declarations
+--modifierorder \
+  override,acl,setteracl,dynamic,mutators,lazy,final,required,convenience,typemethods,owned
+
+# ── Enabled rules ─────────────────────────────────────────────────────────────
+--enable organizeDeclarations
+--enable sortImports
+--enable redundantReturn
+--enable redundantLet
+--enable redundantVoidReturnType
+--enable redundantBackticks
+--enable wrapArguments
+--enable trailingCommas
+--enable semicolons
+--enable andOperator
+--enable isEmpty
+--enable fileHeader
+--enable consecutiveBlankLines
+--enable blankLinesAtStartOfScope
+--enable blankLinesAtEndOfScope
+--enable spaceAroundOperators
+--enable spaceInsideBrackets
+--enable spaceInsideParens
+--enable spaceInsideBraces
+
+# ── Disabled rules (conflict with SwiftLint or project conventions) ───────────
+# trailingClosures — SwiftLint uses trailing_closure opt-in; let SwiftLint own it
+--disable trailingClosures
+# acronyms — SwiftLint has its own ID/URL naming
+--disable acronyms
+# blankLineAfterImports — SwiftLint vertical_whitespace rules take precedence
+--disable blankLineAfterImports
+# strongifiedSelf — project uses self_binding SwiftLint rule
+--disable strongifiedSelf
+# typeSugar — can conflict with explicit type annotations required by SwiftLint
+--disable typeSugar
+# markTypes — let Xcode manage mark comments
+--disable markTypes
+
+# ── Exclusions ────────────────────────────────────────────────────────────────
+--exclude .build
+--exclude .derived-data
+--exclude .spm-cache
+--exclude AgentLensTests/Quarantine
+--exclude Vendor
+--exclude android
+--exclude extensions
+--exclude functions
+--exclude website

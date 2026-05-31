@@ -96,7 +96,7 @@ function buildConfig(): EnvConfig {
     burnBarProMaxProductID:
       process.env.BURNBAR_PRO_MAX_PRODUCT_ID ??
       configString(openburnbar, "burnbar_pro_max_product_id") ??
-      "com.openburnbar.proMax.monthly",
+      "com.openburnbar.proMax.v2.monthly",
     burnBarProMaxAnnualProductID:
       process.env.BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID ??
       configString(openburnbar, "burnbar_pro_max_annual_product_id") ??
@@ -152,7 +152,7 @@ function buildConfig(): EnvConfig {
     googlePlayCloudProMonthlyProductID:
       process.env.GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID ??
       configString(googleplay, "cloud_pro_monthly_product_id") ??
-      "com.openburnbar.proMax.monthly",
+      "com.openburnbar.proMax.v2.monthly",
     googlePlayCloudProAnnualProductID:
       process.env.GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID ??
       configString(googleplay, "cloud_pro_annual_product_id") ??

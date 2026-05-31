@@ -1,8 +1,30 @@
-# Computer Use SKU — App Store Connect submission status
+# Legacy Computer Use SKU — App Store Connect submission status
 
 **Date:** 2026-05-17
 **App:** OpenBurnBar (id `6766366964`, bundle `com.openburnbar.app`)
-**SKUs created and submitted in real ASC (verified via API):**
+**Historical note:** this page records the pre-GTM Computer Use SKU submission work. The live commercial launch source of truth is `GTMMasterPlan.MD` plus `scripts/commercial-launch-gate.mjs`.
+
+## 2026-05-31 GTM correction
+
+The GTM launch originally targeted the BurnBar Cloud Pro monthly product ID `com.openburnbar.proMax.monthly`. A live ASC refresh on 2026-05-31 found:
+
+- `com.openburnbar.proMax.monthly` is **not returned** by the app subscription-group inventory.
+- Creating it through the ASC API fails with `ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE` / "This product ID has already been used."
+- Creating it through the ASC UI returns "The Product ID you entered is already being used by another subscription."
+- The historical ASC resource ID `6770276926` now returns `404 NOT_FOUND`.
+- The visible monthly Cloud Pro product is currently the legacy compatibility ID `com.openburnbar.proMax.bundle.monthly`.
+
+Because the old ID is reserved by Apple but no longer visible or editable, the active GTM product ID was changed to `com.openburnbar.proMax.v2.monthly` everywhere in app/backend/website/gate code.
+
+Replacement product created in App Store Connect on 2026-05-31:
+
+| Product ID | Subscription Group | ASC ID | Price | State |
+|---|---|---|---|---|
+| `com.openburnbar.proMax.v2.monthly` | BurnBar Cloud (id `22124244`) | `6775247828` | $24.99/mo | READY_TO_SUBMIT |
+
+Automation now keeps the GTM commercial catalog prepared with `npm --prefix tools/app-store-connect run prepare-commercial-iaps -- --apply`, and review screenshots are uploaded by `node tools/app-store-connect/upload-cu-review-screenshot.js --apply`.
+
+**Historical SKUs created and submitted in real ASC (verified via API on 2026-05-17):**
 
 | Product ID | Subscription Group | ASC ID | Price | State |
 |---|---|---|---|---|

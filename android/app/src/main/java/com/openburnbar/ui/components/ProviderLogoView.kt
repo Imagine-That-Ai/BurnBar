@@ -80,6 +80,8 @@ object ProviderLogo {
         AssistantRuntimeID.DROID      -> R.drawable.factory_logo
         AssistantRuntimeID.FORGE      -> R.drawable.forge_logo
         AssistantRuntimeID.ANTIGRAVITY -> R.drawable.antigravity_logo
+        AssistantRuntimeID.GROK       -> R.drawable.grok_logo
+        AssistantRuntimeID.CURSOR_AGENT -> R.drawable.cursor_logo
     }
 
     /// Asset for a `HermesSubProvider`. Maps the sub-providers to their
