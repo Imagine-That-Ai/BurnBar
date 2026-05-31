@@ -1,3 +1,5 @@
+import org.gradle.testing.jacoco.tasks.JacocoReport
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -9,8 +11,6 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
     jacoco
 }
-
-import org.gradle.testing.jacoco.tasks.JacocoReport
 
 android {
     namespace = "com.openburnbar"
@@ -130,7 +130,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
             "**/BuildConfig.*",
             "**/Manifest*.*",
             "**/*Test*.*",
-            "**/*\$Lambda\$*.*",
+            "**/*\$Lambda\$*.*"
         )
     }
     classDirectories.setFrom(debugTree)
@@ -165,11 +165,11 @@ tasks.register("jacocoCoverageVerification") {
             val total = missed + covered
             val pct = if (total > 0) covered * 100.0 / total else 0.0
             val threshold = 40.0
-            logger.lifecycle("JaCoCo instruction coverage: ${String.format("%.1f", pct)}% (threshold: ${threshold}%)")
+            logger.lifecycle("JaCoCo instruction coverage: ${String.format("%.1f", pct)}% (threshold: $threshold%)")
             if (pct < threshold) {
                 throw GradleException(
-                    "Instruction coverage ${String.format("%.1f", pct)}% is below the minimum ${threshold}%. " +
-                        "Add tests to bring coverage above ${threshold}%."
+                    "Instruction coverage ${String.format("%.1f", pct)}% is below the minimum $threshold%. " +
+                        "Add tests to bring coverage above $threshold%."
                 )
             }
         }
