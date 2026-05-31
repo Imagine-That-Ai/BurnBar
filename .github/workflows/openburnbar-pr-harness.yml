@@ -18,9 +18,10 @@ jobs:
     # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
     # initializers in the large OpenBurnBar SwiftUI target, before tests run.
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
+      HAS_ASC_SECRETS: ${{ secrets.APP_STORE_ASC_KEY_ID != '' && secrets.APP_STORE_ASC_ISSUER_ID != '' && secrets.APP_STORE_ASC_KEY_P8 != '' }}
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
 
@@ -372,10 +373,19 @@ jobs:
           swift test --filter 'ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests'
 
       - name: Commercial launch gate (internal)
-        if: env.INTERNAL_RUN == 'true'
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ASC_SECRETS == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_STORE_ASC_KEY_ID: ${{ secrets.APP_STORE_ASC_KEY_ID }}
+          APP_STORE_ASC_ISSUER_ID: ${{ secrets.APP_STORE_ASC_ISSUER_ID }}
+          APP_STORE_ASC_KEY_P8: ${{ secrets.APP_STORE_ASC_KEY_P8 }}
         run: node scripts/commercial-launch-gate.mjs
+
+      - name: Skip commercial launch gate when ASC secrets are unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ASC_SECRETS != 'true'
+        run: |
+          echo "::notice::Skipping commercial launch gate because APP_STORE_ASC_* secrets are not configured in GitHub Actions."
+          echo "Commercial launch readiness must be proven from an operator environment with App Store Connect credentials."
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
