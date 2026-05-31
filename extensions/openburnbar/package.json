@@ -238,18 +238,19 @@
     "test:extension-host": "npm run build && npm run build:extension-host && node ./test/extensionHost/runTest.mjs",
     "test:cursor-smoke": "node ./test/cursorSmoke/runSmoke.mjs",
     "test:ci": "npm run test:unit && npm run test:replay && npm run test:extension-host",
-    "watch": "tsc -w -p ./tsconfig.json"
+    "watch": "tsc -w -p ./tsconfig.json",
+    "size": "size-limit"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.6.0",
     "@types/vscode": "^1.95.0",
-    "@typescript-eslint/eslint-plugin": "^8.26.0",
-    "@typescript-eslint/parser": "^8.26.0",
-    "@vitest/coverage-v8": "3.2.4",
+    "@typescript-eslint/eslint-plugin": "8.60.0",
+    "@typescript-eslint/parser": "8.60.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.22.0",
+    "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "knip": "5.88.1",
     "mocha": "^11.7.2",
@@ -258,12 +259,16 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@sentry/node": "8.55.2",
     "globals": "^17.4.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
     "diff": "^8.0.4",
     "vite": "^7.3.2",
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.10",
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.6"
+    }
   }
 }

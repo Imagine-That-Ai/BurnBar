@@ -145,6 +145,7 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
         run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: Install OpenBurnBar Functions dependencies
@@ -206,11 +207,21 @@ jobs:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: bash ./scripts/ci/inject-firebase-config-android.sh
 
+      - name: Inject Android Sentry config
+        env:
+          ANDROID_SENTRY_DSN: ${{ secrets.ANDROID_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-android.sh
+
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
 
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
+
+      - name: Inject extension Sentry DSN
+        env:
+          BURNBAR_EXTENSION_SENTRY_DSN: ${{ secrets.BURNBAR_EXTENSION_SENTRY_DSN }}
+        run: bash scripts/ci/inject-sentry-config-extension.sh
 
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
@@ -855,6 +866,33 @@ jobs:
               --prerelease \
               --notes-file "$NOTES_FILE"
           fi
+
+      - name: Notify Sentry of new release
+        if: env.SENTRY_AUTH_TOKEN != ''
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT_MACOS: openburnbar-macos
+          SENTRY_PROJECT_FUNCTIONS: openburnbar-functions
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Install Sentry CLI
+          curl -sL https://sentry.io/get-cli/ | bash
+
+          RELEASE_NAME="openburnbar@${VERSION}"
+
+          for PROJECT in "$SENTRY_PROJECT_MACOS" "$SENTRY_PROJECT_FUNCTIONS"; do
+            sentry-cli releases new --org "$SENTRY_ORG" --project "$PROJECT" "$RELEASE_NAME" || true
+            sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$PROJECT" "$RELEASE_NAME" --auto || true
+            sentry-cli releases finalize --org "$SENTRY_ORG" --project "$PROJECT" "$RELEASE_NAME" || true
+            sentry-cli releases deploys "$RELEASE_NAME" new \
+              --org "$SENTRY_ORG" \
+              --project "$PROJECT" \
+              --env production \
+              --name "v${VERSION}-$(date -u +%Y%m%dT%H%M%SZ)" || true
+          done
+          echo "Sentry release ${RELEASE_NAME} created and finalized."
 
       - name: Clean up Firebase config
         if: always()
