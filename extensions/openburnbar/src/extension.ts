@@ -26,6 +26,7 @@ import { OpenBurnBarPanelView } from './views/panelView';
 import { OpenBurnBarWorkspacePanel } from './views/workspacePanel';
 import { activateOpenBurnBarWorkspaceCompanion } from './workspace/companion';
 import { OpenBurnBarWorkspaceRpcClient } from './workspace/rpc';
+import { initSentry, flushSentry } from './telemetry/sentry';
 
 const BURNBAR_CLIENT_ID_KEY = 'openburnbar.clientId';
 
@@ -48,11 +49,16 @@ export interface OpenBurnBarActivationHostContext {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const pkg = context.extension.packageJSON as { version?: string };
+  const isDev = context.extensionMode === vscode.ExtensionMode.Development;
+  await initSentry(pkg.version ?? '0.0.0', isDev ? 'development' : 'production');
   await activateBurnBarExtension(context);
 }
 
 // Deactivation handled via dispose() on controllers and subscriptions
-export function deactivate(): void {}
+export function deactivate(): void {
+  void flushSentry();
+}
 
 export async function activateBurnBarExtension(
   context: OpenBurnBarActivationHostContext,

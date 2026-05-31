@@ -46,7 +46,7 @@ export const SITE = {
         priceMonthlyUSD: "24.99",
         priceAnnualUSD: "249",
         period: "month",
-        productIds: ["com.openburnbar.proMax.monthly", "com.openburnbar.proMax.annual"],
+        productIds: ["com.openburnbar.proMax.v2.monthly", "com.openburnbar.proMax.annual"],
         entitlementId: "burnbar_pro_max",
         summary: "Use your Mac from your phone and let agents work under your grant.",
         cta: "Choose Cloud Pro",

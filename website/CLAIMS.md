@@ -141,7 +141,7 @@ treats Kimi as exact, which matches the running code.
 |---|---|
 | Free tier — full local product | `docs/PRIVACY.md:21,34`, `docs/HOSTED_QUOTA_SYNC.md:38-68` |
 | BurnBar Cloud — `$7.99/mo`, `$79/yr`, `com.openburnbar.pro.monthly`, `com.openburnbar.pro.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
-| BurnBar Cloud Pro — `$24.99/mo`, `$249/yr`, `com.openburnbar.proMax.monthly`, `com.openburnbar.proMax.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
+| BurnBar Cloud Pro — `$24.99/mo`, `$249/yr`, `com.openburnbar.proMax.v2.monthly`, `com.openburnbar.proMax.annual` | `GTMMasterPlan.MD:29-34`, `functions/src/config.ts`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
 | Legacy Hosted Quota Sync `$4.99` is grandfathered only, not a new purchase tier | `GTMMasterPlan.MD:91-99`, `functions/src/callables/shared.ts`, `functions/src/appstore/reconciler.ts` |
 | Cloud Pro allowance — 500 hosted actions and 50 relay-accounting GB monthly | `GTMMasterPlan.MD:38-79`, `functions/src/cloudProAllowanceCore.ts` |
 | Cloud Pro monthly caps — 2,000 hosted actions and 300 relay-accounting GB | `GTMMasterPlan.MD:38-79`, `functions/src/cloudProAllowanceCore.ts` |

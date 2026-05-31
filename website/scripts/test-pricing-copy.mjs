@@ -37,7 +37,7 @@ for (const expected of [
   "BurnBar Cloud Pro",
   "com.openburnbar.pro.monthly",
   "com.openburnbar.pro.annual",
-  "com.openburnbar.proMax.monthly",
+  "com.openburnbar.proMax.v2.monthly",
   "com.openburnbar.proMax.annual",
   "com.openburnbar.agentControl.actions100",
   "com.openburnbar.floo.relay50gb"

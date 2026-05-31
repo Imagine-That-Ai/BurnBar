@@ -17,6 +17,18 @@ itself; follow `docs/HERMES_IROH_PRODUCTION_HANDOFF.md` for phase gates.
 | App Store Connect API credentials | Present in Firebase Functions Secret Manager; key ID, issuer ID, and `.p8` body are all readable by the current Firebase principal. | Firebase Functions secrets: `APP_STORE_ASC_KEY_ID`, `APP_STORE_ASC_ISSUER_ID`, `APP_STORE_ASC_KEY_P8`. A local key file also exists under `~/.appstoreconnect/private_keys/`. | Create a replacement ASC API key with required app permissions, update the three Firebase secrets, run the appstore test suite, then revoke the old ASC key in App Store Connect. |
 | Apple signing and notarization | GitHub Actions secrets exist for signing and notarization. Project team ID is `4Y367DF25B`. | GitHub Actions secrets: `APPLE_TEAM_ID`, `APPLE_SIGNING_IDENTITY`, `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID`, `APPLE_NOTARY_API_KEY_P8`. | Import a new Developer ID / distribution certificate, update the base64 P12 and password secrets, then run the release workflow on a non-production tag before using it for a release. |
 
+## Deploy health gate
+
+After deploying or rotating the Hermes realtime relay, verify reachability before declaring the rollout complete:
+
+```bash
+HERMES_RELAY_URL="https://<your-relay-host>" ./scripts/deploy-hermes-relay.sh
+```
+
+The script curls `${HERMES_RELAY_URL}/healthz` (or `/readyz`) until JSON includes `"ok": true` or exits non-zero.
+
+For the iroh hosted relay, run `./scripts/deploy-iroh-relay.sh` per phase gates in `docs/HERMES_IROH_PRODUCTION_HANDOFF.md`, then confirm audit rollups in `ops/iroh_transport_daily_rollups/`.
+
 ## Monitoring
 
 Raw iroh telemetry is written by Mac and iOS clients to:

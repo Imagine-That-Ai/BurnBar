@@ -1472,6 +1472,40 @@ class HermesService(
         )
     }
 
+    suspend fun sendCLIAgentSessionActionPayload(
+        body: ByteArray,
+        sessionID: String,
+    ): String {
+        val relay = relayTransport ?: throw HermesRelayException("Relay transport unavailable.")
+        return relay.sendUnary(
+            payload = macRelayPayloadForCLIAgentSessionAction(
+                body = body,
+                sessionID = sessionID,
+            ),
+            timeoutMillis = RELAY_CONTROL_TIMEOUT_MILLIS,
+        )
+    }
+
+    suspend fun macRelayPayloadForCLIAgentSessionAction(
+        body: ByteArray,
+        sessionID: String,
+    ): HermesRelayPayload {
+        val connection = resolveCLIAgentSessionActionRelayConnection()
+        val descriptor = descriptorFor(connection)
+            ?: throw HermesRelayException("This Mac relay has not published a usable encrypted relay key yet.")
+        return HermesRelayPayload(
+            operation = HermesRelayOperationName.CLI_AGENT_SESSION_ACTION,
+            method = "POST",
+            path = "/v1/cli-agent/session-action",
+            body = body,
+            sessionID = sessionID,
+            connectionID = descriptor.id,
+            relayPublicKey = descriptor.relayPublicKey,
+            relayEncryption = descriptor.relayEncryption,
+            relayKeyVersion = descriptor.relayKeyVersion,
+        )
+    }
+
     suspend fun fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse {
         val relay = relayTransport ?: throw HermesRelayException("Relay transport unavailable.")
         val body = JSONObject()
@@ -1560,6 +1594,32 @@ class HermesService(
         )
     }
 
+    private suspend fun resolveCLIAgentSessionActionRelayConnection(): HermesConnectionRecord {
+        if (_selectedConnection.value.mode != HermesConnectionMode.RELAY_LINK) {
+            refreshRelayConnections()
+            connectToSuggestedRelay(refresh = false)
+        }
+        val selected = _selectedConnection.value
+        if (selected.isCLIAgentSessionActionRelay()) return selected
+
+        refreshRelayConnections()
+
+        val selectedAfterRefresh = _selectedConnection.value
+        if (selectedAfterRefresh.isCLIAgentSessionActionRelay()) return selectedAfterRefresh
+
+        val relayConnections = _connections.value.filter { it.mode == HermesConnectionMode.RELAY_LINK }
+        relayConnections.firstOrNull { it.isCLIAgentSessionActionRelay() }?.let { return it }
+
+        if (relayConnections.isNotEmpty()) {
+            throw HermesRelayException(
+                "Your Mac relay is online but does not advertise CLI session restart yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        throw HermesRelayException(
+            "No paired Mac relay is available for CLI session restart. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
+        )
+    }
+
     private fun descriptorFor(connection: HermesConnectionRecord): HermesRelayConnectionDescriptor? {
         val publicKey = connection.relayPublicKey ?: return null
         return HermesRelayConnectionDescriptor(
@@ -1585,6 +1645,13 @@ class HermesService(
             !relayPublicKey.isNullOrBlank() &&
             capabilities.any {
                 it == "cli_agent_model_catalog" || it == HermesRelayOperationName.CLI_AGENT_MODEL_CATALOG
+            }
+
+    private fun HermesConnectionRecord.isCLIAgentSessionActionRelay(): Boolean =
+        mode == HermesConnectionMode.RELAY_LINK &&
+            !relayPublicKey.isNullOrBlank() &&
+            capabilities.any {
+                it == "cli_agent_session_action" || it == HermesRelayOperationName.CLI_AGENT_SESSION_ACTION
             }
 
     // ── Sessions browser / library import ──────────────────────────────

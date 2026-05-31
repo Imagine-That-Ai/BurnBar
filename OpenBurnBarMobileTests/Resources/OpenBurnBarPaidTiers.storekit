@@ -111,7 +111,7 @@
               "locale": "en_US"
             }
           ],
-          "productID": "com.openburnbar.proMax.monthly",
+          "productID": "com.openburnbar.proMax.v2.monthly",
           "recurringSubscriptionPeriod": "P1M",
           "referenceName": "BurnBar Cloud Pro Monthly",
           "subscriptionGroupID": "BURNBARCLOUD",

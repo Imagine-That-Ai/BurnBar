@@ -55,6 +55,11 @@ final class RoutedClientWiringSentry {
 
     private let configuration: Configuration
     private let wiringFactory: () -> RoutingClientWiring
+    private let advertisedModelsProvider: @MainActor @Sendable (
+        _ wiring: RoutingClientWiring,
+        _ gateway: RoutingClientGateway,
+        _ target: RoutingClientWiringTarget
+    ) async -> [RoutingClientAdvertisedModel]
     private let logger: AppLogger
     private let queue: DispatchQueue
 
@@ -81,6 +86,13 @@ final class RoutedClientWiringSentry {
     init(
         configuration: Configuration = Configuration(),
         wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
+        advertisedModelsProvider: @escaping @MainActor @Sendable (
+            _ wiring: RoutingClientWiring,
+            _ gateway: RoutingClientGateway,
+            _ target: RoutingClientWiringTarget
+        ) async -> [RoutingClientAdvertisedModel] = { wiring, gateway, _ in
+            await wiring.advertisedModels(gateway: gateway)
+        },
         logger: AppLogger = AppLogger(category: "RoutedClientWiringSentry"),
         queue: DispatchQueue = DispatchQueue(
             label: "com.openburnbar.routedClientWiringSentry",
@@ -89,6 +101,7 @@ final class RoutedClientWiringSentry {
     ) {
         self.configuration = configuration
         self.wiringFactory = wiringFactory
+        self.advertisedModelsProvider = advertisedModelsProvider
         self.logger = logger
         self.queue = queue
     }
@@ -325,15 +338,26 @@ final class RoutedClientWiringSentry {
             logger.debug("repair_skipped_gateway_disabled", metadata: ["target": target.rawValue])
             return
         }
-        let wiring = wiringFactory()
-        guard !wiring.isWired(target: target) else { return }
-
         let gateway = Self.makeGateway(from: settingsManager.gateway)
+        let wiring = wiringFactory()
         let advertisedModels: [RoutingClientAdvertisedModel]
         if Self.targetRequiresAdvertisedModels(target) {
-            advertisedModels = await wiring.advertisedModels(gateway: gateway)
+            advertisedModels = await advertisedModelsProvider(wiring, gateway, target)
         } else {
             advertisedModels = []
+        }
+        if wiring.isWired(target: target) {
+            let syncStatus = wiring.modelSyncStatus(
+                target: target,
+                gateway: gateway,
+                advertisedModels: advertisedModels
+            )
+            switch syncStatus {
+            case .current:
+                return
+            case .notWired, .stale:
+                break
+            }
         }
 
         do {

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
+import com.openburnbar.data.budget.BudgetNotificationCenter
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck

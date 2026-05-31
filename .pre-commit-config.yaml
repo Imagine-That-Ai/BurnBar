@@ -51,6 +51,25 @@ repos:
           )
         pass_filenames: false
 
+  - repo: local
+    hooks:
+      - id: swiftformat
+        name: SwiftFormat
+        language: system
+        entry: swiftformat --lint --quiet
+        types: [swift]
+        exclude: |
+          (?x)(
+            ^AgentLensTests/Quarantine/|
+            ^AgentLensTests/Support/|
+            ^AgentLensTests/Fixtures/|
+            ^\.build/|
+            ^\.derived-data|
+            ^\.spm-cache|
+            ^Vendor/
+          )
+        pass_filenames: false
+
   # ── TypeScript / JavaScript (ESLint + Prettier) ───────────────────────────
   - repo: local
     hooks:
@@ -76,6 +95,14 @@ repos:
         entry: npm --prefix extensions/openburnbar run lint
         pass_filenames: false
         files: ^extensions/openburnbar/src/.*\.(ts|js)$
+        stages: [pre-commit]
+
+      - id: eslint-website
+        name: ESLint (website)
+        language: node
+        entry: npm --prefix website run lint
+        pass_filenames: false
+        files: ^website/src/.*\.(ts|astro)$
         stages: [pre-commit]
 
       - id: prettier-extension
@@ -118,3 +145,15 @@ repos:
     rev: v8.27.2
     hooks:
       - id: gitleaks
+
+  # ── PII & secret detection ───────────────────────────────────────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect secrets and PII patterns
+        args:
+          - --baseline
+          - .secrets.baseline
+          - --exclude-files
+          - '.*package-lock\.json$|.*\.pbxproj$|.*\.xcscheme$|.*firestore\.rules$'

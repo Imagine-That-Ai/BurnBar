@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Create the Computer Use subscriptions in App Store Connect — in
- * DRAFT state. The user reviews + submits-for-review manually in ASC.
+ * Create the commercial BurnBar Cloud subscriptions in App Store Connect.
+ * New subscriptions are created in DRAFT state. The operator reviews,
+ * prices, attaches screenshots, and submits them with the app version in ASC.
  *
- * Two SKUs (master plan § E.1):
- *   com.openburnbar.hostedComputerUseSync.monthly  ($14.99 / mo)
- *   com.openburnbar.proMax.monthly                  ($24.99 / mo)
+ * GTM Master Plan SKUs:
+ *   com.openburnbar.pro.monthly      BurnBar Cloud monthly
+ *   com.openburnbar.pro.annual       BurnBar Cloud annual
+ *   com.openburnbar.proMax.v2.monthly   BurnBar Cloud Pro monthly
+ *   com.openburnbar.proMax.annual    BurnBar Cloud Pro annual
  *
  * Required env vars:
  *   APP_STORE_ASC_KEY_ID      — ASC API key id (10-char)
@@ -123,40 +126,76 @@ function request(method, path, body, token) {
 
 const SUBSCRIPTIONS = [
   {
-    groupName: 'OpenBurnBar Computer Use',
+    groupName: 'OpenBurnBar Cloud',
     sku: {
-      productId: 'com.openburnbar.hostedComputerUseSync.monthly',
-      name: 'OpenBurnBar Computer Use Monthly',
+      productId: 'com.openburnbar.pro.monthly',
+      name: 'BurnBar Cloud Monthly',
       subscriptionPeriod: 'ONE_MONTH',
       reviewNote:
-        'OpenBurnBar Computer Use lets the user run an AI agent that operates ' +
-        'their Mac with explicit consent. Every action passes through an ' +
-        'approval gate visible on the Mac and the paired iPhone/iPad. The ' +
-        'agent can be halted by global hotkey (Ctrl+Option+Cmd+.), by a ' +
-        'three-finger gesture on the phone, or by locking the Mac. Browser ' +
-        'mode runs sandboxed inside Chromium and ships in the MAS build. ' +
-        'System mode requires the macOS Accessibility permission and ships ' +
-        'only via direct download outside MAS. A tamper-evident BLAKE3 ' +
-        'hash-chain audit log records every action.',
+        'BurnBar Cloud adds hosted quota refresh, encrypted history backup, ' +
+        'cloud search, Intelligence Brief fallback, remote relay, and synced ' +
+        'agent memory across the user\'s signed-in devices. It includes a ' +
+        '14-day introductory free trial for new subscribers.',
     },
     localization: {
       locale: 'en-US',
-      name: 'OpenBurnBar Computer Use',
-      description: 'Watch and approve an AI agent driving your Mac.',
+      name: 'BurnBar Cloud',
+      description: 'Sync quota, encrypted history, and agent memory.',
     },
   },
   {
-    groupName: 'OpenBurnBar Pro Max',
+    groupName: 'OpenBurnBar Cloud',
     sku: {
-      productId: 'com.openburnbar.proMax.monthly',
-      name: 'OpenBurnBar Pro Max Monthly',
-      subscriptionPeriod: 'ONE_MONTH',
-      reviewNote: 'Umbrella subscription bundling Cloud + Mercury Media + Computer Use.',
+      productId: 'com.openburnbar.pro.annual',
+      name: 'BurnBar Cloud Annual',
+      subscriptionPeriod: 'ONE_YEAR',
+      reviewNote:
+        'Annual BurnBar Cloud subscription. Includes hosted quota refresh, ' +
+        'encrypted history backup, cloud search, Intelligence Brief fallback, ' +
+        'remote relay, and synced agent memory. It includes a 14-day ' +
+        'introductory free trial for new subscribers.',
     },
     localization: {
       locale: 'en-US',
-      name: 'OpenBurnBar Pro Max',
-      description: 'Cloud + Mercury Media + Computer Use bundled.',
+      name: 'BurnBar Cloud',
+      description: 'Annual sync for quota, history, and agent memory.',
+    },
+  },
+  {
+    groupName: 'OpenBurnBar Cloud Pro',
+    sku: {
+      productId: 'com.openburnbar.proMax.v2.monthly',
+      name: 'BurnBar Cloud Pro Monthly',
+      subscriptionPeriod: 'ONE_MONTH',
+      reviewNote:
+        'BurnBar Cloud Pro includes everything in BurnBar Cloud plus Floo ' +
+        'phone-to-Mac workflows and supervised Agent Control. Each billing ' +
+        'month includes 500 hosted Agent Control actions and 50 relay-accounting ' +
+        'GB. Extra hosted usage is prepaid through consumable top-ups. There is ' +
+        'no introductory free trial for Cloud Pro.',
+    },
+    localization: {
+      locale: 'en-US',
+      name: 'BurnBar Cloud Pro',
+      description: 'Cloud plus Floo and supervised Agent Control.',
+    },
+  },
+  {
+    groupName: 'OpenBurnBar Cloud Pro',
+    sku: {
+      productId: 'com.openburnbar.proMax.annual',
+      name: 'BurnBar Cloud Pro Annual',
+      subscriptionPeriod: 'ONE_YEAR',
+      reviewNote:
+        'Annual BurnBar Cloud Pro subscription. Includes BurnBar Cloud plus ' +
+        'Floo phone-to-Mac workflows and supervised Agent Control. Each billing ' +
+        'year is billed annually, while included hosted-action and relay ' +
+        'allowances reset monthly. There is no introductory free trial.',
+    },
+    localization: {
+      locale: 'en-US',
+      name: 'BurnBar Cloud Pro',
+      description: 'Annual Cloud plus Floo and Agent Control.',
     },
   },
 ];
@@ -302,6 +341,6 @@ async function ensureSubLocalization(token, subId, loc, dryRun) {
     await ensureSubLocalization(token, subId, item.localization, dryRun);
   }
   console.log(dryRun
-    ? '\nDry-run complete. Re-run with --apply to create draft IAPs.'
-    : '\nDraft IAPs ensured in App Store Connect. Add pricing + screenshots in ASC, then submit for review.');
+    ? '\nDry-run complete. Re-run with --apply to create missing draft subscriptions.'
+    : '\nCommercial subscriptions ensured in App Store Connect. Add pricing + screenshots in ASC, then submit for review.');
 })().catch((e) => { console.error(e); process.exit(1); });

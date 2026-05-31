@@ -520,7 +520,7 @@ Each phase appends to `DESIGN.md`'s decision log table:
 | `hosted_quota_sync` (existing) | `com.openburnbar.hostedQuotaSync.cloud.monthly` | $4.99/mo | Cloud quota sync, Hermes hosted relay |
 | `hosted_media_sync` (existing) | `com.openburnbar.hostedMediaSync.monthly` | $9.99/mo | File transfer, screen share, video calling (Mercury) |
 | `hosted_computer_use_sync` (NEW Phase 9) | `com.openburnbar.hostedComputerUseSync.monthly` | $14.99/mo | Browser CU + Mac CU + Phone control + audit export |
-| `burnbar_pro_max` (NEW Phase 9 umbrella) | `com.openburnbar.proMax.monthly` | $24.99/mo | All three above |
+| `burnbar_pro_max` (NEW Phase 9 umbrella) | `com.openburnbar.proMax.v2.monthly` | $24.99/mo | All three above |
 | `burnbar_pro` (existing umbrella) | `com.openburnbar.pro.monthly` | $14.99/mo | `hosted_quota_sync` + `hosted_media_sync` (CU explicitly excluded) |
 
 Entitlement document shape:

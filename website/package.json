@@ -14,6 +14,7 @@
     "test:platform": "node scripts/test-platform-mockups.mjs",
     "test:router-copy": "node scripts/test-router-copy.mjs",
     "test:pricing-copy": "node scripts/test-pricing-copy.mjs",
+    "test:launch-assets": "node scripts/test-launch-assets.mjs",
     "build": "node --env-file-if-exists=.env scripts/run-research.mjs || true && astro build && node scripts/build-sitemap.mjs",
     "build:offline": "astro build && node scripts/build-sitemap.mjs",
     "preview": "astro preview --host 127.0.0.1 --port 4322",
@@ -21,8 +22,12 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{astro,ts,tsx,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{astro,ts,tsx,css,md}\"",
+    "lint": "eslint \"src/**/*.ts\" \"src/**/*.astro\"",
     "links:check": "node scripts/check-links.mjs",
-    "verify": "npm run research:test && npm run test:platform && npm run test:router-copy && npm run test:pricing-copy && npm run check && npm run build && npm run links:check"
+    "size": "size-limit",
+    "verify": "npm run research:test && npm run test:platform && npm run test:router-copy && npm run test:pricing-copy && npm run test:launch-assets && npm run check && npm run build && npm run links:check",
+    "test": "vitest run",
+    "test:integration": "vitest run --testPathPattern=integration"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",
@@ -30,14 +35,20 @@
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@sentry/astro": "8.55.2",
     "astro": "^6.3.2",
     "firebase": "12.14.0",
     "typescript": "^5.6.3"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "10.1.8",
     "lightningcss": "^1.32.0",
     "prettier": "3.8.3",
-    "prettier-plugin-astro": "^0.14.1"
+    "prettier-plugin-astro": "^0.14.1",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "yaml": "^2.8.3"

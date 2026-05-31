@@ -300,6 +300,30 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route47.modelCapabilityClassID, "anthropic:opus")
     }
 
+    func testRouterDynamicallyRoutesNewAnthropicModelIDsBeforeStaticCatalogUpdate() async throws {
+        let harness = try makeHarness(name: "anthropic-live-dynamic", allowDynamicModels: true)
+        try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-sonnet-4-6-family"]
+            )
+        )
+
+        let route = try await harness.router.route(
+            modelName: "claude-future-5-1",
+            preferredProviderID: "anthropic",
+            requestedFormatFamily: .anthropic
+        )
+
+        XCTAssertEqual(route.providerID, "anthropic")
+        XCTAssertEqual(route.resolvedModelID, "claude-future-5-1")
+        XCTAssertEqual(route.canonicalModelID, "claude-future-5-1")
+        XCTAssertEqual(route.modelCapabilityClassID, "claude-future-5-1")
+    }
+
     func testRouterTreatsFactoryAsRoutableDroidProvider() async throws {
         let harness = try makeHarness(name: "factory-droid")
         _ = try await harness.configStore.upsertProvider(
@@ -1383,7 +1407,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
 
     private func makeHarness(
         name: String,
-        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
+        allowDynamicModels: Bool = false
     ) throws -> BurnBarProviderRouterHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-provider-router-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -1402,7 +1427,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             configStore: configStore,
             router: BurnBarProviderRouter(
                 configStore: configStore,
-                logger: BurnBarDaemonLogger(category: "provider-router-tests")
+                logger: BurnBarDaemonLogger(category: "provider-router-tests"),
+                allowDynamicOpenAICompatibleModels: allowDynamicModels
             )
         )
     }

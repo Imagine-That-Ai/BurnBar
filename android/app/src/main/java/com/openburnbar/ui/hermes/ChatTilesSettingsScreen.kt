@@ -246,6 +246,8 @@ private fun tileSubtitle(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.DROID -> "Droid chat bridged from your Mac."
     AssistantRuntimeID.FORGE -> "Forge chat bridged from your Mac."
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity chat bridged from your Mac."
+    AssistantRuntimeID.GROK -> "Grok chat bridged from your Mac."
+    AssistantRuntimeID.CURSOR_AGENT -> "Cursor Agent bridged from your Mac."
 }
 
 private fun loadPrefs(context: Context): ChatTilePreferences {

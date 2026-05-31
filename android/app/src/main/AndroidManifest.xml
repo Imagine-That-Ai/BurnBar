@@ -42,6 +42,25 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.BurnBar">
 
+        <!-- Sentry Android SDK auto-init: set DSN here. Leave empty to disable
+             Sentry (e.g., debug builds without a configured project). The real
+             DSN is injected by CI via scripts/ci/inject-sentry-config-android.sh.
+             Project: openburnbar-android in the Sentry org. -->
+        <meta-data
+            android:name="io.sentry.dsn"
+            android:value="${sentryDsn}" />
+        <!-- Enable Sentry only in non-debug flavors by default. -->
+        <meta-data
+            android:name="io.sentry.environment"
+            android:value="${sentryEnvironment}" />
+        <!-- Attach ANR detection and app start/slow-frame metrics. -->
+        <meta-data
+            android:name="io.sentry.anr.enable"
+            android:value="true" />
+        <meta-data
+            android:name="io.sentry.traces-sample-rate"
+            android:value="0.1" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

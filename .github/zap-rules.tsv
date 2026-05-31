@@ -1,0 +1,21 @@
+# ZAP rules customization for OpenBurnBar
+# Format: rule_id	IGNORE/WARN/FAIL	description
+# See: https://www.zaproxy.org/docs/docker/baseline-scan/
+
+# CORS headers are expected for Firebase Functions public endpoints
+10098	IGNORE	Cross-Domain Misconfiguration
+
+# Content-Security-Policy is managed by Firebase Hosting
+10038	WARN	Content Security Policy (CSP) Header Not Set
+
+# X-Frame-Options not required for API endpoints
+10020	IGNORE	Anti-clickjacking Header
+
+# HSTS is managed by Firebase Hosting infrastructure
+10035	IGNORE	Strict-Transport-Security Header Not Set
+
+# Firebase Functions use their own session management
+10012	IGNORE	Password Autocomplete
+
+# Not applicable to static sites / Firebase Functions
+10032	IGNORE	Viewstate Scanner

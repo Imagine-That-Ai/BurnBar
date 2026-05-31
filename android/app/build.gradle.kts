@@ -1,3 +1,4 @@
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
@@ -9,6 +10,8 @@ plugins {
     id("com.google.firebase.crashlytics")
     id("org.jetbrains.kotlin.kapt")
     id("org.jlleitschuh.gradle.ktlint")
+    id("io.gitlab.arturbosch.detekt")
+    id("com.autonomousapps.dependency-analysis")
     jacoco
 }
 
@@ -62,6 +65,14 @@ android {
             .orElse("")
             .get()
         buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
+
+        // Sentry DSN injected at build time — empty string disables Sentry.
+        // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.
+        val sentryDsn = providers.environmentVariable("OPENBURNBAR_ANDROID_SENTRY_DSN")
+            .orElse("")
+            .get()
+        manifestPlaceholders["sentryDsn"] = sentryDsn
+        manifestPlaceholders["sentryEnvironment"] = if (sentryDsn.isNotEmpty()) "production" else "development"
     }
 
     buildTypes {
@@ -180,6 +191,19 @@ tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
     finalizedBy("jacocoTestReport")
 }
 
+// Typed Jacoco coverage verification gate using the built-in JacocoCoverageVerification task.
+// Enforces a minimum 60% instruction coverage threshold on CI.
+tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn("jacocoTestReport")
+    violationRules {
+        rule {
+            limit {
+                minimum = "0.60".toBigDecimal()
+            }
+        }
+    }
+}
+
 dependencies {
     // Local Kotlin library: Android-side iroh transport + pairing
     // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
@@ -231,6 +255,11 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
+    // Sentry Android SDK — structured error tracking with crash reports,
+    // ANR detection, breadcrumbs, and release health metrics. Captures
+    // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.
+    // Gracefully no-ops when SENTRY_DSN meta-data value is empty.
+    implementation("io.sentry:sentry-android:8.13.2")
     // Mercury Media — high-priority FCM data messages for incoming calls.
     implementation("com.google.firebase:firebase-messaging-ktx")
 

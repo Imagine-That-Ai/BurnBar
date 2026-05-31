@@ -8,6 +8,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
+import { externalApiWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
@@ -175,46 +176,50 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       if (topUpKind) {
         await assertActiveBurnBarCloudProEntitlement(uid);
         const topUp = topUpCheckoutSelection(topUpKind);
-        const session = await stripe.checkout.sessions.create({
-          mode: "payment",
-          customer: customerID,
-          client_reference_id: uid,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-          line_items: [{ price: topUp.priceID, quantity: 1 }],
-          metadata: {
-            firebaseUID: uid,
-            topUpKind: topUp.kind,
-          },
-        });
+        const session = await stripeWithResilience("checkout.sessions.create.payment", () =>
+          stripe.checkout.sessions.create({
+            mode: "payment",
+            customer: customerID,
+            client_reference_id: uid,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            line_items: [{ price: topUp.priceID, quantity: 1 }],
+            metadata: {
+              firebaseUID: uid,
+              topUpKind: topUp.kind,
+            },
+          }),
+        );
         return { sessionId: session.id, url: session.url };
       }
 
       const selection = subscriptionCheckoutSelection(request.data);
 
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        customer: customerID,
-        client_reference_id: uid,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        allow_promotion_codes: true,
-        line_items: [{ price: selection.priceID, quantity: 1 }],
-        metadata: {
-          firebaseUID: uid,
-          entitlementID: selection.entitlementID,
-          tier: selection.tier,
-          cadence: selection.cadence,
-        },
-        subscription_data: {
+      const session = await stripeWithResilience("checkout.sessions.create.subscription", () =>
+        stripe.checkout.sessions.create({
+          mode: "subscription",
+          customer: customerID,
+          client_reference_id: uid,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          allow_promotion_codes: true,
+          line_items: [{ price: selection.priceID, quantity: 1 }],
           metadata: {
             firebaseUID: uid,
             entitlementID: selection.entitlementID,
             tier: selection.tier,
             cadence: selection.cadence,
           },
-        },
-      });
+          subscription_data: {
+            metadata: {
+              firebaseUID: uid,
+              entitlementID: selection.entitlementID,
+              tier: selection.tier,
+              cadence: selection.cadence,
+            },
+          },
+        }),
+      );
 
       return { sessionId: session.id, url: session.url };
     },
@@ -242,10 +247,12 @@ export const createStripeBurnBarProPortalSession = onCall(
       const stripe = requireConfiguredStripe();
       const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
-      const session = await stripe.billingPortal.sessions.create({
-        customer: customerID,
-        return_url: returnUrl,
-      });
+      const session = await stripeWithResilience("billingPortal.sessions.create", () =>
+        stripe.billingPortal.sessions.create({
+          customer: customerID,
+          return_url: returnUrl,
+        }),
+      );
       return { url: session.url };
     },
   ),
@@ -279,10 +286,12 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
         scopes: ["https://www.googleapis.com/auth/androidpublisher"],
       });
       const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
-      const response = await androidpublisher.purchases.subscriptionsv2.get({
-        packageName: cfg.googlePlayPackageName,
-        token: purchaseToken,
-      });
+      const response = await externalApiWithResilience("googleplay.subscriptionsv2.get", () =>
+        androidpublisher.purchases.subscriptionsv2.get({
+          packageName: cfg.googlePlayPackageName,
+          token: purchaseToken,
+        }),
+      );
 
       const purchase = jsonObject(response.data);
       const subscriptionState =
@@ -360,11 +369,13 @@ export const verifyGooglePlayCloudProTopUp = onCall(
         scopes: ["https://www.googleapis.com/auth/androidpublisher"],
       });
       const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
-      const response = await androidpublisher.purchases.products.get({
-        packageName: cfg.googlePlayPackageName,
-        productId: productID,
-        token: purchaseToken,
-      });
+      const response = await externalApiWithResilience("googleplay.products.get", () =>
+        androidpublisher.purchases.products.get({
+          packageName: cfg.googlePlayPackageName,
+          productId: productID,
+          token: purchaseToken,
+        }),
+      );
       const purchase = jsonObject(response.data);
       const purchaseState =
         typeof purchase.purchaseState === "number" && Number.isFinite(purchase.purchaseState)
@@ -390,11 +401,13 @@ export const verifyGooglePlayCloudProTopUp = onCall(
       });
       let consumed = false;
       if (consumptionState !== 1) {
-        await androidpublisher.purchases.products.consume({
-          packageName: cfg.googlePlayPackageName,
-          productId: productID,
-          token: purchaseToken,
-        });
+        await externalApiWithResilience("googleplay.products.consume", () =>
+          androidpublisher.purchases.products.consume({
+            packageName: cfg.googlePlayPackageName,
+            productId: productID,
+            token: purchaseToken,
+          }),
+        );
         consumed = true;
       }
 

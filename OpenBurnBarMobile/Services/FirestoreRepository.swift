@@ -904,7 +904,7 @@ final class FirestoreRepository {
             case "burnbar_pro":
                 fallbackProductID = "com.openburnbar.pro.monthly"
             case "burnbar_pro_max":
-                fallbackProductID = "com.openburnbar.proMax.monthly"
+                fallbackProductID = "com.openburnbar.proMax.v2.monthly"
             default:
                 fallbackProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
             }

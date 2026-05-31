@@ -28,6 +28,7 @@
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "xai" as const;
 
@@ -91,7 +92,7 @@ interface XAIFetchResult {
 async function xaiGet(url: string, token: string): Promise<XAIFetchResult> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await providerFetch(PROVIDER, "api_get", url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -107,7 +108,7 @@ async function xaiGet(url: string, token: string): Promise<XAIFetchResult> {
 async function xaiPost(url: string, token: string, body: unknown): Promise<XAIFetchResult> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await providerFetch(PROVIDER, "api_post", url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,

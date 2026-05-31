@@ -87,7 +87,7 @@ export const FAQ: FAQItem[] = [
     id: "burnbar-cloud-pro",
     question: "What is BurnBar Cloud Pro?",
     answer:
-      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Product IDs are com.openburnbar.proMax.monthly and com.openburnbar.proMax.annual. Cloud Pro uses the burnbar_pro_max entitlement."
+      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Product IDs are com.openburnbar.proMax.v2.monthly and com.openburnbar.proMax.annual. Cloud Pro uses the burnbar_pro_max entitlement."
   },
   {
     id: "cloud-pro-allowance",
