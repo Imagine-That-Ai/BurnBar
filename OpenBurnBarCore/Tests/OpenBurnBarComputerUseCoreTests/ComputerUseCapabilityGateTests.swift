@@ -7,14 +7,16 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
     private func makeSession(
         trust: ComputerUseTrustMode = .manual,
         executed: Int = 0,
-        actionCap: Int = 50
+        actionCap: Int = 50,
+        phoneViewerNodeId: String? = nil
     ) -> ComputerUseSessionState {
         let manifest = ComputerUseSessionManifest(
             sessionId: ComputerUseSessionID("s1"),
-            mode: .browser,
+            mode: phoneViewerNodeId == nil ? .browser : .system,
             trustMode: trust,
             startedAt: Date(),
             userId: "user",
+            phoneViewerNodeId: phoneViewerNodeId,
             entitlementProductId: "com.openburnbar.hostedComputerUseSync.monthly",
             actionCap: actionCap,
             sessionTimeoutSeconds: 1800
@@ -46,7 +48,7 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             entitlement: entitlement,
             envelope: envelope,
             usage: usage,
-            session: session ?? makeSession(),
+            session: session ?? makeSession(phoneViewerNodeId: originatedFromPhone ? "phone-peer" : nil),
             concurrentSessionActive: concurrent,
             killSwitch: kill,
             accessibilityTrusted: accessibility,

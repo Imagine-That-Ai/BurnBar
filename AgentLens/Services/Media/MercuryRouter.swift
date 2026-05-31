@@ -768,7 +768,7 @@ final class MercuryRouter: ObservableObject {
         )
         guard state.lockState == .unlocked else { return }
 
-        remoteUnlockReadiness.revokeAllRemoteUnlockSessions()
+        remoteUnlockReadiness.revokeRemoteUnlockSession(sessionId: remoteUnlockSessionID)
         Self.log.info("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason, privacy: .public)")
         Self.debugTrace("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason)")
         do {
@@ -1476,6 +1476,7 @@ final class MercuryRouter: ObservableObject {
                     controlOwnerViewerId: activeControlViewerID
                 )
             }
+            let waitingForRemoteUnlock = remoteUnlockSession != nil && remoteUnlockState?.lockState != .unlocked
             await respond(
                 requestID: request.id,
                 decision: .accepted,
@@ -1493,7 +1494,12 @@ final class MercuryRouter: ObservableObject {
                 frame: request.frame,
                 replySender: request.replySender
             )
-            startAcceptedMirrorRuntime(for: viewer, focusMode: focusMode)
+            if waitingForRemoteUnlock {
+                Self.log.info("router_locked_mirror_waiting_for_remote_unlock requestID=\(request.id, privacy: .public)")
+                Self.debugTrace("router_locked_mirror_waiting_for_remote_unlock requestID=\(request.id)")
+            } else {
+                startAcceptedMirrorRuntime(for: viewer, focusMode: focusMode)
+            }
             if wasJoiningExistingSession {
                 await broadcastMirrorAck(
                     decision: .accepted,
@@ -1503,7 +1509,9 @@ final class MercuryRouter: ObservableObject {
                     excludingViewerID: viewerID
                 )
             }
-            await Task.yield()
+            if !waitingForRemoteUnlock {
+                await Task.yield()
+            }
         } catch {
             lastError = error.localizedDescription
             Self.log.error("router_mirror_start_failed requestID=\(request.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
@@ -1554,14 +1562,13 @@ final class MercuryRouter: ObservableObject {
         }
         guard activeMirrorViewers[viewer.viewerID]?.requestID == viewer.requestID else { return }
         do {
-            if viewer.remoteUnlockSessionID != nil {
-                do {
-                    try await MercuryRemoteAccessAgentClient().wakeDisplay()
-                    Self.log.info("router_locked_mirror_display_wake_submitted requestID=\(viewer.requestID, privacy: .public)")
-                    Self.debugTrace("router_locked_mirror_display_wake_submitted requestID=\(viewer.requestID)")
-                } catch {
-                    Self.log.error("router_locked_mirror_display_wake_failed requestID=\(viewer.requestID, privacy: .public) error=\(String(describing: error), privacy: .public)")
-                    Self.debugTrace("router_locked_mirror_display_wake_failed requestID=\(viewer.requestID) error=\(String(describing: error))")
+            if let remoteUnlockSessionID = viewer.remoteUnlockSessionID {
+                let state = remoteUnlockReadiness.currentState(
+                    sessionId: remoteUnlockSessionID,
+                    controlOwnerViewerId: activeControlViewerID
+                )
+                if state.lockState != .unlocked {
+                    return
                 }
             }
 

@@ -229,7 +229,7 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         )
 
         service.recordRemoteUnlockSession(session, now: now)
-        service.revokeAllRemoteUnlockSessions()
+        service.revokeAllRemoteUnlockSessions(revokePublishedTrust: false)
         XCTAssertFalse(
             service.isRemoteUnlockSessionActive(
                 sessionId: "unlock-session",
@@ -257,7 +257,10 @@ final class MacMediaCapabilityGateTests: XCTestCase {
 
     private func makeRemoteUnlockReadinessService() -> MacRemoteUnlockReadinessService {
         let defaults = UserDefaults(suiteName: "MacMediaCapabilityGateTests.\(UUID().uuidString)")!
-        return MacRemoteUnlockReadinessService(defaults: defaults)
+        return MacRemoteUnlockReadinessService(
+            defaults: defaults,
+            revokesPublishedTrustOnClearAll: false
+        )
     }
 
     private func remoteUnlockSession(

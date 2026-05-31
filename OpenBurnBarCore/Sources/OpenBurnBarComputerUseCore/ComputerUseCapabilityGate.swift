@@ -202,7 +202,9 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         // hosted Computer Use subscription being active. Otherwise a paired
         // iPhone can connect and stream the Mac, then every tap is denied as an
         // entitlement failure before dispatch.
-        let directPhoneControl = context.originatedFromPhone && context.entitlement.allowsPhoneControl
+        let directPhoneControl = context.originatedFromPhone
+            && context.entitlement.allowsPhoneControl
+            && context.session.manifest.phoneViewerNodeId?.isEmpty == false
         if !context.entitlement.isActive && !directPhoneControl { return .denied(.entitlement) }
         switch action {
         case .browser:
@@ -253,9 +255,9 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         //    entitlement bit, concurrency, and action-cap checks.
         if directPhoneControl {
             switch action {
-            case .macInput, .phoneIntent, .remoteClipboard:
+            case .macInput, .phoneIntent:
                 return .allowed(approvedBy: .phone)
-            case .browser, .macInspect:
+            case .browser, .macInspect, .remoteClipboard:
                 break
             }
         }
