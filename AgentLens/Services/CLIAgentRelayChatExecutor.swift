@@ -107,7 +107,8 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             }
         case .claude:
             _ = try await executable(named: "claude")
-            options = try Self.defaultProfileRows(for: runtime)
+            let catalogRows = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
+            options = catalogRows.isEmpty ? try Self.defaultProfileRows(for: runtime) : catalogRows
         case .droid:
             let executable = try await executable(named: "droid")
             let output = try await run(executable: executable, arguments: ["exec", "--help"], timeoutSeconds: 12)
@@ -124,15 +125,21 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             }
         case .antigravity:
             _ = try await executable(named: "agy")
-            options = [Self.antigravityProfileRow()]
+            let catalogRows = CLIRuntimeModelCatalog.antigravityModelCatalogOptions(
+                selectedModelName: Self.antigravitySelectedModelName()
+            )
+            options = catalogRows.isEmpty ? [Self.antigravityProfileRow()] : catalogRows
         case .grok:
             let executable = try await executable(named: "grok")
+            var discovered: [CLIRuntimeModelOption] = []
             if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 12) {
-                let discovered = CLIRuntimeModelCatalog.parseGrokModels(output)
-                options = discovered.isEmpty ? try Self.defaultProfileRows(for: runtime) : discovered
-            } else {
-                options = try Self.defaultProfileRows(for: runtime)
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModels(output))
             }
+            if let cacheData = try? Data(contentsOf: Self.grokModelsCacheURL()) {
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModelsCache(cacheData))
+            }
+            let deduplicated = Self.deduplicated(discovered)
+            options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
         case .cursorAgent:
             _ = try await executable(named: "cursor-agent")
             options = try Self.defaultProfileRows(for: runtime)
@@ -155,14 +162,33 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
     }
 
     private static func antigravityProfileRow() -> CLIRuntimeModelOption {
+        CLIRuntimeModelCatalog.antigravityProfileOption(modelName: antigravitySelectedModelName())
+    }
+
+    private static func antigravitySelectedModelName() -> String? {
         let settingsURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini/antigravity-cli/settings.json")
         guard let data = try? Data(contentsOf: settingsURL),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let selectedModel = object["model"] as? String else {
-            return CLIRuntimeModelCatalog.antigravityProfileOption(modelName: nil)
+            return nil
         }
-        return CLIRuntimeModelCatalog.antigravityProfileOption(modelName: selectedModel)
+        return selectedModel
+    }
+
+    private static func grokModelsCacheURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".grok/models_cache.json")
+    }
+
+    private static func deduplicated(_ options: [CLIRuntimeModelOption]) -> [CLIRuntimeModelOption] {
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for option in options {
+            guard seen.insert(option.modelID.lowercased()).inserted else { continue }
+            rows.append(option)
+        }
+        return rows
     }
 
     private func executable(named name: String) async throws -> String {

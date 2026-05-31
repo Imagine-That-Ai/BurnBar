@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — Touchless live model discovery and routed-client sync
 
-- Codex and Grok model pickers now use the paired Mac's live CLI catalogs (`codex debug models`, `grok models`) when available, falling back to the profile/default row only when enumeration fails.
-- Antigravity model selection now reflects the paired Mac's current `agy` profile model from `~/.gemini/antigravity-cli/settings.json` while still failing closed until `agy` exposes a reliable model-list command.
+- Codex and Grok model pickers now use the paired Mac's live CLI catalogs (`codex debug models`, `grok models`) when available, and Grok also merges `~/.grok/models_cache.json` so cached model releases show up even when the command output is sparse.
+- Claude Code and Antigravity model pickers now enumerate all known Claude/Gemini catalog rows for the paired Mac instead of reflecting only the CLI default/profile; Antigravity appends the selected `agy` profile model only when it is a custom non-catalog model.
 - The gateway router can resolve newly discovered Anthropic model IDs before the static catalog is updated, preserving the rule that any route-eligible advertised row must be callable.
 - Routed-client auto-repair now refreshes stale Droid custom model arrays from the live `/v1/models` catalog, so enrolled Droid installs pick up new proxy models without pressing Sync.
-- Android decodes the new Codex, Grok, and Cursor Agent model-source labels for mobile CLI model pickers.
+- Android decodes the new Antigravity, Claude Code, Codex, Grok, and Cursor Agent model-source labels for mobile CLI model pickers.
 
 ### Added — Cross-provider CLI session restart/handoff
 
@@ -576,9 +576,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grants onto `agy --sandbox` or the explicit dangerous bypass only when the
   user selected that capability.
 - **Kept Antigravity model selection Mac-sourced.** Because `agy 1.0.2` exposes
-  no enumerable model-list command, mobile asks the paired Mac for the live
-  Antigravity CLI catalog and shows the Mac profile/default row rather than a
-  guessed static model list.
+  no enumerable model-list command, mobile asks the paired Mac for the
+  Antigravity-compatible Gemini catalog and appends the Mac profile row only
+  when the selected `agy` model is a custom non-catalog target.
 
 ### Changed — Android assistant toolbar parity
 - **Brought Android assistant chat tool chrome up to iOS parity.** CLI chat now
