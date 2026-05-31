@@ -313,6 +313,7 @@ private final class StubCLIRelayTransport: CLIAgentRelayChatTransporting {
     var events: [CLIAgentRelayChatEvent]
     var requests: [Request] = []
     var sessionActionRequests: [CLIAgentSessionActionRequest] = []
+    var sessionActionResponse: CLIAgentSessionActionResponse?
 
     init(events: [CLIAgentRelayChatEvent]) {
         self.events = events
@@ -344,7 +345,7 @@ private final class StubCLIRelayTransport: CLIAgentRelayChatTransporting {
 
     func performSessionAction(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse {
         sessionActionRequests.append(request)
-        return CLIAgentSessionActionResponse(status: .nativeResume, targetRuntime: request.targetRuntime)
+        return sessionActionResponse ?? CLIAgentSessionActionResponse(status: .nativeResume, targetRuntime: request.targetRuntime)
     }
 }
 
