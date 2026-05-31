@@ -9,7 +9,7 @@ Covers: openburnbar-macos, openburnbar-functions, openburnbar-extension,
         openburnbar-android, burnbar-website
 
 Required environment variables:
-  SENTRY_AUTH_TOKEN   Sentry internal integration token (read:issue scope)
+  SENTRY_AUTH_TOKEN   Sentry API token with org:read + event:read scopes
   SENTRY_ORG          Sentry organization slug
   GH_TOKEN            GitHub token with issues:write scope
   GH_REPO             GitHub repository in "owner/repo" format

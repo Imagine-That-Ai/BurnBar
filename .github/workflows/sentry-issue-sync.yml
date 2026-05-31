@@ -7,7 +7,7 @@ name: Sentry Error -> GitHub Issue
 #         openburnbar-android, burnbar-website.
 #
 # Required secrets:
-#   SENTRY_AUTH_TOKEN  Sentry internal integration token (read:issue scope)
+#   SENTRY_AUTH_TOKEN  Sentry API token with org:read + event:read scopes
 #   SENTRY_ORG         Sentry organization slug
 #
 # Deduplication: the Sentry issue ID is embedded in each GitHub issue body as an
