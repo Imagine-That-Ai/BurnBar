@@ -102,7 +102,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(configuration.settings.isEnabled)
         XCTAssertTrue(configuration.hasCredential)
         XCTAssertEqual(configuration.settings.baseURL, "https://proxy.example.com/zai")
-        XCTAssertEqual(configuration.preferredModels.map(\.id), ["glm-5"])
+        XCTAssertEqual(configuration.preferredModels.map(\.id), ["glm-5", "glm-5-turbo"])
         XCTAssertEqual(configuration.apiKey, "zai-secret")
     }
 

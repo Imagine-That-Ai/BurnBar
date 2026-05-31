@@ -68,8 +68,7 @@ final class AgentLiveStageWiringTests: XCTestCase {
         )
         singleton.evaluate(authUID: "user-1", hermesService: service)
 
-        // Wait briefly so the dial task fires fetchPublicKey.
-        try? await Task.sleep(nanoseconds: 40_000_000)
+        await waitUntil(provider.fetchCalls == 1)
         XCTAssertEqual(provider.fetchCalls, 1)
         XCTAssertNil(singleton.connectionMessage)
 
@@ -100,11 +99,11 @@ final class AgentLiveStageWiringTests: XCTestCase {
             id: ComputerUseSessionID("wiring-1"),
             startedAt: .now
         )
-        try await Task.sleep(nanoseconds: 30_000_000)
+        await waitUntil(presenter.mode == .dock)
         XCTAssertEqual(presenter.mode, .dock)
 
         singleton.state.clear()
-        try await Task.sleep(nanoseconds: 90_000_000) // > 50ms grace
+        await waitUntil(presenter.mode == .hidden && presenter.collapseReason == .sessionEnded)
         XCTAssertEqual(presenter.mode, .hidden)
         XCTAssertEqual(presenter.collapseReason, .sessionEnded)
     }
@@ -158,6 +157,21 @@ final class AgentLiveStageWiringTests: XCTestCase {
 
         XCTAssertTrue(pipController.didRequestAutomaticInlinePiP)
     }
+}
+
+@MainActor
+func waitUntil(
+    _ condition: @autoclosure @escaping () -> Bool,
+    timeoutNanoseconds: UInt64 = 1_000_000_000,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    let deadline = ContinuousClock.now + .nanoseconds(Int(timeoutNanoseconds))
+    while ContinuousClock.now < deadline {
+        if condition() { return }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    XCTAssertTrue(condition(), file: file, line: line)
 }
 
 // MARK: - Test doubles

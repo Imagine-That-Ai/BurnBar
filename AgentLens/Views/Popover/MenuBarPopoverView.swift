@@ -839,7 +839,7 @@ struct MenuBarPopoverView: View {
             .popoverTooltip("Open settings")
 
             GlassButton(
-                title: "Quit",
+                title: "Quit OpenBurnBar",
                 icon: "power",
                 style: .cool
             ) {

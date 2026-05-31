@@ -506,6 +506,7 @@ private actor PhoneControlSendSequencer {
     private var tail: Task<Void, Never> = Task {}
 
     func enqueue<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        try Task.checkCancellation()
         let predecessor = tail
         let priority = Task.currentPriority
         let next = Task<T, Error>(priority: priority) {
@@ -516,8 +517,12 @@ private actor PhoneControlSendSequencer {
         tail = Task {
             _ = try? await next.value
         }
+        if Task.isCancelled {
+            next.cancel()
+        }
         return try await withTaskCancellationHandler {
-            try await next.value
+            try Task.checkCancellation()
+            return try await next.value
         } onCancel: {
             next.cancel()
         }

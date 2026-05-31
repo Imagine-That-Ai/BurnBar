@@ -118,12 +118,23 @@ jobs:
   commercial-launch-gate:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    env:
+      HAS_ASC_SECRETS: ${{ secrets.APP_STORE_ASC_KEY_ID != '' && secrets.APP_STORE_ASC_ISSUER_ID != '' && secrets.APP_STORE_ASC_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: Run commercial launch gate (read-only)
+        if: env.HAS_ASC_SECRETS == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_STORE_ASC_KEY_ID: ${{ secrets.APP_STORE_ASC_KEY_ID }}
+          APP_STORE_ASC_ISSUER_ID: ${{ secrets.APP_STORE_ASC_ISSUER_ID }}
+          APP_STORE_ASC_KEY_P8: ${{ secrets.APP_STORE_ASC_KEY_P8 }}
         run: node scripts/commercial-launch-gate.mjs
+      - name: Skip commercial launch gate when ASC secrets are unavailable
+        if: env.HAS_ASC_SECRETS != 'true'
+        run: |
+          echo "::notice::Skipping commercial launch gate because APP_STORE_ASC_* secrets are not configured in GitHub Actions."
+          echo "Commercial launch readiness must be proven from an operator environment with App Store Connect credentials."

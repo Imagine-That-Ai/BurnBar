@@ -88,7 +88,6 @@ final class AgentLiveStagePresenter: ObservableObject {
         cancellables.removeAll(keepingCapacity: true)
         state.$sessionId
             .removeDuplicates()
-            .receive(on: RunLoop.main)
             .sink { [weak self] sessionId in
                 self?.handleSessionIDChange(sessionId)
             }

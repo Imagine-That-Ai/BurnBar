@@ -49,7 +49,9 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         ])
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
+        XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.monthly"))
         XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
+        XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.proMax.monthly"))
         XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
     }
 

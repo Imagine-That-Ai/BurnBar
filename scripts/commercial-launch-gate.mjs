@@ -576,6 +576,11 @@ function checkGitHubSecuritySettings() {
 }
 
 function checkLatestMergedPrGate() {
+  const originMain = run("git", ["rev-parse", "origin/main"]);
+  if (!originMain.ok) {
+    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+  }
+  const mainSha = originMain.stdout.trim();
   const pulls = run("gh", [
     "api",
     "-H",
@@ -586,25 +591,32 @@ function checkLatestMergedPrGate() {
   const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
   if (!merged?.head?.sha) return { ok: false, error: "no merged PR found" };
 
-  const originMain = run("git", ["rev-parse", "origin/main"]);
-  if (originMain.ok) {
-    const mainSha = originMain.stdout.trim();
-    if (mainSha && merged.head.sha !== mainSha) {
-      const ancestor = run("git", ["merge-base", "--is-ancestor", merged.head.sha, mainSha]);
-      if (ancestor.ok) {
-        return {
-          ok: true,
-          pr: merged.number,
-          headSha: merged.head.sha,
-          supersededByMain: mainSha,
-          skipped: true,
-          reason:
-            "Latest merged PR head is already contained in a newer origin/main commit; mainRequiredGate is authoritative.",
-          openburnbarPr: null,
-          functionalQa: null,
-        };
-      }
+  if (mainSha && merged.head.sha !== mainSha) {
+    const ancestor = run("git", ["merge-base", "--is-ancestor", merged.head.sha, mainSha]);
+    if (ancestor.ok) {
+      return {
+        ok: true,
+        pr: merged.number,
+        headSha: merged.head.sha,
+        supersededByMain: mainSha,
+        skipped: true,
+        reason:
+          "Latest merged PR head is already contained in a newer origin/main commit; mainRequiredGate is authoritative.",
+        openburnbarPr: null,
+        functionalQa: null,
+      };
     }
+  }
+
+  if (merged.merge_commit_sha && merged.merge_commit_sha !== mainSha) {
+    return {
+      ok: true,
+      pr: merged.number,
+      headSha: merged.head.sha,
+      mergeCommitSha: merged.merge_commit_sha,
+      supersededByMainSha: mainSha,
+      note: "Latest merged PR is not main HEAD; mainRequiredGate and mainCodeQL cover the current direct/admin landing commit.",
+    };
   }
 
   const runs = run("gh", [

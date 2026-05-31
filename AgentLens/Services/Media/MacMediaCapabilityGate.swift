@@ -298,6 +298,7 @@ final class MacRemoteUnlockReadinessService {
     private let certificationStore: RemoteUnlockCertificationReportStore
     private let snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)?
     private let lockStateProvider: @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+    private let revokesPublishedTrustOnClearAll: Bool
     private var activeRemoteUnlockSessions: [String: ActiveRemoteUnlockSession] = [:]
 
     init(
@@ -305,6 +306,7 @@ final class MacRemoteUnlockReadinessService {
         policy: RemoteUnlockPolicy = .default,
         certificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore(),
         snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)? = nil,
+        revokesPublishedTrustOnClearAll: Bool = true,
         lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState = {
             MacRemoteUnlockReadinessService.currentHostLockState()
         }
@@ -314,6 +316,7 @@ final class MacRemoteUnlockReadinessService {
         self.certificationStore = certificationStore
         self.snapshotProvider = snapshotProvider
         self.lockStateProvider = lockStateProvider
+        self.revokesPublishedTrustOnClearAll = revokesPublishedTrustOnClearAll
     }
 
     func capabilities() -> HermesRealtimeRelayRemoteUnlockCapabilities {
@@ -387,9 +390,11 @@ final class MacRemoteUnlockReadinessService {
         activeRemoteUnlockSessions.removeValue(forKey: normalizedSessionId)
     }
 
-    func revokeAllRemoteUnlockSessions() {
+    func revokeAllRemoteUnlockSessions(revokePublishedTrust: Bool = true) {
         activeRemoteUnlockSessions.removeAll()
-        try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
+        if revokePublishedTrust && revokesPublishedTrustOnClearAll {
+            try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
+        }
     }
 
     func snapshot() -> RemoteUnlockReadinessSnapshot {
