@@ -1,5 +1,7 @@
 package com.openburnbar.data.computeruse
 
+import com.google.firebase.functions.FirebaseFunctions
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,7 +9,7 @@ import org.junit.Test
 class ComputerUseSecurityCallableClientTest {
     @Test
     fun requireOk_acceptsSuccessfulCallablePayload() {
-        val client = ComputerUseSecurityCallableClient()
+        val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
         val method = ComputerUseSecurityCallableClient::class.java.getDeclaredMethod(
             "requireOk",
             Any::class.java,
@@ -19,7 +21,7 @@ class ComputerUseSecurityCallableClientTest {
 
     @Test
     fun requireOk_rejectsMissingOkFlag() {
-        val client = ComputerUseSecurityCallableClient()
+        val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
         val method = ComputerUseSecurityCallableClient::class.java.getDeclaredMethod(
             "requireOk",
             Any::class.java,
