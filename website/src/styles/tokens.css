@@ -62,10 +62,23 @@
   --t-caption: 0.8rem;
   --t-body: 1rem;
   --t-lead: 1.25rem;
+  --t-h4: 1.25rem; /* sub-heading step between body and h3 */
   --t-h3: 2rem;
   --t-h2: 3rem;
   --t-h1: 4.5rem;
   --t-display: 6rem;
+
+  --tracking-uppercase: 0.16em; /* eyebrows / small-caps labels */
+
+  /* ---------- surfaces ---------- */
+  --ink-surface: rgba(255, 255, 255, 0.035); /* code / pre / inset chips */
+  --ink-surface-2: rgba(255, 255, 255, 0.06); /* one step brighter */
+
+  /* ---------- status (confidence labels) ---------- */
+  --status-exact: #3cd6c0; /* teal — healthy / exact */
+  --status-estimated: var(--core-amber); /* gold — estimated / in-review */
+  --status-unavailable: var(--text-dim); /* muted — no data */
+  --status-burn: var(--core-red); /* red — burning hot */
 
   /* ---------- space ---------- */
   --s-1: 0.25rem;
@@ -80,7 +93,9 @@
   --s-10: 8rem;
 
   /* ---------- layout ---------- */
+  --gutter: clamp(1.25rem, 4vw, 2.5rem); /* real side padding for .container */
   --container: 78rem;
+  --container-narrow: 46rem; /* ~736px readable reading column */
   --container-wide: 90rem;
 
   /* ---------- radii ---------- */
@@ -89,9 +104,15 @@
   --r-lg: 24px;
   --r-xl: 32px;
   --r-pill: 999px;
+  /* numeric radius scale (complements the t-shirt scale above) */
+  --r-2: 8px;
+  --r-3: 14px;
+  --r-4: 20px;
 
   /* ---------- motion ---------- */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 200ms;
   --dur-base: 400ms;
   --dur-slow: 8s;
 
