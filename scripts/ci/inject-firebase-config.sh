@@ -69,6 +69,10 @@ IFS=:
 for plist_path in $plist_paths; do
     /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "$plist_path" >/dev/null 2>&1 || true
     /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string $FIREBASE_APP_CHECK_DEBUG_TOKEN" "$plist_path"
+    if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
+        /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "$plist_path" >/dev/null 2>&1 || true
+        /usr/libexec/PlistBuddy -c "Add :sentry.dsn string $OPENBURNBAR_SENTRY_DSN" "$plist_path"
+    fi
 done
 IFS="$old_ifs"
 
@@ -84,3 +88,6 @@ echo "  AgentLens/Resources/GoogleService-Info.plist"
 echo "  OpenBurnBarMobile/Resources/GoogleService-Info.plist"
 echo "Validated keys: GOOGLE_APP_ID, PROJECT_ID, REVERSED_CLIENT_ID"
 echo "App Check debug token configured for CI runtime"
+if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
+    echo "Sentry DSN configured for app runtime"
+fi

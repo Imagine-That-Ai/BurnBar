@@ -1,0 +1,75 @@
+name: Sentry Error -> GitHub Issue
+
+# Polls the Sentry API for newly-reported errors across all OpenBurnBar projects
+# and creates GitHub issues so they land in the backlog automatically.
+#
+# Covers: openburnbar-macos, openburnbar-functions, openburnbar-extension,
+#         openburnbar-android, burnbar-website.
+#
+# Required secrets:
+#   SENTRY_AUTH_TOKEN  Sentry API token with org:read + event:read scopes
+#   SENTRY_ORG         Sentry organization slug
+#
+# Deduplication: the Sentry issue ID is embedded in each GitHub issue body as an
+# HTML comment so re-runs never create duplicates.
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_hours:
+        description: 'Hours to look back for new Sentry issues'
+        default: '4'
+        required: false
+        type: string
+      min_occurrences:
+        description: 'Minimum event count to create a GitHub issue'
+        default: '1'
+        required: false
+        type: string
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: sentry-issue-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync Sentry Errors to GitHub Issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Skip silently when opted out (set SENTRY_SYNC_ENABLED=false in repo vars).
+    if: vars.SENTRY_SYNC_ENABLED != 'false'
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Create GitHub issues for new Sentry errors
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          LOOKBACK_HOURS: ${{ inputs.lookback_hours || '4' }}
+          MIN_OCCURRENCES: ${{ inputs.min_occurrences || '1' }}
+        run: python3 scripts/sentry_issue_sync.py
+
+      - name: Post summary
+        if: always()
+        run: |
+          {
+            echo "### Sentry -> GitHub Issue Sync"
+            echo ""
+            echo "Projects monitored:"
+            echo "- openburnbar-macos (macOS/iOS app)"
+            echo "- openburnbar-functions (Cloud Functions)"
+            echo "- openburnbar-extension (VS Code extension)"
+            echo "- openburnbar-android (Android app)"
+            echo "- burnbar-website (landing site)"
+            echo ""
+            echo "Lookback: ${{ inputs.lookback_hours || '4' }} hours"
+          } >> "$GITHUB_STEP_SUMMARY"
