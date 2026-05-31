@@ -40,45 +40,45 @@ export const rebuildRollups = onSchedule(
   },
   async (_event) =>
     runScheduledJob("rebuildRollups", async () => {
-    const db = getFirestore();
-    const { rollupBatchSize } = getConfig();
+      const db = getFirestore();
+      const { rollupBatchSize } = getConfig();
 
-    const snapshot = await scheduledFirestore("rollup_jobs.dirty", () =>
-      db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize).get(),
-    );
-    if (snapshot.empty) {
-      return;
-    }
-
-    // Each doc path: users/{uid}/rollup_jobs/current
-    const jobs = snapshot.docs.map((doc) => {
-      const parts = doc.ref.path.split("/");
-      const uid = parts[1];
-      return uid;
-    });
-
-    // Deduplicate in case of racing writes.
-    const uniqueUids = [...new Set(jobs)];
-
-    for (const uid of uniqueUids) {
-      try {
-        // If a previous incremental attempt failed, the counters may be
-        // corrupt. Fall back to a full rebuild that re-reads all raw usage
-        // events and reconstructs counters from scratch.
-        const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
-        const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
-        const needsFullRebuild = job?.lastErrorCode != null;
-
-        const rollups = needsFullRebuild
-          ? await computeUserRollups(db, uid)
-          : await computeUserRollupsFromCounters(db, uid);
-        await writeUserRollups(db, uid, rollups);
-      } catch (err) {
-        logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
-        const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-        await jobRef.set({ lastErrorCode: errorMessage(err) }, { merge: true });
+      const snapshot = await scheduledFirestore("rollup_jobs.dirty", () =>
+        db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize).get(),
+      );
+      if (snapshot.empty) {
+        return;
       }
-    }
+
+      // Each doc path: users/{uid}/rollup_jobs/current
+      const jobs = snapshot.docs.map((doc) => {
+        const parts = doc.ref.path.split("/");
+        const uid = parts[1];
+        return uid;
+      });
+
+      // Deduplicate in case of racing writes.
+      const uniqueUids = [...new Set(jobs)];
+
+      for (const uid of uniqueUids) {
+        try {
+          // If a previous incremental attempt failed, the counters may be
+          // corrupt. Fall back to a full rebuild that re-reads all raw usage
+          // events and reconstructs counters from scratch.
+          const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
+          const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
+          const needsFullRebuild = job?.lastErrorCode != null;
+
+          const rollups = needsFullRebuild
+            ? await computeUserRollups(db, uid)
+            : await computeUserRollupsFromCounters(db, uid);
+          await writeUserRollups(db, uid, rollups);
+        } catch (err) {
+          logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
+          const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+          await jobRef.set({ lastErrorCode: errorMessage(err) }, { merge: true });
+        }
+      }
     }),
 );
 
@@ -98,118 +98,118 @@ export const refreshAllProviderQuotas = onSchedule(
   },
   async (_event) =>
     runScheduledJob("refreshAllProviderQuotas", async () => {
-    const db = getFirestore();
-    const { quotaRefreshBatchSize } = getConfig();
+      const db = getFirestore();
+      const { quotaRefreshBatchSize } = getConfig();
 
-    const refreshableStatuses = ["connected", "stale", "error"] as const;
-    const refreshedLegacyKeys = new Set<string>();
-    const refreshedAccountRefs = new Set<string>();
+      const refreshableStatuses = ["connected", "stale", "error"] as const;
+      const refreshedLegacyKeys = new Set<string>();
+      const refreshedAccountRefs = new Set<string>();
 
-    async function refreshAccountDoc(doc: QueryDocumentSnapshot): Promise<void> {
-      // Path: users/{uid}/provider_accounts/{accountID}
-      const parts = doc.ref.path.split("/");
-      const uid = parts[1];
-      const accountID = parts[3];
-      const data = doc.data();
-      refreshedAccountRefs.add(doc.ref.path);
-      refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
+      async function refreshAccountDoc(doc: QueryDocumentSnapshot): Promise<void> {
+        // Path: users/{uid}/provider_accounts/{accountID}
+        const parts = doc.ref.path.split("/");
+        const uid = parts[1];
+        const accountID = parts[3];
+        const data = doc.data();
+        refreshedAccountRefs.add(doc.ref.path);
+        refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
 
-      try {
-        await refreshUserProviderAccountQuota(db, uid, accountID);
-      } catch (err) {
-        logError({
-          event: "quota.refresh_account_failed",
-          uid,
-          account_id: accountID,
-          error: errorMessage(err),
-        });
-        // Update account doc with error state but do NOT disconnect
-        // automatically — transient failures should not punish the user.
-        await doc.ref.update({
-          lastErrorCode: errorMessage(err),
-          lastRefreshAt: new Date().toISOString(),
-        });
+        try {
+          await refreshUserProviderAccountQuota(db, uid, accountID);
+        } catch (err) {
+          logError({
+            event: "quota.refresh_account_failed",
+            uid,
+            account_id: accountID,
+            error: errorMessage(err),
+          });
+          // Update account doc with error state but do NOT disconnect
+          // automatically — transient failures should not punish the user.
+          await doc.ref.update({
+            lastErrorCode: errorMessage(err),
+            lastRefreshAt: new Date().toISOString(),
+          });
+        }
       }
-    }
 
-    for (const status of refreshableStatuses) {
-      if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
-        break;
-      }
-      const accountSnapshot = await db
-        .collectionGroup("provider_accounts")
-        .where("status", "==", status)
-        .where("storageScope", "in", ["cloud_refreshable", "server_private"])
-        .orderBy("lastRefreshAt", "asc")
-        .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
-        .get();
-
-      for (const doc of accountSnapshot.docs) {
-        await refreshAccountDoc(doc);
-      }
-    }
-
-    const missingRefreshAtRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
-    if (missingRefreshAtRemaining > 0) {
       for (const status of refreshableStatuses) {
         if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
           break;
         }
-        const missingRefreshAtSnapshot = await db
+        const accountSnapshot = await db
           .collectionGroup("provider_accounts")
           .where("status", "==", status)
           .where("storageScope", "in", ["cloud_refreshable", "server_private"])
+          .orderBy("lastRefreshAt", "asc")
           .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
           .get();
 
-        for (const doc of missingRefreshAtSnapshot.docs) {
-          if (refreshedAccountRefs.has(doc.ref.path) || doc.get("lastRefreshAt") != null) {
-            continue;
-          }
+        for (const doc of accountSnapshot.docs) {
           await refreshAccountDoc(doc);
         }
       }
-    }
 
-    const legacyRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
-    if (legacyRemaining === 0) {
-      return;
-    }
+      const missingRefreshAtRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
+      if (missingRefreshAtRemaining > 0) {
+        for (const status of refreshableStatuses) {
+          if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
+            break;
+          }
+          const missingRefreshAtSnapshot = await db
+            .collectionGroup("provider_accounts")
+            .where("status", "==", status)
+            .where("storageScope", "in", ["cloud_refreshable", "server_private"])
+            .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
+            .get();
 
-    const connSnapshot = await db
-      .collectionGroup("provider_connections")
-      .where("status", "==", "connected")
-      .orderBy("lastRefreshAt", "asc")
-      .limit(legacyRemaining)
-      .get();
-
-    for (const doc of connSnapshot.docs) {
-      // Path: users/{uid}/provider_connections/{provider}
-      const parts = doc.ref.path.split("/");
-      const uid = parts[1];
-      const provider = parseProvider(parts[3]);
-      if (!provider) {
-        continue;
-      }
-      if (refreshedLegacyKeys.has(`${uid}/${provider}`)) {
-        continue;
+          for (const doc of missingRefreshAtSnapshot.docs) {
+            if (refreshedAccountRefs.has(doc.ref.path) || doc.get("lastRefreshAt") != null) {
+              continue;
+            }
+            await refreshAccountDoc(doc);
+          }
+        }
       }
 
-      try {
-        await refreshUserProviderQuota(db, uid, provider);
-      } catch (err) {
-        logError({
-          event: "quota.refresh_legacy_failed",
-          uid,
-          provider,
-          error: errorMessage(err),
-        });
-        await doc.ref.update({
-          lastErrorCode: errorMessage(err),
-          lastRefreshAt: new Date().toISOString(),
-        });
+      const legacyRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
+      if (legacyRemaining === 0) {
+        return;
       }
-    }
+
+      const connSnapshot = await db
+        .collectionGroup("provider_connections")
+        .where("status", "==", "connected")
+        .orderBy("lastRefreshAt", "asc")
+        .limit(legacyRemaining)
+        .get();
+
+      for (const doc of connSnapshot.docs) {
+        // Path: users/{uid}/provider_connections/{provider}
+        const parts = doc.ref.path.split("/");
+        const uid = parts[1];
+        const provider = parseProvider(parts[3]);
+        if (!provider) {
+          continue;
+        }
+        if (refreshedLegacyKeys.has(`${uid}/${provider}`)) {
+          continue;
+        }
+
+        try {
+          await refreshUserProviderQuota(db, uid, provider);
+        } catch (err) {
+          logError({
+            event: "quota.refresh_legacy_failed",
+            uid,
+            provider,
+            error: errorMessage(err),
+          });
+          await doc.ref.update({
+            lastErrorCode: errorMessage(err),
+            lastRefreshAt: new Date().toISOString(),
+          });
+        }
+      }
     }),
 );
 
@@ -233,16 +233,16 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
   },
   async (_event) =>
     runScheduledJob("refreshModelLandscapeBenchmarks", async () => {
-    const db = getFirestore();
-    const now = new Date();
-    const result = await collectModelLandscapeBenchmarks(
-      {
-        ...process.env,
-        ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value() || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
-      },
-      now,
-    );
-    await scheduledFirestore("model_landscape.write", () => writeModelLandscapeBenchmarks(db, result));
-    await scheduledFirestore("router_rundown.build", () => buildAndPersistRouterRundown(db, now));
+      const db = getFirestore();
+      const now = new Date();
+      const result = await collectModelLandscapeBenchmarks(
+        {
+          ...process.env,
+          ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value() || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
+        },
+        now,
+      );
+      await scheduledFirestore("model_landscape.write", () => writeModelLandscapeBenchmarks(db, result));
+      await scheduledFirestore("router_rundown.build", () => buildAndPersistRouterRundown(db, now));
     }),
 );
