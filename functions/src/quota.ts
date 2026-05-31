@@ -19,6 +19,7 @@ import type {
 } from "./types.js";
 import { getConfig } from "./config.js";
 import { hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
+import { resilientFetch } from "./resilienceHelpers.js";
 import { retrieveCredential } from "./secrets.js";
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
@@ -391,7 +392,7 @@ async function fetchHostedRunnerSnapshot(
   if (endpoint.protocol !== "https:") {
     throw new Error("failed-precondition: hosted quota runner must use HTTPS.");
   }
-  const response = await fetch(endpoint, {
+  const response = await resilientFetch("hosted-quota-runner.refresh", endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",

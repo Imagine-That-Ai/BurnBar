@@ -10,6 +10,66 @@ typealias CLIRuntimeModelCatalogDispatcher = @Sendable (
     _ request: CLIRuntimeModelCatalogRequest
 ) async throws -> CLIRuntimeModelCatalogResponse
 
+typealias CLIAgentSessionActionDispatcher = @MainActor @Sendable (
+    _ request: CLIAgentSessionActionRequest
+) async throws -> CLIAgentSessionActionResponse
+
+@MainActor
+struct CLIAgentSessionActionDaemonDispatcher {
+    private let daemonManager: OpenBurnBarDaemonManager
+
+    init(daemonManager: OpenBurnBarDaemonManager = .shared) {
+        self.daemonManager = daemonManager
+    }
+
+    func perform(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse {
+        let mode: BurnBarResumeMode
+        switch request.action {
+        case .packageOnly:
+            mode = .open
+        case .resume, .handoff:
+            mode = .spawn
+        }
+        let response = try await daemonManager.runResume(
+            sessionID: request.sessionID,
+            targetHarness: request.targetRuntime,
+            targetModel: request.targetModelID,
+            mode: mode
+        )
+        let status: CLIAgentSessionActionStatus
+        switch response.kind {
+        case "native":
+            status = .nativeResume
+        case "spawned":
+            if response.argv != nil {
+                status = .nativeResume
+            } else if response.targetArgv != nil {
+                status = .handoff
+            } else {
+                status = .spawned
+            }
+        case "ported":
+            status = request.action == .packageOnly ? .packageOnly : .handoff
+        case "error":
+            status = .error
+        default:
+            status = .handoff
+        }
+        return CLIAgentSessionActionResponse(
+            status: status,
+            targetRuntime: response.targetHarness,
+            argv: response.argv ?? response.targetArgv ?? [],
+            briefingPath: response.briefingPath,
+            workingDirectory: response.workingDirectory,
+            pid: response.pid,
+            cleanupAfterSeconds: response.cleanupAfterSeconds,
+            note: response.note,
+            errorCode: response.errorCode,
+            errorRecovery: response.errorRecovery
+        )
+    }
+}
+
 actor CLIAgentRelayChunkSequencer {
     private var value = 0
 
@@ -37,11 +97,18 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         let options: [CLIRuntimeModelOption]
         switch runtime {
         case .codex:
-            _ = try await executable(named: "codex")
-            options = try Self.defaultProfileRows(for: runtime)
+            let executable = try await executable(named: "codex")
+            if let output = try? await run(executable: executable, arguments: ["debug", "models"], timeoutSeconds: 12),
+               let data = output.data(using: .utf8) {
+                let discovered = CLIRuntimeModelCatalog.parseCodexDebugModels(data)
+                options = discovered.isEmpty ? try Self.defaultProfileRows(for: runtime) : discovered
+            } else {
+                options = try Self.defaultProfileRows(for: runtime)
+            }
         case .claude:
             _ = try await executable(named: "claude")
-            options = try Self.defaultProfileRows(for: runtime)
+            let catalogRows = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
+            options = catalogRows.isEmpty ? try Self.defaultProfileRows(for: runtime) : catalogRows
         case .droid:
             let executable = try await executable(named: "droid")
             let output = try await run(executable: executable, arguments: ["exec", "--help"], timeoutSeconds: 12)
@@ -58,10 +125,21 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             }
         case .antigravity:
             _ = try await executable(named: "agy")
-            options = try Self.defaultProfileRows(for: runtime)
+            let catalogRows = CLIRuntimeModelCatalog.antigravityModelCatalogOptions(
+                selectedModelName: Self.antigravitySelectedModelName()
+            )
+            options = catalogRows.isEmpty ? [Self.antigravityProfileRow()] : catalogRows
         case .grok:
-            _ = try await executable(named: "grok")
-            options = try Self.defaultProfileRows(for: runtime)
+            let executable = try await executable(named: "grok")
+            var discovered: [CLIRuntimeModelOption] = []
+            if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 12) {
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModels(output))
+            }
+            if let cacheData = try? Data(contentsOf: Self.grokModelsCacheURL()) {
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModelsCache(cacheData))
+            }
+            let deduplicated = Self.deduplicated(discovered)
+            options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
         case .cursorAgent:
             _ = try await executable(named: "cursor-agent")
             options = try Self.defaultProfileRows(for: runtime)
@@ -81,6 +159,36 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(runtime.rawValue)
         }
         return [option]
+    }
+
+    private static func antigravityProfileRow() -> CLIRuntimeModelOption {
+        CLIRuntimeModelCatalog.antigravityProfileOption(modelName: antigravitySelectedModelName())
+    }
+
+    private static func antigravitySelectedModelName() -> String? {
+        let settingsURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        guard let data = try? Data(contentsOf: settingsURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let selectedModel = object["model"] as? String else {
+            return nil
+        }
+        return selectedModel
+    }
+
+    private static func grokModelsCacheURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".grok/models_cache.json")
+    }
+
+    private static func deduplicated(_ options: [CLIRuntimeModelOption]) -> [CLIRuntimeModelOption] {
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for option in options {
+            guard seen.insert(option.modelID.lowercased()).inserted else { continue }
+            rows.append(option)
+        }
+        return rows
     }
 
     private func executable(named name: String) async throws -> String {

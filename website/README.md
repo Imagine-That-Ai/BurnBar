@@ -26,7 +26,7 @@ live in `src/styles/tokens.css`; global styles in `src/styles/globals.css`.
 | `/` | `src/pages/index.astro` | Home — hero, pillars, dashboard mockup, surfaces, Hermes, pricing, trust |
 | `/product` | `src/pages/product.astro` | Feature tour grouped by tracking / assistant / control / surfaces / honesty |
 | `/providers` | `src/pages/providers.astro` | Full provider matrix, confidence legend, caveats |
-| `/pricing` | `src/pages/pricing.astro` | Free vs. Cloud (`$4.99/mo`) plus billing FAQ |
+| `/pricing` | `src/pages/pricing.astro` | Free Local, BurnBar Cloud, BurnBar Cloud Pro, top-ups, and billing FAQ |
 | `/privacy` | `src/pages/privacy.astro` | Three-zone trust model + architecture diagram |
 | `/security` | `src/pages/security.astro` | Threat model summary, known limits, release provenance |
 | `/benefits` | `src/pages/benefits.astro` | Why OpenBurnBar exists |

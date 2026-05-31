@@ -830,7 +830,7 @@ public struct BurnBarProviderRouter: Sendable {
             return wireModel(for: exactMatch, requestedModel: modelName)
         }
 
-        if let dynamicModel = dynamicOpenAICompatibleModel(
+        if let dynamicModel = dynamicDiscoveredProviderModel(
             named: modelName,
             in: configuration
         ) {
@@ -860,12 +860,12 @@ public struct BurnBarProviderRouter: Sendable {
         return wireModel(for: matchedModel, requestedModel: modelName)
     }
 
-    private func dynamicOpenAICompatibleModel(
+    private func dynamicDiscoveredProviderModel(
         named modelName: String,
         in configuration: BurnBarResolvedProviderConfiguration
     ) -> BurnBarCatalogModel? {
         guard allowDynamicOpenAICompatibleModels,
-              configuration.provider.formatFamily == .openaiCompat,
+              [.openaiCompat, .anthropic].contains(configuration.provider.formatFamily),
               configuration.provider.capabilities.contains(.routing),
               let template = configuration.preferredModels.first ?? configuration.provider.models.first(where: { $0.visibility == .public }) else {
             return nil

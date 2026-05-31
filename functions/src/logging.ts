@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import { onCall, type CallableOptions, type CallableRequest } from "firebase-functions/v2/https";
 
 // Patterns for PII and sensitive data scrubbing
 const SCRUB_PATTERNS: Array<[RegExp, string]> = [
@@ -147,6 +147,13 @@ export async function withCallableLogging<T>(
     logCallableSuccess(name, traceId, uid);
     return result;
   } catch (error) {
+    const { captureException, setSentryUser } = await import("./sentry.js");
+    if (uid) setSentryUser(uid);
+    captureException(error, {
+      callable: name,
+      trace_id: traceId,
+      user_id_hash: uid?.slice(0, 8),
+    });
     logCallableFailure(name, traceId, error, uid);
     throw error;
   }
@@ -173,6 +180,22 @@ export function wrapCallableHandler<Data, R>(
 ): (request: CallableRequest<Data>) => Promise<R> {
   return async (request: CallableRequest<Data>) => {
     const uid = request.auth?.uid;
+    if (uid) {
+      const { setSentryUser } = await import("./sentry.js");
+      setSentryUser(uid);
+    }
     return withCallableLogging(name, request, uid, () => handler(request));
   };
+}
+
+/**
+ * Production callable factory: v2 onCall + structured logs + Sentry capture.
+ * Prefer for new exports; existing exports can keep onCall(..., wrapCallableHandler(...)).
+ */
+export function onCallProduction<Data, R>(
+  name: string,
+  options: CallableOptions,
+  handler: (request: CallableRequest<Data>) => Promise<R>,
+) {
+  return onCall(options, wrapCallableHandler(name, handler));
 }

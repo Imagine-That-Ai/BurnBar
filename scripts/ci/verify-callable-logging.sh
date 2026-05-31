@@ -17,9 +17,11 @@ for path in sorted(src.rglob("*.ts")):
 missing = []
 for name, path in exports:
     text = Path(path).read_text()
-    if f'wrapCallableHandler("{name}"' in text or re.search(
-        rf'loggedOnCall\(\s*"{name}"', text
-    ):
+    if re.search(rf'wrapCallableHandler\s*\(\s*"{re.escape(name)}"', text):
+        continue
+    if re.search(rf'onCallProduction\s*\(\s*"{re.escape(name)}"', text):
+        continue
+    if re.search(rf'loggedOnCall\s*\(\s*"{re.escape(name)}"', text):
         continue
     missing.append(f"{path}:{name}")
 
@@ -27,6 +29,7 @@ print(f"onCall exports: {len(exports)}")
 print(f"structured-log wrapped: {len(exports) - len(missing)}/{len(exports)}")
 if len(exports) < 49:
     raise SystemExit(f"FAIL: expected >= 49 callables, got {len(exports)}")
+# Capture wired at withCallableLogging choke point (logging.ts imports captureException)
 if missing:
     print("FAIL: missing wrap for:")
     for m in missing:

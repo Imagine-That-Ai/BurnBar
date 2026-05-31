@@ -1,0 +1,221 @@
+name: Fast Feedback (<5 min)
+
+# Lightweight pre-check that gates every PR in under 5 minutes.
+# Runs parallel jobs covering lint, type-check, shell validation, schema drift,
+# and non-Swift unit tests so agents get actionable signal before the 45-min
+# macOS build completes.
+#
+# This workflow is the PRIMARY CI feedback signal for PRs.
+# The full macOS build (openburnbar-pr-harness.yml) provides deeper coverage
+# but is not suited to fast iteration loops.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: fast-feedback-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Functions: lint + typecheck + unit tests ──────────────────────────────
+  functions-fast:
+    name: Functions (lint + types + unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: TypeScript type check
+        run: npx --prefix functions tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint --prefix functions
+
+      - name: Unit tests (vitest)
+        run: npm run test:unit --prefix functions
+
+      - name: Summarize
+        if: always()
+        run: |
+          echo "### Functions Fast Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "- TypeScript: ✓" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ESLint: ✓" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Unit tests: ✓" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Extension: lint + typecheck + unit tests ─────────────────────────────
+  extension-fast:
+    name: Extension (lint + types + unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: TypeScript type check
+        run: npx --prefix extensions/openburnbar tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint --prefix extensions/openburnbar
+
+      - name: Unit tests (vitest)
+        run: npm run test --prefix extensions/openburnbar
+
+  # ── Website: typecheck + lint ─────────────────────────────────────────────
+  website-fast:
+    name: Website (types + lint + format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website dependencies
+        run: npm ci --prefix website
+
+      - name: Astro type check
+        run: npm run check --prefix website
+
+      - name: Prettier format check
+        run: npm run format:check --prefix website
+
+  # ── Shell scripts: syntax validation ────────────────────────────────────
+  shell-syntax:
+    name: Shell syntax validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Validate all shell scripts
+        run: |
+          set -euo pipefail
+          ERRORS=0
+          while IFS= read -r -d '' script; do
+            if ! bash -n "$script"; then
+              echo "::error file=${script}::Shell syntax error in ${script}"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done < <(find scripts/ -name '*.sh' -print0 2>/dev/null)
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::error::${ERRORS} shell script(s) have syntax errors."
+            exit 1
+          fi
+          echo "All shell scripts pass syntax validation."
+
+      - uses: awalsh128/cache-apt-pkgs-action@a6c77d3965efe46161a2d8b08d43ebb3a4b88f3f # v1.4.2
+        with:
+          packages: shellcheck
+          version: 1.0
+
+      - name: ShellCheck
+        run: |
+          find scripts/ -name '*.sh' -exec shellcheck --severity=warning {} + || true
+
+  # ── Schema sync drift check ───────────────────────────────────────────────
+  schema-drift:
+    name: Schema sync drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Check schema sync drift
+        run: ./tools/schema-sync/check-drift.sh
+
+  # ── Version consistency ────────────────────────────────────────────────────
+  version-consistency:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Verify version consistency
+        run: ./scripts/verify-version-consistency.sh
+
+  # ── AGENTS.md validation ───────────────────────────────────────────────────
+  agents-md-fast:
+    name: AGENTS.md quick validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check that referenced scripts exist
+        run: |
+          set -euo pipefail
+          ERRORS=0
+          while IFS= read -r line; do
+            if [[ "$line" =~ \`(scripts/[^[:space:]\`]+)\` ]]; then
+              script="${BASH_REMATCH[1]}"
+              if [[ ! -f "$script" && ! -f "${script}.sh" ]]; then
+                echo "::error::AGENTS.md references missing script: $script"
+                ERRORS=$((ERRORS + 1))
+              fi
+            fi
+          done < AGENTS.md
+          if [[ $ERRORS -gt 0 ]]; then
+            exit 1
+          fi
+          echo "All AGENTS.md script references valid."
+
+  # ── Fast summary gate ──────────────────────────────────────────────────────
+  fast-feedback-gate:
+    name: Fast Feedback Gate
+    needs:
+      - functions-fast
+      - extension-fast
+      - website-fast
+      - shell-syntax
+      - schema-drift
+      - version-consistency
+      - agents-md-fast
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all fast jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::error::The following fast feedback jobs failed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "### Fast Feedback: All checks passed in under 5 minutes" >> "$GITHUB_STEP_SUMMARY"

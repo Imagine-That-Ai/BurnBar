@@ -27,6 +27,7 @@ struct CLIAgentConversationListView: View {
     @State private var importSnapshot: AgentHarnessImportJobSnapshot?
     @State private var importObservation: CLIAgentMissionObservation?
     @State private var missionHost = MobileMissionConsoleHost()
+    @State private var resumeSheetSession: CLIAgentSessionRecord?
 
     init(
         runtime: CLIAgentRuntime,
@@ -120,6 +121,9 @@ struct CLIAgentConversationListView: View {
                     }
             }
         }
+        .sheet(item: $resumeSheetSession) { session in
+            CLIAgentResumeSheet(session: session)
+        }
         .task {
             historyStore.bootstrap()
             missionHost.start()
@@ -193,16 +197,20 @@ struct CLIAgentConversationListView: View {
                     .buttonStyle(.plain)
                 }
                 ForEach(visibleMirroredSessions) { session in
-                    Button {
-                        if let onSelectExistingThreadInSplit {
-                            onSelectExistingThreadInSplit("cli:\(session.id)")
-                            return
+                    HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+                        Button {
+                            if let onSelectExistingThreadInSplit {
+                                onSelectExistingThreadInSplit("cli:\(session.id)")
+                                return
+                            }
+                            selectedRoute = session.sourceKind == .archivedLog ? .archived(session) : .existing(session)
+                        } label: {
+                            sessionRow(session)
                         }
-                        selectedRoute = session.sourceKind == .archivedLog ? .archived(session) : .existing(session)
-                    } label: {
-                        sessionRow(session)
+                        .buttonStyle(.plain)
+
+                        sessionActionMenu(session)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(MobileTheme.Spacing.md)
@@ -345,6 +353,7 @@ struct CLIAgentConversationListView: View {
             }
         }
         .padding(MobileTheme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                 .fill(MobileTheme.Colors.surface.opacity(0.85))
@@ -381,6 +390,24 @@ struct CLIAgentConversationListView: View {
                 RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
                     .fill(accent.opacity(0.13))
             )
+    }
+
+    private func sessionActionMenu(_ session: CLIAgentSessionRecord) -> some View {
+        Button {
+            HapticBus.sheetOpen()
+            resumeSheetSession = session
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .fill(accent.opacity(0.16))
+                    .frame(width: 48)
+                Image(systemName: "laptopcomputer.and.arrow.down")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(accent)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Restart \(session.title) on Mac")
     }
 
     @ViewBuilder
@@ -554,6 +581,7 @@ struct CLIAgentConversationListView: View {
             )
         }
     }
+
 
 }
 

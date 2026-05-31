@@ -55,6 +55,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     var mediaControlRegistrar: MediaControlStreamRegistrar?
     var cliChatDispatcher: CLIAgentRelayChatDispatcher?
     var cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
+    var cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?
     /// Phase 12 — Computer Use control plane. Receives `control.input`,
     /// `control.classify`, `control.action.log.entry`, and
     /// `control.approval.{request,response}` frames. Set by
@@ -261,6 +262,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     controlDispatcher: controlDispatcher,
                     cliChatDispatcher: cliChatDispatcher,
                     cliModelCatalogDispatcher: cliModelCatalogDispatcher,
+                    cliSessionActionDispatcher: cliSessionActionDispatcher,
                     auditLogger: auditLogger
                 )
                 let serveID = UUID()

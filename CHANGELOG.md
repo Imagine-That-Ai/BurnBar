@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Touchless live model discovery and routed-client sync
+
+- Codex and Grok model pickers now use the paired Mac's live CLI catalogs (`codex debug models`, `grok models`) when available, and Grok also merges `~/.grok/models_cache.json` so cached model releases show up even when the command output is sparse.
+- Claude Code and Antigravity model pickers now enumerate all known Claude/Gemini catalog rows for the paired Mac instead of reflecting only the CLI default/profile; Antigravity appends the selected `agy` profile model only when it is a custom non-catalog model.
+- The gateway router can resolve newly discovered Anthropic model IDs before the static catalog is updated, preserving the rule that any route-eligible advertised row must be callable.
+- Routed-client auto-repair now refreshes stale Droid custom model arrays from the live `/v1/models` catalog, so enrolled Droid installs pick up new proxy models without pressing Sync.
+- Android decodes the new Antigravity, Claude Code, Codex, Grok, and Cursor Agent model-source labels for mobile CLI model pickers.
+
+### Added — Cross-provider CLI session restart/handoff
+
+- Added `cliAgentSessionAction` relay contracts so iOS, iPadOS, and Android can ask the physical Mac to resume, hand off, or package any indexed CLI session through the daemon `run.resume` path.
+- Handoff packages now include full indexed transcript text when available, stay Mac-local with `0600` permissions, and mark untrusted historical transcript context explicitly.
+- Cross-provider targets now generate concrete Mac argv for Codex, Claude Code, Droid, Forge, Antigravity, Grok, Cursor Agent, OpenCode, and Gemini CLI, while native resume remains limited to locally validated Codex/Claude handles.
+- Android runtime parity now includes Grok and Cursor Agent session tiles, relay operation names, session-action payload decoding, and Firestore rule allow-lists.
+
 ### Security — Computer Use WS4 client migration (2026-05-30 remediation)
 
 - Mac, iOS, and Android clients route escrow device registration and trust elevation through `registerEscrowDevice`, `approveEscrowDeviceTrust`, and `revokeEscrowDeviceTrust` callables instead of direct Firestore writes to `trustState: trusted`.
@@ -561,9 +576,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grants onto `agy --sandbox` or the explicit dangerous bypass only when the
   user selected that capability.
 - **Kept Antigravity model selection Mac-sourced.** Because `agy 1.0.2` exposes
-  no enumerable model-list command, mobile asks the paired Mac for the live
-  Antigravity CLI catalog and shows the Mac profile/default row rather than a
-  guessed static model list.
+  no enumerable model-list command, mobile asks the paired Mac for the
+  Antigravity-compatible Gemini catalog and appends the Mac profile row only
+  when the selected `agy` model is a custom non-catalog target.
 
 ### Changed — Android assistant toolbar parity
 - **Brought Android assistant chat tool chrome up to iOS parity.** CLI chat now

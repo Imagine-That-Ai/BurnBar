@@ -24,6 +24,7 @@
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "minimax" as const;
 
@@ -71,7 +72,7 @@ interface MiniMaxFetchResult {
 async function minimaxFetch(url: string, token: string): Promise<MiniMaxFetchResult> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await providerFetch(PROVIDER, "api", url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

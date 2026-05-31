@@ -1,7 +1,7 @@
 {
-  "loc": 25542,
-  "exportedInterfaces": 334,
-  "fileCount": 97,
-  "generatedAt": "2026-05-31T05:36:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; corrected generated-directory exclusion, Cloud Pro entitlement hardening, and formatting ratchet."
+  "loc": 26259,
+  "exportedInterfaces": 327,
+  "fileCount": 96,
+  "generatedAt": "2026-05-31T19:00:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; includes GTM ops, resilience, Sentry, Cloud Pro entitlement hardening, and formatting ratchet."
 }

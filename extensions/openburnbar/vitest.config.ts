@@ -14,6 +14,9 @@ export default defineConfig({
       },
     },
 
+    // Report test results verbosely and emit JSON for CI timing analysis
+    reporters: ["verbose", "json"],
+
     // Retry flaky tests up to 2 times before marking as failed
     retry: 2,
 

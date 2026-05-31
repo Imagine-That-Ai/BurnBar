@@ -1,0 +1,72 @@
+name: Ops plane verify (production)
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply GCP log metrics + alert policies (requires OPS_ALERT_CHANNELS secret)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ops-plane-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ secrets.GCP_SA_KEY != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@a511b5a7f286f9b1edc5e21fb27b9bbc2e8e880f # v2
+
+      - name: Activate ops plane (optional)
+        if: github.event_name == 'workflow_dispatch' && inputs.apply == true
+        env:
+          GCLOUD_PROJECT: burnbar
+          OPS_ALERT_CHANNELS: ${{ secrets.OPS_ALERT_CHANNELS }}
+        run: bash scripts/ops/activate-production-ops-plane.sh
+
+      - name: Verify production ops plane
+        env:
+          GCLOUD_PROJECT: burnbar
+          OPENBURNBAR_FIREBASE_PROJECT: burnbar
+          FUNCTIONS_REGION: us-central1
+          VERIFY_OPS_PLANE_SUMMARY: verify-ops-plane-summary.json
+        run: bash scripts/ops/verify-production-ops-plane.sh
+
+      - name: Upload verification summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ops-plane-verify-${{ github.run_id }}
+          path: verify-ops-plane-summary.json
+          if-no-files-found: ignore
+
+  skipped-no-gcp-key:
+    if: ${{ secrets.GCP_SA_KEY == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::GCP_SA_KEY not set — ops plane verify skipped"

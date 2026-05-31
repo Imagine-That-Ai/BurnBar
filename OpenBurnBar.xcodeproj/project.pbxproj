@@ -524,6 +524,9 @@
 		5B8C314FEDBAE420A79F3612 /* ChartStudioPromptEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63912DF425DA04681EC9FDAE /* ChartStudioPromptEngineTests.swift */; };
 		5B9082085651B4C87576F0E4 /* ComputerUseBudgetStatusStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E1DA78566A421F59CDF78E4 /* ComputerUseBudgetStatusStore.swift */; };
 		F1A2B3C4D5E60718293A4B5C /* ComputerUseSecurityCallableClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* ComputerUseSecurityCallableClient.swift */; };
+		DA429FE21F6FB1239B6BE067 /* AppCheckAttestationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4714749F938644AE3473CB5 /* AppCheckAttestationMonitor.swift */; };
+		F6606A754CB6247A00AE4535 /* ComputerUseSecurityCallableClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28295187C774DAC3AC47F840 /* ComputerUseSecurityCallableClient.swift */; };
+		C719E20844C3EFB785E5B67C /* AppCheckAttestationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 291F8E7931B6F3E16CB8C5AA /* AppCheckAttestationMonitor.swift */; };
 		5C1DCD87C72ADFFE619398E4 /* DatabaseEncryptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C73A865B0B3EF5D04D19AAC /* DatabaseEncryptionService.swift */; };
 		5C1FD5BB45A92A4A26904882 /* DashboardChatWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53648FD3631DEFDB4300AF17 /* DashboardChatWorkspaceView.swift */; };
 		5C64AC27853B26FD3C3C5C69 /* MercuryIncomingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855A9DC939575033F8C3D7AD /* MercuryIncomingSheet.swift */; };
@@ -616,6 +619,7 @@
 		6B773B406B19E37E527117D7 /* MissionControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE90C38154A75C882C0479C /* MissionControlService.swift */; };
 		6B8AA4165D87CD29D4AA47CA /* AgentWatchActionPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689420A9655584A20542B491 /* AgentWatchActionPublisher.swift */; };
 		6B8CF23079CA689E1E3A4B3B /* CLIAgentTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A49311AAF7D587B498A874 /* CLIAgentTranscriptView.swift */; };
+		FE01A1B2C3D4E5F600000001 /* CLIAgentResumeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01A1B2C3D4E5F600000002 /* CLIAgentResumeSheet.swift */; };
 		6B8F35429124EA6183D3506D /* FakeSelfHostedRunnerSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CB7F670BC189B6EE22C9B7 /* FakeSelfHostedRunnerSaver.swift */; };
 		6BC17BEE857279FDF6ADA8F4 /* ThemeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A751362CAA952A257900FBA /* ThemeSettingsView.swift */; };
 		6BDF38DBAEF47512FBC5F24C /* SettingsItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68615ECFA61E533B83A0E630 /* SettingsItem.swift */; };
@@ -1903,6 +1907,7 @@
 		35E188A15FEDEC88CFCB0E0E /* KiloCodeQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiloCodeQuotaAdapter.swift; sourceTree = "<group>"; };
 		36427609FF2F7D2A03B20522 /* MobileAssistantChatReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAssistantChatReader.swift; sourceTree = "<group>"; };
 		36A49311AAF7D587B498A874 /* CLIAgentTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentTranscriptView.swift; sourceTree = "<group>"; };
+		FE01A1B2C3D4E5F600000002 /* CLIAgentResumeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentResumeSheet.swift; sourceTree = "<group>"; };
 		36A6EA559F8C473593FBB21C /* ChatPanelContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanelContent.swift; sourceTree = "<group>"; };
 		36D88D81DC360BD41B0A86E4 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		36E8E2C9C70478D93244149C /* OpenBurnBarRunServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarRunServiceTests.swift; sourceTree = "<group>"; };
@@ -2043,6 +2048,9 @@
 		4DE1DD1F879A5CE858C7DB31 /* AutoSummaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSummaryEngine.swift; sourceTree = "<group>"; };
 		4DF6DE9B4DB59CB5DB1B4554 /* HermesIrohRelayTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesIrohRelayTransport.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* ComputerUseSecurityCallableClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseSecurityCallableClient.swift; sourceTree = "<group>"; };
+		A4714749F938644AE3473CB5 /* AppCheckAttestationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCheckAttestationMonitor.swift; sourceTree = "<group>"; };
+		28295187C774DAC3AC47F840 /* ComputerUseSecurityCallableClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseSecurityCallableClient.swift; path = OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift; sourceTree = SOURCE_ROOT; };
+		291F8E7931B6F3E16CB8C5AA /* AppCheckAttestationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppCheckAttestationMonitor.swift; path = OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift; sourceTree = SOURCE_ROOT; };
 		4E1DA78566A421F59CDF78E4 /* ComputerUseBudgetStatusStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseBudgetStatusStore.swift; sourceTree = "<group>"; };
 		4E5D6579947FFCD8B548DD03 /* ProviderAccountDeviceLinksObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountDeviceLinksObserver.swift; sourceTree = "<group>"; };
 		4E7963318FCE99286AFB8FC3 /* FlexibleQuotaBucketNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlexibleQuotaBucketNormalizer.swift; sourceTree = "<group>"; };
@@ -4596,6 +4604,7 @@
 				90786B91D5265C74411B6982 /* AgentWatchState.swift */,
 				D3424E6730834F4217FEA09A /* ComputerUseSessionState.swift */,
 				0881CC004F8EB51B49402C69 /* MobileAgentPermissionGrantController.swift */,
+				28295187C774DAC3AC47F840 /* ComputerUseSecurityCallableClient.swift */,
 				502B3C5599E74FE3B7C136D3 /* PhoneControlAuthorityIssuer.swift */,
 				3CC10488C7AE38987956087B /* PhoneControlAuthorityPublisher.swift */,
 				E44BA585557E04E09E4D6CDF /* PhoneControlSender.swift */,
@@ -4939,6 +4948,7 @@
 				89E0BC43C79CC0C325D7E39D /* AssistantModelLens.swift */,
 				3DF212707A3E95480E40A80C /* AssistantModelMerger.swift */,
 				1C714CC045D405C1DC97F89B /* AuthRepository.swift */,
+				291F8E7931B6F3E16CB8C5AA /* AppCheckAttestationMonitor.swift */,
 				9A5F040B1E8EEAFE80C04F84 /* BudgetNotificationCenter.swift */,
 				8AD578132658E34722F97218 /* CLIAgentChatReader.swift */,
 				EF61AB5C92B55BCE7ED8B6EE /* CLIAgentMissionDispatcher.swift */,
@@ -4988,6 +4998,7 @@
 			children = (
 				53EB72C0A8409F2E73CF56A2 /* CLIAgentConversationListView.swift */,
 				36A49311AAF7D587B498A874 /* CLIAgentTranscriptView.swift */,
+				FE01A1B2C3D4E5F600000002 /* CLIAgentResumeSheet.swift */,
 			);
 			path = CLIAgents;
 			sourceTree = "<group>";
@@ -5317,6 +5328,7 @@
 				D00F2ED25716606E060183C5 /* TextExpansion */,
 				79A64BEBED03DCE1A5F906EF /* UsageAggregation */,
 				9F1918BAAE6D50730E47E13B /* AccountManager.swift */,
+				A4714749F938644AE3473CB5 /* AppCheckAttestationMonitor.swift */,
 				3B0C7AB7820A4FF09F0A4CA9 /* AppLogger.swift */,
 				EA4B9C6930C83E8E19B0CBC0 /* ArtifactAuthoringService.swift */,
 				840B9D28C96954538CED61B9 /* ArtifactDiscoveryService.swift */,
@@ -6681,6 +6693,7 @@
 				DDAA8A011F0CE9B4A4E9F92C /* AuroraStatePane.swift in Sources */,
 				16597406B68CBB2E9182D635 /* AuthGateView.swift in Sources */,
 				AEDD73FF0896DCE1190F5AD3 /* AuthRepository.swift in Sources */,
+				C719E20844C3EFB785E5B67C /* AppCheckAttestationMonitor.swift in Sources */,
 				4C98533661764EC6A0399909 /* AuthStore.swift in Sources */,
 				582073F8D5820F373E559F16 /* BudgetBlockedCard.swift in Sources */,
 				79671ECBF1FEC9A64422E6AB /* BudgetCenterView.swift in Sources */,
@@ -6705,6 +6718,7 @@
 				630976916D60049249DDC021 /* CLIAgentMissionDispatcher.swift in Sources */,
 				68DDB093AFFF9228D98C441F /* CLIAgentRelayChatTransport.swift in Sources */,
 				6B8CF23079CA689E1E3A4B3B /* CLIAgentTranscriptView.swift in Sources */,
+				FE01A1B2C3D4E5F600000001 /* CLIAgentResumeSheet.swift in Sources */,
 				9365F3BF87A49C28EE98FAEB /* CacheConstellationScene.swift in Sources */,
 				0C941F43440165B7F8FCDFB1 /* CallHUDView.swift in Sources */,
 				BD5CC49EFF8B9896D26531F0 /* CameraCaptureService.swift in Sources */,
@@ -6847,6 +6861,7 @@
 				AA69EF65F1E1D64234C97C6D /* MissionLiveDetailSharedViews.swift in Sources */,
 				51AAACA644D87CFDC8A2A050 /* MobileAgentInsightsProducer.swift in Sources */,
 				D2C2D072331E0ED5AC80C5F8 /* MobileAgentPermissionGrantController.swift in Sources */,
+				F6606A754CB6247A00AE4535 /* ComputerUseSecurityCallableClient.swift in Sources */,
 				0CF45A44491F61C79FB201D2 /* MobileChatHistoryStore.swift in Sources */,
 				757C5661BF5D82188E6FC900 /* MobileChatViewModePicker.swift in Sources */,
 				AA4642D5179773C772E57062 /* MobileE2ERoute.swift in Sources */,
@@ -7355,6 +7370,7 @@
 				D0182F62D749366C10D7199D /* ComputerUseApprovalSheet.swift in Sources */,
 				5B9082085651B4C87576F0E4 /* ComputerUseBudgetStatusStore.swift in Sources */,
 				F1A2B3C4D5E60718293A4B5C /* ComputerUseSecurityCallableClient.swift in Sources */,
+				DA429FE21F6FB1239B6BE067 /* AppCheckAttestationMonitor.swift in Sources */,
 				F0C1148D772530FD701C3D9A /* ComputerUseDaemonApprovalPresenter.swift in Sources */,
 				CAB4149EA7CA10CD0CA08EF1 /* ComputerUsePanicHaltCoordinator.swift in Sources */,
 				0F68A81B30AA3874A2297310 /* ComputerUseRemoteConfigNotifications.swift in Sources */,

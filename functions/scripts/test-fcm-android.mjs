@@ -166,7 +166,7 @@ const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voi
   const firestore = makeFakeFirestore({
     "users/u1/entitlements/burnbar_pro_max": {
       active: true,
-      productID: "com.openburnbar.proMax.monthly",
+      productID: "com.openburnbar.proMax.v2.monthly",
       expireAt: future,
     },
   });

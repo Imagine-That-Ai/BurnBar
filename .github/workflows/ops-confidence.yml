@@ -1,0 +1,40 @@
+name: Ops Confidence
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "0 10 * * 1"
+  workflow_dispatch:
+
+jobs:
+  prod-health-synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Production health synthetic
+        env:
+          FIREBASE_PROJECT: burnbar
+          FUNCTIONS_REGION: us-central1
+        run: bash scripts/ci/post-deploy-health-gate.sh
+
+      - name: Ops readiness verifiers (offline)
+        run: bash scripts/ci/verify-ops-readiness.sh
+
+  website-zap-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: OWASP ZAP baseline (burnbar.ai)
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "https://burnbar.ai"
+          rules_file_name: ".github/zap-rules.tsv"
+          cmd_options: "-a -j"
+          fail_action: true
+          artifact_name: "zap-ops-confidence-report"

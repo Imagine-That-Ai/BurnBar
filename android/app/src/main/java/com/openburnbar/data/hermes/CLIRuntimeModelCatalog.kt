@@ -35,6 +35,26 @@ enum class CliModelSource(
     ANTIGRAVITY_PROFILE(
         "Antigravity CLI profile",
         "Uses this Mac's Google Antigravity CLI auth and quota.",
+    ),
+    ANTIGRAVITY_MODEL_CATALOG(
+        "Antigravity model catalog",
+        "Cataloged for this Mac's Google Antigravity CLI auth and quota.",
+    ),
+    CLAUDE_MODEL_CATALOG(
+        "Claude Code model catalog",
+        "Cataloged for this Mac's Claude Code CLI auth and quota.",
+    ),
+    CURSOR_AGENT_PROFILE(
+        "Cursor Agent CLI profile",
+        "Uses this Mac's Cursor Agent CLI auth and quota.",
+    ),
+    CODEX_MODEL_CATALOG(
+        "Codex live catalog",
+        "Discovered from this Mac's Codex CLI model catalog.",
+    ),
+    GROK_MODEL_CATALOG(
+        "Grok live catalog",
+        "Discovered from this Mac's Grok Build CLI model catalog.",
     );
 
     companion object {
@@ -47,6 +67,11 @@ enum class CliModelSource(
                 "openBurnBarProxy" -> OPENBURNBAR_PROXY
                 "forgeAgent" -> FORGE_AGENT
                 "antigravityProfile" -> ANTIGRAVITY_PROFILE
+                "antigravityModelCatalog" -> ANTIGRAVITY_MODEL_CATALOG
+                "claudeModelCatalog" -> CLAUDE_MODEL_CATALOG
+                "cursorAgentProfile" -> CURSOR_AGENT_PROFILE
+                "codexModelCatalog" -> CODEX_MODEL_CATALOG
+                "grokModelCatalog" -> GROK_MODEL_CATALOG
                 else -> CLI_PROFILE
             }
     }

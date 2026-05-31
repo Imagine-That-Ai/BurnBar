@@ -258,7 +258,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let appStoreReviewVisibleProductIDs"))
         XCTAssertTrue(source.contains("com.openburnbar.pro.monthly"))
         XCTAssertTrue(source.contains("com.openburnbar.pro.annual"))
-        XCTAssertTrue(source.contains("com.openburnbar.proMax.monthly"))
+        XCTAssertTrue(source.contains("com.openburnbar.proMax.v2.monthly"))
         XCTAssertTrue(source.contains("com.openburnbar.proMax.annual"))
         XCTAssertTrue(source.contains("com.openburnbar.agentControl.actions100"))
         XCTAssertTrue(source.contains("com.openburnbar.floo.relay50gb"))

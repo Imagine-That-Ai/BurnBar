@@ -9,6 +9,17 @@ on:
   workflow_dispatch:
 
 jobs:
+  prod-health-synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Production health synthetic
+        env:
+          FIREBASE_PROJECT: burnbar
+          FUNCTIONS_REGION: us-central1
+        run: bash scripts/ci/post-deploy-health-gate.sh
+
   nightly-tests:
     runs-on: macos-26
     timeout-minutes: 90
@@ -58,6 +69,51 @@ jobs:
       - name: Android Mercury call instrumented smoke (optional)
         if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
         run: ./scripts/e2e/android-mercury-call.sh
+
+  # ── DAST: OWASP ZAP scan against website + functions staging ────────────
+  dast-website:
+    name: DAST — Website (OWASP ZAP baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Run OWASP ZAP baseline scan against burnbar.ai
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: 'https://burnbar.ai'
+          rules_file_name: '.github/zap-rules.tsv'
+          cmd_options: '-a -j'
+          fail_action: false
+          artifact_name: 'zap-website-report'
+
+  dast-functions:
+    name: DAST — Functions health endpoints (OWASP ZAP API scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Start Firebase Functions Emulator
+        run: |
+          npm ci --prefix functions
+          npm run build --prefix functions
+          npx firebase-tools emulators:start --project openburnbar-dev --only functions &
+          # Wait for emulator to be ready
+          timeout 60 bash -c 'until curl -sf http://localhost:5001 2>/dev/null; do sleep 2; done' || true
+
+      - name: Run OWASP ZAP API scan against health endpoints
+        uses: zaproxy/action-api-scan@v0.9.0
+        with:
+          target: 'functions/openapi.yaml'
+          format: openapi
+          cmd_options: '-a -j'
+          fail_action: false
+          artifact_name: 'zap-functions-report'
 
   commercial-launch-gate:
     runs-on: ubuntu-latest

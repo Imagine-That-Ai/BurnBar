@@ -13,6 +13,8 @@ protocol CLIAgentRelayChatTransporting: AnyObject {
         presentationMode: CLIAgentChatPresentationMode,
         onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
     ) async throws
+
+    func performSessionAction(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse
 }
 
 @MainActor
@@ -156,5 +158,15 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
         if let decodeError {
             throw decodeError
         }
+    }
+
+    func performSessionAction(_ request: CLIAgentSessionActionRequest) async throws -> CLIAgentSessionActionResponse {
+        let body = try encoder.encode(request)
+        let payload = try await hermesService.macRelayPayloadForCLIAgentSessionAction(
+            body: body,
+            sessionID: "cli-session-action-\(request.sessionID)"
+        )
+        let data = try await relayTransport.sendUnary(payload, timeout: 60)
+        return try decoder.decode(CLIAgentSessionActionResponse.self, from: data)
     }
 }

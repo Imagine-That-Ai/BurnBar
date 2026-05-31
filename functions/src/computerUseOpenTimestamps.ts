@@ -24,6 +24,7 @@ import { defineString } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { enforceHighRiskComputerUseCallable } from "./appCheckAttestation.js";
 import { logCallableStart, traceIdFromCallableRequest, wrapCallableHandler } from "./logging.js";
+import { resilientFetch } from "./resilienceHelpers.js";
 import { readOpenBurnBarFunctionsConfig } from "./firebaseRuntime.js";
 import { isRecord, jsonObject, stringField } from "./guards.js";
 import type {
@@ -133,7 +134,7 @@ async function fetchGoogleIdentityToken(audience: string): Promise<string> {
   const url = new URL("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity");
   url.searchParams.set("audience", audience);
   url.searchParams.set("format", "full");
-  const response = await fetch(url, {
+  const response = await resilientFetch("gcp.metadata.identity", url, {
     headers: { "Metadata-Flavor": "Google" },
   });
   if (!response.ok) {
@@ -174,7 +175,7 @@ async function runOtsVerifyViaService(
     }
   }
 
-  const response = await fetch(url, {
+  const response = await resilientFetch("ots.verify", url, {
     method: "POST",
     headers,
     body: JSON.stringify({

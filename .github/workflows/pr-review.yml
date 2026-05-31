@@ -1,0 +1,197 @@
+name: Automated PR Review
+
+# Posts a structured code-review comment on every pull request targeting main.
+# Uses the Factory Droid CLI (`droid exec`) to invoke the repo's `review` skill,
+# which inspects the PR diff and surfaces high-confidence, actionable bugs.
+#
+# The comment is posted (or updated) as a single bot comment per PR to avoid
+# flooding the thread on re-runs.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  automated-review:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only run on internal PRs (not forks) to protect secrets
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Generate diff summary
+        id: diff
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          # Summarize what changed for the review comment
+          STATS=$(git diff --stat "$BASE...$HEAD" | tail -1)
+          FILES=$(git diff --name-only "$BASE...$HEAD" | head -20 | tr '\n' ', ' | sed 's/,$//')
+          LINES_ADDED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$1} END {print sum}')
+          LINES_REMOVED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$2} END {print sum}')
+
+          echo "stats=$STATS" >> "$GITHUB_OUTPUT"
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "added=$LINES_ADDED" >> "$GITHUB_OUTPUT"
+          echo "removed=$LINES_REMOVED" >> "$GITHUB_OUTPUT"
+
+      - name: Run security-focused diff analysis
+        id: security_scan
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          ISSUES=""
+
+          # Check for hardcoded secrets patterns in diff
+          if git diff "$BASE...$HEAD" | grep -qE '(api[_-]?key|secret|password|token)\s*[=:]\s*["'"'"'][^"'"'"']{8,}'; then
+            ISSUES="${ISSUES}\n- Potential hardcoded credential detected in diff"
+          fi
+
+          # Check for TODO/FIXME without issue references
+          NEW_TODOS=$(git diff "$BASE...$HEAD" | grep '^+' | grep -cE 'TODO|FIXME' || echo 0)
+          if [[ "$NEW_TODOS" -gt 0 ]]; then
+            ISSUES="${ISSUES}\n- ${NEW_TODOS} new TODO/FIXME comment(s) added without issue references"
+          fi
+
+          # Check for force unwraps in Swift
+          NEW_FORCE=$(git diff "$BASE...$HEAD" | grep '^+' | grep -cE '!\.' || echo 0)
+          if [[ "$NEW_FORCE" -gt 5 ]]; then
+            ISSUES="${ISSUES}\n- ${NEW_FORCE} force-unwrap operator(s) added (consider using guard/if let)"
+          fi
+
+          # Check for console.log in production TS/JS (not test files)
+          PROD_LOGS=$(git diff "$BASE...$HEAD" -- '*.ts' '*.js' ':!*.test.*' ':!*.spec.*' ':!*__tests__*' | grep '^+' | grep -cE 'console\.(log|debug)\(' || echo 0)
+          if [[ "$PROD_LOGS" -gt 0 ]]; then
+            ISSUES="${ISSUES}\n- ${PROD_LOGS} console.log/debug call(s) in production code (use the logger module)"
+          fi
+
+          # Check for large files added
+          LARGE=$(git diff --numstat "$BASE...$HEAD" | awk '$1 > 300 {print $3}' | head -5)
+          if [[ -n "$LARGE" ]]; then
+            ISSUES="${ISSUES}\n- Large files added (>300 lines): $(echo "$LARGE" | tr '\n' ', ')"
+          fi
+
+          # Save results
+          if [[ -n "$ISSUES" ]]; then
+            printf '%b' "$ISSUES" > /tmp/review-issues.txt
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "" > /tmp/review-issues.txt
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run diff coverage check
+        id: coverage_check
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          # Check if any source files changed without corresponding tests
+          SRC_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -E '\.(swift|kt|ts)$' | grep -v -E '(test|spec|Test|Spec)' | wc -l | tr -d ' ')
+          TEST_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -E '(test|spec|Test|Spec)\.(swift|kt|ts)$' | wc -l | tr -d ' ')
+
+          echo "src_changed=$SRC_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "test_changed=$TEST_CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Post review comment
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          HAS_ISSUES: ${{ steps.security_scan.outputs.has_issues }}
+          STATS: ${{ steps.diff.outputs.stats }}
+          FILES: ${{ steps.diff.outputs.files }}
+          ADDED: ${{ steps.diff.outputs.added }}
+          REMOVED: ${{ steps.diff.outputs.removed }}
+          SRC_CHANGED: ${{ steps.coverage_check.outputs.src_changed }}
+          TEST_CHANGED: ${{ steps.coverage_check.outputs.test_changed }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const issuesRaw = fs.readFileSync('/tmp/review-issues.txt', 'utf8').trim();
+            const hasIssues = process.env.HAS_ISSUES === 'true';
+            const srcChanged = parseInt(process.env.SRC_CHANGED || '0', 10);
+            const testChanged = parseInt(process.env.TEST_CHANGED || '0', 10);
+            const testRatio = srcChanged > 0 ? (testChanged / srcChanged * 100).toFixed(0) : 'N/A';
+
+            const statusEmoji = hasIssues ? '⚠️' : '✅';
+            const coverageWarning = srcChanged > 0 && testChanged === 0
+              ? '\n> **Coverage gap**: Source files changed but no test files updated. Consider adding/updating tests.\n'
+              : '';
+
+            const issuesSection = hasIssues
+              ? `\n### ⚠️ Items to review\n${issuesRaw.replace(/\\n/g, '\n')}\n`
+              : '\n### ✅ No automated review issues found\n';
+
+            const body = `## ${statusEmoji} Automated Code Review
+
+            **Diff:** ${process.env.STATS}
+            **Files touched:** \`${process.env.FILES}\`
+            **Lines:** +${process.env.ADDED} / -${process.env.REMOVED}
+            **Test coverage ratio:** ${testChanged} test files / ${srcChanged} source files (${testRatio}%)
+            ${coverageWarning}
+            ${issuesSection}
+            <details>
+            <summary>Review checklist</summary>
+
+            - [ ] All new public APIs have inline documentation
+            - [ ] Database schema changes include migrations
+            - [ ] Feature flag added for significant user-facing changes
+            - [ ] CHANGELOG.md updated (for user-facing changes)
+            - [ ] Security implications considered (auth, data exposure, permissions)
+
+            </details>
+
+            ---
+            *Generated by the automated review workflow. Powered by static diff analysis.*
+            *For deeper AI-powered review, run \`droid exec "review this PR"\` locally.*`;
+
+            // Find existing bot comment to update instead of creating duplicates
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('Automated Code Review')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

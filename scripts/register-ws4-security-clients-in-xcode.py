@@ -131,6 +131,18 @@ def find_existing_file_id(text: str, name: str, source_root_path: str | None) ->
     return None
 
 
+def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
+    for line in text.splitlines():
+        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
+            continue
+        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
+            continue
+        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
+            continue
+        return line.strip().split(" ", 1)[0]
+    return None
+
+
 def main() -> int:
     text = PROJ.read_text(encoding="utf-8")
     mobile_services = find_mobile_services_group(text)

@@ -3085,6 +3085,35 @@ final class HermesService {
         )
     }
 
+    func macRelayPayloadForCLIAgentSessionAction(
+        body: Data,
+        sessionID: String
+    ) async throws -> HermesRelayPayload {
+        if selectedConnection.mode != .relayLink || suggestedRelayConnection == nil {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+        if selectedConnection.mode != .relayLink {
+            _ = connectToSuggestedRelay(refresh: false)
+        }
+        guard selectedConnection.mode == .relayLink else {
+            throw HermesServiceError.relayUnavailable(
+                "No paired Mac relay is available for CLI session restart. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
+            )
+        }
+        guard selectedConnection.capabilities.contains("cli_agent_session_action") else {
+            throw HermesServiceError.relayUnavailable(
+                "Your Mac relay is online but does not advertise CLI session restart yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        return relayPayload(
+            operation: .cliAgentSessionAction,
+            method: "POST",
+            path: "/v1/cli-agent/session-action",
+            sessionID: sessionID,
+            body: body
+        )
+    }
+
     func fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID) async throws -> CLIRuntimeModelCatalogResponse {
         let request = CLIRuntimeModelCatalogRequest(runtime: runtime.rawValue)
         let body = try JSONEncoder().encode(request)

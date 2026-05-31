@@ -6,14 +6,14 @@ import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
 private let burnBarProProductID = "com.openburnbar.pro.monthly"
-private let burnBarProMaxProductID = "com.openburnbar.proMax.monthly"
+private let burnBarProMaxProductID = "com.openburnbar.proMax.v2.monthly"
 
 @MainActor
 final class HostedQuotaSubscriptionStoreTests: XCTestCase {
     func testCatalogMatchesLockedCommercialProductIDs() {
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudMonthlyProductID, "com.openburnbar.pro.monthly")
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudAnnualProductID, "com.openburnbar.pro.annual")
-        XCTAssertEqual(OpenBurnBarProductCatalog.cloudProMonthlyProductID, "com.openburnbar.proMax.monthly")
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudProMonthlyProductID, "com.openburnbar.proMax.v2.monthly")
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudProAnnualProductID, "com.openburnbar.proMax.annual")
         XCTAssertEqual(OpenBurnBarProductCatalog.agentControl100ActionsProductID, "com.openburnbar.agentControl.actions100")
         XCTAssertEqual(OpenBurnBarProductCatalog.flooRelay50GBProductID, "com.openburnbar.floo.relay50gb")
@@ -23,7 +23,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.id), [
             "com.openburnbar.pro.monthly",
             "com.openburnbar.pro.annual",
-            "com.openburnbar.proMax.monthly",
+            "com.openburnbar.proMax.v2.monthly",
             "com.openburnbar.proMax.annual",
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.fallbackDisplayPrice), [
@@ -49,7 +49,9 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         ])
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
+        XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.monthly"))
         XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
+        XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.proMax.monthly"))
         XCTAssertTrue(OpenBurnBarProductCatalog.entitlementProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
     }
 

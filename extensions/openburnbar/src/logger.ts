@@ -1,42 +1,79 @@
 /**
- * Extension logger with lightweight PII and secret redaction.
+ * Extension logger with PII/secret redaction.
  *
- * Keep extension diagnostics useful without writing bearer tokens, API keys,
- * DSNs, or private key material to the VS Code / Cursor host logs.
+ * Wraps console methods to scrub sensitive patterns before logging.
+ * All extension code should import from this module instead of using console directly.
  */
 
-const SENSITIVE_PATTERNS: RegExp[] = [
-  /\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi,
-  /\b(sk-[A-Za-z0-9]{16,})\b/g,
-  /\b(xox[baprs]-[A-Za-z0-9-]+)\b/g,
-  /\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g,
-  /\b(private[_-]?key|api[_-]?key|token|secret|dsn)=([^\s&]+)/gi,
-  /https:\/\/[a-f0-9]+@[a-z0-9.-]+\.ingest\.sentry\.io\/\d+/gi
+/** Patterns that indicate sensitive data that should be redacted in logs. */
+const REDACT_PATTERNS: ReadonlyArray<[RegExp, string | ((match: string) => string)]> = [
+  // Bearer tokens
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]'],
+  // OpenAI/Stripe-style secret keys
+  [/\bsk-[A-Za-z0-9]{16,}\b/g, '[SECRET_KEY_REDACTED]'],
+  // Slack tokens
+  [/\bxox[baprs]-[A-Za-z0-9-]+\b/g, '[SLACK_TOKEN_REDACTED]'],
+  // Sentry DSNs
+  [/https:\/\/[a-f0-9]+@[a-z0-9.-]+\.ingest\.sentry\.io\/\d+/gi, '[SENTRY_DSN_REDACTED]'],
+  // API keys and tokens
+  [/([Aa]pi[_-]?[Kk]ey|[Tt]oken|[Ss]ecret|[Pp]assword|[Aa]uth)["\s:=]+["']?[\w.-]{8,}["']?/g, '$1=[REDACTED]'],
+  // Firebase tokens (long base64-like strings > 30 chars)
+  [/eyJ[\w.-]{28,}/g, '[JWT_REDACTED]'],
+  // Email addresses
+  [/[\w.+-]+@[\w-]+\.[\w.]{2,}/g, '[EMAIL_REDACTED]'],
+  // IPv4 addresses that look like internal infrastructure
+  [/\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[INTERNAL_IP_REDACTED]'],
+  // Long hex strings that look like secrets (32+ hex chars)
+  [/\b[0-9a-f]{32,}\b/gi, (match: string) => match.length > 40 ? '[HEX_REDACTED]' : match],
 ];
 
-function redact(value: unknown): string {
-  const text = value instanceof Error ? `${value.name}: ${value.message}` : String(value);
-  return SENSITIVE_PATTERNS.reduce(
-    (current, pattern) => current.replace(pattern, (_match, prefix) => `${prefix ?? ''}[REDACTED]`),
-    text
-  );
-}
-
-function redactArgs(args: unknown[]): string[] {
-  return args.map(redact);
-}
-
-export const logger = {
-  debug: (...args: unknown[]): void => {
-    console.debug(...redactArgs(args));
-  },
-  info: (...args: unknown[]): void => {
-    console.info(...redactArgs(args));
-  },
-  warn: (...args: unknown[]): void => {
-    console.warn(...redactArgs(args));
-  },
-  error: (...args: unknown[]): void => {
-    console.error(...redactArgs(args));
+/**
+ * Scrubs PII and secrets from a string value.
+ */
+function scrub(value: string): string {
+  let result = value;
+  for (const [pattern, replacement] of REDACT_PATTERNS) {
+    result = result.replace(pattern, replacement as Parameters<string['replace']>[1]);
   }
+  return result;
+}
+
+/**
+ * Safely serializes a value to a loggable string, scrubbing sensitive data.
+ */
+function serialize(value: unknown): string {
+  if (typeof value === 'string') {
+    return scrub(value);
+  }
+  if (value instanceof Error) {
+    return scrub(`${value.name}: ${value.message}`);
+  }
+  try {
+    return scrub(JSON.stringify(value) ?? String(value));
+  } catch {
+    return '[UNSERIALIZABLE]';
+  }
+}
+
+function writeInfoLine(prefix: string, message: string, args: unknown[]): void {
+  const suffix = args.length > 0 ? ` ${args.map(serialize).join(' ')}` : '';
+  process.stdout.write(`${prefix} ${scrub(message)}${suffix}\n`);
+}
+
+/** Extension logger with automatic PII/secret redaction. */
+export const logger = {
+  info: (message: string, ...args: unknown[]): void => {
+    writeInfoLine('[OpenBurnBar]', message, args);
+  },
+  warn: (message: string, ...args: unknown[]): void => {
+    console.warn(`[OpenBurnBar] ${scrub(message)}`, ...args.map(serialize));
+  },
+  error: (message: string, ...args: unknown[]): void => {
+    console.error(`[OpenBurnBar] ${scrub(message)}`, ...args.map(serialize));
+  },
+  debug: (message: string, ...args: unknown[]): void => {
+    if (process.env.OPENBURNBAR_DEBUG === 'true') {
+      writeInfoLine('[OpenBurnBar:debug]', message, args);
+    }
+  },
 };
