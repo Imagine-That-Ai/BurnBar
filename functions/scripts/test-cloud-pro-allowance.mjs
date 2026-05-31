@@ -87,4 +87,16 @@ assert.match(stripeCallableSource, /purchases\.products\.get/);
 assert.match(stripeCallableSource, /purchases\.products\.consume/);
 assert.match(stripeCallableSource, /creditCloudProTopUp/);
 
+const sharedCallableSource = readFileSync(join(root, "src/callables/shared.ts"), "utf8");
+assert.match(sharedCallableSource, /isActiveBurnBarCloudProEntitlement/);
+assert.match(sharedCallableSource, /ensureCloudProAllowanceLedger/);
+assert.match(sharedCallableSource, /entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID && active/);
+assert.match(sharedCallableSource, /return lineItems\.find\(\(item\) => item\.productId === productID\);/);
+assert.doesNotMatch(sharedCallableSource, /assertActiveBurnBarCloudProEntitlement[\s\S]*isActivePremiumEntitlement\(proMaxSnap\.data\(\)\)/);
+assert.doesNotMatch(sharedCallableSource, /lineItems\.find\(\(item\) => item\.productId === productID\) \?\? lineItems\[0\]/);
+
+const mediaSkuSource = readFileSync(join(root, "src/callables/mediaSku.ts"), "utf8");
+assert.match(mediaSkuSource, /standalone media subscription is retired/i);
+assert.doesNotMatch(mediaSkuSource, /media_purchase_validated/);
+
 console.log("Cloud Pro allowance accounting fixtures passed.");
