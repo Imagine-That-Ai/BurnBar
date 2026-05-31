@@ -12,6 +12,7 @@ import { DEFAULT_ENDPOINT, validatedMcpEndpoint } from "./shim.js";
 const execFileAsync = promisify(execFile);
 const PROTOCOL_VERSION = "2025-11-25";
 const DEFAULT_CLEANUP_AFTER_SECONDS = 600;
+const MAX_LOCAL_RESUME_MARKDOWN_BYTES = 2 * 1024 * 1024;
 
 export type ResumeMode = "print" | "copy" | "open" | "spawn";
 
@@ -457,6 +458,7 @@ async function copyToClipboard(text: string): Promise<void> {
 }
 
 async function openTempMarkdown(text: string): Promise<string> {
+  assertLocalResumeMarkdown(text);
   const dir = mkdtempSync(join(tmpdir(), "burnbar-resume-"));
   const path = join(dir, "resume.md");
   writeFileSync(path, text, { mode: 0o600 });
@@ -476,11 +478,23 @@ async function openTempMarkdown(text: string): Promise<string> {
 }
 
 function writeTempMarkdownSync(text: string): string {
+  assertLocalResumeMarkdown(text);
   const dir = mkdtempSync(join(tmpdir(), "burnbar-resume-"));
   const path = join(dir, "resume.md");
   writeFileSync(path, text, { mode: 0o600 });
   chmodSync(path, 0o600);
   return path;
+}
+
+function assertLocalResumeMarkdown(text: string): void {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > MAX_LOCAL_RESUME_MARKDOWN_BYTES) {
+    throw new ResumeCliError(JSON.stringify({
+      kind: "error",
+      code: "resume_payload_too_large",
+      recovery: "Narrow the resume query or use --print for manual review."
+    }), 2);
+  }
 }
 
 function scheduleDelete(path: string | undefined, seconds = DEFAULT_CLEANUP_AFTER_SECONDS): void {

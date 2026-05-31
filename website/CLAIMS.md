@@ -148,7 +148,7 @@ treats Kimi as exact, which matches the running code.
 | Top-ups — `$4.99` for 100 hosted actions, `$4.99` for 50 relay-accounting GB | `GTMMasterPlan.MD:59-75`, `functions/src/cloudProAllowanceCore.ts`, `functions/src/callables/stripe.ts` |
 | Hosted quota refresh, conversation backup, cloud search, and synced memory are Group A / Cloud features | `GTMMasterPlan.MD:28-34`, `functions/src/callables/shared.ts` |
 | Floo and Agent Control are Group B / Cloud Pro features | `GTMMasterPlan.MD:28-34`, `functions/src/callables/shared.ts`, `functions/src/voipPush.ts` |
-| No free trial configured | `GTMMasterPlan.MD:82-86` |
+| BurnBar Cloud monthly and annual include a 14-day introductory free trial for new subscribers; Cloud Pro and top-ups do not | `GTMMasterPlan.MD:303-312`, `GTMMasterPlan.MD:331-339` |
 | Refund and cancellation handling follows Apple, Google Play, or Stripe platform state | `GTMMasterPlan.MD:584-593`, `functions/src/callables/stripe.ts`, `functions/src/appstore/reconciler.ts` |
 | Subscription state on launch | `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md:13-17` says `WAITING_FOR_REVIEW` as of 2026-05-09. **[verify]** Apple has approved before the site claims iOS availability |
 

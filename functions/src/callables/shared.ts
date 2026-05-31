@@ -669,7 +669,7 @@ export async function assertActiveBurnBarProEntitlement(uid: string): Promise<vo
 
 export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promise<void> {
   const proMaxSnap = await db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get();
-  if (isActivePremiumEntitlement(proMaxSnap.data())) return;
+  if (isActiveBurnBarCloudProEntitlement(proMaxSnap.data())) return;
   throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
 }
 
@@ -694,6 +694,23 @@ export function isActivePremiumEntitlement(raw: Record<string, unknown> | undefi
     productID !== getConfig().googlePlayCloudAnnualProductID &&
     productID !== getConfig().googlePlayCloudProMonthlyProductID &&
     productID !== getConfig().googlePlayCloudProAnnualProductID
+  ) {
+    return false;
+  }
+  const expiry = entitlementExpiryMillis(raw);
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
+
+export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> | undefined): boolean {
+  if (!raw || raw.active !== true) return false;
+  const productID = typeof raw.productID === "string" ? raw.productID : "";
+  const cfg = getConfig();
+  if (
+    productID !== cfg.burnBarProMaxProductID &&
+    productID !== cfg.burnBarProMaxAnnualProductID &&
+    productID !== cfg.googlePlayCloudProMonthlyProductID &&
+    productID !== cfg.googlePlayCloudProAnnualProductID &&
+    productID !== "com.openburnbar.proMax.bundle.monthly"
   ) {
     return false;
   }
@@ -772,7 +789,25 @@ export async function writeBurnBarProEntitlement(args: {
     updatedAt: now,
   });
   await db.doc(`users/${args.uid}/entitlements/${entitlementID}`).set(doc, { merge: true });
+  if (entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID && active) {
+    await ensureCloudProAllowanceLedger(args.uid);
+  }
   return doc;
+}
+
+async function ensureCloudProAllowanceLedger(uid: string): Promise<void> {
+  const allowanceConfig = await loadCloudProAllowanceConfig();
+  await db.doc(allowanceDocPath(uid, monthKeyForDate(new Date()))).set(
+    {
+      includedHostedActions: allowanceConfig.includedHostedActionsMonthly,
+      includedRelayGB: allowanceConfig.includedRelayGBMonthly,
+      monthlyHostedActionCap: allowanceConfig.monthlyHostedActionCap,
+      monthlyRelayGBCap: allowanceConfig.monthlyRelayGBCap,
+      updatedAt: Timestamp.now(),
+      schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+    },
+    { merge: true },
+  );
 }
 
 export function requireConfiguredStripe(): Stripe {
@@ -850,7 +885,7 @@ export function googlePlayLineItemForProduct(
   const lineItems = Array.isArray(purchase.lineItems)
     ? purchase.lineItems.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
     : [];
-  return lineItems.find((item) => item.productId === productID) ?? lineItems[0];
+  return lineItems.find((item) => item.productId === productID);
 }
 
 export function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undefined): number {
