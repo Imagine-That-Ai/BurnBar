@@ -238,7 +238,8 @@
     "test:extension-host": "npm run build && npm run build:extension-host && node ./test/extensionHost/runTest.mjs",
     "test:cursor-smoke": "node ./test/cursorSmoke/runSmoke.mjs",
     "test:ci": "npm run test:unit && npm run test:replay && npm run test:extension-host",
-    "watch": "tsc -w -p ./tsconfig.json"
+    "watch": "tsc -w -p ./tsconfig.json",
+    "size": "size-limit"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
@@ -258,6 +259,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@sentry/node": "8.55.2",
     "globals": "^17.4.0"
   },
   "overrides": {
