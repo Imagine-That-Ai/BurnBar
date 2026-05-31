@@ -1495,6 +1495,9 @@
 		B6C1D4D52467311196884011 /* MobileMediaBudgetStatusStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FD63FF27CFCA39E5CA6E32A /* MobileMediaBudgetStatusStore.swift */; };
 		5A3AE75056339C60B59160BA /* ComputerUseBudgetStatusStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5AFD7A1DAC9CE5C706FE16 /* ComputerUseBudgetStatusStoreTests.swift */; };
 		175FC19DF27A21CDBB654D90 /* MediaBudgetStatusStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D05DB6B84EB390AFD1B735 /* MediaBudgetStatusStoreTests.swift */; };
+		DA429FE21F6FB1239B6BE067 /* AppCheckAttestationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4714749F938644AE3473CB5 /* AppCheckAttestationMonitor.swift */; };
+		F6606A754CB6247A00AE4535 /* ComputerUseSecurityCallableClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28295187C774DAC3AC47F840 /* ComputerUseSecurityCallableClient.swift */; };
+		C719E20844C3EFB785E5B67C /* AppCheckAttestationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 291F8E7931B6F3E16CB8C5AA /* AppCheckAttestationMonitor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -3051,6 +3054,9 @@
 		2FD63FF27CFCA39E5CA6E32A /* MobileMediaBudgetStatusStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MobileMediaBudgetStatusStore.swift; path = OpenBurnBarMobile/Services/Media/MobileMediaBudgetStatusStore.swift; sourceTree = SOURCE_ROOT; };
 		AA5AFD7A1DAC9CE5C706FE16 /* ComputerUseBudgetStatusStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ComputerUseBudgetStatusStoreTests.swift"; sourceTree = "<group>"; };
 		E4D05DB6B84EB390AFD1B735 /* MediaBudgetStatusStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaBudgetStatusStoreTests.swift"; sourceTree = "<group>"; };
+		A4714749F938644AE3473CB5 /* AppCheckAttestationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCheckAttestationMonitor.swift; sourceTree = "<group>"; };
+		28295187C774DAC3AC47F840 /* ComputerUseSecurityCallableClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseSecurityCallableClient.swift; path = OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift; sourceTree = SOURCE_ROOT; };
+		291F8E7931B6F3E16CB8C5AA /* AppCheckAttestationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppCheckAttestationMonitor.swift; path = OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -4596,6 +4602,7 @@
 				698B9A34307B9D90E9223BD7 /* SystemPermissionGrantSender.swift */,
 				7D4D4666AA6DE0BDD9A0CD13 /* SystemPermissionInboxStore.swift */,
 				6358958411AD6A4E4FC3FB40 /* SystemPermissionTextClassifier.swift */,
+				28295187C774DAC3AC47F840 /* ComputerUseSecurityCallableClient.swift */,
 			);
 			path = ComputerUse;
 			sourceTree = "<group>";
@@ -4959,6 +4966,7 @@
 				283064FB69AEAE732CD48CFE /* RollbackService.swift */,
 				3288F8CD47E8AAE4FE2AB362 /* SmartHubDisplaySettingsAdapter.swift */,
 				24B4BAF96A0DEEC30271B511 /* ThreadInboxStore.swift */,
+				291F8E7931B6F3E16CB8C5AA /* AppCheckAttestationMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -5352,6 +5360,7 @@
 				924327A5B17F0833621D5AF2 /* TranscriptBlockParser.swift */,
 				503B65BAD1DF31E7D8973427 /* UsageAggregator.swift */,
 				F03B5C82505C96568419EFD9 /* UsageAggregatorParsers.swift */,
+				A4714749F938644AE3473CB5 /* AppCheckAttestationMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -6973,6 +6982,8 @@
 				657A371DF4E58B586A6D720F /* iPadAccountSettingsView.swift in Sources */,
 				246D2AEBA4BACDE7BEDCDDF0 /* iPadDevicesSettingsView.swift in Sources */,
 				F245D4DC520716319AFB1F4B /* iPadMultiCamCaptureService.swift in Sources */,
+				F6606A754CB6247A00AE4535 /* ComputerUseSecurityCallableClient.swift in Sources */,
+				C719E20844C3EFB785E5B67C /* AppCheckAttestationMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7807,6 +7818,7 @@
 				EA6F36435FF09A349F05CEC6 /* ConversationStore+Chat.swift in Sources */,
 				9AA8B70DD0DEEA4C792E9FEF /* ConversationStore+FTS.swift in Sources */,
 				2FE9D06A638CC3639EC367CA /* ConversationStore+TranscriptScan.swift in Sources */,
+				DA429FE21F6FB1239B6BE067 /* AppCheckAttestationMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -22,6 +22,11 @@ import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 const CLOUD_PRO_ENTITLEMENT_DOC_ID = "burnbar_pro_max";
+const CLOUD_PRO_PRODUCT_IDS = new Set([
+  "com.openburnbar.proMax.monthly",
+  "com.openburnbar.proMax.annual",
+  "com.openburnbar.proMax.bundle.monthly",
+]);
 
 export interface TriggerRequest {
   callId: string;
@@ -106,14 +111,26 @@ export async function macHasActiveMediaEntitlement(
     firestore.doc(`users/${uid}/entitlements/${MEDIA_ENTITLEMENT_DOC_ID}`).get(),
     firestore.doc(`users/${uid}/entitlements/${CLOUD_PRO_ENTITLEMENT_DOC_ID}`).get(),
   ]);
-  for (const snap of [media, pro]) {
-    if (!snap.exists) continue;
-    const data = snap.data() ?? {};
-    if (data.active !== true) continue;
-    const expireAt = data.expireAt;
-    if (!isTimestampWithToMillis(expireAt)) continue;
-    if (expireAt.toMillis() <= Date.now()) continue;
+  if (media.exists && activeEntitlement(media.data())) {
+    return true;
+  }
+  if (pro.exists && activeEntitlement(pro.data(), CLOUD_PRO_PRODUCT_IDS)) {
     return true;
   }
   return false;
+}
+
+function activeEntitlement(
+  data: FirebaseFirestore.DocumentData | undefined,
+  allowedProductIDs?: Set<string>,
+): boolean {
+  const entitlement = data ?? {};
+  if (entitlement.active !== true) return false;
+  if (allowedProductIDs) {
+    const productID = typeof entitlement.productID === "string" ? entitlement.productID : "";
+    if (!allowedProductIDs.has(productID)) return false;
+  }
+  const expireAt = entitlement.expireAt;
+  if (!isTimestampWithToMillis(expireAt)) return false;
+  return expireAt.toMillis() > Date.now();
 }

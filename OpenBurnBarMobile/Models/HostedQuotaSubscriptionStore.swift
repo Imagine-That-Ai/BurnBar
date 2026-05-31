@@ -66,7 +66,7 @@ struct OpenBurnBarStoreProduct: Identifiable, Equatable, Sendable {
 enum OpenBurnBarProductCatalog {
     static let cloudMonthlyProductID = "com.openburnbar.pro.monthly"
     static let cloudAnnualProductID = "com.openburnbar.pro.annual"
-    static let cloudProMonthlyProductID = "com.openburnbar.proMax.bundle.monthly"
+    static let cloudProMonthlyProductID = "com.openburnbar.proMax.monthly"
     static let cloudProAnnualProductID = "com.openburnbar.proMax.annual"
     static let agentControl100ActionsProductID = "com.openburnbar.agentControl.actions100"
     static let flooRelay50GBProductID = "com.openburnbar.floo.relay50gb"
