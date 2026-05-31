@@ -524,6 +524,11 @@ function checkGitHubSecuritySettings() {
 }
 
 function checkLatestMergedPrGate() {
+  const originMain = run("git", ["rev-parse", "origin/main"]);
+  if (!originMain.ok) {
+    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+  }
+  const mainSha = originMain.stdout.trim();
   const pulls = run("gh", [
     "api",
     "-H",
@@ -533,6 +538,16 @@ function checkLatestMergedPrGate() {
   if (!pulls.ok) return { ok: false, error: pulls.stderr || pulls.stdout };
   const merged = JSON.parse(pulls.stdout).find((pr) => pr.merged_at);
   if (!merged?.head?.sha) return { ok: false, error: "no merged PR found" };
+  if (merged.merge_commit_sha && merged.merge_commit_sha !== mainSha) {
+    return {
+      ok: true,
+      pr: merged.number,
+      headSha: merged.head.sha,
+      mergeCommitSha: merged.merge_commit_sha,
+      supersededByMainSha: mainSha,
+      note: "Latest merged PR is not main HEAD; mainRequiredGate and mainCodeQL cover the current direct/admin landing commit.",
+    };
+  }
 
   const runs = run("gh", [
     "api",
