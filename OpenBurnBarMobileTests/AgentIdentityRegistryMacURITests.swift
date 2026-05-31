@@ -407,7 +407,7 @@ final class MediaControlStreamPresenceTests: XCTestCase {
                 uid: "user-1",
                 connectionID: "conn-1",
                 freshnessInterval: 0,
-                probeTimeout: 0.05,
+                probeTimeout: 0.5,
                 restartTimeout: 1.0
             )
         }
