@@ -592,7 +592,15 @@ struct AssistantModelPickerSheet: View {
             return MobileTheme.amber
         case .openBurnBarProxy:
             return MobileTheme.success
-        case .droidCustomModel, .forgeAgent, .antigravityProfile, .cursorAgentProfile, .cliProfile:
+        case .droidCustomModel,
+             .forgeAgent,
+             .antigravityProfile,
+             .antigravityModelCatalog,
+             .claudeModelCatalog,
+             .cursorAgentProfile,
+             .codexModelCatalog,
+             .grokModelCatalog,
+             .cliProfile:
             return MobileTheme.Colors.textSecondary
         case nil:
             return MobileTheme.Colors.textMuted
