@@ -67,6 +67,12 @@ const TRUSTED_UPLOAD_HOST_SUFFIXES = [
   '.icloud-content.com',
   '.amazonaws.com',
 ];
+const TRUSTED_UPLOAD_HOST_SUFFIXES = [
+  '.apple.com',
+  '.mzstatic.com',
+  '.icloud-content.com',
+  '.amazonaws.com',
+];
 
 function b64u(s) { return Buffer.from(s).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
 function derToJose(d){let o=0;if(d[o++]!==0x30)throw'';let l=d[o++];if(l&0x80){const n=l&0x7f;l=0;for(let i=0;i<n;i++)l=(l<<8)|d[o++];}if(d[o++]!==0x02)throw'';let rL=d[o++],r=d.slice(o,o+rL);o+=rL;if(d[o++]!==0x02)throw'';let sL=d[o++],s=d.slice(o,o+sL);if(r[0]===0)r=r.slice(1);if(s[0]===0)s=s.slice(1);const out=Buffer.alloc(64,0);r.copy(out,32-r.length);s.copy(out,64-s.length);return out;}

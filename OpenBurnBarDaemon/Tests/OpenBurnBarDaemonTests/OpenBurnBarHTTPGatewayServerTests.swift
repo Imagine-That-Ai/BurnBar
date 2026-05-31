@@ -73,7 +73,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayReturns400ForInvalidCompletionPayload() async throws {
         let harness = try GatewayHarness()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -90,7 +90,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayReturns413ForOversizedBody() async throws {
         let harness = try GatewayHarness()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let oversizedRequest = "POST /v1/chat/completions HTTP/1.1\r\n"
             + "Host: 127.0.0.1\r\n"
@@ -107,7 +107,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayMetricsReturnsLiveSnapshot() async throws {
         let harness = try GatewayHarness()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -126,7 +126,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayCORSAllowsLoopbackOriginsOnly() async throws {
         let harness = try GatewayHarness()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (allowedResponse, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -162,7 +162,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayAuthRequiresBearerTokenWhenConfigured() async throws {
         let harness = try GatewayHarness(authToken: "gateway-secret")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (missingAuthResponse, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -194,7 +194,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             rateLimit: BurnBarRateLimitConfiguration(requestsPerSecond: 1, burstCapacity: 1)
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         // First request should be allowed
         let (allowedResponse, _) = try await sendGatewayRequest(
@@ -235,7 +235,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             message: "Backup exhausted"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -304,7 +304,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         enqueueOpenAIModelCatalog(["glm-5-turbo"])
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -327,7 +327,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let harness = try GatewayHarness()
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -375,7 +375,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "gemini-api-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (publicResponse, publicBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -409,10 +409,21 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testGatewayModelsAdvertisesFactoryDroidHonestly() async throws {
-        let harness = try GatewayHarness()
+        let droidRunner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(
+                exitCode: 0,
+                stdout: """
+                Available Models:
+                  gpt-5.5                                                   GPT-5.5
+                  glm-5.1                                                   Droid Core (GLM-5.1)
+                """,
+                stderr: ""
+            )
+        )
+        let harness = try GatewayHarness(modelCatalogDroidProcessRunner: droidRunner)
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -452,7 +463,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -481,7 +492,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (failedResponse, failedBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -539,7 +550,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             message: "Backup exhausted"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -586,7 +597,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "deepseek-route-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -640,7 +651,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "deepseek-route-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -690,7 +701,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "deepseek-route-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -715,7 +726,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -739,7 +750,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -774,7 +785,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -802,7 +813,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -830,7 +841,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             )
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -876,7 +887,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -921,7 +932,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         _ = try await harness.configStore.upsertProvider(settings)
 
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (publicResponse, publicBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -977,7 +988,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1007,7 +1018,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (publicResponse, publicBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -1071,7 +1082,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             )
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1104,7 +1115,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         _ = try await harness.configStore.upsertProvider(settings)
 
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1136,7 +1147,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         _ = try await harness.configStore.upsertProvider(settings)
 
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1189,7 +1200,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             )
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1224,7 +1235,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1258,7 +1269,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "primary-ollama-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1289,7 +1300,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             )
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1309,7 +1320,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureAnthropicProviderForGateway()
         enqueueAnthropicModelCatalog(["claude-sonnet-4-6-20250514"], times: 2)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1376,7 +1387,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1433,7 +1444,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "sk-ant-oat01-test-token"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (_, modelsBeforeBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -1512,7 +1523,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1587,7 +1598,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1635,7 +1646,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (modelsResponse, modelsBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -1698,7 +1709,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "minimax-gateway-route-test-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (modelsResponse, modelsBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -1765,7 +1776,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "deepseek-route-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1818,7 +1829,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "deepseek-route-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -1886,7 +1897,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "deepseek-route-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let startedAt = Date()
         let (response, body) = try await sendGatewayRequest(
@@ -1938,7 +1949,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: #"{"opencode-go":{"type":"api","key":"opencode-route-key"}}"#
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (modelsResponse, modelsBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -1981,7 +1992,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureZAIProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2023,7 +2034,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             message: "Weekly/Monthly Limit Exhausted"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2067,7 +2078,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2124,7 +2135,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2179,7 +2190,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2237,7 +2248,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -2359,7 +2370,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2420,7 +2431,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2493,7 +2504,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2529,7 +2540,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2567,7 +2578,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await configureAnthropicCapabilityClassProviders(harness: harness)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2602,7 +2613,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await configureAnthropicCapabilityClassProviders(harness: harness)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2654,7 +2665,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureOllamaProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2741,7 +2752,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureOllamaProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2806,7 +2817,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureOllamaProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (modelsResponse, modelsBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -2867,7 +2878,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureOllamaProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2914,7 +2925,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureOllamaProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (chatResponse, chatBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -2953,7 +2964,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureOllamaProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -2997,7 +3008,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         try await harness.configureOllamaProviderForGateway()
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3050,7 +3061,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3109,7 +3120,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3203,7 +3214,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "sk-ant-oat01-test-token"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -3270,7 +3281,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "sk-ant-oat01-test-token"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3350,7 +3361,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "************************"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (modelsResponse, modelsBody) = try await sendGatewayRequest(
             port: harness.port,
@@ -3410,7 +3421,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3483,7 +3494,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "sk-ant-oat01-test-token"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -3533,7 +3544,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "sk-ant-oat01-test-token"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3588,7 +3599,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3633,7 +3644,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let harness = try GatewayHarness()
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3660,7 +3671,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let harness = try GatewayHarness()
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3765,7 +3776,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         var headers = [
             "Content-Type": "application/json",
@@ -3836,7 +3847,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configureAnthropicProviderForGateway()
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         var headers = [
             "Content-Type": "application/json",
@@ -3886,7 +3897,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3927,7 +3938,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -3970,7 +3981,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             apiKey: "alpha-key"
         )
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
@@ -4087,7 +4098,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.configStore.setRouterMode(.sameModelFailover)
         try await harness.start()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
 
         let (response, _) = try await sendGatewayRequest(
             port: harness.port,
@@ -4421,10 +4432,23 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 }
 
 private final class GatewayHarness: @unchecked Sendable {
-    let port: Int
+    private static let portLock = NSLock()
+    private static var nextCandidatePort = Int.random(in: 49_152...60_999)
+
+    private(set) var port: Int
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
-    private let server: BurnBarHTTPGatewayServer
+    private var server: BurnBarHTTPGatewayServer
+    private let authToken: String?
+    private let rateLimit: BurnBarRateLimitConfiguration?
+    private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
+    private let anthropicExecutor: BurnBarAnthropicProviderExecutor
+    private let factoryExecutor: FactoryDroidProviderExecutor
+    private let crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy
+    private let modelCatalogSession: URLSession
+    private let modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning
+    private let modelHealthStore: BurnBarGatewayModelHealthStore
+    private let logger = BurnBarDaemonLogger(category: "gateway-tests")
 
     init(
         authToken: String? = nil,
@@ -4434,9 +4458,18 @@ private final class GatewayHarness: @unchecked Sendable {
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
         crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .disabled,
-        modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession()
+        modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession(),
+        modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner()
     ) throws {
         self.port = try Self.reservePort()
+        self.authToken = authToken
+        self.rateLimit = rateLimit
+        self.providerExecutor = providerExecutor
+        self.anthropicExecutor = anthropicExecutor
+        self.factoryExecutor = factoryExecutor
+        self.crossVendorDegradePolicy = crossVendorDegradePolicy
+        self.modelCatalogSession = modelCatalogSession
+        self.modelCatalogDroidProcessRunner = modelCatalogDroidProcessRunner
 
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-gateway-tests-\(UUID().uuidString)", isDirectory: true)
@@ -4452,7 +4485,7 @@ private final class GatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("usage-ledger.jsonl"),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
-        let modelHealthStore = BurnBarGatewayModelHealthStore(
+        self.modelHealthStore = BurnBarGatewayModelHealthStore(
             fileURL: tempDirectory.appendingPathComponent("gateway-model-health.json")
         )
 
@@ -4472,7 +4505,30 @@ private final class GatewayHarness: @unchecked Sendable {
             crossVendorDegradePolicy: crossVendorDegradePolicy,
             modelHealthStore: modelHealthStore,
             modelCatalogSession: modelCatalogSession,
-            logger: BurnBarDaemonLogger(category: "gateway-tests")
+            modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
+            logger: logger
+        )
+    }
+
+    private func makeServer(port: Int) -> BurnBarHTTPGatewayServer {
+        BurnBarHTTPGatewayServer(
+            configuration: BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: port,
+                authToken: authToken,
+                rateLimit: rateLimit
+            ),
+            configStore: configStore,
+            usageRecorder: usageRecorder,
+            providerExecutor: providerExecutor,
+            anthropicExecutor: anthropicExecutor,
+            factoryExecutor: factoryExecutor,
+            crossVendorDegradePolicy: crossVendorDegradePolicy,
+            modelHealthStore: modelHealthStore,
+            modelCatalogSession: modelCatalogSession,
+            modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
+            logger: logger
         )
     }
 
@@ -4573,8 +4629,21 @@ private final class GatewayHarness: @unchecked Sendable {
     }
 
     func start() async throws {
-        try await server.start()
-        try await Task.sleep(nanoseconds: 30_000_000)
+        var lastError: Error?
+        for attempt in 0..<5 {
+            do {
+                try await server.start()
+                try await Self.waitForListener(port: port)
+                return
+            } catch {
+                lastError = error
+                await server.stop()
+                guard attempt < 4 else { break }
+                port = try Self.reservePort()
+                server = makeServer(port: port)
+            }
+        }
+        throw lastError ?? POSIXError(.ETIMEDOUT)
     }
 
     func stop() async {
@@ -4582,6 +4651,32 @@ private final class GatewayHarness: @unchecked Sendable {
     }
 
     private static func reservePort() throws -> Int {
+        var lastError: POSIXError?
+        for _ in 0..<4096 {
+            let candidate = nextPortCandidate()
+            do {
+                try verifyCanBind(port: candidate)
+                return candidate
+            } catch let error as POSIXError {
+                lastError = error
+            }
+        }
+        throw lastError ?? POSIXError(.EADDRINUSE)
+    }
+
+    private static func nextPortCandidate() -> Int {
+        portLock.lock()
+        defer { portLock.unlock() }
+
+        let candidate = nextCandidatePort
+        nextCandidatePort += 1
+        if nextCandidatePort > 60_999 {
+            nextCandidatePort = 49_152
+        }
+        return candidate
+    }
+
+    private static func verifyCanBind(port: Int) throws {
         let socketFD = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
@@ -4591,7 +4686,7 @@ private final class GatewayHarness: @unchecked Sendable {
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
-        address.sin_port = in_port_t(0).bigEndian
+        address.sin_port = in_port_t(port).bigEndian
         address.sin_addr.s_addr = 0x0100007F
 
         let bindResult = withUnsafePointer(to: &address) { pointer in
@@ -4602,18 +4697,43 @@ private final class GatewayHarness: @unchecked Sendable {
         guard bindResult == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
+    }
 
-        var length = socklen_t(MemoryLayout<sockaddr_in>.stride)
-        let nameResult = withUnsafeMutablePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Darwin.getsockname(socketFD, rebound, &length)
+    private static func waitForListener(port: Int) async throws {
+        var lastError: POSIXError?
+        for _ in 0..<250 {
+            do {
+                try connectToLoopback(port: port)
+                return
+            } catch let error as POSIXError {
+                lastError = error
+                try await Task.sleep(nanoseconds: 20_000_000)
             }
         }
-        guard nameResult == 0 else {
+        throw lastError ?? POSIXError(.ETIMEDOUT)
+    }
+
+    private static func connectToLoopback(port: Int) throws {
+        let socketFD = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
+        defer { Darwin.close(socketFD) }
 
-        return Int(UInt16(bigEndian: address.sin_port))
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
+        address.sin_port = in_port_t(port).bigEndian
+        address.sin_addr.s_addr = 0x0100007F
+
+        let connectResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                Darwin.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+            }
+        }
+        guard connectResult == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .ECONNREFUSED)
+        }
     }
 }
 
@@ -4674,7 +4794,18 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         Self.lock.lock()
         let requestPath = request.url?.path ?? ""
         let response: Response
-        if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil || $0.path == requestPath }) {
+        var shouldRecordRequest = true
+        if let index = Self.queuedResponses.firstIndex(where: { $0.path == requestPath }) {
+            response = Self.queuedResponses.remove(at: index)
+        } else if requestPath == "/anthropic/v1/models" {
+            response = Response(
+                status: 200,
+                body: Data(Self.defaultAnthropicModelCatalogBody.utf8),
+                delayNanoseconds: 0,
+                path: requestPath
+            )
+            shouldRecordRequest = false
+        } else if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil }) {
             response = Self.queuedResponses.remove(at: index)
         } else {
             response = Response(
@@ -4684,20 +4815,22 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                 path: nil
             )
         }
-        Self.requests.append(
-            GatewayUpstreamRequest(
-                authorization: request.value(forHTTPHeaderField: "Authorization"),
-                path: request.url?.path ?? "",
-                query: request.url?.query,
-                body: Self.bodyString(from: request),
-                xApiKey: request.value(forHTTPHeaderField: "x-api-key"),
-                anthropicVersion: request.value(forHTTPHeaderField: "anthropic-version"),
-                anthropicBeta: request.value(forHTTPHeaderField: "anthropic-beta"),
-                userAgent: request.value(forHTTPHeaderField: "User-Agent"),
-                xApp: request.value(forHTTPHeaderField: "x-app"),
-                directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+        if shouldRecordRequest {
+            Self.requests.append(
+                GatewayUpstreamRequest(
+                    authorization: request.value(forHTTPHeaderField: "Authorization"),
+                    path: request.url?.path ?? "",
+                    query: request.url?.query,
+                    body: Self.bodyString(from: request),
+                    xApiKey: request.value(forHTTPHeaderField: "x-api-key"),
+                    anthropicVersion: request.value(forHTTPHeaderField: "anthropic-version"),
+                    anthropicBeta: request.value(forHTTPHeaderField: "anthropic-beta"),
+                    userAgent: request.value(forHTTPHeaderField: "User-Agent"),
+                    xApp: request.value(forHTTPHeaderField: "x-app"),
+                    directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+                )
             )
-        )
+        }
         Self.lock.unlock()
 
         if response.delayNanoseconds > 0 {
@@ -4741,4 +4874,18 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         }
         return String(data: data, encoding: .utf8) ?? ""
     }
+
+    private static let defaultAnthropicModelCatalogBody = """
+    {
+      "data": [
+        {"id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6", "type": "model"},
+        {"id": "claude-opus-4-8", "display_name": "Claude Opus 4.8", "type": "model"},
+        {"id": "claude-opus-4-7", "display_name": "Claude Opus 4.7", "type": "model"},
+        {"id": "claude-haiku-4-5", "display_name": "Claude Haiku 4.5", "type": "model"},
+        {"id": "anth-shared-pro", "display_name": "Shared Claude Pro", "type": "model"},
+        {"id": "anth-shared-base", "display_name": "Shared Claude Base", "type": "model"}
+      ],
+      "has_more": false
+    }
+    """
 }

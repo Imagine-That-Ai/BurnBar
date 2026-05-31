@@ -74,7 +74,7 @@ enum OpenBurnBarProductCatalog {
     static let legacyHostedQuotaOriginalProductID = "com.openburnbar.hostedQuotaSync.monthly"
     static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
     static let legacyComputerUseProductID = "com.openburnbar.computerUse.monthly"
-    static let legacyProMaxProductID = "com.openburnbar.proMax.v2.monthly"
+    static let legacyProMaxProductID = "com.openburnbar.proMax.monthly"
     static let legacyProMaxBundleProductID = "com.openburnbar.proMax.bundle.monthly"
 
     static let subscriptions: [OpenBurnBarStoreProduct] = [

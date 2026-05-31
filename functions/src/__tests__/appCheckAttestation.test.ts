@@ -12,9 +12,7 @@ import {
 
 describe("appCheckAttestation", () => {
   it("reads app id from callable App Check metadata", () => {
-    expect(readAppIdFromCallableRequest({ app: { appId: "1:123:ios:abc" } } as never)).toBe(
-      "1:123:ios:abc",
-    );
+    expect(readAppIdFromCallableRequest({ app: { appId: "1:123:ios:abc" } } as never)).toBe("1:123:ios:abc");
     expect(readAppIdFromCallableRequest({} as never)).toBeUndefined();
   });
 

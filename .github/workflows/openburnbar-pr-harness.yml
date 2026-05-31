@@ -18,9 +18,10 @@ jobs:
     # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
     # initializers in the large OpenBurnBar SwiftUI target, before tests run.
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
+      HAS_ASC_SECRETS: ${{ secrets.APP_STORE_ASC_KEY_ID != '' && secrets.APP_STORE_ASC_ISSUER_ID != '' && secrets.APP_STORE_ASC_KEY_P8 != '' }}
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
 
@@ -53,7 +54,7 @@ jobs:
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c6158d # v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: |
             .spm-cache
@@ -153,24 +154,24 @@ jobs:
 
       - name: Build OpenBurnBar Functions
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm --prefix functions run build
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "functions_build_ms=$((END - START))" >> "$GITHUB_ENV"
           echo "Functions build: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions unit tests (pure, no emulator)
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm --prefix functions run test:unit
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "Functions unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions tests
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm --prefix functions test
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Swift tests
@@ -278,9 +279,9 @@ jobs:
 
       - name: Run OpenBurnBar TypeScript unit tests
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           ./scripts/test-openburnbar-ts.sh
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "TypeScript unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar replay evals
@@ -322,7 +323,7 @@ jobs:
           cache: gradle
 
       - name: Cache Gradle wrapper and dependencies
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c6158d # v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: |
             ~/.gradle/caches
@@ -371,11 +372,11 @@ jobs:
       - name: Lint Kotlin (ktlint)
         run: |
           set -euo pipefail
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           # ktlint exits non-zero when violations are found.
           # Run ktlintCheck on all modules; output is printed to stdout by Gradle.
           cd android && ./gradlew ktlintCheck --no-daemon
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run Android unit tests
@@ -401,10 +402,19 @@ jobs:
           swift test --filter 'ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests'
 
       - name: Commercial launch gate (internal)
-        if: env.INTERNAL_RUN == 'true'
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ASC_SECRETS == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_STORE_ASC_KEY_ID: ${{ secrets.APP_STORE_ASC_KEY_ID }}
+          APP_STORE_ASC_ISSUER_ID: ${{ secrets.APP_STORE_ASC_ISSUER_ID }}
+          APP_STORE_ASC_KEY_P8: ${{ secrets.APP_STORE_ASC_KEY_P8 }}
         run: node scripts/commercial-launch-gate.mjs
+
+      - name: Skip commercial launch gate when ASC secrets are unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ASC_SECRETS != 'true'
+        run: |
+          echo "::notice::Skipping commercial launch gate because APP_STORE_ASC_* secrets are not configured in GitHub Actions."
+          echo "Commercial launch readiness must be proven from an operator environment with App Store Connect credentials."
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

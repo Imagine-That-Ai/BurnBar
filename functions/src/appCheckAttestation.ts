@@ -117,10 +117,7 @@ export function assertAppAttestBoundClaims(request: CallableRequest): void {
 /**
  * Auth + App Check + ownership + attestation-bound claims for high-risk mutations.
  */
-export function enforceHighRiskComputerUseCallable(
-  request: CallableRequest,
-  expectedUid: string,
-): void {
+export function enforceHighRiskComputerUseCallable(request: CallableRequest, expectedUid: string): void {
   assertAuth(request);
   assertAppCheck(request);
   assertOwnership(request, expectedUid);

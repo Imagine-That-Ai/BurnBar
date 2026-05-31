@@ -96,7 +96,9 @@ def insert_into_group(text: str, group_id: str, file_ref_line: str, file_name: s
         raise RuntimeError(f"PBXGroup {group_id} not found")
     if file_name in m.group(2):
         return text
-    return text[: m.start()] + m.group(1) + m.group(2) + f"\t\t\t\t{needle}\n" + m.group(3) + text[m.end() :]
+    children = m.group(2)
+    separator = "" if children.endswith("\n") else "\n"
+    return text[: m.start()] + m.group(1) + children + separator + f"\t\t\t\t{needle}" + m.group(3) + text[m.end() :]
 
 
 def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str) -> str:
@@ -112,7 +114,21 @@ def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str)
         raise RuntimeError(f"Sources phase {phase_id} not found")
     if file_name in m.group(2) and "in Sources */," in m.group(2):
         return text
-    return text[: m.start()] + m.group(1) + m.group(2) + f"\t\t\t\t{needle}\n" + m.group(3) + text[m.end() :]
+    files = m.group(2)
+    separator = "" if files.endswith("\n") else "\n"
+    return text[: m.start()] + m.group(1) + files + separator + f"\t\t\t\t{needle}" + m.group(3) + text[m.end() :]
+
+
+def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
+    for line in text.splitlines():
+        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
+            continue
+        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
+            continue
+        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
+            continue
+        return line.strip().split(" ", 1)[0]
+    return None
 
 
 def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:

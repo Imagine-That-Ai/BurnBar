@@ -134,44 +134,41 @@ export const approveEscrowDeviceTrust = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  wrapCallableHandler(
-    "approveEscrowDeviceTrust",
-    async (request: CallableRequest<{ deviceId?: unknown }>) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving device trust.");
-      enforceHighRiskComputerUseCallable(request, uid);
+  wrapCallableHandler("approveEscrowDeviceTrust", async (request: CallableRequest<{ deviceId?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving device trust.");
+    enforceHighRiskComputerUseCallable(request, uid);
 
-      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-      const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
-      const snapshot = await ref.get();
-      if (!snapshot.exists) {
-        throw new HttpsError("not-found", "Escrow device is not registered.");
-      }
-      const trustState = snapshot.get("trustState");
-      if (trustState === "trusted") {
-        return { ok: true, deviceId, trustState: "trusted", alreadyTrusted: true };
-      }
-      if (trustState === "revoked") {
-        throw new HttpsError("failed-precondition", "Revoked escrow devices must be re-registered before approval.");
-      }
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) {
+      throw new HttpsError("not-found", "Escrow device is not registered.");
+    }
+    const trustState = snapshot.get("trustState");
+    if (trustState === "trusted") {
+      return { ok: true, deviceId, trustState: "trusted", alreadyTrusted: true };
+    }
+    if (trustState === "revoked") {
+      throw new HttpsError("failed-precondition", "Revoked escrow devices must be re-registered before approval.");
+    }
 
-      await ref.set(
-        {
-          trustState: "trusted",
-          approvedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+    await ref.set(
+      {
+        trustState: "trusted",
+        approvedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
 
-      logInfo({
-        event: "callable_info",
-        message: "escrow_device_trust_approved",
-        device_id: deviceId,
-      });
-      return { ok: true, deviceId, trustState: "trusted" };
-    },
-  ),
+    logInfo({
+      event: "callable_info",
+      message: "escrow_device_trust_approved",
+      device_id: deviceId,
+    });
+    return { ok: true, deviceId, trustState: "trusted" };
+  }),
 );
 
 export const revokeEscrowDeviceTrust = onCall(
@@ -180,56 +177,53 @@ export const revokeEscrowDeviceTrust = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  wrapCallableHandler(
-    "revokeEscrowDeviceTrust",
-    async (request: CallableRequest<{ deviceId?: unknown }>) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking device trust.");
-      enforceHighRiskComputerUseCallable(request, uid);
+  wrapCallableHandler("revokeEscrowDeviceTrust", async (request: CallableRequest<{ deviceId?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking device trust.");
+    enforceHighRiskComputerUseCallable(request, uid);
 
-      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-      const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
-      const snapshot = await ref.get();
-      if (!snapshot.exists) {
-        throw new HttpsError("not-found", "Escrow device is not registered.");
-      }
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) {
+      throw new HttpsError("not-found", "Escrow device is not registered.");
+    }
 
-      await ref.set(
+    await ref.set(
+      {
+        trustState: "revoked",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    const grants = await db
+      .collection(`users/${uid}/escrow_grants`)
+      .where("targetDeviceId", "==", deviceId)
+      .where("status", "==", "granted")
+      .get();
+    const now = Timestamp.now();
+    const batch = db.batch();
+    for (const grant of grants.docs) {
+      batch.set(
+        grant.ref,
         {
-          trustState: "revoked",
-          updatedAt: FieldValue.serverTimestamp(),
+          status: "revoked",
+          revokedAt: now,
         },
         { merge: true },
       );
+    }
+    if (!grants.empty) {
+      await batch.commit();
+    }
 
-      const grants = await db
-        .collection(`users/${uid}/escrow_grants`)
-        .where("targetDeviceId", "==", deviceId)
-        .where("status", "==", "granted")
-        .get();
-      const now = Timestamp.now();
-      const batch = db.batch();
-      for (const grant of grants.docs) {
-        batch.set(
-          grant.ref,
-          {
-            status: "revoked",
-            revokedAt: now,
-          },
-          { merge: true },
-        );
-      }
-      if (!grants.empty) {
-        await batch.commit();
-      }
-
-      logInfo({
-        event: "callable_info",
-        message: "escrow_device_trust_revoked",
-        device_id: deviceId,
-        revoked_grants: grants.size,
-      });
-      return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
-    },
-  ),
+    logInfo({
+      event: "callable_info",
+      message: "escrow_device_trust_revoked",
+      device_id: deviceId,
+      revoked_grants: grants.size,
+    });
+    return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
+  }),
 );
