@@ -120,10 +120,7 @@ export async function macHasActiveMediaEntitlement(
   return false;
 }
 
-function activeEntitlement(
-  data: FirebaseFirestore.DocumentData | undefined,
-  allowedProductIDs?: Set<string>,
-): boolean {
+function activeEntitlement(data: FirebaseFirestore.DocumentData | undefined, allowedProductIDs?: Set<string>): boolean {
   const entitlement = data ?? {};
   if (entitlement.active !== true) return false;
   if (allowedProductIDs) {
