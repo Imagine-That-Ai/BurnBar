@@ -636,9 +636,9 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 sessionID: sessionID,
                 index: index
             ))
-            try await waitForCondition {
-                coordinator.state.actionTimeline.contains { $0.entryIndex == index }
-            }
+        }
+        try await waitForCondition(timeout: 2) {
+            coordinator.state.actionTimeline.count == 10
         }
 
         XCTAssertEqual(coordinator.state.actionTimeline.map(\.entryIndex), Array(0..<10))
