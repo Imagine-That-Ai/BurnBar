@@ -494,6 +494,7 @@ private func resolveDaemonPlanAPIKey(
     provider: AgentProvider,
     providerRuntimeKeyStore: KeychainStore
 ) -> String? {
+    guard provider != .openAI else { return nil }
     guard let providerID = daemonProviderID(for: provider) else { return nil }
     guard let configuration = OpenBurnBarDaemonManager.shared.providerConfigurations.first(
         where: { $0.providerID.caseInsensitiveCompare(providerID) == .orderedSame }
@@ -564,6 +565,7 @@ private func resolveDaemonAccountCredentials(
               let provider = quotaCapableProvider(for: configuration.providerID) else {
             continue
         }
+        guard provider != .openAI else { continue }
         let normalizedProviderID = ProviderID(rawValue: configuration.providerID)
 
         for slot in configuration.credentialSlots where slot.isEnabled {
