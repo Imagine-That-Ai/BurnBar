@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-31T05:25:57.995Z",
+  "generatedAt": "2026-05-31T19:02:00.000Z",
   "scanner": {
     "tsMode": "token-fallback",
     "excluded": {
@@ -36,15 +36,15 @@
       ]
     }
   },
-  "total": 51,
+  "total": 55,
   "byLanguage": {
     "kotlin": 3,
-    "typescript": 48
+    "typescript": 52
   },
   "byKind": {
     "kotlin_force_unwrap": 3,
     "ts_non_null_assertion": 2,
-    "ts_type_assertion": 46
+    "ts_type_assertion": 50
   },
   "violations": [
     {
