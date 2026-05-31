@@ -13,12 +13,13 @@ const baselinePath = path.join(repoRoot, "budgets/hand-maintained-ts-baseline.js
 
 const INTERFACE_RE = /^\s*export\s+interface\s+\w+/gm;
 const TYPE_ALIAS_RE = /^\s*export\s+type\s+\w+/gm;
+const generatedTypesDir = path.join(functionsSrc, "types", "generated");
 
 function walkTsFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (full.includes(`${path.sep}types${path.sep}generated${path.sep}`)) continue;
+      if (full === generatedTypesDir || full.startsWith(`${generatedTypesDir}${path.sep}`)) continue;
       walkTsFiles(full, out);
       continue;
     }
@@ -44,26 +45,16 @@ function countHandMaintainedLoc(files) {
 const files = walkTsFiles(functionsSrc);
 const live = countHandMaintainedLoc(files);
 
-if (!fs.existsSync(baselinePath)) {
-  fs.writeFileSync(
-    baselinePath,
-    JSON.stringify(
-      {
-        loc: live.loc,
-        exportedInterfaces: live.exportedInterfaces,
-        fileCount: live.files,
-        generatedAt: new Date().toISOString(),
-        note: "Hand-maintained functions/src/**/*.ts excluding types/generated/**",
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-  console.log(`Initialized ${baselinePath} loc=${live.loc}`);
-  process.exit(0);
+let baseline;
+try {
+  baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+} catch (error) {
+  if (error?.code === "ENOENT") {
+    console.error(`Missing checked-in baseline: ${baselinePath}`);
+    process.exit(1);
+  }
+  throw error;
 }
-
-const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
 console.log(`Hand-maintained TS: live loc=${live.loc} baseline=${baseline.loc} files=${live.files}`);
 
 if (live.loc > baseline.loc) {

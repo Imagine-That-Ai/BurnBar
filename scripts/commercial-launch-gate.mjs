@@ -28,7 +28,7 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
   cloudMonthly: "com.openburnbar.pro.monthly",
   cloudAnnual: "com.openburnbar.pro.annual",
   cloudProMonthly: "com.openburnbar.proMax.monthly",
-  appleCloudProMonthly: "com.openburnbar.proMax.bundle.monthly",
+  legacyAppleCloudProBundleMonthly: "com.openburnbar.proMax.bundle.monthly",
   cloudProAnnual: "com.openburnbar.proMax.annual",
   agentControlActions100: "com.openburnbar.agentControl.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
@@ -36,7 +36,7 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
 const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.cloudMonthly,
   COMMERCIAL_PRODUCTS.cloudAnnual,
-  COMMERCIAL_PRODUCTS.appleCloudProMonthly,
+  COMMERCIAL_PRODUCTS.cloudProMonthly,
   COMMERCIAL_PRODUCTS.cloudProAnnual,
 ];
 const REQUIRED_TOP_UP_PRODUCT_IDS = [
@@ -127,13 +127,13 @@ const REQUIRED_HOSTED_QUOTA_ENV = {
   HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT: "300",
   HOSTED_QUOTA_PRODUCT_ID: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
-  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.appleCloudProMonthly,
+  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
 };
 const REQUIRED_COMMERCIAL_ENV_VALUES = {
   STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
   BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
   BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
-  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.appleCloudProMonthly,
+  BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
   BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
   AGENT_CONTROL_100_ACTIONS_PRODUCT_ID: COMMERCIAL_PRODUCTS.agentControlActions100,
   FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,

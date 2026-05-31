@@ -3,7 +3,9 @@
  *
  * - `grantMediaGrandfather` — one-shot grandfather for existing hosted_quota_sync
  *   subscribers (90-day hosted_media_sync entitlement).
- * - `validateMediaPurchase` — verifies StoreKit purchase and writes entitlement doc.
+ * - `validateMediaPurchase` — retired standalone media purchase path. Kept as a
+ *   fail-closed callable so old clients receive a controlled error instead of
+ *   writing a client-attested entitlement.
  */
 
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
@@ -11,7 +13,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 
 import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
-import { isRecord, numberField, stringField } from "../guards.js";
+import { isRecord, stringField } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 
 const MEDIA_SKU = "com.openburnbar.hostedMediaSync.monthly";
@@ -37,11 +39,6 @@ const SCHEMA_VERSION = 1;
 function nowPlusDays(days: number): Timestamp {
   const millis = Date.now() + days * 24 * 60 * 60 * 1000;
   return Timestamp.fromMillis(millis);
-}
-
-function isCloudProProductID(productID: string): boolean {
-  const cfg = getConfig();
-  return productID === cfg.burnBarProMaxProductID || productID === cfg.burnBarProMaxAnnualProductID;
 }
 
 export const grantMediaGrandfather = onCall(
@@ -105,21 +102,6 @@ export const grantMediaGrandfather = onCall(
   }),
 );
 
-interface ValidateRequest {
-  productID: string;
-  appleTransactionId: string;
-  expireAtMillis: number;
-}
-
-function parseValidateRequest(raw: unknown): ValidateRequest | undefined {
-  if (!isRecord(raw)) return undefined;
-  const productID = stringField(raw, "productID");
-  const appleTransactionId = stringField(raw, "appleTransactionId");
-  const expireAtMillis = numberField(raw, "expireAtMillis");
-  if (!productID || !appleTransactionId || expireAtMillis === undefined) return undefined;
-  return { productID, appleTransactionId, expireAtMillis };
-}
-
 export const validateMediaPurchase = onCall(
   { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("validateMediaPurchase", async (request) => {
@@ -127,39 +109,9 @@ export const validateMediaPurchase = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
-    const data = parseValidateRequest(request.data);
-    if (!data || (data.productID !== MEDIA_SKU && !isCloudProProductID(data.productID))) {
-      throw new HttpsError("invalid-argument", "Unsupported product.");
-    }
-    if (!Number.isFinite(data.expireAtMillis) || data.expireAtMillis < Date.now()) {
-      throw new HttpsError("invalid-argument", "expireAtMillis must be in the future.");
-    }
-    if (!data.appleTransactionId) {
-      throw new HttpsError("invalid-argument", "appleTransactionId required.");
-    }
-
-    const firestore = getFirestore();
-    const ref = firestore.doc(`users/${request.auth.uid}/entitlements/${MEDIA_ENTITLEMENT_DOC_ID}`);
-
-    const cloudProProduct = isCloudProProductID(data.productID);
-    const grant: MediaEntitlementDoc = {
-      active: true,
-      productID: data.productID,
-      expireAt: Timestamp.fromMillis(data.expireAtMillis),
-      features: {
-        fileTransfer: true,
-        screenShare: cloudProProduct,
-        videoCall: cloudProProduct,
-      },
-      grantedBy: cloudProProduct ? "umbrella" : "purchase",
-      schemaVersion: SCHEMA_VERSION,
-    };
-    await ref.set(grant, { merge: true });
-    logInfo({
-      event: "callable_info",
-      message: "media_purchase_validated",
-      product_id: data.productID,
-    });
-    return { active: true, productID: data.productID };
+    throw new HttpsError(
+      "failed-precondition",
+      "The standalone media subscription is retired. Upgrade to BurnBar Cloud Pro for Floo.",
+    );
   }),
 );
