@@ -11,6 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import Stripe from "stripe";
 
 import { getConfig } from "../config.js";
+import { stripeWithResilience } from "../resilienceHelpers.js";
 import { storeCredential } from "../secrets.js";
 import { providerAccountSecretRefPath, refreshUserProviderAccountQuota, refreshUserProviderQuota } from "../quota.js";
 import { upsertDeviceLink } from "../domains/device-links/index.js";
@@ -850,11 +851,13 @@ export async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Pr
   }
 
   const user = await auth.getUser(uid).catch(() => undefined);
-  const customer = await stripe.customers.create({
-    email: user?.email ?? undefined,
-    name: user?.displayName ?? undefined,
-    metadata: { firebaseUID: uid },
-  });
+  const customer = await stripeWithResilience("customers.create", () =>
+    stripe.customers.create({
+      email: user?.email ?? undefined,
+      name: user?.displayName ?? undefined,
+      metadata: { firebaseUID: uid },
+    }),
+  );
   await ref.set(
     {
       uid,
@@ -912,7 +915,9 @@ export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe
   }
   let subscription: Stripe.Subscription | undefined;
   if (typeof session.subscription === "string") {
-    subscription = await stripe.subscriptions.retrieve(session.subscription);
+    subscription = await stripeWithResilience("subscriptions.retrieve", () =>
+      stripe.subscriptions.retrieve(session.subscription as string),
+    );
   } else if (session.subscription && typeof session.subscription === "object") {
     subscription = session.subscription;
   }

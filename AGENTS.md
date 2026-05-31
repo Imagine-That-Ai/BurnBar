@@ -30,6 +30,17 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 - **Tech debt trends:** run `./scripts/ci/update-tech-debt-metrics.sh` before monthly debt reviews; commit updated [`docs/TECH_DEBT_METRICS.md`](docs/TECH_DEBT_METRICS.md) when baselines shift intentionally.
 - **Scope:** every line in a change should serve the request; avoid drive-by refactors and unrelated files.
 - **Mac CLI session paths (quota parsers):** Codex `~/.codex/sessions/`, Claude Code `~/.claude/projects/`, Grok Build `~/.grok/sessions/` (see [`GrokParser.swift`](AgentLens/Services/LogParser/GrokParser.swift) and [docs/PROVIDERS.md](docs/PROVIDERS.md)).
+- **Database schema:** SQLite schema reference lives in [`docs/SCHEMA_SQLITE.sql`](docs/SCHEMA_SQLITE.sql); update it alongside any GRDB migration.
+- **Feature rollouts:** use `node scripts/rollout.mjs --status` to see current ring status; `node scripts/rollout.mjs --flag <flag> --stage ring-N` to advance. Runbook: [`docs/runbooks/rollback-automation.md`](docs/runbooks/rollback-automation.md).
+- **N+1 query detection:** `OpenBurnBarQueryTracer` in `AgentLens/Services/DataStore/OpenBurnBarQueryTracer.swift` — configure via `configure(in: &configuration)` before opening a database, then call `resetLog()` / `assertMaxQueries(count:)` in tests.
+- **Sentry:** Callable errors auto-capture via `wrapCallableHandler` → `withCallableLogging` → `captureException()` in `functions/src/logging.ts`. Set `SENTRY_DSN` for production.
+- **Circuit breakers:** Use `functions/src/resilienceHelpers.ts` (`stripeWithResilience`, `firestoreWithResilience`, `pushWithResilience`, `resilientFetch`, etc.). New provider HTTP must use `providerFetch` from `functions/src/providers/httpClient.ts`. CI enforces no raw `await fetch` in `functions/src`: `bash scripts/ci/verify-resilience-wiring.sh`.
+- **Production callables:** Prefer `onCallProduction(name, options, handler)` from `logging.ts` for new exports (logging + Sentry).
+- **Ops readiness:** `bash scripts/ci/verify-ops-readiness.sh` before release; production plane: `bash scripts/ops/verify-production-ops-plane.sh`; tag deploy runs `.github/workflows/deploy-production.yml`.
+- **Fast CI:** `.github/workflows/fast-feedback.yml` runs lint + typecheck + unit tests in <5 min on every PR. The full macOS build runs separately. Fix fast-feedback failures first.
+- **Automated review:** `.github/workflows/pr-review.yml` posts a structured review comment on every internal PR. Check the comment before merging.
+- **Extension alerting:** import from `extensions/openburnbar/src/alerting.ts` — `alertDaemonUnreachable()`, `alertRunFailed()`, etc. Never use `vscode.window.showError*` directly.
+- **Profiling functions:** `npm run profile --prefix functions` generates a `.cpuprofile` file for Chrome DevTools analysis.
 
 Human-oriented Cursor and product context (onboarding, architecture, threat model) remains in the [docs/](docs/) tree — start with [`docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md`](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md) and [`README.md`](README.md) **Cursor deep dives**.
 

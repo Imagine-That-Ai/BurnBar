@@ -76,6 +76,11 @@ for plist_path in $plist_paths; do
 done
 IFS="$old_ifs"
 
+if [ -n "${OPENBURNBAR_SENTRY_DSN:-}" ]; then
+    /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "$plist_path" >/dev/null 2>&1 || true
+    /usr/libexec/PlistBuddy -c "Add :sentry.dsn string $OPENBURNBAR_SENTRY_DSN" "$plist_path"
+fi
+
 if [ -n "${GITHUB_ENV:-}" ]; then
     {
         echo "FIRAAppCheckDebugToken=$FIREBASE_APP_CHECK_DEBUG_TOKEN"

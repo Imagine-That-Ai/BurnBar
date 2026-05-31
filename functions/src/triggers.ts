@@ -11,6 +11,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { applyUsageCounterDelta } from "./rollups.js";
 import { errorMessage, parseRollupJobDoc, parseUsageEventDoc } from "./guards.js";
 import { logError } from "./logging.js";
+import { runFirestoreTrigger } from "./scheduledOps.js";
 
 /**
  * Firestore trigger: whenever a usage event is created, updated, or deleted,
@@ -28,7 +29,8 @@ export const onUsageWritten = onDocumentWritten(
     // No App Check enforcement needed for background triggers; they are
     // backend-internal and already authenticated via the service account.
   },
-  async (event) => {
+  async (event) =>
+    runFirestoreTrigger("onUsageWritten", async () => {
     const uid = event.params.uid;
     const db = getFirestore();
     const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
@@ -67,5 +69,5 @@ export const onUsageWritten = onDocumentWritten(
       // (queued the rollup job). Letting it throw would cause unnecessary
       // retries that just re-attempt the same failing transaction.
     }
-  },
+    }),
 );

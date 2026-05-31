@@ -295,7 +295,7 @@ struct OnboardingProviderConnectStep: View {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                 HStack {
                     Label(
-                        subscriptionStore.isActive ? "Hosted Quota Sync active" : "Hosted Quota Sync required",
+                        subscriptionStore.isActive ? "BurnBar Cloud active" : "BurnBar Cloud required",
                         systemImage: subscriptionStore.isActive ? "checkmark.seal.fill" : "lock.fill"
                     )
                     .foregroundStyle(subscriptionStore.isActive ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
@@ -785,7 +785,7 @@ struct OnboardingProviderConnectStep: View {
             }
             if Task.isCancelled { return }
             guard subscriptionStore.isActive else {
-                errorMessage = "Hosted Quota Sync subscription is not active."
+                errorMessage = "BurnBar Cloud subscription is not active."
                 advance(to: .failed)
                 return
             }

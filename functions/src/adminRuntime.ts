@@ -6,6 +6,9 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
+// Sentry must be initialized before any other imports that might throw.
+import "./sentry.js";
+
 const configuredStorageBucket =
   process.env.OPENBURNBAR_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || undefined;
 

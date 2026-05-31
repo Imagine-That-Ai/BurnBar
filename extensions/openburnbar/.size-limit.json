@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Extension bundle (dist/extension.js)",
+    "path": "dist/extension.js",
+    "limit": "5 MB"
+  }
+]

@@ -1402,8 +1402,9 @@ private fun PresentationModeToggle(
             CLIAgentChatPresentationMode.values().forEach { mode ->
                 val isSelected = mode == selected
                 val icon = when (mode) {
-                    CLIAgentChatPresentationMode.NATIVE_CHAT -> Icons.Filled.ChatBubble
-                    CLIAgentChatPresentationMode.MAC_VISIBLE_CLI -> Icons.Filled.Terminal
+        CLIAgentChatPresentationMode.NATIVE_CHAT -> Icons.Filled.ChatBubble
+        CLIAgentChatPresentationMode.MAC_VISIBLE_CLI -> Icons.Filled.Terminal
+        CLIAgentChatPresentationMode.MAC_INTERACTIVE_CLI -> Icons.Filled.Terminal
                 }
                 val foreground = when {
                     !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
@@ -1490,6 +1491,8 @@ private fun toolbarGradientColors(runtime: AssistantRuntimeID, accent: Color): L
     AssistantRuntimeID.DROID -> listOf(Color(0xFF8B5CF6), Color(0xFF6D5DF6), Color(0xFFC084FC))
     AssistantRuntimeID.FORGE -> listOf(Color(0xFFF97316), Color(0xFFEA580C), Color(0xFFFDBA74))
     AssistantRuntimeID.ANTIGRAVITY -> listOf(Color(0xFF6C63FF), Color(0xFF8F8AFF), Color(0xFFC4B5FD))
+    AssistantRuntimeID.GROK -> listOf(Color(0xFF111827), Color(0xFF0EA5E9), Color(0xFF67E8F9))
+    AssistantRuntimeID.CURSOR_AGENT -> listOf(Color(0xFF0F172A), Color(0xFF64748B), Color(0xFFCBD5E1))
     else -> listOf(accent, accent.copy(alpha = 0.72f), accent)
 }
 
@@ -1559,12 +1562,14 @@ private val CLIAgentChatPresentationMode.androidSourceSurface: String
     get() = when (this) {
         CLIAgentChatPresentationMode.NATIVE_CHAT -> "android-chat-native"
         CLIAgentChatPresentationMode.MAC_VISIBLE_CLI -> "android-chat-mac-visible-cli"
+        CLIAgentChatPresentationMode.MAC_INTERACTIVE_CLI -> "android-chat-mac-interactive-cli"
     }
 
 private val CLIAgentChatPresentationMode.deliveryMode: com.openburnbar.data.assistants.SkillRunDeliveryMode
     get() = when (this) {
         CLIAgentChatPresentationMode.NATIVE_CHAT -> com.openburnbar.data.assistants.SkillRunDeliveryMode.ACTION_ONLY
         CLIAgentChatPresentationMode.MAC_VISIBLE_CLI -> com.openburnbar.data.assistants.SkillRunDeliveryMode.FULL_STREAM
+        CLIAgentChatPresentationMode.MAC_INTERACTIVE_CLI -> com.openburnbar.data.assistants.SkillRunDeliveryMode.FULL_STREAM
     }
 
 private fun cliModelPreferenceKey(runtime: AssistantRuntimeID): String =
@@ -1984,6 +1989,8 @@ private fun providerFor(runtime: AssistantRuntimeID): AgentProvider = when (runt
     AssistantRuntimeID.DROID -> AgentProvider.FACTORY
     AssistantRuntimeID.FORGE -> AgentProvider.FORGE_DEV
     AssistantRuntimeID.ANTIGRAVITY -> AgentProvider.ANTIGRAVITY
+    AssistantRuntimeID.GROK -> AgentProvider.XAI
+    AssistantRuntimeID.CURSOR_AGENT -> AgentProvider.CURSOR
     AssistantRuntimeID.HERMES -> AgentProvider.HERMES
     AssistantRuntimeID.PI -> AgentProvider.HERMES
 }
@@ -1995,6 +2002,8 @@ private fun readyTagline(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.DROID -> "Droid is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.FORGE -> "Forge is wired to your Mac. Ask it for coding help, review, or implementation plans."
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity is wired to your Mac. Ask it to inspect, plan, or work in your repo."
+    AssistantRuntimeID.GROK -> "Grok is wired to your Mac. Ask it to inspect, explain, or implement in your repo."
+    AssistantRuntimeID.CURSOR_AGENT -> "Cursor Agent is wired to your Mac. Ask it to work in the current workspace."
     AssistantRuntimeID.HERMES, AssistantRuntimeID.PI -> "Ready when you are."
 }
 
@@ -2034,6 +2043,18 @@ private fun quickPromptsFor(runtime: AssistantRuntimeID): List<String> = when (r
         "Plan an implementation",
         "Review this change",
         "Explain this error",
+    )
+    AssistantRuntimeID.GROK -> listOf(
+        "Explain this error",
+        "Review this change",
+        "Plan an implementation",
+        "Find risky assumptions",
+    )
+    AssistantRuntimeID.CURSOR_AGENT -> listOf(
+        "Open this workspace",
+        "Review my last change",
+        "Plan the next edit",
+        "Find failing tests",
     )
     else -> emptyList()
 }

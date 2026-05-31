@@ -1294,7 +1294,7 @@ private final class MacHostedQuotaPurchaseStore: ObservableObject {
         "com.openburnbar.computerUse.monthly",
         "com.openburnbar.proMax.bundle.monthly",
         "com.openburnbar.hostedComputerUseSync.monthly",
-        "com.openburnbar.proMax.monthly",
+        "com.openburnbar.proMax.v2.monthly",
         "com.openburnbar.pro.monthly"
     ]
 

@@ -341,7 +341,7 @@ private fun CloudPosterHero(isActive: Boolean) {
             text = if (isActive) {
                 "Your quota, your conversations, your agents — synced across every device."
             } else {
-                "Hosted Codex refresh. Chat that follows you. Mac AI anywhere. From $4.99/mo."
+                "Sync, encrypted history, and agent memory across every device. From $7.99/mo."
             },
             fontSize = 14.sp,
             color = Pal.textSecondary,

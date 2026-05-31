@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Attach the price tier ($14.99 / $24.99) to the Computer Use IAPs.
+ * Attach USA base prices to the commercial BurnBar Cloud subscriptions.
  * Run after submit-computer-use-iaps.js has created the draft SKUs.
  *
  * Requires the same env vars as submit-computer-use-iaps.js.
@@ -22,8 +22,10 @@ const KEY_PATH = process.env.APP_STORE_ASC_KEY_PATH;
 const APPLY = new Set(process.argv.slice(2)).has('--apply');
 
 const TARGETS = [
-  { productId: 'com.openburnbar.hostedComputerUseSync.monthly', priceUSD: '14.99' },
-  { productId: 'com.openburnbar.proMax.monthly', priceUSD: '24.99' },
+  { productId: 'com.openburnbar.pro.monthly', priceUSD: '7.99' },
+  { productId: 'com.openburnbar.pro.annual', priceUSD: '79.00' },
+  { productId: 'com.openburnbar.proMax.v2.monthly', priceUSD: '24.99' },
+  { productId: 'com.openburnbar.proMax.annual', priceUSD: '249.00' },
 ];
 
 function b64u(s) {
@@ -113,11 +115,12 @@ async function listSubscriptions(token) {
 async function findUSAPricePoint(subscriptionId, customerPrice, token) {
   // ASC's API returns pricePoints scoped to a subscription. We filter
   // on territory=USA and find the one matching the requested USD price.
+  const targetPrice = Number(customerPrice);
   let next = `/v1/subscriptions/${subscriptionId}/pricePoints?filter[territory]=USA&limit=200`;
   while (next) {
     const resp = await api('GET', next, undefined, token);
     for (const pt of resp.data || []) {
-      if (pt.attributes.customerPrice === customerPrice) return pt.id;
+      if (Number(pt.attributes.customerPrice) === targetPrice) return pt.id;
     }
     next = resp.links && resp.links.next
       ? resp.links.next.replace('https://api.appstoreconnect.apple.com', '')

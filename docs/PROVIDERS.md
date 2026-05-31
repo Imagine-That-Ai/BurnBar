@@ -165,6 +165,29 @@ manifest carries only sealed metadata. See
 [`docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md`](OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md)
 for the cockpit query surface.
 
+## CLI session restart and handoff
+
+Mobile clients do not reconstruct provider state themselves. iOS, iPadOS, and
+Android send `cliAgentSessionAction` over the paired Mac relay, and the physical
+Mac executes the same daemon `run.resume` path used by the macOS session browser.
+
+The daemon distinguishes three outcomes:
+
+- `native_resume`: only for providers whose handle can be validated locally
+  today (`codex`, `claude_code`).
+- `handoff`: a Mac-local `0600` markdown package is written and the selected CLI
+  receives a short prompt/file pointer (`droid`, `forge`, `antigravity`, `grok`,
+  `cursorAgent`, `opencode`, `gemini`, plus Codex/Claude when native validation
+  fails).
+- `package_only`: the package is opened/written without claiming provider-native
+  continuation.
+
+The package includes full indexed transcript text when available, key files,
+commands, tools, source IDs, working directory, and an explicit trust-boundary
+warning. Unvalidated providers must not be shown as native continuation even if
+their CLI exposes a `--resume` flag; they remain handoff until OpenBurnBar can
+prove the local handle maps to the intended session.
+
 ---
 
 ## Adding a New Provider

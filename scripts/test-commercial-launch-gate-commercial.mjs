@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   COMMERCIAL_PRODUCTS,
+  evaluateAppStoreProductReadiness,
   evaluateEnvRequirements,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
@@ -46,6 +47,65 @@ assert.match(launchGateSource, /verifyGooglePlayCloudProTopUp/);
   );
   assert.equal(coverage.ok, false);
   assert.deepEqual(coverage.missing, [COMMERCIAL_PRODUCTS.cloudProMonthly]);
+}
+
+{
+  const readiness = evaluateAppStoreProductReadiness(
+    {
+      subscriptions: [
+        {
+          id: "sub_cloud_monthly",
+          productId: COMMERCIAL_PRODUCTS.cloudMonthly,
+          name: "BurnBar Cloud Monthly",
+          state: "READY_TO_SUBMIT",
+        },
+        {
+          id: "sub_cloud_pro_monthly",
+          productId: COMMERCIAL_PRODUCTS.cloudProMonthly,
+          name: "BurnBar Cloud Pro Monthly",
+          state: "APPROVED",
+        },
+      ],
+      inAppPurchases: [
+        {
+          id: "iap_actions",
+          productId: COMMERCIAL_PRODUCTS.agentControlActions100,
+          name: "Agent Control 100 Actions",
+          state: "WAITING_FOR_REVIEW",
+        },
+      ],
+    },
+    [
+      COMMERCIAL_PRODUCTS.cloudMonthly,
+      COMMERCIAL_PRODUCTS.cloudProMonthly,
+      COMMERCIAL_PRODUCTS.agentControlActions100,
+    ],
+  );
+  assert.equal(readiness.ok, true);
+}
+
+{
+  const readiness = evaluateAppStoreProductReadiness(
+    {
+      subscriptions: [
+        {
+          id: "sub_cloud_monthly",
+          productId: COMMERCIAL_PRODUCTS.cloudMonthly,
+          name: "BurnBar Cloud Monthly",
+          state: "MISSING_METADATA",
+        },
+      ],
+    },
+    [COMMERCIAL_PRODUCTS.cloudMonthly, COMMERCIAL_PRODUCTS.cloudProMonthly],
+  );
+  assert.equal(readiness.ok, false);
+  assert.deepEqual(
+    readiness.checks.map((check) => [check.productId, check.state, check.ok]),
+    [
+      [COMMERCIAL_PRODUCTS.cloudMonthly, "MISSING_METADATA", false],
+      [COMMERCIAL_PRODUCTS.cloudProMonthly, null, false],
+    ],
+  );
 }
 
 {

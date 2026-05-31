@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-05-31T16:48:21.295676+00:00",
+  "project": "burnbar",
+  "ok": true,
+  "steps": [
+    "verify-ops-readiness:pass",
+    "check-ops-alerts:pass",
+    "commercial-launch-gate:audit",
+    "post-deploy-health-gate:pass"
+  ],
+  "launchGateVerdict": "NO_GO",
+  "opsAlertsOk": true,
+  "launchGateOpsAlertsOk": true
+}

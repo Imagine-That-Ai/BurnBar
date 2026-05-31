@@ -36,12 +36,16 @@ data class CLIAgentSessionRecord(
     val id: String,
     val agent: String,
     val agentURI: String,
+    val sourceKind: String,
     val title: String,
     val preview: String,
     val modelName: String?,
     val workspaceLabel: String?,
     val updatedAtEpoch: Long,
     val messages: List<CLIAgentMessage>,
+    val resumeProviderSessionID: String? = null,
+    val canResume: Boolean = false,
+    val canForward: Boolean = true,
     val customTitle: String? = null,
     val labelColorHex: String? = null,
     val isPinned: Boolean = false,
@@ -63,6 +67,16 @@ data class CLIAgentSessionRecord(
             ).joinToString(" ")
         }
     ).joinToString(" ")
+
+    val resumeLookupID: String
+        get() {
+            val prefix = "archive:${agent.lowercase()}:"
+            return if (sourceKind == "archived_log" && id.startsWith(prefix)) {
+                id.removePrefix(prefix)
+            } else {
+                id
+            }
+        }
 }
 
 // MARK: - Thread Inbox Store (Android parity)
@@ -148,7 +162,7 @@ class ThreadInboxStore private constructor(
                             agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.PI)
                             source = ThreadInboxItem.Source.PI
                         }
-                        "codex", "claude", "openclaw", "droid", "forge", "antigravity" -> {
+                        "codex", "claude", "openclaw", "droid", "forge", "antigravity", "grok", "cursoragent", "cursor_agent", "cursor-agent" -> {
                             val runtime = when (runtimeLower) {
                                 "codex" -> AssistantRuntimeID.CODEX
                                 "claude" -> AssistantRuntimeID.CLAUDE
@@ -156,6 +170,8 @@ class ThreadInboxStore private constructor(
                                 "droid" -> AssistantRuntimeID.DROID
                                 "forge" -> AssistantRuntimeID.FORGE
                                 "antigravity" -> AssistantRuntimeID.ANTIGRAVITY
+                                "grok" -> AssistantRuntimeID.GROK
+                                "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
                                 else -> return@mapNotNull null
                             }
                             agentURI = AgentIdentity.builtInURI(runtime)
@@ -282,16 +298,21 @@ class ThreadInboxStore private constructor(
         val labelColorHex = data["labelColorHex"] as? String
         val isPinned = data["isPinned"] as? Boolean ?: false
         val priorityOrder = (data["priorityOrder"] as? Number)?.toInt()
+        val resumeHandle = data["resumeHandle"] as? Map<*, *>
         return CLIAgentSessionRecord(
             id = recordID,
             agent = agent,
             agentURI = AgentIdentity.builtInURI(runtime),
+            sourceKind = data["sourceKind"] as? String ?: "live_chat",
             title = (data["title"] as? String)?.ifBlank { "(no title)" } ?: "(no title)",
             preview = data["preview"] as? String ?: "",
             modelName = data["modelName"] as? String,
             workspaceLabel = data["workspaceLabel"] as? String,
             updatedAtEpoch = updatedAt,
             messages = parseMessages(data["messages"]),
+            resumeProviderSessionID = resumeHandle?.get("providerSessionID") as? String,
+            canResume = resumeHandle?.get("canResume") as? Boolean ?: false,
+            canForward = resumeHandle?.get("canForward") as? Boolean ?: true,
             customTitle = customTitle,
             labelColorHex = labelColorHex,
             isPinned = isPinned,
@@ -332,6 +353,8 @@ class ThreadInboxStore private constructor(
             "droid", "factory", "factory_droid", "factory-droid" -> AssistantRuntimeID.DROID
             "forge", "forge_dev", "forge-dev" -> AssistantRuntimeID.FORGE
             "antigravity", "agy", "google_antigravity", "google-antigravity" -> AssistantRuntimeID.ANTIGRAVITY
+            "grok", "xai", "x-ai" -> AssistantRuntimeID.GROK
+            "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
             else -> null
         }
 

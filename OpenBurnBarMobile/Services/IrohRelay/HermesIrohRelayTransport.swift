@@ -714,7 +714,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             return requestedTimeout
         case .cliAgentChat:
             return requestedTimeout
-        case .cliAgentModelCatalog, .models, .sessions, .sessionDetail, .profiles, .jobs:
+        case .cliAgentModelCatalog, .cliAgentSessionAction, .models, .sessions, .sessionDetail, .profiles, .jobs:
             return max(requestedTimeout, minimumControlPlaneRequestTimeout)
         }
     }

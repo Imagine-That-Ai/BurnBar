@@ -122,6 +122,129 @@ jobs:
             echo "knip: extension looks clean."
           fi
 
+  dependency-boundaries:
+    name: Dependency Boundaries (dependency-cruiser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Check dependency boundaries (functions)
+        run: |
+          set -euo pipefail
+          npx --prefix functions depcruise \
+            --config functions/.dependency-cruiser.cjs \
+            --output-type err \
+            functions/src 2>&1 | tee depcruise-functions.txt || true
+          if grep -qE "^error" depcruise-functions.txt; then
+            echo "::error::Circular dependencies or boundary violations found in functions/src."
+            exit 1
+          fi
+          echo "dependency-cruiser: functions boundaries OK."
+
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Check dependency boundaries (extension)
+        run: |
+          set -euo pipefail
+          npx --prefix extensions/openburnbar depcruise \
+            --config extensions/openburnbar/.dependency-cruiser.cjs \
+            --output-type err \
+            extensions/openburnbar/src 2>&1 | tee depcruise-extension.txt || true
+          if grep -qE "^error" depcruise-extension.txt; then
+            echo "::error::Circular dependencies or boundary violations found in extensions/openburnbar/src."
+            exit 1
+          fi
+          echo "dependency-cruiser: extension boundaries OK."
+
+  bundle-size:
+    name: Bundle Size (size-limit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install extension dependencies and build
+        run: |
+          npm ci --prefix extensions/openburnbar
+          npm run build --prefix extensions/openburnbar
+
+      - name: Check extension bundle size
+        run: |
+          set -euo pipefail
+          cd extensions/openburnbar
+          npx size-limit --json 2>&1 | tee size-limit-extension.txt || true
+          echo "Size-limit (extension) output recorded."
+
+      - name: Install website dependencies and build
+        run: |
+          npm ci --prefix website
+          npm run build:offline --prefix website
+
+      - name: Check website bundle size
+        run: |
+          set -euo pipefail
+          cd website
+          npx size-limit --json 2>&1 | tee size-limit-website.txt || true
+          echo "Size-limit (website) output recorded."
+
+      - name: Upload size reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-size-reports
+          path: |
+            extensions/openburnbar/size-limit-extension.txt
+            website/size-limit-website.txt
+
+  android-dependency-health:
+    name: Android Dependency Health (dependency-analysis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Inject Firebase config (template)
+        run: |
+          cp android/app/google-services.json.template android/app/google-services.json
+
+      - name: Run dependency-analysis buildHealth
+        run: |
+          set -euo pipefail
+          cd android
+          ./gradlew :app:buildHealth --no-daemon 2>&1 | tee ../android-dep-health.txt || true
+          if grep -qE "^BUILD FAILED" ../android-dep-health.txt; then
+            echo "::warning::Android dependency-analysis found issues. Review android-dep-health artifact."
+          else
+            echo "Android dependency health check complete."
+          fi
+
+      - name: Upload Android dependency health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-dependency-health
+          path: android-dep-health.txt
+
   build-performance:
     name: Build Timing Summary
     runs-on: ubuntu-latest

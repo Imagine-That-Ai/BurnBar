@@ -21,6 +21,7 @@
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
 import { recordOrUndefined } from "../guards.js";
+import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "kimi" as const;
 
@@ -48,7 +49,7 @@ interface KimiFetchResult {
 async function kimiFetch(url: string, token: string): Promise<KimiFetchResult> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await providerFetch(PROVIDER, "api", url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

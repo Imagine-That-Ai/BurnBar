@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
+import com.openburnbar.data.budget.BudgetNotificationCenter
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
@@ -18,7 +19,6 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
-import com.openburnbar.data.budget.BudgetNotificationCenter
 import com.openburnbar.data.media.AndroidFileTransferService
 import com.openburnbar.data.media.IrohBlobKeyStore
 import com.openburnbar.data.media.MediaFileTransferService

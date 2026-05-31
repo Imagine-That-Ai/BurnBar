@@ -1,0 +1,140 @@
+name: Deploy Production (Cloud Functions)
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to deploy (v*). Defaults to ref when dispatching from a tag."
+        required: false
+        type: string
+      dry_run:
+        description: "Build + verifiers + health gate only (no firebase deploy)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "::error::Deploy only from v* tags"
+            exit 1
+          fi
+          git checkout "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install and build Functions
+        run: |
+          npm ci --prefix functions
+          npm run build --prefix functions
+          bash scripts/ci/verify-callable-logging.sh
+          bash scripts/ci/verify-resilience-wiring.sh
+
+      - name: Sentry release (Functions)
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT_FUNCTIONS: openburnbar-functions
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          curl -sL https://sentry.io/get-cli/ | bash
+          RELEASE_NAME="openburnbar-functions@${TAG}"
+          sentry-cli releases new --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
+          sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" --auto || true
+          sentry-cli releases finalize --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
+          sentry-cli releases deploys "$RELEASE_NAME" new \
+            --org "$SENTRY_ORG" \
+            --project "$SENTRY_PROJECT_FUNCTIONS" \
+            --env production \
+            --name "${TAG}-$(date -u +%Y%m%dT%H%M%SZ)" || true
+          echo "Sentry release ${RELEASE_NAME} created."
+
+      - name: Deploy Cloud Functions
+        if: steps.tag.outputs.dry_run != 'true'
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
+        run: |
+          if [[ -z "${FIREBASE_TOKEN:-}" ]]; then
+            echo "::error::FIREBASE_TOKEN secret required"
+            exit 1
+          fi
+          TAG="${{ steps.tag.outputs.tag }}"
+          ENV_FILE="functions/.env.burnbar"
+          touch "$ENV_FILE"
+          { grep -v '^FUNCTION_VERSION=' "$ENV_FILE" || true; echo "FUNCTION_VERSION=${TAG}"; } > "${ENV_FILE}.tmp"
+          mv "${ENV_FILE}.tmp" "$ENV_FILE"
+          export FUNCTION_VERSION="$TAG"
+          npx firebase-tools deploy --only functions --project burnbar --non-interactive --token "$FIREBASE_TOKEN"
+
+      - name: Dry-run skip deploy
+        if: steps.tag.outputs.dry_run == 'true'
+        run: echo "dry_run=true — skipping firebase deploy"
+
+      - name: Post-deploy health gate
+        env:
+          FIREBASE_PROJECT: burnbar
+          FUNCTIONS_REGION: us-central1
+          DEPLOY_HEALTH_JSON: deploy-health.json
+          DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # shellcheck source=scripts/ops/resolve-functions-base-url.sh
+          source scripts/ops/resolve-functions-base-url.sh
+          bash scripts/ci/post-deploy-health-gate.sh
+
+      - name: Upload deploy health artifact
+        if: always() && hashFiles('deploy-health.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deploy-health-${{ steps.tag.outputs.tag }}
+          path: deploy-health.json
+          if-no-files-found: ignore
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Production Functions deploy"
+            echo "- Tag: ${{ steps.tag.outputs.tag }}"
+            echo "- Dry run: ${{ steps.tag.outputs.dry_run }}"
+            echo "- FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}"
+            echo "- Project: burnbar"
+            echo "- Health: scripts/ci/post-deploy-health-gate.sh"
+            echo ""
+            echo "On failure, rollback: \`./scripts/rollback.sh\`"
+          } >> "$GITHUB_STEP_SUMMARY"
