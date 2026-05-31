@@ -23,13 +23,17 @@ public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifia
 @Observable
 @MainActor
 public final class QuotaSettingsStore {
+    private static let defaultProviderOrderCSV = AgentProvider.quotaSignalProviders
+        .map(\.persistedToken)
+        .joined(separator: ",")
+
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
-        self.providerOrderCSV = defaults.string(forKey: "quota_providerOrderCSV") ?? "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai"
-        self.visibleProvidersCSV = defaults.string(forKey: "quota_visibleProvidersCSV") ?? "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai"
+        self.providerOrderCSV = defaults.string(forKey: "quota_providerOrderCSV") ?? Self.defaultProviderOrderCSV
+        self.visibleProvidersCSV = defaults.string(forKey: "quota_visibleProvidersCSV") ?? Self.defaultProviderOrderCSV
 
         if let raw = defaults.string(forKey: "quota_hiddenBucketsJSON"),
            let data = raw.data(using: .utf8),
