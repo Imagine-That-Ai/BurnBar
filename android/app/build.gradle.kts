@@ -1,6 +1,5 @@
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
-import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 
 plugins {
     id("com.android.application")
