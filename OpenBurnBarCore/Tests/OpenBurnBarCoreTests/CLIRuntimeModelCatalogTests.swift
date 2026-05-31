@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenBurnBarCore
 
 final class CLIRuntimeModelCatalogTests: XCTestCase {
-    func test_defaultProfileOptionsOnlyExistForNonEnumerableCLIs() {
+    func test_defaultProfileOptionsRemainFallbackRows() {
         XCTAssertEqual(CLIRuntimeModelCatalog.defaultProfileOption(for: .codex)?.displayName, "Codex CLI default · OpenAI · via OpenBurnBar · Reasoning: CLI default")
         XCTAssertEqual(CLIRuntimeModelCatalog.defaultProfileOption(for: .claude)?.displayName, "Claude Code default · Anthropic · via OpenBurnBar · Reasoning: CLI default")
         XCTAssertEqual(CLIRuntimeModelCatalog.defaultProfileOption(for: .antigravity)?.displayName, "Antigravity default · Google · via OpenBurnBar · Reasoning: CLI default")
@@ -112,6 +112,60 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows.map(\.modelID), ["grok-build", "grok-build-next"])
         XCTAssertEqual(rows.map(\.source), [.grokModelCatalog, .grokModelCatalog])
         XCTAssertEqual(rows[0].displayName, "grok-build · xAI · via OpenBurnBar · Reasoning: CLI default")
+    }
+
+    func test_grokModelsCacheParserUsesLocalCatalogAndFiltersHiddenRows() {
+        let json = """
+        {
+          "models": {
+            "grok-build": {
+              "info": {
+                "model": "grok-build",
+                "name": "Grok Build",
+                "hidden": false,
+                "supported_in_api": true
+              }
+            },
+            "grok-hidden": {
+              "info": {
+                "model": "grok-hidden",
+                "name": "Grok Hidden",
+                "hidden": true,
+                "supported_in_api": true
+              }
+            }
+          }
+        }
+        """.data(using: .utf8)!
+
+        let rows = CLIRuntimeModelCatalog.parseGrokModelsCache(json)
+
+        XCTAssertEqual(rows.map(\.modelID), ["grok-build"])
+        XCTAssertEqual(rows.first?.source, .grokModelCatalog)
+        XCTAssertEqual(rows.first?.displayName, "Grok Build · xAI · via OpenBurnBar · Reasoning: CLI default")
+    }
+
+    func test_claudeCodeModelCatalogOptionsEnumerateBundledAnthropicModels() {
+        let rows = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
+
+        XCTAssertGreaterThan(rows.count, 4)
+        XCTAssertTrue(rows.contains { $0.modelID == "claude-opus-4-8" })
+        XCTAssertTrue(rows.contains { $0.modelID == "claude-sonnet-4-6" })
+        XCTAssertFalse(rows.contains { $0.modelID == "claude-default-family" })
+        XCTAssertEqual(Set(rows.map(\.source)), [.claudeModelCatalog])
+    }
+
+    func test_antigravityModelCatalogOptionsEnumerateBundledGoogleModelsAndAppendCustomProfile() {
+        let rows = CLIRuntimeModelCatalog.antigravityModelCatalogOptions(
+            selectedModelName: "gemini-api://localhost/models/team-model"
+        )
+
+        XCTAssertGreaterThan(rows.count, 4)
+        XCTAssertTrue(rows.contains { $0.modelID == "gemini-3.1-pro-preview" })
+        XCTAssertTrue(rows.contains { $0.modelID == "gemini-2.5-pro" })
+        XCTAssertFalse(rows.contains { $0.modelID == "gemini-default-family" })
+        XCTAssertTrue(rows.contains { $0.modelID == "gemini-api://localhost/models/team-model" && $0.source == .antigravityProfile })
+        XCTAssertTrue(rows.dropLast().allSatisfy { $0.source == .antigravityModelCatalog })
     }
 
     func test_antigravityProfileOptionReflectsSelectedModel() {

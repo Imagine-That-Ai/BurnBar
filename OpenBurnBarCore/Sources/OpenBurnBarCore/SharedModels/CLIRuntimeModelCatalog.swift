@@ -150,6 +150,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
     case openBurnBarProxy
     case forgeAgent
     case antigravityProfile
+    case antigravityModelCatalog
+    case claudeModelCatalog
     case cursorAgentProfile
     case codexModelCatalog
     case grokModelCatalog
@@ -170,6 +172,10 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Forge agent"
         case .antigravityProfile:
             return "Antigravity CLI profile"
+        case .antigravityModelCatalog:
+            return "Antigravity model catalog"
+        case .claudeModelCatalog:
+            return "Claude Code model catalog"
         case .cursorAgentProfile:
             return "Cursor Agent CLI profile"
         case .codexModelCatalog:
@@ -195,6 +201,10 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Runs the selected Forge agent."
         case .antigravityProfile:
             return "Uses this Mac's Google Antigravity CLI auth and quota."
+        case .antigravityModelCatalog:
+            return "Cataloged for this Mac's Google Antigravity CLI auth and quota."
+        case .claudeModelCatalog:
+            return "Cataloged for this Mac's Claude Code CLI auth and quota."
         case .cursorAgentProfile:
             return "Uses this Mac's Cursor Agent CLI auth and quota."
         case .codexModelCatalog:
@@ -495,6 +505,70 @@ public enum CLIRuntimeModelCatalog {
         return rows
     }
 
+    public static func parseGrokModelsCache(_ data: Data) -> [CLIRuntimeModelOption] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = object["models"] as? [String: Any] else {
+            return []
+        }
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for key in models.keys.sorted() {
+            guard let value = models[key] as? [String: Any] else { continue }
+            let info = (value["info"] as? [String: Any]) ?? value
+            if (info["hidden"] as? Bool) == true { continue }
+            if let supportedInAPI = info["supported_in_api"] as? Bool, supportedInAPI == false { continue }
+            let modelID = ((info["model"] as? String) ?? key)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !modelID.isEmpty, seen.insert(modelID.lowercased()).inserted else { continue }
+            let rawDisplay = ((info["name"] as? String)
+                ?? (info["display_name"] as? String)
+                ?? modelID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let display = rawDisplay.isEmpty ? modelID : rawDisplay
+            rows.append(option(
+                modelID,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: display,
+                    providerName: "xAI",
+                    providerID: "xai",
+                    reasoningLevel: "CLI default"
+                ),
+                "xai",
+                "xAI via Grok Build CLI",
+                tier: inferredTier(modelID: modelID, displayName: display),
+                source: .grokModelCatalog
+            ))
+        }
+        return rows
+    }
+
+    public static func claudeCodeModelCatalogOptions(
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
+    ) -> [CLIRuntimeModelOption] {
+        providerCatalogOptions(
+            providerID: "anthropic",
+            providerName: "Anthropic via Claude Code CLI",
+            source: .claudeModelCatalog,
+            catalog: catalog
+        )
+    }
+
+    public static func antigravityModelCatalogOptions(
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
+        selectedModelName: String? = nil
+    ) -> [CLIRuntimeModelOption] {
+        var rows = providerCatalogOptions(
+            providerID: "google",
+            providerName: "Google via Antigravity CLI",
+            source: .antigravityModelCatalog,
+            catalog: catalog
+        )
+        if let selected = antigravityProfileOptionIfCustom(modelName: selectedModelName, existingRows: rows) {
+            rows.append(selected)
+        }
+        return rows
+    }
+
     public static func antigravityProfileOption(modelName: String?) -> CLIRuntimeModelOption {
         let selected = modelName?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -512,6 +586,68 @@ public enum CLIRuntimeModelCatalog {
             "Google via Antigravity CLI",
             source: .antigravityProfile
         )
+    }
+
+    private static func antigravityProfileOptionIfCustom(
+        modelName: String?,
+        existingRows: [CLIRuntimeModelOption]
+    ) -> CLIRuntimeModelOption? {
+        guard let selected = modelName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty else {
+            return nil
+        }
+        let normalizedSelected = selected.lowercased()
+        let exists = existingRows.contains { row in
+            row.modelID.lowercased() == normalizedSelected
+                || row.displayName.lowercased().contains(normalizedSelected)
+        }
+        return exists ? nil : antigravityProfileOption(modelName: selected)
+    }
+
+    private static func providerCatalogOptions(
+        providerID: String,
+        providerName: String,
+        source: CLIRuntimeModelSource,
+        catalog: BurnBarCatalog
+    ) -> [CLIRuntimeModelOption] {
+        guard let provider = catalog.provider(id: providerID) else { return [] }
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for model in provider.models {
+            guard let modelID = concreteCatalogModelID(for: model) else { continue }
+            guard seen.insert(modelID.lowercased()).inserted else { continue }
+            rows.append(option(
+                modelID,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: model.displayName,
+                    providerName: provider.displayName,
+                    providerID: providerID,
+                    reasoningLevel: "CLI default"
+                ),
+                providerID,
+                providerName,
+                tier: inferredTier(modelID: modelID, displayName: model.displayName),
+                source: source
+            ))
+        }
+        return rows
+    }
+
+    private static func concreteCatalogModelID(for model: BurnBarCatalogModel) -> String? {
+        let candidates: [String?] = [model.canonicalModelID, model.aliases.first, model.id]
+        for candidate in candidates {
+            let normalized = candidate?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nonEmpty
+            guard let normalized else { continue }
+            let lowered = normalized.lowercased()
+            if lowered.hasSuffix("-family") || lowered.hasSuffix("default-family") {
+                continue
+            }
+            return normalized
+        }
+        return nil
     }
 
     public static func normalizedCodexModel(_ model: String, fallback: String = "") -> String {
