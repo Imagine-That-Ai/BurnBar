@@ -13,7 +13,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Quarantined test lines | 0 | shrinking | 0 |
 | Legacy reference suites (ADR, not quarantined) | 2 | stable | — |
 | `@MainActor` on I/O facades (listed set) | 2 | 4 | 0 |
-| Empty `catch {}` blocks (app + daemon) | 25 | 0 | 0 |
+| Empty `catch {}` blocks (app + daemon) | 118 | 0 | 0 |
 | `Task.detached` in `AgentLens/Services/` | 64 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 784 | ≤ 120 | ≤ 50 |
 | Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 55 | 0 | 0 |
