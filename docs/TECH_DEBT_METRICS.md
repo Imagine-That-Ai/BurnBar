@@ -17,7 +17,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | `Task.detached` in `AgentLens/Services/` | 64 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 779 | ≤ 120 | ≤ 50 |
 | Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 51 | 0 | 0 |
-| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 1179 | ≤ 5000 | ≤ 3500 |
+| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3615 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 16 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 2915 | shrinking (TypeSpec migration) | — |
 | `functions/src/index.ts` LOC | 113 | modularize | — |
@@ -28,9 +28,9 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | File | LOC |
 |------|-----|
 | `AgentLens/Services/CloudSyncService.swift` | 230 |
-| `AgentLens/Services/Search/` (SearchService + extensions) | 246 |
+| `AgentLens/Services/Search/` (SearchService + extensions) | 1315 |
 | `AgentLens/Services/UsageAggregator.swift` | 553 |
-| `AgentLens/Services/ProjectionPipeline/` | 150 |
+| `AgentLens/Services/ProjectionPipeline/` | 1517 |
 
 ## Remediation links
 

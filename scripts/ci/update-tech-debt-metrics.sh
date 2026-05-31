@@ -25,12 +25,13 @@ count_swift_lines() {
 }
 
 count_swift_glob_lines() {
-  local pattern="$1"
   local total=0
   local file
   shopt -s nullglob
-  for file in ${pattern}; do
-    total=$((total + $(wc -l < "${file}" | tr -d ' ')))
+  for file in "$@"; do
+    if [[ -f "${file}" ]]; then
+      total=$((total + $(wc -l < "${file}" | tr -d ' ')))
+    fi
   done
   shopt -u nullglob
   echo "${total}"
