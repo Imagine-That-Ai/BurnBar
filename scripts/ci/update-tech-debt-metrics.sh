@@ -5,7 +5,15 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 metrics_doc="${repo_root}/docs/TECH_DEBT_METRICS.md"
-generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+existing_generated_at=""
+if [[ -f "${metrics_doc}" ]]; then
+  existing_generated_at="$(sed -n 's/^\*\*Generated at (UTC):\*\* //p' "${metrics_doc}" | head -1)"
+fi
+if [[ -n "${OPENBURNBAR_REFRESH_TECH_DEBT_TIMESTAMP:-}" || -z "${existing_generated_at}" ]]; then
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+else
+  generated_at="${existing_generated_at}"
+fi
 
 count_swift_lines() {
   local path="$1"
@@ -31,8 +39,59 @@ count_swift_glob_lines() {
 count_rg() {
   local pattern="$1"
   shift
-  rg -c "${pattern}" "$@" --glob '*.swift' 2>/dev/null \
-    | awk -F: '{sum += $NF} END {print sum + 0}'
+  python3 - "${pattern}" "$@" <<'PY'
+import pathlib
+import re
+import sys
+
+pattern = re.compile(sys.argv[1])
+total = 0
+
+def swift_files(root: pathlib.Path):
+    if root.is_file() and root.suffix == ".swift":
+        yield root
+    elif root.is_dir():
+        yield from root.rglob("*.swift")
+
+for raw in sys.argv[2:]:
+    for path in swift_files(pathlib.Path(raw)):
+        try:
+            for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if pattern.search(line):
+                    total += 1
+        except OSError:
+            pass
+
+print(total)
+PY
+}
+
+count_swift_files_containing() {
+  local needle="$1"
+  shift
+  python3 - "${needle}" "$@" <<'PY'
+import pathlib
+import sys
+
+needle = sys.argv[1]
+total = 0
+
+def swift_files(root: pathlib.Path):
+    if root.is_file() and root.suffix == ".swift":
+        yield root
+    elif root.is_dir():
+        yield from root.rglob("*.swift")
+
+for raw in sys.argv[2:]:
+    for path in swift_files(pathlib.Path(raw)):
+        try:
+            if needle in path.read_text(encoding="utf-8", errors="ignore"):
+                total += 1
+        except OSError:
+            pass
+
+print(total)
+PY
 }
 
 quarantine_files="$(find "${repo_root}/AgentLensTests/Archive" -name '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
@@ -51,7 +110,7 @@ top_four_total=$((cloud_sync_lines + search_lines + usage_agg_lines + projection
 
 task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Services")"
 
-swiftui_services="$(rg -l 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore" --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
+swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore")"
 
 try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
