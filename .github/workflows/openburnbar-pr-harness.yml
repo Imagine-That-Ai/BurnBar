@@ -147,24 +147,24 @@ jobs:
 
       - name: Build OpenBurnBar Functions
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm --prefix functions run build
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "functions_build_ms=$((END - START))" >> "$GITHUB_ENV"
           echo "Functions build: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions unit tests (pure, no emulator)
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm --prefix functions run test:unit
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "Functions unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Functions tests
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm --prefix functions test
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar Swift tests
@@ -249,9 +249,9 @@ jobs:
 
       - name: Run OpenBurnBar TypeScript unit tests
         run: |
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           ./scripts/test-openburnbar-ts.sh
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "TypeScript unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run OpenBurnBar replay evals
@@ -342,11 +342,11 @@ jobs:
       - name: Lint Kotlin (ktlint)
         run: |
           set -euo pipefail
-          START=$(date +%s%3N)
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           # ktlint exits non-zero when violations are found.
           # Run ktlintCheck on all modules; output is printed to stdout by Gradle.
           cd android && ./gradlew ktlintCheck --no-daemon
-          END=$(date +%s%3N)
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run Android unit tests
