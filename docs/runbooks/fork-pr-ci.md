@@ -7,7 +7,7 @@ Pull requests from forks run a **degraded** CI matrix compared to same-repo PRs 
 - Firebase config injection (macOS + Android when secrets are present)
 - App Check config smoke
 - Diff coverage hard-fail (requires xcresult + `openburnbar-coverage.json`)
-- Commercial launch gate (`node scripts/commercial-launch-gate.mjs`)
+- Commercial launch gate (`node scripts/commercial-launch-gate.mjs`) when `APP_STORE_ASC_*` secrets are configured in GitHub Actions
 - Full Android Firebase config when `GOOGLE_SERVICES_JSON_BASE64` is available
 
 ## Fork PRs (`INTERNAL_RUN=false`)
