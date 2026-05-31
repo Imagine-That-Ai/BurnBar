@@ -83,13 +83,13 @@ guessing whether anything happened.
   verify the catalog, the picker shows a refresh/error state instead of falling
   back to a bundled list. Codex rows come from `codex debug models` when that
   command is available, then fall back to the paired Mac CLI default/profile.
-  Grok rows come from `grok models` when available. Claude Code currently
-  publishes only the paired Mac CLI default/profile because the CLI accepts
-  `--model` but does not expose a reliable enumerable model catalog.
-  Antigravity reflects the paired Mac `agy` profile model from
-  `~/.gemini/antigravity-cli/settings.json`; until `agy` exposes a model-list
-  command, that profile row is the intentionally limited catalog. Forge rows
-  come from `forge agent list`. Droid rows come from
+  Grok rows come from `grok models` plus `~/.grok/models_cache.json` when
+  available. Claude Code rows enumerate the bundled Anthropic catalog because
+  the CLI accepts `--model` but does not expose a reliable list command.
+  Antigravity rows enumerate the bundled Google/Gemini catalog because `agy`
+  does not expose a reliable model-list command; the selected `agy` profile row
+  is appended only when it names a custom non-catalog model. Forge rows come
+  from `forge agent list`. Droid rows come from
   `droid exec --help` and are split by spend source: `Droid Standard quota` and
   `Droid Core quota` rows consume Droid CLI quota, while `API/OAuth via
   OpenBurnBar` rows are Droid custom models that route through
