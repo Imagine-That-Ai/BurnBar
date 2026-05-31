@@ -54,8 +54,9 @@ at runtime, supplementing the static `catalog.json` entries with real-time avail
 | Anthropic | `GET /v1/models` | `{baseURL}/models` | Console: `x-api-key`; OAuth: `Authorization: Bearer` |
 | Factory Droid | CLI discovery | `droid exec --help` | `FACTORY_API_KEY` env var |
 | Codex CLI picker | CLI discovery | `codex debug models` | Codex CLI local auth |
-| Grok CLI picker | CLI discovery | `grok models` | Grok CLI local auth |
-| Antigravity CLI picker | Profile reflection | `~/.gemini/antigravity-cli/settings.json` | Antigravity CLI local auth |
+| Grok CLI picker | CLI/cache discovery | `grok models` + `~/.grok/models_cache.json` | Grok CLI local auth |
+| Claude Code picker | Bundled provider catalog | Anthropic catalog rows | Claude Code local auth |
+| Antigravity CLI picker | Bundled provider catalog + custom profile row | Google/Gemini catalog rows + `~/.gemini/antigravity-cli/settings.json` custom model | Antigravity CLI local auth |
 
 ### Anthropic discovery details
 
@@ -79,10 +80,14 @@ at runtime, supplementing the static `catalog.json` entries with real-time avail
   omitted and bundled slug aliases normalize names such as `gpt-5-5` to
   `gpt-5.5`.
 - Grok live picker rows are parsed from the `Available models:` section of
-  `grok models`.
-- Antigravity currently has no reliable model-list command. OpenBurnBar shows
-  the selected `agy` profile model and will remain compatible with a future
-  enumerable command by keeping Antigravity discovery Mac-sourced.
+  `grok models` and merged with non-hidden, API-supported rows from
+  `~/.grok/models_cache.json`.
+- Claude Code currently has no reliable model-list command. OpenBurnBar
+  catalogs the bundled Anthropic rows for Claude Code `--model` selection so
+  new known Claude model IDs are available without profile-only behavior.
+- Antigravity currently has no reliable model-list command. OpenBurnBar
+  catalogs the bundled Google/Gemini rows for `agy` selection and appends the
+  selected profile model only when it is a custom non-catalog model.
 
 ### Dated ID normalization
 
