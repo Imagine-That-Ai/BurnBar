@@ -36,6 +36,14 @@ enum class CliModelSource(
         "Antigravity CLI profile",
         "Uses this Mac's Google Antigravity CLI auth and quota.",
     ),
+    ANTIGRAVITY_MODEL_CATALOG(
+        "Antigravity model catalog",
+        "Cataloged for this Mac's Google Antigravity CLI auth and quota.",
+    ),
+    CLAUDE_MODEL_CATALOG(
+        "Claude Code model catalog",
+        "Cataloged for this Mac's Claude Code CLI auth and quota.",
+    ),
     CURSOR_AGENT_PROFILE(
         "Cursor Agent CLI profile",
         "Uses this Mac's Cursor Agent CLI auth and quota.",
@@ -59,6 +67,8 @@ enum class CliModelSource(
                 "openBurnBarProxy" -> OPENBURNBAR_PROXY
                 "forgeAgent" -> FORGE_AGENT
                 "antigravityProfile" -> ANTIGRAVITY_PROFILE
+                "antigravityModelCatalog" -> ANTIGRAVITY_MODEL_CATALOG
+                "claudeModelCatalog" -> CLAUDE_MODEL_CATALOG
                 "cursorAgentProfile" -> CURSOR_AGENT_PROFILE
                 "codexModelCatalog" -> CODEX_MODEL_CATALOG
                 "grokModelCatalog" -> GROK_MODEL_CATALOG
