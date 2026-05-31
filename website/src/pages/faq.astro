@@ -1,10 +1,10 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import Accordion from "@components/Accordion.astro";
-import { FAQ } from "@data/faq";
+import { FAQ, FAQ_CATEGORIES } from "@data/faq";
 import { SITE } from "@data/site";
 
-// FAQ schema JSON-LD
+// FAQ schema JSON-LD (flat list — categories are presentational)
 const faqLd = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
@@ -17,6 +17,13 @@ const faqLd = {
     }
   }))
 };
+
+const groups = FAQ_CATEGORIES.map((cat) => ({
+  ...cat,
+  items: FAQ.filter((item) => item.category === cat.id)
+}));
+const firstCategoryId = groups[0]?.id;
+const firstId = FAQ[0]?.id;
 ---
 
 <BaseLayout
@@ -26,19 +33,48 @@ const faqLd = {
   <script is:inline type="application/ld+json" set:html={JSON.stringify(faqLd)} />
 
   <section class="pagehead">
-    <div class="container">
+    <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">FAQ</span>
       <h1 class="pagehead__h">Questions, answered.</h1>
-      <p class="lead">
-        The questions we hear most. Each one points back at the architecture choice that drove the
-        answer. If the answer you need isn't here, open an issue.
-      </p>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          The questions we hear most — grouped by what you're actually wondering about. Each answer
+          points back at the architecture choice that drove it. If yours isn't here, open an issue.
+        </p>
+      </div>
     </div>
   </section>
 
   <section class="faqsec">
     <div class="container container--narrow">
-      <Accordion items={FAQ} open={FAQ[0]?.id} />
+      <!-- filter pills -->
+      <div class="faqfilter" role="group" aria-label="Filter questions by topic">
+        <button class="faqpill is-active" data-filter="all" aria-pressed="true">
+          All <span class="faqpill__n mono">{FAQ.length}</span>
+        </button>
+        {
+          groups.map((g) => (
+            <button class="faqpill" data-filter={g.id} aria-pressed="false">
+              {g.label} <span class="faqpill__n mono">{g.items.length}</span>
+            </button>
+          ))
+        }
+      </div>
+
+      <div class="faqgroups">
+        {
+          groups.map((g) => (
+            <section class="faqgroup" data-category={g.id} aria-label={g.label}>
+              <header class="faqgroup__head">
+                <h2 class="faqgroup__title">{g.label}</h2>
+                <p class="faqgroup__blurb">{g.blurb}</p>
+              </header>
+              <Accordion items={g.items} open={g.id === firstCategoryId ? firstId : undefined} />
+            </section>
+          ))
+        }
+        <p class="faqempty" hidden>No questions in this topic yet.</p>
+      </div>
     </div>
   </section>
 
@@ -114,21 +150,149 @@ const faqLd = {
   </section>
 </BaseLayout>
 
+<script>
+  const pills = Array.from(document.querySelectorAll<HTMLButtonElement>(".faqpill"));
+  const groups = Array.from(document.querySelectorAll<HTMLElement>(".faqgroup"));
+  const empty = document.querySelector<HTMLElement>(".faqempty");
+
+  function applyFilter(filter: string) {
+    let shown = 0;
+    for (const g of groups) {
+      const match = filter === "all" || g.dataset.category === filter;
+      g.hidden = !match;
+      if (match) shown++;
+    }
+    if (empty) empty.hidden = shown > 0;
+  }
+
+  for (const pill of pills) {
+    pill.addEventListener("click", () => {
+      for (const p of pills) {
+        const on = p === pill;
+        p.classList.toggle("is-active", on);
+        p.setAttribute("aria-pressed", String(on));
+      }
+      applyFilter(pill.dataset.filter ?? "all");
+    });
+  }
+
+  // Deep-link: if the URL targets a specific question, make sure "All" is active
+  // so the answer's group is visible, then open it.
+  const hash = decodeURIComponent(location.hash.slice(1));
+  if (hash) {
+    const target = document.getElementById(hash);
+    if (target instanceof HTMLDetailsElement) {
+      target.open = true;
+    }
+  }
+</script>
+
 <style>
   .pagehead {
     padding-block: var(--s-9) var(--s-6);
+  }
+  .pagehead__inner {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+    max-width: 56rem;
+    margin-inline: auto;
   }
   .pagehead__h {
     margin-top: var(--s-3);
   }
   .pagehead .lead {
-    margin-top: var(--s-4);
-    max-width: 60ch;
+    max-width: 58ch;
   }
+
   .faqsec {
     padding-block: var(--s-6) var(--s-9);
     border-top: 1px solid var(--ink-line);
   }
+
+  /* ---------- sticky filter pills ---------- */
+  .faqfilter {
+    position: sticky;
+    top: 58px;
+    z-index: 15;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    margin-bottom: var(--s-7);
+    padding: var(--s-3);
+    border-radius: var(--r-3);
+    border: 1px solid var(--ink-line);
+    background: rgba(8, 8, 12, 0.72);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    box-shadow: 0 12px 36px -18px rgba(0, 0, 0, 0.8);
+  }
+  .faqpill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.5rem 0.95rem;
+    border-radius: var(--r-pill);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-mute);
+    border: 1px solid transparent;
+    transition:
+      color var(--dur-base) var(--ease-out),
+      background var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out);
+  }
+  .faqpill:hover {
+    color: var(--text-bright);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .faqpill.is-active {
+    color: var(--ink-void);
+    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 6px 18px -6px rgba(250, 107, 6, 0.5);
+  }
+  .faqpill__n {
+    font-size: 0.72rem;
+    padding: 1px 7px;
+    border-radius: var(--r-pill);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-mute);
+  }
+  .faqpill.is-active .faqpill__n {
+    background: rgba(7, 6, 10, 0.22);
+    color: rgba(7, 6, 10, 0.85);
+  }
+
+  /* ---------- grouped sections ---------- */
+  .faqgroups {
+    display: grid;
+    gap: var(--s-7);
+  }
+  .faqgroup__head {
+    display: grid;
+    gap: 2px;
+    margin-bottom: var(--s-2);
+  }
+  .faqgroup__title {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 40,
+      "wght" 560;
+    letter-spacing: -0.02em;
+  }
+  .faqgroup__blurb {
+    color: var(--text-mute);
+    font-size: 0.92rem;
+  }
+  .faqempty {
+    color: var(--text-mute);
+    text-align: center;
+    padding-block: var(--s-7);
+  }
+
   .moremore {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
@@ -150,12 +314,15 @@ const faqLd = {
     padding: var(--s-4);
     border: 1px solid var(--ink-line);
     border-radius: var(--r-3);
-    background: var(--ink-base);
+    background: rgba(10, 10, 15, 0.5);
     color: var(--text-base);
-    transition: border-color var(--dur-base) var(--ease-out);
+    transition:
+      border-color var(--dur-base) var(--ease-out),
+      transform var(--dur-base) var(--ease-out);
   }
   .moremore__list a:hover {
     border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    transform: translateY(-2px);
   }
   .moremore__list strong {
     font-family: var(--font-mono);
@@ -167,8 +334,25 @@ const faqLd = {
     color: var(--text-mute);
   }
   @media (max-width: 720px) {
+    .pagehead__h {
+      max-width: 10ch;
+      font-size: 2.75rem;
+      letter-spacing: 0;
+      overflow-wrap: normal;
+      word-break: normal;
+    }
     .moremore__list {
       grid-template-columns: 1fr;
+    }
+    .faqfilter {
+      top: 54px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .faqpill,
+    .moremore__list a {
+      transition: none !important;
     }
   }
 </style>
