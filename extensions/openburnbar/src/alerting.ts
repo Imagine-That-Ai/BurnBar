@@ -20,7 +20,7 @@ export const AlertSeverity = {
   P0: 'P0', // Critical — extension is broken, user action required immediately
   P1: 'P1', // High — significant degradation, user should act soon
   P2: 'P2', // Medium — non-critical issue, informational notification
-  P3: 'P3', // Low — background observation, no notification
+  P3: 'P3' // Low — background observation, no notification
 } as const;
 
 export type AlertSeverityLevel = (typeof AlertSeverity)[keyof typeof AlertSeverity];
@@ -84,10 +84,7 @@ export async function alert(a: ExtensionAlert): Promise<void> {
   let response: string | undefined;
 
   if (a.severity === AlertSeverity.P0 || a.severity === AlertSeverity.P1) {
-    response = await vscode.window.showErrorMessage(
-      `OpenBurnBar: ${a.message}`,
-      ...(actionLabel ? [actionLabel] : [])
-    );
+    response = await vscode.window.showErrorMessage(`OpenBurnBar: ${a.message}`, ...(actionLabel ? [actionLabel] : []));
   } else {
     response = await vscode.window.showInformationMessage(
       `OpenBurnBar: ${a.message}`,
@@ -110,9 +107,9 @@ export function alertDaemonUnreachable(socketPath: string): void {
     severity: AlertSeverity.P1,
     action: {
       label: 'Repair',
-      command: 'openburnbar.repairDaemon',
+      command: 'openburnbar.repairDaemon'
     },
-    context: { socketPath },
+    context: { socketPath }
   });
 }
 
@@ -124,9 +121,9 @@ export function alertWorkspaceTrustDenied(workspacePath: string): void {
     severity: AlertSeverity.P2,
     action: {
       label: 'Trust Workspace',
-      command: 'workbench.action.manageTrustedDomain',
+      command: 'workbench.action.manageTrustedDomain'
     },
-    context: { workspacePath },
+    context: { workspacePath }
   });
 }
 
@@ -139,9 +136,9 @@ export function alertRunFailed(runId: string, exitCode: number): void {
     action: {
       label: 'View Logs',
       command: 'openburnbar.showRunLogs',
-      args: [runId],
+      args: [runId]
     },
-    context: { runId, exitCode },
+    context: { runId, exitCode }
   });
 }
 
@@ -151,7 +148,7 @@ export function alertSyncFailed(error: string): void {
     event: 'sync_failed',
     message: 'Usage sync to cloud failed. Usage data is queued locally.',
     severity: AlertSeverity.P3, // Silent — local data is safe
-    context: { error },
+    context: { error }
   });
 }
 
@@ -163,8 +160,8 @@ export function alertAuthError(provider: string): void {
     severity: AlertSeverity.P1,
     action: {
       label: 'Open Settings',
-      command: 'openburnbar.openSettings',
+      command: 'openburnbar.openSettings'
     },
-    context: { provider },
+    context: { provider }
   });
 }
