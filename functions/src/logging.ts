@@ -29,6 +29,20 @@ const SCRUB_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 const MAX_FIELD_LENGTH = 1024;
+function isSensitiveLogKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (
+    normalized.includes("accesstoken") ||
+    normalized.includes("apikey") ||
+    normalized.includes("authorization") ||
+    normalized.includes("bearer") ||
+    normalized.includes("cookie") ||
+    normalized.includes("password") ||
+    normalized.includes("privatekey") ||
+    normalized.includes("secret") ||
+    normalized.includes("token")
+  );
+}
 
 /** Scrub a single string value for PII and sensitive data. */
 function scrubString(value: string): string {
@@ -50,6 +64,8 @@ function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
       // Never log raw UIDs — always hash/truncate
       if (key === "uid" || key === "userId" || key === "user_id") {
         scrubbed[key === "uid" ? "user_id_hash" : key] = value.slice(0, 8);
+      } else if (isSensitiveLogKey(key)) {
+        scrubbed[key] = "[REDACTED]";
       } else {
         scrubbed[key] = scrubString(value);
       }

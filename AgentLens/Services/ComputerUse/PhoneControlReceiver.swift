@@ -29,6 +29,8 @@ public final class PhoneControlReceiver: @unchecked Sendable {
 
     public let sessionId: ComputerUseSessionID
     public let validator: PhoneControlAuthorityValidator
+    /// When set, phone envelopes must carry a matching `attestationHashBlake3` (WS2/WS4).
+    public var requiredAttestationDigestProvider: (@Sendable () async -> String?)?
     public let signer: ComputerUsePhoneControlSigner
     private let dispatchHandler: DispatchHandler
     private let denyFrameSink: FrameSink
@@ -66,9 +68,11 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         // Validate the authority envelope.
         let validation: PhoneControlAuthorityValidator.ValidationResult
         do {
+            let requiredAttestation = await requiredAttestationDigestProvider?()
             validation = try validator.validate(
                 envelope: intent.authority,
                 intent: intent,
+                requiredAttestationHashBlake3: requiredAttestation,
                 now: Date()
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
