@@ -118,4 +118,3 @@ jobs:
           scan-args: |-
             --lockfile=functions/package-lock.json
             --lockfile=extensions/openburnbar/package-lock.json
-            --lockfile=android/gradle/libs.versions.toml

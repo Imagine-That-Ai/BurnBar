@@ -16,7 +16,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Empty `catch {}` blocks (app + daemon) | 118 | 0 | 0 |
 | `Task.detached` in `AgentLens/Services/` | 64 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 784 | ≤ 120 | ≤ 50 |
-| Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 55 | 0 | 0 |
+| Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 50 | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3615 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 16 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 2915 | shrinking (TypeSpec migration) | — |
