@@ -850,6 +850,15 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("weekly limit"))
     }
 
+    func test_cliBridge_codexEventError_mapsOutOfLimitToQuotaExhausted() {
+        let error = CLIBridge.codexEventError(from: "Codex is out of limit for this account.")
+
+        guard case .quotaExhausted(let detail) = error else {
+            return XCTFail("Expected quota exhaustion error, got \(error)")
+        }
+        XCTAssertTrue(detail.localizedCaseInsensitiveContains("out of limit"))
+    }
+
     func test_claudeCodeStreamJSONParser_extractsTextAndToolEvents() {
         let line = #"""
         {"message":{"content":[{"type":"text","text":"hello"},{"type":"tool_use","name":"Read","input":{"path":"/tmp/file.swift"}}]}}
@@ -1132,6 +1141,67 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertNil(store.fetchProfile(id: primary.id)?.cliMetadata?.lastQuotaExhaustionDetail)
     }
 
+    func test_codexProfileStreamFailoverIgnoresProvisionalThinkingEvent() async throws {
+        let store = InMemorySwitcherProfileStoreAdapter()
+        let primary = makeCodexStreamProfile(
+            id: "codex-primary",
+            label: "Codex Primary",
+            configDirectory: "/tmp/openburnbar-codex-primary",
+            sortKey: 1
+        )
+        let reserve = makeCodexStreamProfile(
+            id: "codex-reserve",
+            label: "Codex Reserve",
+            configDirectory: "/tmp/openburnbar-codex-reserve",
+            sortKey: 2
+        )
+        store.addProfile(primary)
+        store.addProfile(reserve)
+        store.setActiveProfileID(primary.id, for: ProviderID.codex)
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? URL(fileURLWithPath: "/usr/bin/true") : nil
+        }
+        defer { CLILaunchAdapter.executableResolver = nil }
+
+        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let runner = CLIProfileStreamFailoverRunner(
+            runtime: CLIBridgeStreamRuntimeCoordinator(),
+            profileStore: store,
+            fallbackPlanner: SwitcherCLIFallbackPlanner { _ in nil },
+            streamLauncher: { attempt, _, _, _, continuation in
+                attempts.withLock { $0.append(attempt) }
+                if attempt.profileID == primary.id {
+                    continuation.yield(.toolUse(name: "Codex", detail: "Thinking…"))
+                    continuation.finish(throwing: CLIBridgeError.quotaExhausted("Codex is out of limit"))
+                } else {
+                    continuation.yield(.text("reserve ok"))
+                    continuation.finish()
+                }
+            }
+        )
+
+        var events: [CLIChatStreamEvent] = []
+        let stream = runner.streamCodex(
+            requestedProfile: primary,
+            prompt: "test prompt",
+            model: "gpt-5.4",
+            workspaceDirectory: nil,
+            capabilityGrant: nil
+        )
+        for try await event in stream {
+            events.append(event)
+        }
+
+        XCTAssertEqual(events, [.text("reserve ok")])
+        XCTAssertEqual(attempts.read().map(\.profileID), [primary.id, reserve.id])
+        XCTAssertEqual(store.fetchActiveProfileID(for: ProviderID.codex), reserve.id)
+        XCTAssertEqual(
+            store.fetchProfile(id: primary.id)?.cliMetadata?.lastQuotaExhaustionDetail,
+            "Codex is out of limit"
+        )
+    }
+
     func test_codexProfileSelectionFallsBackToConfiguredProfileWhenActivePointerIsMissing() throws {
         let store = InMemorySwitcherProfileStoreAdapter()
         let laterProfile = makeCodexStreamProfile(
@@ -1151,6 +1221,29 @@ final class CLIBridgeTests: XCTestCase {
 
         let selected = try XCTUnwrap(CLIBridge.activeCodexProfile(from: store))
         XCTAssertEqual(selected.id, firstProfile.id)
+    }
+
+    func test_codexProfileSelectionSkipsDisabledActiveProfile() throws {
+        let store = InMemorySwitcherProfileStoreAdapter()
+        let disabledActive = makeCodexStreamProfile(
+            id: "codex-disabled",
+            label: "Codex Disabled",
+            configDirectory: "/tmp/openburnbar-codex-disabled",
+            sortKey: 1,
+            isDisabled: true
+        )
+        let reserve = makeCodexStreamProfile(
+            id: "codex-reserve",
+            label: "Codex Reserve",
+            configDirectory: "/tmp/openburnbar-codex-reserve",
+            sortKey: 2
+        )
+        store.addProfile(disabledActive)
+        store.addProfile(reserve)
+        store.setActiveProfileID(disabledActive.id, for: ProviderID.codex)
+
+        let selected = try XCTUnwrap(CLIBridge.activeCodexProfile(from: store))
+        XCTAssertEqual(selected.id, reserve.id)
     }
 
     // MARK: - OpenAI-Compatible SSE Multi-Delta Tool Call Accumulation
@@ -1351,7 +1444,8 @@ final class CLIBridgeTests: XCTestCase {
         id: String,
         label: String,
         configDirectory: String,
-        sortKey: Int
+        sortKey: Int,
+        isDisabled: Bool = false
     ) -> SwitcherProfileRecord {
         SwitcherProfileRecord(
             id: id,
@@ -1362,7 +1456,8 @@ final class CLIBridgeTests: XCTestCase {
                 configDirectory: configDirectory,
                 providerID: ProviderID.codex,
                 subscriptionTierID: "codex-pro",
-                modelCapabilityClassID: "codex:gpt-5.4"
+                modelCapabilityClassID: "codex:gpt-5.4",
+                isDisabled: isDisabled
             ),
             sortKey: sortKey,
             createdAt: Date(timeIntervalSince1970: TimeInterval(sortKey))

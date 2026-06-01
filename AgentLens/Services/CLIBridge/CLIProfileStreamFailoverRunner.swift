@@ -131,21 +131,31 @@ final class CLIProfileStreamFailoverRunner: Sendable {
                 continue
             }
 
-            var emittedEvent = false
+            var emittedReplayUnsafeEvent = false
+            var provisionalEvents: [CLIChatStreamEvent] = []
             do {
                 let stream = stream(for: attempt, prompt: prompt, model: model, capabilityGrant: capabilityGrant)
                 for try await event in stream {
-                    emittedEvent = true
-                    continuation.yield(event)
+                    if Self.blocksFailoverReplay(event) {
+                        flush(provisionalEvents, to: continuation)
+                        provisionalEvents.removeAll()
+                        emittedReplayUnsafeEvent = true
+                        continuation.yield(event)
+                    } else if emittedReplayUnsafeEvent {
+                        continuation.yield(event)
+                    } else {
+                        provisionalEvents.append(event)
+                    }
                 }
 
+                flush(provisionalEvents, to: continuation)
                 clearQuotaExhaustion(for: candidate)
                 if candidate.id != requestedProfile.id {
                     profileStore.setActiveProfileID(candidate.id, for: ProviderID.codex)
                 }
                 continuation.finish()
                 return
-            } catch CLIBridgeError.quotaExhausted(let detail) where !emittedEvent {
+            } catch CLIBridgeError.quotaExhausted(let detail) where !emittedReplayUnsafeEvent {
                 persistQuotaExhaustion(for: candidate, detail: detail)
                 lastQuotaDetail = detail
                 continue
@@ -176,6 +186,28 @@ final class CLIProfileStreamFailoverRunner: Sendable {
             Task.detached {
                 await launcher(attempt, prompt, model, capabilityGrant, continuation)
             }
+        }
+    }
+
+    private static func blocksFailoverReplay(_ event: CLIChatStreamEvent) -> Bool {
+        switch event {
+        case .text(let chunk):
+            return chunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        case .toolUse(let name, let detail):
+            return !(name == "Codex" && detail == "Thinking…")
+        case .toolResult:
+            return true
+        case .usage:
+            return false
+        }
+    }
+
+    private func flush(
+        _ events: [CLIChatStreamEvent],
+        to continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) {
+        for event in events {
+            continuation.yield(event)
         }
     }
 
