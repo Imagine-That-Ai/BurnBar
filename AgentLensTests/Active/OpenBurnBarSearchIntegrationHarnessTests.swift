@@ -333,7 +333,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             queryEmbedder: harness.queryEmbedder,
             backend: .ann,
             exactRerankEnabled: true,
-            exactRerankLimit: 256,
+            exactRerankLimit: 5_000,
             nowProvider: { harness.clock.now() },
             storageRootURL: harness.vectorIndexRootURL
         )
