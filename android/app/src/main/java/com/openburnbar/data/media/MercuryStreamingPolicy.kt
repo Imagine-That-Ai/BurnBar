@@ -4,6 +4,23 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+private const val VAL_0_04 = 0.04
+private const val VAL_0_1 = 0.1
+private const val VAL_0_2 = 0.2
+private const val VAL_0_3 = 0.3
+private const val VAL_0_30 = 0.30
+private const val VAL_0_4 = 0.4
+private const val VAL_0_45 = 0.45
+private const val VAL_0_5 = 0.5
+private const val VAL_20_0 = 20.0
+private const val VAL_300_0 = 300.0
+private const val VAL_4_0 = 4.0
+private const val VAL_50 = 50
+private const val VAL_500_0 = 500.0
+private const val VAL_600_0 = 600.0
+private const val VAL_8 = 8
+private const val VAL_80 = 80
+
 data class MercuryCodecRoutingDecision(
     val status: Status,
     val codec: MercuryVideoCodec?,
@@ -34,7 +51,8 @@ object MercuryCodecRouter {
 
         if (activeSessionRoute != null) {
             return activeSessionRoute.copy(
-                stats = activeSessionRoute.stats.copy(
+                stats =
+                activeSessionRoute.stats.copy(
                     timestampMillis = timestampMillis,
                     runtimeHealth = runtimeHealth,
                 ),
@@ -43,12 +61,13 @@ object MercuryCodecRouter {
         }
 
         val codec = MercuryCodecResolver.resolveSendCodec(local, remote, policy)
-        val stats = MercuryRtcStatsSnapshot(
-            timestampMillis = timestampMillis,
-            codec = codec,
-            wireVersion = wireVersion,
-            runtimeHealth = runtimeHealth,
-        )
+        val stats =
+            MercuryRtcStatsSnapshot(
+                timestampMillis = timestampMillis,
+                codec = codec,
+                wireVersion = wireVersion,
+                runtimeHealth = runtimeHealth,
+            )
         if (codec == null) {
             return MercuryCodecRoutingDecision(
                 status = MercuryCodecRoutingDecision.Status.NO_COMPATIBLE_CODEC,
@@ -108,16 +127,17 @@ class MercuryShadowBweController(
     private var presentTimeErrorSamples: Int = 0
     private var riskySamples: Int = 0
 
-    var currentDecision: MercuryBweShadowDecision = MercuryBweShadowDecision(
-        shadowTargetBitsPerSecond = sortedSteps.last(),
-        delayTrendMillis = 0,
-        lossResponseFactor = 1.0,
-        probeSamples = 0,
-        pacerQueueDepth = 0,
-        presentTimeErrorMillis = null,
-        freezeRiskScore = 0.0,
-        promotionReady = false,
-    )
+    var currentDecision: MercuryBweShadowDecision =
+        MercuryBweShadowDecision(
+            shadowTargetBitsPerSecond = sortedSteps.last(),
+            delayTrendMillis = 0,
+            lossResponseFactor = 1.0,
+            probeSamples = 0,
+            pacerQueueDepth = 0,
+            presentTimeErrorMillis = null,
+            freezeRiskScore = 0.0,
+            promotionReady = false,
+        )
         private set
 
     fun observe(sample: MercuryBweShadowSample): MercuryBweShadowDecision {
@@ -132,39 +152,42 @@ class MercuryShadowBweController(
             presentTimeErrorSamples += 1
         }
 
-        val lossResponse = max(0.45, 1.0 - min(0.5, sample.packetLossRate * 4.0))
-        val delayPenalty = if (delayTrend > 0) min(0.30, delayTrend / 600.0) else 0.0
+        val lossResponse = max(VAL_0_45, 1.0 - min(VAL_0_5, sample.packetLossRate * VAL_4_0))
+        val delayPenalty = if (delayTrend > 0) min(VAL_0_30, delayTrend / VAL_600_0) else 0.0
         val rawTarget = (sample.observedBitsPerSecond * lossResponse * (1.0 - delayPenalty)).toInt()
         val quantizedTarget = quantize(rawTarget)
 
         var risk = 0.0
-        if (sample.packetLossRate >= 0.04) risk += min(0.4, sample.packetLossRate * 4.0)
-        if (delayTrend >= 50) risk += min(0.3, delayTrend / 300.0)
-        if (presentError != null && abs(presentError) >= 80) risk += min(0.2, abs(presentError) / 500.0)
-        if (sample.pacerQueueDepth >= 8) risk += min(0.1, sample.pacerQueueDepth / 100.0)
+        if (sample.packetLossRate >= VAL_0_04) risk += min(VAL_0_4, sample.packetLossRate * VAL_4_0)
+        if (delayTrend >= VAL_50) risk += min(VAL_0_3, delayTrend / VAL_300_0)
+        if (presentError != null && abs(presentError) >= VAL_80) risk += min(VAL_0_2, abs(presentError) / VAL_500_0)
+        if (sample.pacerQueueDepth >= VAL_8) risk += min(VAL_0_1, sample.pacerQueueDepth / 100.0)
         risk = min(1.0, risk)
         if (risk > 0.0) riskySamples += 1
 
-        val averagePresentError = if (presentTimeErrorSamples == 0) {
-            0.0
-        } else {
-            cumulativePresentTimeErrorMillis / presentTimeErrorSamples
-        }
-        val promotionReady = sampleCount >= minimumPromotionSamples &&
-            riskySamples == 0 &&
-            averagePresentError <= 20.0 &&
-            probeSamples > 0
+        val averagePresentError =
+            if (presentTimeErrorSamples == 0) {
+                0.0
+            } else {
+                cumulativePresentTimeErrorMillis / presentTimeErrorSamples
+            }
+        val promotionReady =
+            sampleCount >= minimumPromotionSamples &&
+                riskySamples == 0 &&
+                averagePresentError <= VAL_20_0 &&
+                probeSamples > 0
 
-        currentDecision = MercuryBweShadowDecision(
-            shadowTargetBitsPerSecond = quantizedTarget,
-            delayTrendMillis = delayTrend,
-            lossResponseFactor = lossResponse,
-            probeSamples = probeSamples,
-            pacerQueueDepth = sample.pacerQueueDepth,
-            presentTimeErrorMillis = presentError,
-            freezeRiskScore = risk,
-            promotionReady = promotionReady,
-        )
+        currentDecision =
+            MercuryBweShadowDecision(
+                shadowTargetBitsPerSecond = quantizedTarget,
+                delayTrendMillis = delayTrend,
+                lossResponseFactor = lossResponse,
+                probeSamples = probeSamples,
+                pacerQueueDepth = sample.pacerQueueDepth,
+                presentTimeErrorMillis = presentError,
+                freezeRiskScore = risk,
+                promotionReady = promotionReady,
+            )
         return currentDecision
     }
 
@@ -237,40 +260,29 @@ object MercuryVideoDatagramScheduler {
         overheadBytes: Int = MercuryCodecRouter.DATAGRAM_ENVELOPE_OVERHEAD_BYTES,
         carriesParameterSets: Boolean = false,
     ): MercuryDatagramSchedulingDecision {
-        if (!datagramsEnabled) {
-            return MercuryDatagramSchedulingDecision(
-                delivery = MercuryFrameDelivery.RELIABLE_STREAM,
-                payloadBudgetBytes = null,
-                reason = "experiment flag disabled",
-            )
-        }
         val budget = remoteCapability.payloadBudget(overheadBytes)
-        if (MediaFrame.Flags.KEYFRAME in frame.flags || carriesParameterSets) {
-            return MercuryDatagramSchedulingDecision(
+        val reliableReason =
+            when {
+                !datagramsEnabled -> "experiment flag disabled"
+                MediaFrame.Flags.KEYFRAME in frame.flags || carriesParameterSets ->
+                    "keyframes and parameter sets stay reliable"
+                budget == null -> "runtime datagram max payload is unavailable"
+                frame.payload.size > budget -> "payload exceeds runtime datagram budget"
+                else -> null
+            }
+        return if (reliableReason != null) {
+            MercuryDatagramSchedulingDecision(
                 delivery = MercuryFrameDelivery.RELIABLE_STREAM,
+                payloadBudgetBytes = if (datagramsEnabled) budget else null,
+                reason = reliableReason,
+            )
+        } else {
+            MercuryDatagramSchedulingDecision(
+                delivery = MercuryFrameDelivery.DATAGRAM,
                 payloadBudgetBytes = budget,
-                reason = "keyframes and parameter sets stay reliable",
+                reason = "delta video frame fits runtime datagram budget",
             )
         }
-        if (budget == null) {
-            return MercuryDatagramSchedulingDecision(
-                delivery = MercuryFrameDelivery.RELIABLE_STREAM,
-                payloadBudgetBytes = null,
-                reason = "runtime datagram max payload is unavailable",
-            )
-        }
-        if (frame.payload.size > budget) {
-            return MercuryDatagramSchedulingDecision(
-                delivery = MercuryFrameDelivery.RELIABLE_STREAM,
-                payloadBudgetBytes = budget,
-                reason = "payload exceeds runtime datagram budget",
-            )
-        }
-        return MercuryDatagramSchedulingDecision(
-            delivery = MercuryFrameDelivery.DATAGRAM,
-            payloadBudgetBytes = budget,
-            reason = "delta video frame fits runtime datagram budget",
-        )
     }
 }
 
@@ -285,11 +297,12 @@ data class MercuryBenchmarkEvidence(
         get() = coveredImpairmentScenarios.toSet() == MercuryImpairmentScenario.DEFAULT_MATRIX.toSet()
 
     val isPositive: Boolean
-        get() = coversDefaultMatrix &&
-            freezeCountImprovementPercent > 0.0 &&
-            presentTimeErrorDeltaMillis <= 0.0 &&
-            cpuUsageDeltaPercent <= 5.0 &&
-            batteryDrainDeltaPercent <= 5.0
+        get() =
+            coversDefaultMatrix &&
+                freezeCountImprovementPercent > 0.0 &&
+                presentTimeErrorDeltaMillis <= 0.0 &&
+                cpuUsageDeltaPercent <= 5.0 &&
+                batteryDrainDeltaPercent <= 5.0
 }
 
 data class MercuryAdvancedFeatureDecision(
@@ -319,11 +332,12 @@ object MercuryAdvancedFeatureGate {
         val remoteVideo = remote.capability(MercuryVideoCodec.HEVC) ?: remote.capability(MercuryVideoCodec.H264)
         val temporal = localVideo?.temporalLayering == true && remoteVideo?.temporalLayering == true
         val roi = dirtyRegionHintsSupported && localVideo?.screenContentCoding == true
-        val reasons = buildList {
-            add("benchmark evidence covers the full impairment matrix")
-            if (!temporal) add("temporal layering is not proven on both peers")
-            if (!roi) add("ROI/dirty-region hints are not proven by capture and encoder APIs")
-        }
+        val reasons =
+            buildList {
+                add("benchmark evidence covers the full impairment matrix")
+                if (!temporal) add("temporal layering is not proven on both peers")
+                if (!roi) add("ROI/dirty-region hints are not proven by capture and encoder APIs")
+            }
         return MercuryAdvancedFeatureDecision(
             fecEnabled = true,
             temporalLayersEnabled = temporal,

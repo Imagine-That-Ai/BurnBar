@@ -16,24 +16,24 @@ data class ThreadInboxItem(
     val customTitle: String? = null,
     val labelColorHex: String? = null,
     val isPinned: Boolean = false,
-    val priorityOrder: Int? = null
+    val priorityOrder: Int? = null,
 ) {
     enum class Source(val token: String) {
         HERMES("hermes"),
         PI("pi"),
         CLI_MIRROR("cli_mirror"),
         MISSION_GROUP("mission_group"),
-        SUBSCRIPTION_POST("subscription_post");
+        SUBSCRIPTION_POST("subscription_post"),
+        ;
 
         companion object {
-            fun fromToken(value: String?): Source =
-                values().firstOrNull { it.token == value } ?: HERMES
+            fun fromToken(value: String?): Source = values().firstOrNull { it.token == value } ?: HERMES
         }
     }
 }
 
-fun List<ThreadInboxItem>.sortedForInbox(): List<ThreadInboxItem> =
-    sortedWith(Comparator { a, b ->
+fun List<ThreadInboxItem>.sortedForInbox(): List<ThreadInboxItem> = sortedWith(
+    Comparator { a, b ->
         // 1. Pinned first
         if (a.isPinned != b.isPinned) {
             return@Comparator if (a.isPinned) -1 else 1
@@ -56,7 +56,8 @@ fun List<ThreadInboxItem>.sortedForInbox(): List<ThreadInboxItem> =
         }
         // 4. lastActivityAtEpoch recency descending
         return@Comparator b.lastActivityAtEpoch.compareTo(a.lastActivityAtEpoch)
-    })
+    },
+)
 
 fun List<ThreadInboxItem>.splitForInbox(): Pair<List<ThreadInboxItem>, List<ThreadInboxItem>> {
     val service = mutableListOf<ThreadInboxItem>()

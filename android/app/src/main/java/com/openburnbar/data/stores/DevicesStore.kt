@@ -3,17 +3,18 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
-import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.util.Date
 
 enum class DeviceTrustState { PENDING, TRUSTED, REVOKED }
 
@@ -23,7 +24,7 @@ data class DeviceRecord(
     val platform: String = "",
     val trustState: DeviceTrustState = DeviceTrustState.PENDING,
     val lastSeen: Date? = null,
-    val isCurrentDevice: Boolean = false
+    val isCurrentDevice: Boolean = false,
 )
 
 class DevicesStore : ViewModel() {
@@ -73,31 +74,35 @@ class DevicesStore : ViewModel() {
                     _devices.value = emptyList()
                     return@launch
                 }
-                val snapshot = db.collection("users").document(uid)
-                    .collection("devices")
-                    .get().await()
+                val snapshot =
+                    db.collection("users").document(uid)
+                        .collection("devices")
+                        .get().await()
 
-                val currentDeviceId = android.provider.Settings.Secure.getString(
-                    android.app.Application().contentResolver,
-                    android.provider.Settings.Secure.ANDROID_ID
-                )
-
-                _devices.value = snapshot.documents.mapNotNull { doc ->
-                    val data = doc.data ?: return@mapNotNull null
-                    DeviceRecord(
-                        id = doc.id,
-                        displayName = data["displayName"] as? String ?: "Unknown",
-                        platform = data["platform"] as? String ?: "android",
-                        trustState = when (data["trustState"] as? String) {
-                            "trusted" -> DeviceTrustState.TRUSTED
-                            "revoked" -> DeviceTrustState.REVOKED
-                            else -> DeviceTrustState.PENDING
-                        },
-                        lastSeen = (data["lastSeen"] as? com.google.firebase.Timestamp)?.toDate(),
-                        isCurrentDevice = doc.id == currentDeviceId
+                val currentDeviceId =
+                    android.provider.Settings.Secure.getString(
+                        android.app.Application().contentResolver,
+                        android.provider.Settings.Secure.ANDROID_ID,
                     )
-                }
-            } catch (e: Exception) {
+
+                _devices.value =
+                    snapshot.documents.mapNotNull { doc ->
+                        val data = doc.data ?: return@mapNotNull null
+                        DeviceRecord(
+                            id = doc.id,
+                            displayName = data["displayName"] as? String ?: "Unknown",
+                            platform = data["platform"] as? String ?: "android",
+                            trustState =
+                            when (data["trustState"] as? String) {
+                                "trusted" -> DeviceTrustState.TRUSTED
+                                "revoked" -> DeviceTrustState.REVOKED
+                                else -> DeviceTrustState.PENDING
+                            },
+                            lastSeen = (data["lastSeen"] as? com.google.firebase.Timestamp)?.toDate(),
+                            isCurrentDevice = doc.id == currentDeviceId,
+                        )
+                    }
+            } catch (e: FirebaseException) {
                 Log.e("BurnBar", "Devices load failed", e)
                 _lastError.value = e.message
             } finally {
@@ -113,7 +118,7 @@ class DevicesStore : ViewModel() {
                 val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
                 escrowRegistry.trustSelf(uid = uid)
                 load()
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _lastError.value = e.message
             } finally {
                 _actionInFlightFor.value = null
@@ -132,7 +137,7 @@ class DevicesStore : ViewModel() {
                     .update(mapOf("displayName" to newName, "updatedAt" to Date()))
                     .await()
                 load()
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _lastError.value = e.message
             } finally {
                 _actionInFlightFor.value = null
@@ -146,7 +151,7 @@ class DevicesStore : ViewModel() {
             try {
                 securityClient.revokeEscrowDeviceTrust(device.id)
                 load()
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _lastError.value = e.message
             } finally {
                 _actionInFlightFor.value = null
@@ -164,9 +169,10 @@ class DevicesStore : ViewModel() {
     }
 
     private fun deduplicated(records: List<DeviceRecord>): List<DeviceRecord> {
-        val groups = records.groupBy {
-            "${it.displayName.lowercase().trim()}\u001F${it.platform.lowercase()}"
-        }
+        val groups =
+            records.groupBy {
+                "${it.displayName.lowercase().trim()}\u001F${it.platform.lowercase()}"
+            }
         return groups.values.map { bucket ->
             bucket.maxByOrNull { it.lastSeen ?: Date(0) }
                 ?: bucket.first()

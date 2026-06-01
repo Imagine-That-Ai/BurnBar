@@ -28,7 +28,10 @@ interface IrohBlobBackend {
      * Dial the ticket's source node, download the blob, write it to
      * `destination`. Resume across reconnects is handled internally.
      */
-    suspend fun fetchBlob(ticketText: String, destination: String): BlobTransferStats
+    suspend fun fetchBlob(
+        ticketText: String,
+        destination: String,
+    ): BlobTransferStats
 
     /** Returns the cached identity. Throws if `bootstrap` has not been called. */
     suspend fun identity(): IrohEndpointIdentity
@@ -47,10 +50,16 @@ data class BlobTransferStats(
 
 sealed class IrohBlobBackendError(message: String) : RuntimeException(message) {
     object NotInitialized : IrohBlobBackendError("blob backend not initialized")
+
     object InvalidSecretKey : IrohBlobBackendError("invalid blob secret key")
+
     data class InvalidTicket(val detail: String) : IrohBlobBackendError("invalid blob ticket: $detail")
+
     data class PublishFailed(val detail: String) : IrohBlobBackendError("publish failed: $detail")
+
     data class FetchFailed(val detail: String) : IrohBlobBackendError("fetch failed: $detail")
+
     data class StoreUnavailable(val detail: String) : IrohBlobBackendError("store unavailable: $detail")
+
     data class RuntimeFailed(val detail: String) : IrohBlobBackendError("runtime failed: $detail")
 }

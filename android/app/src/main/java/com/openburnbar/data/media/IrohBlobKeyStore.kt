@@ -12,6 +12,9 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+internal const val VAL_256 = 256
+private const val VAL_32 = 32
+
 /**
  * Android-side persistence of the iroh BLOB endpoint's 32-byte secret
  * key. 1:1 port of `IrohBlobKeyStore.swift`. Distinct from the chat
@@ -28,13 +31,12 @@ import javax.crypto.spec.GCMParameterSpec
  * iOS `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` flag gives us.
  */
 class IrohBlobKeyStore(context: Context) {
-
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun secretKeyMaterial(): IrohSecretKeyMaterial {
         val existing = loadFromStore()
         if (existing != null) return IrohSecretKeyMaterial(existing)
-        val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val fresh = ByteArray(VAL_32).also { SecureRandom().nextBytes(it) }
         saveToStore(fresh)
         return IrohSecretKeyMaterial(fresh)
     }
@@ -45,17 +47,18 @@ class IrohBlobKeyStore(context: Context) {
     }
 
     private fun loadFromStore(): ByteArray? {
-        val wrappedB64 = prefs.getString(KEY_WRAPPED_SECRET, null) ?: return null
-        val ivB64 = prefs.getString(KEY_WRAP_IV, null) ?: return null
-        val wrapped = runCatching { Base64.decode(wrappedB64, Base64.NO_WRAP) }.getOrNull() ?: return null
-        val iv = runCatching { Base64.decode(ivB64, Base64.NO_WRAP) }.getOrNull() ?: return null
-        val secretKey = runCatching { wrappingKey() }.getOrNull() ?: return null
+        val wrappedB64 = prefs.getString(KEY_WRAPPED_SECRET, null)
+        val ivB64 = prefs.getString(KEY_WRAP_IV, null)
+        val wrapped = wrappedB64?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
+        val iv = ivB64?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
+        val secretKey = runCatching { wrappingKey() }.getOrNull()
+        if (wrapped == null || iv == null || secretKey == null) return null
         return try {
-            val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-                init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
-            }
-            val plain = cipher.doFinal(wrapped)
-            if (plain.size == 32) plain else null
+            val cipher =
+                Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                    init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
+                }
+            cipher.doFinal(wrapped).takeIf { it.size == VAL_32 }
         } catch (_: Throwable) {
             null
         }
@@ -63,9 +66,10 @@ class IrohBlobKeyStore(context: Context) {
 
     private fun saveToStore(raw: ByteArray) {
         val secretKey = wrappingKey()
-        val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-            init(Cipher.ENCRYPT_MODE, secretKey)
-        }
+        val cipher =
+            Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                init(Cipher.ENCRYPT_MODE, secretKey)
+            }
         val iv = cipher.iv
         require(iv.size == GCM_IV_BYTES) { "Unexpected AES-GCM IV length ${iv.size}" }
         val wrapped = cipher.doFinal(raw)
@@ -78,19 +82,21 @@ class IrohBlobKeyStore(context: Context) {
     private fun wrappingKey(): SecretKey {
         val store = keystore()
         store.getEntry(KEY_ALIAS, null)?.let { entry ->
-            val secretEntry = entry as? KeyStore.SecretKeyEntry
-                ?: error("Keystore entry $KEY_ALIAS is not a secret key")
+            val secretEntry =
+                entry as? KeyStore.SecretKeyEntry
+                    ?: error("Keystore entry $KEY_ALIAS is not a secret key")
             return secretEntry.secretKey
         }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
+        val spec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(VAL_256)
+                .build()
         generator.init(spec)
         return generator.generateKey()
     }

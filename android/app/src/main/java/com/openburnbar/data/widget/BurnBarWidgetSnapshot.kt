@@ -28,7 +28,7 @@ data class BurnBarWidgetSnapshot(
     /** "today" | "7d" | "30d" — what window the hero metrics represent. */
     val windowKey: String = "today",
     /** Millis since epoch when this snapshot was minted. */
-    val lastSyncMs: Long = 0L
+    val lastSyncMs: Long = 0L,
 ) {
     companion object {
         /**
@@ -36,17 +36,18 @@ data class BurnBarWidgetSnapshot(
          * fallback when the persisted file is missing. Shape mirrors the iOS
          * `.preview` Codable instance.
          */
-        val preview: BurnBarWidgetSnapshot = BurnBarWidgetSnapshot(
-            heroTotalCost = 3.42,
-            heroTotalTokens = 12_400,
-            heroTotalRequests = 18,
-            topProviders = listOf("Claude Code", "Codex", "Cursor"),
-            topProviderTokens = listOf(5_200L, 4_100L, 3_100L),
-            topModels = listOf("claude-3-5-sonnet", "gpt-5", "gemini-1.5-pro"),
-            dailyPoints = listOf(0.45, 0.62, 0.51, 0.78, 0.66, 0.83, 0.71),
-            windowKey = "today",
-            lastSyncMs = System.currentTimeMillis()
-        )
+        val preview: BurnBarWidgetSnapshot =
+            BurnBarWidgetSnapshot(
+                heroTotalCost = 3.42,
+                heroTotalTokens = 12_400,
+                heroTotalRequests = 18,
+                topProviders = listOf("Claude Code", "Codex", "Cursor"),
+                topProviderTokens = listOf(5_200L, 4_100L, 3_100L),
+                topModels = listOf("claude-3-5-sonnet", "gpt-5", "gemini-1.5-pro"),
+                dailyPoints = listOf(0.45, 0.62, 0.51, 0.78, 0.66, 0.83, 0.71),
+                windowKey = "today",
+                lastSyncMs = System.currentTimeMillis(),
+            )
 
         const val FILENAME = "widget_snapshot.json"
     }

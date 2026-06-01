@@ -1,25 +1,33 @@
 package com.openburnbar.irohrelay
 
-import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Method
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
 
-internal val javaPrimitiveInt: Class<*> = requireNotNull(Int::class.javaPrimitiveType) {
-    "Kotlin Int primitive class is unavailable for UniFFI reflection"
-}
+internal val javaPrimitiveInt: Class<*> =
+    requireNotNull(Int::class.javaPrimitiveType) {
+        "Kotlin Int primitive class is unavailable for UniFFI reflection"
+    }
 
 internal inline fun <reified T : Any> Any?.requireFfiField(fieldName: String): T =
     this as? T
         ?: error("UniFFI field $fieldName expected ${T::class.java.name}, got ${this?.javaClass?.name ?: "null"}")
 
 internal inline fun <reified T : Any> Any?.optionalFfiField(fieldName: String): T? =
-    if (this == null) null else this.requireFfiField<T>(fieldName)
+    if (this == null) {
+        null
+    } else {
+        this.requireFfiField<T>(
+            fieldName,
+        )
+    }
 
 internal fun Any?.requireFfiStringList(fieldName: String): List<String> {
-    val raw = this as? List<*>
-        ?: error("UniFFI field $fieldName expected List<String>, got ${this?.javaClass?.name ?: "null"}")
+    val raw =
+        this as? List<*>
+            ?: error("UniFFI field $fieldName expected List<String>, got ${this?.javaClass?.name ?: "null"}")
     return raw.mapIndexed { index, value ->
         value as? String
             ?: error("UniFFI field $fieldName[$index] expected String, got ${value?.javaClass?.name ?: "null"}")
@@ -55,157 +63,181 @@ class OpenBurnBarIrohFfiBackend(
 ) : IrohEndpointBackend {
     private var handleObject: Any? = null
 
-    override suspend fun bootstrap(secret: ByteArray, relayURL: String?): IrohEndpointIdentity =
+    override suspend fun bootstrap(
+        secret: ByteArray,
+        relayURL: String?,
+    ): IrohEndpointIdentity =
         withContext(dispatcher) {
-            val instance = reflected("IrohEndpointHandle.constructor") {
-                handleClass()
-                    .getDeclaredConstructor()
-                    .newInstance()
-            } ?: error("IrohEndpointHandle constructor returned null")
+            val instance =
+                reflected("IrohEndpointHandle.constructor") {
+                    handleClass()
+                        .getDeclaredConstructor()
+                        .newInstance()
+                } ?: error("IrohEndpointHandle constructor returned null")
             handleObject = instance
             val secretMaterial = secretKeyMaterialFromRaw(secret)
-            val identity = reflected("IrohEndpointHandle.bootstrap") {
-                handleClass()
-                    .getMethod("bootstrap", secretKeyMaterialClass(), String::class.java)
-                    .invoke(instance, secretMaterial, relayURL.orEmpty())
-            } ?: error("bootstrap returned null")
+            val identity =
+                reflected("IrohEndpointHandle.bootstrap") {
+                    handleClass()
+                        .getMethod("bootstrap", secretKeyMaterialClass(), String::class.java)
+                        .invoke(instance, secretMaterial, relayURL.orEmpty())
+                } ?: error("bootstrap returned null")
             mapIdentity(identity)
         }
 
-    override suspend fun identity(): IrohEndpointIdentity = withContext(dispatcher) {
-        val instance = handleObject ?: throw IrohBackendError.NotInitialized
-        val identity = reflected("IrohEndpointHandle.identity") {
-            handleClass().getMethod("identity").invoke(instance)
+    override suspend fun identity(): IrohEndpointIdentity =
+        withContext(dispatcher) {
+            val instance = handleObject ?: throw IrohBackendError.NotInitialized
+            val identity =
+                reflected("IrohEndpointHandle.identity") {
+                    handleClass().getMethod("identity").invoke(instance)
+                }
+                    ?: throw IrohBackendError.NotInitialized
+            mapIdentity(identity)
         }
-            ?: throw IrohBackendError.NotInitialized
-        mapIdentity(identity)
-    }
 
-    override suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohBackendStream =
+    override suspend fun connect(
+        target: IrohDialTarget,
+        timeoutMillis: Long,
+    ): IrohBackendStream =
         withContext(dispatcher) {
             val instance = handleObject ?: throw IrohBackendError.NotInitialized
             val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
-            val stream = try {
-                reflected("IrohEndpointHandle.connect") {
-                    handleClass().irohGeneratedMethod(
-                        "connect",
-                        String::class.java, String::class.java, List::class.java, javaPrimitiveInt,
-                    ).invoke(instance, target.nodeId, target.relayURL.orEmpty(), target.directAddresses, timeoutSeconds)
-                } ?: throw IrohBackendError.ConnectFailed("uniffi connect returned null")
-            } catch (err: IrohBackendError.RuntimeFailed) {
-                throw IrohBackendError.ConnectFailed(err.detail)
-            }
+            val stream =
+                try {
+                    reflected("IrohEndpointHandle.connect") {
+                        handleClass().irohGeneratedMethod(
+                            "connect",
+                            String::class.java, String::class.java, List::class.java, javaPrimitiveInt,
+                        ).invoke(instance, target.nodeId, target.relayURL.orEmpty(), target.directAddresses, timeoutSeconds)
+                    } ?: throw IrohBackendError.ConnectFailed("uniffi connect returned null")
+                } catch (err: IrohBackendError.RuntimeFailed) {
+                    throw IrohBackendError.ConnectFailed(err.detail)
+                }
             UniffiBackendStream(stream)
         }
 
-    override suspend fun acceptOne(timeoutMillis: Long): IrohBackendStream = withContext(dispatcher) {
-        val instance = handleObject ?: throw IrohBackendError.NotInitialized
-        val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
-        val stream = try {
-            reflected("IrohEndpointHandle.acceptOne") {
-                handleClass().irohGeneratedMethod("acceptOne", javaPrimitiveInt)
-                    .invoke(instance, timeoutSeconds)
-            } ?: throw IrohBackendError.AcceptFailed("uniffi accept returned null")
-        } catch (err: IrohBackendError.RuntimeFailed) {
-            throw IrohBackendError.AcceptFailed(err.detail)
+    override suspend fun acceptOne(timeoutMillis: Long): IrohBackendStream =
+        withContext(dispatcher) {
+            val instance = handleObject ?: throw IrohBackendError.NotInitialized
+            val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
+            val stream =
+                try {
+                    reflected("IrohEndpointHandle.acceptOne") {
+                        handleClass().irohGeneratedMethod("acceptOne", javaPrimitiveInt)
+                            .invoke(instance, timeoutSeconds)
+                    } ?: throw IrohBackendError.AcceptFailed("uniffi accept returned null")
+                } catch (err: IrohBackendError.RuntimeFailed) {
+                    throw IrohBackendError.AcceptFailed(err.detail)
+                }
+            UniffiBackendStream(stream)
         }
-        UniffiBackendStream(stream)
-    }
 
-    override suspend fun shutdown() = withContext(dispatcher) {
-        val instance = handleObject ?: return@withContext
-        try {
-            reflected("IrohEndpointHandle.shutdown") {
-                handleClass().getMethod("shutdown").invoke(instance)
+    override suspend fun shutdown() =
+        withContext(dispatcher) {
+            val instance = handleObject ?: return@withContext
+            try {
+                reflected("IrohEndpointHandle.shutdown") {
+                    handleClass().getMethod("shutdown").invoke(instance)
+                }
+            } catch (_: Throwable) {
+                // best-effort shutdown — bindings throw on double-close; ignore.
             }
-        } catch (_: Throwable) {
-            // best-effort shutdown — bindings throw on double-close; ignore.
+            handleObject = null
         }
-        handleObject = null
-    }
+
     /** Open a datagram channel against a remote peer. Used by Mercury audio. */
     suspend fun openDatagramChannel(
         target: IrohDialTarget,
         timeoutMillis: Long,
-    ): Any = withContext(dispatcher) {
-        val instance = handleObject ?: throw IrohBackendError.NotInitialized
-        val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
-        try {
-            reflected("IrohEndpointHandle.openDatagramChannel") {
-                handleClass().irohGeneratedMethod(
-                    "openDatagramChannel",
-                    String::class.java, String::class.java, List::class.java, javaPrimitiveInt,
-                ).invoke(instance, target.nodeId, target.relayURL.orEmpty(), target.directAddresses, timeoutSeconds)
-            } ?: throw IrohBackendError.ConnectFailed("uniffi openDatagramChannel returned null")
-        } catch (err: IrohBackendError.RuntimeFailed) {
-            throw IrohBackendError.ConnectFailed(err.detail)
+    ): Any =
+        withContext(dispatcher) {
+            val instance = handleObject ?: throw IrohBackendError.NotInitialized
+            val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
+            try {
+                reflected("IrohEndpointHandle.openDatagramChannel") {
+                    handleClass().irohGeneratedMethod(
+                        "openDatagramChannel",
+                        String::class.java, String::class.java, List::class.java, javaPrimitiveInt,
+                    ).invoke(instance, target.nodeId, target.relayURL.orEmpty(), target.directAddresses, timeoutSeconds)
+                } ?: throw IrohBackendError.ConnectFailed("uniffi openDatagramChannel returned null")
+            } catch (err: IrohBackendError.RuntimeFailed) {
+                throw IrohBackendError.ConnectFailed(err.detail)
+            }
         }
-    }
 
-    suspend fun acceptDatagramChannel(timeoutMillis: Long): Any = withContext(dispatcher) {
-        val instance = handleObject ?: throw IrohBackendError.NotInitialized
-        val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
-        try {
-            reflected("IrohEndpointHandle.acceptDatagramChannel") {
-                handleClass().irohGeneratedMethod("acceptDatagramChannel", javaPrimitiveInt)
-                    .invoke(instance, timeoutSeconds)
-            } ?: throw IrohBackendError.AcceptFailed("uniffi acceptDatagramChannel returned null")
-        } catch (err: IrohBackendError.RuntimeFailed) {
-            throw IrohBackendError.AcceptFailed(err.detail)
+    suspend fun acceptDatagramChannel(timeoutMillis: Long): Any =
+        withContext(dispatcher) {
+            val instance = handleObject ?: throw IrohBackendError.NotInitialized
+            val timeoutSeconds = ((timeoutMillis + 999) / 1000).coerceAtLeast(1).toInt()
+            try {
+                reflected("IrohEndpointHandle.acceptDatagramChannel") {
+                    handleClass().irohGeneratedMethod("acceptDatagramChannel", javaPrimitiveInt)
+                        .invoke(instance, timeoutSeconds)
+                } ?: throw IrohBackendError.AcceptFailed("uniffi acceptDatagramChannel returned null")
+            } catch (err: IrohBackendError.RuntimeFailed) {
+                throw IrohBackendError.AcceptFailed(err.detail)
+            }
         }
-    }
 
     private inner class UniffiBackendStream(private val streamObject: Any) : IrohBackendStream {
-        override suspend fun sendFrame(envelope: ByteArray) = withContext(dispatcher) {
-            try {
-                reflected("IrohStream.sendFrame") {
-                    streamClass().getMethod("sendFrame", ByteArray::class.java).invoke(streamObject, envelope)
+        override suspend fun sendFrame(envelope: ByteArray) =
+            withContext(dispatcher) {
+                try {
+                    reflected("IrohStream.sendFrame") {
+                        streamClass().getMethod("sendFrame", ByteArray::class.java).invoke(streamObject, envelope)
+                    }
+                } catch (t: Throwable) {
+                    throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
                 }
-            } catch (t: Throwable) {
-                throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
+                Unit
             }
-            Unit
-        }
 
-        override suspend fun recvFrame(): ByteArray? = withContext(dispatcher) {
-            try {
-                reflected("IrohStream.recvFrame") {
-                    streamClass()
-                        .getMethod("recvFrame")
-                        .invoke(streamObject)
-                        .optionalFfiField<ByteArray>("IrohStream.recvFrame")
+        override suspend fun recvFrame(): ByteArray? =
+            withContext(dispatcher) {
+                try {
+                    reflected("IrohStream.recvFrame") {
+                        streamClass()
+                            .getMethod("recvFrame")
+                            .invoke(streamObject)
+                            .optionalFfiField<ByteArray>("IrohStream.recvFrame")
+                    }
+                } catch (t: Throwable) {
+                    throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
                 }
-            } catch (t: Throwable) {
-                throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
             }
-        }
 
-        override suspend fun close() = withContext(dispatcher) {
-            try {
-                reflected("IrohStream.closeStream") {
-                    streamClass().getMethod("closeStream").invoke(streamObject)
+        override suspend fun close() =
+            withContext(dispatcher) {
+                try {
+                    reflected("IrohStream.closeStream") {
+                        streamClass().getMethod("closeStream").invoke(streamObject)
+                    }
+                } catch (_: Throwable) {
+                    // idempotent close.
                 }
-            } catch (_: Throwable) {
-                // idempotent close.
+                Unit
             }
-            Unit
-        }
     }
 
     private fun mapIdentity(generated: Any): IrohEndpointIdentity {
         val cls = generated.javaClass
-        val rawPublicKey = cls.getMethod("getRawPublicKey")
-            .invoke(generated)
-            .requireFfiField<ByteArray>("IrohNodeIdentity.rawPublicKey")
-        val nodeId = cls.getMethod("getNodeId")
-            .invoke(generated)
-            .requireFfiField<String>("IrohNodeIdentity.nodeId")
-        val relayURL = cls.getMethod("getRelayUrl")
-            .invoke(generated)
-            .requireFfiField<String>("IrohNodeIdentity.relayUrl")
-        val directAddresses = cls.getMethod("getDirectAddresses")
-            .invoke(generated)
-            .requireFfiStringList("IrohNodeIdentity.directAddresses")
+        val rawPublicKey =
+            cls.getMethod("getRawPublicKey")
+                .invoke(generated)
+                .requireFfiField<ByteArray>("IrohNodeIdentity.rawPublicKey")
+        val nodeId =
+            cls.getMethod("getNodeId")
+                .invoke(generated)
+                .requireFfiField<String>("IrohNodeIdentity.nodeId")
+        val relayURL =
+            cls.getMethod("getRelayUrl")
+                .invoke(generated)
+                .requireFfiField<String>("IrohNodeIdentity.relayUrl")
+        val directAddresses =
+            cls.getMethod("getDirectAddresses")
+                .invoke(generated)
+                .requireFfiStringList("IrohNodeIdentity.directAddresses")
         return IrohEndpointIdentity(
             nodeId = nodeId,
             rawPublicKey = rawPublicKey,
@@ -221,7 +253,10 @@ class OpenBurnBarIrohFfiBackend(
         return ctor.newInstance(raw)
     }
 
-    private inline fun <T> reflected(operation: String, block: () -> T): T {
+    private inline fun <T> reflected(
+        operation: String,
+        block: () -> T,
+    ): T {
         try {
             return block()
         } catch (err: InvocationTargetException) {
@@ -237,29 +272,28 @@ class OpenBurnBarIrohFfiBackend(
          * the companion shared object load successfully.
          */
         @Volatile private var cachedAvailability: Boolean? = null
+
         fun isAvailable(): Boolean {
             if (isAndroidRuntime() && !OpenBurnBarIrohNativeContext.isInstalled()) {
                 return false
             }
             cachedAvailability?.let { return it }
-            val ok = try {
-                handleClass()
-                true
-            } catch (_: Throwable) {
-                false
-            }
+            val ok =
+                try {
+                    handleClass()
+                    true
+                } catch (_: Throwable) {
+                    false
+                }
             cachedAvailability = ok
             return ok
         }
 
-        private fun handleClass(): Class<*> =
-            Class.forName("uniffi.openburnbar_iroh.IrohEndpointHandle")
+        private fun handleClass(): Class<*> = Class.forName("uniffi.openburnbar_iroh.IrohEndpointHandle")
 
-        private fun streamClass(): Class<*> =
-            Class.forName("uniffi.openburnbar_iroh.IrohStream")
+        private fun streamClass(): Class<*> = Class.forName("uniffi.openburnbar_iroh.IrohStream")
 
-        private fun secretKeyMaterialClass(): Class<*> =
-            Class.forName("uniffi.openburnbar_iroh.IrohSecretKeyMaterial")
+        private fun secretKeyMaterialClass(): Class<*> = Class.forName("uniffi.openburnbar_iroh.IrohSecretKeyMaterial")
 
         private fun isAndroidRuntime(): Boolean =
             System.getProperty("java.runtime.name")?.contains("Android", ignoreCase = true) == true ||

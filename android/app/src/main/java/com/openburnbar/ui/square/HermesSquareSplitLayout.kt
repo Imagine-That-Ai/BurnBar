@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.square
 
 import androidx.compose.foundation.layout.Box
@@ -41,14 +44,14 @@ fun HermesSquareSplitLayout(
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
     onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val configuration = LocalConfiguration.current
     if (configuration.screenWidthDp < 720) {
         HermesSquareScreen(
             onOpenLegacyRuntime = onOpenLegacyRuntime,
             onOpenBrandZone = onOpenBrandZone,
-            onOpenPairedMac = onOpenPairedMac
+            onOpenPairedMac = onOpenPairedMac,
         )
         return
     }
@@ -67,14 +70,15 @@ fun HermesSquareSplitLayout(
                 onOpenPairedMac = { connectionID ->
                     detail = DetailRoute.PairedMac
                     onOpenPairedMac(connectionID)
-                }
+                },
             )
         }
         VerticalDivider(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.20f),
-            modifier = Modifier
+            modifier =
+            Modifier
                 .width(1.dp)
-                .fillMaxHeight()
+                .fillMaxHeight(),
         )
         Box(modifier = Modifier.weight(0.58f).fillMaxHeight()) {
             when (val d = detail) {
@@ -87,9 +91,11 @@ fun HermesSquareSplitLayout(
                             identity = identity,
                             registry = registry,
                             missionHost = com.openburnbar.data.missions.MobileMissionConsoleHost.shared(),
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
                         )
-                    } else SplitPlaceholder()
+                    } else {
+                        SplitPlaceholder()
+                    }
                 }
                 is DetailRoute.RuntimeNative -> SplitPlaceholder("Open ${d.runtime.token} on the left to expand here.")
                 is DetailRoute.MissionDetail -> SplitPlaceholder("Mission detail: ${d.missionID}")
@@ -104,26 +110,29 @@ private fun SplitPlaceholder(message: String = "Pick a thread, mission, or pinne
     Column(
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxSize().padding(24.dp)
+        modifier = Modifier.fillMaxSize().padding(24.dp),
     ) {
         Text(
             "Hermes Square",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = androidx.compose.ui.Modifier.fillMaxWidth())
         Text(
             message,
             fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 internal sealed class DetailRoute {
     data class BrandZone(val agentURI: String) : DetailRoute()
+
     data class RuntimeNative(val runtime: AssistantRuntimeID, val threadId: String? = null) : DetailRoute()
+
     data class MissionDetail(val missionID: String) : DetailRoute()
+
     object PairedMac : DetailRoute()
 }

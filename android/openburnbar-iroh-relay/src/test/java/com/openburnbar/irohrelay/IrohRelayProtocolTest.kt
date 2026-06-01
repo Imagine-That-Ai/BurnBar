@@ -1,8 +1,8 @@
 package com.openburnbar.irohrelay
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -12,7 +12,6 @@ import org.junit.Test
  * Android phone meet on the relay and silently disagree.
  */
 class IrohRelayProtocolTest {
-
     @Test
     fun alpn_pins_to_openburnbar_v1() {
         assertEquals("openburnbar/1", IrohRelayProtocol.ALPN)
@@ -47,18 +46,21 @@ class IrohRelayProtocolTest {
         // a `StreamRejected` to avoid letting an oversize frame land on
         // the relay where Mac will hang up the stream.
         val codec = IrohRelayFrameCodec(maxFrameBytes = IrohRelayProtocol.MAX_FRAME_BYTES)
-        val oversize = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.REQUEST_START,
-            uid = "u",
-            connectionId = "c",
-            requestId = "r",
-            payload = HermesRealtimeRelayPayload(
-                payloadCiphertext = "A".repeat(600 * 1024),
-            ),
-        )
-        val thrown = assertThrows(IrohRelayTransportError.StreamRejected::class.java) {
-            codec.encode(oversize)
-        }
+        val oversize =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.REQUEST_START,
+                uid = "u",
+                connectionId = "c",
+                requestId = "r",
+                payload =
+                    HermesRealtimeRelayPayload(
+                        payloadCiphertext = "A".repeat(600 * 1024),
+                    ),
+            )
+        val thrown =
+            assertThrows(IrohRelayTransportError.StreamRejected::class.java) {
+                codec.encode(oversize)
+            }
         assertTrue(
             "expected oversize-message, got '${thrown.detail}'",
             thrown.detail.contains("exceeds"),

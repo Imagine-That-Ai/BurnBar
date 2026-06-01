@@ -8,9 +8,18 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class InsightFreshness {
-    @SerialName("fresh") FRESH,
-    @SerialName("stale") STALE,
-    @SerialName("computing") COMPUTING,
-    @SerialName("error") ERROR,
-    @SerialName("locked") LOCKED;
+    @SerialName("fresh")
+    FRESH,
+
+    @SerialName("stale")
+    STALE,
+
+    @SerialName("computing")
+    COMPUTING,
+
+    @SerialName("error")
+    ERROR,
+
+    @SerialName("locked")
+    LOCKED,
 }

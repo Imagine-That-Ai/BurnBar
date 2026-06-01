@@ -5,7 +5,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -16,16 +15,17 @@ import kotlinx.serialization.json.jsonPrimitive
  * has something renderable.
  */
 object ChartSpecRenderer {
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-        coerceInputValues = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+        }
 
     fun decode(raw: String): ChartStudioRendering {
-        val cleaned = extractFirstJsonObject(raw)
-            ?: return ChartStudioRendering.Error("Couldn't find a JSON payload in Hermes' response.")
+        val cleaned =
+            extractFirstJsonObject(raw)
+                ?: return ChartStudioRendering.Error("Couldn't find a JSON payload in Hermes' response.")
         return runCatching { decodeNode(json.parseToJsonElement(cleaned)) }
             .getOrElse { ChartStudioRendering.Error("Couldn't decode the spec: ${it.message ?: "unknown error"}") }
     }
@@ -41,9 +41,10 @@ object ChartSpecRenderer {
             "ascii" -> decodeAscii(node)
             "insight" -> decodeInsight(node)
             "composed" -> decodeComposed(node)
-            "error" -> ChartStudioRendering.Error(
-                node["message"]?.jsonPrimitive?.contentOrNullSafe() ?: "Unknown error"
-            )
+            "error" ->
+                ChartStudioRendering.Error(
+                    node["message"]?.jsonPrimitive?.contentOrNullSafe() ?: "Unknown error",
+                )
             else -> ChartStudioRendering.Error("Unknown rendering kind: $kind")
         }
     }
@@ -59,11 +60,11 @@ object ChartSpecRenderer {
         return ChartStudioRendering.Mermaid(spec.copy(source = sanitizeMermaid(spec.source)))
     }
 
-    private fun decodeAscii(obj: JsonObject): ChartStudioRendering.Ascii =
-        ChartStudioRendering.Ascii(json.decodeFromJsonElement(AsciiSpec.serializer(), obj))
+    private fun decodeAscii(obj: JsonObject): ChartStudioRendering.Ascii = ChartStudioRendering.Ascii(json.decodeFromJsonElement(AsciiSpec.serializer(), obj))
 
-    private fun decodeInsight(obj: JsonObject): ChartStudioRendering.Insight =
-        ChartStudioRendering.Insight(json.decodeFromJsonElement(InsightSpec.serializer(), obj))
+    private fun decodeInsight(obj: JsonObject): ChartStudioRendering.Insight = ChartStudioRendering.Insight(
+        json.decodeFromJsonElement(InsightSpec.serializer(), obj),
+    )
 
     private fun decodeComposed(obj: JsonObject): ChartStudioRendering {
         val arr = obj["items"]?.jsonArray ?: return ChartStudioRendering.Error("Composed spec needs an items array.")
@@ -79,9 +80,10 @@ object ChartSpecRenderer {
      * and Markdown code fences ("```json ... ```").
      */
     internal fun extractFirstJsonObject(raw: String): String? {
-        val text = raw.trim().removeSurrounding("```json\n", "\n```")
-            .removeSurrounding("```\n", "\n```")
-            .trim()
+        val text =
+            raw.trim().removeSurrounding("```json\n", "\n```")
+                .removeSurrounding("```\n", "\n```")
+                .trim()
         val start = text.indexOf('{')
         if (start < 0) return null
         var depth = 0
@@ -89,13 +91,13 @@ object ChartSpecRenderer {
         var escape = false
         for (i in start until text.length) {
             val c = text[i]
-            if (escape) { escape = false; continue }
-            if (c == '\\' && inString) { escape = true; continue }
-            if (c == '"') { inString = !inString; continue }
-            if (inString) continue
-            when (c) {
-                '{' -> depth++
-                '}' -> {
+            when {
+                escape -> escape = false
+                c == '\\' && inString -> escape = true
+                c == '"' -> inString = !inString
+                inString -> Unit
+                c == '{' -> depth++
+                c == '}' -> {
                     depth--
                     if (depth == 0) return text.substring(start, i + 1)
                 }
@@ -120,5 +122,4 @@ object ChartSpecRenderer {
     }
 }
 
-private fun JsonPrimitive.contentOrNullSafe(): String? =
-    runCatching { content }.getOrNull()
+private fun JsonPrimitive.contentOrNullSafe(): String? = runCatching { content }.getOrNull()

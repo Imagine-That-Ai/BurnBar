@@ -13,11 +13,11 @@ enum class BurnViewStyle(val key: String, val label: String) {
     CONSTELLATION("constellation", "Orbit"),
     GRID("grid", "Grid"),
     LEADERBOARD("leaderboard", "Ranked"),
-    TIMELINE("timeline", "Trends");
+    TIMELINE("timeline", "Trends"),
+    ;
 
     companion object {
         /** Maps a persisted raw key back to a style, defaulting to [CARDS]. */
-        fun fromKey(key: String?): BurnViewStyle =
-            entries.firstOrNull { it.key == key } ?: CARDS
+        fun fromKey(key: String?): BurnViewStyle = entries.firstOrNull { it.key == key } ?: CARDS
     }
 }

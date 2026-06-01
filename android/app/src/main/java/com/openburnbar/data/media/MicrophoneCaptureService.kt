@@ -9,8 +9,8 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
-import android.os.Build
 import androidx.core.content.ContextCompat
+import java.lang.IllegalStateException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+private const val VAL_4 = 4
 
 /**
  * Android-side mic capture for Phase 5 (1:1 audio call). 1:1 port of
@@ -42,14 +44,19 @@ class MicrophoneCaptureService(
 ) {
     sealed class Failure(message: String) : RuntimeException(message) {
         object PermissionDenied : Failure("OpenBurnBar needs microphone access. Open Settings → BurnBar to allow.")
+
         data class StartupFailed(val detail: String) : Failure("AudioRecord start failed: $detail")
+
         object NoSession : Failure("AudioRecord initialization failed: no audio session.")
     }
 
     sealed class Phase {
         object Idle : Phase()
+
         object Running : Phase()
+
         object Stopped : Phase()
+
         data class Failed(val reason: String) : Phase()
     }
 
@@ -63,8 +70,9 @@ class MicrophoneCaptureService(
 
     @SuppressLint("MissingPermission") // we check above
     fun start() {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+        val granted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
         if (!granted) {
             _phase.value = Phase.Failed(Failure.PermissionDenied.message ?: "")
             throw Failure.PermissionDenied
@@ -75,57 +83,71 @@ class MicrophoneCaptureService(
         val frameSamples = sampleRateHz * frameDurationMs / 1000
         val frameBytes = frameSamples * 2 // 16-bit mono
         val minBuffer = AudioRecord.getMinBufferSize(sampleRateHz, channelConfig, encoding)
-        val bufferSize = maxOf(minBuffer, frameBytes * 4)
+        val bufferSize = maxOf(minBuffer, frameBytes * VAL_4)
 
-        val newRecord = try {
-            AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                sampleRateHz,
-                channelConfig,
-                encoding,
-                bufferSize,
-            )
-        } catch (t: Throwable) {
-            _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
-            throw Failure.StartupFailed(t.message ?: t.javaClass.simpleName)
-        }
+        val newRecord = createInitializedRecord(channelConfig, encoding, bufferSize)
+        bindAudioEffects(newRecord)
+        startRecordingOrFail(newRecord)
+
+        record = newRecord
+        _phase.value = Phase.Running
+
+        captureJob =
+            scope.launch {
+                val buffer = ByteArray(frameBytes)
+                while (isActive && record === newRecord) {
+                    val read = newRecord.read(buffer, 0, frameBytes)
+                    if (read > 0) {
+                        val frame = if (read == frameBytes) buffer.copyOf() else buffer.copyOf(read)
+                        onPcmFrame(frame)
+                    }
+                }
+            }
+    }
+
+    private fun failStartup(message: String): Nothing {
+        _phase.value = Phase.Failed(message)
+        throw Failure.StartupFailed(message)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun createInitializedRecord(channelConfig: Int, encoding: Int, bufferSize: Int): AudioRecord {
+        val newRecord =
+            try {
+                AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    sampleRateHz,
+                    channelConfig,
+                    encoding,
+                    bufferSize,
+                )
+            } catch (t: IllegalStateException) {
+                failStartup(t.message ?: t.javaClass.simpleName)
+            }
 
         if (newRecord.state != AudioRecord.STATE_INITIALIZED) {
             newRecord.release()
             _phase.value = Phase.Failed("uninitialized")
             throw Failure.NoSession
         }
+        return newRecord
+    }
 
-        // Bind AEC + NS audio effects when supported. Both are no-ops
-        // on devices that lack hardware support — we mirror iOS by
-        // never failing capture if the post-processing isn't available.
+    private fun bindAudioEffects(newRecord: AudioRecord) {
         if (AcousticEchoCanceler.isAvailable()) {
             aec = AcousticEchoCanceler.create(newRecord.audioSessionId)?.apply { enabled = true }
         }
         if (NoiseSuppressor.isAvailable()) {
             ns = NoiseSuppressor.create(newRecord.audioSessionId)?.apply { enabled = true }
         }
+    }
 
+    private fun startRecordingOrFail(newRecord: AudioRecord) {
         try {
             newRecord.startRecording()
-        } catch (t: Throwable) {
+        } catch (t: IllegalStateException) {
             newRecord.release()
-            _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
-            throw Failure.StartupFailed(t.message ?: t.javaClass.simpleName)
-        }
-
-        record = newRecord
-        _phase.value = Phase.Running
-
-        captureJob = scope.launch {
-            val buffer = ByteArray(frameBytes)
-            while (isActive && record === newRecord) {
-                val read = newRecord.read(buffer, 0, frameBytes)
-                if (read > 0) {
-                    val frame = if (read == frameBytes) buffer.copyOf() else buffer.copyOf(read)
-                    onPcmFrame(frame)
-                }
-            }
+            failStartup(t.message ?: t.javaClass.simpleName)
         }
     }
 
@@ -136,10 +158,13 @@ class MicrophoneCaptureService(
         record = null
         try {
             r?.stop()
-        } catch (_: Throwable) {}
+        } catch (_: Throwable) {
+        }
         r?.release()
-        aec?.release(); aec = null
-        ns?.release(); ns = null
+        aec?.release()
+        aec = null
+        ns?.release()
+        ns = null
         _phase.value = Phase.Stopped
     }
 

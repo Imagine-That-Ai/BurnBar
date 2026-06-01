@@ -7,6 +7,11 @@ import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+private const val MILLIS = 5
+private const val MILLIS_2 = 60
+private const val MILLIS_3 = 30.0
+private const val MILLIS_4 = 60.0
+
 enum class AgentDesktopCapability(val wireValue: String) {
     DESKTOP_BROWSER("desktop_browser"),
     DESKTOP_SYSTEM_INPUT("desktop_system_input"),
@@ -72,7 +77,8 @@ enum class AgentPermissionPreset(
         AgentDesktopCapability.entries.toSet(),
         trustMode = "trusted",
         requiresDeviceAuth = true,
-    );
+    ),
+    ;
 
     val wireValue: String = name.lowercase()
 }
@@ -84,8 +90,8 @@ data class AgentCapabilityGrantRequest(
     val preset: AgentPermissionPreset,
     val deliveryMode: AgentGrantDeliveryMode = AgentGrantDeliveryMode.LIVE_THEN_QUEUED,
     val requestedAtMillis: Long = System.currentTimeMillis(),
-    val expiresAtMillis: Long = requestedAtMillis + 5 * 60 * 1000,
-    val grantDurationSeconds: Double = 30.0 * 60.0,
+    val expiresAtMillis: Long = requestedAtMillis + MILLIS * MILLIS_2 * 1000,
+    val grantDurationSeconds: Double = MILLIS_3 * MILLIS_4,
     val sourceDeviceId: String,
     val clientIntentId: String = UUID.randomUUID().toString(),
     val localAuthenticationSatisfied: Boolean = false,
@@ -99,49 +105,45 @@ data class AgentCapabilityGrantRequest(
     val capabilityWireValues: List<String>
         get() = preset.capabilities.map { it.wireValue }.sorted()
 
-    fun toWire(authority: HermesRealtimeRelayAuthorityEnvelope): HermesRealtimeRelayAgentGrantRequest =
-        HermesRealtimeRelayAgentGrantRequest(
-            requestId = requestId,
-            runtime = runtime,
-            threadId = threadId,
-            preset = preset.wireValue,
-            capabilities = capabilityWireValues,
-            trustMode = preset.trustMode,
-            deliveryMode = deliveryMode.wireValue,
-            requestedAt = requestedAtSwiftReferenceSeconds,
-            expiresAt = expiresAtSwiftReferenceSeconds,
-            grantDurationSeconds = grantDurationSeconds,
-            sourceDeviceId = sourceDeviceId,
-            clientIntentId = clientIntentId,
-            localAuthenticationSatisfied = localAuthenticationSatisfied,
-            authority = authority,
-        )
+    fun toWire(authority: HermesRealtimeRelayAuthorityEnvelope): HermesRealtimeRelayAgentGrantRequest = HermesRealtimeRelayAgentGrantRequest(
+        requestId = requestId,
+        runtime = runtime,
+        threadId = threadId,
+        preset = preset.wireValue,
+        capabilities = capabilityWireValues,
+        trustMode = preset.trustMode,
+        deliveryMode = deliveryMode.wireValue,
+        requestedAt = requestedAtSwiftReferenceSeconds,
+        expiresAt = expiresAtSwiftReferenceSeconds,
+        grantDurationSeconds = grantDurationSeconds,
+        sourceDeviceId = sourceDeviceId,
+        clientIntentId = clientIntentId,
+        localAuthenticationSatisfied = localAuthenticationSatisfied,
+        authority = authority,
+    )
 
-    fun pendingReceipt(message: String): AgentCapabilityGrantReceipt =
-        AgentCapabilityGrantReceipt(
-            receiptId = UUID.randomUUID().toString(),
-            requestId = requestId,
-            runtime = runtime,
-            threadId = threadId,
-            status = AgentGrantDecisionStatus.QUEUED,
-            appliedGrantId = null,
-            capabilities = capabilityWireValues,
-            trustMode = preset.trustMode,
-            receivedAtMillis = System.currentTimeMillis(),
-            grantExpiresAtMillis = System.currentTimeMillis() + grantDurationSeconds.toLong() * 1000L,
-            sourceDeviceId = sourceDeviceId,
-            denialReason = null,
-            message = message,
-        )
+    fun pendingReceipt(message: String): AgentCapabilityGrantReceipt = AgentCapabilityGrantReceipt(
+        receiptId = UUID.randomUUID().toString(),
+        requestId = requestId,
+        runtime = runtime,
+        threadId = threadId,
+        status = AgentGrantDecisionStatus.QUEUED,
+        appliedGrantId = null,
+        capabilities = capabilityWireValues,
+        trustMode = preset.trustMode,
+        receivedAtMillis = System.currentTimeMillis(),
+        grantExpiresAtMillis = System.currentTimeMillis() + grantDurationSeconds.toLong() * 1000L,
+        sourceDeviceId = sourceDeviceId,
+        denialReason = null,
+        message = message,
+    )
 
     companion object {
         private const val SWIFT_REFERENCE_TO_UNIX_SECONDS = 978_307_200.0
 
-        fun swiftReferenceSeconds(unixMillis: Long): Double =
-            (unixMillis.toDouble() / 1000.0) - SWIFT_REFERENCE_TO_UNIX_SECONDS
+        fun swiftReferenceSeconds(unixMillis: Long): Double = unixMillis.toDouble() / 1000.0 - SWIFT_REFERENCE_TO_UNIX_SECONDS
 
-        fun unixMillisFromSwiftReferenceSeconds(value: Double): Long =
-            ((value + SWIFT_REFERENCE_TO_UNIX_SECONDS) * 1000.0).toLong()
+        fun unixMillisFromSwiftReferenceSeconds(value: Double): Long = ((value + SWIFT_REFERENCE_TO_UNIX_SECONDS) * 1000.0).toLong()
     }
 }
 
@@ -161,31 +163,33 @@ data class AgentCapabilityGrantReceipt(
     val message: String? = null,
 ) {
     val isActive: Boolean
-        get() = status != AgentGrantDecisionStatus.DENIED &&
-            status != AgentGrantDecisionStatus.EXPIRED &&
-            capabilities.isNotEmpty() &&
-            (grantExpiresAtMillis ?: 0L) > System.currentTimeMillis()
+        get() =
+            status != AgentGrantDecisionStatus.DENIED &&
+                status != AgentGrantDecisionStatus.EXPIRED &&
+                capabilities.isNotEmpty() &&
+                grantExpiresAtMillis ?: 0L > System.currentTimeMillis()
 
     companion object {
-        fun fromWire(wire: HermesRealtimeRelayAgentGrantReceipt): AgentCapabilityGrantReceipt =
-            AgentCapabilityGrantReceipt(
-                receiptId = wire.receiptId,
-                requestId = wire.requestId,
-                runtime = wire.runtime,
-                threadId = wire.threadId,
-                status = AgentGrantDecisionStatus.values()
-                    .firstOrNull { it.wireValue == wire.status } ?: AgentGrantDecisionStatus.DENIED,
-                appliedGrantId = wire.appliedGrantId,
-                capabilities = wire.capabilities.sorted(),
-                trustMode = wire.trustMode,
-                receivedAtMillis = AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(wire.receivedAt),
-                grantExpiresAtMillis = wire.grantExpiresAt?.let {
-                    AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(it)
-                },
-                sourceDeviceId = wire.sourceDeviceId,
-                denialReason = wire.denialReason,
-                message = wire.message,
-            )
+        fun fromWire(wire: HermesRealtimeRelayAgentGrantReceipt): AgentCapabilityGrantReceipt = AgentCapabilityGrantReceipt(
+            receiptId = wire.receiptId,
+            requestId = wire.requestId,
+            runtime = wire.runtime,
+            threadId = wire.threadId,
+            status =
+            AgentGrantDecisionStatus.values()
+                .firstOrNull { it.wireValue == wire.status } ?: AgentGrantDecisionStatus.DENIED,
+            appliedGrantId = wire.appliedGrantId,
+            capabilities = wire.capabilities.sorted(),
+            trustMode = wire.trustMode,
+            receivedAtMillis = AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(wire.receivedAt),
+            grantExpiresAtMillis =
+            wire.grantExpiresAt?.let {
+                AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(it)
+            },
+            sourceDeviceId = wire.sourceDeviceId,
+            denialReason = wire.denialReason,
+            message = wire.message,
+        )
     }
 }
 

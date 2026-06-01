@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 class AuthStore(
-    private val authProvider: () -> FirebaseAuth? = { FirebaseAuth.getInstance() }
+    private val authProvider: () -> FirebaseAuth? = { FirebaseAuth.getInstance() },
 ) : ViewModel() {
     private val auth = runCatching { authProvider() }.getOrNull()
 

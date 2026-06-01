@@ -18,20 +18,22 @@ internal object BurnBarWallpaperGlyphSettings {
             return emptySet()
         }
 
-        val providers = raw
-            .split(',')
-            .mapNotNull { AgentProvider.fromKey(it.trim()) }
-            .toSet()
+        val providers =
+            raw
+                .split(',')
+                .mapNotNull { AgentProvider.fromKey(it.trim()) }
+                .toSet()
         return providers.ifEmpty { AgentProvider.swarmGlyphProviders.toSet() }
     }
 
     fun write(prefs: SharedPreferences, providers: Set<AgentProvider>) {
         val ordered = AgentProvider.swarmGlyphProviders.filter { providers.contains(it) }
-        val encoded = when {
-            ordered.isEmpty() -> noneSentinel
-            ordered == AgentProvider.swarmGlyphProviders -> allSentinel
-            else -> ordered.joinToString(separator = ",") { it.key }
-        }
+        val encoded =
+            when {
+                ordered.isEmpty() -> noneSentinel
+                ordered == AgentProvider.swarmGlyphProviders -> allSentinel
+                else -> ordered.joinToString(separator = ",") { it.key }
+            }
         prefs.edit().putString(key, encoded).apply()
     }
 }

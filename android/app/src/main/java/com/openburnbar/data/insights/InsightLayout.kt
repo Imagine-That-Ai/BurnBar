@@ -13,14 +13,14 @@ data class InsightLayout(
     val rowHeight: Double = 96.0,
     val gap: Double = 12.0,
     val placements: Map<String, CellPlacement> = emptyMap(),
-    val revision: Int = 0
+    val revision: Int = 0,
 ) {
     @Serializable
     data class CellPlacement(
         val column: Int = 0,
         val row: Int = 0,
         val colSpan: Int = 1,
-        val rowSpan: Int = 1
+        val rowSpan: Int = 1,
     )
 
     val rowCount: Int
@@ -66,13 +66,14 @@ data class InsightLayout(
     fun projectedTo(targetCols: Int): InsightLayout {
         val target = maxOf(1, targetCols)
         if (target == columnCount) return this
-        val ordered = placements.entries.sortedWith(
-            compareBy<Map.Entry<String, CellPlacement>>(
-                { it.value.row },
-                { it.value.column },
-                { it.key }
+        val ordered =
+            placements.entries.sortedWith(
+                compareBy<Map.Entry<String, CellPlacement>>(
+                    { it.value.row },
+                    { it.value.column },
+                    { it.key },
+                ),
             )
-        )
         val projected = mutableMapOf<String, CellPlacement>()
         var cursorCol = 0
         var cursorRow = 0
@@ -85,12 +86,13 @@ data class InsightLayout(
                 cursorCol = 0
                 rowMaxHeight = 0
             }
-            projected[id] = CellPlacement(
-                column = cursorCol,
-                row = cursorRow,
-                colSpan = span,
-                rowSpan = p.rowSpan
-            )
+            projected[id] =
+                CellPlacement(
+                    column = cursorCol,
+                    row = cursorRow,
+                    colSpan = span,
+                    rowSpan = p.rowSpan,
+                )
             cursorCol += span
             rowMaxHeight = maxOf(rowMaxHeight, p.rowSpan)
         }
@@ -123,8 +125,8 @@ data class InsightLayout(
     }
 
     private fun rangeIsFree(occupancy: List<List<Boolean>>, c: Int, r: Int, colSpan: Int, rowSpan: Int): Boolean {
-        for (rr in r until (r + rowSpan)) {
-            for (cc in c until (c + colSpan)) {
+        for (rr in r until r + rowSpan) {
+            for (cc in c until c + colSpan) {
                 if (occupancy.getOrElse(rr) { emptyList() }.getOrElse(cc) { true }) return false
             }
         }

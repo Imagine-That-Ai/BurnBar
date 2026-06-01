@@ -38,7 +38,8 @@ enum class HermesChatMessageOutcome(val rawValue: String) {
     TOOL_CALL_NO_FOLLOW_UP("toolCallNoFollowUp"),
 
     /** Stream closed cleanly with no usable signals at all. */
-    EMPTY("empty");
+    EMPTY("empty"),
+    ;
 
     /**
      * `true` when this outcome should offer the user a "Try again"
@@ -46,22 +47,24 @@ enum class HermesChatMessageOutcome(val rawValue: String) {
      * declined; mashing retry won't change that.
      */
     val supportsRetry: Boolean
-        get() = when (this) {
-            LENGTH_CAP, CONTENT_FILTER, TOOL_CALL_NO_FOLLOW_UP, EMPTY -> true
-            NORMAL, REFUSAL, REASONING_FALLBACK -> false
-        }
+        get() =
+            when (this) {
+                LENGTH_CAP, CONTENT_FILTER, TOOL_CALL_NO_FOLLOW_UP, EMPTY -> true
+                NORMAL, REFUSAL, REASONING_FALLBACK -> false
+            }
 
     /** Short label rendered as a badge above the bubble. */
     val label: String?
-        get() = when (this) {
-            NORMAL -> null
-            REFUSAL -> "Declined"
-            REASONING_FALLBACK -> "Reasoning channel"
-            LENGTH_CAP -> "Reply truncated"
-            CONTENT_FILTER -> "Filtered"
-            TOOL_CALL_NO_FOLLOW_UP -> "Tool call dropped"
-            EMPTY -> "No reply"
-        }
+        get() =
+            when (this) {
+                NORMAL -> null
+                REFUSAL -> "Declined"
+                REASONING_FALLBACK -> "Reasoning channel"
+                LENGTH_CAP -> "Reply truncated"
+                CONTENT_FILTER -> "Filtered"
+                TOOL_CALL_NO_FOLLOW_UP -> "Tool call dropped"
+                EMPTY -> "No reply"
+            }
 
     /**
      * Hint name for the leading badge glyph. Mirrors the SF Symbol
@@ -69,15 +72,16 @@ enum class HermesChatMessageOutcome(val rawValue: String) {
      * `Icons.Filled.*` based on the name.
      */
     val iconName: String?
-        get() = when (this) {
-            NORMAL -> null
-            REFUSAL -> "hand.raised.fill"
-            REASONING_FALLBACK -> "brain"
-            LENGTH_CAP -> "scissors"
-            CONTENT_FILTER -> "shield.lefthalf.filled"
-            TOOL_CALL_NO_FOLLOW_UP -> "wrench.and.screwdriver"
-            EMPTY -> "exclamationmark.bubble"
-        }
+        get() =
+            when (this) {
+                NORMAL -> null
+                REFUSAL -> "hand.raised.fill"
+                REASONING_FALLBACK -> "brain"
+                LENGTH_CAP -> "scissors"
+                CONTENT_FILTER -> "shield.lefthalf.filled"
+                TOOL_CALL_NO_FOLLOW_UP -> "wrench.and.screwdriver"
+                EMPTY -> "exclamationmark.bubble"
+            }
 
     companion object {
         /**
@@ -92,11 +96,7 @@ enum class HermesChatMessageOutcome(val rawValue: String) {
          * Mirrors `HermesChatMessage.emptyResponseFallback(...)` in
          * `OpenBurnBarMobile/Services/HermesService.swift` exactly.
          */
-        fun emptyResponseFallback(
-            refusal: String,
-            reasoning: String,
-            finishReason: String?
-        ): EmptyResponseFallback {
+        fun emptyResponseFallback(refusal: String, reasoning: String, finishReason: String?): EmptyResponseFallback {
             val trimmedRefusal = refusal.trim()
             if (trimmedRefusal.isNotEmpty()) {
                 return EmptyResponseFallback(trimmedRefusal, isError = false, outcome = REFUSAL)
@@ -106,26 +106,30 @@ enum class HermesChatMessageOutcome(val rawValue: String) {
                 return EmptyResponseFallback(trimmedReasoning, isError = false, outcome = REASONING_FALLBACK)
             }
             return when (finishReason?.lowercase()) {
-                "length" -> EmptyResponseFallback(
-                    "Hermes hit its reply length cap before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
-                    isError = true,
-                    outcome = LENGTH_CAP
-                )
-                "content_filter" -> EmptyResponseFallback(
-                    "Hermes blocked this reply for content safety. Try rewording the prompt or switch models.",
-                    isError = true,
-                    outcome = CONTENT_FILTER
-                )
-                "tool_calls" -> EmptyResponseFallback(
-                    "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models.",
-                    isError = true,
-                    outcome = TOOL_CALL_NO_FOLLOW_UP
-                )
-                else -> EmptyResponseFallback(
-                    "Hermes returned no text. Try again or switch models.",
-                    isError = true,
-                    outcome = EMPTY
-                )
+                "length" ->
+                    EmptyResponseFallback(
+                        "Hermes hit its reply length cap before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
+                        isError = true,
+                        outcome = LENGTH_CAP,
+                    )
+                "content_filter" ->
+                    EmptyResponseFallback(
+                        "Hermes blocked this reply for content safety. Try rewording the prompt or switch models.",
+                        isError = true,
+                        outcome = CONTENT_FILTER,
+                    )
+                "tool_calls" ->
+                    EmptyResponseFallback(
+                        "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models.",
+                        isError = true,
+                        outcome = TOOL_CALL_NO_FOLLOW_UP,
+                    )
+                else ->
+                    EmptyResponseFallback(
+                        "Hermes returned no text. Try again or switch models.",
+                        isError = true,
+                        outcome = EMPTY,
+                    )
             }
         }
     }
@@ -135,5 +139,5 @@ enum class HermesChatMessageOutcome(val rawValue: String) {
 data class EmptyResponseFallback(
     val text: String,
     val isError: Boolean,
-    val outcome: HermesChatMessageOutcome
+    val outcome: HermesChatMessageOutcome,
 )

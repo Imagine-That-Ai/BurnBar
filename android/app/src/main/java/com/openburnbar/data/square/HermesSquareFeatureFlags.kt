@@ -11,8 +11,9 @@ import androidx.compose.runtime.setValue
 // own flag persisted to a SharedPreferences file keyed by `square.feature.<name>`.
 
 class HermesSquareFeatureFlags private constructor(context: Context) {
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs =
+        context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     // Hermes Square is now the default Assistants surface. Each phase
     // defaults to **true** on a fresh install; existing installs that
@@ -31,18 +32,23 @@ class HermesSquareFeatureFlags private constructor(context: Context) {
         phaseD = true
     }
 
-    private fun mutableStatePref(key: String, defaultValue: Boolean = false) =
-        object : kotlin.properties.ReadWriteProperty<Any?, Boolean> {
-            private var cached = mutableStateOf(
-                if (prefs.contains(key)) prefs.getBoolean(key, defaultValue)
-                else defaultValue.also { prefs.edit().putBoolean(key, defaultValue).apply() }
+    private fun mutableStatePref(key: String, defaultValue: Boolean = false) = object : kotlin.properties.ReadWriteProperty<Any?, Boolean> {
+        private var cached =
+            mutableStateOf(
+                if (prefs.contains(key)) {
+                    prefs.getBoolean(key, defaultValue)
+                } else {
+                    defaultValue.also { prefs.edit().putBoolean(key, defaultValue).apply() }
+                },
             )
-            override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>): Boolean = cached.value
-            override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Boolean) {
-                cached.value = value
-                prefs.edit().putBoolean(key, value).apply()
-            }
+
+        override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>): Boolean = cached.value
+
+        override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Boolean) {
+            cached.value = value
+            prefs.edit().putBoolean(key, value).apply()
         }
+    }
 
     companion object {
         private const val PREFS_NAME = "square_feature_flags"
@@ -54,9 +60,8 @@ class HermesSquareFeatureFlags private constructor(context: Context) {
         @Volatile
         private var instance: HermesSquareFeatureFlags? = null
 
-        fun shared(context: Context): HermesSquareFeatureFlags =
-            instance ?: synchronized(this) {
-                instance ?: HermesSquareFeatureFlags(context.applicationContext).also { instance = it }
-            }
+        fun shared(context: Context): HermesSquareFeatureFlags = instance ?: synchronized(this) {
+            instance ?: HermesSquareFeatureFlags(context.applicationContext).also { instance = it }
+        }
     }
 }

@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.media
 
 import android.app.Activity
@@ -16,13 +19,13 @@ import android.util.Rational
  * without leaking activity references.
  */
 class ScreenSharePiPController(private val activity: Activity) {
-
     fun enterPipIfPossible(aspectRatio: Rational = Rational(16, 9)): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         return try {
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(aspectRatio)
-                .build()
+            val params =
+                PictureInPictureParams.Builder()
+                    .setAspectRatio(aspectRatio)
+                    .build()
             activity.enterPictureInPictureMode(params)
         } catch (_: IllegalStateException) {
             false

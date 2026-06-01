@@ -15,28 +15,30 @@ class SystemPermissionSenderTest {
     @Test
     fun sendWritesSignedSystemPermissionFrame() = runBlocking {
         val frames = mutableListOf<HermesRealtimeRelayFrame>()
-        val sender = PhoneControlSender(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            peerNodeId = "android-phone-1",
-            privateKeySeedProvider = { privateSeed },
-            counterStore = InMemoryPhoneControlCounterStore(),
-            nowMillis = { 1_700_000_000_123L },
-            frameSink = { frames += it },
-        )
+        val sender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = "android-phone-1",
+                privateKeySeedProvider = { privateSeed },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_123L },
+                frameSink = { frames += it },
+            )
 
-        val signedWire = sender.send(
-            PhoneControlSystemPermissionRequest(
-                requestId = "req-1",
-                kind = PhoneControlSystemPermissionKind.SCREEN_RECORDING,
-                action = PhoneControlSystemPermissionAction.PROMPT_AND_OPEN_SETTINGS,
-                bundleId = null,
-                originatingToolCallId = "tool-call-1",
-                originatingToolName = "screencapture",
-                clientIntentId = "intent-1",
-                requestedAtMillis = 1_700_000_000_000L,
-            ),
-        )
+        val signedWire =
+            sender.send(
+                PhoneControlSystemPermissionRequest(
+                    requestId = "req-1",
+                    kind = PhoneControlSystemPermissionKind.SCREEN_RECORDING,
+                    action = PhoneControlSystemPermissionAction.PROMPT_AND_OPEN_SETTINGS,
+                    bundleId = null,
+                    originatingToolCallId = "tool-call-1",
+                    originatingToolName = "screencapture",
+                    clientIntentId = "intent-1",
+                    requestedAtMillis = 1_700_000_000_000L,
+                ),
+            )
 
         assertEquals(1, frames.size)
         val frame = frames.single()

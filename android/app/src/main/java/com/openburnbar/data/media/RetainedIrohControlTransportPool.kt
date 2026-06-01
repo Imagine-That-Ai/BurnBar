@@ -25,12 +25,13 @@ internal class RetainedIrohControlTransportPool(
     }
 
     suspend fun shutdown() {
-        val stale = lock.withLock {
-            val current = transport
-            transport = null
-            relayURL = null
-            current
-        }
+        val stale =
+            lock.withLock {
+                val current = transport
+                transport = null
+                relayURL = null
+                current
+            }
         stale?.shutdown()
     }
 

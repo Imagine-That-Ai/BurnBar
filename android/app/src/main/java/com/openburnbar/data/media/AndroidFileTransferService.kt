@@ -1,5 +1,6 @@
 package com.openburnbar.data.media
 
+import java.io.IOException
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
@@ -10,15 +11,15 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.IrohEndpointIdentity
+import java.io.File
+import java.io.FileOutputStream
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
-import java.io.File
-import java.io.FileOutputStream
 
 /**
  * Android-side file transfer driver. 1:1 port of `iOSFileTransferService`
@@ -49,10 +50,15 @@ class AndroidFileTransferService(
 ) {
     sealed class Failure(message: String) : RuntimeException(message) {
         object BackendUnavailable : Failure("Mercury file transfer is unavailable on this build.")
+
         data class FileMissing(val path: String) : Failure("File missing: $path")
+
         data class PublishFailed(val detail: String) : Failure("Publish failed: $detail")
+
         data class FetchFailed(val detail: String) : Failure("Fetch failed: $detail")
+
         object DispatchUnavailable : Failure("No active iroh stream is available.")
+
         object SettingDisabled : Failure("media_blob_transfer_enabled is off.")
     }
 
@@ -110,11 +116,12 @@ class AndroidFileTransferService(
         var reason: String? = null
         try {
             val (destination, _) = service.fetch(ticketText = ticket, manifest = manifest)
-            _lastReceivedAttachment.value = ReceivedAttachment(
-                id = manifest.manifestId,
-                manifest = manifest,
-                destinationFile = destination,
-            )
+            _lastReceivedAttachment.value =
+                ReceivedAttachment(
+                    id = manifest.manifestId,
+                    manifest = manifest,
+                    destinationFile = destination,
+                )
             analytics?.transferCompleted(
                 sizeBytes = manifest.size,
                 durationSeconds = 0.0,
@@ -125,7 +132,7 @@ class AndroidFileTransferService(
             reason = err.message
             _lastError.value = Failure.FetchFailed(reason ?: "")
             analytics?.transferFailed(sizeBytes = manifest.size, failureCode = err.javaClass.simpleName)
-        } catch (err: Throwable) {
+        } catch (err: IOException) {
             status = HermesRealtimeRelayMediaAck.Status.REJECTED
             reason = err.message
             _lastError.value = Failure.FetchFailed(reason ?: "")
@@ -134,21 +141,24 @@ class AndroidFileTransferService(
             bumpInFlight(-1)
         }
 
-        val ack = HermesRealtimeRelayMediaAck(
-            manifestId = manifest.manifestId,
-            status = status,
-            reason = reason,
-        )
-        val ackFrame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_BLOB_ACK,
-            uid = frame.uid,
-            connectionId = frame.connectionId,
-            requestId = manifest.manifestId,
-            media = HermesRealtimeRelayMediaPayload(
-                streamClass = MediaStreamClass.BLOB_ADVERTISE.raw,
-                ack = ack,
-            ),
-        )
+        val ack =
+            HermesRealtimeRelayMediaAck(
+                manifestId = manifest.manifestId,
+                status = status,
+                reason = reason,
+            )
+        val ackFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_BLOB_ACK,
+                uid = frame.uid,
+                connectionId = frame.connectionId,
+                requestId = manifest.manifestId,
+                media =
+                HermesRealtimeRelayMediaPayload(
+                    streamClass = MediaStreamClass.BLOB_ADVERTISE.raw,
+                    ack = ack,
+                ),
+            )
         runCatching { ackSender.send(ackFrame) }
     }
 
@@ -168,57 +178,81 @@ class AndroidFileTransferService(
         advertiseSender: AdvertiseSender? = null,
     ): HermesRealtimeRelayAttachmentManifest {
         if (!settingsProvider()) throw Failure.SettingDisabled
-        val cached = materializeUriToCache(uri)
-            ?: throw Failure.FileMissing(uri.toString())
+        val cached =
+            materializeUriToCache(uri)
+                ?: throw Failure.FileMissing(uri.toString())
 
         bumpInFlight(+1)
         try {
-            val publish = try {
-                service.publish(localFile = cached, peerDeviceID = peerDeviceID)
-            } catch (err: MediaFileTransferService.ServiceError) {
-                val failure = Failure.PublishFailed(err.message ?: err.javaClass.simpleName)
-                _lastError.value = failure
-                throw failure
-            }
-
-            val frame = HermesRealtimeRelayFrame(
-                type = HermesRealtimeRelayFrameType.MEDIA_BLOB_ADVERTISE,
+            val publish = publishCachedFile(cached, peerDeviceID)
+            emitAdvertiseFrame(
+                publish = publish,
                 uid = uid,
-                connectionId = connectionID,
-                requestId = publish.manifest.manifestId,
-                media = HermesRealtimeRelayMediaPayload(
-                    streamClass = MediaStreamClass.BLOB_ADVERTISE.raw,
-                    attachment = publish.manifest,
-                    blobTicket = publish.ticketText,
-                ),
+                connectionID = connectionID,
+                advertiseSender = advertiseSender,
             )
-
-            try {
-                when {
-                    advertiseSender != null -> advertiseSender.send(frame)
-                    else -> {
-                        val coordinator = mutex.withLock { controlCoordinator }
-                            ?: run {
-                                _lastError.value = Failure.DispatchUnavailable
-                                throw Failure.DispatchUnavailable
-                            }
-                        coordinator.send(frame)
-                    }
-                }
-            } catch (failure: Failure) {
-                throw failure
-            } catch (err: Throwable) {
-                val failure = Failure.PublishFailed("advertise emit: ${err.message ?: err.javaClass.simpleName}")
-                _lastError.value = failure
-                throw failure
-            }
-
             _lastSentManifestID.value = publish.manifest.manifestId
             return publish.manifest
         } finally {
             bumpInFlight(-1)
         }
     }
+
+    private suspend fun publishCachedFile(cached: File, peerDeviceID: String?): MediaFileTransferService.PublishResult {
+        return try {
+            service.publish(localFile = cached, peerDeviceID = peerDeviceID)
+        } catch (err: MediaFileTransferService.ServiceError) {
+            val failure = Failure.PublishFailed(err.message ?: err.javaClass.simpleName)
+            _lastError.value = failure
+            throw failure
+        }
+    }
+
+    private suspend fun emitAdvertiseFrame(
+        publish: MediaFileTransferService.PublishResult,
+        uid: String,
+        connectionID: String,
+        advertiseSender: AdvertiseSender?,
+    ) {
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_BLOB_ADVERTISE,
+                uid = uid,
+                connectionId = connectionID,
+                requestId = publish.manifest.manifestId,
+                media =
+                HermesRealtimeRelayMediaPayload(
+                    streamClass = MediaStreamClass.BLOB_ADVERTISE.raw,
+                    attachment = publish.manifest,
+                    blobTicket = publish.ticketText,
+                ),
+            )
+
+        try {
+            if (advertiseSender != null) {
+                advertiseSender.send(frame)
+            } else {
+                requireControlCoordinator().send(frame)
+            }
+        } catch (err: Failure) {
+            throw err
+        } catch (err: IOException) {
+            throw mapAdvertiseEmitError(err)
+        }
+    }
+
+    private fun mapAdvertiseEmitError(err: IOException): Throwable {
+        val failure = Failure.PublishFailed("advertise emit: ${err.message ?: err.javaClass.simpleName}")
+        _lastError.value = failure
+        return failure
+    }
+
+    private suspend fun requireControlCoordinator(): MediaControlStreamCoordinator =
+        mutex.withLock { controlCoordinator }
+            ?: run {
+                _lastError.value = Failure.DispatchUnavailable
+                throw Failure.DispatchUnavailable
+            }
 
     private fun bumpInFlight(delta: Int) {
         _inFlightCount.value = (_inFlightCount.value + delta).coerceAtLeast(0)
@@ -247,7 +281,9 @@ class AndroidFileTransferService(
                 if (cursor.moveToFirst()) {
                     val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (idx >= 0) cursor.getString(idx) else null
-                } else null
+                } else {
+                    null
+                }
             }
         }.getOrNull()
     }

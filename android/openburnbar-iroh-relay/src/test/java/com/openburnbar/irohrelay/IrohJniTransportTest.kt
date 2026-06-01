@@ -7,39 +7,44 @@ import org.junit.Test
 
 class IrohJniTransportTest {
     @Test
-    fun startRetriesTransientHomeRelayBootstrapFailure() = runTest {
-        val backend = FakeBackend(failuresBeforeSuccess = 2)
-        val transport = IrohJniTransport(
-            backend = backend,
-            secretProvider = { IrohSecretKeyMaterial(ByteArray(32) { 1 }) },
-            relayURLProvider = { "https://relay.openburnbar.test/" },
-        )
+    fun startRetriesTransientHomeRelayBootstrapFailure() =
+        runTest {
+            val backend = FakeBackend(failuresBeforeSuccess = 2)
+            val transport =
+                IrohJniTransport(
+                    backend = backend,
+                    secretProvider = { IrohSecretKeyMaterial(ByteArray(32) { 1 }) },
+                    relayURLProvider = { "https://relay.openburnbar.test/" },
+                )
 
-        val identity = transport.start()
+            val identity = transport.start()
 
-        assertEquals("fake-node", identity.nodeId)
-        assertEquals(3, backend.bootstrapCalls)
-    }
+            assertEquals("fake-node", identity.nodeId)
+            assertEquals(3, backend.bootstrapCalls)
+        }
 
     @Test
-    fun startDoesNotRetryNonBootstrapRuntimeFailure() = runTest {
-        val backend = FakeBackend(
-            failuresBeforeSuccess = 1,
-            failure = IrohBackendError.RuntimeFailed("invalid runtime state"),
-        )
-        val transport = IrohJniTransport(
-            backend = backend,
-            secretProvider = { IrohSecretKeyMaterial(ByteArray(32) { 1 }) },
-        )
+    fun startDoesNotRetryNonBootstrapRuntimeFailure() =
+        runTest {
+            val backend =
+                FakeBackend(
+                    failuresBeforeSuccess = 1,
+                    failure = IrohBackendError.RuntimeFailed("invalid runtime state"),
+                )
+            val transport =
+                IrohJniTransport(
+                    backend = backend,
+                    secretProvider = { IrohSecretKeyMaterial(ByteArray(32) { 1 }) },
+                )
 
-        try {
-            transport.start()
-            fail("Expected start() to surface a stream rejection")
-        } catch (_: IrohRelayTransportError.StreamRejected) {
-            // expected
+            try {
+                transport.start()
+                fail("Expected start() to surface a stream rejection")
+            } catch (_: IrohRelayTransportError.StreamRejected) {
+                // expected
+            }
+            assertEquals(1, backend.bootstrapCalls)
         }
-        assertEquals(1, backend.bootstrapCalls)
-    }
 
     private class FakeBackend(
         private val failuresBeforeSuccess: Int,
@@ -48,7 +53,10 @@ class IrohJniTransportTest {
     ) : IrohEndpointBackend {
         var bootstrapCalls = 0
 
-        override suspend fun bootstrap(secret: ByteArray, relayURL: String?): IrohEndpointIdentity {
+        override suspend fun bootstrap(
+            secret: ByteArray,
+            relayURL: String?,
+        ): IrohEndpointIdentity {
             bootstrapCalls += 1
             if (bootstrapCalls <= failuresBeforeSuccess) throw failure
             return IrohEndpointIdentity(
@@ -58,10 +66,12 @@ class IrohJniTransportTest {
             )
         }
 
-        override suspend fun identity(): IrohEndpointIdentity =
-            IrohEndpointIdentity("fake-node", ByteArray(32) { 2 })
+        override suspend fun identity(): IrohEndpointIdentity = IrohEndpointIdentity("fake-node", ByteArray(32) { 2 })
 
-        override suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohBackendStream {
+        override suspend fun connect(
+            target: IrohDialTarget,
+            timeoutMillis: Long,
+        ): IrohBackendStream {
             throw IrohBackendError.ConnectFailed("unused")
         }
 

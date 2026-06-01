@@ -20,7 +20,6 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class CallHUDViewTest {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
