@@ -123,3 +123,34 @@ export async function revokeRemoteMcpClient(db: Firestore, uid: string, clientId
   }
   await batch.commit();
 }
+
+export async function revokeAllRemoteMcpGrantsForUser(
+  db: Firestore,
+  uid: string,
+  reason = "cloud_feature_suspension",
+): Promise<{ clientsRevoked: number; grantsRevoked: number }> {
+  const now = Timestamp.now();
+  const batch = db.batch();
+  let writes = 0;
+
+  const clients = await db.collection(`users/${uid}/remote_mcp_clients`).limit(500).get();
+  let clientsRevoked = 0;
+  for (const client of clients.docs) {
+    if (client.get("revokedAt")) continue;
+    batch.set(client.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
+    clientsRevoked += 1;
+    writes += 1;
+  }
+
+  const grants = await db.collection(`users/${uid}/remote_mcp_grants`).limit(500).get();
+  let grantsRevoked = 0;
+  for (const grant of grants.docs) {
+    if (grant.get("revokedAt")) continue;
+    batch.set(grant.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
+    grantsRevoked += 1;
+    writes += 1;
+  }
+
+  if (writes > 0) await batch.commit();
+  return { clientsRevoked, grantsRevoked };
+}

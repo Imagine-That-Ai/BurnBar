@@ -9,6 +9,7 @@ import { db } from "./adminRuntime.js";
 import { getConfig } from "./config.js";
 import { enforceAuthAndAppCheck } from "./auth.js";
 import { wrapCallableHandler } from "./logging.js";
+import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
 import {
   allowanceDocPath,
   CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
@@ -202,6 +203,7 @@ export const reserveAgentControlActionBudget = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before reserving Agent Control budget.");
     enforceAuthAndAppCheck(request, uid);
+    await assertCloudFeatureNotSuspended(db, uid, "hosted_agent_control");
     await assertActiveBurnBarCloudProEntitlement(uid);
     const sessionId = boundedTrimmedString(request.data.sessionId, "sessionId", 256, true);
     const reservationId = boundedTrimmedString(request.data.reservationId, "reservationId", 256, false);
@@ -226,6 +228,7 @@ export const reserveFlooRelayBudget = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before reserving Floo relay budget.");
     enforceAuthAndAppCheck(request, uid);
+    await assertCloudFeatureNotSuspended(db, uid, "floo_relay");
     await assertActiveBurnBarCloudProEntitlement(uid);
     const sessionId = boundedTrimmedString(request.data.sessionId, "sessionId", 256, true);
     const reservationId = boundedTrimmedString(request.data.reservationId, "reservationId", 256, false);
