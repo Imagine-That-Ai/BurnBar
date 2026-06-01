@@ -1449,7 +1449,7 @@ mod tests {
         assert!(!raw.contains("clipboard secret text"));
 
         let head = report.head_hash_hex.unwrap();
-        std::fs::write(path, raw.replace("control_authorized", "control_denied")).unwrap();
+        std::fs::write(path, raw.replace("ControlAuthorized", "ControlDenied")).unwrap();
         let report = sink.validate(Some(&head)).unwrap();
         assert!(!report.is_valid);
     }
