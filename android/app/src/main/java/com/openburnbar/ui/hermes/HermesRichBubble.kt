@@ -1,13 +1,13 @@
 package com.openburnbar.ui.hermes
 
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -37,6 +37,7 @@ import com.openburnbar.ui.theme.AuroraColors
 // `Text(text)` so the latest chunk is always painted without waiting on
 // parse / layout.
 
+@Suppress("UnusedParameter")
 @Composable
 fun HermesRichBubble(
     text: String,
@@ -47,7 +48,7 @@ fun HermesRichBubble(
     mentionColor: Color = AuroraColors.hermesAureate,
     codeColor: Color = MaterialTheme.colorScheme.onSurface,
     codeBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
-    onAtomTap: ((HermesAtom) -> Unit)? = null
+    onAtomTap: ((HermesAtom) -> Unit)? = null,
 ) {
     // Streaming path — plain text only. We avoid re-parsing every
     // character to keep the bubble fluid; the parser kicks in once the
@@ -58,25 +59,27 @@ fun HermesRichBubble(
             text = text,
             color = baseColor,
             fontSize = baseSize.sp,
-            modifier = modifier
+            modifier = modifier,
         )
         return
     }
 
     val runs = remember(text) { HermesAtomParser.parse(text) }
-    val inlineContent = remember(text, baseSize) {
-        buildInlineContentMap(runs, baseSize, onAtomTap)
-    }
-    val annotated = remember(text, mentionColor, codeColor, baseColor) {
-        buildAnnotated(runs, mentionColor, codeColor, baseColor)
-    }
+    val inlineContent =
+        remember(text, baseSize) {
+            buildInlineContentMap(runs, baseSize, onAtomTap)
+        }
+    val annotated =
+        remember(text, mentionColor, codeColor, baseColor) {
+            buildAnnotated(runs, mentionColor, codeColor, baseColor)
+        }
     Text(
         text = annotated,
         color = baseColor,
         fontSize = baseSize.sp,
         lineHeight = (baseSize * 1.36f).sp,
         inlineContent = inlineContent,
-        modifier = modifier
+        modifier = modifier,
     )
 }
 
@@ -86,27 +89,18 @@ fun HermesRichBubble(
  * use the typed atom callback above.
  */
 @Composable
-fun HermesRichBubble(
-    text: String,
-    onAtomClick: (String, String) -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun HermesRichBubble(text: String, onAtomClick: (String, String) -> Unit, modifier: Modifier = Modifier) {
     HermesRichBubble(
         text = text,
         modifier = modifier,
         onAtomTap = { atom ->
             val url = com.openburnbar.data.hermes.HermesAtomURL.encode(atom)
             onAtomClick(atom.fallbackLabel, url)
-        }
+        },
     )
 }
 
-private fun buildAnnotated(
-    runs: List<HermesAtomRun>,
-    mentionColor: Color,
-    codeColor: Color,
-    baseColor: Color
-): AnnotatedString = buildAnnotatedString {
+private fun buildAnnotated(runs: List<HermesAtomRun>, mentionColor: Color, codeColor: Color, baseColor: Color): AnnotatedString = buildAnnotatedString {
     for ((index, run) in runs.withIndex()) {
         when (run) {
             is HermesAtomRun.Text -> {
@@ -118,8 +112,8 @@ private fun buildAnnotated(
                 withStyle(
                     SpanStyle(
                         color = mentionColor,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                        fontWeight = FontWeight.SemiBold,
+                    ),
                 ) {
                     append(run.handle)
                 }
@@ -129,8 +123,8 @@ private fun buildAnnotated(
                     SpanStyle(
                         color = codeColor,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium
-                    )
+                        fontWeight = FontWeight.Medium,
+                    ),
                 ) {
                     append(run.code)
                 }
@@ -142,23 +136,18 @@ private fun buildAnnotated(
     }
 }
 
-private fun buildInlineContentMap(
-    runs: List<HermesAtomRun>,
-    baseSize: Float,
-    onAtomTap: ((HermesAtom) -> Unit)?
-): Map<String, InlineTextContent> {
+private fun buildInlineContentMap(runs: List<HermesAtomRun>, baseSize: Float, onAtomTap: ((HermesAtom) -> Unit)?): Map<String, InlineTextContent> {
     val out = mutableMapOf<String, InlineTextContent>()
     for ((index, run) in runs.withIndex()) {
         if (run is HermesAtomRun.Atom) {
-            out["atom-$index"] = hermesAtomInlineTextContent(
-                atom = run.atom,
-                label = run.label,
-                baseSize = baseSize,
-                onTap = onAtomTap
-            )
+            out["atom-$index"] =
+                hermesAtomInlineTextContent(
+                    atom = run.atom,
+                    label = run.label,
+                    baseSize = baseSize,
+                    onTap = onAtomTap,
+                )
         }
     }
     return out
 }
-
-

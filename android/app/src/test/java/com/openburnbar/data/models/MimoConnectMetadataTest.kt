@@ -9,15 +9,15 @@ class MimoConnectMetadataTest {
     fun tokenPlanProfileIdIncludesRegion() {
         assertEquals(
             "mimo.token-plan.sgp",
-            MimoEndpointProfiles.tokenPlanProfileId(MimoEndpointRegion.SGP)
+            MimoEndpointProfiles.tokenPlanProfileId(MimoEndpointRegion.SGP),
         )
         assertEquals(
             "mimo.token-plan.cn",
-            MimoEndpointProfiles.tokenPlanProfileId(MimoEndpointRegion.CN)
+            MimoEndpointProfiles.tokenPlanProfileId(MimoEndpointRegion.CN),
         )
         assertEquals(
             "mimo.token-plan.ams",
-            MimoEndpointProfiles.tokenPlanProfileId(MimoEndpointRegion.AMS)
+            MimoEndpointProfiles.tokenPlanProfileId(MimoEndpointRegion.AMS),
         )
     }
 
@@ -25,11 +25,11 @@ class MimoConnectMetadataTest {
     fun resolveAuthMethodIdFromKeyPrefix() {
         assertEquals(
             MimoEndpointProfiles.AUTH_TOKEN_PLAN,
-            MimoEndpointProfiles.resolveAuthMethodId("tp-test-key")
+            MimoEndpointProfiles.resolveAuthMethodId("tp-test-key"),
         )
         assertEquals(
             MimoEndpointProfiles.AUTH_PAYG,
-            MimoEndpointProfiles.resolveAuthMethodId("sk-test-key")
+            MimoEndpointProfiles.resolveAuthMethodId("sk-test-key"),
         )
         assertNull(MimoEndpointProfiles.resolveAuthMethodId("unknown-key"))
     }

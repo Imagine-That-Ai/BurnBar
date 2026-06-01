@@ -1,17 +1,19 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.hermes.relay
 
+import com.openburnbar.test.requireClassLoaderResourceText
 import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.PrivateKey
+import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
-import java.security.spec.ECPoint
 import java.security.spec.ECPrivateKeySpec
 import java.security.spec.ECPublicKeySpec
-import java.security.spec.X509EncodedKeySpec
-import java.security.AlgorithmParameters
-import java.security.spec.ECGenParameterSpec
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -19,8 +21,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import com.openburnbar.test.ecPublicKey
-import com.openburnbar.test.requireClassLoaderResourceText
+
+private const val VAL_32 = 32
+private const val VAL_65 = 65
 
 /**
  * Cross-platform wire-format contract test. Pins the Android relay
@@ -36,7 +39,6 @@ import com.openburnbar.test.requireClassLoaderResourceText
  *        android/app/src/test/resources/hermes-relay/HermesRelayWireVector.json
  */
 class HermesRelayWireVectorTest {
-
     @Before
     fun stubAndroidBase64() {
         mockkStatic(android.util.Base64::class)
@@ -54,10 +56,11 @@ class HermesRelayWireVectorTest {
     }
 
     private val fixture: JSONObject by lazy {
-        val raw = requireClassLoaderResourceText(
-            javaClass.classLoader,
-            "hermes-relay/HermesRelayWireVector.json",
-        )
+        val raw =
+            requireClassLoaderResourceText(
+                javaClass.classLoader,
+                "hermes-relay/HermesRelayWireVector.json",
+            )
         JSONObject(raw)
     }
 
@@ -95,11 +98,12 @@ class HermesRelayWireVectorTest {
         val cid = fixture.getString("connectionId")
         val rid = fixture.getString("requestId")
         val privateKey = recipientPrivateKey()
-        val symKey = HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKeyBase64 = fixture.getString("wrappedKey"),
-            privateKey = privateKey,
-            aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
-        )
+        val symKey =
+            HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKeyBase64 = fixture.getString("wrappedKey"),
+                privateKey = privateKey,
+                aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
+            )
         val expected = java.util.Base64.getDecoder().decode(fixture.getString("symmetricKey"))
         assertArrayEquals(expected, symKey)
     }
@@ -110,16 +114,18 @@ class HermesRelayWireVectorTest {
         val cid = fixture.getString("connectionId")
         val rid = fixture.getString("requestId")
         val privateKey = recipientPrivateKey()
-        val symKey = HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKeyBase64 = fixture.getString("wrappedKey"),
-            privateKey = privateKey,
-            aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
-        )
-        val plain = HermesRelayCrypto.openBase64(
-            ciphertext = fixture.getString("payloadCiphertext"),
-            keyData = symKey,
-            aad = HermesRelayCrypto.requestAAD(uid, cid, rid),
-        )
+        val symKey =
+            HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKeyBase64 = fixture.getString("wrappedKey"),
+                privateKey = privateKey,
+                aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
+            )
+        val plain =
+            HermesRelayCrypto.openBase64(
+                ciphertext = fixture.getString("payloadCiphertext"),
+                keyData = symKey,
+                aad = HermesRelayCrypto.requestAAD(uid, cid, rid),
+            )
         val decoded = JSONObject(String(plain, Charsets.UTF_8))
         assertEquals(fixture.getString("plaintextPath"), decoded.getString("path"))
         assertEquals(fixture.getString("plaintextSessionId"), decoded.getString("sessionId"))
@@ -132,21 +138,26 @@ class HermesRelayWireVectorTest {
         val cid = fixture.getString("connectionId")
         val rid = fixture.getString("requestId")
         val privateKey = recipientPrivateKey()
-        val symKey = HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKeyBase64 = fixture.getString("wrappedKey"),
-            privateKey = privateKey,
-            aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
-        )
-        val chunkAad = HermesRelayCrypto.chunkAAD(
-            uid, cid, rid,
-            sequence = fixture.getInt("chunkSequence"),
-            kind = fixture.getString("chunkKind"),
-        )
-        val plain = HermesRelayCrypto.openBase64(
-            ciphertext = fixture.getString("chunkCiphertext"),
-            keyData = symKey,
-            aad = chunkAad,
-        )
+        val symKey =
+            HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKeyBase64 = fixture.getString("wrappedKey"),
+                privateKey = privateKey,
+                aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
+            )
+        val chunkAad =
+            HermesRelayCrypto.chunkAAD(
+                uid,
+                cid,
+                rid,
+                sequence = fixture.getInt("chunkSequence"),
+                kind = fixture.getString("chunkKind"),
+            )
+        val plain =
+            HermesRelayCrypto.openBase64(
+                ciphertext = fixture.getString("chunkCiphertext"),
+                keyData = symKey,
+                aad = chunkAad,
+            )
         assertEquals(fixture.getString("chunkPlaintext"), String(plain, Charsets.UTF_8))
     }
 
@@ -156,20 +167,22 @@ class HermesRelayWireVectorTest {
         val cid = fixture.getString("connectionId")
         val rid = fixture.getString("requestId")
         val privateKey = recipientPrivateKey()
-        val symKey = HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKeyBase64 = fixture.getString("wrappedKey"),
-            privateKey = privateKey,
-            aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
-        )
+        val symKey =
+            HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKeyBase64 = fixture.getString("wrappedKey"),
+                privateKey = privateKey,
+                aad = HermesRelayCrypto.keyAAD(uid, cid, rid),
+            )
 
         // Re-seal a different chunk with the same key. Self round-trip
         // proves the symmetric key is still valid after unwrapping.
         val chunkAad = HermesRelayCrypto.chunkAAD(uid, cid, rid, sequence = 1, kind = "sse")
-        val reSealed = HermesRelayCrypto.sealToBase64(
-            "data: reply from android".toByteArray(Charsets.UTF_8),
-            symKey,
-            chunkAad,
-        )
+        val reSealed =
+            HermesRelayCrypto.sealToBase64(
+                "data: reply from android".toByteArray(Charsets.UTF_8),
+                symKey,
+                chunkAad,
+            )
         val openedBack = HermesRelayCrypto.openBase64(reSealed, symKey, chunkAad)
         assertEquals("data: reply from android", String(openedBack, Charsets.UTF_8))
     }
@@ -183,27 +196,30 @@ class HermesRelayWireVectorTest {
      */
     private fun recipientPrivateKey(): PrivateKey {
         val raw = java.util.Base64.getDecoder().decode(fixture.getString("recipientPrivateKey"))
-        assertEquals("recipient private key must be 32 bytes", 32, raw.size)
+        assertEquals("recipient private key must be 32 bytes", VAL_32, raw.size)
         val s = java.math.BigInteger(1, raw)
-        val params = AlgorithmParameters.getInstance("EC").apply {
-            init(ECGenParameterSpec("secp256r1"))
-        }
+        val params =
+            AlgorithmParameters.getInstance("EC").apply {
+                init(ECGenParameterSpec("secp256r1"))
+            }
         val ecParams = params.getParameterSpec(ECParameterSpec::class.java)
         val kf = KeyFactory.getInstance("EC")
         val priv = kf.generatePrivate(ECPrivateKeySpec(s, ecParams))
         // Self-check: derive the public key and confirm it matches the
         // X9.63 representation in the fixture.
         val expectedPub = java.util.Base64.getDecoder().decode(fixture.getString("recipientPublicKey"))
-        val derived = HermesRelayCrypto.decodeUncompressedPublicKey(expectedPub)
-            as? java.security.interfaces.ECPublicKey
-            ?: error("Expected EC public key from decoded bytes")
-        assertEquals(65, expectedPub.size)
+        val derived =
+            HermesRelayCryptoEc.decodeUncompressedPublicKey(expectedPub)
+                as? java.security.interfaces.ECPublicKey
+                ?: error("Expected EC public key from decoded bytes")
+        assertEquals(VAL_65, expectedPub.size)
         assertTrue("derived pub matches encoded shape", derived.w != null)
         // ECPoint round-trip sanity.
-        val pubFromSpec = kf.generatePublic(
-            ECPublicKeySpec(derived.w, ecParams),
-        ) as? java.security.interfaces.ECPublicKey
-            ?: error("Expected EC public key from key spec")
+        val pubFromSpec =
+            kf.generatePublic(
+                ECPublicKeySpec(derived.w, ecParams),
+            ) as? java.security.interfaces.ECPublicKey
+                ?: error("Expected EC public key from key spec")
         assertEquals(pubFromSpec.w.affineX, derived.w.affineX)
         return priv
     }

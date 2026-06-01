@@ -11,6 +11,12 @@ import androidx.core.app.NotificationCompat
 import com.openburnbar.MainActivity
 import com.openburnbar.data.db.BudgetRuleEntity
 
+private const val VAL_24 = 24
+private const val VAL_30 = 30
+private const val VAL_365 = 365
+private const val VAL_60 = 60
+private const val VAL_7 = 7
+
 class BudgetNotificationCenter(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "burnbar_budget"
@@ -20,15 +26,16 @@ class BudgetNotificationCenter(private val context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.notificationManager() ?: return
             if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Budget Alerts",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Budget limit warnings and hard blocks"
-                enableVibration(true)
-                setShowBadge(true)
-            }
+            val channel =
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Budget Alerts",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Budget limit warnings and hard blocks"
+                    enableVibration(true)
+                    setShowBadge(true)
+                }
             nm.createNotificationChannel(channel)
         }
     }
@@ -40,12 +47,13 @@ class BudgetNotificationCenter(private val context: Context) {
         val lastWarningTime = prefs.getLong(rulePeriodKey, 0L)
         val now = System.currentTimeMillis()
 
-        val periodDurationMs = when (rule.period) {
-            "day" -> 24 * 60 * 60 * 1000L
-            "week" -> 7 * 24 * 60 * 60 * 1000L
-            "month" -> 30 * 24 * 60 * 60 * 1000L
-            else -> 365 * 24 * 60 * 60 * 1000L
-        }
+        val periodDurationMs =
+            when (rule.period) {
+                "day" -> VAL_24 * VAL_60 * VAL_60 * 1000L
+                "week" -> VAL_7 * VAL_24 * VAL_60 * VAL_60 * 1000L
+                "month" -> VAL_30 * VAL_24 * VAL_60 * VAL_60 * 1000L
+                else -> VAL_365 * VAL_24 * VAL_60 * VAL_60 * 1000L
+            }
 
         if (now - lastWarningTime < periodDurationMs) {
             return
@@ -56,7 +64,7 @@ class BudgetNotificationCenter(private val context: Context) {
         sendNotification(
             notificationId = rule.id.hashCode() + 1,
             title = "Budget warning: ${rule.toModel().displayLabel}",
-            text = "Approaching limit. Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)}."
+            text = "Approaching limit. Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)}.",
         )
     }
 
@@ -64,40 +72,42 @@ class BudgetNotificationCenter(private val context: Context) {
         sendNotification(
             notificationId = rule.id.hashCode() + 2,
             title = "Budget BLOCKED: ${rule.toModel().displayLabel}",
-            text = "Limit exceeded! Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)}."
+            text = "Limit exceeded! Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)}.",
         )
     }
 
     private fun sendNotification(notificationId: Int, title: String, text: String) {
         ensureChannel(context)
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            data = Uri.parse("burnbar://settings/budget")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
+        val intent =
+            Intent(context, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = Uri.parse("burnbar://settings/budget")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
 
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent =
+            PendingIntent.getActivity(
+                context,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+        val builder =
+            NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
 
         val nm = context.notificationManager() ?: return
         nm.notify(notificationId, builder.build())
     }
 }
 
-private fun Context.notificationManager(): NotificationManager? =
-    getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+private fun Context.notificationManager(): NotificationManager? = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

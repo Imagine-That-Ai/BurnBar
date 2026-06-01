@@ -1,6 +1,7 @@
 package com.openburnbar.data.widget
 
 import android.content.Context
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,7 +13,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.io.File
 
 /**
  * File-backed atomic persistence for the widget snapshot. Mirrors iOS's App
@@ -24,13 +24,17 @@ import java.io.File
  * file and we don't want write contention.
  */
 object BurnBarWidgetSnapshotStore {
-
     private val _snapshot = MutableStateFlow<BurnBarWidgetSnapshot?>(null)
     val snapshot: StateFlow<BurnBarWidgetSnapshot?> = _snapshot.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
+
     @Volatile private var bound = false
 
     /** One-time hydration at app start (or first widget bind). Safe to call repeatedly. */

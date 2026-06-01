@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.hermes.AssistantRuntimeID
@@ -9,7 +12,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatTilePreferencesTest {
-
     @Test
     fun `default tile set matches iOS`() {
         val prefs = ChatTilePreferences.DEFAULT
@@ -31,11 +33,12 @@ class ChatTilePreferencesTest {
 
     @Test
     fun `JSON round-trip preserves enabled sets`() {
-        val original = ChatTilePreferences(
-            enabledTiles = setOf(AssistantRuntimeID.HERMES, AssistantRuntimeID.CODEX, AssistantRuntimeID.OPEN_CLAW),
-            enabledHermesSubProviders = setOf(HermesSubProvider.CODEX, HermesSubProvider.CLAUDE, HermesSubProvider.OLLAMA),
-            selectedHermesModelOverride = "kimi-k2"
-        )
+        val original =
+            ChatTilePreferences(
+                enabledTiles = setOf(AssistantRuntimeID.HERMES, AssistantRuntimeID.CODEX, AssistantRuntimeID.OPEN_CLAW),
+                enabledHermesSubProviders = setOf(HermesSubProvider.CODEX, HermesSubProvider.CLAUDE, HermesSubProvider.OLLAMA),
+                selectedHermesModelOverride = "kimi-k2",
+            )
         val json = original.toJsonString()
         val decoded = ChatTilePreferences.fromJsonString(json)
         assertEquals(original.enabledTiles, decoded.enabledTiles)
@@ -104,13 +107,14 @@ class ChatTilePreferencesTest {
 
     @Test
     fun `ordered visible tiles preserve enum order`() {
-        val prefs = ChatTilePreferences(
-            enabledTiles = setOf(AssistantRuntimeID.OPEN_CLAW, AssistantRuntimeID.HERMES, AssistantRuntimeID.CODEX),
-            enabledHermesSubProviders = emptySet()
-        )
+        val prefs =
+            ChatTilePreferences(
+                enabledTiles = setOf(AssistantRuntimeID.OPEN_CLAW, AssistantRuntimeID.HERMES, AssistantRuntimeID.CODEX),
+                enabledHermesSubProviders = emptySet(),
+            )
         assertEquals(
             listOf(AssistantRuntimeID.HERMES, AssistantRuntimeID.CODEX, AssistantRuntimeID.OPEN_CLAW),
-            prefs.orderedVisibleTiles()
+            prefs.orderedVisibleTiles(),
         )
     }
 }

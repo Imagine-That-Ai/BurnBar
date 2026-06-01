@@ -13,9 +13,8 @@ object SuppressionStore {
 
     fun allowed(context: Context): Boolean = !suppressed(context)
 
-    fun suppressed(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SUPPRESSED, false)
+    fun suppressed(context: Context): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getBoolean(KEY_SUPPRESSED, false)
 
     fun setSuppressed(context: Context, value: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

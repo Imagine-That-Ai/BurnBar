@@ -17,12 +17,13 @@ class IrohRelayFrameCodec(
      * payload would exceed `maxFrameBytes`.
      */
     fun encode(frame: HermesRealtimeRelayFrame): ByteArray {
-        val payload = HermesRealtimeRelayJson
-            .encodeToString(HermesRealtimeRelayFrame.serializer(), frame)
-            .toByteArray(Charsets.UTF_8)
+        val payload =
+            HermesRealtimeRelayJson
+                .encodeToString(HermesRealtimeRelayFrame.serializer(), frame)
+                .toByteArray(Charsets.UTF_8)
         if (payload.size > maxFrameBytes) {
             throw IrohRelayTransportError.StreamRejected(
-                "iroh relay frame is ${payload.size} bytes, exceeds $maxFrameBytes."
+                "iroh relay frame is ${payload.size} bytes, exceeds $maxFrameBytes.",
             )
         }
         val envelope = ByteArray(payload.size + IrohRelayProtocol.WireFormat.LENGTH_PREFIX_BYTES)
@@ -45,7 +46,7 @@ class IrohRelayFrameCodec(
         val length = ByteBuffer.wrap(envelope, 0, prefix).order(ByteOrder.BIG_ENDIAN).int
         if (length < 0 || length > maxFrameBytes) {
             throw IrohRelayTransportError.StreamRejected(
-                "iroh relay inbound frame is $length bytes, exceeds $maxFrameBytes."
+                "iroh relay inbound frame is $length bytes, exceeds $maxFrameBytes.",
             )
         }
         val totalBytes = prefix + length
@@ -54,10 +55,11 @@ class IrohRelayFrameCodec(
         }
         val payload = envelope.copyOfRange(prefix, totalBytes)
         return try {
-            val frame = HermesRealtimeRelayJson.decodeFromString(
-                HermesRealtimeRelayFrame.serializer(),
-                payload.toString(Charsets.UTF_8),
-            )
+            val frame =
+                HermesRealtimeRelayJson.decodeFromString(
+                    HermesRealtimeRelayFrame.serializer(),
+                    payload.toString(Charsets.UTF_8),
+                )
             DecodedFrame(frame, totalBytes)
         } catch (t: Throwable) {
             throw IrohRelayTransportError.DecodeFailed(t.message ?: t.javaClass.simpleName)

@@ -1,11 +1,13 @@
-package com.openburnbar.ui.components
+@file:Suppress("MagicNumber")
+// generated-by: scripts/generate-swarm-background (bitmap coordinate tables)
 
-import android.content.Context
+package com.openburnbar.ui.components
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.PowerManager
+import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -14,8 +16,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -25,21 +29,13 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.drawscope.Stroke
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.logoRes
+import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
+import com.openburnbar.ui.settings.rememberSwarmSparkles
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import com.openburnbar.ui.theme.LocalUIMode
 import com.openburnbar.ui.theme.UIMode
-import com.openburnbar.ui.settings.rememberSwarmSparkles
-import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
-import kotlinx.coroutines.android.awaitFrame
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -47,6 +43,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
+import kotlinx.coroutines.android.awaitFrame
 
 /**
  * The active, reconverging token-ember swarm from burnbar.ai, ported to Compose.
@@ -66,7 +63,7 @@ fun SwarmBackground(
     paletteName: String = "System",
     isAvatarEnabled: Boolean = true,
     isBrandTextEnabled: Boolean = true,
-    excludeBrandShapes: Boolean = false
+    excludeBrandShapes: Boolean = false,
 ) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val context = LocalContext.current
@@ -79,20 +76,21 @@ fun SwarmBackground(
 
     val uiMode = LocalUIMode.current
     val selectedProviderGlyphs = enabledProviderGlyphs ?: AgentProvider.swarmGlyphProviders.toSet()
-    val simulation = remember(particleCount, pace, selectedProviderGlyphs, actualExcludeBrandShapes, uiMode) {
-        SwarmSimulation(
-            particleCount = particleCount,
-            pace = pace,
-            context = context.applicationContext,
-            enabledProviderGlyphs = selectedProviderGlyphs,
-            excludeBrandShapes = actualExcludeBrandShapes,
-            uiMode = uiMode
-        )
-    }.apply {
-        this.isAvatarEnabled = isAvatarEnabled
-        this.isBrandTextEnabled = isBrandTextEnabled
-        this.paletteName = paletteName
-    }
+    val simulation =
+        remember(particleCount, pace, selectedProviderGlyphs, actualExcludeBrandShapes, uiMode) {
+            SwarmSimulation(
+                particleCount = particleCount,
+                pace = pace,
+                context = context.applicationContext,
+                enabledProviderGlyphs = selectedProviderGlyphs,
+                excludeBrandShapes = actualExcludeBrandShapes,
+                uiMode = uiMode,
+            )
+        }.apply {
+            this.isAvatarEnabled = isAvatarEnabled
+            this.isBrandTextEnabled = isBrandTextEnabled
+            this.paletteName = paletteName
+        }
 
     var pointer by remember { mutableStateOf<Offset?>(null) }
     var version by remember { mutableStateOf(0) }
@@ -101,12 +99,13 @@ fun SwarmBackground(
         while (!reduceMotion) {
             awaitFrame()
             simulation.advance(System.nanoTime(), pointer)
-            version++  // trigger recomposition for the Canvas
+            version++ // trigger recomposition for the Canvas
         }
     }
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxSize()
             // Match app appearance so cards stay coherent over the swarm.
             .background(if (isDark) Color(0xFF050508) else Color(0xFFF3EFE7))
@@ -114,7 +113,7 @@ fun SwarmBackground(
                 detectDragGestures(
                     onDragStart = { pointer = it },
                     onDragEnd = { pointer = null },
-                    onDragCancel = { pointer = null }
+                    onDragCancel = { pointer = null },
                 ) { change, _ ->
                     pointer = change.position
                 }
@@ -125,14 +124,15 @@ fun SwarmBackground(
                         pointer = it
                         tryAwaitRelease()
                         pointer = null
-                    }
+                    },
                 )
-            }
+            },
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             // `version` read inside an enclosing snapshot — read once so Canvas
             // recomposes each frame.
-            @Suppress("UNUSED_VARIABLE") val tick = version
+            @Suppress("UNUSED_VARIABLE")
+            val tick = version
 
             simulation.ensureBounds(size)
 
@@ -161,7 +161,7 @@ fun SwarmBackground(
                 drawCircle(
                     color = color,
                     radius = r.toFloat(),
-                    center = Offset(p.x.toFloat(), p.y.toFloat())
+                    center = Offset(p.x.toFloat(), p.y.toFloat()),
                 )
 
                 if (isSparkling) {
@@ -170,14 +170,14 @@ fun SwarmBackground(
                     drawCircle(
                         color = Color.White.copy(alpha = (sparkleIntensity * 0.55).toFloat()),
                         radius = sr.toFloat(),
-                        center = Offset(p.x.toFloat(), p.y.toFloat())
+                        center = Offset(p.x.toFloat(), p.y.toFloat()),
                     )
                     // Draw outer subtle glow halo
                     val glowR = r * 0.75
                     drawCircle(
                         color = Color.White.copy(alpha = (sparkleIntensity * 0.15).toFloat()),
                         radius = glowR.toFloat(),
-                        center = Offset(p.x.toFloat(), p.y.toFloat())
+                        center = Offset(p.x.toFloat(), p.y.toFloat()),
                     )
                 }
             }
@@ -217,7 +217,7 @@ internal class SwarmSimulation(
     enabledProviderGlyphs: Set<AgentProvider> = AgentProvider.swarmGlyphProviders.toSet(),
     val excludeBrandShapes: Boolean = false,
     val uiMode: UIMode = UIMode.STANDARD,
-    private val clockNanos: () -> Long = System::nanoTime
+    private val clockNanos: () -> Long = System::nanoTime,
 ) {
     private val appContext = context?.applicationContext
 
@@ -230,12 +230,14 @@ internal class SwarmSimulation(
         SHAPE_COOKING_5,
         SHAPE_XAI_LOGO,
         SHAPE_GROK_LOGO,
-        SHAPE_PROVIDER_LOGOS
+        SHAPE_PROVIDER_LOGOS,
     }
 
     class Particle(
-        var x: Double, var y: Double,
-        var vx: Double, var vy: Double,
+        var x: Double,
+        var y: Double,
+        var vx: Double,
+        var vy: Double,
         var size: Double,
         var isGlyph: Boolean,
         val glyph: String,
@@ -246,7 +248,7 @@ internal class SwarmSimulation(
         var ty: Double? = null,
         var role: String? = null,
         var logoColor: Color? = null,
-        var flowProgress: Double = 0.0
+        var flowProgress: Double = 0.0,
     )
 
     data class ShapePoint(
@@ -254,18 +256,18 @@ internal class SwarmSimulation(
         val y: Double,
         val role: String?,
         val progress: Double,
-        val color: Color? = null
+        val color: Color? = null,
     )
 
     private data class ProviderLogoSpec(
         val provider: AgentProvider,
-        val points: List<ShapePoint>
+        val points: List<ShapePoint>,
     )
 
     private data class ProviderLogoSlot(
         val centerX: Double,
         val centerY: Double,
-        val scale: Double
+        val scale: Double,
     )
 
     // Pace constants — mirror the website.
@@ -411,23 +413,28 @@ internal class SwarmSimulation(
             "code" -> activeModes = listOf(Mode.SHAPE_CODE)
             "rings" -> activeModes = listOf(Mode.SHAPE_RINGS)
             "router" -> activeModes = listOf(Mode.SHAPE_ROUTER_FLOW)
-            "xai" -> activeModes = if (enabledProviderLogos.contains(AgentProvider.XAI)) {
-                listOf(Mode.SHAPE_XAI_LOGO)
-            } else {
-                listOf(Mode.SWARM)
-            }
-            "grok" -> activeModes = if (enabledProviderLogos.contains(AgentProvider.XAI)) {
-                listOf(Mode.SHAPE_GROK_LOGO)
-            } else {
-                listOf(Mode.SWARM)
-            }
+            "xai" ->
+                activeModes =
+                    if (enabledProviderLogos.contains(AgentProvider.XAI)) {
+                        listOf(Mode.SHAPE_XAI_LOGO)
+                    } else {
+                        listOf(Mode.SWARM)
+                    }
+            "grok" ->
+                activeModes =
+                    if (enabledProviderLogos.contains(AgentProvider.XAI)) {
+                        listOf(Mode.SHAPE_GROK_LOGO)
+                    } else {
+                        listOf(Mode.SWARM)
+                    }
             "providers" -> {
                 providerLogoBatchIndex = 0
-                activeModes = if (providerLogoBatches.isEmpty()) {
-                    listOf(Mode.SWARM)
-                } else {
-                    List(providerLogoBatches.size) { Mode.SHAPE_PROVIDER_LOGOS }
-                }
+                activeModes =
+                    if (providerLogoBatches.isEmpty()) {
+                        listOf(Mode.SWARM)
+                    } else {
+                        List(providerLogoBatches.size) { Mode.SHAPE_PROVIDER_LOGOS }
+                    }
             }
             "all" -> activeModes = defaultModes()
             else -> activeModes = defaultModes()
@@ -438,8 +445,7 @@ internal class SwarmSimulation(
         nextCycleAtNanos = nowNanos + cycleIntervalNanos
     }
 
-    private fun normalizeProviderGlyphs(providers: Set<AgentProvider>): List<AgentProvider> =
-        providerLogoShowcase.filter { providers.contains(it) }
+    private fun normalizeProviderGlyphs(providers: Set<AgentProvider>): List<AgentProvider> = providerLogoShowcase.filter { providers.contains(it) }
 
     fun ensureBounds(size: Size) {
         if (size == bounds) return
@@ -496,13 +502,7 @@ internal class SwarmSimulation(
         lastTickNanos = nowNanos
     }
 
-    private fun stepParticle(
-        i: Int,
-        width: Double,
-        height: Double,
-        pointerX: Double?,
-        pointerY: Double?
-    ) {
+    private fun stepParticle(i: Int, width: Double, height: Double, pointerX: Double?, pointerY: Double?) {
         val p = particles[i]
         val noiseX = sin(p.y * 0.005 + flowTime * 2) * cos(p.x * 0.003 + flowTime)
         val noiseY = cos(p.x * 0.005 + flowTime * 3) * sin(p.y * 0.003 + flowTime * 2)
@@ -554,21 +554,23 @@ internal class SwarmSimulation(
                             p.ty = centerY + (sin(angle) * 0.08) * scale
                         }
                         role.startsWith("target-") -> {
-                            val tgtY = when (role) {
-                                "target-1" -> -0.28
-                                "target-3" -> 0.28
-                                else -> 0.0
-                            }
+                            val tgtY =
+                                when (role) {
+                                    "target-1" -> -0.28
+                                    "target-3" -> 0.28
+                                    else -> 0.0
+                                }
                             val angle = p.colorIndex * PI * 2 + flowTime * 12
                             p.tx = centerX + (0.45 + cos(angle) * 0.05) * scale
                             p.ty = centerY + (tgtY + sin(angle) * 0.05) * scale
                         }
                         role.startsWith("path-") -> {
-                            val tgtY = when (role) {
-                                "path-1" -> -0.28
-                                "path-3" -> 0.28
-                                else -> 0.0
-                            }
+                            val tgtY =
+                                when (role) {
+                                    "path-1" -> -0.28
+                                    "path-3" -> 0.28
+                                    else -> 0.0
+                                }
                             p.flowProgress += if (isEnergetic) 0.006 else 0.003
                             if (p.flowProgress > 1.0) p.flowProgress = 0.0
                             val t = p.flowProgress
@@ -627,7 +629,10 @@ internal class SwarmSimulation(
         shapeSettledAtNanos = null
         if (next == Mode.SWARM) {
             for (p in particles) {
-                p.tx = null; p.ty = null; p.role = null; p.logoColor = null
+                p.tx = null
+                p.ty = null
+                p.role = null
+                p.logoColor = null
             }
             return
         }
@@ -646,36 +651,40 @@ internal class SwarmSimulation(
                     assignMode(Mode.SWARM, assignedAtNanos)
                     return
                 }
-                val batch = providerLogoBatches
-                    .getOrNull(providerLogoBatchIndex % providerLogoBatches.size)
-                    ?: enabledProviderLogos
+                val batch =
+                    providerLogoBatches
+                        .getOrNull(providerLogoBatchIndex % providerLogoBatches.size)
+                        ?: enabledProviderLogos
                 providerLogoBatchIndex = (providerLogoBatchIndex + 1) % providerLogoBatches.size
-                assignProviderLogos(batch.map { provider ->
-                    ProviderLogoSpec(provider, providerLogoPoints(provider))
-                })
+                assignProviderLogos(
+                    batch.map { provider ->
+                        ProviderLogoSpec(provider, providerLogoPoints(provider))
+                    },
+                )
                 return
             }
             else -> Unit
         }
 
-        val pts: List<ShapePoint> = if (uiMode == UIMode.COOKING) {
-            when (next) {
-                Mode.SHAPE_DOLLAR -> appleSplinePoints
-                Mode.SHAPE_CODE -> cherrySplinePoints
-                Mode.SHAPE_RINGS -> bananaSplinePoints
-                Mode.SHAPE_ROUTER_FLOW -> cookieSplinePoints
-                Mode.SHAPE_COOKING_5 -> cupcakeSplinePoints
-                else -> emptyList()
+        val pts: List<ShapePoint> =
+            if (uiMode == UIMode.COOKING) {
+                when (next) {
+                    Mode.SHAPE_DOLLAR -> appleSplinePoints
+                    Mode.SHAPE_CODE -> cherrySplinePoints
+                    Mode.SHAPE_RINGS -> bananaSplinePoints
+                    Mode.SHAPE_ROUTER_FLOW -> cookieSplinePoints
+                    Mode.SHAPE_COOKING_5 -> cupcakeSplinePoints
+                    else -> emptyList()
+                }
+            } else {
+                when (next) {
+                    Mode.SHAPE_DOLLAR -> dollarPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
+                    Mode.SHAPE_CODE -> codePoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
+                    Mode.SHAPE_RINGS -> ringPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
+                    Mode.SHAPE_ROUTER_FLOW -> routerFlowPoints.map { ShapePoint(it.x, it.y, it.role, it.progress) }
+                    else -> emptyList()
+                }
             }
-        } else {
-            when (next) {
-                Mode.SHAPE_DOLLAR -> dollarPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
-                Mode.SHAPE_CODE -> codePoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
-                Mode.SHAPE_RINGS -> ringPoints.map { ShapePoint(it.first, it.second, null, Random.nextDouble()) }
-                Mode.SHAPE_ROUTER_FLOW -> routerFlowPoints.map { ShapePoint(it.x, it.y, it.role, it.progress) }
-                else -> emptyList()
-            }
-        }
 
         val width = bounds.width.toDouble()
         val height = bounds.height.toDouble()
@@ -685,16 +694,38 @@ internal class SwarmSimulation(
         if (width > 960) {
             // Wide layouts: shapes off to the side and high, clear of content.
             when (next) {
-                Mode.SHAPE_RINGS -> { centerX = width * 0.78; centerY = height * 0.30; scaleFactor = 0.50 }
-                Mode.SHAPE_ROUTER_FLOW -> { centerX = width * 0.5; centerY = height * 0.26; scaleFactor = 0.85 }
-                else -> { centerX = width * 0.74; centerY = height * 0.28; scaleFactor = 0.45 }
+                Mode.SHAPE_RINGS -> {
+                    centerX = width * 0.78
+                    centerY = height * 0.30
+                    scaleFactor = 0.50
+                }
+                Mode.SHAPE_ROUTER_FLOW -> {
+                    centerX = width * 0.5
+                    centerY = height * 0.26
+                    scaleFactor = 0.85
+                }
+                else -> {
+                    centerX = width * 0.74
+                    centerY = height * 0.28
+                    scaleFactor = 0.45
+                }
             }
         } else {
             // Phones: present shapes in the emptier upper band under the nav.
             when (next) {
-                Mode.SHAPE_RINGS -> { centerY = height * 0.24; scaleFactor = 0.48 }
-                Mode.SHAPE_ROUTER_FLOW -> { centerX = width * 0.5; centerY = height * 0.24; scaleFactor = 0.85 }
-                else -> { centerY = height * 0.22; scaleFactor = 0.45 }
+                Mode.SHAPE_RINGS -> {
+                    centerY = height * 0.24
+                    scaleFactor = 0.48
+                }
+                Mode.SHAPE_ROUTER_FLOW -> {
+                    centerX = width * 0.5
+                    centerY = height * 0.24
+                    scaleFactor = 0.85
+                }
+                else -> {
+                    centerY = height * 0.22
+                    scaleFactor = 0.45
+                }
             }
         }
         val scale = min(width, height) * scaleFactor
@@ -750,12 +781,13 @@ internal class SwarmSimulation(
                 val avatarCount = (group.size * 0.70).toInt()
                 for ((slot, particleIdx) in group.withIndex()) {
                     if (slot < avatarCount) {
-                        val pointIndex = if (avatarCount <= points.size) {
-                            val t = slot.toDouble() / (avatarCount - 1).coerceAtLeast(1).toDouble()
-                            ((points.size - 1) * t).toInt().coerceAtMost(points.size - 1)
-                        } else {
-                            slot % points.size
-                        }
+                        val pointIndex =
+                            if (avatarCount <= points.size) {
+                                val t = slot.toDouble() / (avatarCount - 1).coerceAtLeast(1).toDouble()
+                                ((points.size - 1) * t).toInt().coerceAtMost(points.size - 1)
+                            } else {
+                                slot % points.size
+                            }
                         val pt = points[pointIndex]
                         val role = pt.role ?: "logo-flame-inner"
                         particles[particleIdx].tx = logoSlot.centerX + pt.x * logoSlot.scale
@@ -767,12 +799,13 @@ internal class SwarmSimulation(
                     } else {
                         val textSlotIdx = slot - avatarCount
                         val textTotalCount = group.size - avatarCount
-                        val pointIndex = if (textTotalCount <= textPoints.size) {
-                            val t = textSlotIdx.toDouble() / (textTotalCount - 1).coerceAtLeast(1).toDouble()
-                            ((textPoints.size - 1) * t).toInt().coerceAtMost(textPoints.size - 1)
-                        } else {
-                            textSlotIdx % textPoints.size
-                        }
+                        val pointIndex =
+                            if (textTotalCount <= textPoints.size) {
+                                val t = textSlotIdx.toDouble() / (textTotalCount - 1).coerceAtLeast(1).toDouble()
+                                ((textPoints.size - 1) * t).toInt().coerceAtMost(textPoints.size - 1)
+                            } else {
+                                textSlotIdx % textPoints.size
+                            }
                         val pt = textPoints[pointIndex]
                         val role = pt.role ?: "logo-flame-inner"
 
@@ -791,12 +824,13 @@ internal class SwarmSimulation(
             } else if (drawText && !drawAvatar && visibleSpecs.size == 1) {
                 // Form ONLY bottom-left text logo badge
                 for ((slot, particleIdx) in group.withIndex()) {
-                    val pointIndex = if (group.size <= textPoints.size) {
-                        val t = slot.toDouble() / (group.size - 1).coerceAtLeast(1).toDouble()
-                        ((textPoints.size - 1) * t).toInt().coerceAtMost(textPoints.size - 1)
-                    } else {
-                        slot % textPoints.size
-                    }
+                    val pointIndex =
+                        if (group.size <= textPoints.size) {
+                            val t = slot.toDouble() / (group.size - 1).coerceAtLeast(1).toDouble()
+                            ((textPoints.size - 1) * t).toInt().coerceAtMost(textPoints.size - 1)
+                        } else {
+                            slot % textPoints.size
+                        }
                     val pt = textPoints[pointIndex]
                     val role = pt.role ?: "logo-flame-inner"
 
@@ -814,12 +848,13 @@ internal class SwarmSimulation(
             } else if (drawAvatar) {
                 // Form ONLY main central avatar logo
                 for ((slot, particleIdx) in group.withIndex()) {
-                    val pointIndex = if (group.size <= points.size) {
-                        val t = slot.toDouble() / (group.size - 1).coerceAtLeast(1).toDouble()
-                        ((points.size - 1) * t).toInt().coerceAtMost(points.size - 1)
-                    } else {
-                        slot % points.size
-                    }
+                    val pointIndex =
+                        if (group.size <= points.size) {
+                            val t = slot.toDouble() / (group.size - 1).coerceAtLeast(1).toDouble()
+                            ((points.size - 1) * t).toInt().coerceAtMost(points.size - 1)
+                        } else {
+                            slot % points.size
+                        }
                     val pt = points[pointIndex]
                     val role = pt.role ?: "logo-flame-inner"
                     particles[particleIdx].tx = logoSlot.centerX + pt.x * logoSlot.scale
@@ -862,8 +897,7 @@ internal class SwarmSimulation(
         return nowNanos < settledAt + SHAPE_ADMIRE_HOLD_NANOS
     }
 
-    private fun Mode.requiresSettledAdmireHold(): Boolean =
-        this != Mode.SWARM && this != Mode.SHAPE_ROUTER_FLOW
+    private fun Mode.requiresSettledAdmireHold(): Boolean = this != Mode.SWARM && this != Mode.SHAPE_ROUTER_FLOW
 
     private fun currentShapeIsSettled(): Boolean {
         // Tighten the threshold at slower speeds so particles must form a sharper,
@@ -907,16 +941,17 @@ internal class SwarmSimulation(
         }
 
         if (uiMode == UIMode.COOKING) {
-            val fruityColors = listOf(
-                Color(0xFFFF2A6D), // Dragonfruit Pink
-                Color(0xFFFF5E3A), // Tangerine Orange
-                Color(0xFFFFD700), // Honey Mango Yellow
-                Color(0xFF2ECC71), // Mint Basil Green
-                Color(0xFF00F5FF), // Electric Blueberry Blue
-                Color(0xFF9B59B6), // Fig Plum Purple
-                Color(0xFFFF1493), // Strawberry Pink
-                Color(0xFF7FFF00)  // Lime Kiwi Green
-            )
+            val fruityColors =
+                listOf(
+                    Color(0xFFFF2A6D), // Dragonfruit Pink
+                    Color(0xFFFF5E3A), // Tangerine Orange
+                    Color(0xFFFFD700), // Honey Mango Yellow
+                    Color(0xFF2ECC71), // Mint Basil Green
+                    Color(0xFF00F5FF), // Electric Blueberry Blue
+                    Color(0xFF9B59B6), // Fig Plum Purple
+                    Color(0xFFFF1493), // Strawberry Pink
+                    Color(0xFF7FFF00), // Lime Kiwi Green
+                )
             val idx = (p.colorIndex * fruityColors.size).toInt().coerceIn(0, fruityColors.size - 1)
             val baseColor = fruityColors[idx]
             return baseColor.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
@@ -937,21 +972,21 @@ internal class SwarmSimulation(
         when (paletteName) {
             "AuroraTeal", "Aurora" -> {
                 whimsy = if (isDark) Color(0xFF8B2DF2) else Color(0xFF7012C9)
-                ember  = if (isDark) Color(0xFF008080) else Color(0xFF006666)
-                amber  = if (isDark) Color(0xFF00F5FF) else Color(0xFF00C2CC)
-                blaze  = if (isDark) Color(0xFF00FF80) else Color(0xFF00CC66)
+                ember = if (isDark) Color(0xFF008080) else Color(0xFF006666)
+                amber = if (isDark) Color(0xFF00F5FF) else Color(0xFF00C2CC)
+                blaze = if (isDark) Color(0xFF00FF80) else Color(0xFF00CC66)
             }
             "Crimson", "SunsetCrimson" -> {
                 whimsy = if (isDark) Color(0xFF4A0082) else Color(0xFF380069)
-                ember  = if (isDark) Color(0xFFFF1493) else Color(0xFFCC0A75)
-                amber  = if (isDark) Color(0xFFFF4500) else Color(0xFFCC2E00)
-                blaze  = if (isDark) Color(0xFFB22222) else Color(0xFF8E1414)
+                ember = if (isDark) Color(0xFFFF1493) else Color(0xFFCC0A75)
+                amber = if (isDark) Color(0xFFFF4500) else Color(0xFFCC2E00)
+                blaze = if (isDark) Color(0xFFB22222) else Color(0xFF8E1414)
             }
             else -> {
                 whimsy = if (isDark) Color(0xFF8080FF) else Color(0xFF514DDB)
-                ember  = if (isDark) Color(0xFFFA6B06) else Color(0xFFCC4D00)
-                amber  = if (isDark) Color(0xFFFFA800) else Color(0xFFC78500)
-                blaze  = if (isDark) Color(0xFFEE1803) else Color(0xFFBD1200)
+                ember = if (isDark) Color(0xFFFA6B06) else Color(0xFFCC4D00)
+                amber = if (isDark) Color(0xFFFFA800) else Color(0xFFC78500)
+                blaze = if (isDark) Color(0xFFEE1803) else Color(0xFFBD1200)
             }
         }
 
@@ -973,25 +1008,28 @@ internal class SwarmSimulation(
     }
 
     private fun providerLogoColor(provider: AgentProvider, role: String, opacity: Float, isDark: Boolean): Color {
-        val brand = if (provider == AgentProvider.XAI && isDark) {
-            Color(0xFFECEFF4)
-        } else {
-            Color(provider.brandColor)
-        }
+        val brand =
+            if (provider == AgentProvider.XAI && isDark) {
+                Color(0xFFECEFF4)
+            } else {
+                Color(provider.brandColor)
+            }
         val accent = Color(provider.accentColor)
         val hot = blend(brand, Color.White, if (role == "logo-flame-inner") 0.28f else 0.16f)
         val shadow = blend(brand, if (isDark) Color.Black else Color.DarkGray, if (role == "logo-flame-outer") 0.34f else 0.18f)
         val spark = blend(accent, Color.White, 0.34f)
-        val color = when (role) {
-            "logo-flame-outer" -> blend(shadow, brand, 0.34f)
-            "logo-flame-spark" -> spark
-            else -> blend(brand, hot, 0.52f)
-        }
-        val alphaMultiplier = when (role) {
-            "logo-flame-outer" -> 1.44f
-            "logo-flame-spark" -> 1.72f
-            else -> 1.62f
-        }
+        val color =
+            when (role) {
+                "logo-flame-outer" -> blend(shadow, brand, 0.34f)
+                "logo-flame-spark" -> spark
+                else -> blend(brand, hot, 0.52f)
+            }
+        val alphaMultiplier =
+            when (role) {
+                "logo-flame-outer" -> 1.44f
+                "logo-flame-spark" -> 1.72f
+                else -> 1.62f
+            }
         return color.copy(alpha = (opacity * alphaMultiplier).coerceAtMost(1f))
     }
 
@@ -1019,7 +1057,7 @@ internal class SwarmSimulation(
             red = lhs.red * (1f - t) + rhs.red * t,
             green = lhs.green * (1f - t) + rhs.green * t,
             blue = lhs.blue * (1f - t) + rhs.blue * t,
-            alpha = 1f
+            alpha = 1f,
         )
     }
 
@@ -1034,7 +1072,7 @@ internal class SwarmSimulation(
             glyph = glyphs[Random.nextInt(glyphs.size)],
             colorIndex = Random.nextDouble(),
             baseOpacity = 0.16 + Random.nextDouble() * 0.20,
-            opacity = 0.16
+            opacity = 0.16,
         )
     }
 
@@ -1043,15 +1081,15 @@ internal class SwarmSimulation(
     private fun defaultModes(): List<Mode> = buildList {
         if (uiMode == UIMode.COOKING) {
             add(Mode.SWARM)
-            add(Mode.SHAPE_DOLLAR)       // Apple
+            add(Mode.SHAPE_DOLLAR) // Apple
             add(Mode.SWARM)
-            add(Mode.SHAPE_CODE)         // Cherry
+            add(Mode.SHAPE_CODE) // Cherry
             add(Mode.SWARM)
-            add(Mode.SHAPE_RINGS)        // Banana
+            add(Mode.SHAPE_RINGS) // Banana
             add(Mode.SWARM)
-            add(Mode.SHAPE_ROUTER_FLOW)  // Cookie
+            add(Mode.SHAPE_ROUTER_FLOW) // Cookie
             add(Mode.SWARM)
-            add(Mode.SHAPE_COOKING_5)    // Cupcake
+            add(Mode.SHAPE_COOKING_5) // Cupcake
         } else if (excludeBrandShapes) {
             add(Mode.SWARM)
             if (enabledProviderLogos.contains(AgentProvider.XAI)) {
@@ -1088,26 +1126,28 @@ internal class SwarmSimulation(
                 ProviderLogoSlot(
                     centerX = if (width > 960) width * 0.74 else width * 0.5,
                     centerY = if (width > 960) height * 0.30 else height * 0.24,
-                    scale = min(width, height) * 0.34
-                )
+                    scale = min(width, height) * 0.34,
+                ),
             )
         }
 
-        val maxColumns = when {
-            width >= 1320 -> 5
-            width >= 920 -> 4
-            else -> 2
-        }
+        val maxColumns =
+            when {
+                width >= 1320 -> 5
+                width >= 920 -> 4
+                else -> 2
+            }
         val columns = min(count, maxColumns)
         val rows = ceil(count.toDouble() / columns.toDouble()).toInt()
         val xStep = (width * 0.78 / (columns - 1).coerceAtLeast(1)).coerceIn(180.0, 300.0)
         val yStep = (height * 0.44 / (rows - 1).coerceAtLeast(1)).coerceIn(130.0, 210.0)
         val gridHeight = yStep * (rows - 1).coerceAtLeast(0)
         val gridCenterY = height * if (rows > 1) 0.40 else 0.34
-        val scale = min(
-            min(width, height) * 0.32,
-            (min(xStep, if (rows > 1) yStep else height * 0.32) * 0.72).coerceAtLeast(110.0)
-        )
+        val scale =
+            min(
+                min(width, height) * 0.32,
+                (min(xStep, if (rows > 1) yStep else height * 0.32) * 0.72).coerceAtLeast(110.0),
+            )
 
         return (0 until count).map { index ->
             val row = index / columns
@@ -1117,7 +1157,7 @@ internal class SwarmSimulation(
             ProviderLogoSlot(
                 centerX = width * 0.5 - rowWidth / 2.0 + xStep * column,
                 centerY = gridCenterY - gridHeight / 2.0 + yStep * row,
-                scale = scale
+                scale = scale,
             )
         }
     }
@@ -1126,13 +1166,14 @@ internal class SwarmSimulation(
         val side = 400
         val bmp = Bitmap.createBitmap(side, side, Bitmap.Config.ALPHA_8)
         val canvas = android.graphics.Canvas(bmp)
-        val paint = Paint().apply {
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            textSize = fontSize
-            textAlign = Paint.Align.CENTER
-            color = 0xFFFFFFFF.toInt()
-        }
+        val paint =
+            Paint().apply {
+                isAntiAlias = true
+                typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                textSize = fontSize
+                textAlign = Paint.Align.CENTER
+                color = 0xFFFFFFFF.toInt()
+            }
         val metrics = paint.fontMetrics
         val baseline = side / 2f - (metrics.ascent + metrics.descent) / 2f
         canvas.drawText(text, side / 2f, baseline, paint)
@@ -1150,7 +1191,7 @@ internal class SwarmSimulation(
                 if ((pixels[y * side + x] ushr 24) and 0xFF > 128) {
                     pts.add(
                         ((x - side / 2).toDouble() / (side / 2)) to
-                        ((y - side / 2).toDouble() / (side / 2))
+                            ((y - side / 2).toDouble() / (side / 2)),
                     )
                 }
                 x += gap
@@ -1175,18 +1216,20 @@ internal class SwarmSimulation(
                 val t = j.toDouble() / stepsPerSegment.toDouble()
                 val t2 = t * t
                 val t3 = t2 * t
-                val x = 0.5 * (
-                    2.0 * p1.first +
-                        (-p0.first + p2.first) * t +
-                        (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
-                        (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
-                    )
-                val y = 0.5 * (
-                    2.0 * p1.second +
-                        (-p0.second + p2.second) * t +
-                        (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
-                        (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
-                    )
+                val x =
+                    0.5 * (
+                        2.0 * p1.first +
+                            (-p0.first + p2.first) * t +
+                            (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
+                            (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
+                        )
+                val y =
+                    0.5 * (
+                        2.0 * p1.second +
+                            (-p0.second + p2.second) * t +
+                            (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
+                            (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
+                        )
                 pts.add(ShapePoint(x, y, role, (i * stepsPerSegment + j).toDouble() / (n * stepsPerSegment).toDouble()))
             }
         }
@@ -1199,7 +1242,7 @@ internal class SwarmSimulation(
         colorStart: Color,
         colorEnd: Color = colorStart,
         isClosed: Boolean = true,
-        role: String = "cooking"
+        role: String = "cooking",
     ): List<ShapePoint> {
         if (controlPoints.isEmpty()) return emptyList()
         val pts = ArrayList<ShapePoint>()
@@ -1216,18 +1259,20 @@ internal class SwarmSimulation(
                     val t = j.toDouble() / stepsPerSegment.toDouble()
                     val t2 = t * t
                     val t3 = t2 * t
-                    val x = 0.5 * (
-                        2.0 * p1.first +
-                        (-p0.first + p2.first) * t +
-                        (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
-                        (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
-                    )
-                    val y = 0.5 * (
-                        2.0 * p1.second +
-                        (-p0.second + p2.second) * t +
-                        (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
-                        (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
-                    )
+                    val x =
+                        0.5 * (
+                            2.0 * p1.first +
+                                (-p0.first + p2.first) * t +
+                                (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
+                                (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
+                            )
+                    val y =
+                        0.5 * (
+                            2.0 * p1.second +
+                                (-p0.second + p2.second) * t +
+                                (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
+                                (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
+                            )
                     val progress = (i * stepsPerSegment + j).toDouble() / (n * stepsPerSegment).toDouble()
                     val color = blend(colorStart, colorEnd, progress.toFloat())
                     pts.add(ShapePoint(x, y, role, progress, color))
@@ -1251,18 +1296,20 @@ internal class SwarmSimulation(
                     val t = j.toDouble() / stepsPerSegment.toDouble()
                     val t2 = t * t
                     val t3 = t2 * t
-                    val x = 0.5 * (
-                        2.0 * p1.first +
-                        (-p0.first + p2.first) * t +
-                        (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
-                        (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
-                    )
-                    val y = 0.5 * (
-                        2.0 * p1.second +
-                        (-p0.second + p2.second) * t +
-                        (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
-                        (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
-                    )
+                    val x =
+                        0.5 * (
+                            2.0 * p1.first +
+                                (-p0.first + p2.first) * t +
+                                (2.0 * p0.first - 5.0 * p1.first + 4.0 * p2.first - p3.first) * t2 +
+                                (-p0.first + 3.0 * p1.first - 3.0 * p2.first + p3.first) * t3
+                            )
+                    val y =
+                        0.5 * (
+                            2.0 * p1.second +
+                                (-p0.second + p2.second) * t +
+                                (2.0 * p0.second - 5.0 * p1.second + 4.0 * p2.second - p3.second) * t2 +
+                                (-p0.second + 3.0 * p1.second - 3.0 * p2.second + p3.second) * t3
+                            )
                     val progress = (i * stepsPerSegment + j).toDouble() / (segments * stepsPerSegment).toDouble()
                     val color = blend(colorStart, colorEnd, progress.toFloat())
                     pts.add(ShapePoint(x, y, role, progress, color))
@@ -1274,116 +1321,127 @@ internal class SwarmSimulation(
 
     private fun generateApplePoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
-        val bodyCtrls = listOf(
-            0.0 to -0.22,
-            0.18 to -0.42,
-            0.46 to -0.32,
-            0.56 to -0.06,
-            0.42 to 0.28,
-            0.16 to 0.44,
-            0.0 to 0.36,
-            -0.16 to 0.44,
-            -0.42 to 0.28,
-            -0.56 to -0.06,
-            -0.46 to -0.32,
-            -0.18 to -0.42
-        )
+        val bodyCtrls =
+            listOf(
+                0.0 to -0.22,
+                0.18 to -0.42,
+                0.46 to -0.32,
+                0.56 to -0.06,
+                0.42 to 0.28,
+                0.16 to 0.44,
+                0.0 to 0.36,
+                -0.16 to 0.44,
+                -0.42 to 0.28,
+                -0.56 to -0.06,
+                -0.46 to -0.32,
+                -0.18 to -0.42,
+            )
         pts.addAll(generateSpline(bodyCtrls, 30, Color(0xFFFF2A6D), Color(0xFFFF5E3A), isClosed = true))
 
-        val stemCtrls = listOf(
-            0.0 to -0.25,
-            0.02 to -0.38,
-            0.08 to -0.50,
-            0.15 to -0.58
-        )
+        val stemCtrls =
+            listOf(
+                0.0 to -0.25,
+                0.02 to -0.38,
+                0.08 to -0.50,
+                0.15 to -0.58,
+            )
         pts.addAll(generateSpline(stemCtrls, 15, Color(0xFF8E5A32), Color(0xFF5C4033), isClosed = false))
 
-        val leafCtrls = listOf(
-            0.06 to -0.46,
-            0.18 to -0.58,
-            0.32 to -0.58,
-            0.18 to -0.42
-        )
+        val leafCtrls =
+            listOf(
+                0.06 to -0.46,
+                0.18 to -0.58,
+                0.32 to -0.58,
+                0.18 to -0.42,
+            )
         pts.addAll(generateSpline(leafCtrls, 20, Color(0xFF2ECC71), Color(0xFF7FFF00), isClosed = true))
         return pts
     }
 
     private fun generateCherryPoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
-        val leftCherryCtrls = listOf(
-            -0.25 to 0.06,
-            -0.13 to 0.12,
-            -0.08 to 0.22,
-            -0.14 to 0.32,
-            -0.25 to 0.38,
-            -0.36 to 0.32,
-            -0.42 to 0.22,
-            -0.36 to 0.12
-        )
+        val leftCherryCtrls =
+            listOf(
+                -0.25 to 0.06,
+                -0.13 to 0.12,
+                -0.08 to 0.22,
+                -0.14 to 0.32,
+                -0.25 to 0.38,
+                -0.36 to 0.32,
+                -0.42 to 0.22,
+                -0.36 to 0.12,
+            )
         pts.addAll(generateSpline(leftCherryCtrls, 25, Color(0xFFFF1493), Color(0xFFFF2A6D), isClosed = true))
 
-        val rightCherryCtrls = listOf(
-            0.22 to 0.14,
-            0.33 to 0.20,
-            0.38 to 0.30,
-            0.32 to 0.40,
-            0.22 to 0.46,
-            0.12 to 0.40,
-            0.06 to 0.30,
-            0.12 to 0.20
-        )
+        val rightCherryCtrls =
+            listOf(
+                0.22 to 0.14,
+                0.33 to 0.20,
+                0.38 to 0.30,
+                0.32 to 0.40,
+                0.22 to 0.46,
+                0.12 to 0.40,
+                0.06 to 0.30,
+                0.12 to 0.20,
+            )
         pts.addAll(generateSpline(rightCherryCtrls, 25, Color(0xFFFF2A6D), Color(0xFF9B59B6), isClosed = true))
 
-        val leftStemCtrls = listOf(
-            0.0 to -0.32,
-            -0.05 to -0.18,
-            -0.15 to -0.05,
-            -0.25 to 0.08
-        )
+        val leftStemCtrls =
+            listOf(
+                0.0 to -0.32,
+                -0.05 to -0.18,
+                -0.15 to -0.05,
+                -0.25 to 0.08,
+            )
         pts.addAll(generateSpline(leftStemCtrls, 15, Color(0xFF2ECC71), Color(0xFF27AE60), isClosed = false))
 
-        val rightStemCtrls = listOf(
-            0.0 to -0.32,
-            0.08 to -0.15,
-            0.16 to 0.0,
-            0.22 to 0.16
-        )
+        val rightStemCtrls =
+            listOf(
+                0.0 to -0.32,
+                0.08 to -0.15,
+                0.16 to 0.0,
+                0.22 to 0.16,
+            )
         pts.addAll(generateSpline(rightStemCtrls, 15, Color(0xFF2ECC71), Color(0xFF27AE60), isClosed = false))
 
-        val leafCtrls = listOf(
-            0.0 to -0.32,
-            0.12 to -0.45,
-            0.28 to -0.48,
-            0.15 to -0.30
-        )
+        val leafCtrls =
+            listOf(
+                0.0 to -0.32,
+                0.12 to -0.45,
+                0.28 to -0.48,
+                0.15 to -0.30,
+            )
         pts.addAll(generateSpline(leafCtrls, 20, Color(0xFF7FFF00), Color(0xFF2ECC71), isClosed = true))
         return pts
     }
 
     private fun generateBananaPoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
-        val bananaCtrls = listOf(
-            0.15 to -0.48,
-            0.18 to -0.38,
-            0.05 to -0.15,
-            -0.12 to 0.08,
-            -0.22 to 0.30,
-            -0.24 to 0.40,
-            -0.16 to 0.34,
-            0.02 to 0.12,
-            0.16 to -0.15,
-            0.08 to -0.42
-        )
+        val bananaCtrls =
+            listOf(
+                0.15 to -0.48,
+                0.18 to -0.38,
+                0.05 to -0.15,
+                -0.12 to 0.08,
+                -0.22 to 0.30,
+                -0.24 to 0.40,
+                -0.16 to 0.34,
+                0.02 to 0.12,
+                0.16 to -0.15,
+                0.08 to -0.42,
+            )
         val splinePoints = generateSpline(bananaCtrls, 45, Color(0xFFFFD700), Color(0xFFFF5E3A), isClosed = true)
-        val texturedPoints = splinePoints.map { pt ->
-            val color = when {
-                pt.progress < 0.18 -> Color(0xFF5C4033)
-                pt.progress < 0.28 -> Color(0xFF7FFF00)
-                pt.progress < 0.85 -> Color(0xFFFFD700)
-                else -> Color(0xFF2C3E50)
+        val texturedPoints =
+            splinePoints.map { pt ->
+                val color =
+                    when {
+                        pt.progress < 0.18 -> Color(0xFF5C4033)
+                        pt.progress < 0.28 -> Color(0xFF7FFF00)
+                        pt.progress < 0.85 -> Color(0xFFFFD700)
+                        else -> Color(0xFF2C3E50)
+                    }
+                pt.copy(color = color)
             }
-            pt.copy(color = color)
-        }
         pts.addAll(texturedPoints)
         return pts
     }
@@ -1400,20 +1458,22 @@ internal class SwarmSimulation(
         }
         pts.addAll(generateSpline(baseCtrls, 30, Color(0xFFE5A96A), Color(0xFFC68B59), isClosed = true))
 
-        val chipCenters = listOf(
-            -0.15 to -0.15,
-            0.18 to -0.10,
-            0.05 to 0.18,
-            -0.18 to 0.12,
-            0.0 to -0.28
-        )
-        for ((cx, cy) in chipCenters) {
-            val chipCtrls = listOf(
-                cx - 0.04 to cy,
-                cx to cy - 0.03,
-                cx + 0.05 to cy,
-                cx to cy + 0.04
+        val chipCenters =
+            listOf(
+                -0.15 to -0.15,
+                0.18 to -0.10,
+                0.05 to 0.18,
+                -0.18 to 0.12,
+                0.0 to -0.28,
             )
+        for ((cx, cy) in chipCenters) {
+            val chipCtrls =
+                listOf(
+                    cx - 0.04 to cy,
+                    cx to cy - 0.03,
+                    cx + 0.05 to cy,
+                    cx to cy + 0.04,
+                )
             pts.addAll(generateSpline(chipCtrls, 8, Color(0xFF3D2723), Color(0xFF1E1610), isClosed = true))
         }
         return pts
@@ -1421,63 +1481,69 @@ internal class SwarmSimulation(
 
     private fun generateCupcakePoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
-        val linerCtrls = listOf(
-            -0.30 to 0.35,
-            0.30 to 0.35,
-            0.36 to 0.05,
-            -0.36 to 0.05
-        )
+        val linerCtrls =
+            listOf(
+                -0.30 to 0.35,
+                0.30 to 0.35,
+                0.36 to 0.05,
+                -0.36 to 0.05,
+            )
         pts.addAll(generateSpline(linerCtrls, 40, Color(0xFF5DADE2), Color(0xFF3498DB), isClosed = true))
 
         val pleatsX = listOf(-0.2, -0.1, 0.0, 0.1, 0.2)
         for (px in pleatsX) {
             val startX = px * 0.9
             val endX = px * 1.05
-            val pleatCtrls = listOf(
-                startX to 0.35,
-                (startX + endX) * 0.5 to 0.20,
-                endX to 0.05
-            )
+            val pleatCtrls =
+                listOf(
+                    startX to 0.35,
+                    (startX + endX) * 0.5 to 0.20,
+                    endX to 0.05,
+                )
             pts.addAll(generateSpline(pleatCtrls, 12, Color(0xFF2E86C1), Color(0xFF5DADE2), isClosed = false))
         }
 
-        val frostingCtrls = listOf(
-            -0.38 to 0.05,
-            -0.36 to -0.10,
-            -0.28 to -0.15,
-            -0.25 to -0.28,
-            -0.14 to -0.32,
-            0.0 to -0.45,
-            0.14 to -0.32,
-            0.25 to -0.28,
-            0.28 to -0.15,
-            0.36 to -0.10,
-            0.38 to 0.05,
-            0.0 to 0.08
-        )
+        val frostingCtrls =
+            listOf(
+                -0.38 to 0.05,
+                -0.36 to -0.10,
+                -0.28 to -0.15,
+                -0.25 to -0.28,
+                -0.14 to -0.32,
+                0.0 to -0.45,
+                0.14 to -0.32,
+                0.25 to -0.28,
+                0.28 to -0.15,
+                0.36 to -0.10,
+                0.38 to 0.05,
+                0.0 to 0.08,
+            )
         pts.addAll(generateSpline(frostingCtrls, 25, Color(0xFF8E44AD), Color(0xFFFFB7B2), isClosed = true))
 
-        val cherryCtrls = listOf(
-            0.0 to -0.46,
-            0.05 to -0.51,
-            0.0 to -0.56,
-            -0.05 to -0.51
-        )
+        val cherryCtrls =
+            listOf(
+                0.0 to -0.46,
+                0.05 to -0.51,
+                0.0 to -0.56,
+                -0.05 to -0.51,
+            )
         pts.addAll(generateSpline(cherryCtrls, 12, Color(0xFFFF2A6D), Color(0xFFFF1493), isClosed = true))
 
-        val stemCtrls = listOf(
-            0.0 to -0.54,
-            0.04 to -0.62,
-            0.12 to -0.68
-        )
+        val stemCtrls =
+            listOf(
+                0.0 to -0.54,
+                0.04 to -0.62,
+                0.12 to -0.68,
+            )
         pts.addAll(generateSpline(stemCtrls, 10, Color(0xFF8E5A32), Color(0xFF5C4033), isClosed = false))
         return pts
     }
 
     private fun logoPoints(provider: AgentProvider, fallback: List<ShapePoint>): List<ShapePoint> {
         val context = appContext ?: return fallback
-        val bitmap = BitmapFactory.decodeResource(context.resources, provider.logoRes)
-            ?: return fallback
+        val bitmap =
+            BitmapFactory.decodeResource(context.resources, provider.logoRes)
+                ?: return fallback
         return try {
             sampleLogoBitmap(bitmap, maxPoints = 1600).ifEmpty { fallback }
         } finally {
@@ -1533,19 +1599,20 @@ internal class SwarmSimulation(
                     val blue = (pixel and 0xFF) / 255f
                     val source = Color(red, green, blue, alpha)
                     val luminance = 0.2126f * red + 0.7152f * green + 0.0722f * blue
-                    val role = when {
-                        luminance < 0.30f -> "logo-flame-outer"
-                        luminance > 0.76f -> "logo-flame-spark"
-                        else -> "logo-flame-inner"
-                    }
+                    val role =
+                        when {
+                            luminance < 0.30f -> "logo-flame-outer"
+                            luminance > 0.76f -> "logo-flame-spark"
+                            else -> "logo-flame-inner"
+                        }
                     points.add(
                         ShapePoint(
                             x = (x.toDouble() - centerX) / scale,
                             y = (y.toDouble() - centerY) / scale,
                             role = role,
                             progress = (points.size % maxPoints).toDouble() / (maxPoints - 1).coerceAtLeast(1).toDouble(),
-                            color = source
-                        )
+                            color = source,
+                        ),
                     )
                 }
                 x += step
@@ -1633,11 +1700,14 @@ internal class SwarmSimulation(
         val red = ((pixel ushr 16) and 0xFF) / 255f
         val green = ((pixel ushr 8) and 0xFF) / 255f
         val blue = (pixel and 0xFF) / 255f
-        val distance = sqrt(
-            ((red - background.red) * (red - background.red) +
-                (green - background.green) * (green - background.green) +
-                (blue - background.blue) * (blue - background.blue)).toDouble()
-        ).toFloat()
+        val distance =
+            sqrt(
+                (
+                    (red - background.red) * (red - background.red) +
+                        (green - background.green) * (green - background.green) +
+                        (blue - background.blue) * (blue - background.blue)
+                    ).toDouble(),
+            ).toFloat()
         val luminance = relativeLuminance(red, green, blue)
         val maxChannel = maxOf(red, green, blue)
         val minChannel = minOf(red, green, blue)
@@ -1645,12 +1715,7 @@ internal class SwarmSimulation(
         return distance < 0.12f || (relativeLuminance(background) > 0.86f && luminance > 0.88f && saturation < 0.10f)
     }
 
-    private fun isLogoForegroundPixel(
-        pixel: Int,
-        pixelIndex: Int,
-        borderBackgroundMask: BooleanArray?,
-        background: Color?
-    ): Boolean {
+    private fun isLogoForegroundPixel(pixel: Int, pixelIndex: Int, borderBackgroundMask: BooleanArray?, background: Color?): Boolean {
         val alpha = ((pixel ushr 24) and 0xFF) / 255f
         if (alpha <= 0.22f) return false
         borderBackgroundMask?.let { return pixelIndex !in it.indices || !it[pixelIndex] }
@@ -1660,11 +1725,14 @@ internal class SwarmSimulation(
         val blue = (pixel and 0xFF) / 255f
         if (background == null) return true
 
-        val distance = sqrt(
-            ((red - background.red) * (red - background.red) +
-                (green - background.green) * (green - background.green) +
-                (blue - background.blue) * (blue - background.blue)).toDouble()
-        ).toFloat()
+        val distance =
+            sqrt(
+                (
+                    (red - background.red) * (red - background.red) +
+                        (green - background.green) * (green - background.green) +
+                        (blue - background.blue) * (blue - background.blue)
+                    ).toDouble(),
+            ).toFloat()
         val luminance = relativeLuminance(red, green, blue)
         val maxChannel = maxOf(red, green, blue)
         val minChannel = minOf(red, green, blue)
@@ -1675,25 +1743,25 @@ internal class SwarmSimulation(
         return true
     }
 
-    private fun relativeLuminance(color: Color): Float =
-        relativeLuminance(color.red, color.green, color.blue)
+    private fun relativeLuminance(color: Color): Float = relativeLuminance(color.red, color.green, color.blue)
 
-    private fun relativeLuminance(red: Float, green: Float, blue: Float): Float =
-        0.2126f * red + 0.7152f * green + 0.0722f * blue
+    private fun relativeLuminance(red: Float, green: Float, blue: Float): Float = 0.2126f * red + 0.7152f * green + 0.0722f * blue
 
-            private fun providerTextPoints(provider: AgentProvider): List<ShapePoint> {
+    private fun providerTextPoints(provider: AgentProvider): List<ShapePoint> {
         val data = SwarmTextCoordinates.getCoordinates(provider)
         val count = data.size / 2
         val pts = ArrayList<ShapePoint>(count)
         val denom = (count - 1).coerceAtLeast(1).toDouble()
         var idx = 0
         while (idx < data.size) {
-            pts.add(ShapePoint(
-                x = data[idx],
-                y = data[idx + 1],
-                role = "logo-flame-inner",
-                progress = (idx / 2).toDouble() / denom
-            ))
+            pts.add(
+                ShapePoint(
+                    x = data[idx],
+                    y = data[idx + 1],
+                    role = "logo-flame-inner",
+                    progress = (idx / 2).toDouble() / denom,
+                ),
+            )
             idx += 2
         }
         return pts
@@ -1720,32 +1788,24 @@ internal class SwarmSimulation(
         }
     }
 
-    private fun fallbackLogoPoints(provider: AgentProvider): List<ShapePoint> =
-        when (provider) {
-            AgentProvider.OPEN_AI -> generateOpenAILogoPoints()
-            AgentProvider.CODEX -> generateCodexLogoPoints()
-            AgentProvider.CLAUDE_CODE -> generateAnthropicLogoPoints()
-            AgentProvider.GEMINI_CLI -> generateGeminiLogoPoints()
-            AgentProvider.ANTIGRAVITY -> generateAntigravityLogoPoints()
-            AgentProvider.CURSOR -> generateCursorLogoPoints()
-            AgentProvider.OPENCODE -> generateOpenCodeLogoPoints()
-            AgentProvider.XAI -> generateXAILogoPoints()
-            AgentProvider.OLLAMA -> generateOllamaLogoPoints()
-            AgentProvider.HERMES -> generateHermesLogoPoints()
-            else -> initialsLogoPoints(provider)
-        }
+    private fun fallbackLogoPoints(provider: AgentProvider): List<ShapePoint> = when (provider) {
+        AgentProvider.OPEN_AI -> generateOpenAILogoPoints()
+        AgentProvider.CODEX -> generateCodexLogoPoints()
+        AgentProvider.CLAUDE_CODE -> generateAnthropicLogoPoints()
+        AgentProvider.GEMINI_CLI -> generateGeminiLogoPoints()
+        AgentProvider.ANTIGRAVITY -> generateAntigravityLogoPoints()
+        AgentProvider.CURSOR -> generateCursorLogoPoints()
+        AgentProvider.OPENCODE -> generateOpenCodeLogoPoints()
+        AgentProvider.XAI -> generateXAILogoPoints()
+        AgentProvider.OLLAMA -> generateOllamaLogoPoints()
+        AgentProvider.HERMES -> generateHermesLogoPoints()
+        else -> initialsLogoPoints(provider)
+    }
 
     private fun initialsLogoPoints(provider: AgentProvider): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
 
-        fun appendLine(
-            startX: Double,
-            startY: Double,
-            endX: Double,
-            endY: Double,
-            count: Int,
-            role: String
-        ) {
+        fun appendLine(startX: Double, startY: Double, endX: Double, endY: Double, count: Int, role: String) {
             for (i in 0 until count) {
                 val t = i.toDouble() / (count - 1).coerceAtLeast(1).toDouble()
                 pts.add(
@@ -1753,18 +1813,19 @@ internal class SwarmSimulation(
                         x = startX + (endX - startX) * t,
                         y = startY + (endY - startY) * t,
                         role = role,
-                        progress = t
-                    )
+                        progress = t,
+                    ),
                 )
             }
         }
 
         val sides = 3 + (provider.ordinal % 5)
         val radius = 0.34
-        val vertices = (0 until sides).map { index ->
-            val angle = -PI / 2.0 + (PI * 2.0 * index / sides)
-            cos(angle) * radius to sin(angle) * radius
-        }
+        val vertices =
+            (0 until sides).map { index ->
+                val angle = -PI / 2.0 + (PI * 2.0 * index / sides)
+                cos(angle) * radius to sin(angle) * radius
+            }
         for (index in vertices.indices) {
             val start = vertices[index]
             val end = vertices[(index + 1) % vertices.size]
@@ -1816,8 +1877,8 @@ internal class SwarmSimulation(
                         x = localX * cos(theta) - localY * sin(theta),
                         y = localX * sin(theta) + localY * cos(theta),
                         role = "logo-flame-inner",
-                        progress = j.toDouble() / steps.toDouble()
-                    )
+                        progress = j.toDouble() / steps.toDouble(),
+                    ),
                 )
             }
         }
@@ -1825,10 +1886,16 @@ internal class SwarmSimulation(
     }
 
     private fun generateAnthropicLogoPoints(): List<ShapePoint> {
-        val outer = listOf(
-            -0.22 to -0.30, -0.07 to 0.32, 0.07 to 0.32, 0.22 to -0.30,
-            0.12 to -0.30, 0.0 to 0.02, -0.12 to -0.30
-        )
+        val outer =
+            listOf(
+                -0.22 to -0.30,
+                -0.07 to 0.32,
+                0.07 to 0.32,
+                0.22 to -0.30,
+                0.12 to -0.30,
+                0.0 to 0.02,
+                -0.12 to -0.30,
+            )
         val inner = listOf(0.0 to 0.20, 0.05 to 0.08, -0.05 to 0.08)
         return splinePoints(outer, 35, "logo-flame-outer") +
             splinePoints(inner, 35, "logo-flame-inner")
@@ -1836,6 +1903,7 @@ internal class SwarmSimulation(
 
     private fun generateGeminiLogoPoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
+
         fun appendAstroid(radius: Double, count: Int, role: String) {
             for (i in 0 until count) {
                 val t = i.toDouble() / count.toDouble() * (PI * 2.0)
@@ -1844,8 +1912,8 @@ internal class SwarmSimulation(
                         x = radius * cos(t) * cos(t) * cos(t),
                         y = radius * sin(t) * sin(t) * sin(t),
                         role = role,
-                        progress = i.toDouble() / count.toDouble()
-                    )
+                        progress = i.toDouble() / count.toDouble(),
+                    ),
                 )
             }
         }
@@ -1854,23 +1922,16 @@ internal class SwarmSimulation(
         return pts
     }
 
-    private fun generateCursorLogoPoints(): List<ShapePoint> =
-        splinePoints(
-            listOf(0.0 to 0.32, 0.18 to -0.18, 0.0 to -0.05, -0.18 to -0.18),
-            90,
-            "logo-flame-inner"
-        )
+    private fun generateCursorLogoPoints(): List<ShapePoint> = splinePoints(
+        listOf(0.0 to 0.32, 0.18 to -0.18, 0.0 to -0.05, -0.18 to -0.18),
+        90,
+        "logo-flame-inner",
+    )
 
     private fun generateOpenCodeLogoPoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
-        fun appendLine(
-            startX: Double,
-            startY: Double,
-            endX: Double,
-            endY: Double,
-            count: Int,
-            role: String
-        ) {
+
+        fun appendLine(startX: Double, startY: Double, endX: Double, endY: Double, count: Int, role: String) {
             for (i in 0 until count) {
                 val t = i.toDouble() / (count - 1).coerceAtLeast(1).toDouble()
                 pts.add(
@@ -1878,8 +1939,8 @@ internal class SwarmSimulation(
                         x = startX + (endX - startX) * t,
                         y = startY + (endY - startY) * t,
                         role = role,
-                        progress = t
-                    )
+                        progress = t,
+                    ),
                 )
             }
         }
@@ -1893,9 +1954,10 @@ internal class SwarmSimulation(
     }
 
     private fun generateOllamaLogoPoints(): List<ShapePoint> {
-        val coords = doubleArrayOf(
-            -0.19965000000000002, -0.55, -0.19415000000000002, -0.54747, -0.18700000000000003, -0.54329, -0.18183000000000002, -0.53966, -0.17688, -0.5354800000000001, -0.16962000000000002, -0.5281100000000001, -0.16225, -0.51898, -0.15532, -0.50875, -0.14696, -0.49335000000000007, -0.14135, -0.4807, -0.13618, -0.4671700000000001, -0.13046000000000002, -0.44814000000000004, -0.12683, -0.43351000000000006, -0.12397000000000001, -0.41855000000000003, -0.12188, -0.40337000000000006, -0.12067000000000001, -0.39325, -0.12012000000000002, -0.39325, -0.11968000000000001, -0.39325, -0.11913, -0.39336, -0.11869, -0.39336, -0.10329, -0.39413000000000004, -0.07315, -0.39259000000000005, -0.05115, -0.38874000000000003, -0.0297, -0.38280000000000003, -0.00253, -0.3712500000000001, 0.00011000000000000002, -0.36982000000000004, 0.0027500000000000003, -0.36839, 0.0061600000000000005, -0.36630000000000007, 0.0088, -0.36487, 0.011330000000000002, -0.36322000000000004, 0.013750000000000002, -0.38313, 0.016280000000000003, -0.39787000000000006, 0.01958, -0.41239000000000003, 0.02508, -0.4310900000000001, 0.029920000000000002, -0.44462, 0.03531, -0.4576, 0.04136000000000001, -0.4697, 0.05016, -0.48411000000000004, 0.057420000000000006, -0.49357, 0.06468, -0.5000600000000001, 0.07392, -0.50248, 0.08096, -0.50336, 0.08800000000000001, -0.5032500000000001, 0.09735, -0.50182, 0.10659, -0.49896000000000007, 0.11649, -0.49434000000000006, 0.1287, -0.4862, 0.13706000000000002, -0.47872000000000003, 0.14476, -0.46992000000000006, 0.15345000000000003, -0.45738000000000006, 0.15906, -0.44715, 0.16401000000000002, -0.43604, 0.16984000000000002, -0.41976, 0.17347, -0.40656000000000003, 0.17853000000000002, -0.3806, 0.18249, -0.34144, 0.18315000000000003, -0.30899, 0.18194000000000002, -0.27379000000000003, 0.17886000000000002, -0.23606000000000002, 0.17941000000000001, -0.23562000000000002, 0.17996, -0.23529000000000003, 0.18040000000000003, -0.23496000000000003, 0.18095000000000003, -0.23441000000000004, 0.18139, -0.23419000000000004, 0.18172000000000002, -0.23397, 0.18205000000000002, -0.23364000000000001, 0.18227, -0.23353000000000002, 0.18249, -0.23331000000000002, 0.20702000000000004, -0.21109, 0.22275000000000003, -0.19184, 0.23606000000000002, -0.17072, 0.25014000000000003, -0.13981, 0.25905, -0.11033000000000001, 0.26521000000000006, -0.0704, 0.26389, -0.018150000000000003, 0.25608000000000003, 0.018150000000000003, 0.24266000000000001, 0.049830000000000006, 0.23045000000000002, 0.06798000000000001, 0.23023000000000005, 0.06831000000000001, 0.23001000000000002, 0.06842000000000001, 0.22979000000000002, 0.06886, 0.23683, 0.08239, 0.24585, 0.10285000000000001, 0.25322, 0.12375000000000001, 0.26015, 0.15213000000000002, 0.26312, 0.1738, 0.26378, 0.18139, 0.26378, 0.18183000000000002, 0.26378, 0.18216000000000002, 0.26389, 0.18249, 0.26323, 0.21989, 0.25883, 0.24805000000000002, 0.25124, 0.27599, 0.23573, 0.31317000000000006, 0.22572, 0.33176, 0.22561000000000003, 0.33198000000000005, 0.2255, 0.33242000000000005, 0.22572, 0.33275, 0.22583000000000003, 0.33308000000000004, 0.23353000000000002, 0.35365, 0.24211000000000002, 0.38412, 0.24761000000000002, 0.4147, 0.24992000000000003, 0.4555100000000001, 0.24783000000000002, 0.4862, 0.24640000000000004, 0.4965400000000001, 0.24629, 0.49698000000000003, 0.24629, 0.49742000000000003, 0.24618, 0.4977500000000001, 0.24618, 0.49808, 0.24893, 0.47102000000000005, 0.24849000000000002, 0.44374, 0.24486000000000002, 0.41635000000000005, 0.23496000000000003, 0.37972000000000006, 0.22363000000000002, 0.35211000000000003, 0.22385, 0.35189000000000004, 0.24200000000000002, 0.31955, 0.25157, 0.29557, 0.25795, 0.27181, 0.26158000000000003, 0.24024000000000004, 0.2607, 0.21780000000000002, 0.25762, 0.19745000000000001, 0.25014000000000003, 0.17061, 0.24200000000000002, 0.15070000000000003, 0.23177, 0.13123, 0.22407000000000002, 0.11825000000000001, 0.22418000000000002, 0.11803000000000001, 0.22847, 0.11473000000000001, 0.23650000000000002, 0.10505, 0.24189000000000002, 0.09537000000000001, 0.24651, 0.08371, 0.25036, 0.0704, 0.24519000000000002, 0.047850000000000004, 0.23727, 0.031240000000000004, 0.22781, 0.01617, 0.21274, -0.0016500000000000002, 0.19976000000000002, -0.013090000000000003, 0.18315000000000003, -0.023870000000000002, 0.15796000000000002, -0.03443, 0.13684000000000002, -0.039490000000000004, 0.11363000000000001, -0.04191, 0.08558, -0.0473, 0.07612000000000001, -0.06325000000000001, 0.06545000000000001, -0.07733000000000001, 0.049060000000000006, -0.09328, 0.03542, -0.10318000000000001, 0.014740000000000001, -0.10758000000000001, -0.02607, -0.09669000000000001, -0.05291, -0.08305, -0.07524000000000002, -0.06556000000000001, -0.09603, -0.03751, -0.11748000000000001, -0.02926, -0.14278000000000002, -0.026510000000000002, -0.16577, -0.02134, -0.19294000000000003, -0.011000000000000001, -0.21065000000000003, -0.0008800000000000001, -0.22484, 0.01012, -0.24024000000000004, 0.026510000000000002, -0.24981, 0.040260000000000004, -0.25784, 0.055330000000000004, -0.26587, 0.07722000000000001, -0.26246, 0.09141, -0.25806, 0.10439000000000001, -0.25102, 0.11957000000000001, -0.24508000000000002, 0.12903, -0.23870000000000002, 0.13662000000000002, -0.23848, 0.13684000000000002, -0.23826, 0.13695000000000002, -0.23353000000000002, 0.14289, -0.22990000000000002, 0.15202, -0.22913000000000003, 0.15939, -0.23023000000000005, 0.16665000000000002, -0.23628000000000002, 0.17930000000000001, -0.24497000000000002, 0.19789, -0.25234, 0.21868, -0.25828, 0.24101, -0.26345, 0.27214000000000005, -0.26499, 0.29667000000000004, -0.26389, 0.32219000000000003, -0.25806, 0.35376, -0.25036, 0.37532000000000004, -0.2398, 0.39468000000000003, -0.23089, 0.40656000000000003, -0.23067000000000001, 0.40678000000000003, -0.23056000000000001, 0.40700000000000003, -0.23518, 0.41800000000000004, -0.24706, 0.44869000000000003, -0.25509000000000004, 0.47729000000000005, -0.25993000000000005, 0.5119400000000001, -0.25916, 0.5354800000000001, -0.2585, 0.54098, -0.26169000000000003, 0.50336, -0.25949, 0.47344, -0.25333, 0.44198000000000004, -0.23914000000000002, 0.39787000000000006, -0.23441000000000004, 0.38621000000000005, -0.2343, 0.38588000000000006, -0.23408, 0.38544, -0.23397, 0.38522000000000006, -0.23386000000000004, 0.38489, -0.23397, 0.38456000000000007, -0.23419000000000004, 0.38423, -0.2343, 0.3840100000000001, -0.2343, 0.38368, -0.23441000000000004, 0.38335, -0.23232000000000003, 0.35937, -0.22858000000000003, 0.3355, -0.22110000000000002, 0.3047, -0.21384, 0.2827, -0.20537000000000002, 0.26224000000000003, -0.20515000000000003, 0.26191000000000003, -0.20504000000000003, 0.26169000000000003, -0.20493, 0.26136000000000004, -0.20482000000000003, 0.26092000000000004, -0.21219000000000002, 0.24937000000000004, -0.21868, 0.23672, -0.22616000000000003, 0.21846000000000002, -0.23067000000000001, 0.20394000000000004, -0.2343, 0.18865000000000004, -0.23441000000000004, 0.18821000000000002, -0.23452, 0.18788000000000002, -0.23452, 0.18755000000000002, -0.22638000000000003, 0.16412000000000002, -0.21175000000000002, 0.13519, -0.19778, 0.11539, -0.18150000000000002, 0.09735, -0.16225, 0.08096, -0.1606, 0.07975, -0.15895, 0.07865, -0.15675, 0.07711, -0.1551, 0.07590000000000001, -0.15532, 0.06226, -0.15829000000000001, 0.01331, -0.15829000000000001, -0.02035, -0.15631, -0.05126000000000001, -0.15070000000000003, -0.08800000000000001, -0.14641, -0.10538, -0.14245000000000002, -0.11792000000000001, -0.13607000000000002, -0.13343000000000002, -0.13068000000000002, -0.14399, -0.12463, -0.15367, -0.11506000000000001, -0.16577, -0.10692, -0.17369000000000004, -0.09801, -0.18040000000000003, -0.08855, -0.18590000000000004, -0.07502, -0.19107000000000002, -0.06798000000000001, -0.19261000000000003, -0.06094, -0.19327, -0.051590000000000004, -0.19272, -0.044550000000000006, -0.19140000000000001, -0.03773, -0.18909, -0.07821, -0.27940000000000004, -0.10857, -0.34705, -0.13893, -0.4147, -0.17941000000000001, -0.5049, -0.00715, -0.12485000000000002, 0.017050000000000003, -0.12331000000000002, 0.047740000000000005, -0.11682000000000001, 0.0693, -0.10868000000000001, 0.09537000000000001, -0.09383000000000001, 0.11264000000000002, -0.08019000000000001, 0.12694000000000003, -0.0649, 0.14179, -0.04268, 0.14926999999999999, -0.02486, 0.15400000000000003, -0.00033, 0.15334, 0.02101, 0.14883000000000002, 0.04202, 0.13695000000000002, 0.06677, 0.12386000000000001, 0.08272000000000002, 0.10120000000000001, 0.10043000000000002, 0.08393000000000002, 0.10934, 0.06468, 0.11638000000000001, 0.036300000000000006, 0.12287000000000001, 0.01331, 0.12551, -0.01111, 0.12650000000000003, -0.04521, 0.12419000000000001, -0.06875, 0.11968000000000001, -0.09735, 0.10989000000000002, -0.11627000000000001, 0.09999, -0.13299, 0.08789000000000001, -0.15103000000000003, 0.06908, -0.16104000000000002, 0.05324, -0.16984000000000002, 0.03036, -0.17259000000000002, 0.0121, -0.17193, -0.00649, -0.16522, -0.030910000000000003, -0.15631, -0.048510000000000005, -0.13937000000000002, -0.0704, -0.12342, -0.08514000000000001, -0.10483, -0.09812000000000001, -0.07733000000000001, -0.11176, -0.05489, -0.11891000000000002, -0.023430000000000003, -0.12419000000000001, -0.00715, -0.08294, -0.021560000000000003, -0.0693, -0.03212, -0.054560000000000004, -0.03751, -0.043230000000000005, -0.040810000000000006, -0.028160000000000004, -0.03993, -0.013420000000000001, -0.03542, 0.0007700000000000001, -0.027280000000000002, 0.01397, -0.019030000000000002, 0.02299, -0.00396, 0.03432, 0.015620000000000002, 0.043780000000000006, 0.038500000000000006, 0.05038, 0.06446, 0.053680000000000005, 0.08536, 0.05412000000000001, 0.11165000000000001, 0.05214, 0.13519, 0.047740000000000005, 0.15565, 0.04092, 0.16885, 0.034210000000000004, 0.18304, 0.02332, 0.19327, 0.0099, 0.19943, -0.005940000000000001, 0.20152, -0.024530000000000003, 0.20031000000000002, -0.03586, 0.19514, -0.05115, 0.18612, -0.06611, 0.17336000000000001, -0.08008000000000001, 0.15609, -0.09306, 0.14102000000000003, -0.10109, 0.11891000000000002, -0.10890000000000001, 0.09493000000000001, -0.11286, 0.07128, -0.10956, 0.04884000000000001, -0.10197000000000002, 0.032010000000000004, -0.09625, 0.00957, -0.08866000000000002, 0.023760000000000003, -0.026400000000000003, 0.024970000000000003, -0.02486, 0.027280000000000002, -0.018920000000000003, 0.02739, -0.014190000000000001, 0.02552, -0.00825, 0.022660000000000003, -0.0044, 0.018810000000000004, -0.0012100000000000001, 0.016280000000000003, 0.0007700000000000001, 0.012870000000000001, 0.0034100000000000003, 0.01023, 0.0055000000000000005, 0.007700000000000001, 0.0074800000000000005, 0.007700000000000001, 0.012650000000000002, 0.007700000000000001, 0.016610000000000003, 0.007700000000000001, 0.021780000000000004, 0.007700000000000001, 0.025740000000000002, 0.007700000000000001, 0.025630000000000003, 0.007700000000000001, 0.021670000000000002, 0.007700000000000001, 0.016280000000000003, 0.007700000000000001, 0.012210000000000002, 0.007700000000000001, 0.0068200000000000005, 0.00528, 0.00495, 0.0029700000000000004, 0.0029700000000000004, -0.00022000000000000003, 0.00044000000000000007, -0.00264, -0.00143, -0.0044, -0.00286, -0.0024200000000000003, -0.00132, 0.0, 0.00066, 0.00198, 0.0022, 0.0044, 0.0041800000000000006, 0.00638, 0.0036300000000000004, 0.00825, 0.0020900000000000003, 0.010890000000000002, 0.00011000000000000002, 0.01276, -0.00143, 0.015400000000000002, -0.0034100000000000003, 0.01694, -0.007810000000000001, 0.019030000000000002, -0.013530000000000002, 0.020680000000000004, -0.01782, 0.022770000000000002, -0.023540000000000002, -0.21197000000000002, -0.11616000000000001, -0.20779000000000003, -0.11594, -0.19987000000000002, -0.11429000000000002, -0.19613, -0.11297000000000001, -0.18931, -0.10912000000000001, -0.18612, -0.10681000000000002, -0.18326, -0.10417000000000001, -0.17831, -0.09812000000000001, -0.17633000000000001, -0.09482, -0.17457000000000003, -0.0913, -0.17226, -0.08360000000000001, -0.1716, -0.07953, -0.17138, -0.07535000000000001, -0.17644, -0.08052000000000001, -0.17897000000000002, -0.08305, -0.18403000000000003, -0.08811000000000001, -0.18656, -0.09064000000000001, -0.18909, -0.09317, -0.19415000000000002, -0.09834, -0.19668, -0.10087000000000002, -0.20174000000000003, -0.10593000000000001, -0.20438, -0.10846, -0.20691, -0.11099000000000002, -0.21197000000000002, -0.11616000000000001, 0.19525, -0.11616000000000001, 0.19943, -0.11594, 0.20735, -0.11429000000000002, 0.21109, -0.11297000000000001, 0.21791000000000002, -0.10912000000000001, 0.22110000000000002, -0.10681000000000002, 0.22396000000000002, -0.10417000000000001, 0.22891000000000003, -0.09812000000000001, 0.23089, -0.09482, 0.23265000000000002, -0.0913, 0.23496000000000003, -0.08360000000000001, 0.23562000000000002, -0.07953, 0.23584000000000002, -0.07535000000000001, 0.23078, -0.08052000000000001, 0.22825, -0.08305, 0.22319000000000003, -0.08811000000000001, 0.22066000000000002, -0.09064000000000001, 0.21802, -0.09317, 0.21296, -0.09834, 0.21043, -0.10087000000000002, 0.20537000000000002, -0.10593000000000001, 0.20284000000000002, -0.10846, 0.20031000000000002, -0.11099000000000002, 0.19525, -0.11616000000000001, -0.22143000000000002, -0.49346000000000007, -0.22165000000000004, -0.49324000000000007, -0.22176, -0.49313, -0.22418000000000002, -0.48950000000000005, -0.22759000000000001, -0.48356000000000005, -0.23078, -0.47663000000000005, -0.23276000000000002, -0.47157000000000004, -0.23551000000000002, -0.46332000000000007, -0.23804000000000003, -0.45408000000000004, -0.24189000000000002, -0.43472000000000005, -0.24376, -0.42042, -0.24552000000000004, -0.3971, -0.24607000000000004, -0.37158, -0.24563000000000001, -0.35321, -0.24387000000000003, -0.32406, -0.23232000000000003, -0.32714000000000004, -0.22044000000000002, -0.32978, -0.21241000000000002, -0.33132000000000006, -0.19987000000000002, -0.33308000000000004, -0.18700000000000003, -0.33451000000000003, -0.17809, -0.33506, -0.17798000000000003, -0.3351700000000001, -0.17765000000000003, -0.33528, -0.17754, -0.3355, -0.17743, -0.3357200000000001, -0.17721, -0.33605, -0.1771, -0.33638000000000007, -0.17688, -0.33671, -0.17600000000000002, -0.33814000000000005, -0.17479000000000003, -0.34034000000000003, -0.17347, -0.34243000000000007, -0.17270000000000002, -0.34375, -0.17127, -0.34584000000000004, -0.16995000000000002, -0.3479300000000001, -0.16775, -0.36883, -0.16753, -0.38335, -0.16885, -0.40535000000000004, -0.17215000000000003, -0.42735000000000006, -0.17732000000000003, -0.44869000000000003, -0.18172000000000002, -0.4622200000000001, -0.18546, -0.47135000000000005, -0.18931, -0.47971, -0.19195, -0.48477000000000003, -0.19602, -0.49148000000000003, -0.20020000000000002, -0.4970900000000001, -0.20416, -0.49984000000000006, -0.20647000000000001, -0.49896000000000007, -0.20988, -0.4976400000000001, -0.21329, -0.49643000000000004, -0.21681, -0.49511000000000005, -0.21912, -0.49423, 0.20768, -0.4915900000000001, 0.20614000000000002, -0.49005000000000004, 0.20339000000000002, -0.4866400000000001, 0.19932000000000002, -0.4805900000000001, 0.19514, -0.47355, 0.1925, -0.4682700000000001, 0.18876, -0.45958000000000004, 0.18634, -0.45342000000000005, 0.17974, -0.4317500000000001, 0.17501, -0.40887, 0.17314000000000002, -0.39336, 0.17215000000000003, -0.37004, 0.17336000000000001, -0.34749, 0.17556, -0.33308000000000004, 0.17611000000000002, -0.33231, 0.17666, -0.33143000000000006, 0.17699, -0.33088000000000006, 0.17743, -0.33, 0.17776, -0.32945, 0.17831, -0.32857000000000003, 0.17853000000000002, -0.32824000000000003, 0.17864, -0.32813000000000003, 0.17875000000000002, -0.32791, 0.17908000000000002, -0.32791, 0.17930000000000001, -0.32791, 0.17963, -0.32791, 0.17996, -0.32791, 0.18073000000000003, -0.3377, 0.18194000000000002, -0.36553, 0.18183000000000002, -0.39127000000000006, 0.18106, -0.40722, 0.17886000000000002, -0.42933, 0.17677000000000004, -0.44286000000000003, 0.17325000000000002, -0.45837000000000006, 0.17072, -0.46728000000000003, 0.16885, -0.47278000000000003, 0.16577, -0.48015, 0.16247, -0.48675000000000007, 0.16016000000000002, -0.49060000000000004, 0.15774000000000002, -0.49423, 0.15752, -0.49445000000000006, 0.16049000000000002, -0.49423, 0.16995000000000002, -0.49368, 0.17622000000000002, -0.49335000000000007, 0.18568, -0.49280000000000007, 0.19503000000000004, -0.4922500000000001, 0.2013, -0.49192
-        )
+        val coords =
+            doubleArrayOf(
+                -0.19965000000000002, -0.55, -0.19415000000000002, -0.54747, -0.18700000000000003, -0.54329, -0.18183000000000002, -0.53966, -0.17688, -0.5354800000000001, -0.16962000000000002, -0.5281100000000001, -0.16225, -0.51898, -0.15532, -0.50875, -0.14696, -0.49335000000000007, -0.14135, -0.4807, -0.13618, -0.4671700000000001, -0.13046000000000002, -0.44814000000000004, -0.12683, -0.43351000000000006, -0.12397000000000001, -0.41855000000000003, -0.12188, -0.40337000000000006, -0.12067000000000001, -0.39325, -0.12012000000000002, -0.39325, -0.11968000000000001, -0.39325, -0.11913, -0.39336, -0.11869, -0.39336, -0.10329, -0.39413000000000004, -0.07315, -0.39259000000000005, -0.05115, -0.38874000000000003, -0.0297, -0.38280000000000003, -0.00253, -0.3712500000000001, 0.00011000000000000002, -0.36982000000000004, 0.0027500000000000003, -0.36839, 0.0061600000000000005, -0.36630000000000007, 0.0088, -0.36487, 0.011330000000000002, -0.36322000000000004, 0.013750000000000002, -0.38313, 0.016280000000000003, -0.39787000000000006, 0.01958, -0.41239000000000003, 0.02508, -0.4310900000000001, 0.029920000000000002, -0.44462, 0.03531, -0.4576, 0.04136000000000001, -0.4697, 0.05016, -0.48411000000000004, 0.057420000000000006, -0.49357, 0.06468, -0.5000600000000001, 0.07392, -0.50248, 0.08096, -0.50336, 0.08800000000000001, -0.5032500000000001, 0.09735, -0.50182, 0.10659, -0.49896000000000007, 0.11649, -0.49434000000000006, 0.1287, -0.4862, 0.13706000000000002, -0.47872000000000003, 0.14476, -0.46992000000000006, 0.15345000000000003, -0.45738000000000006, 0.15906, -0.44715, 0.16401000000000002, -0.43604, 0.16984000000000002, -0.41976, 0.17347, -0.40656000000000003, 0.17853000000000002, -0.3806, 0.18249, -0.34144, 0.18315000000000003, -0.30899, 0.18194000000000002, -0.27379000000000003, 0.17886000000000002, -0.23606000000000002, 0.17941000000000001, -0.23562000000000002, 0.17996, -0.23529000000000003, 0.18040000000000003, -0.23496000000000003, 0.18095000000000003, -0.23441000000000004, 0.18139, -0.23419000000000004, 0.18172000000000002, -0.23397, 0.18205000000000002, -0.23364000000000001, 0.18227, -0.23353000000000002, 0.18249, -0.23331000000000002, 0.20702000000000004, -0.21109, 0.22275000000000003, -0.19184, 0.23606000000000002, -0.17072, 0.25014000000000003, -0.13981, 0.25905, -0.11033000000000001, 0.26521000000000006, -0.0704, 0.26389, -0.018150000000000003, 0.25608000000000003, 0.018150000000000003, 0.24266000000000001, 0.049830000000000006, 0.23045000000000002, 0.06798000000000001, 0.23023000000000005, 0.06831000000000001, 0.23001000000000002, 0.06842000000000001, 0.22979000000000002, 0.06886, 0.23683, 0.08239, 0.24585, 0.10285000000000001, 0.25322, 0.12375000000000001, 0.26015, 0.15213000000000002, 0.26312, 0.1738, 0.26378, 0.18139, 0.26378, 0.18183000000000002, 0.26378, 0.18216000000000002, 0.26389, 0.18249, 0.26323, 0.21989, 0.25883, 0.24805000000000002, 0.25124, 0.27599, 0.23573, 0.31317000000000006, 0.22572, 0.33176, 0.22561000000000003, 0.33198000000000005, 0.2255, 0.33242000000000005, 0.22572, 0.33275, 0.22583000000000003, 0.33308000000000004, 0.23353000000000002, 0.35365, 0.24211000000000002, 0.38412, 0.24761000000000002, 0.4147, 0.24992000000000003, 0.4555100000000001, 0.24783000000000002, 0.4862, 0.24640000000000004, 0.4965400000000001, 0.24629, 0.49698000000000003, 0.24629, 0.49742000000000003, 0.24618, 0.4977500000000001, 0.24618, 0.49808, 0.24893, 0.47102000000000005, 0.24849000000000002, 0.44374, 0.24486000000000002, 0.41635000000000005, 0.23496000000000003, 0.37972000000000006, 0.22363000000000002, 0.35211000000000003, 0.22385, 0.35189000000000004, 0.24200000000000002, 0.31955, 0.25157, 0.29557, 0.25795, 0.27181, 0.26158000000000003, 0.24024000000000004, 0.2607, 0.21780000000000002, 0.25762, 0.19745000000000001, 0.25014000000000003, 0.17061, 0.24200000000000002, 0.15070000000000003, 0.23177, 0.13123, 0.22407000000000002, 0.11825000000000001, 0.22418000000000002, 0.11803000000000001, 0.22847, 0.11473000000000001, 0.23650000000000002, 0.10505, 0.24189000000000002, 0.09537000000000001, 0.24651, 0.08371, 0.25036, 0.0704, 0.24519000000000002, 0.047850000000000004, 0.23727, 0.031240000000000004, 0.22781, 0.01617, 0.21274, -0.0016500000000000002, 0.19976000000000002, -0.013090000000000003, 0.18315000000000003, -0.023870000000000002, 0.15796000000000002, -0.03443, 0.13684000000000002, -0.039490000000000004, 0.11363000000000001, -0.04191, 0.08558, -0.0473, 0.07612000000000001, -0.06325000000000001, 0.06545000000000001, -0.07733000000000001, 0.049060000000000006, -0.09328, 0.03542, -0.10318000000000001, 0.014740000000000001, -0.10758000000000001, -0.02607, -0.09669000000000001, -0.05291, -0.08305, -0.07524000000000002, -0.06556000000000001, -0.09603, -0.03751, -0.11748000000000001, -0.02926, -0.14278000000000002, -0.026510000000000002, -0.16577, -0.02134, -0.19294000000000003, -0.011000000000000001, -0.21065000000000003, -0.0008800000000000001, -0.22484, 0.01012, -0.24024000000000004, 0.026510000000000002, -0.24981, 0.040260000000000004, -0.25784, 0.055330000000000004, -0.26587, 0.07722000000000001, -0.26246, 0.09141, -0.25806, 0.10439000000000001, -0.25102, 0.11957000000000001, -0.24508000000000002, 0.12903, -0.23870000000000002, 0.13662000000000002, -0.23848, 0.13684000000000002, -0.23826, 0.13695000000000002, -0.23353000000000002, 0.14289, -0.22990000000000002, 0.15202, -0.22913000000000003, 0.15939, -0.23023000000000005, 0.16665000000000002, -0.23628000000000002, 0.17930000000000001, -0.24497000000000002, 0.19789, -0.25234, 0.21868, -0.25828, 0.24101, -0.26345, 0.27214000000000005, -0.26499, 0.29667000000000004, -0.26389, 0.32219000000000003, -0.25806, 0.35376, -0.25036, 0.37532000000000004, -0.2398, 0.39468000000000003, -0.23089, 0.40656000000000003, -0.23067000000000001, 0.40678000000000003, -0.23056000000000001, 0.40700000000000003, -0.23518, 0.41800000000000004, -0.24706, 0.44869000000000003, -0.25509000000000004, 0.47729000000000005, -0.25993000000000005, 0.5119400000000001, -0.25916, 0.5354800000000001, -0.2585, 0.54098, -0.26169000000000003, 0.50336, -0.25949, 0.47344, -0.25333, 0.44198000000000004, -0.23914000000000002, 0.39787000000000006, -0.23441000000000004, 0.38621000000000005, -0.2343, 0.38588000000000006, -0.23408, 0.38544, -0.23397, 0.38522000000000006, -0.23386000000000004, 0.38489, -0.23397, 0.38456000000000007, -0.23419000000000004, 0.38423, -0.2343, 0.3840100000000001, -0.2343, 0.38368, -0.23441000000000004, 0.38335, -0.23232000000000003, 0.35937, -0.22858000000000003, 0.3355, -0.22110000000000002, 0.3047, -0.21384, 0.2827, -0.20537000000000002, 0.26224000000000003, -0.20515000000000003, 0.26191000000000003, -0.20504000000000003, 0.26169000000000003, -0.20493, 0.26136000000000004, -0.20482000000000003, 0.26092000000000004, -0.21219000000000002, 0.24937000000000004, -0.21868, 0.23672, -0.22616000000000003, 0.21846000000000002, -0.23067000000000001, 0.20394000000000004, -0.2343, 0.18865000000000004, -0.23441000000000004, 0.18821000000000002, -0.23452, 0.18788000000000002, -0.23452, 0.18755000000000002, -0.22638000000000003, 0.16412000000000002, -0.21175000000000002, 0.13519, -0.19778, 0.11539, -0.18150000000000002, 0.09735, -0.16225, 0.08096, -0.1606, 0.07975, -0.15895, 0.07865, -0.15675, 0.07711, -0.1551, 0.07590000000000001, -0.15532, 0.06226, -0.15829000000000001, 0.01331, -0.15829000000000001, -0.02035, -0.15631, -0.05126000000000001, -0.15070000000000003, -0.08800000000000001, -0.14641, -0.10538, -0.14245000000000002, -0.11792000000000001, -0.13607000000000002, -0.13343000000000002, -0.13068000000000002, -0.14399, -0.12463, -0.15367, -0.11506000000000001, -0.16577, -0.10692, -0.17369000000000004, -0.09801, -0.18040000000000003, -0.08855, -0.18590000000000004, -0.07502, -0.19107000000000002, -0.06798000000000001, -0.19261000000000003, -0.06094, -0.19327, -0.051590000000000004, -0.19272, -0.044550000000000006, -0.19140000000000001, -0.03773, -0.18909, -0.07821, -0.27940000000000004, -0.10857, -0.34705, -0.13893, -0.4147, -0.17941000000000001, -0.5049, -0.00715, -0.12485000000000002, 0.017050000000000003, -0.12331000000000002, 0.047740000000000005, -0.11682000000000001, 0.0693, -0.10868000000000001, 0.09537000000000001, -0.09383000000000001, 0.11264000000000002, -0.08019000000000001, 0.12694000000000003, -0.0649, 0.14179, -0.04268, 0.14926999999999999, -0.02486, 0.15400000000000003, -0.00033, 0.15334, 0.02101, 0.14883000000000002, 0.04202, 0.13695000000000002, 0.06677, 0.12386000000000001, 0.08272000000000002, 0.10120000000000001, 0.10043000000000002, 0.08393000000000002, 0.10934, 0.06468, 0.11638000000000001, 0.036300000000000006, 0.12287000000000001, 0.01331, 0.12551, -0.01111, 0.12650000000000003, -0.04521, 0.12419000000000001, -0.06875, 0.11968000000000001, -0.09735, 0.10989000000000002, -0.11627000000000001, 0.09999, -0.13299, 0.08789000000000001, -0.15103000000000003, 0.06908, -0.16104000000000002, 0.05324, -0.16984000000000002, 0.03036, -0.17259000000000002, 0.0121, -0.17193, -0.00649, -0.16522, -0.030910000000000003, -0.15631, -0.048510000000000005, -0.13937000000000002, -0.0704, -0.12342, -0.08514000000000001, -0.10483, -0.09812000000000001, -0.07733000000000001, -0.11176, -0.05489, -0.11891000000000002, -0.023430000000000003, -0.12419000000000001, -0.00715, -0.08294, -0.021560000000000003, -0.0693, -0.03212, -0.054560000000000004, -0.03751, -0.043230000000000005, -0.040810000000000006, -0.028160000000000004, -0.03993, -0.013420000000000001, -0.03542, 0.0007700000000000001, -0.027280000000000002, 0.01397, -0.019030000000000002, 0.02299, -0.00396, 0.03432, 0.015620000000000002, 0.043780000000000006, 0.038500000000000006, 0.05038, 0.06446, 0.053680000000000005, 0.08536, 0.05412000000000001, 0.11165000000000001, 0.05214, 0.13519, 0.047740000000000005, 0.15565, 0.04092, 0.16885, 0.034210000000000004, 0.18304, 0.02332, 0.19327, 0.0099, 0.19943, -0.005940000000000001, 0.20152, -0.024530000000000003, 0.20031000000000002, -0.03586, 0.19514, -0.05115, 0.18612, -0.06611, 0.17336000000000001, -0.08008000000000001, 0.15609, -0.09306, 0.14102000000000003, -0.10109, 0.11891000000000002, -0.10890000000000001, 0.09493000000000001, -0.11286, 0.07128, -0.10956, 0.04884000000000001, -0.10197000000000002, 0.032010000000000004, -0.09625, 0.00957, -0.08866000000000002, 0.023760000000000003, -0.026400000000000003, 0.024970000000000003, -0.02486, 0.027280000000000002, -0.018920000000000003, 0.02739, -0.014190000000000001, 0.02552, -0.00825, 0.022660000000000003, -0.0044, 0.018810000000000004, -0.0012100000000000001, 0.016280000000000003, 0.0007700000000000001, 0.012870000000000001, 0.0034100000000000003, 0.01023, 0.0055000000000000005, 0.007700000000000001, 0.0074800000000000005, 0.007700000000000001, 0.012650000000000002, 0.007700000000000001, 0.016610000000000003, 0.007700000000000001, 0.021780000000000004, 0.007700000000000001, 0.025740000000000002, 0.007700000000000001, 0.025630000000000003, 0.007700000000000001, 0.021670000000000002, 0.007700000000000001, 0.016280000000000003, 0.007700000000000001, 0.012210000000000002, 0.007700000000000001, 0.0068200000000000005, 0.00528, 0.00495, 0.0029700000000000004, 0.0029700000000000004, -0.00022000000000000003, 0.00044000000000000007, -0.00264, -0.00143, -0.0044, -0.00286, -0.0024200000000000003, -0.00132, 0.0, 0.00066, 0.00198, 0.0022, 0.0044, 0.0041800000000000006, 0.00638, 0.0036300000000000004, 0.00825, 0.0020900000000000003, 0.010890000000000002, 0.00011000000000000002, 0.01276, -0.00143, 0.015400000000000002, -0.0034100000000000003, 0.01694, -0.007810000000000001, 0.019030000000000002, -0.013530000000000002, 0.020680000000000004, -0.01782, 0.022770000000000002, -0.023540000000000002, -0.21197000000000002, -0.11616000000000001, -0.20779000000000003, -0.11594, -0.19987000000000002, -0.11429000000000002, -0.19613, -0.11297000000000001, -0.18931, -0.10912000000000001, -0.18612, -0.10681000000000002, -0.18326, -0.10417000000000001, -0.17831, -0.09812000000000001, -0.17633000000000001, -0.09482, -0.17457000000000003, -0.0913, -0.17226, -0.08360000000000001, -0.1716, -0.07953, -0.17138, -0.07535000000000001, -0.17644, -0.08052000000000001, -0.17897000000000002, -0.08305, -0.18403000000000003, -0.08811000000000001, -0.18656, -0.09064000000000001, -0.18909, -0.09317, -0.19415000000000002, -0.09834, -0.19668, -0.10087000000000002, -0.20174000000000003, -0.10593000000000001, -0.20438, -0.10846, -0.20691, -0.11099000000000002, -0.21197000000000002, -0.11616000000000001, 0.19525, -0.11616000000000001, 0.19943, -0.11594, 0.20735, -0.11429000000000002, 0.21109, -0.11297000000000001, 0.21791000000000002, -0.10912000000000001, 0.22110000000000002, -0.10681000000000002, 0.22396000000000002, -0.10417000000000001, 0.22891000000000003, -0.09812000000000001, 0.23089, -0.09482, 0.23265000000000002, -0.0913, 0.23496000000000003, -0.08360000000000001, 0.23562000000000002, -0.07953, 0.23584000000000002, -0.07535000000000001, 0.23078, -0.08052000000000001, 0.22825, -0.08305, 0.22319000000000003, -0.08811000000000001, 0.22066000000000002, -0.09064000000000001, 0.21802, -0.09317, 0.21296, -0.09834, 0.21043, -0.10087000000000002, 0.20537000000000002, -0.10593000000000001, 0.20284000000000002, -0.10846, 0.20031000000000002, -0.11099000000000002, 0.19525, -0.11616000000000001, -0.22143000000000002, -0.49346000000000007, -0.22165000000000004, -0.49324000000000007, -0.22176, -0.49313, -0.22418000000000002, -0.48950000000000005, -0.22759000000000001, -0.48356000000000005, -0.23078, -0.47663000000000005, -0.23276000000000002, -0.47157000000000004, -0.23551000000000002, -0.46332000000000007, -0.23804000000000003, -0.45408000000000004, -0.24189000000000002, -0.43472000000000005, -0.24376, -0.42042, -0.24552000000000004, -0.3971, -0.24607000000000004, -0.37158, -0.24563000000000001, -0.35321, -0.24387000000000003, -0.32406, -0.23232000000000003, -0.32714000000000004, -0.22044000000000002, -0.32978, -0.21241000000000002, -0.33132000000000006, -0.19987000000000002, -0.33308000000000004, -0.18700000000000003, -0.33451000000000003, -0.17809, -0.33506, -0.17798000000000003, -0.3351700000000001, -0.17765000000000003, -0.33528, -0.17754, -0.3355, -0.17743, -0.3357200000000001, -0.17721, -0.33605, -0.1771, -0.33638000000000007, -0.17688, -0.33671, -0.17600000000000002, -0.33814000000000005, -0.17479000000000003, -0.34034000000000003, -0.17347, -0.34243000000000007, -0.17270000000000002, -0.34375, -0.17127, -0.34584000000000004, -0.16995000000000002, -0.3479300000000001, -0.16775, -0.36883, -0.16753, -0.38335, -0.16885, -0.40535000000000004, -0.17215000000000003, -0.42735000000000006, -0.17732000000000003, -0.44869000000000003, -0.18172000000000002, -0.4622200000000001, -0.18546, -0.47135000000000005, -0.18931, -0.47971, -0.19195, -0.48477000000000003, -0.19602, -0.49148000000000003, -0.20020000000000002, -0.4970900000000001, -0.20416, -0.49984000000000006, -0.20647000000000001, -0.49896000000000007, -0.20988, -0.4976400000000001, -0.21329, -0.49643000000000004, -0.21681, -0.49511000000000005, -0.21912, -0.49423, 0.20768, -0.4915900000000001, 0.20614000000000002, -0.49005000000000004, 0.20339000000000002, -0.4866400000000001, 0.19932000000000002, -0.4805900000000001, 0.19514, -0.47355, 0.1925, -0.4682700000000001, 0.18876, -0.45958000000000004, 0.18634, -0.45342000000000005, 0.17974, -0.4317500000000001, 0.17501, -0.40887, 0.17314000000000002, -0.39336, 0.17215000000000003, -0.37004, 0.17336000000000001, -0.34749, 0.17556, -0.33308000000000004, 0.17611000000000002, -0.33231, 0.17666, -0.33143000000000006, 0.17699, -0.33088000000000006, 0.17743, -0.33, 0.17776, -0.32945, 0.17831, -0.32857000000000003, 0.17853000000000002, -0.32824000000000003, 0.17864, -0.32813000000000003, 0.17875000000000002, -0.32791, 0.17908000000000002, -0.32791, 0.17930000000000001, -0.32791, 0.17963, -0.32791, 0.17996, -0.32791, 0.18073000000000003, -0.3377, 0.18194000000000002, -0.36553, 0.18183000000000002, -0.39127000000000006, 0.18106, -0.40722, 0.17886000000000002, -0.42933, 0.17677000000000004, -0.44286000000000003, 0.17325000000000002, -0.45837000000000006, 0.17072, -0.46728000000000003, 0.16885, -0.47278000000000003, 0.16577, -0.48015, 0.16247, -0.48675000000000007, 0.16016000000000002, -0.49060000000000004, 0.15774000000000002, -0.49423, 0.15752, -0.49445000000000006, 0.16049000000000002, -0.49423, 0.16995000000000002, -0.49368, 0.17622000000000002, -0.49335000000000007, 0.18568, -0.49280000000000007, 0.19503000000000004, -0.4922500000000001, 0.2013, -0.49192,
+            )
         val pts = ArrayList<ShapePoint>()
         val count = coords.size / 2
         for (i in 0 until count) {
@@ -1907,14 +1969,14 @@ internal class SwarmSimulation(
                     x = x,
                     y = y,
                     role = if (i % 3 == 0) "logo-flame-spark" else "logo-flame-inner",
-                    progress = progress
-                )
+                    progress = progress,
+                ),
             )
         }
         return pts
     }
 
-            private fun generateHermesLogoPoints(): List<ShapePoint> {
+    private fun generateHermesLogoPoints(): List<ShapePoint> {
         return listOf(
             ShapePoint(x = -0.2187, y = -0.0278, role = "logo-flame-spark", progress = 0.000000),
             ShapePoint(x = -0.2072, y = -0.0314, role = "logo-flame-inner", progress = 0.001311),
@@ -2679,7 +2741,7 @@ internal class SwarmSimulation(
             ShapePoint(x = 0.0206, y = 0.2491, role = "logo-flame-spark", progress = 0.996068),
             ShapePoint(x = 0.0306, y = 0.2429, role = "logo-flame-inner", progress = 0.997379),
             ShapePoint(x = -0.0007, y = 0.2893, role = "logo-flame-inner", progress = 0.998689),
-            ShapePoint(x = -0.0117, y = 0.2896, role = "logo-flame-inner", progress = 1.000000)
+            ShapePoint(x = -0.0117, y = 0.2896, role = "logo-flame-inner", progress = 1.000000),
         )
     }
 
@@ -2704,6 +2766,7 @@ internal class SwarmSimulation(
 
     private fun generateGrokLogoPoints(): List<ShapePoint> {
         val pts = ArrayList<ShapePoint>()
+
         fun appendArc(radius: Double, start: Double, end: Double, count: Int, role: String) {
             for (i in 0 until count) {
                 val t = i.toDouble() / (count - 1).coerceAtLeast(1).toDouble()
@@ -2727,8 +2790,8 @@ internal class SwarmSimulation(
                         x = x + lane * normal,
                         y = y + lane * normal * 0.45,
                         role = if (lane == 0.0) "logo-flame-spark" else "logo-flame-inner",
-                        progress = t
-                    )
+                        progress = t,
+                    ),
                 )
             }
         }
@@ -2736,41 +2799,45 @@ internal class SwarmSimulation(
     }
 
     private fun generateCodexLogoPoints(): List<ShapePoint> {
-        val leftBrace = listOf(
-            -0.06 to 0.28,
-            -0.18 to 0.26,
-            -0.16 to 0.12,
-            -0.28 to 0.0,
-            -0.16 to -0.12,
-            -0.18 to -0.26,
-            -0.06 to -0.28
-        )
-        val rightBrace = listOf(
-            0.06 to 0.28,
-            0.18 to 0.26,
-            0.16 to 0.12,
-            0.28 to 0.0,
-            0.16 to -0.12,
-            0.18 to -0.26,
-            0.06 to -0.28
-        )
+        val leftBrace =
+            listOf(
+                -0.06 to 0.28,
+                -0.18 to 0.26,
+                -0.16 to 0.12,
+                -0.28 to 0.0,
+                -0.16 to -0.12,
+                -0.18 to -0.26,
+                -0.06 to -0.28,
+            )
+        val rightBrace =
+            listOf(
+                0.06 to 0.28,
+                0.18 to 0.26,
+                0.16 to 0.12,
+                0.28 to 0.0,
+                0.16 to -0.12,
+                0.18 to -0.26,
+                0.06 to -0.28,
+            )
         val leftPts = splinePoints(leftBrace, stepsPerSegment = 50, role = "logo-flame-outer")
         val rightPts = splinePoints(rightBrace, stepsPerSegment = 50, role = "logo-flame-inner")
         return leftPts + rightPts
     }
 
     private fun generateAntigravityLogoPoints(): List<ShapePoint> {
-        val diamond = listOf(
-            0.0 to 0.32,
-            0.24 to 0.0,
-            0.0 to -0.32,
-            -0.24 to 0.0
-        )
-        val triangle = listOf(
-            0.0 to 0.12,
-            0.10 to -0.08,
-            -0.10 to -0.08
-        )
+        val diamond =
+            listOf(
+                0.0 to 0.32,
+                0.24 to 0.0,
+                0.0 to -0.32,
+                -0.24 to 0.0,
+            )
+        val triangle =
+            listOf(
+                0.0 to 0.12,
+                0.10 to -0.08,
+                -0.10 to -0.08,
+            )
         val diamondPts = splinePoints(diamond, stepsPerSegment = 60, role = "logo-flame-outer")
         val trianglePts = splinePoints(triangle, stepsPerSegment = 60, role = "logo-flame-inner")
         return diamondPts + trianglePts
@@ -2799,12 +2866,14 @@ internal class SwarmSimulation(
             val r = 0.08
             pts.add(RoutePoint(-0.45 + cos(angle) * r, sin(angle) * r, "gateway", i.toDouble() / gatewayCount))
         }
+
         data class Tgt(val x: Double, val y: Double, val role: String)
-        val targets = listOf(
-            Tgt(0.45, -0.28, "target-1"),
-            Tgt(0.45,  0.00, "target-2"),
-            Tgt(0.45,  0.28, "target-3")
-        )
+        val targets =
+            listOf(
+                Tgt(0.45, -0.28, "target-1"),
+                Tgt(0.45, 0.00, "target-2"),
+                Tgt(0.45, 0.28, "target-3"),
+            )
         for (tgt in targets) {
             val count = 50
             for (i in 0 until count) {

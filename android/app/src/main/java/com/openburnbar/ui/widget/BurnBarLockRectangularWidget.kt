@@ -43,30 +43,33 @@ class BurnBarLockRectangularWidgetReceiver : GlanceAppWidgetReceiver() {
 @Composable
 private fun RectangularContent(snap: BurnBarWidgetSnapshot) {
     Row(
-        modifier = GlanceModifier
+        modifier =
+        GlanceModifier
             .fillMaxSize()
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .clickable(openDashboardAction()),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
                 text = formatCost(snap.heroTotalCost),
-                style = TextStyle(
+                style =
+                TextStyle(
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
-                    color = ColorProvider(WidgetTheme.ember)
+                    color = ColorProvider(WidgetTheme.ember),
                 ),
-                maxLines = 1
+                maxLines = 1,
             )
             Text(
                 text = "${formatTokensCompact(snap.heroTotalTokens)} tokens",
-                style = TextStyle(
+                style =
+                TextStyle(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
-                    color = WidgetTheme.textSubtle
+                    color = WidgetTheme.textSubtle,
                 ),
-                maxLines = 1
+                maxLines = 1,
             )
         }
         Spacer(modifier = GlanceModifier.width(6.dp))

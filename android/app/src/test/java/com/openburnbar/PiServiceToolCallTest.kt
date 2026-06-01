@@ -1,8 +1,11 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.hermes.PiService
-import com.openburnbar.ui.hermes.summarizeHermesToolDetail
 import com.openburnbar.data.hermes.ToolCall
+import com.openburnbar.ui.hermes.summarizeHermesToolDetail
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -16,7 +19,6 @@ import org.junit.Test
  * runtimes — both must produce identical pill detail strings.
  */
 class PiServiceToolCallTest {
-
     @Test
     fun `summarizeToolArguments pulls path from full JSON`() {
         val service = PiService()
@@ -43,29 +45,31 @@ class PiServiceToolCallTest {
         val service = PiService()
         assertEquals(
             "docs/README.md",
-            service.summarizeToolArguments("""{"path":"docs/README.md"""")
+            service.summarizeToolArguments("""{"path":"docs/README.md""""),
         )
     }
 
     @Test
     fun `summarizeHermesToolDetail prefers result over arguments`() {
-        val tc = ToolCall(
-            id = "1",
-            name = "search",
-            arguments = """{"query":"timezone"}""",
-            result = "Pacific Daylight Time"
-        )
+        val tc =
+            ToolCall(
+                id = "1",
+                name = "search",
+                arguments = """{"query":"timezone"}""",
+                result = "Pacific Daylight Time",
+            )
         assertEquals("Pacific Daylight Time", summarizeHermesToolDetail(tc))
     }
 
     @Test
     fun `summarizeHermesToolDetail falls back to arguments preview when no result`() {
-        val tc = ToolCall(
-            id = "1",
-            name = "search",
-            arguments = """{"query":"timezone"}""",
-            result = null
-        )
+        val tc =
+            ToolCall(
+                id = "1",
+                name = "search",
+                arguments = """{"query":"timezone"}""",
+                result = null,
+            )
         assertEquals("timezone", summarizeHermesToolDetail(tc))
     }
 

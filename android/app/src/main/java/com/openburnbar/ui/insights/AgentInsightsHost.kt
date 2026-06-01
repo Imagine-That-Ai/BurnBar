@@ -1,7 +1,6 @@
 package com.openburnbar.ui.insights
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -22,8 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.openburnbar.data.insights.InsightDigest
-import com.openburnbar.data.insights.InsightFilter
-import com.openburnbar.data.insights.InsightTimeWindow
 import com.openburnbar.data.insights.services.FirestoreInsightDataSource
 import com.openburnbar.data.insights.services.InsightDataSource
 import kotlinx.coroutines.launch
@@ -42,18 +39,19 @@ fun AgentInsightsHost(
     scope: AgentInsightsScope,
     onOpenWorkspace: () -> Unit,
     onBack: () -> Unit,
-    dataSource: InsightDataSource = remember { FirestoreInsightDataSource() }
+    dataSource: InsightDataSource = remember { FirestoreInsightDataSource() },
 ) {
     var digest by remember { mutableStateOf<InsightDigest?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(scope) {
         coroutineScope.launch {
-            digest = try {
-                dataSource.buildDigest(scope.window)
-            } catch (_: Exception) {
-                null
-            }
+            digest =
+                try {
+                    dataSource.buildDigest(scope.window)
+                } catch (_: Exception) {
+                    null
+                }
         }
     }
 
@@ -70,9 +68,9 @@ fun AgentInsightsHost(
                     IconButton(onClick = onOpenWorkspace) {
                         Icon(Icons.Filled.GridView, contentDescription = "Open canvas workspace")
                     }
-                }
+                },
             )
-        }
+        },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
             AgentInsightsScreen(
@@ -81,7 +79,7 @@ fun AgentInsightsHost(
                 analysis = null,
                 canvases = emptyList(),
                 onOpenWorkspace = onOpenWorkspace,
-                contentPadding = padding
+                contentPadding = padding,
             )
         }
     }

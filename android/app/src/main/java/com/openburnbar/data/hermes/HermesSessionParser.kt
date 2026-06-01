@@ -3,12 +3,17 @@ package com.openburnbar.data.hermes
 import org.json.JSONArray
 import org.json.JSONObject
 
+private const val TIMESTAMP_RAW_SECONDS_THRESHOLD_L = 10_000_000_000L
+private const val TIMESTAMP_RAW_SECONDS_THRESHOLD_D = 10_000_000_000.0
+
 /**
  * Tolerant JSON parsers for the Hermes `/api/sessions` endpoints. The
  * server schema has shifted across versions, so each field has multiple
  * fallback keys that match the iOS implementation byte-for-byte.
  */
 object HermesSessionParser {
+    private const val VAL_10000000000_0 = 10_000_000_000.0
+    private const val VAL_10000000000_L = 10_000_000_000L
 
     /** One message persisted on a Hermes session detail document. */
     data class StoredMessage(
@@ -16,12 +21,13 @@ object HermesSessionParser {
         val role: String,
         val text: String,
         val modelName: String?,
-        val timestampMillis: Long?
+        val timestampMillis: Long?,
     )
 
     fun parseSessions(body: String): List<HermesSessionSummary> {
-        val array = parseArrayBody(body) { it.optJSONArray("sessions") ?: it.optJSONArray("data") }
-            ?: return emptyList()
+        val array =
+            parseArrayBody(body) { it.optJSONArray("sessions") ?: it.optJSONArray("data") }
+                ?: return emptyList()
         return (0 until array.length()).mapNotNull { index ->
             val obj = array.optJSONObject(index) ?: return@mapNotNull null
             parseSummary(obj)
@@ -29,11 +35,12 @@ object HermesSessionParser {
     }
 
     fun parseSessionMessages(body: String): List<StoredMessage> {
-        val array = parseArrayBody(body) { root ->
-            root.optJSONArray("messages")
-                ?: root.optJSONObject("session")?.optJSONArray("messages")
-                ?: root.optJSONArray("data")
-        } ?: return emptyList()
+        val array =
+            parseArrayBody(body) { root ->
+                root.optJSONArray("messages")
+                    ?: root.optJSONObject("session")?.optJSONArray("messages")
+                    ?: root.optJSONArray("data")
+            } ?: return emptyList()
         return (0 until array.length()).mapNotNull { index ->
             val obj = array.optJSONObject(index) ?: return@mapNotNull null
             parseStoredMessage(obj)
@@ -52,10 +59,11 @@ object HermesSessionParser {
     }
 
     private fun parseSummary(obj: JSONObject): HermesSessionSummary? {
-        val id = (obj.optStringOrNull("id")
-            ?: obj.optStringOrNull("session_id")
-            ?: obj.optStringOrNull("sessionId"))
-            ?: return null
+        val id =
+            obj.optStringOrNull("id")
+                ?: obj.optStringOrNull("session_id")
+                ?: obj.optStringOrNull("sessionId")
+                ?: return null
         return HermesSessionSummary(
             id = id,
             title = obj.optStringOrNull("title") ?: obj.optStringOrNull("name"),
@@ -69,24 +77,25 @@ object HermesSessionParser {
             messageCount = obj.optInt("message_count", obj.optInt("messageCount", 0)),
             toolCallCount = obj.optInt("tool_call_count", obj.optInt("toolCallCount", 0)),
             inputTokens = obj.optInt("input_tokens", obj.optInt("inputTokens", 0)),
-            outputTokens = obj.optInt("output_tokens", obj.optInt("outputTokens", 0))
+            outputTokens = obj.optInt("output_tokens", obj.optInt("outputTokens", 0)),
         )
     }
 
     private fun parseStoredMessage(obj: JSONObject): StoredMessage? {
         val role = obj.optStringOrNull("role") ?: obj.optStringOrNull("author") ?: "assistant"
-        val text = obj.optStringOrNull("content")
-            ?: obj.optStringOrNull("text")
-            ?: obj.optStringOrNull("body")
-            ?: (obj.optJSONArray("content")?.let { stringifyContent(it) })
-            ?: ""
+        val text =
+            obj.optStringOrNull("content")
+                ?: obj.optStringOrNull("text")
+                ?: obj.optStringOrNull("body")
+                ?: obj.optJSONArray("content")?.let { stringifyContent(it) }
+                ?: ""
         if (role.isBlank() && text.isBlank()) return null
         return StoredMessage(
             id = obj.optStringOrNull("id"),
             role = role,
             text = text,
             modelName = obj.optStringOrNull("model") ?: obj.optStringOrNull("model_id"),
-            timestampMillis = obj.optTimestampMillis("timestamp", "created_at", "createdAt", "ts")
+            timestampMillis = obj.optTimestampMillis("timestamp", "created_at", "createdAt", "ts"),
         )
     }
 
@@ -116,20 +125,26 @@ private fun JSONObject.optStringOrNull(key: String): String? {
 /** Tolerant numeric → epoch-millis converter. */
 private fun JSONObject.optTimestampMillis(vararg keys: String): Long? {
     for (key in keys) {
-        if (!has(key) || isNull(key)) continue
-        val raw = opt(key) ?: continue
-        val millis = when (raw) {
-            is Number -> {
-                val n = raw.toLong()
-                if (n > 10_000_000_000L) n else n * 1000L
+        val millis =
+            if (has(key) && !isNull(key)) {
+                opt(key)?.let { timestampMillisFromRaw(it) }
+            } else {
+                null
             }
-            is String -> {
-                val n = raw.toDoubleOrNull() ?: continue
-                if (n > 10_000_000_000.0) n.toLong() else (n * 1000).toLong()
-            }
-            else -> continue
-        }
-        return millis
+        if (millis != null) return millis
     }
     return null
 }
+
+private fun timestampMillisFromRaw(raw: Any): Long? =
+    when (raw) {
+        is Number -> {
+            val n = raw.toLong()
+            if (n > TIMESTAMP_RAW_SECONDS_THRESHOLD_L) n else n * 1000L
+        }
+        is String -> {
+            val n = raw.toDoubleOrNull() ?: return null
+            if (n > TIMESTAMP_RAW_SECONDS_THRESHOLD_D) n.toLong() else (n * 1000).toLong()
+        }
+        else -> null
+    }

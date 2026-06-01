@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.insights
 
 import androidx.compose.foundation.background
@@ -22,9 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,7 +41,6 @@ import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.insights.InsightMissionCandidate
 import com.openburnbar.ui.settings.rememberWebsiteBackground
-import com.openburnbar.data.models.AgentProvider
 
 /**
  * Per-agent Insights detail on Android.
@@ -64,24 +64,26 @@ fun AgentInsightsScreen(
     onOpenCanvas: (InsightCanvas) -> Unit = {},
     onTapMission: (InsightMissionCandidate) -> Unit = {},
     onOpenWorkspace: () -> Unit = {},
-    contentPadding: PaddingValues = PaddingValues()
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
     val useWebsiteBackground by rememberWebsiteBackground()
-    val bundle = remember(scope, digest, analysis, canvases) {
-        AgentInsightsBundleAssembler.assemble(
-            scope = scope,
-            digest = digest,
-            analysis = analysis,
-            canvases = canvases
-        )
-    }
+    val bundle =
+        remember(scope, digest, analysis, canvases) {
+            AgentInsightsBundleAssembler.assemble(
+                scope = scope,
+                digest = digest,
+                analysis = analysis,
+                canvases = canvases,
+            )
+        }
 
     LazyColumn(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxSize()
             .background(if (useWebsiteBackground) Color.Transparent else MaterialTheme.colorScheme.background),
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { HeaderCard(header = bundle.header) }
         item { KPIStrip(strip = bundle.kpis) }
@@ -108,85 +110,98 @@ private fun HeaderCard(header: AgentInsightsHeader) {
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 1.dp,
-        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (header.provider != null) {
-                com.openburnbar.ui.components.ProviderLogo(
-                    provider = header.provider,
-                    size = 56.dp,
-                )
-            } else {
-                Box(
-                    modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = header.title.first().toString(),
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    )
-                }
-            }
+            HeaderCardAvatar(header = header)
             Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        header.title,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    StatusBadge(status = header.status)
-                }
-                header.subtitle?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (header.modelLineup.isNotEmpty()) {
-                    Text(
-                        header.modelLineup.joinToString(" · "),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
+            HeaderCardDetails(header = header, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun HeaderCardAvatar(header: AgentInsightsHeader) {
+    if (header.provider != null) {
+        com.openburnbar.ui.components.ProviderLogo(
+            provider = header.provider,
+            size = 56.dp,
+        )
+    } else {
+        Box(
+            modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = header.title.first().toString(),
+                style =
+                MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeaderCardDetails(header: AgentInsightsHeader, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                header.title,
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            StatusBadge(status = header.status)
+        }
+        header.subtitle?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (header.modelLineup.isNotEmpty()) {
+            Text(
+                header.modelLineup.joinToString(" · "),
+                style =
+                MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
 
 @Composable
 private fun StatusBadge(status: AgentInsightsHeader.Status) {
-    val tint = when (status) {
-        AgentInsightsHeader.Status.ACTIVE -> Color(0xFF22C55E)
-        AgentInsightsHeader.Status.IDLE -> Color(0xFFEAB308)
-        AgentInsightsHeader.Status.DORMANT -> MaterialTheme.colorScheme.onSurfaceVariant
-        AgentInsightsHeader.Status.UNCONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val tint =
+        when (status) {
+            AgentInsightsHeader.Status.ACTIVE -> Color(0xFF22C55E)
+            AgentInsightsHeader.Status.IDLE -> Color(0xFFEAB308)
+            AgentInsightsHeader.Status.DORMANT -> MaterialTheme.colorScheme.onSurfaceVariant
+            AgentInsightsHeader.Status.UNCONFIGURED -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
     Surface(
         color = tint.copy(alpha = 0.15f),
-        shape = RoundedCornerShape(50)
+        shape = RoundedCornerShape(50),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(tint))
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 status.displayLabel,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -198,16 +213,17 @@ private fun StatusBadge(status: AgentInsightsHeader.Status) {
 private fun KPIStrip(strip: AgentInsightsKPIStrip) {
     val items = strip.ordered
     Column(
-        modifier = Modifier
+        modifier =
+        Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         val chunked = items.chunked(2)
         chunked.forEach { rowItems ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 rowItems.forEach { kpi ->
                     Box(modifier = Modifier.weight(1f)) {
@@ -227,21 +243,22 @@ private fun KPITile(kpi: AgentInsightsKPIStrip.KPI) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp
+        tonalElevation = 1.dp,
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 kpi.label.uppercase(),
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 kpi.valueText,
-                style = MaterialTheme.typography.headlineMedium.copy(
+                style =
+                MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
+                    fontFamily = FontFamily.Monospace,
+                ),
             )
         }
     }
@@ -254,18 +271,18 @@ private fun BriefCard(brief: InsightAnalysisResult, onOpenWorkspace: () -> Unit)
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().clickable(onClick = onOpenWorkspace)
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().clickable(onClick = onOpenWorkspace),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 "Editorial brief",
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 brief.executiveSummary,
-                style = MaterialTheme.typography.bodyLarge
+                style = MaterialTheme.typography.bodyLarge,
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row {
@@ -284,15 +301,16 @@ private fun BriefStat(label: String, count: Int) {
     Column {
         Text(
             count.toString(),
-            style = MaterialTheme.typography.titleLarge.copy(
+            style =
+            MaterialTheme.typography.titleLarge.copy(
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
+                fontFamily = FontFamily.Monospace,
+            ),
         )
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -306,13 +324,13 @@ private fun MissionRail(missions: List<InsightMissionCandidate>, onTap: (Insight
             Text(
                 "MISSIONS",
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 missions.size.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -330,21 +348,21 @@ private fun MissionCard(mission: InsightMissionCandidate, onTap: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.width(260.dp).clickable(onClick = onTap)
+        modifier = Modifier.width(260.dp).clickable(onClick = onTap),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             PriorityBadge(priority = mission.priority)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 mission.title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 mission.summary,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3
+                maxLines = 3,
             )
         }
     }
@@ -352,18 +370,19 @@ private fun MissionCard(mission: InsightMissionCandidate, onTap: () -> Unit) {
 
 @Composable
 private fun PriorityBadge(priority: InsightMissionCandidate.Priority) {
-    val (label, color) = when (priority) {
-        InsightMissionCandidate.Priority.CRITICAL -> "Critical" to Color(0xFFEF4444)
-        InsightMissionCandidate.Priority.HIGH -> "High" to Color(0xFFF45B69)
-        InsightMissionCandidate.Priority.MEDIUM -> "Medium" to Color(0xFFEAB308)
-        InsightMissionCandidate.Priority.LOW -> "Low" to MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val (label, color) =
+        when (priority) {
+            InsightMissionCandidate.Priority.CRITICAL -> "Critical" to Color(0xFFEF4444)
+            InsightMissionCandidate.Priority.HIGH -> "High" to Color(0xFFF45B69)
+            InsightMissionCandidate.Priority.MEDIUM -> "Medium" to Color(0xFFEAB308)
+            InsightMissionCandidate.Priority.LOW -> "Low" to MaterialTheme.colorScheme.onSurfaceVariant
+        }
     Surface(color = color, shape = RoundedCornerShape(50)) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
             color = Color.White,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
         )
     }
 }
@@ -377,25 +396,25 @@ private fun CanvasGridSection(canvases: List<InsightCanvas>, onTap: (InsightCanv
             Text(
                 "SAVED CANVASES",
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 canvases.size.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             val chunked = canvases.chunked(2)
             chunked.forEach { rowCanvases ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     rowCanvases.forEach { canvas ->
                         Box(modifier = Modifier.weight(1f)) {
@@ -416,19 +435,19 @@ private fun CanvasCard(canvas: InsightCanvas, onTap: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().height(110.dp).clickable(onClick = onTap)
+        modifier = Modifier.fillMaxWidth().height(110.dp).clickable(onClick = onTap),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 canvas.widgets.size.toString(),
                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 canvas.title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 2
+                maxLines = 2,
             )
         }
     }
@@ -441,22 +460,22 @@ private fun EmptyState(header: AgentInsightsHeader) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(24.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
                 "No data yet for ${header.title}",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 "Run a session on this agent — the brief and KPIs will appear here automatically.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

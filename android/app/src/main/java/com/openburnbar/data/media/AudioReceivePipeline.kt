@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+private const val VAL_6 = 6
+
 /**
  * Android-side Opus → PCM decode + playback path. 1:1 port of
  * `AudioReceivePipeline.swift` (iOS). Adaptive jitter buffer (60 ms /
@@ -30,8 +32,11 @@ class AudioReceivePipeline(
 ) {
     sealed class Phase {
         object Idle : Phase()
+
         object Running : Phase()
+
         object Stopped : Phase()
+
         data class Failed(val reason: String) : Phase()
     }
 
@@ -56,25 +61,26 @@ class AudioReceivePipeline(
                 val frameSamples = sampleRateHz * frameDurationMs / 1000
                 val frameBytes = frameSamples * 2
                 val minBuffer = AudioTrack.getMinBufferSize(sampleRateHz, channelConfig, encoding)
-                val bufferSize = maxOf(minBuffer, frameBytes * 6)
+                val bufferSize = maxOf(minBuffer, frameBytes * VAL_6)
 
-                val track = AudioTrack.Builder()
-                    .setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    .setAudioFormat(
-                        AudioFormat.Builder()
-                            .setSampleRate(sampleRateHz)
-                            .setEncoding(encoding)
-                            .setChannelMask(channelConfig)
-                            .build()
-                    )
-                    .setBufferSizeInBytes(bufferSize)
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .build()
+                val track =
+                    AudioTrack.Builder()
+                        .setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build(),
+                        )
+                        .setAudioFormat(
+                            AudioFormat.Builder()
+                                .setSampleRate(sampleRateHz)
+                                .setEncoding(encoding)
+                                .setChannelMask(channelConfig)
+                                .build(),
+                        )
+                        .setBufferSizeInBytes(bufferSize)
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .build()
                 track.play()
                 audioTrack = track
                 decoder = OpusCodec.decoder(sampleRateHz = sampleRateHz, channels = 1)
@@ -117,7 +123,11 @@ class AudioReceivePipeline(
                 renderJob?.cancel()
                 renderJob = null
                 jitterBuffer.clear()
-                runCatching { audioTrack?.pause(); audioTrack?.flush(); audioTrack?.release() }
+                runCatching {
+                    audioTrack?.pause()
+                    audioTrack?.flush()
+                    audioTrack?.release()
+                }
                 audioTrack = null
                 runCatching { decoder?.close() }
                 decoder = null

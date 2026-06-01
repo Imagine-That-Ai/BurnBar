@@ -1,11 +1,14 @@
+@file:Suppress("MagicNumber")
+// UI unit-test fixture literals (sizes, millis, colors); extraction adds noise without reuse.
+
 package com.openburnbar.ui.media
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import com.openburnbar.data.media.VideoReceivePipeline
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -85,12 +88,13 @@ class ScreenShareInputPolicyTest {
 
     @Test
     fun staleFrameWithFreshMacHeartbeatDoesNotAskUserToRetry() {
-        val stats = VideoReceivePipeline.Stats(
-            widthPx = 1920,
-            heightPx = 1080,
-            queuedFrameCount = 12,
-            lastFrameAtMillis = 1_000L,
-        )
+        val stats =
+            VideoReceivePipeline.Stats(
+                widthPx = 1920,
+                heightPx = 1080,
+                queuedFrameCount = 12,
+                lastFrameAtMillis = 1_000L,
+            )
 
         assertFalse(
             screenShareNeedsAutomaticRecovery(
@@ -98,7 +102,7 @@ class ScreenShareInputPolicyTest {
                 stats = stats,
                 nowMillis = 20_000L,
                 lastPeerHeartbeatAtMillis = 19_000L,
-            )
+            ),
         )
         assertNull(
             screenShareStatusText(
@@ -106,18 +110,19 @@ class ScreenShareInputPolicyTest {
                 stats = stats,
                 nowMillis = 20_000L,
                 lastPeerHeartbeatAtMillis = 19_000L,
-            )
+            ),
         )
     }
 
     @Test
     fun staleFrameWithoutMacHeartbeatRecoversAutomatically() {
-        val stats = VideoReceivePipeline.Stats(
-            widthPx = 1920,
-            heightPx = 1080,
-            queuedFrameCount = 12,
-            lastFrameAtMillis = 1_000L,
-        )
+        val stats =
+            VideoReceivePipeline.Stats(
+                widthPx = 1920,
+                heightPx = 1080,
+                queuedFrameCount = 12,
+                lastFrameAtMillis = 1_000L,
+            )
 
         assertTrue(
             screenShareNeedsAutomaticRecovery(
@@ -125,7 +130,7 @@ class ScreenShareInputPolicyTest {
                 stats = stats,
                 nowMillis = 20_000L,
                 lastPeerHeartbeatAtMillis = 0L,
-            )
+            ),
         )
         assertEquals(
             "Mac video is recovering automatically...",
@@ -176,19 +181,19 @@ class ScreenShareInputPolicyTest {
             shouldStopMirrorOnViewerDestroy(
                 isFinishing = true,
                 isChangingConfigurations = false,
-            )
+            ),
         )
         assertFalse(
             shouldStopMirrorOnViewerDestroy(
                 isFinishing = false,
                 isChangingConfigurations = false,
-            )
+            ),
         )
         assertFalse(
             shouldStopMirrorOnViewerDestroy(
                 isFinishing = true,
                 isChangingConfigurations = true,
-            )
+            ),
         )
     }
 }

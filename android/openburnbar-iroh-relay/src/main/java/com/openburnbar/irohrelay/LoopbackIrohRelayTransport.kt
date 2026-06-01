@@ -1,14 +1,14 @@
 package com.openburnbar.irohrelay
 
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.random.Random
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.random.Random
 
 /**
  * In-process iroh transport for tests + the spine demo. Pairs Mac-side
@@ -30,7 +30,10 @@ class LoopbackIrohRelayRendezvous {
         val continuation: CancellableContinuation<IrohRelayStream>,
     )
 
-    internal fun register(transport: LoopbackIrohRelayTransport, nodeId: String) {
+    internal fun register(
+        transport: LoopbackIrohRelayTransport,
+        nodeId: String,
+    ) {
         val waiters: List<PendingConnect>
         synchronized(state) {
             hosts[nodeId] = transport
@@ -45,7 +48,10 @@ class LoopbackIrohRelayRendezvous {
         synchronized(state) { hosts.remove(nodeId) }
     }
 
-    suspend fun dial(peer: String, timeoutMillis: Long): IrohRelayStream {
+    suspend fun dial(
+        peer: String,
+        timeoutMillis: Long,
+    ): IrohRelayStream {
         val connectId = UUID.randomUUID()
         val resolvedHost: LoopbackIrohRelayTransport? = synchronized(state) { hosts[peer] }
         if (resolvedHost != null) {
@@ -53,19 +59,20 @@ class LoopbackIrohRelayRendezvous {
                 resolvedHost.fulfillDial(connectId, cont)
             }
         }
-        val result = withTimeoutOrNull(timeoutMillis) {
-            suspendCancellableCoroutine<IrohRelayStream> { cont ->
-                cont.invokeOnCancellation {
+        val result =
+            withTimeoutOrNull(timeoutMillis) {
+                suspendCancellableCoroutine<IrohRelayStream> { cont ->
+                    cont.invokeOnCancellation {
+                        synchronized(state) {
+                            pending[peer]?.removeAll { it.id == connectId }
+                        }
+                    }
                     synchronized(state) {
-                        pending[peer]?.removeAll { it.id == connectId }
+                        pending.getOrPut(peer) { mutableListOf() }
+                            .add(PendingConnect(connectId, cont))
                     }
                 }
-                synchronized(state) {
-                    pending.getOrPut(peer) { mutableListOf() }
-                        .add(PendingConnect(connectId, cont))
-                }
             }
-        }
         return result ?: run {
             synchronized(state) {
                 pending[peer]?.removeAll { it.id == connectId }
@@ -159,61 +166,73 @@ class LoopbackIrohRelayTransport(
     nodeId: String? = null,
     private val codec: IrohRelayFrameCodec = IrohRelayFrameCodec(),
 ) : IrohRelayTransport {
-    private val identity = IrohEndpointIdentity(
-        nodeId = nodeId ?: randomLoopbackNodeId(),
-        rawPublicKey = ByteArray(32),
-    )
+    private val identity =
+        IrohEndpointIdentity(
+            nodeId = nodeId ?: randomLoopbackNodeId(),
+            rawPublicKey = ByteArray(32),
+        )
     private val accept = Channel<IrohRelayStream>(Channel.UNLIMITED)
     private val stateLock = Mutex()
     private var started: Boolean = false
 
     override suspend fun start(): IrohEndpointIdentity {
-        val first = stateLock.withLock {
-            val f = !started
-            started = true
-            f
-        }
+        val first =
+            stateLock.withLock {
+                val f = !started
+                started = true
+                f
+            }
         if (first) {
             rendezvous.register(this, identity.nodeId)
         }
         return identity
     }
 
-    override suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohRelayStream {
+    override suspend fun connect(
+        target: IrohDialTarget,
+        timeoutMillis: Long,
+    ): IrohRelayStream {
         if (!stateLock.withLock { started }) throw IrohRelayTransportError.EndpointNotReady
         return rendezvous.dial(target.nodeId, timeoutMillis)
     }
 
     override suspend fun accept(timeoutMillis: Long): IrohRelayStream {
         if (!stateLock.withLock { started }) throw IrohRelayTransportError.EndpointNotReady
-        val received = withTimeoutOrNull(timeoutMillis) { accept.receive() }
-            ?: throw IrohRelayTransportError.TimedOut
+        val received =
+            withTimeoutOrNull(timeoutMillis) { accept.receive() }
+                ?: throw IrohRelayTransportError.TimedOut
         return received
     }
 
     override suspend fun shutdown() {
-        val wasStarted = stateLock.withLock {
-            val w = started
-            started = false
-            w
-        }
+        val wasStarted =
+            stateLock.withLock {
+                val w = started
+                started = false
+                w
+            }
         if (!wasStarted) return
         rendezvous.deregister(identity.nodeId)
         accept.close()
     }
 
-    internal fun fulfillDial(connectId: UUID, continuation: CancellableContinuation<IrohRelayStream>) {
+    internal fun fulfillDial(
+        connectId: UUID,
+        continuation: CancellableContinuation<IrohRelayStream>,
+    ) {
         val pair = LoopbackStreamPair()
-        val clientStream = LoopbackIrohRelayStream(
-            readQueue = pair.hostToClient,
-            writeQueue = pair.clientToHost,
-            codec = codec,
-        )
-        val hostStream = LoopbackIrohRelayStream(
-            readQueue = pair.clientToHost,
-            writeQueue = pair.hostToClient,
-            codec = codec,
-        )
+        val clientStream =
+            LoopbackIrohRelayStream(
+                readQueue = pair.hostToClient,
+                writeQueue = pair.clientToHost,
+                codec = codec,
+            )
+        val hostStream =
+            LoopbackIrohRelayStream(
+                readQueue = pair.clientToHost,
+                writeQueue = pair.hostToClient,
+                codec = codec,
+            )
         if (continuation.isActive) continuation.resumeWith(Result.success(clientStream))
         accept.trySend(hostStream)
     }

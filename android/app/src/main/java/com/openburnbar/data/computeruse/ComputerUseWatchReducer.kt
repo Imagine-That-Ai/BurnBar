@@ -52,13 +52,15 @@ class ComputerUseWatchReducer(
         mutableState.update { current ->
             current.copy(
                 pendingApproval = null,
-                actionTimeline = current.actionTimeline + ComputerUseActionLogEntry(
-                    entryIndex = nextIndex(current),
-                    timestampMillis = nowMillis,
-                    actionKind = request.toolKind,
-                    summary = "Approved: ${request.actionSummary}",
-                    status = ComputerUseActionStatus.COMPLETED,
-                )
+                actionTimeline =
+                current.actionTimeline +
+                    ComputerUseActionLogEntry(
+                        entryIndex = nextIndex(current),
+                        timestampMillis = nowMillis,
+                        actionKind = request.toolKind,
+                        summary = "Approved: ${request.actionSummary}",
+                        status = ComputerUseActionStatus.COMPLETED,
+                    ),
             )
         }
         return ComputerUseApprovalResponse(
@@ -75,13 +77,15 @@ class ComputerUseWatchReducer(
             current.copy(
                 pendingApproval = null,
                 panicHalted = halt,
-                actionTimeline = current.actionTimeline + ComputerUseActionLogEntry(
-                    entryIndex = nextIndex(current),
-                    timestampMillis = nowMillis,
-                    actionKind = request.toolKind,
-                    summary = if (halt) "Rejected and halted: ${request.actionSummary}" else "Rejected: ${request.actionSummary}",
-                    status = if (halt) ComputerUseActionStatus.PANIC_HALTED else ComputerUseActionStatus.REJECTED,
-                )
+                actionTimeline =
+                current.actionTimeline +
+                    ComputerUseActionLogEntry(
+                        entryIndex = nextIndex(current),
+                        timestampMillis = nowMillis,
+                        actionKind = request.toolKind,
+                        summary = if (halt) "Rejected and halted: ${request.actionSummary}" else "Rejected: ${request.actionSummary}",
+                        status = if (halt) ComputerUseActionStatus.PANIC_HALTED else ComputerUseActionStatus.REJECTED,
+                    ),
             )
         }
         return ComputerUseApprovalResponse(
@@ -111,13 +115,15 @@ class ComputerUseWatchReducer(
             it.copy(
                 pendingApproval = null,
                 panicHalted = true,
-                actionTimeline = it.actionTimeline + ComputerUseActionLogEntry(
-                    entryIndex = nextIndex(it),
-                    timestampMillis = System.currentTimeMillis(),
-                    actionKind = "phone.panic",
-                    summary = "Panic halt from Android",
-                    status = ComputerUseActionStatus.PANIC_HALTED,
-                )
+                actionTimeline =
+                it.actionTimeline +
+                    ComputerUseActionLogEntry(
+                        entryIndex = nextIndex(it),
+                        timestampMillis = System.currentTimeMillis(),
+                        actionKind = "phone.panic",
+                        summary = "Panic halt from Android",
+                        status = ComputerUseActionStatus.PANIC_HALTED,
+                    ),
             )
         }
     }
@@ -126,7 +132,5 @@ class ComputerUseWatchReducer(
         mutableState.value = ComputerUseWatchState()
     }
 
-    private fun nextIndex(state: ComputerUseWatchState): Int =
-        (state.actionTimeline.maxOfOrNull { it.entryIndex } ?: -1) + 1
+    private fun nextIndex(state: ComputerUseWatchState): Int = (state.actionTimeline.maxOfOrNull { it.entryIndex } ?: -1) + 1
 }
-

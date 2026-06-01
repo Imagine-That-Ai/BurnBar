@@ -3,18 +3,17 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.openburnbar.data.firebase.FirestoreValueParsers
+import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.util.Date
-import java.util.concurrent.TimeUnit
 
 /**
  * 8-state sync health enum matching iOS CloudSyncHealth.
@@ -27,7 +26,8 @@ enum class CloudSyncHealth(val label: String) {
     OFFLINE("Offline"),
     PERMISSION_DENIED("Permission denied"),
     APP_CHECK_BLOCKED("App Check blocked"),
-    FIREBASE_UNAVAILABLE("Firebase unavailable");
+    FIREBASE_UNAVAILABLE("Firebase unavailable"),
+    ;
 
     val isHealthy: Boolean get() = this == HEALTHY
     val isDegraded: Boolean get() = this in listOf(DEGRADED, OFFLINE, PERMISSION_DENIED, APP_CHECK_BLOCKED, FIREBASE_UNAVAILABLE)
@@ -36,7 +36,7 @@ enum class CloudSyncHealth(val label: String) {
 data class CloudPublisherDevice(
     val displayName: String = "",
     val platform: String = "",
-    val lastSeen: Date? = null
+    val lastSeen: Date? = null,
 )
 
 object CloudSyncErrorClassifier {
@@ -104,74 +104,41 @@ class CloudSyncHealthStore : ViewModel() {
                     return@launch
                 }
 
-                val latestUsage = db.collection("users").document(uid)
-                    .collection("usage")
-                    .orderBy("startTime", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                    .limit(1)
-                    .get().await()
-                    .documents
-                    .firstOrNull()
+                val latestUsage =
+                    db.collection("users").document(uid)
+                        .collection("usage")
+                        .orderBy("startTime", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                        .limit(1)
+                        .get().await()
+                        .documents
+                        .firstOrNull()
 
-                val macDevice = db.collection("users").document(uid)
-                    .collection("devices")
-                    .whereEqualTo("platform", "macOS")
-                    .get().await()
-                    .documents
-                    .maxByOrNull { doc ->
-                        ((doc.data?.get("lastActiveAt") as? com.google.firebase.Timestamp)?.toDate()
-                            ?: doc.data?.get("lastActiveAt") as? java.util.Date)
-                            ?.time ?: 0L
-                    }
+                val macDevice =
+                    db.collection("users").document(uid)
+                        .collection("devices")
+                        .whereEqualTo("platform", "macOS")
+                        .get().await()
+                        .documents
+                        .maxByOrNull(::macDeviceLastActiveMillis)
 
-                val macDeviceId = macDevice?.data?.get("deviceId") as? String
-                    ?: macDevice?.id
-
-                if (macDeviceId == null) {
+                val macContext = resolveMacSyncDeviceContext(macDevice)
+                if (macContext == null) {
                     applyUsageFallback(latestUsage?.data)
                     return@launch
                 }
 
-                val macName = macDevice?.data?.get("deviceName") as? String ?: "Mac"
-
-                val doc = db.collection("users").document(uid)
-                    .collection("sync_status").document(macDeviceId)
-                    .get().await()
+                val doc =
+                    db.collection("users").document(uid)
+                        .collection("sync_status").document(macContext.macDeviceId)
+                        .get().await()
 
                 val data = doc.data
                 if (data != null) {
-                    val publishedAt = dateValue(data["lastSyncAt"])
-                        ?: dateValue(data["lastPublishedAt"])
-                    val readAt = dateValue(data["lastReadAt"])
-
-                    _lastPublishedAt.value = publishedAt
-                    _lastReadAt.value = readAt
-
-                    val pubData = data["publisher"] as? Map<*, *>
-                    _publisher.value = pubData?.let {
-                        CloudPublisherDevice(
-                            displayName = it["displayName"] as? String ?: "",
-                            platform = it["platform"] as? String ?: "",
-                            lastSeen = (it["lastSeen"] as? com.google.firebase.Timestamp)?.toDate()
-                        )
-                    } ?: CloudPublisherDevice(
-                        displayName = macName,
-                        platform = "macOS",
-                        lastSeen = publishedAt
-                    )
-
-                    val now = Date()
-                    val stale = publishedAt?.let { now.time - it.time > STALENESS_THRESHOLD_MS } ?: true
-                    val lastError = data["lastError"] as? String
-
-                    _health.value = when {
-                        lastError != null -> CloudSyncHealth.DEGRADED
-                        stale -> CloudSyncHealth.DEGRADED
-                        else -> CloudSyncHealth.HEALTHY
-                    }
+                    applySyncSnapshot(applySyncStatusDocument(data, macContext.macName, STALENESS_THRESHOLD_MS))
                 } else {
                     applyUsageFallback(latestUsage?.data)
                 }
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 Log.e("BurnBar", "Sync health refresh failed", e)
                 _health.value = CloudSyncErrorClassifier.classify(e)
             } finally {
@@ -185,30 +152,14 @@ class CloudSyncHealthStore : ViewModel() {
         return now.time - published.time > STALENESS_THRESHOLD_MS
     }
 
-    private fun applyUsageFallback(data: Map<String, Any>?) {
-        val usageAt = data?.let {
-            dateValue(it["startTime"])
-                ?: dateValue(it["timestamp"])
-                ?: dateValue(it["updatedAt"])
-        }
-        _lastPublishedAt.value = usageAt
-        _lastReadAt.value = Date()
-        _publisher.value = data?.let {
-            CloudPublisherDevice(
-                displayName = (it["sourceDeviceName"] as? String) ?: (it["deviceName"] as? String) ?: "Mac",
-                platform = "macOS",
-                lastSeen = usageAt
-            )
-        }
-        _health.value = when {
-            usageAt == null -> CloudSyncHealth.UNKNOWN
-            Date().time - usageAt.time > STALENESS_THRESHOLD_MS -> CloudSyncHealth.DEGRADED
-            else -> CloudSyncHealth.HEALTHY
-        }
+    private fun applySyncSnapshot(snapshot: CloudSyncHealthSnapshot) {
+        _lastPublishedAt.value = snapshot.lastPublishedAt
+        _lastReadAt.value = snapshot.lastReadAt
+        _publisher.value = snapshot.publisher
+        _health.value = snapshot.health
     }
 
-    private fun dateValue(raw: Any?): Date? {
-        val millis = FirestoreValueParsers.millis(raw)
-        return millis.takeIf { it > 0L }?.let { Date(it) }
+    private fun applyUsageFallback(data: Map<String, Any>?) {
+        applySyncSnapshot(applyUsageFallbackSnapshot(data, STALENESS_THRESHOLD_MS))
     }
 }

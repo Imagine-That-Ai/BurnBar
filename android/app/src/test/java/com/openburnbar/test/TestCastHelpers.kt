@@ -18,8 +18,9 @@ fun requireJsonArray(value: Any): JSONArray {
 
 fun requireClassLoaderResourceText(loader: ClassLoader?, resourcePath: String): String {
     val resolvedLoader = requireNotNull(loader) { "Missing class loader" }
-    val stream = requireNotNull(resolvedLoader.getResourceAsStream(resourcePath)) {
-        "Missing resource: $resourcePath"
-    }
+    val stream =
+        requireNotNull(resolvedLoader.getResourceAsStream(resourcePath)) {
+            "Missing resource: $resourcePath"
+        }
     return stream.bufferedReader().use { it.readText() }
 }

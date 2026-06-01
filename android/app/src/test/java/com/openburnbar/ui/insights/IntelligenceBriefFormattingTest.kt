@@ -17,9 +17,8 @@ import org.junit.Test
  * stay byte-identical between the two read sites.
  */
 class IntelligenceBriefFormattingTest {
-
     @Test
-    fun `windowLabel covers every fixed window`() {
+    fun windowlabelCoversEveryFixedWindow() {
         assertEquals("Today", IntelligenceBriefFormatting.windowLabel(InsightTimeWindow.Today))
         assertEquals("Last 24 hours", IntelligenceBriefFormatting.windowLabel(InsightTimeWindow.Last24h))
         assertEquals("Last 7 days", IntelligenceBriefFormatting.windowLabel(InsightTimeWindow.Last7d))
@@ -30,7 +29,7 @@ class IntelligenceBriefFormattingTest {
     }
 
     @Test
-    fun `windowLabel formats a custom window with an en dash`() {
+    fun windowlabelFormatsACustomWindowWithAnEnDash() {
         val custom = InsightTimeWindow.Custom(start = "2026-04-01", end = "2026-05-13")
         // Note: an EN DASH ("–", U+2013) — not a regular hyphen — so spend
         // ranges read editorially on the surface.
@@ -38,27 +37,30 @@ class IntelligenceBriefFormattingTest {
     }
 
     @Test
-    fun `budgetLabel rounds KB down with a floor of 1 and notes trimming`() {
-        val tiny = InsightContextBudgetReport(
-            encodedBytes = 200,
-            estimatedPromptTokens = 50,
-            includedDataSources = listOf("usage_rollups"),
-        )
+    fun budgetlabelRoundsKBDownWithAFloorOf1AndNotesTrimming() {
+        val tiny =
+            InsightContextBudgetReport(
+                encodedBytes = 200,
+                estimatedPromptTokens = 50,
+                includedDataSources = listOf("usage_rollups"),
+            )
         assertEquals("~1 KB · ~50 tokens", IntelligenceBriefFormatting.budgetLabel(tiny))
 
-        val normal = InsightContextBudgetReport(
-            encodedBytes = 18 * 1024,
-            estimatedPromptTokens = 4_200,
-            includedDataSources = listOf("usage_rollups", "quota_snapshots"),
-        )
+        val normal =
+            InsightContextBudgetReport(
+                encodedBytes = 18 * 1024,
+                estimatedPromptTokens = 4_200,
+                includedDataSources = listOf("usage_rollups", "quota_snapshots"),
+            )
         assertEquals("~18 KB · ~4200 tokens", IntelligenceBriefFormatting.budgetLabel(normal))
 
-        val trimmed = InsightContextBudgetReport(
-            encodedBytes = 32 * 1024,
-            estimatedPromptTokens = 8_400,
-            includedDataSources = listOf("usage_rollups"),
-            truncatedDataSources = listOf("agent_sessions", "skill_docs"),
-        )
+        val trimmed =
+            InsightContextBudgetReport(
+                encodedBytes = 32 * 1024,
+                estimatedPromptTokens = 8_400,
+                includedDataSources = listOf("usage_rollups"),
+                truncatedDataSources = listOf("agent_sessions", "skill_docs"),
+            )
         assertEquals(
             "~32 KB · ~8400 tokens · trimmed",
             IntelligenceBriefFormatting.budgetLabel(trimmed),
@@ -66,19 +68,20 @@ class IntelligenceBriefFormattingTest {
     }
 
     @Test
-    fun `tokenUsageLabel omits cost when null`() {
-        val usage = InsightTokenUsage(
-            providerKey = "anthropic",
-            modelID = "claude-sonnet-4-6",
-            inputTokens = 1_500,
-            outputTokens = 500,
-        )
+    fun tokenusagelabelOmitsCostWhenNull() {
+        val usage =
+            InsightTokenUsage(
+                providerKey = "anthropic",
+                modelID = "claude-sonnet-4-6",
+                inputTokens = 1_500,
+                outputTokens = 500,
+            )
         assertEquals("2000 tokens", IntelligenceBriefFormatting.tokenUsageLabel(usage, cost = null))
         assertEquals("2000 tokens · \$0.0184", IntelligenceBriefFormatting.tokenUsageLabel(usage, cost = 0.0184))
     }
 
     @Test
-    fun `auditFooter trims hashes to 8 chars and degrades to a local label`() {
+    fun auditfooterTrimsHashesTo8CharsAndDegradesToALocalLabel() {
         val result = sampleResult(auditID = "abcdef0123456789", resultHash = "9f8e7d6c5b4a3210")
         assertEquals(
             "Audit abcdef01 · result 9f8e7d6c · Your API key",
@@ -94,13 +97,15 @@ class IntelligenceBriefFormattingTest {
         platform = InsightAnalysisPlatform.ANDROID,
         timeWindow = InsightTimeWindow.Last7d,
         executiveSummary = "summary",
-        modelTag = InsightModelTag(
+        modelTag =
+        InsightModelTag(
             providerKey = "anthropic",
             modelID = "claude-sonnet-4-6",
             displayName = "Claude Sonnet 4.6",
             egressTier = InsightEgressTier.USER_KEY,
         ),
-        contextBudget = InsightContextBudgetReport(
+        contextBudget =
+        InsightContextBudgetReport(
             encodedBytes = 4_096,
             estimatedPromptTokens = 800,
             includedDataSources = listOf("usage_rollups"),

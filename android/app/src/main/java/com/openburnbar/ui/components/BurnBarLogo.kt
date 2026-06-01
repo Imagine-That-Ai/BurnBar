@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.components
 
 import androidx.compose.foundation.Image
@@ -13,37 +16,34 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.openburnbar.R
 
 @Composable
-fun BurnBarLogo(
-    size: Dp,
-    modifier: Modifier = Modifier,
-    showDisc: Boolean = true
-) {
+fun BurnBarLogo(size: Dp, modifier: Modifier = Modifier, showDisc: Boolean = true) {
     val logoModifier = Modifier.size(size)
     if (showDisc) {
         Box(
-            modifier = modifier
+            modifier =
+            modifier
                 .size(size)
                 .clip(CircleShape)
                 .background(Color(0xFF160B08)),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Image(
                 painter = painterResource(R.mipmap.ic_launcher_foreground),
                 contentDescription = "BurnBar logo",
-                modifier = Modifier
+                modifier =
+                Modifier
                     .size(size)
-                    .padding(size * 0.14f)
+                    .padding(size * 0.14f),
             )
         }
     } else {
         Image(
             painter = painterResource(R.mipmap.ic_launcher_foreground),
             contentDescription = "BurnBar logo",
-            modifier = modifier.then(logoModifier)
+            modifier = modifier.then(logoModifier),
         )
     }
 }

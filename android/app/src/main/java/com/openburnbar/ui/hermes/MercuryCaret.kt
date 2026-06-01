@@ -4,8 +4,8 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -36,17 +36,19 @@ fun MercuryCaret(modifier: Modifier = Modifier) {
     val alpha by transition.animateFloat(
         initialValue = 1f,
         targetValue = if (reduceMotion) 1f else 0.2f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 550, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "mercuryCaretAlpha"
+        label = "mercuryCaretAlpha",
     )
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .size(width = 6.dp, height = 14.dp)
             .alpha(alpha)
             .clip(RoundedCornerShape(1.dp))
-            .background(AuroraColors.hermesAureate)
+            .background(AuroraColors.hermesAureate),
     )
 }

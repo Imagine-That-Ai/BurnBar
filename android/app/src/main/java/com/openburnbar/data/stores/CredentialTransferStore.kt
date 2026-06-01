@@ -3,15 +3,24 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.util.Date
+
+private object CredentialTransferConstants {
+    const val TRANSFER_TTL_HOURS = 24
+    const val MINUTES_PER_HOUR = 60
+    const val SECONDS_PER_MINUTE = 60
+    const val MILLIS_PER_SECOND = 1_000L
+    const val TRANSFER_CODE_LENGTH = 8
+}
 
 enum class TransferStatus { IDLE, EXPORTING, IMPORTING, SUCCESS, ERROR }
 
@@ -40,16 +49,25 @@ class CredentialTransferStore : ViewModel() {
                 }
                 val code = generateTransferCode()
                 db.collection("credential_transfers").document(code)
-                    .set(mapOf(
-                        "ownerUid" to uid,
-                        "payload" to credentialsJson,
-                        "createdAt" to Date(),
-                        "expiresAt" to Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000),
-                        "consumed" to false
-                    )).await()
+                    .set(
+                        mapOf(
+                            "ownerUid" to uid,
+                            "payload" to credentialsJson,
+                            "createdAt" to Date(),
+                            "expiresAt" to
+                                Date(
+                                    System.currentTimeMillis() +
+                                        CredentialTransferConstants.TRANSFER_TTL_HOURS *
+                                        CredentialTransferConstants.MINUTES_PER_HOUR *
+                                        CredentialTransferConstants.SECONDS_PER_MINUTE *
+                                        CredentialTransferConstants.MILLIS_PER_SECOND,
+                                ),
+                            "consumed" to false,
+                        ),
+                    ).await()
                 _transferCode.value = code
                 _status.value = TransferStatus.SUCCESS
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 Log.e("BurnBar", "Export failed", e)
                 _lastError.value = e.message
                 _status.value = TransferStatus.ERROR
@@ -74,7 +92,7 @@ class CredentialTransferStore : ViewModel() {
                     .update(mapOf("consumed" to true, "consumedAt" to Date()))
                     .await()
                 _status.value = TransferStatus.SUCCESS
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 Log.e("BurnBar", "Import failed", e)
                 _lastError.value = e.message
                 _status.value = TransferStatus.ERROR
@@ -84,7 +102,7 @@ class CredentialTransferStore : ViewModel() {
 
     private fun generateTransferCode(): String {
         val chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-        return (1..8).map { chars.random() }.joinToString("")
+        return (1..CredentialTransferConstants.TRANSFER_CODE_LENGTH).map { chars.random() }.joinToString("")
     }
 
     fun reset() {

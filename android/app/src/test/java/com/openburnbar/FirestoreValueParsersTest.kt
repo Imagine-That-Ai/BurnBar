@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.firebase.FirestoreValueParsers
@@ -10,16 +13,17 @@ class FirestoreValueParsersTest {
     fun `parses iso timestamp strings into millis`() {
         assertEquals(
             1778457064512L,
-            FirestoreValueParsers.millis("2026-05-10T23:51:04.512Z")
+            FirestoreValueParsers.millis("2026-05-10T23:51:04.512Z"),
         )
     }
 
     @Test
     fun `picks canonical projectName before legacy snake case`() {
-        val data = mapOf(
-            "projectName" to "canonical",
-            "project_name" to "legacy"
-        )
+        val data =
+            mapOf(
+                "projectName" to "canonical",
+                "project_name" to "legacy",
+            )
 
         assertEquals("canonical", FirestoreValueParsers.string(data, "projectName", "project_name"))
     }

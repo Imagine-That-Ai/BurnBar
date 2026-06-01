@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.chartstudio
 
 import com.openburnbar.data.derived.TrendDataDigest
@@ -8,18 +11,17 @@ import com.openburnbar.data.derived.TrendDataDigest
  * purely from the digest. Mirrors iOS `StandardGallery`.
  */
 object StandardGallery {
-
     data class QuickFact(
         val label: String,
         val value: String,
         val detail: String,
-        val sparkline: List<Float> = emptyList()
+        val sparkline: List<Float> = emptyList(),
     )
 
     data class GalleryItem(
         val title: String,
         val subtitle: String,
-        val rendering: ChartStudioRendering
+        val rendering: ChartStudioRendering,
     )
 
     fun quickFacts(digest: TrendDataDigest): List<QuickFact> {
@@ -36,8 +38,8 @@ object StandardGallery {
                         label = "Today",
                         value = "$${"%.2f".format(today.costUsd)}",
                         detail = "${formatTokens(today.tokens)} tokens",
-                        sparkline = dailyPoints
-                    )
+                        sparkline = dailyPoints,
+                    ),
                 )
             }
             if (topProvider != null && topProvider.sharePct > 0) {
@@ -46,7 +48,7 @@ object StandardGallery {
                         label = topProvider.provider,
                         value = "${topProvider.sharePct.toInt()}%",
                         detail = "$${"%.2f".format(topProvider.costUsd)} share",
-                    )
+                    ),
                 )
             }
             if (digest.cache.totalCacheReadTokens > 0) {
@@ -54,8 +56,8 @@ object StandardGallery {
                     QuickFact(
                         label = "Cache",
                         value = "$cacheRate%",
-                        detail = "≈ $${"%.2f".format(digest.cache.estSavingsUsd)} saved"
-                    )
+                        detail = "≈ $${"%.2f".format(digest.cache.estSavingsUsd)} saved",
+                    ),
                 )
             }
             if (week != null && size < 3) {
@@ -64,8 +66,8 @@ object StandardGallery {
                         label = "This week",
                         value = "$${"%.2f".format(week.costUsd)}",
                         detail = "${formatTokens(week.tokens)} tokens",
-                        sparkline = dailyPoints
-                    )
+                        sparkline = dailyPoints,
+                    ),
                 )
             }
         }.take(3)
@@ -75,43 +77,48 @@ object StandardGallery {
         val items = mutableListOf<GalleryItem>()
 
         if (digest.daily.isNotEmpty()) {
-            items += GalleryItem(
-                title = "Spend last 14 days",
-                subtitle = "Stacked by provider",
-                rendering = stackedAreaSpec(digest)
-            )
+            items +=
+                GalleryItem(
+                    title = "Spend last 14 days",
+                    subtitle = "Stacked by provider",
+                    rendering = stackedAreaSpec(digest),
+                )
         }
 
         if (digest.providers.isNotEmpty()) {
-            items += GalleryItem(
-                title = "Provider share",
-                subtitle = "Where your tokens land",
-                rendering = donutSpec(digest)
-            )
+            items +=
+                GalleryItem(
+                    title = "Provider share",
+                    subtitle = "Where your tokens land",
+                    rendering = donutSpec(digest),
+                )
         }
 
         if (digest.models.isNotEmpty()) {
-            items += GalleryItem(
-                title = "Top models",
-                subtitle = "By total cost",
-                rendering = barSpec(digest)
-            )
+            items +=
+                GalleryItem(
+                    title = "Top models",
+                    subtitle = "By total cost",
+                    rendering = barSpec(digest),
+                )
         }
 
         if (digest.hourly.any { it.tokens > 0 }) {
-            items += GalleryItem(
-                title = "Hour of day",
-                subtitle = "Where your day burns brightest",
-                rendering = hourlyHeatmapSpec(digest)
-            )
+            items +=
+                GalleryItem(
+                    title = "Hour of day",
+                    subtitle = "Where your day burns brightest",
+                    rendering = hourlyHeatmapSpec(digest),
+                )
         }
 
         if (digest.recentSessions.isNotEmpty()) {
-            items += GalleryItem(
-                title = "Cache constellation",
-                subtitle = "Session duration vs hit rate",
-                rendering = scatterSpec(digest)
-            )
+            items +=
+                GalleryItem(
+                    title = "Cache constellation",
+                    subtitle = "Session duration vs hit rate",
+                    rendering = scatterSpec(digest),
+                )
         }
 
         return items.take(6)
@@ -122,13 +129,14 @@ object StandardGallery {
     private fun stackedAreaSpec(digest: TrendDataDigest): ChartStudioRendering {
         val days = digest.daily.takeLast(14)
         val providerKeys = days.flatMap { it.perProvider.keys }.distinct().take(4)
-        val series = providerKeys.map { key ->
-            SeriesSpec(
-                name = key.replaceFirstChar { it.uppercaseChar() },
-                providerKey = key,
-                data = days.map { DataPoint(x = it.date, y = it.perProvider[key] ?: 0.0) }
-            )
-        }
+        val series =
+            providerKeys.map { key ->
+                SeriesSpec(
+                    name = key.replaceFirstChar { it.uppercaseChar() },
+                    providerKey = key,
+                    data = days.map { DataPoint(x = it.date, y = it.perProvider[key] ?: 0.0) },
+                )
+            }
         return ChartStudioRendering.Native(
             ChartSpec(
                 chart = ChartKind.STACKED_AREA,
@@ -136,30 +144,32 @@ object StandardGallery {
                 subtitle = null,
                 xAxis = AxisSpec(type = "time"),
                 yAxis = AxisSpec(format = "currency"),
-                series = series
-            )
+                series = series,
+            ),
         )
     }
 
     private fun donutSpec(digest: TrendDataDigest): ChartStudioRendering {
-        val data = digest.providers.take(5).map {
-            DataPoint(x = it.providerKey, y = it.costUsd, label = it.provider)
-        }
+        val data =
+            digest.providers.take(5).map {
+                DataPoint(x = it.providerKey, y = it.costUsd, label = it.provider)
+            }
         return ChartStudioRendering.Native(
             ChartSpec(
                 chart = ChartKind.DONUT,
                 title = null,
                 subtitle = null,
                 legend = true,
-                series = listOf(SeriesSpec(name = "Providers", data = data))
-            )
+                series = listOf(SeriesSpec(name = "Providers", data = data)),
+            ),
         )
     }
 
     private fun barSpec(digest: TrendDataDigest): ChartStudioRendering {
-        val data = digest.models.take(5).map {
-            DataPoint(x = it.model.take(14), y = it.costUsd)
-        }
+        val data =
+            digest.models.take(5).map {
+                DataPoint(x = it.model.take(14), y = it.costUsd)
+            }
         return ChartStudioRendering.Native(
             ChartSpec(
                 chart = ChartKind.BAR,
@@ -167,30 +177,32 @@ object StandardGallery {
                 subtitle = null,
                 xAxis = AxisSpec(type = "category"),
                 yAxis = AxisSpec(format = "currency"),
-                series = listOf(SeriesSpec(name = "Cost", data = data, color = "F45B69"))
-            )
+                series = listOf(SeriesSpec(name = "Cost", data = data, color = "F45B69")),
+            ),
         )
     }
 
     private fun hourlyHeatmapSpec(digest: TrendDataDigest): ChartStudioRendering {
-        val data = digest.hourly.map {
-            DataPoint(x = it.hour.toString(), y = it.tokens.toDouble())
-        }
+        val data =
+            digest.hourly.map {
+                DataPoint(x = it.hour.toString(), y = it.tokens.toDouble())
+            }
         return ChartStudioRendering.Native(
             ChartSpec(
                 chart = ChartKind.HEATMAP,
                 title = null,
                 subtitle = null,
                 legend = false,
-                series = listOf(SeriesSpec(name = "Tokens", data = data, color = "F28C38"))
-            )
+                series = listOf(SeriesSpec(name = "Tokens", data = data, color = "F28C38")),
+            ),
         )
     }
 
     private fun scatterSpec(digest: TrendDataDigest): ChartStudioRendering {
-        val data = digest.recentSessions.map {
-            DataPoint(x = it.durationSec.toString(), y = it.cacheHitRate, label = it.model)
-        }
+        val data =
+            digest.recentSessions.map {
+                DataPoint(x = it.durationSec.toString(), y = it.cacheHitRate, label = it.model)
+            }
         return ChartStudioRendering.Native(
             ChartSpec(
                 chart = ChartKind.SCATTER,
@@ -199,17 +211,18 @@ object StandardGallery {
                 xAxis = AxisSpec(label = "Duration (s)"),
                 yAxis = AxisSpec(label = "Cache hit rate"),
                 series = listOf(SeriesSpec(name = "Sessions", data = data, color = "6A5ACD")),
-                rules = listOf(
-                    RuleSpec(orientation = "horizontal", value = 0.75, color = "38D898", label = "Ideal 75%", dashed = true)
-                )
-            )
+                rules =
+                listOf(
+                    RuleSpec(orientation = "horizontal", value = 0.75, color = "38D898", label = "Ideal 75%", dashed = true),
+                ),
+            ),
         )
     }
 
     private fun formatTokens(n: Long): String = when {
         n >= 1_000_000_000 -> "%.1fB".format(n / 1_000_000_000.0)
-        n >= 1_000_000     -> "%.1fM".format(n / 1_000_000.0)
-        n >= 1_000         -> "%.1fK".format(n / 1_000.0)
-        else               -> n.toString()
+        n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
+        n >= 1_000 -> "%.1fK".format(n / 1_000.0)
+        else -> n.toString()
     }
 }

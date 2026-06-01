@@ -16,15 +16,24 @@ data class InsightInvestigateRequest(
     val capabilityTier: InsightCapabilityTier = InsightCapabilityTier.STRICT_JSON_SCHEMA,
     val maxNewWidgets: Int = 12,
     val allowToolCalls: Boolean = true,
-    val instruction: Instruction = Instruction.COMPOSE_CANVAS
+    val instruction: Instruction = Instruction.COMPOSE_CANVAS,
 ) {
     @Serializable
     enum class Instruction {
-        @SerialName("composeCanvas") COMPOSE_CANVAS,
-        @SerialName("refineCanvas") REFINE_CANVAS,
-        @SerialName("refreshNarratives") REFRESH_NARRATIVES,
-        @SerialName("refineWidget") REFINE_WIDGET,
-        @SerialName("explainBriefly") EXPLAIN_BRIEFLY
+        @SerialName("composeCanvas")
+        COMPOSE_CANVAS,
+
+        @SerialName("refineCanvas")
+        REFINE_CANVAS,
+
+        @SerialName("refreshNarratives")
+        REFRESH_NARRATIVES,
+
+        @SerialName("refineWidget")
+        REFINE_WIDGET,
+
+        @SerialName("explainBriefly")
+        EXPLAIN_BRIEFLY,
     }
 }
 
@@ -34,7 +43,12 @@ data class InsightInvestigateRequest(
  */
 @Serializable
 enum class InsightCapabilityTier(val displayName: String) {
-    @SerialName("strictJSONSchema") STRICT_JSON_SCHEMA("Strict JSON"),
-    @SerialName("jsonObject") JSON_OBJECT("JSON Object"),
-    @SerialName("narrativeOnly") NARRATIVE_ONLY("Narrative only");
+    @SerialName("strictJSONSchema")
+    STRICT_JSON_SCHEMA("Strict JSON"),
+
+    @SerialName("jsonObject")
+    JSON_OBJECT("JSON Object"),
+
+    @SerialName("narrativeOnly")
+    NARRATIVE_ONLY("Narrative only"),
 }

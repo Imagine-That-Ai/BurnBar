@@ -10,13 +10,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
 
+private const val VAL_32 = 32
+
 class RetainedIrohControlTransportPoolTest {
     @Test
     fun reusesTransportForSameRelayAcrossDials() = runTest {
         val created = mutableListOf<FakeTransport>()
-        val pool = RetainedIrohControlTransportPool { relayURL ->
-            FakeTransport(relayURL).also { created += it }
-        }
+        val pool =
+            RetainedIrohControlTransportPool { relayURL ->
+                FakeTransport(relayURL).also { created += it }
+            }
         val target = IrohDialTarget(nodeId = "node-1", relayURL = "https://relay.example")
 
         val first = pool.dial(target, timeoutMillis = 1_000)
@@ -33,9 +36,10 @@ class RetainedIrohControlTransportPoolTest {
     @Test
     fun changingRelayShutsDownPreviousTransportBeforeCreatingReplacement() = runTest {
         val created = mutableListOf<FakeTransport>()
-        val pool = RetainedIrohControlTransportPool { relayURL ->
-            FakeTransport(relayURL).also { created += it }
-        }
+        val pool =
+            RetainedIrohControlTransportPool { relayURL ->
+                FakeTransport(relayURL).also { created += it }
+            }
 
         pool.dial(IrohDialTarget(nodeId = "node-1", relayURL = "https://relay-a.example"), timeoutMillis = 1_000)
         pool.dial(IrohDialTarget(nodeId = "node-1", relayURL = "https://relay-b.example"), timeoutMillis = 1_000)
@@ -48,9 +52,10 @@ class RetainedIrohControlTransportPoolTest {
     @Test
     fun shutdownReleasesTheRetainedTransport() = runTest {
         val created = mutableListOf<FakeTransport>()
-        val pool = RetainedIrohControlTransportPool { relayURL ->
-            FakeTransport(relayURL).also { created += it }
-        }
+        val pool =
+            RetainedIrohControlTransportPool { relayURL ->
+                FakeTransport(relayURL).also { created += it }
+            }
 
         pool.dial(IrohDialTarget(nodeId = "node-1", relayURL = "https://relay.example"), timeoutMillis = 1_000)
         pool.shutdown()
@@ -68,7 +73,7 @@ class RetainedIrohControlTransportPoolTest {
             startCalls += 1
             return IrohEndpointIdentity(
                 nodeId = "node-1",
-                rawPublicKey = ByteArray(32),
+                rawPublicKey = ByteArray(VAL_32),
                 relayURL = relayURL,
             )
         }
@@ -87,7 +92,9 @@ class RetainedIrohControlTransportPoolTest {
 
     private class FakeStream : IrohRelayStream {
         override suspend fun send(frame: HermesRealtimeRelayFrame) = Unit
+
         override suspend fun receive(): HermesRealtimeRelayFrame? = null
+
         override suspend fun close() = Unit
     }
 }

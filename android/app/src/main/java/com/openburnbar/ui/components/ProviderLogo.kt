@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.components
 
 import androidx.annotation.DrawableRes
@@ -46,16 +49,12 @@ import com.openburnbar.ui.theme.AuroraColors
  * SwiftUI's `RoundedRectangle(cornerRadius: size*0.2237, style: .continuous)`.
  */
 @Composable
-fun ProviderLogo(
-    provider: AgentProvider,
-    size: Dp = 24.dp,
-    modifier: Modifier = Modifier,
-    circular: Boolean = false
-) {
-    val backgroundColor = when (provider) {
-        AgentProvider.KIMI, AgentProvider.GOOSE, AgentProvider.AUGMENT -> Color(provider.brandColor)
-        else -> Color.White
-    }
+fun ProviderLogo(provider: AgentProvider, size: Dp = 24.dp, modifier: Modifier = Modifier, circular: Boolean = false) {
+    val backgroundColor =
+        when (provider) {
+            AgentProvider.KIMI, AgentProvider.GOOSE, AgentProvider.AUGMENT -> Color(provider.brandColor)
+            else -> Color.White
+        }
     BundledLogo(
         resId = provider.logoRes,
         fallbackInitials = provider.displayName.take(2).uppercase(),
@@ -63,7 +62,7 @@ fun ProviderLogo(
         size = size,
         circular = circular,
         modifier = modifier,
-        backgroundColor = backgroundColor
+        backgroundColor = backgroundColor,
     )
 }
 
@@ -74,51 +73,37 @@ fun ProviderLogo(
 // pill / chat hero render with consistent chrome regardless of whether the
 // caller hands us an `AgentProvider` or an `AssistantRuntimeID`.
 @Composable
-fun ProviderLogo(
-    runtime: AssistantRuntimeID,
-    size: Dp = 24.dp,
-    modifier: Modifier = Modifier,
-    circular: Boolean = false
-) {
+fun ProviderLogo(runtime: AssistantRuntimeID, size: Dp = 24.dp, modifier: Modifier = Modifier, circular: Boolean = false) {
     BundledLogo(
         resId = ProviderLogo.drawableFor(runtime),
         fallbackInitials = runtime.displayName.take(2).uppercase(),
         fallbackColors = listOf(Color.Black, Color.DarkGray),
         size = size,
         circular = circular,
-        modifier = modifier
+        modifier = modifier,
     )
 }
 
 @Composable
-fun ProviderLogo(
-    subProvider: HermesSubProvider,
-    size: Dp = 24.dp,
-    modifier: Modifier = Modifier,
-    circular: Boolean = false
-) {
+fun ProviderLogo(subProvider: HermesSubProvider, size: Dp = 24.dp, modifier: Modifier = Modifier, circular: Boolean = false) {
     BundledLogo(
         resId = ProviderLogo.drawableFor(subProvider),
         fallbackInitials = subProvider.displayName.take(2).uppercase(),
         fallbackColors = listOf(Color.Black, Color.DarkGray),
         size = size,
         circular = circular,
-        modifier = modifier
+        modifier = modifier,
     )
 }
 
 @Composable
-fun ModelLogo(
-    brand: LLMModelBrand,
-    size: Dp = 24.dp,
-    modifier: Modifier = Modifier,
-    circular: Boolean = false
-) {
+fun ModelLogo(brand: LLMModelBrand, size: Dp = 24.dp, modifier: Modifier = Modifier, circular: Boolean = false) {
     val accent = Color(brand.emblemColor)
-    val backgroundColor = when (brand) {
-        LLMModelBrand.KIMI -> accent
-        else -> Color.White
-    }
+    val backgroundColor =
+        when (brand) {
+            LLMModelBrand.KIMI -> accent
+            else -> Color.White
+        }
     BundledLogo(
         resId = brand.logoRes,
         fallbackInitials = brand.displayName.take(2).uppercase(),
@@ -126,17 +111,13 @@ fun ModelLogo(
         size = size,
         circular = circular,
         modifier = modifier,
-        backgroundColor = backgroundColor
+        backgroundColor = backgroundColor,
     )
 }
 
 @Composable
-fun ModelLogo(
-    modelKey: String,
-    size: Dp = 24.dp,
-    modifier: Modifier = Modifier,
-    circular: Boolean = false
-) = ModelLogo(LLMModelBrand.infer(modelKey), size, modifier, circular)
+fun ModelLogo(modelKey: String, size: Dp = 24.dp, modifier: Modifier = Modifier, circular: Boolean = false) =
+    ModelLogo(LLMModelBrand.infer(modelKey), size, modifier, circular)
 
 @Composable
 private fun BundledLogo(
@@ -146,39 +127,41 @@ private fun BundledLogo(
     size: Dp,
     circular: Boolean,
     modifier: Modifier,
-    backgroundColor: Color = Color.White
+    backgroundColor: Color = Color.White,
 ) {
     val shape = if (circular) CircleShape else RoundedCornerShape(size * 0.2237f)
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .size(size)
             .clip(shape)
             .background(backgroundColor)
             .border(0.5.dp, if (backgroundColor == Color.White) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f), shape),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         if (resId != 0) {
             Image(
                 painter = painterResource(id = resId),
                 contentDescription = null,
-                modifier = Modifier
+                modifier =
+                Modifier
                     .size(size)
                     .padding(size * 0.12f),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit,
             )
         } else if (fallbackInitials.isNotBlank()) {
             Text(
                 text = fallbackInitials,
                 color = fallbackColors.firstOrNull() ?: Color.Black,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = (size.value * 0.42f).sp
+                fontSize = (size.value * 0.42f).sp,
             )
         } else {
             Icon(
                 imageVector = Icons.Outlined.Bolt,
                 contentDescription = null,
                 tint = fallbackColors.firstOrNull() ?: Color.Black,
-                modifier = Modifier.size(size * 0.55f)
+                modifier = Modifier.size(size * 0.55f),
             )
         }
     }
@@ -190,18 +173,14 @@ private fun BundledLogo(
  * showing the actual brand PNG when one is available.
  */
 @Composable
-fun ProviderLogoWithHalo(
-    provider: AgentProvider,
-    size: Dp = 48.dp,
-    haloSize: Dp = 8.dp,
-    modifier: Modifier = Modifier
-) {
+fun ProviderLogoWithHalo(provider: AgentProvider, size: Dp = 48.dp, haloSize: Dp = 8.dp, modifier: Modifier = Modifier) {
     Box(contentAlignment = Alignment.Center, modifier = modifier.size(size + haloSize * 2)) {
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .size(size + haloSize)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.86f))
+                .background(Color.White.copy(alpha = 0.86f)),
         )
         ProviderLogo(provider = provider, size = size, circular = true)
     }
@@ -209,30 +188,27 @@ fun ProviderLogoWithHalo(
 
 /** Shorthand for the most common avatar usage — circular logo with subtle halo. */
 @Composable
-fun ProviderAvatar(
-    providerKey: String,
-    size: Int = 48,
-    modifier: Modifier = Modifier
-) {
+fun ProviderAvatar(providerKey: String, size: Int = 48, modifier: Modifier = Modifier) {
     val provider = AgentProvider.fromKey(providerKey)
     if (provider != null) {
         ProviderLogoWithHalo(
             provider = provider,
             size = size.dp,
-            modifier = modifier
+            modifier = modifier,
         )
     } else {
         // Unknown provider — render the generic fallback circle.
         Box(
-            modifier = modifier
+            modifier =
+            modifier
                 .size(size.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.linearGradient(
-                        listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.6f))
-                    )
+                        listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.6f)),
+                    ),
                 ),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Text(text = "?", color = Color.White, fontWeight = FontWeight.Bold)
         }

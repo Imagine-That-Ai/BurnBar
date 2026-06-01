@@ -11,5 +11,6 @@ import com.openburnbar.data.insights.InsightTimeWindow
  */
 interface InsightDataSource {
     suspend fun buildDigest(filter: InsightFilter): InsightDigest
+
     suspend fun buildDigest(window: InsightTimeWindow): InsightDigest
 }
