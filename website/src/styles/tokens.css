@@ -37,7 +37,7 @@
   --ember-glow: var(--core-glow);
   --ember-wash: var(--core-underglow);
 
-  /* ---------- Mercury Aliases ---------- */
+  /* ---------- Brand Color Aliases ---------- */
   --mercury-bright: #ffffff;
   --mercury-core: rgba(255, 255, 255, 0.7);
   --mercury-wash: rgba(255, 255, 255, 0.05);

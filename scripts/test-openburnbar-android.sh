@@ -35,5 +35,7 @@ cd "$android_dir"
 ./gradlew \
     :openburnbar-iroh-relay:testDebugUnitTest \
     :app:testDebugUnitTest \
+    -Pkotlin.compiler.execution.strategy=in-process \
+    -Pkotlin.incremental=false \
     --no-daemon \
     --stacktrace

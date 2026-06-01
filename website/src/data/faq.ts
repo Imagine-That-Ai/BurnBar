@@ -141,14 +141,14 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "What is BurnBar Cloud?",
     answer:
-      "BurnBar Cloud is the first paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Product IDs are com.openburnbar.pro.monthly and com.openburnbar.pro.annual. Purchases are verified server-side before hosted features turn on."
+      "BurnBar Cloud is the first paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Purchases are verified server-side before hosted features turn on."
   },
   {
     id: "burnbar-cloud-pro",
     category: "billing",
     question: "What is BurnBar Cloud Pro?",
     answer:
-      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Product IDs are com.openburnbar.proMax.v2.monthly and com.openburnbar.proMax.annual. Cloud Pro uses the burnbar_pro_max entitlement."
+      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Purchases are verified server-side before phone-to-Mac and supervised-agent features turn on."
   },
   {
     id: "cloud-pro-allowance",
@@ -190,7 +190,7 @@ export const FAQ: FAQItem[] = [
     category: "features",
     question: "What is Floo?",
     answer:
-      "Floo joins your phone and your Mac. From your iPhone or iPad you can see your Mac's screen, reach in and control it, send files either direction, start a voice or video call, share one clipboard across both, and even unlock your Mac with Face ID or Touch ID.\n\nIt only ever connects your own paired devices, and everything between them is end-to-end encrypted — no one in the middle can read it, and that includes us. Every connection asks first, and one tap ends it.\n\nFloo is built and rolling out now, included with OpenBurnBar. (For the curious: Floo stands for File & Live Object Overlay — or, if you prefer, Fast Link Over Owl.)"
+      "Floo joins your phone and your Mac. From your iPhone or iPad you can see your Mac's screen, reach in and control it, send files either direction, start a voice or video call, share one clipboard across both, and even unlock your Mac with Face ID or Touch ID.\n\nIt only ever connects your own paired devices, and everything between them is end-to-end encrypted — no one in the middle can read it, and that includes us. Every connection asks first, and one tap ends it.\n\nFloo is built and rolling out now, included with OpenBurnBar."
   },
   {
     id: "agent-control",

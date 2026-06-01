@@ -259,7 +259,6 @@ final class OpenBurnBarRuntimeContext {
             hermesRelayHost = existingRelayHost
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
-            let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery()
             let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(daemonManager: daemonManager)
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
@@ -267,8 +266,22 @@ final class OpenBurnBarRuntimeContext {
                 cliChatDispatcher: { request, eventSender in
                     try await cliRelayExecutor.streamChat(request: request, onEvent: eventSender)
                 },
-                cliModelCatalogDispatcher: { request in
-                    try await cliModelCatalogDiscovery.modelCatalog(for: request)
+                cliModelCatalogDispatcher: { [settingsManager] request in
+                    let rawHost = await MainActor.run { settingsManager.gatewayHost }
+                    let gatewayHost = rawHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let host = (gatewayHost.isEmpty || gatewayHost == "0.0.0.0" || gatewayHost == "::")
+                        ? "127.0.0.1"
+                        : gatewayHost
+                    let port = await MainActor.run { settingsManager.gatewayPort }
+                    let resolvedPort = port > 0 ? port : 8317
+                    let gatewayURL = URL(string: "http://\(host):\(resolvedPort)") ?? URL(string: "http://127.0.0.1:8317")!
+                    let rawToken = await MainActor.run { settingsManager.gatewayAuthToken }
+                    let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery(
+                        openBurnBarGatewayURL: gatewayURL,
+                        openBurnBarGatewayBearerToken: token.isEmpty ? nil : token
+                    )
+                    return try await cliModelCatalogDiscovery.modelCatalog(for: request)
                 },
                 cliSessionActionDispatcher: { request in
                     try await cliSessionActionDispatcher.perform(request)

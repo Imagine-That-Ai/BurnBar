@@ -82,9 +82,9 @@ const headlineSave = Math.max(cloudSave, proSave);
           </header>
 
           <ul class="plan__list">
-            <li>Local SQLite tracking, zero telemetry</li>
+            <li>Local cost and quota tracking, zero telemetry</li>
             <li>Cost &amp; token rollups — today / week / month / all-time</li>
-            <li>Quota windows for 11 providers</li>
+            <li>Quota windows for the AI tools you already use</li>
             <li>Daemon, CLI, Cursor / VS Code panel</li>
             <li>iOS, iPadOS &amp; Android companions</li>
           </ul>
@@ -92,10 +92,10 @@ const headlineSave = Math.max(cloudSave, proSave);
           <div class="plan__included">
             <span class="plan__inc-label mono">Included</span>
             <ul class="plan__specs">
-              <li>Smart insights &amp; configurable daily digest</li>
-              <li>Self-hosted quota runner — Claude Code &amp; Codex</li>
-              <li>Hermes assistant on local backends</li>
-              <li>Optional Firebase sync — metadata only</li>
+              <li>Smart insights and a configurable daily digest</li>
+              <li>Optional self-hosted quota refresh for Claude Code and Codex</li>
+              <li>Local assistant workflows on your own machine</li>
+              <li>Cloud features stay off unless you sign in and choose a paid tier</li>
             </ul>
           </div>
 
@@ -166,7 +166,7 @@ const headlineSave = Math.max(cloudSave, proSave);
             <li>Conversation backup &amp; resume across iPhone, iPad &amp; Mac</li>
             <li>Encrypted session history, searchable everywhere</li>
             <li>Agent memory sync across every device</li>
-            <li>Verified entitlement — checked server-side</li>
+            <li>Restore purchases and keep billing state in sync</li>
           </ul>
 
           <div class="plan__included">
@@ -174,7 +174,7 @@ const headlineSave = Math.max(cloudSave, proSave);
             <ul class="plan__specs">
               <li>Everything in Free, local-first</li>
               <li>14-day introductory free trial for new subscribers</li>
-              <li class="plan__specs-code mono">{cloud.productIds.join(" · ")}</li>
+              <li>Works across Mac, iPhone, iPad, and Android</li>
             </ul>
           </div>
 
@@ -359,9 +359,9 @@ const headlineSave = Math.max(cloudSave, proSave);
         <div>
           <dt>Sign-in requirement?</dt>
           <dd>
-            A Firebase account is required so the entitlement document can be bound to your UID.
-            Store purchases also require the matching Apple ID or Google Play account; Stripe uses
-            the signed-in OpenBurnBar account.
+            An OpenBurnBar account is required for paid cloud features so purchases can be linked
+            to you across devices. Store purchases also require the matching Apple ID or Google Play
+            account; Stripe uses the signed-in OpenBurnBar account.
           </dd>
         </div>
         <div>
@@ -440,7 +440,8 @@ const headlineSave = Math.max(cloudSave, proSave);
   /* ---------- billing toggle ---------- */
   .billing {
     position: relative;
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
     margin-top: var(--s-6);
     padding: 5px;
     border-radius: var(--r-pill);
@@ -453,8 +454,9 @@ const headlineSave = Math.max(cloudSave, proSave);
   .billing__opt {
     position: relative;
     z-index: 1;
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--s-2);
     padding: 0.5rem 1.25rem;
     border-radius: var(--r-pill);

@@ -12,7 +12,7 @@ final class CursorConnectorTests: XCTestCase {
 
         XCTAssertEqual(ConnectorProvider.minimax.displayName, "MiniMax")
         XCTAssertEqual(ConnectorProvider.minimax.defaultBaseURL, "https://api.minimax.io/v1")
-        XCTAssertEqual(ConnectorProvider.minimax.suggestedModels, ["minimax-m2.7-highspeed"])
+        XCTAssertEqual(ConnectorProvider.minimax.suggestedModels, ["minimax-m3", "minimax-m2.7-highspeed"])
 
         XCTAssertEqual(ConnectorProvider.ollama.displayName, "Ollama Cloud")
         XCTAssertEqual(ConnectorProvider.ollama.defaultBaseURL, "https://ollama.com/api")

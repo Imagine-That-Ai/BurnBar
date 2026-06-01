@@ -457,6 +457,31 @@ final class ChatSessionController {
             ?? HermesBackendCapabilities.default
     }
 
+    private func openAICompatibleChatGateway(
+        for backend: ChatBackendID,
+        modelID: String
+    ) -> (baseURL: URL, bearerToken: String?) {
+        if liveAdvertisedModels(for: backend).contains(where: {
+            $0.id.caseInsensitiveCompare(modelID) == .orderedSame
+                && $0.routeEligible
+                && $0.isOpenBurnBarProxy
+        }) {
+            return (burnBarGatewayBaseURL, burnBarGatewayBearerToken)
+        }
+        switch backend {
+        case .hermes:
+            return (hermesGatewayBaseURL, hermesBearerToken)
+        case .openclaw:
+            let base = URL(string: settingsManager.openClawGatewayBaseURL)
+                ?? URL(string: "http://127.0.0.1:18789")!
+            return (base, openClawBearerToken)
+        case .piAgent:
+            return (piAgentGatewayBaseURL, piAgentBearerToken)
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
+            return (burnBarGatewayBaseURL, burnBarGatewayBearerToken)
+        }
+    }
+
     private func liveDefaultModel(for backend: ChatBackendID) -> String? {
         liveAdvertisedModels(for: backend)
             .first { $0.routeEligible }?
@@ -567,7 +592,9 @@ final class ChatSessionController {
     func probeHermesAvailability() async {
         await cliBridge.probeHermesAvailability(
             baseURL: hermesGatewayBaseURL,
-            bearerToken: hermesBearerToken
+            bearerToken: hermesBearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken
         )
         hermesAvailable = cliBridge.hermesAvailable
     }
@@ -579,7 +606,9 @@ final class ChatSessionController {
         }
         await cliBridge.probeOpenClawAvailability(
             baseURL: url,
-            bearerToken: openClawBearerToken
+            bearerToken: openClawBearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken
         )
         openClawAvailable = cliBridge.openClawAvailable
     }
@@ -587,7 +616,9 @@ final class ChatSessionController {
     func probePiAgentAvailability() async {
         await cliBridge.probePiAgentAvailability(
             baseURL: piAgentGatewayBaseURL,
-            bearerToken: piAgentBearerToken
+            bearerToken: piAgentBearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken
         )
         piAgentAvailable = cliBridge.piAgentAvailable
     }
@@ -613,6 +644,18 @@ final class ChatSessionController {
     private var hermesGatewayBaseURL: URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
             ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private var burnBarGatewayBaseURL: URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        return URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+    }
+
+    private var burnBarGatewayBearerToken: String? {
+        let t = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 
     private var openClawBearerToken: String? {
@@ -738,35 +781,27 @@ final class ChatSessionController {
             ["role": "user", "content": user]
         ]
 
-        let baseURL: URL
-        let bearerToken: String?
+        let model = effectiveChatModel(for: chatBackend).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { throw TextExpansionRewriteError.missingModel }
+
         switch chatBackend {
-        case .hermes:
-            baseURL = hermesGatewayBaseURL
-            bearerToken = hermesBearerToken
-        case .openclaw:
-            baseURL = URL(string: settingsManager.openClawGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                ?? URL(string: "http://127.0.0.1:18789")!
-            bearerToken = openClawBearerToken
-        case .piAgent:
-            baseURL = piAgentGatewayBaseURL
-            bearerToken = piAgentBearerToken
+        case .hermes, .openclaw, .piAgent:
+            break
         case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
+        let gateway = openAICompatibleChatGateway(for: chatBackend, modelID: model)
 
-        guard let url = URL(string: "v1/chat/completions", relativeTo: baseURL)?.absoluteURL else {
+        guard let url = URL(string: "v1/chat/completions", relativeTo: gateway.baseURL)?.absoluteURL else {
             throw TextExpansionRewriteError.invalidGatewayURL
         }
-        let model = effectiveChatModel(for: chatBackend).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else { throw TextExpansionRewriteError.missingModel }
 
         let (content, _) = try await OpenAICompatibleChatGatewayClient.nonStreamingFallback(
             url: url,
             messages: messages,
             model: model,
             session: URLSession(configuration: .default),
-            bearerToken: bearerToken
+            bearerToken: gateway.bearerToken
         )
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw TextExpansionRewriteError.emptyResponse }
@@ -1636,6 +1671,7 @@ final class ChatSessionController {
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
                     switch self.chatBackend {
                     case .hermes:
+                        let gateway = self.openAICompatibleChatGateway(for: .hermes, modelID: requestModel)
                         // Compose Hermes' system prompt via the shared
                         // builder so the atom directive stays in lockstep
                         // with iOS. The dashboard/RAG context block lives
@@ -1646,10 +1682,10 @@ final class ChatSessionController {
                             includesAtomDirective: true
                         ).build()
                         return self.cliBridge.chatHermes(
-                            baseURL: self.hermesGatewayBaseURL,
+                            baseURL: gateway.baseURL,
                             systemPrompt: hermesPrompt,
                             history: multiTurnHistory,
-                            bearerToken: self.hermesBearerToken,
+                            bearerToken: gateway.bearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
@@ -1657,13 +1693,12 @@ final class ChatSessionController {
                             toolBroker: activeToolBroker
                         )
                     case .openclaw:
-                        let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
-                            ?? URL(string: "http://127.0.0.1:18789")!
+                        let gateway = self.openAICompatibleChatGateway(for: .openclaw, modelID: requestModel)
                         return self.cliBridge.chatOpenClaw(
-                            baseURL: base,
+                            baseURL: gateway.baseURL,
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
-                            bearerToken: self.openClawBearerToken,
+                            bearerToken: gateway.bearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
@@ -1679,11 +1714,12 @@ final class ChatSessionController {
                             base: augmentedSystem,
                             instanceID: self.settingsManager.piAgentSelectedInstanceID
                         )
+                        let gateway = self.openAICompatibleChatGateway(for: .piAgent, modelID: requestModel)
                         return self.cliBridge.chatPiAgent(
-                            baseURL: self.piAgentGatewayBaseURL,
+                            baseURL: gateway.baseURL,
                             systemPrompt: piPrompt,
                             history: multiTurnHistory,
-                            bearerToken: self.piAgentBearerToken,
+                            bearerToken: gateway.bearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,

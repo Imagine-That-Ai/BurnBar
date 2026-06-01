@@ -596,7 +596,11 @@ enum OpenAICompatibleModelListParser {
     }
 
     static func hermesAdvertisedModels(from data: Data) -> [HermesAdvertisedModel] {
-        advertisedModels(from: data).compactMap { model in
+        hermesAdvertisedModels(from: advertisedModels(from: data))
+    }
+
+    static func hermesAdvertisedModels(from models: [OpenAICompatibleAdvertisedModel]) -> [HermesAdvertisedModel] {
+        models.compactMap { model in
             guard let family = hermesFamily(
                 modelID: model.id,
                 displayName: model.displayName,

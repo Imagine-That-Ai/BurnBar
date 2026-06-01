@@ -20,6 +20,7 @@ function usage() {
   console.log(`Usage:
   scripts/capture-commercial-launch-evidence.mjs
   scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input proof.json
+  npm --prefix functions run prove:paid-tier -- ... | scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input -
   npm --prefix functions run prove:hosted-quota -- ... | scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input -
 
 Options:

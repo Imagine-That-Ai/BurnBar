@@ -67,6 +67,43 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertFalse(catalog.supportsModel(named: "pony-alpha-2", providerID: "zai"))
     }
 
+    func test_miniMaxM3_isPublicSuggestedForAllUsersAndPriced() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+
+        // MiniMax M3 must be a *visible* (public) suggested model so every user
+        // who has the MiniMax provider sees it in the picker — not only clients
+        // whose live CLI/proxy happens to advertise it.
+        let suggested = catalog.suggestedModels(forProviderID: "minimax")
+        let suggestedIDs = suggested.map(\.id)
+        let m3 = try XCTUnwrap(suggested.first { $0.id == "minimax-m3" })
+        XCTAssertEqual(m3.displayName, "MiniMax M3")
+        XCTAssertEqual(m3.visibility, .public)
+
+        // M3 is the flagship: it leads the suggested list, and the previously
+        // shipped flagship stays public (no regression / no shadowing).
+        XCTAssertEqual(suggestedIDs.first, "minimax-m3")
+        XCTAssertTrue(suggestedIDs.contains("minimax-m2.7-highspeed"))
+
+        // Provider-native and marketing aliases resolve to the public M3 row even
+        // when hidden catch-all families are excluded.
+        XCTAssertTrue(catalog.supportsModel(named: "minimax-m3", providerID: "minimax", includeHidden: false))
+        XCTAssertTrue(catalog.supportsModel(named: "MiniMax-M3", providerID: "minimax", includeHidden: false))
+        XCTAssertTrue(catalog.supportsModel(named: "MiniMax-M3-pro", providerID: "minimax", includeHidden: false))
+
+        // M3 names resolve to the explicit M3 row (which owns capability class
+        // "minimax-m3"), not the hidden M2/M3 catch-all family (which has none).
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "minimax-m3", providerID: "minimax"), "minimax-m3")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "MiniMax-M3-pro", providerID: "minimax"), "minimax-m3")
+
+        // An M2.7 name must NOT be captured by the M3 row.
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "minimax-m2.7", providerID: "minimax"), "minimax-m2.7")
+
+        // Pricing resolves through the M3 row (mirrors the M2.x standard family).
+        let pricing = try XCTUnwrap(catalog.pricing(forModelName: "minimax-m3"))
+        XCTAssertEqual(pricing.inputPerMToken, 0.69, accuracy: 0.001)
+        XCTAssertEqual(pricing.outputPerMToken, 0.69, accuracy: 0.001)
+    }
+
     func test_capabilityClassID_prefersExplicitClassID() {
         let catalog = BurnBarCatalog(
             schemaVersion: 1,

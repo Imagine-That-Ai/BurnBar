@@ -77,6 +77,13 @@
     "tier": "flagship"
   },
   {
+    "modelID": "minimax-m3",
+    "modelDisplay": "MiniMax M3",
+    "providerID": "minimax",
+    "providerDisplay": "MiniMax",
+    "tier": "flagship"
+  },
+  {
     "modelID": "minimax-m2-7",
     "modelDisplay": "MiniMax M2.7",
     "providerID": "minimax",

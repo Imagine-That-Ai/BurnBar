@@ -52,11 +52,15 @@ final class CLIBridge: ObservableObject {
     /// Also fetches the current model name from the models endpoint.
     func probeHermesAvailability(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
-        bearerToken: String? = nil
+        bearerToken: String? = nil,
+        burnBarGatewayBaseURL: URL? = nil,
+        burnBarGatewayBearerToken: String? = nil
     ) async {
         let result = await Self.probeHermes(
             baseURL: baseURL,
-            bearerToken: bearerToken
+            bearerToken: bearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken
         )
         hermesAvailable = result.available
         hermesModelName = result.modelName
@@ -65,15 +69,35 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Probe OpenClaw gateway (OpenAI-compatible `/v1/models`).
-    func probeOpenClawAvailability(baseURL: URL, bearerToken: String? = nil) async {
-        let result = await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+    func probeOpenClawAvailability(
+        baseURL: URL,
+        bearerToken: String? = nil,
+        burnBarGatewayBaseURL: URL? = nil,
+        burnBarGatewayBearerToken: String? = nil
+    ) async {
+        let result = await OpenAICompatibleModelProbe.probeWithModelsMergedWithBurnBarGateway(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken
+        )
         openClawAvailable = result.available
         openClawGatewayModels = result.models
     }
 
     /// Probe Pi agent gateway (OpenAI-compatible `/v1/models`).
-    func probePiAgentAvailability(baseURL: URL, bearerToken: String? = nil) async {
-        let result = await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+    func probePiAgentAvailability(
+        baseURL: URL,
+        bearerToken: String? = nil,
+        burnBarGatewayBaseURL: URL? = nil,
+        burnBarGatewayBearerToken: String? = nil
+    ) async {
+        let result = await OpenAICompatibleModelProbe.probeWithModelsMergedWithBurnBarGateway(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken
+        )
         piAgentAvailable = result.available
         piAgentModelName = result.modelName
         piAgentGatewayModels = result.models
@@ -572,16 +596,20 @@ final class CLIBridge: ObservableObject {
 
     nonisolated private static func probeHermes(
         baseURL: URL,
-        bearerToken: String?
+        bearerToken: String?,
+        burnBarGatewayBaseURL: URL?,
+        burnBarGatewayBearerToken: String?
     ) async -> (
         available: Bool,
         modelName: String?,
         hermesModels: [HermesAdvertisedModel],
         models: [OpenAICompatibleAdvertisedModel]
     ) {
-        await OpenAICompatibleModelProbe.probeWithModels(
+        await OpenAICompatibleModelProbe.probeWithModelsMergedWithBurnBarGateway(
             baseURL: baseURL,
             bearerToken: bearerToken,
+            burnBarGatewayBaseURL: burnBarGatewayBaseURL,
+            burnBarGatewayBearerToken: burnBarGatewayBearerToken,
             timeout: 8
         )
     }

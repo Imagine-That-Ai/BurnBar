@@ -4216,6 +4216,36 @@
       ],
       "models": [
         {
+          "id": "minimax-m3",
+          "displayName": "MiniMax M3",
+          "visibility": "public",
+          "aliases": [
+            "minimax-m3",
+            "MiniMax-M3",
+            "minimax-m3-pro",
+            "MiniMax-M3-pro"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "minimax",
+                "m3"
+              ],
+              "any": [],
+              "none": [
+                "highspeed"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.69,
+            "outputPerMToken": 0.69,
+            "cacheReadPerMToken": 0.07
+          },
+          "capabilityClassID": "minimax-m3",
+          "capabilityClassRank": 90
+        },
+        {
           "id": "minimax-m2.7-highspeed",
           "displayName": "MiniMax M2.7 Highspeed",
           "visibility": "public",

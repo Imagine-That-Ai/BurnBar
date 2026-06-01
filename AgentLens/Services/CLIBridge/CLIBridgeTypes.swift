@@ -28,6 +28,7 @@ struct OpenAICompatibleAdvertisedModel: Identifiable, Equatable, Hashable, Senda
     let providerName: String?
     let routeEligible: Bool
     let modelCapabilities: ModelIOCapabilities?
+    let isOpenBurnBarProxy: Bool
 
     init(
         id: String,
@@ -35,7 +36,8 @@ struct OpenAICompatibleAdvertisedModel: Identifiable, Equatable, Hashable, Senda
         providerID: String?,
         providerName: String?,
         routeEligible: Bool,
-        modelCapabilities: ModelIOCapabilities? = nil
+        modelCapabilities: ModelIOCapabilities? = nil,
+        isOpenBurnBarProxy: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -43,6 +45,7 @@ struct OpenAICompatibleAdvertisedModel: Identifiable, Equatable, Hashable, Senda
         self.providerName = providerName
         self.routeEligible = routeEligible
         self.modelCapabilities = modelCapabilities
+        self.isOpenBurnBarProxy = isOpenBurnBarProxy
     }
 
     var menuTitle: String {

@@ -1753,7 +1753,7 @@ final class HermesService {
         }
 
         let body = try completionRequestBody(context: context)
-        var request = try makeRequest(path: "/v1/chat/completions", timeout: 60)
+        var request = try makeChatCompletionsRequest(modelID: activeRequestedModelID, timeout: 60)
         request.httpMethod = "POST"
         request.httpBody = body
 
@@ -2779,22 +2779,35 @@ final class HermesService {
             let (data, response) = try await urlSession.data(for: URLRequest(url: url, timeoutInterval: 4))
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
             let decoded = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
-            return Self.modelOptions(from: decoded.data)
+            return Self.markOpenBurnBarProxyOptions(Self.modelOptions(from: decoded.data))
         } catch {
             return []
         }
     }
 
     private func directGatewayModelsURL() -> URL? {
+        directGatewayBaseURL()?.appendingPathComponent("v1/models")
+    }
+
+    private func directGatewayBaseURL() -> URL? {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               components.host != nil else {
             return nil
         }
         components.port = 8317
-        components.path = "/v1/models"
+        components.path = "/"
         components.query = nil
         components.fragment = nil
         return components.url
+    }
+
+    private func isOpenBurnBarProxyModel(_ modelID: String?) -> Bool {
+        guard let modelID = modelID?.nilIfBlank else { return false }
+        return modelOptions.contains {
+            $0.modelID.caseInsensitiveCompare(modelID) == .orderedSame
+                && $0.sourceKind == "openburnbar_proxy"
+                && $0.isRouteEligible
+        }
     }
 
     private static func modelOptions(from models: [OpenAIModel]) -> [HermesRuntimeModelOption] {
@@ -2880,6 +2893,16 @@ final class HermesService {
             merged.append(option)
         }
         return merged
+    }
+
+    private static func markOpenBurnBarProxyOptions(
+        _ options: [HermesRuntimeModelOption]
+    ) -> [HermesRuntimeModelOption] {
+        options.map { option in
+            var copy = option
+            copy.sourceKind = "openburnbar_proxy"
+            return copy
+        }
     }
 
     private static func isLocalOnlyModelOption(_ option: HermesRuntimeModelOption) -> Bool {
@@ -2974,6 +2997,19 @@ final class HermesService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return request
+    }
+
+    private func makeChatCompletionsRequest(modelID: String?, timeout: TimeInterval) throws -> URLRequest {
+        if isOpenBurnBarProxyModel(modelID),
+           let proxyBaseURL = directGatewayBaseURL() {
+            var request = URLRequest(
+                url: proxyBaseURL.appendingPathComponent("v1/chat/completions"),
+                timeoutInterval: timeout
+            )
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            return request
+        }
+        return try makeRequest(path: "/v1/chat/completions", timeout: timeout)
     }
 
     private func relayPayload(

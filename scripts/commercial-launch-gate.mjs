@@ -7,19 +7,22 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
 import { checkBillingAlerts, checkOpsAlerts } from "./lib/ops-alerts-gate.mjs";
+import { validateLaunchEvidenceBundle } from "./validate-launch-evidence-bundle.mjs";
 
 export { evaluateFirebaseAppCheckEnforcement };
 
 const REPO = process.env.OPENBURNBAR_GITHUB_REPO || "Imagine-That-Ai/BurnBar";
 const PROJECT = process.env.OPENBURNBAR_FIREBASE_PROJECT || "burnbar";
 const REGION = process.env.OPENBURNBAR_GCP_REGION || "us-central1";
+const LAUNCH_EVIDENCE_MANIFEST =
+  process.env.OPENBURNBAR_LAUNCH_EVIDENCE_MANIFEST || "launch-evidence/final-launch-evidence.json";
 const REQUIRED_IOS_STATE = "PENDING_DEVELOPER_RELEASE";
 const LIVE_IOS_STATE = "READY_FOR_SALE";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
@@ -1009,6 +1012,43 @@ function checkFirebaseFunctionsInventory() {
   };
 }
 
+export function evaluateLaunchEvidenceStages(manifest, manifestPath = LAUNCH_EVIDENCE_MANIFEST) {
+  return {
+    paidProof: validateLaunchEvidenceBundle(manifest, { manifestPath, stage: "paid-proof" }),
+    publicRelease: validateLaunchEvidenceBundle(manifest, { manifestPath, stage: "public-release" }),
+    done: validateLaunchEvidenceBundle(manifest, { manifestPath, stage: "done" }),
+  };
+}
+
+function checkLaunchEvidence() {
+  if (!existsSync(LAUNCH_EVIDENCE_MANIFEST)) {
+    return {
+      ok: true,
+      present: false,
+      path: LAUNCH_EVIDENCE_MANIFEST,
+      paidProof: { ok: false, errors: ["launch evidence manifest is not present yet"] },
+      publicRelease: { ok: false, errors: ["launch evidence manifest is not present yet"] },
+      done: { ok: false, errors: ["launch evidence manifest is not present yet"] },
+    };
+  }
+  try {
+    const manifest = JSON.parse(readFileSync(LAUNCH_EVIDENCE_MANIFEST, "utf8"));
+    return {
+      ok: true,
+      present: true,
+      path: LAUNCH_EVIDENCE_MANIFEST,
+      ...evaluateLaunchEvidenceStages(manifest, LAUNCH_EVIDENCE_MANIFEST),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      present: true,
+      path: LAUNCH_EVIDENCE_MANIFEST,
+      error: error.message,
+    };
+  }
+}
+
 function verdict(checks) {
   const failures = Object.entries(checks)
     .filter(([, value]) => value?.ok === false)
@@ -1028,9 +1068,24 @@ function verdict(checks) {
     };
   }
   if (appStore.state === LIVE_IOS_STATE) {
+    if (checks.launchEvidence?.publicRelease?.ok) {
+      return {
+        status: "READY_FOR_PUBLIC_RELEASE",
+        reason:
+          "Live paid proof, cross-channel matrix, and canary evidence validate. Set public_paid_launch=true and paid_canary_percent=100, then stamp LAUNCH_DONE.md after final bundle validation.",
+      };
+    }
+    if (checks.launchEvidence?.paidProof?.ok) {
+      return {
+        status: "READY_FOR_CANARY",
+        reason:
+          "Live paid proof and cross-channel matrix validate. Start the paid canary with public_paid_launch=false and paid_canary_percent=10.",
+      };
+    }
     return {
       status: "READY_FOR_LIVE_PAID_PROOF",
-      reason: "Run prove:hosted-quota against a real paid user before declaring launch complete.",
+      reason:
+        "Run prove:paid-tier for Cloud and Cloud Pro, plus prove:hosted-quota for the legacy/grandfathered path, against real paid users before declaring launch complete.",
     };
   }
   return { status: "NO_GO", reason: `unhandled App Store state ${appStore.state}` };
@@ -1057,6 +1112,7 @@ async function main() {
     opsAlerts: checkOpsAlerts(),
     billingAlerts: checkBillingAlerts(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
+    launchEvidence: checkLaunchEvidence(),
   };
   const result = {
     generatedAt: new Date().toISOString(),

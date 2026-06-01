@@ -85,9 +85,20 @@ actor CLIAgentRelayChunkSequencer {
 
 struct CLIRuntimeModelCatalogDiscovery: Sendable {
     private let resolver: CLIExecutableResolver
+    private let openBurnBarGatewayURL: URL
+    private let openBurnBarGatewayBearerToken: String?
+    private let urlSession: URLSession
 
-    init(resolver: CLIExecutableResolver = CLIExecutableResolver()) {
+    init(
+        resolver: CLIExecutableResolver = CLIExecutableResolver(),
+        openBurnBarGatewayURL: URL = URL(string: "http://127.0.0.1:8317")!,
+        openBurnBarGatewayBearerToken: String? = nil,
+        urlSession: URLSession = .shared
+    ) {
         self.resolver = resolver
+        self.openBurnBarGatewayURL = openBurnBarGatewayURL
+        self.openBurnBarGatewayBearerToken = openBurnBarGatewayBearerToken
+        self.urlSession = urlSession
     }
 
     func modelCatalog(for request: CLIRuntimeModelCatalogRequest) async throws -> CLIRuntimeModelCatalogResponse {
@@ -144,7 +155,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             _ = try await executable(named: "cursor-agent")
             options = try Self.defaultProfileRows(for: runtime)
         case .hermes, .pi, .openClaw:
-            throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
+            options = try await openBurnBarProxyRows(for: runtime)
         }
         return CLIRuntimeModelCatalogResponse(
             runtime: runtime.rawValue,
@@ -187,6 +198,28 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         for option in options {
             guard seen.insert(option.modelID.lowercased()).inserted else { continue }
             rows.append(option)
+        }
+        return rows
+    }
+
+    private func openBurnBarProxyRows(for runtime: AssistantRuntimeID) async throws -> [CLIRuntimeModelOption] {
+        guard let url = URL(string: "v1/models", relativeTo: openBurnBarGatewayURL)?.absoluteURL else {
+            throw CLIRuntimeModelCatalogDiscoveryError.emptyCatalog(runtime.displayName)
+        }
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.httpMethod = "GET"
+        if let token = openBurnBarGatewayBearerToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await urlSession.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw CLIRuntimeModelCatalogDiscoveryError.emptyCatalog(runtime.displayName)
+        }
+        let rows = CLIRuntimeModelCatalog.parseOpenBurnBarProxyModels(data)
+        if rows.isEmpty {
+            throw CLIRuntimeModelCatalogDiscoveryError.emptyCatalog(runtime.displayName)
         }
         return rows
     }

@@ -195,7 +195,9 @@ final class OpenClawService {
         }
         do {
             let (data, _) = try await urlSession.data(for: request)
-            modelOptions = Self.parseModels(data: data)
+            let decoded = Self.parseModels(data: data)
+            let burnBarProxyOptions = await directBurnBarGatewayModelOptions()
+            modelOptions = Self.mergedModelOptions(primary: decoded, secondary: burnBarProxyOptions)
             if let selectedModelID,
                let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
                 persistResolvedSelectedModelID(resolved)
@@ -220,6 +222,30 @@ final class OpenClawService {
         }
     }
 
+    private func directBurnBarGatewayModelOptions() async -> [HermesRuntimeModelOption] {
+        guard let url = directBurnBarGatewayModelsURL() else { return [] }
+        let request = URLRequest(url: url, timeoutInterval: 4)
+        do {
+            let (data, response) = try await urlSession.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+            return Self.markOpenBurnBarProxyOptions(Self.parseModels(data: data))
+        } catch {
+            return []
+        }
+    }
+
+    private func directBurnBarGatewayModelsURL() -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              components.host != nil else {
+            return nil
+        }
+        components.port = 8317
+        components.path = "/v1/models"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
     /// Fall back to relay-based model discovery when the direct gateway
     /// probe fails (typical on iOS where localhost points to the device,
     /// not the Mac). Mirrors the CLI runtime path through
@@ -236,10 +262,10 @@ final class OpenClawService {
                     accountID: nil,
                     accountLabel: nil,
                     sourceID: nil,
-                    sourceKind: nil,
+                    sourceKind: option.source == .openBurnBarProxy ? "openburnbar_proxy" : option.source.rawValue,
                     capabilities: [],
                     quotaState: nil,
-                    routeEligible: nil,
+                    routeEligible: true,
                     lastError: nil
                 )
             }
@@ -316,6 +342,28 @@ final class OpenClawService {
                 routeEligible: entry["route_eligible"] as? Bool,
                 lastError: entry["last_error"] as? String
             )
+        }
+    }
+
+    private static func mergedModelOptions(
+        primary: [HermesRuntimeModelOption],
+        secondary: [HermesRuntimeModelOption]
+    ) -> [HermesRuntimeModelOption] {
+        var merged: [HermesRuntimeModelOption] = []
+        var seen = Set<String>()
+        for option in primary + secondary where seen.insert(option.modelID.lowercased()).inserted {
+            merged.append(option)
+        }
+        return merged
+    }
+
+    private static func markOpenBurnBarProxyOptions(
+        _ options: [HermesRuntimeModelOption]
+    ) -> [HermesRuntimeModelOption] {
+        options.map { option in
+            var copy = option
+            copy.sourceKind = "openburnbar_proxy"
+            return copy
         }
     }
 

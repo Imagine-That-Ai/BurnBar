@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "fBrSzu+0BAHQ1r250xrI67\/76PTfC4gyb64nUq5xRPxgHMAMEBhbHSuDOyb2AhI=",
+  "chunkCiphertext" : "e1qXu9VdmS+R7z4RA27jytFOCjvjxC\/CrNW\/NUfqL5a9\/gwcvMN3JeE8ad9L8No=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "sFzg5wyw4jdklrsQ8ZTMKUUvIB2EPpJr90rBX6Cy3BMDrYrZWffnXhunIAP5n0ISeHN5ZwzKyyomVIwsUh5BPJ\/kODJ5G5375YISqBiuBWUtj3fDGVTgUIKuVLE7dp3Nb62s+S53oeZrvmERKNKsSKWNY+k51HXvAEiYYmDTW16SKoqAqybOJWnZevqIEU0Yk2CJaTLb",
+  "payloadCiphertext" : "M9ENcpXve54EvwDKQAdTf84TBJbOn4qVjrSLJAlspLOy\/uv0kKmptQv9XB6ehqf7xUZaN0AXur4rBrvUeN2k7QInNae8N4LQn8bhcSw2TXAocELoX3qze0XrTveXvjHpwHHf8QBNZ0Tn9h9agOe7xLGyAzYkQFzQg+BjW\/AkOllBDdmzH\/A2Y3ZiQg3By1czuF4feQKX",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BCC7sq4jwiPQt33ThRlLigGH0gtvs5HxuF3x5O4aTWlG7rrEqp6\/QDs741E54eZSYcH6EhhLW2ddeVIEs6tHxZtPEuqqciAC1KzPXgCcgQSRL9eKwL39AQB+\/iB2OwlXdtlBb34m7yOgmtY\/ui25DIZcb5VkPTFmoz\/ADpY="
+  "wrappedKey" : "BL4wlntw493dJPnaZZnXwJmWRb1OKlLcs7\/f0\/WpM3S5UCRWZM3Q5wPEmlZdWYp6SKtL0K+x8cacbuaAaOIUEjAjsgiK6iNwjyTgBr2lHpjtP3lVM0Cz4WBNV6LT8z8MCN07LhvprwD0z0TjgVRGPTbr\/BPD3tRB5p6xXRU="
 }

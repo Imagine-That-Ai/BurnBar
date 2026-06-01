@@ -98,7 +98,8 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         let result = await coordinator.reconnect(profile: browserProfile)
 
         if case .failed(let message) = result {
-            XCTAssertTrue(message.contains("Only Codex and Claude Code CLI profiles"))
+            XCTAssertTrue(message.contains("Only Codex, Claude Code, and Cursor Agent CLI profiles"),
+                          "Expected rejection message to mention Cursor Agent; got: \(message)")
         } else {
             XCTFail("Expected failed result for browser profile")
         }
@@ -487,7 +488,93 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         let keys = coordinator.configEnvironmentKeys(for: .opencode)
         XCTAssertTrue(keys.isEmpty)
     }
+
+    // MARK: - Cursor Agent Tests
+
+    func test_loginCommands_forCursorAgent_returnsLoginCandidates() {
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let commands = coordinator.loginCommands(for: .cursorAgent, executablePath: "/usr/local/bin/cursor-agent")
+
+        XCTAssertFalse(commands.isEmpty,
+                       "Cursor Agent must expose login commands so Account Switcher can trigger auth")
+        XCTAssertTrue(commands.contains { $0.contains("login") },
+                      "At least one Cursor Agent login command must contain 'login'")
+    }
+
+    func test_configEnvironmentKeys_forCursorAgent() {
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let keys = coordinator.configEnvironmentKeys(for: .cursorAgent)
+
+        XCTAssertTrue(keys.contains("CURSOR_AGENT_HOME"),
+                      "CURSOR_AGENT_HOME must be in config environment keys for profile isolation")
+        XCTAssertTrue(keys.contains("CURSOR_AGENT_CONFIG_PATH"),
+                      "CURSOR_AGENT_CONFIG_PATH must be in config environment keys for profile isolation")
+    }
+
+    func test_reconnect_acceptsCursorAgentCLI_whenInstalled() async {
+        // Cursor Agent must pass the cliType guard — it should NOT return
+        // "This CLI does not support account reconnect yet."
+        let cursorAgentProfile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .cursorAgent,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Cursor Agent"),
+            sortKey: 0
+        )
+
+        let deps = SwitcherCLIAuthCoordinator.Dependencies(
+            discoverAuthState: { _, _ in
+                CLIAuthInfo(
+                    cliType: .cursorAgent,
+                    authState: .authenticated(lastRefresh: nil),
+                    isInstalled: true,
+                    accountDescription: "reserve@example.com",
+                    configDirectory: "/tmp/cursor-agent-reserve",
+                    executablePath: "/usr/local/bin/cursor-agent"
+                )
+            },
+            executablePathResolver: { _ in "/usr/local/bin/cursor-agent" },
+            executableHealthChecker: { _, _ in .healthy }
+        )
+
+        let coordinator = SwitcherCLIAuthCoordinator(dependencies: deps)
+        // Provide a no-op terminal script opener so we don't actually open Terminal.
+        var deps2 = deps
+        deps2.openScriptInTerminal = { _ in }
+
+        let coordinator2 = SwitcherCLIAuthCoordinator(dependencies: deps2)
+        let result = await coordinator2.reconnect(profile: cursorAgentProfile)
+
+        // Must NOT be the guard-rejection "does not support account reconnect"
+        if case .failed(let message) = result {
+            XCTAssertFalse(
+                message.contains("does not support account reconnect"),
+                "Cursor Agent must not be rejected by the CLI type guard; got: \(message)"
+            )
+        }
+        // Allowed outcomes: .readyToPersist, .requiresConfirmation, .cancelled, or a non-guard .failed
+    }
+
+    func test_reconnect_rejectsGrokCLI_stillUnsupported() async {
+        // .grok should remain in the unsupported guard
+        let grokProfile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .grok,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Grok"),
+            sortKey: 0
+        )
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let result = await coordinator.reconnect(profile: grokProfile)
+        if case .failed(let message) = result {
+            XCTAssertTrue(
+                message.contains("does not support account reconnect"),
+                "Grok must still be rejected with the correct message; got: \(message)"
+            )
+        } else {
+            XCTFail("Grok reconnect must return .failed")
+        }
+    }
 }
+
 
 // MARK: - SwitcherCLIFallbackPlanner Tests
 

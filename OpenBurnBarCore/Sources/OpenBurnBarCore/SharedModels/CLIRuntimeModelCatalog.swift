@@ -542,6 +542,56 @@ public enum CLIRuntimeModelCatalog {
         return rows
     }
 
+    public static func parseOpenBurnBarProxyModels(_ data: Data) -> [CLIRuntimeModelOption] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = object["data"] as? [[String: Any]] else {
+            return []
+        }
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for model in models {
+            guard let rawID = model["id"] as? String else { continue }
+            let modelID = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !modelID.isEmpty, seen.insert(modelID.lowercased()).inserted else { continue }
+            if let routeEligible = model["route_eligible"] as? Bool, routeEligible == false {
+                continue
+            }
+            let providerID = ((model["provider_id"] as? String)
+                ?? (model["providerID"] as? String)
+                ?? (model["provider"] as? String)
+                ?? (model["owned_by"] as? String)
+                ?? inferredProviderID(modelID: modelID, displayName: modelID))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let providerName = ((model["provider_name"] as? String)
+                ?? (model["providerName"] as? String)
+                ?? OpenBurnBarModelDisplayName.providerLabel(providerID: providerID, providerName: nil)
+                ?? providerID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayName = ((model["display_name"] as? String)
+                ?? (model["displayName"] as? String)
+                ?? (model["name"] as? String)
+                ?? modelID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedProviderID = providerID.isEmpty
+                ? inferredProviderID(modelID: modelID, displayName: displayName)
+                : providerID
+            let normalizedProviderName = providerName.isEmpty ? normalizedProviderID : providerName
+            rows.append(option(
+                modelID,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: displayName.isEmpty ? modelID : displayName,
+                    providerName: normalizedProviderName,
+                    providerID: normalizedProviderID
+                ),
+                normalizedProviderID,
+                "\(normalizedProviderName) via OpenBurnBar API/OAuth",
+                tier: inferredTier(modelID: modelID, displayName: displayName),
+                source: .openBurnBarProxy
+            ))
+        }
+        return rows
+    }
+
     public static func claudeCodeModelCatalogOptions(
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
     ) -> [CLIRuntimeModelOption] {

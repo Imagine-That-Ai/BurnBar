@@ -78,10 +78,10 @@ final class SwitcherCLIAuthCoordinator {
     ) async -> ReconnectResult {
         guard profile.targetKind == .cli,
               let cliType = profile.cliType else {
-            return .failed("Only Codex and Claude Code CLI profiles can reconnect.")
+            return .failed("Only Codex, Claude Code, and Cursor Agent CLI profiles can reconnect.")
         }
 
-        guard cliType == .codex || cliType == .claude else {
+        guard cliType == .codex || cliType == .claude || cliType == .cursorAgent else {
             return .failed("This CLI does not support account reconnect yet.")
         }
 
@@ -391,7 +391,9 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .cursorAgent:
+            candidates = [["login"], ["auth", "login"]]
+        case .opencode, .droid, .forge, .antigravity, .grok:
             candidates = []
         }
 

@@ -313,7 +313,8 @@ public enum BurnBarProviderAuthRegistry {
         cohereDescriptor,
         alibabaDescriptor,
         amazonDescriptor,
-        metaDescriptor
+        metaDescriptor,
+        cursorAgentDescriptor
     ]
 
     public static func descriptor(forCatalogProviderID providerID: String) -> BurnBarProviderAuthDescriptor? {
@@ -869,5 +870,43 @@ public enum BurnBarProviderAuthRegistry {
         summary: "Meta Llama via Together — OpenAI-compatible routing.",
         proxyHint: "Routed via api.together.xyz (OpenAI-compatible).",
         quotaHint: nil
+    )
+
+    private static let cursorAgentDescriptor = BurnBarProviderAuthDescriptor(
+        providerID: "cursor-agent",
+        displayName: "Cursor / Cursor Agent",
+        aliasProviderIDs: ["cursor", "cursoragent", "cursor_agent"],
+        methods: [
+            BurnBarProviderAuthMethod(
+                id: "cursor-agent-browser-login",
+                kind: .browserLogin,
+                displayName: "Sign in with Cursor Agent",
+                summary: "Use a local Cursor Agent OAuth login for plan and quota visibility.",
+                helperText: "Add a Cursor Agent account via Account Switcher (or run `cursor-agent login`). OpenBurnBar reads quota from Cursor's API using the isolated session token in your profile's config directory.",
+                placeholder: "Cursor Agent OAuth session",
+                dashboardURL: "https://cursor.com/dashboard",
+                dashboardLabel: "Open Cursor dashboard",
+                storage: .appKeychain(account: "cursor_agent_oauth_session"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "cursor-cookie",
+                kind: .cookie,
+                displayName: "Cursor Session Cookie",
+                summary: "Paste a WorkosCursorSessionToken cookie to read live plan quota.",
+                helperText: "Sign in at cursor.com, open DevTools → Application → Cookies, copy the WorkosCursorSessionToken value, and paste it here. OpenBurnBar stores it in your Mac Keychain and uses it to poll cursor.com/api/usage-summary.",
+                placeholder: "WorkosCursorSessionToken=userId::eyJ…",
+                dashboardURL: "https://cursor.com/dashboard",
+                dashboardLabel: "Open Cursor dashboard",
+                storage: .appKeychain(account: "cursor_cookie"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            )
+        ],
+        primaryMethodID: "cursor-agent-browser-login",
+        summary: "Cursor / Cursor Agent — OAuth sign-in and session cookie for plan quota visibility.",
+        proxyHint: "Tracking and quota only — Cursor Agent is a local CLI and doesn't route through the BurnBar proxy.",
+        quotaHint: "Quota windows pulled from cursor.com/api/usage-summary using your isolated profile session token."
     )
 }

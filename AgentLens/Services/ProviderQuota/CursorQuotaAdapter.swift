@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Cursor Quota Adapter
 
@@ -28,6 +29,15 @@ import Foundation
 /// Reference: CodexBar `CursorStatusProbe.swift` — same endpoint, same cookie format.
 
 struct CursorQuotaAdapter: ProviderQuotaAdapter {
+
+    /// The provider this adapter is producing snapshots for.
+    /// Use `.cursor` for the main Cursor IDE account and `.cursorAgent` for
+    /// isolated Cursor Agent switcher profiles.
+    let targetProvider: AgentProvider
+
+    init(targetProvider: AgentProvider = .cursor) {
+        self.targetProvider = targetProvider
+    }
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // 1. Try cookie header resolution (env -> keychain -> Cursor SQLite JWT)
@@ -93,8 +103,12 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        // 3. Auto-extract from Cursor's SQLite database (zero-config, no FDA needed)
-        if let session = CursorCookieExtractor.readSession() {
+        // 3. Auto-extract from Cursor's SQLite database (zero-config, no FDA needed).
+        //    For .cursorAgent profiles the scoped cookie must already have been injected
+        //    into resolvedAPIKeys (step 2 above) by QuotaRefreshActor. Skip the global
+        //    Cursor.app DB to prevent cross-account credential leakage.
+        if targetProvider != .cursorAgent,
+           let session = CursorCookieExtractor.readSession() {
             return ResolvedCursorCookie(cookieHeader: session.cookieHeader, source: .extracted)
         }
 
@@ -107,7 +121,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
     private func isAuthenticationRejection(_ error: any Error) -> Bool {
         guard case let QuotaServiceError.httpStatus(provider, code) = error,
-              provider == .cursor else {
+              provider == .cursor || provider == .cursorAgent else {
             return false
         }
         return code == 401 || code == 403
@@ -115,7 +129,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
     private func unavailableSnapshot(statusMessage: String) -> ProviderQuotaSnapshot {
         ProviderQuotaSnapshot(
-            provider: .cursor,
+            provider: targetProvider,
             fetchedAt: Date(),
             source: .unavailable,
             confidence: .unavailable,
@@ -147,11 +161,11 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
         }
 
         if http.statusCode == 401 || http.statusCode == 403 {
-            throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
+            throw QuotaServiceError.httpStatus(provider: targetProvider, code: http.statusCode)
         }
 
         guard (200..<300).contains(http.statusCode) else {
-            throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
+            throw QuotaServiceError.httpStatus(provider: targetProvider, code: http.statusCode)
         }
 
         let decoder = JSONDecoder()
@@ -286,7 +300,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
         let emailSuffix = userEmail.map { " (\($0))" } ?? ""
 
         return ProviderQuotaSnapshot(
-            provider: .cursor,
+            provider: targetProvider,
             fetchedAt: Date(),
             source: .officialAPI,
             confidence: .exact,

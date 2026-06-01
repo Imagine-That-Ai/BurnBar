@@ -16,6 +16,15 @@ import {
 const launchGateSource = readFileSync(new URL("./commercial-launch-gate.mjs", import.meta.url), "utf8");
 assert.match(launchGateSource, /verifyCloudProTopUp/);
 assert.match(launchGateSource, /verifyGooglePlayCloudProTopUp/);
+assert.match(launchGateSource, /READY_FOR_CANARY/);
+assert.match(launchGateSource, /READY_FOR_PUBLIC_RELEASE/);
+assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
+assert.match(launchGateSource, /prove:paid-tier for Cloud and Cloud Pro/);
+assert.doesNotMatch(
+  launchGateSource,
+  /Run prove:hosted-quota against a real paid user/,
+  "live paid proof gate copy must reference the two-tier paid proof command",
+);
 
 {
   const coverage = evaluateRequiredProductIDs(

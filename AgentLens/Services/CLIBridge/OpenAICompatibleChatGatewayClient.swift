@@ -671,6 +671,72 @@ enum OpenAICompatibleModelProbe {
             return (false, nil, [], [])
         }
     }
+
+    static func mergedModels(
+        primary: [OpenAICompatibleAdvertisedModel],
+        secondary: [OpenAICompatibleAdvertisedModel]
+    ) -> [OpenAICompatibleAdvertisedModel] {
+        var rows: [OpenAICompatibleAdvertisedModel] = []
+        var seen = Set<String>()
+        for model in primary + secondary {
+            let key = model.id.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            rows.append(model)
+        }
+        return rows
+    }
+
+    static func markOpenBurnBarProxyModels(
+        _ models: [OpenAICompatibleAdvertisedModel]
+    ) -> [OpenAICompatibleAdvertisedModel] {
+        models.map { model in
+            OpenAICompatibleAdvertisedModel(
+                id: model.id,
+                displayName: model.displayName,
+                providerID: model.providerID,
+                providerName: model.providerName,
+                routeEligible: model.routeEligible,
+                modelCapabilities: model.modelCapabilities,
+                isOpenBurnBarProxy: true
+            )
+        }
+    }
+
+    static func probeWithModelsMergedWithBurnBarGateway(
+        baseURL: URL,
+        bearerToken: String?,
+        burnBarGatewayBaseURL: URL?,
+        burnBarGatewayBearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, modelName: String?, hermesModels: [HermesAdvertisedModel], models: [OpenAICompatibleAdvertisedModel]) {
+        let primary = await probeWithModels(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            timeout: timeout,
+            session: session
+        )
+        guard let burnBarGatewayBaseURL else { return primary }
+
+        let secondary = await probeWithModels(
+            baseURL: burnBarGatewayBaseURL,
+            bearerToken: burnBarGatewayBearerToken,
+            timeout: timeout,
+            session: session
+        )
+        let mergedRows = mergedModels(
+            primary: primary.models,
+            secondary: markOpenBurnBarProxyModels(secondary.models)
+        )
+        guard !mergedRows.isEmpty else { return primary }
+
+        return (
+            primary.available || secondary.available,
+            primary.modelName ?? secondary.modelName,
+            OpenAICompatibleModelListParser.hermesAdvertisedModels(from: mergedRows),
+            mergedRows
+        )
+    }
 }
 
 struct OpenAICompatibleChatGatewayClient: Sendable {

@@ -24,6 +24,8 @@ const faq = await read("src/data/faq.ts");
 const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
 const publicPricingCopy = [pricing, faq, claims, supportMacros].join("\n");
+const rawStoreProductPattern =
+  /com\.openburnbar\.(pro|proMax|agentControl|floo|hostedQuotaSync)[A-Za-z0-9._-]*/;
 
 assert.match(site, /pricing:\s*{/, "site constants must expose a structured pricing catalog");
 assert.doesNotMatch(
@@ -73,6 +75,21 @@ assert.doesNotMatch(
   pricingPublicText,
   /Mercury|Computer Use|protocol|codec|transport/i,
   "pricing page must avoid internal implementation language"
+);
+assert.doesNotMatch(
+  pricingPublicText,
+  rawStoreProductPattern,
+  "pricing page must not expose raw store product IDs"
+);
+assert.doesNotMatch(
+  faq,
+  rawStoreProductPattern,
+  "FAQ must describe plans in customer language, not raw store product IDs"
+);
+assert.doesNotMatch(
+  faq,
+  /burnbar_pro(_max)?/,
+  "FAQ must not expose entitlement IDs"
 );
 
 const pricingPageFourNinetyNine = pricing.match(/\$4\.99/g) ?? [];

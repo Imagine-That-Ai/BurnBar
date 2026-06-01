@@ -408,6 +408,7 @@
 		4421F8291FA65CB0F7ABEB52 /* NestHubSettingsCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0D93B3B52B08361673CBBFD /* NestHubSettingsCardTests.swift */; };
 		44A3410ABAEE54E89F262DA8 /* NestHubSettingsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87E03E80D1E31EADA4663F7 /* NestHubSettingsCard.swift */; };
 		44C458706F554BE938B999AE /* CursorIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B861761D0B15712E5AE8381 /* CursorIntegrationTests.swift */; };
+		AB2D2DA489750246EB8EB7FC /* CursorAgentSwitcherQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5D9CAD16CEB5417EBC8C4C /* CursorIntegrationTests.swift */; };
 		4510FE6662DD6C5AF66FDA94 /* MultiSourceReconciliationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFAEFED8E58E37A02C6096E /* MultiSourceReconciliationTests.swift */; };
 		4530979D4A684CE9DA01FF43 /* RemoteSyncWatermarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC31F1B44D169BD9C9511F41 /* RemoteSyncWatermarkStore.swift */; };
 		4574AB9611C7D0E06622FF9D /* AgentCapabilityGrantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B063FCC3647F0103DF5F109F /* AgentCapabilityGrantStore.swift */; };
@@ -2202,6 +2203,7 @@
 		6AA24F5B3ABC55027CF0AA7C /* AgentBrandQuickActionComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBrandQuickActionComposer.swift; sourceTree = "<group>"; };
 		6B1EA87EE0285381B93CF8B3 /* ScreenShareAutoTypeFollowPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenShareAutoTypeFollowPolicyTests.swift; sourceTree = "<group>"; };
 		6B861761D0B15712E5AE8381 /* CursorIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorIntegrationTests.swift; sourceTree = "<group>"; };
+		AA5D9CAD16CEB5417EBC8C4C /* CursorAgentSwitcherQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorAgentSwitcherQuotaTests.swift; sourceTree = "<group>"; };
 		6BBCC65A5671646C42C99C63 /* AgentWatchAudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchAudioSession.swift; sourceTree = "<group>"; };
 		6BBDCF0D10564DB4112BF2AB /* BurnBarRuntimeStatusTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarRuntimeStatusTool.swift; sourceTree = "<group>"; };
 		6BD4D5E256BE2919930A5DED /* ComputerUseRunCoordinatorPlaywrightScenarioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseRunCoordinatorPlaywrightScenarioTests.swift; sourceTree = "<group>"; };
@@ -5486,6 +5488,7 @@
 			isa = PBXGroup;
 			children = (
 				6B861761D0B15712E5AE8381 /* CursorIntegrationTests.swift */,
+				AA5D9CAD16CEB5417EBC8C4C /* CursorAgentSwitcherQuotaTests.swift */,
 				8201C544BF35BB5CBB92EA5D /* FactoryIntegrationTests.swift */,
 				B1D80A443EA24D46833F6EAC /* MimoQuotaAdapterTests.swift */,
 				243E6231BD08E77DA7091538 /* MiniMaxQuotaAdapterTests.swift */,
@@ -7073,6 +7076,7 @@
 				548A6A1FE879EFB7C904BFAD /* CrossSurfaceUpgradeTests.swift in Sources */,
 				6C6EDA7F5B1EDB6D0D7F98E6 /* CursorConnectorTests.swift in Sources */,
 				44C458706F554BE938B999AE /* CursorIntegrationTests.swift in Sources */,
+				AB2D2DA489750246EB8EB7FC /* CursorAgentSwitcherQuotaTests.swift in Sources */,
 				9D9AA928BF4AAE85D5978E48 /* DailyDigestManagerTests.swift in Sources */,
 				C85DD4EFB4229EC9CFCAD0DC /* DashboardActionGlyphTests.swift in Sources */,
 				3C484F411E153C3ED74D21C7 /* DashboardChatOverlayTests.swift in Sources */,

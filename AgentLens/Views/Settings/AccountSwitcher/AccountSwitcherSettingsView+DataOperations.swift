@@ -212,9 +212,9 @@ extension AccountSwitcherSettingsView {
         }
 
         switch group.cliType {
-        case .codex, .claude:
+        case .codex, .claude, .cursorAgent:
             await addCLIAccount(for: group)
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .opencode, .droid, .forge, .antigravity, .grok:
             editFormTargetKind = .cli
             editFormCLIType = group.cliType ?? .opencode
             showingCreateSheet = true

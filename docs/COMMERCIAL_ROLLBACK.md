@@ -163,9 +163,19 @@ For Stripe checkout or entitlement failures:
 5. Verify a paid proof through the capture helper:
 
 ```bash
-npm --prefix functions run prove:hosted-quota -- --channel stripe \
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:paid-tier -- \
+  --project burnbar \
+  --tier cloud \
+  --channel stripe \
+  --external-subscription-id "STRIPE_SUBSCRIPTION_ID" \
   | scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input -
 ```
+
+For Cloud Pro Stripe rollback recovery, change `--tier cloud` to
+`--tier cloud-pro` and add `--require-allowance`. If the incident involved a
+top-up, also add the matching `--require-top-up agent_control_actions_100` or
+`--require-top-up floo_relay_50gb`.
 
 ## Apple And Google Play Controls
 
@@ -214,6 +224,33 @@ Run this drill quarterly and before public launch. Record the command output in
 
 The drill passes when an on-call operator can execute each command, identify the
 safe rollback target, and explain which customer-facing surfaces remain live.
+
+Write the structured drill artifact at:
+
+```bash
+launch-evidence/rollback-drill.json
+```
+
+Generate the required shape:
+
+```bash
+scripts/validate-commercial-rollback-drill.mjs --template \
+  > launch-evidence/rollback-drill.json
+```
+
+Validate it before adding the final launch evidence bundle:
+
+```bash
+scripts/validate-commercial-rollback-drill.mjs \
+  launch-evidence/rollback-drill.json
+```
+
+The validator requires every commercial rollback trigger, the Remote Config
+kill-switch patch, Hosting release listing, Functions build, Cloud Run revision
+listing, commercial launch gate output, ops-readiness output, and Stripe/Apple/
+Google Play owner-access evidence. Because this is a dry-run artifact,
+`remoteConfigPublished` must stay `false`; attach command output paths instead
+of publishing the rollback patch during the drill.
 
 ## Exit Criteria
 

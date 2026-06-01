@@ -82,7 +82,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(providerIDs.contains("openai"), "Expected openai in defaults")
         XCTAssertEqual(snapshot.routerMode, .providerFamilyFailover)
         XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5"])
-        XCTAssertEqual(snapshot.providerSettings(id: "minimax")?.preferredModelIDs, ["minimax-m2.7-highspeed"])
+        XCTAssertEqual(snapshot.providerSettings(id: "minimax")?.preferredModelIDs, ["minimax-m3", "minimax-m2.7-highspeed"])
     }
 
     func testResolvedConfigurationReflectsStoredCredentialAndBaseURLOverride() async throws {

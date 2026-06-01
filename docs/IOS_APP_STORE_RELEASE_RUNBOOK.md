@@ -343,17 +343,54 @@ testing paid users.
 ## Post-Approval Live Paid Proof
 
 Do not call the paid path production-proven until a real StoreKit purchase has
-created a server entitlement and unlocked paid Firestore backup for the buyer.
+created a server entitlement and unlocked the paid tier for the buyer. For the
+two-tier launch, prove both new tiers directly; keep the Hosted Quota proof for
+the legacy/grandfathered path and for hosted quota refresh evidence.
 After Apple approves the app and the manual release is complete:
 
-1. Install the App Store build, sign in with the paid-test Firebase user, and
-   buy `Hosted Quota Sync Monthly` through StoreKit.
-2. In the app, complete at least one paid backup action:
+1. Install the App Store build and sign in with the paid-test Firebase user.
+2. Buy **BurnBar Cloud** through StoreKit and complete at least one Group A
+   action:
    - enable backed-up chat/session content, or
    - connect hosted Codex quota sync and run one hosted refresh.
 3. Capture the Firebase UID. If available, also capture the StoreKit
    `originalTransactionID`.
-4. Run the read-only production proof:
+4. Run the read-only Cloud proof:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:paid-tier -- \
+  --project burnbar \
+  --tier cloud \
+  --channel apple \
+  --environment Production \
+  --original-transaction-id "APPLE_CLOUD_ORIGINAL_TRANSACTION_ID" \
+  --require-audit-event
+```
+
+5. Upgrade or separately purchase **BurnBar Cloud Pro**, exercise one Group B
+   action such as Floo or hosted Agent Control, then buy one Cloud Pro top-up.
+   Capture the Cloud Pro `originalTransactionID`.
+6. Run the read-only Cloud Pro proof:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:paid-tier -- \
+  --project burnbar \
+  --tier cloud-pro \
+  --channel apple \
+  --environment Production \
+  --original-transaction-id "APPLE_CLOUD_PRO_ORIGINAL_TRANSACTION_ID" \
+  --require-audit-event \
+  --require-allowance \
+  --require-top-up agent_control_actions_100
+```
+
+If the top-up purchased was Floo relay, replace the last flag with
+`--require-top-up floo_relay_50gb`.
+
+7. If the proof user also exercises the legacy/grandfathered Hosted Quota path,
+   run the legacy hosted-quota proof:
 
 ```bash
 OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
@@ -369,21 +406,23 @@ If the proof user only exercised paid backup content, omit
 `--require-hosted-quota`. If the proof user only exercised hosted Codex quota,
 omit `--require-backup`.
 
-The command must print JSON with `ok: true`, the
-`users/{uid}/entitlements/hosted_quota_sync` path, a matching
-`entitlement_events` audit row, and the requested backup/quota evidence paths.
-Attach that JSON to the launch evidence bundle. A green App Store status alone
-is not enough.
+Each command must print JSON with `ok: true`, the redacted entitlement path, and
+the requested audit, allowance, top-up, backup, or hosted quota evidence paths.
+Attach all JSON outputs to the launch evidence bundle. A green App Store status
+alone is not enough.
 
 To capture the proof safely without committing it:
 
 ```bash
 OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
-npm --prefix functions run prove:hosted-quota -- \
+npm --prefix functions run prove:paid-tier -- \
   --project burnbar \
+  --tier cloud-pro \
+  --channel apple \
   --environment Production \
-  --original-transaction-id "APPLE_ORIGINAL_TRANSACTION_ID" \
-  --require-backup \
-  --require-hosted-quota \
+  --original-transaction-id "APPLE_CLOUD_PRO_ORIGINAL_TRANSACTION_ID" \
+  --require-audit-event \
+  --require-allowance \
+  --require-top-up agent_control_actions_100 \
   | scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input -
 ```

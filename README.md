@@ -231,7 +231,7 @@ Even in trusted workspaces, `apply_patch` and `run_terminal` pause for explicit 
 
 ## Routed provider gateway
 
-OpenBurnBar can wire supported models into Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
+OpenBurnBar can wire supported models into Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, Claude Code, Hermes, Pi Agent, and OpenClaw without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
 
 The play:
 
@@ -240,12 +240,13 @@ The play:
 - A local **OpenAI-compatible gateway** wakes up.
 - Cursor gets a **public HTTPS tunnel** because Cursor blocks `localhost` and private IPs for BYOK — not our rule, just our problem to solve.
 - Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code point directly at the local gateway.
+- Hermes, Pi Agent, and OpenClaw merge their own gateway models with the OpenBurnBar proxy catalog, including relay catalog requests from mobile; when the selected row came only from OpenBurnBar, chat routes through the OpenBurnBar gateway.
 - OpenBurnBar writes the client config for Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code.
 - OpenBurnBar temporarily swaps Cursor's local BYOK token field to a short-lived OpenBurnBar session token while the connector is active, then restores the saved value on disconnect.
 - Routed provider API keys stay in Keychain; client config only receives the local gateway URL and gateway token.
 - Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over only when the next route proves the same canonical model ID instead of stranding the client on a dead account or silently changing models.
 
-**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`, `OpenAI`, `Kimi`, `Anthropic`, and `Factory Droid` where configured. Exact model failover may change provider/account, but it will not change `gpt-5.4` into `gpt-5.4-mini`, `gpt-5.4-pro`, a broad family wrapper, or a same-capability-class substitute. Factory Standard exhaustion is treated as exact same-model failover, not silent Droid Core downgrade. **Client targets:** Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
+**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`, `OpenAI`, `Kimi`, `Anthropic`, and `Factory Droid` where configured. Exact model failover may change provider/account, but it will not change `gpt-5.4` into `gpt-5.4-mini`, `gpt-5.4-pro`, a broad family wrapper, or a same-capability-class substitute. Factory Standard exhaustion is treated as exact same-model failover, not silent Droid Core downgrade. **Client targets:** Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, Claude Code, Hermes, Pi Agent, and OpenClaw. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
 
 **Checklist:**
 

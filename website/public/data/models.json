@@ -185,6 +185,22 @@
     ]
   },
   {
+    "modelID": "minimax-m3",
+    "modelDisplay": "MiniMax M3",
+    "providerID": "minimax",
+    "providerDisplay": "MiniMax",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/minimax.png",
+    "tier": "flagship",
+    "contextWindowTokens": 1000000,
+    "costSignal": 0.62,
+    "aliases": [
+      "MiniMaxAI/MiniMax-M3",
+      "minimax/minimax-m3",
+      "minimax-m3-pro"
+    ]
+  },
+  {
     "modelID": "minimax-m2-7",
     "modelDisplay": "MiniMax M2.7",
     "providerID": "minimax",

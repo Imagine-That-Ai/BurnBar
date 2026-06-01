@@ -951,6 +951,51 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(models.map(\.routeEligible), [true, true, false])
     }
 
+    func test_openAICompatibleModelProbe_mergesHarnessAndBurnBarProxyRows() {
+        let harness = [
+            OpenAICompatibleAdvertisedModel(
+                id: "openclaw-local",
+                displayName: "OpenClaw Local",
+                providerID: "openclaw",
+                providerName: "OpenClaw",
+                routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-opus-4-8",
+                displayName: "Old Claude Name",
+                providerID: "anthropic",
+                providerName: "Anthropic",
+                routeEligible: true
+            )
+        ]
+        let proxy = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-opus-4-8",
+                displayName: "Claude Opus 4.8",
+                providerID: "anthropic",
+                providerName: "Anthropic",
+                routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "brand-new-provider-model",
+                displayName: "Brand New Provider Model",
+                providerID: "newco",
+                providerName: "NewCo",
+                routeEligible: true
+            )
+        ]
+
+        let merged = OpenAICompatibleModelProbe.mergedModels(
+            primary: harness,
+            secondary: OpenAICompatibleModelProbe.markOpenBurnBarProxyModels(proxy)
+        )
+
+        XCTAssertEqual(merged.map(\.id), ["openclaw-local", "claude-opus-4-8", "brand-new-provider-model"])
+        XCTAssertEqual(merged.first(where: { $0.id == "claude-opus-4-8" })?.displayName, "Old Claude Name")
+        XCTAssertEqual(merged.first(where: { $0.id == "claude-opus-4-8" })?.isOpenBurnBarProxy, false)
+        XCTAssertEqual(merged.first(where: { $0.id == "brand-new-provider-model" })?.isOpenBurnBarProxy, true)
+    }
+
     func test_streamRuntime_cancelRunningProcess_terminatesMatchingTokenOnly() async throws {
         let runtime = CLIBridgeStreamRuntimeCoordinator()
         let process = Process()

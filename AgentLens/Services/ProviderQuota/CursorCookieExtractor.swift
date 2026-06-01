@@ -106,6 +106,52 @@ enum CursorCookieExtractor {
         return nil
     }
 
+    /// Reads a Cursor session scoped to a specific Cursor Agent config directory.
+    ///
+    /// This method intentionally reads **only** the `state.vscdb` inside the
+    /// supplied `agentConfigDirectory` and never falls back to the global Cursor
+    /// app database. This prevents reserve accounts from accidentally inheriting
+    /// the default global Cursor cookie and cross-contaminating quota reads.
+    ///
+    /// - Parameter agentConfigDirectory: The isolated profile config directory set
+    ///   via `CURSOR_AGENT_HOME` / `CURSOR_AGENT_CONFIG_PATH`.
+    /// - Returns: A `CursorSession` if the scoped database is present and contains
+    ///   a valid token, or `nil` otherwise.
+    static func readSession(fromAgentConfigDirectory agentConfigDirectory: String) -> CursorSession? {
+        // Try the VSCode-style globalStorage path first, then root of config dir.
+        let candidates: [String] = [
+            (agentConfigDirectory as NSString)
+                .appendingPathComponent("User/globalStorage/state.vscdb"),
+            (agentConfigDirectory as NSString)
+                .appendingPathComponent("state.vscdb"),
+        ]
+
+        for dbPath in candidates {
+            guard FileManager.default.fileExists(atPath: dbPath) else { continue }
+            guard let db = openDatabase(at: dbPath) else { continue }
+            defer { sqlite3_close(db) }
+
+            guard let accessToken = readValue(db: db, key: "cursorAuth/accessToken"),
+                  !accessToken.isEmpty else {
+                continue
+            }
+
+            let userId = extractUserIdFromJWT(accessToken)
+            let email = readValue(db: db, key: "cursorAuth/cachedEmail")
+            let membershipType = readValue(db: db, key: "cursorAuth/stripeMembershipType")
+
+            return CursorSession(
+                accessToken: accessToken,
+                userId: userId,
+                email: email,
+                membershipType: membershipType
+            )
+        }
+
+        // Deliberately no global Cursor fallback — scoped reads must stay scoped.
+        return nil
+    }
+
     /// Returns a Cursor cookie header string suitable for the `Cookie` HTTP header.
     /// Convenience wrapper around `readSession()`.
     static func extractCookieHeader() -> String? {

@@ -145,6 +145,25 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows.first?.displayName, "Grok Build · xAI · via OpenBurnBar · Reasoning: CLI default")
     }
 
+    func test_openBurnBarProxyModelParserUsesRouteEligibleRowsForHarnesses() {
+        let json = """
+        {
+          "data": [
+            {"id":"claude-opus-4-8","display_name":"Claude Opus 4.8","provider_id":"anthropic","provider_name":"Anthropic","route_eligible":true},
+            {"id":"stale-model","display_name":"Stale Model","provider_id":"openai","route_eligible":false},
+            {"id":"brand-new-provider-model","display_name":"Brand New Provider Model","owned_by":"newco"}
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let rows = CLIRuntimeModelCatalog.parseOpenBurnBarProxyModels(json)
+
+        XCTAssertEqual(rows.map(\.modelID), ["claude-opus-4-8", "brand-new-provider-model"])
+        XCTAssertEqual(Set(rows.map(\.source)), [.openBurnBarProxy])
+        XCTAssertEqual(rows[0].providerID, "anthropic")
+        XCTAssertEqual(rows[0].providerName, "Anthropic via OpenBurnBar API/OAuth")
+    }
+
     func test_claudeCodeModelCatalogOptionsEnumerateBundledAnthropicModels() {
         let rows = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
 

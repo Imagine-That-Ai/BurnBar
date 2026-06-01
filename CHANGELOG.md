@@ -7,12 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — MiniMax M3 model
+
+- Added **MiniMax M3** as a public, suggested model on the `minimax` provider across every display surface: the runtime routing catalog (`catalog.json`), the website seed + public `models.json`, and both static app mirrors (`AgentLens` + `OpenBurnBarMobile`). It now appears in the picker for **all** users who have MiniMax configured, not only clients whose live CLI/proxy advertises it.
+- The new public `minimax-m3` row owns the `MiniMax-M3` / `MiniMax-M3-pro` aliases and capability class `minimax-m3` (rank 90), so M3 names resolve to it instead of the hidden M2/M3 catch-all. Pricing mirrors the M2.x standard family (0.69/0.69 per M tokens) pending official MiniMax pricing; the website catalog records M3's 1M-token context window.
+
+### Improved — Play Billing diagnostics and store robustness on Android
+
+- Refactored `HostedQuotaSubscriptionStore` on Android to support Billing Library 8.x's rich diagnostics by capturing and mapping `getUnfetchedProductList()` results.
+- Enhanced purchase flow exceptions with specific Play Store status codes (`PRODUCT_NOT_FOUND`, `NO_ELIGIBLE_OFFER`, `INVALID_PRODUCT_ID_FORMAT`) to prevent vague "product is not configured" errors and surface direct troubleshooting hints.
+- Added constructor dependency injection for `billingClient` to facilitate unit testing of connections, product queries, and detailed error handling, and introduced comprehensive Mockk-based JVM unit tests in `HostedQuotaSubscriptionStoreTest.kt`.
+
 ### Added — Touchless live model discovery and routed-client sync
 
 - Codex and Grok model pickers now use the paired Mac's live CLI catalogs (`codex debug models`, `grok models`) when available, and Grok also merges `~/.grok/models_cache.json` so cached model releases show up even when the command output is sparse.
 - Claude Code and Antigravity model pickers now enumerate all known Claude/Gemini catalog rows for the paired Mac instead of reflecting only the CLI default/profile; Antigravity appends the selected `agy` profile model only when it is a custom non-catalog model.
 - The gateway router can resolve newly discovered Anthropic model IDs before the static catalog is updated, preserving the rule that any route-eligible advertised row must be callable.
 - Routed-client auto-repair now refreshes stale Droid custom model arrays from the live `/v1/models` catalog, so enrolled Droid installs pick up new proxy models without pressing Sync.
+- Hermes, Pi Agent, and OpenClaw model pickers now merge their own gateway catalogs with the live OpenBurnBar proxy catalog, mobile relay catalog requests for those runtimes return proxy rows, and proxy-only selections route chat back through the OpenBurnBar gateway instead of the harness endpoint.
 - Android decodes the new Antigravity, Claude Code, Codex, Grok, and Cursor Agent model-source labels for mobile CLI model pickers.
 
 ### Added — Cross-provider CLI session restart/handoff

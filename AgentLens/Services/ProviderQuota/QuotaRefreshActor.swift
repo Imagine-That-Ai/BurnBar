@@ -81,7 +81,8 @@ actor QuotaRefreshActor {
             .minimax: MiniMaxQuotaAdapter(),
             .zai: ZAIQuotaAdapter(),
             .factory: FactoryQuotaAdapter(),
-            .cursor: CursorQuotaAdapter(),
+            .cursor: CursorQuotaAdapter(targetProvider: .cursor),
+            .cursorAgent: CursorQuotaAdapter(targetProvider: .cursorAgent),
             .warp: WarpQuotaAdapter(),
             .ollama: OllamaQuotaAdapter(),
             .kimi: KimiQuotaAdapter(),
@@ -413,6 +414,15 @@ actor QuotaRefreshActor {
             environment["CLAUDE_CONFIG_PATH"] = profile.configDirectory
             environment["CLAUDE_CONFIG_DIR"] = profile.configDirectory
             environment["OPENBURNBAR_QUOTA_SWITCHER_PROFILE_ID"] = profile.accountID
+        case .cursorAgent:
+            // Scope env vars so the CursorQuotaAdapter reads from this profile's
+            // isolated config directory and never from the global Cursor app DB.
+            environment["CURSOR_AGENT_HOME"] = profile.configDirectory
+            environment["CURSOR_AGENT_CONFIG_PATH"] = profile.configDirectory
+            // Disable global auto-auth so the adapter does not fall through to
+            // the global state.vscdb when the scoped DB is absent or empty.
+            environment["OPENBURNBAR_DISABLE_CURSOR_AUTO_AUTH"] = "1"
+            environment["OPENBURNBAR_QUOTA_SWITCHER_PROFILE_ID"] = profile.accountID
         default:
             break
         }
@@ -423,6 +433,15 @@ actor QuotaRefreshActor {
             profileContext = profileContext.withClaudeCredentialsReader(
                 StaticClaudeCredentialsReader(credentials: credentials)
             )
+        }
+        // For Cursor Agent switcher profiles, inject the scoped cookie so the
+        // CursorQuotaAdapter can authenticate using the profile's own credentials
+        // without touching the global Cursor app session.
+        if profile.provider == .cursorAgent,
+           let session = CursorCookieExtractor.readSession(fromAgentConfigDirectory: profile.configDirectory) {
+            var keys = profileContext.resolvedAPIKeys
+            keys["cursor_cookie"] = session.cookieHeader
+            profileContext = profileContext.withResolvedAPIKeys(keys)
         }
         let snapshot: ProviderQuotaSnapshot
         do {
@@ -601,7 +620,7 @@ private func resolveSwitcherCLIQuotaProfiles(
         guard profile.targetKind == .cli,
               !profile.isDisabled,
               let cliType = profile.cliType,
-              cliType == .codex || cliType == .claude,
+              cliType == .codex || cliType == .claude || cliType == .cursorAgent,
               let provider = quotaProvider(for: cliType),
               let configDirectory = quotaNonEmpty(profile.cliMetadata?.configDirectory) else {
             return nil

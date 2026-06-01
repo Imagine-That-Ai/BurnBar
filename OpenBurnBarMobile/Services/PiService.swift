@@ -459,8 +459,6 @@ final class PiService {
         isStreaming = true
         persistCurrentThread()
 
-        let baseURL = resolvedBaseURL
-        let bearer = resolvedBearerToken
         let model: String
         do {
             model = try activeModelIDForRequest()
@@ -477,6 +475,9 @@ final class PiService {
             isStreaming = false
             return
         }
+        let route = gatewayRoute(for: model)
+        let baseURL = route.baseURL
+        let bearer = route.bearerToken
 
         currentTask?.cancel()
         currentTask = Task { @MainActor [weak self] in
@@ -828,7 +829,8 @@ final class PiService {
         do {
             let (data, _) = try await urlSession.data(for: request)
             let decoded = Self.parseModels(data: data)
-            modelOptions = decoded
+            let burnBarProxyOptions = await directBurnBarGatewayModelOptions()
+            modelOptions = Self.mergedModelOptions(primary: decoded, secondary: burnBarProxyOptions)
             if let selectedModelID,
                let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
                 persistResolvedSelectedModelID(resolved)
@@ -838,19 +840,59 @@ final class PiService {
                     runtimeErrorText = "Selected Pi model '\(selectedModelID)' is not advertised by this Mac Pi harness. Pick a listed model or refresh the Mac provider catalog."
                 } else {
                     self.selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
-                        ?? decoded.first { $0.isRouteEligible }?.modelID
-                        ?? decoded.first?.modelID
+                        ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first?.modelID
                     selectedModelWasExplicit = false
                 }
             } else if selectedModelID == nil {
                 selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
-                    ?? decoded.first { $0.isRouteEligible }?.modelID
-                    ?? decoded.first?.modelID
+                    ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? modelOptions.first?.modelID
                 selectedModelWasExplicit = false
             }
         } catch {
             runtimeErrorText = "Failed to list Pi models: \(error.localizedDescription)"
         }
+    }
+
+    private func directBurnBarGatewayModelOptions() async -> [HermesRuntimeModelOption] {
+        guard let url = directBurnBarGatewayModelsURL() else { return [] }
+        let request = URLRequest(url: url, timeoutInterval: 4)
+        do {
+            let (data, response) = try await urlSession.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+            return Self.markOpenBurnBarProxyOptions(Self.parseModels(data: data))
+        } catch {
+            return []
+        }
+    }
+
+    private func directBurnBarGatewayModelsURL() -> URL? {
+        directBurnBarGatewayBaseURL()?.appendingPathComponent("v1/models")
+    }
+
+    private func directBurnBarGatewayBaseURL() -> URL? {
+        guard var components = URLComponents(url: resolvedBaseURL, resolvingAgainstBaseURL: false),
+              components.host != nil else {
+            return nil
+        }
+        components.port = 8317
+        components.path = "/"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private func gatewayRoute(for modelID: String) -> (baseURL: URL, bearerToken: String?) {
+        let isProxyModel = modelOptions.contains {
+            $0.modelID.caseInsensitiveCompare(modelID) == .orderedSame
+                && $0.sourceKind == "openburnbar_proxy"
+                && $0.isRouteEligible
+        }
+        if isProxyModel, let proxyBaseURL = directBurnBarGatewayBaseURL() {
+            return (proxyBaseURL, nil)
+        }
+        return (resolvedBaseURL, resolvedBearerToken)
     }
 
     /// Fall back to relay-based model discovery when the direct gateway
@@ -869,10 +911,10 @@ final class PiService {
                     accountID: nil,
                     accountLabel: nil,
                     sourceID: nil,
-                    sourceKind: nil,
+                    sourceKind: option.source == .openBurnBarProxy ? "openburnbar_proxy" : option.source.rawValue,
                     capabilities: [],
                     quotaState: nil,
-                    routeEligible: nil,
+                    routeEligible: true,
                     lastError: nil
                 )
             }
@@ -1199,6 +1241,28 @@ final class PiService {
                 routeEligible: entry["route_eligible"] as? Bool,
                 lastError: entry["last_error"] as? String
             )
+        }
+    }
+
+    private static func mergedModelOptions(
+        primary: [HermesRuntimeModelOption],
+        secondary: [HermesRuntimeModelOption]
+    ) -> [HermesRuntimeModelOption] {
+        var merged: [HermesRuntimeModelOption] = []
+        var seen = Set<String>()
+        for option in primary + secondary where seen.insert(option.modelID.lowercased()).inserted {
+            merged.append(option)
+        }
+        return merged
+    }
+
+    private static func markOpenBurnBarProxyOptions(
+        _ options: [HermesRuntimeModelOption]
+    ) -> [HermesRuntimeModelOption] {
+        options.map { option in
+            var copy = option
+            copy.sourceKind = "openburnbar_proxy"
+            return copy
         }
     }
 
