@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — LLM/GenAI prompt-injection hardening
+
+- Wrapped untrusted chat/user, transcript, retrieval, and hosted insight prompt content in explicit provenance-tagged blocks so downstream models treat those bytes as data, not instructions.
+- Added an LLM/GenAI agent threat model and security review artifacts covering prompt injection, tool over-permissioning, model routing, MCP, Computer Use feedback, and budget-loop controls.
+
 ### Added — Touchless live model discovery and routed-client sync
 
 - Codex and Grok model pickers now use the paired Mac's live CLI catalogs (`codex debug models`, `grok models`) when available, and Grok also merges `~/.grok/models_cache.json` so cached model releases show up even when the command output is sparse.
