@@ -46,6 +46,7 @@ public struct FirestoreHermesGatewayEventDoc: Codable, Sendable, Equatable {
     public var sequence: Int
     public var kind: String
     public var destinationId: String
+    public var targetClientId: String?
     public var threadId: String?
     public var senderId: String
     public var senderDisplayName: String?

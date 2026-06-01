@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a BurnBar Cloud Hermes Gateway HTTP surface with device-code linking, scoped bearer grants, destination discovery, event polling/SSE, message delivery, typing state, and signed attachment upload initiation.
 - Added Hermes Gateway management callables for approving, listing, revoking, and enqueueing BurnBar-originated gateway events.
 - Added Firestore rules, the `/hermes/connect` web approval flow, Firebase Hosting routing, tests, docs, and a contribution-ready upstream Hermes platform plugin under `tools/hermes-platform-burnbar/`.
+- Added selected-client targeting for iPhone/iPad gateway messages and model switches so multiple paired Hermes gateway clients can stay online without consuming each other's events.
+- Mac Remote Relay now publishes a per-installation `relay-host-...` connection ID and marks the legacy device-id relay as replaced, preventing two Macs with migrated device IDs from overwriting one another.
 
 ### Added — Touchless live model discovery and routed-client sync
 

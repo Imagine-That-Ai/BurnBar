@@ -5,6 +5,26 @@ import XCTest
 @MainActor
 final class HermesRuntimeLauncherTests: XCTestCase {
 
+    func test_relayHostConnectionIDUsesStableInstallationIdentity() {
+        let suiteName = "HermesRuntimeLauncherTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let first = HermesRelayHostService.loadOrCreateRelayHostInstallationID(defaults: defaults)
+        let second = HermesRelayHostService.loadOrCreateRelayHostInstallationID(defaults: defaults)
+
+        XCTAssertFalse(first.isEmpty)
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(
+            HermesRelayHostService.relayConnectionID(forHostInstallationID: "MacBook Pro / Alberto"),
+            "relay-host-macbook-pro-alberto"
+        )
+        XCTAssertEqual(
+            HermesRelayHostService.legacyRelayConnectionID(forDeviceID: "MacBook Pro / Alberto"),
+            "relay-macbook-pro-alberto"
+        )
+    }
+
     func test_refreshStatus_reportsMissingCLI() async {
         let fake = FakeHermesRuntime(executable: nil)
         let launcher = HermesRuntimeLauncher(dependencies: fake.dependencies)

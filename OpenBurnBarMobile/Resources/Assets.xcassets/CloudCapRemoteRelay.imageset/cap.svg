@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="rr_foil" x1="40" y1="40" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8E2D8"/>
+      <stop offset="0.5" stop-color="#C8BFB5"/>
+      <stop offset="1" stop-color="#A2ACBA"/>
+    </linearGradient>
+    <linearGradient id="rr_ember" x1="90" y1="40" x2="170" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0C040"/>
+      <stop offset="1" stop-color="#E87060"/>
+    </linearGradient>
+  </defs>
+  <!-- relay tower mast -->
+  <path d="M128 70l26 150h-52z" fill="#15131C" stroke="url(#rr_foil)" stroke-width="9" stroke-linejoin="round"/>
+  <line x1="112" y1="158" x2="144" y2="158" stroke="url(#rr_foil)" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="128" cy="70" r="13" fill="url(#rr_ember)"/>
+  <!-- signal arcs -->
+  <path d="M96 64a44 44 0 0 0 0 60" stroke="url(#rr_ember)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M76 48a72 72 0 0 0 0 92" stroke="url(#rr_foil)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M160 64a44 44 0 0 1 0 60" stroke="url(#rr_ember)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M180 48a72 72 0 0 1 0 92" stroke="url(#rr_foil)" stroke-width="8" stroke-linecap="round"/>
+  <!-- lock on the beam -->
+  <rect x="110" y="190" width="36" height="30" rx="7" fill="#15131C" stroke="url(#rr_foil)" stroke-width="7"/>
+  <path d="M117 190v-8a11 11 0 0 1 22 0v8" stroke="url(#rr_foil)" stroke-width="7" stroke-linecap="round"/>
+</svg>

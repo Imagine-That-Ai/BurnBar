@@ -704,6 +704,54 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertNil(service.runtimeErrorText)
     }
 
+    func testRefreshConnectionsCoalescesLegacyRelayReplacementAndRestoresSelection() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("relay-legacy-device", forKey: "hermes.selectedConnectionID")
+        let newPrivateKey = HermesRelayCrypto.generatePrivateKey()
+        let legacyPrivateKey = HermesRelayCrypto.generatePrivateKey()
+        let replacementRelay = HermesConnectionRecord(
+            id: "relay-host-installation",
+            displayName: "MacBook Pro Hermes Relay",
+            mode: .relayLink,
+            status: .online,
+            relayPublicKey: newPrivateKey.publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            hostInstallationId: "installation-1",
+            capabilities: ["chat_completions", "remote_relay"]
+        )
+        let legacyRelay = HermesConnectionRecord(
+            id: "relay-legacy-device",
+            displayName: "Old Device ID Relay",
+            mode: .relayLink,
+            status: .offline,
+            relayPublicKey: legacyPrivateKey.publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            hostInstallationId: "installation-1",
+            replacedByConnectionId: replacementRelay.id,
+            capabilities: ["remote_relay"]
+        )
+        let repository = FakeHermesConnectionRepository(connections: [legacyRelay, replacementRelay])
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: FakeHermesRelayTransport(),
+            defaults: defaults
+        )
+
+        await service.refreshConnections()
+
+        XCTAssertEqual(service.connections.map(\.id), [
+            HermesConnectionRecord.localDefault.id,
+            replacementRelay.id
+        ])
+        XCTAssertEqual(service.selectedConnection.id, replacementRelay.id)
+        XCTAssertEqual(defaults.string(forKey: "hermes.selectedConnectionID"), replacementRelay.id)
+    }
+
     func testRefreshConnectionsSurfacesDiscoveryError() async {
         let repository = FakeHermesConnectionRepository(error: URLError(.cannotFindHost))
         let service = HermesService(
@@ -733,6 +781,8 @@ final class HermesServiceTests: XCTestCase {
                 "realtimeRelayStatus": "online",
                 "realtimeRelayLastSeenAt": "2026-05-07T12:34:56.789Z",
                 "realtimeRelayProtocolVersion": HermesRealtimeRelayProtocol.version,
+                "hostInstallationId": "installation-1",
+                "replacedByConnectionId": "relay-host-installation",
                 "capabilities": ["chat_completions", "remote_relay", HermesRealtimeRelayProtocol.capability],
                 "createdAt": now,
                 "updatedAt": "2026-05-07T12:34:56Z",
@@ -750,6 +800,8 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(record.realtimeRelayURL, "wss://hermes-relay.example.com")
         XCTAssertEqual(record.realtimeRelayStatus, "online")
         XCTAssertEqual(record.realtimeRelayProtocolVersion, HermesRealtimeRelayProtocol.version)
+        XCTAssertEqual(record.hostInstallationId, "installation-1")
+        XCTAssertEqual(record.replacedByConnectionId, "relay-host-installation")
         XCTAssertNotNil(record.realtimeRelayLastSeenAt)
     }
 

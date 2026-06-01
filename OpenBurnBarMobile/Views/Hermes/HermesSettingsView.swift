@@ -958,17 +958,24 @@ struct HermesSettingsView: View {
 
     @ViewBuilder
     private var gatewayReadinessNotice: some View {
-        if gatewayStore.onlineClients.isEmpty {
+        if let selected = gatewayStore.selectedClient,
+           gatewayStore.isOnline(selected) {
             gatewayNotice(
-                "No Hermes gateway client is online right now. Open Hermes, OpenBurnBar, or another paired gateway client so it can pick up queued messages.",
+                "\(selected.displayName) is selected and online. Test messages should get picked up immediately.",
+                icon: "bolt.horizontal.circle.fill",
+                color: MobileTheme.success
+            )
+        } else if let selected = gatewayStore.selectedClient {
+            gatewayNotice(
+                "\(selected.displayName) is selected but not online right now. Open or restart that gateway client so it can pick up queued messages.",
                 icon: "desktopcomputer",
                 color: MobileTheme.warning
             )
         } else {
             gatewayNotice(
-                "\(gatewayStore.onlineClients.count) Hermes gateway client online. Test messages should get picked up immediately.",
-                icon: "bolt.horizontal.circle.fill",
-                color: MobileTheme.success
+                "No Hermes gateway client is selected.",
+                icon: "desktopcomputer",
+                color: MobileTheme.warning
             )
         }
     }
@@ -1003,17 +1010,20 @@ struct HermesSettingsView: View {
             )
         } else if let pending = gatewayStore.pendingTestEvent {
             gatewayNotice(
-                gatewayStore.onlineClients.isEmpty
-                    ? "Event #\(pending.sequence) is queued in BurnBar Cloud. Hermes has not picked it up because no gateway client is online."
-                    : "Event #\(pending.sequence) is queued. Waiting for Hermes to reply; you will see a banner/notification here when it does.",
-                icon: gatewayStore.onlineClients.isEmpty ? "exclamationmark.triangle.fill" : "clock.arrow.circlepath",
-                color: gatewayStore.onlineClients.isEmpty ? MobileTheme.warning : MobileTheme.hermesAureate
+                gatewayStore.selectedClient.map { client in
+                    gatewayStore.isOnline(client)
+                        ? "Event #\(pending.sequence) is queued for \(client.displayName). Waiting for Hermes to reply; you will see a banner/notification here when it does."
+                        : "Event #\(pending.sequence) is queued for \(client.displayName). Hermes has not picked it up because that gateway client is not online."
+                } ?? "Event #\(pending.sequence) is queued in BurnBar Cloud.",
+                icon: gatewayStore.selectedClient.map { gatewayStore.isOnline($0) } == true ? "clock.arrow.circlepath" : "exclamationmark.triangle.fill",
+                color: gatewayStore.selectedClient.map { gatewayStore.isOnline($0) } == true ? MobileTheme.hermesAureate : MobileTheme.warning
             )
         }
     }
 
     private func gatewayClientRow(_ client: HermesGatewayClientRecord) -> some View {
-        HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+        let isSelected = gatewayStore.selectedClient?.id == client.id
+        return HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
             ZStack {
                 Circle()
                     .fill(gatewayClientColor(client).opacity(0.18))
@@ -1038,6 +1048,19 @@ struct HermesSettingsView: View {
             Spacer(minLength: MobileTheme.Spacing.sm)
 
             Button {
+                HapticBus.toggle()
+                gatewayStore.selectClient(client)
+            } label: {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isSelected ? MobileTheme.hermesAureate : MobileTheme.Colors.textMuted)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(!client.isActive)
+            .accessibilityLabel(isSelected ? "\(client.displayName) selected" : "Select \(client.displayName)")
+
+            Button {
                 HapticBus.destructive()
                 Task { await gatewayStore.revoke(client) }
             } label: {
@@ -1060,7 +1083,11 @@ struct HermesSettingsView: View {
         .padding(.horizontal, 10)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
-                .fill(MobileTheme.Colors.surfaceElevated.opacity(0.74))
+                .fill(isSelected ? MobileTheme.hermesAureate.opacity(0.10) : MobileTheme.Colors.surfaceElevated.opacity(0.74))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(isSelected ? MobileTheme.hermesAureate.opacity(0.42) : Color.clear, lineWidth: 0.8)
         )
     }
 
@@ -1642,10 +1669,11 @@ struct HermesSettingsView: View {
 
     private func gatewayClientSubtitle(_ client: HermesGatewayClientRecord) -> String {
         var parts = [
+            gatewayStore.selectedClient?.id == client.id ? "Selected" : nil,
             gatewayStore.isOnline(client) ? "Online now" : "Not online",
             client.homeDestinationId,
             client.tokenPreview
-        ].filter { !$0.isEmpty }
+        ].compactMap { $0 }.filter { !$0.isEmpty }
         if let dateText = gatewayRelativeDateText(
             client.lastSeenAt ?? client.updatedAt,
             relativeTo: gatewayStore.statusNow
@@ -1829,9 +1857,12 @@ enum HermesGatewayNoticeStyle {
 @Observable
 @MainActor
 final class HermesGatewaySettingsStore {
-    private let repository: FunctionsRepository
+    private let repository: any HermesGatewayRepository
+    @ObservationIgnored private let defaults: UserDefaults
+    private static let selectedClientDefaultsKey = "hermesGateway.selectedClientId"
 
     private(set) var clients: [HermesGatewayClientRecord] = []
+    private(set) var selectedClientId: String?
     private(set) var isLoading = false
     private(set) var isApproving = false
     private(set) var isSendingTest = false
@@ -1854,8 +1885,10 @@ final class HermesGatewaySettingsStore {
     @ObservationIgnored private var messageListenerStartedAt: Date?
     @ObservationIgnored private let gatewayThreadID = HermesGatewayMessageResolver.defaultThreadID
 
-    init(repository: FunctionsRepository = .shared) {
+    init(repository: any HermesGatewayRepository = FunctionsRepository.shared, defaults: UserDefaults = .standard) {
         self.repository = repository
+        self.defaults = defaults
+        self.selectedClientId = defaults.string(forKey: Self.selectedClientDefaultsKey)
     }
 
     var activeClients: [HermesGatewayClientRecord] {
@@ -1866,18 +1899,29 @@ final class HermesGatewaySettingsStore {
         activeClients.filter { $0.isOnline(relativeTo: statusNow) }
     }
 
+    var selectedClient: HermesGatewayClientRecord? {
+        if let selectedClientId,
+           let client = activeClients.first(where: { $0.id == selectedClientId }) {
+            return client
+        }
+        return onlineClients.first ?? activeClients.first
+    }
+
+    var selectedTargetClientId: String? {
+        selectedClient?.id
+    }
+
     var runtimeModelOptions: [HermesRuntimeModelOption] {
         var seen = Set<String>()
         var options: [HermesRuntimeModelOption] = []
-        let clientsByFreshness = (onlineClients + activeClients)
-            .reduce(into: [String: HermesGatewayClientRecord]()) { result, client in
-                result[client.id] = client
+        var seenClients = Set<String>()
+        let clientsByPriority = ([selectedClient].compactMap(\.self) + onlineClients + activeClients)
+            .reduce(into: [HermesGatewayClientRecord]()) { result, client in
+                guard !seenClients.contains(client.id) else { return }
+                seenClients.insert(client.id)
+                result.append(client)
             }
-            .values
-            .sorted { left, right in
-                (left.lastSeenAt ?? left.updatedAt) > (right.lastSeenAt ?? right.updatedAt)
-            }
-        for client in clientsByFreshness {
+        for client in clientsByPriority {
             for option in client.runtimeModelOptions {
                 let key = option.modelId.lowercased()
                 guard !seen.contains(key) else { continue }
@@ -1905,7 +1949,8 @@ final class HermesGatewaySettingsStore {
     }
 
     var runtimeModelId: String? {
-        onlineClients.compactMap { nonEmpty($0.runtimeModelId) }.first
+        selectedClient.flatMap { nonEmpty($0.runtimeModelId) }
+            ?? onlineClients.compactMap { nonEmpty($0.runtimeModelId) }.first
             ?? activeClients.compactMap { nonEmpty($0.runtimeModelId) }.first
     }
 
@@ -1918,7 +1963,7 @@ final class HermesGatewaySettingsStore {
 
     var testButtonTitle: String {
         if isSendingTest { return "Queueing" }
-        return onlineClients.isEmpty ? "Queue test" : "Send and wait for reply"
+        return selectedClient?.isOnline(relativeTo: statusNow) == true ? "Send and wait for reply" : "Queue test"
     }
 
     var noticeIcon: String {
@@ -1931,6 +1976,7 @@ final class HermesGatewaySettingsStore {
     }
 
     func startGatewayListening(uid: String?) {
+        syncSelectedClientIDFromDefaults()
         guard let uid, !uid.isEmpty else {
             stopGatewayListening()
             latestReply = nil
@@ -1980,17 +2026,20 @@ final class HermesGatewaySettingsStore {
     func refresh(isSignedIn: Bool) async {
         guard isSignedIn else {
             clients = []
+            persistSelectedClientID(nil)
             noticeText = nil
             pendingTestEvent = nil
             latestReply = nil
             return
         }
         guard !isLoading else { return }
+        syncSelectedClientIDFromDefaults()
         isLoading = true
         defer { isLoading = false }
 
         do {
             clients = try await repository.listHermesGatewayClients()
+            repairSelectedClientIfNeeded()
             noticeText = nil
         } catch {
             setNotice(error.localizedDescription, style: .error)
@@ -2009,6 +2058,7 @@ final class HermesGatewaySettingsStore {
                 displayName: displayName
             )
             upsert(client)
+            persistSelectedClientID(client.id)
             setNotice(
                 "Hermes is paired. Now run `hermes gateway run`, or start/restart the installed gateway service, so Hermes is online to receive messages.",
                 style: .warning
@@ -2033,15 +2083,32 @@ final class HermesGatewaySettingsStore {
         do {
             try await repository.revokeHermesGatewayClient(clientId: client.id)
             clients = clients.filter { $0.id != client.id }
+            repairSelectedClientIfNeeded()
             setNotice("Hermes client revoked.", style: .success)
         } catch {
             setNotice(error.localizedDescription, style: .error)
         }
     }
 
+    func selectClient(_ client: HermesGatewayClientRecord) {
+        guard client.isActive else {
+            setNotice("That Hermes client has been revoked.", style: .warning)
+            return
+        }
+        persistSelectedClientID(client.id)
+        let online = client.isOnline(relativeTo: statusNow)
+        setNotice(
+            online
+                ? "\(client.displayName) is selected for gateway messages."
+                : "\(client.displayName) is selected. Messages will queue until it checks in.",
+            style: online ? .success : .warning
+        )
+    }
+
     @discardableResult
     func sendGatewayMessage(text: String, senderDisplayName: String, threadId: String) async -> HermesGatewayQueuedEvent? {
-        guard !activeClients.isEmpty else {
+        syncSelectedClientIDFromDefaults()
+        guard let targetClient = selectedClient else {
             setNotice("Connect Hermes first.", style: .warning)
             return nil
         }
@@ -2053,17 +2120,19 @@ final class HermesGatewaySettingsStore {
             let event = try await repository.enqueueHermesGatewayEvent(
                 text: text,
                 threadId: threadId,
+                targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
             pendingTestEvent = event
             pendingEventSentAt = Date()
             statusNow = Date()
             latestReply = nil
+            let targetOnline = targetClient.isOnline(relativeTo: statusNow)
             setNotice(
-                onlineClients.isEmpty
-                    ? "Message queued in BurnBar Cloud. Hermes will pick it up when the gateway checks in."
-                    : "Message sent through BurnBar Cloud. Waiting for Hermes to reply.",
-                style: onlineClients.isEmpty ? .warning : .info
+                targetOnline
+                    ? "Message sent to \(targetClient.displayName) through BurnBar Cloud. Waiting for Hermes to reply."
+                    : "Message queued for \(targetClient.displayName) in BurnBar Cloud. Hermes will pick it up when that gateway checks in.",
+                style: targetOnline ? .info : .warning
             )
             return event
         } catch {
@@ -2074,12 +2143,13 @@ final class HermesGatewaySettingsStore {
 
     @discardableResult
     func switchGatewayModel(modelId: String, senderDisplayName: String, threadId: String) async -> HermesGatewayQueuedEvent? {
+        syncSelectedClientIDFromDefaults()
         let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             setNotice("Type a model id first.", style: .warning)
             return nil
         }
-        guard !activeClients.isEmpty else {
+        guard let targetClient = selectedClient else {
             setNotice("Connect Hermes first.", style: .warning)
             return nil
         }
@@ -2091,6 +2161,7 @@ final class HermesGatewaySettingsStore {
             let event = try await repository.enqueueHermesGatewayModelSwitch(
                 modelId: trimmed,
                 threadId: threadId,
+                targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
             pendingModelSwitchEvent = event
@@ -2098,7 +2169,10 @@ final class HermesGatewaySettingsStore {
             pendingEventSentAt = Date()
             statusNow = Date()
             latestReply = nil
-            setNotice("Model switch queued for Hermes: \(trimmed).", style: onlineClients.isEmpty ? .warning : .info)
+            setNotice(
+                "Model switch queued for \(targetClient.displayName): \(trimmed).",
+                style: targetClient.isOnline(relativeTo: statusNow) ? .info : .warning
+            )
             return event
         } catch {
             setNotice(error.localizedDescription, style: .error)
@@ -2108,7 +2182,8 @@ final class HermesGatewaySettingsStore {
 
     @discardableResult
     func sendTest(text: String, senderDisplayName: String) async -> Bool {
-        guard !activeClients.isEmpty else {
+        syncSelectedClientIDFromDefaults()
+        guard let targetClient = selectedClient else {
             setNotice("Connect Hermes first.", style: .warning)
             return false
         }
@@ -2119,16 +2194,18 @@ final class HermesGatewaySettingsStore {
         do {
             let event = try await repository.enqueueHermesGatewayEvent(
                 text: text,
+                targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
             pendingTestEvent = event
             pendingEventSentAt = Date()
             statusNow = Date()
             latestReply = nil
-            let message = onlineClients.isEmpty
-                ? "Event #\(event.sequence) is queued in BurnBar Cloud. No Hermes gateway client is online yet, so open Hermes, OpenBurnBar, or another paired gateway client."
-                : "Event #\(event.sequence) is queued. Waiting for Hermes to reply."
-            setNotice(message, style: onlineClients.isEmpty ? .warning : .info)
+            let targetOnline = targetClient.isOnline(relativeTo: statusNow)
+            let message = targetOnline
+                ? "Event #\(event.sequence) is queued for \(targetClient.displayName). Waiting for Hermes to reply."
+                : "Event #\(event.sequence) is queued for \(targetClient.displayName). Open or restart that gateway client so it can pick up the message."
+            setNotice(message, style: targetOnline ? .info : .warning)
             return true
         } catch {
             setNotice(error.localizedDescription, style: .error)
@@ -2145,6 +2222,8 @@ final class HermesGatewaySettingsStore {
             HermesGatewayClientRecord(documentID: document.documentID, data: document.data())
         } ?? []
         statusNow = Date()
+        syncSelectedClientIDFromDefaults()
+        repairSelectedClientIfNeeded()
     }
 
     private func handleMessagesSnapshot(snapshot: QuerySnapshot?, error: Error?) {
@@ -2161,6 +2240,7 @@ final class HermesGatewaySettingsStore {
                 for: pendingTestEvent,
                 in: messages,
                 threadID: gatewayThreadID,
+                targetClientId: pendingTestEvent.targetClientId ?? selectedTargetClientId,
                 pendingEventSentAt: pendingEventSentAt
             ) else { return }
             latestReply = reply
@@ -2174,7 +2254,8 @@ final class HermesGatewaySettingsStore {
 
         guard let reply = HermesGatewayMessageResolver.newestThreadReply(
             in: messages,
-            threadID: gatewayThreadID
+            threadID: gatewayThreadID,
+            targetClientId: selectedTargetClientId
         ) else { return }
         let isNewReply = latestReply?.id != reply.id
         latestReply = reply
@@ -2217,6 +2298,7 @@ final class HermesGatewaySettingsStore {
     private func upsert(_ client: HermesGatewayClientRecord) {
         clients.removeAll { $0.id == client.id }
         clients.insert(client, at: 0)
+        repairSelectedClientIfNeeded()
     }
 
     private func isConsumedPairingCodeError(_ error: Error) -> Bool {
@@ -2227,10 +2309,57 @@ final class HermesGatewaySettingsStore {
         do {
             clients = try await repository.listHermesGatewayClients()
             statusNow = Date()
-            return activeClients.first
+            repairSelectedClientIfNeeded()
+            return selectedClient ?? activeClients.first
         } catch {
             return nil
         }
+    }
+
+    private func repairSelectedClientIfNeeded() {
+        let active = activeClients
+        guard !active.isEmpty else {
+            persistSelectedClientID(nil)
+            return
+        }
+        if let selectedClientId,
+           active.contains(where: { $0.id == selectedClientId }) {
+            return
+        }
+        persistSelectedClientID(onlineClients.first?.id ?? active.first?.id)
+    }
+
+    private func syncSelectedClientIDFromDefaults() {
+        let stored = defaults.string(forKey: Self.selectedClientDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (stored?.isEmpty == false) ? stored : nil
+        if normalized != selectedClientId {
+            selectedClientId = normalized
+            clearGatewayConversationStateForTargetChange()
+        }
+    }
+
+    private func persistSelectedClientID(_ clientId: String?) {
+        let previous = selectedClientId
+        let trimmed = clientId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            selectedClientId = trimmed
+            defaults.set(trimmed, forKey: Self.selectedClientDefaultsKey)
+        } else {
+            selectedClientId = nil
+            defaults.removeObject(forKey: Self.selectedClientDefaultsKey)
+        }
+        if previous != selectedClientId {
+            clearGatewayConversationStateForTargetChange()
+        }
+    }
+
+    private func clearGatewayConversationStateForTargetChange() {
+        pendingTestEvent = nil
+        pendingModelSwitchEvent = nil
+        pendingEventSentAt = nil
+        latestReply = nil
+        lastNotifiedMessageID = nil
     }
 
     private func startStatusClockIfNeeded() {

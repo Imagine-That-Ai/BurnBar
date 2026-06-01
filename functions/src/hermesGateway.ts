@@ -67,6 +67,7 @@ export interface HermesGatewayEventDoc {
   sequence: number;
   kind: HermesGatewayEventKind;
   destinationId: string;
+  targetClientId?: string;
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
@@ -249,6 +250,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     sequence: record.sequence,
     kind: record.kind,
     destinationId: record.destinationId,
+    targetClientId: typeof record.targetClientId === "string" ? record.targetClientId : undefined,
     threadId: typeof record.threadId === "string" ? record.threadId : undefined,
     senderId: record.senderId,
     senderDisplayName: typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,

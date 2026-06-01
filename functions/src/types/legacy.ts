@@ -625,6 +625,7 @@ export interface HermesGatewayEventDoc {
   sequence: number;
   kind: "message" | "model_switch";
   destinationId: string;
+  targetClientId?: string;
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;

@@ -10,6 +10,31 @@ public enum CLITerminalSessionEvent: Equatable, Sendable {
 }
 
 public enum CLIQuotaExhaustionClassifier {
+    public static func exhaustionWindowEnd(from detail: String, now: Date) -> Date? {
+        let normalized = detail.lowercased()
+        if normalized.contains("weekly") || normalized.contains("week") {
+            return now.addingTimeInterval(7 * 24 * 60 * 60)
+        }
+        if normalized.contains("monthly")
+            || normalized.contains("month")
+            || normalized.contains("credit limit") {
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month], from: now)
+            if let monthStart = calendar.date(from: components),
+               let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) {
+                return nextMonth
+            }
+            return now.addingTimeInterval(30 * 24 * 60 * 60)
+        }
+        if normalized.contains("5-hour")
+            || normalized.contains("5 hour")
+            || normalized.contains("5h")
+            || normalized.contains("hour window") {
+            return now.addingTimeInterval(5 * 60 * 60)
+        }
+        return nil
+    }
+
     public static func classify(
         for cliType: SwitcherCLIProfileType,
         in output: String
