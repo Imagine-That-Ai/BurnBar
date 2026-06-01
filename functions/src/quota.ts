@@ -21,6 +21,7 @@ import { getConfig } from "./config.js";
 import { hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { retrieveCredential } from "./secrets.js";
+import { assertCloudFeatureNotSuspended, hostedQuotaDailyRefreshLimitForUser } from "./cloudFeatureSuspensions.js";
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
 import { kimiAdapter } from "./providers/kimi.js";
@@ -292,6 +293,7 @@ async function refreshHostedQuotaAccount(
 }
 
 async function requireHostedQuotaEntitlement(db: Firestore, uid: string): Promise<void> {
+  await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");
   const [hostedSnap, proSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
     db.doc(`users/${uid}/entitlements/burnbar_pro`).get(),
@@ -337,7 +339,7 @@ async function consumeHostedRefreshBudget(db: Firestore, uid: string, accountID:
   const now = new Date();
   const dayKey = now.toISOString().slice(0, 10).replace(/-/g, "");
   const monthKey = now.toISOString().slice(0, 7).replace("-", "");
-  const dailyLimit = Math.max(1, cfg.hostedQuotaDailyRefreshLimit);
+  const dailyLimit = await hostedQuotaDailyRefreshLimitForUser(db, uid, Math.max(1, cfg.hostedQuotaDailyRefreshLimit));
   const monthlyLimit = Math.max(dailyLimit, cfg.hostedQuotaMonthlyRefreshLimit);
   const dailyRef = db.doc(`users/${uid}/_rate_limits/hosted_quota_${safeDocSegment(accountID)}_${dayKey}`);
   const monthlyRef = db.doc(`users/${uid}/_rate_limits/hosted_quota_${safeDocSegment(accountID)}_${monthKey}`);
