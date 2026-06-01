@@ -65,6 +65,13 @@ selected gateway has published
 `runtimeModelOptions`, the iPhone shows those models in the picker. If not, the
 user can still enter an exact Hermes model ID.
 
+Gateway model switching uses the same queue as normal messages. OpenBurnBar
+creates an `enqueueHermesGatewayEvent` event with `eventKind: "model_switch"`
+and `modelId`; Hermes consumes it as `/model <modelId>`, applies the switch,
+and replies through `/messages`. If the gateway has published
+`runtimeModelOptions`, the iPhone shows those models in the picker. If not, the
+user can still enter an exact Hermes model ID.
+
 The mobile settings UI intentionally separates these states:
 
 - **Paired**: BurnBar has issued a scoped token for a gateway client.
