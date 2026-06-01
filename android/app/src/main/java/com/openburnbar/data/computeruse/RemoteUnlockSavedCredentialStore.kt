@@ -11,6 +11,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+private const val VAL_256 = 256
+
 /**
  * Android-local Remote Unlock credential persistence. The Mac never receives
  * anything at rest from this store: passwords are AES-GCM wrapped with an
@@ -18,7 +20,6 @@ import javax.crypto.spec.GCMParameterSpec
  * after the caller has completed BiometricPrompt / device-credential auth.
  */
 class RemoteUnlockSavedCredentialStore(context: Context) {
-
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun hasCredential(storeKey: String): Boolean {
@@ -28,9 +29,10 @@ class RemoteUnlockSavedCredentialStore(context: Context) {
 
     fun save(storeKey: String, credential: String) {
         val secretKey = wrappingKey()
-        val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-            init(Cipher.ENCRYPT_MODE, secretKey)
-        }
+        val cipher =
+            Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                init(Cipher.ENCRYPT_MODE, secretKey)
+            }
         val iv = cipher.iv
         require(iv.size == GCM_IV_BYTES) { "Unexpected AES-GCM IV length ${iv.size}" }
         val wrapped = cipher.doFinal(credential.toByteArray(Charsets.UTF_8))
@@ -43,15 +45,17 @@ class RemoteUnlockSavedCredentialStore(context: Context) {
 
     fun load(storeKey: String): String? {
         val key = scopedKey(storeKey)
-        val wrappedB64 = prefs.getString(ciphertextPreferenceKey(key), null) ?: return null
-        val ivB64 = prefs.getString(ivPreferenceKey(key), null) ?: return null
-        val wrapped = runCatching { Base64.decode(wrappedB64, Base64.NO_WRAP) }.getOrNull() ?: return null
-        val iv = runCatching { Base64.decode(ivB64, Base64.NO_WRAP) }.getOrNull() ?: return null
-        val secretKey = runCatching { wrappingKey() }.getOrNull() ?: return null
+        val wrappedB64 = prefs.getString(ciphertextPreferenceKey(key), null)
+        val ivB64 = prefs.getString(ivPreferenceKey(key), null)
+        val wrapped = wrappedB64?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
+        val iv = ivB64?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
+        val secretKey = runCatching { wrappingKey() }.getOrNull()
+        if (wrapped == null || iv == null || secretKey == null) return null
         return try {
-            val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-                init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
-            }
+            val cipher =
+                Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                    init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
+                }
             cipher.doFinal(wrapped).toString(Charsets.UTF_8)
         } catch (_: Throwable) {
             null
@@ -69,19 +73,21 @@ class RemoteUnlockSavedCredentialStore(context: Context) {
     private fun wrappingKey(): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         store.getEntry(KEY_ALIAS, null)?.let { entry ->
-            val secretEntry = entry as? KeyStore.SecretKeyEntry
-                ?: error("Keystore entry $KEY_ALIAS is not a secret key")
+            val secretEntry =
+                entry as? KeyStore.SecretKeyEntry
+                    ?: error("Keystore entry $KEY_ALIAS is not a secret key")
             return secretEntry.secretKey
         }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
+        val spec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(VAL_256)
+                .build()
         generator.init(spec)
         return generator.generateKey()
     }

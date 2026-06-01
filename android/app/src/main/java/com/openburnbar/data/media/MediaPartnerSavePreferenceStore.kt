@@ -23,11 +23,11 @@ import kotlinx.coroutines.flow.map
  * per-row "Forget" + global "Forget all".
  */
 class MediaPartnerSavePreferenceStore(context: Context) {
-
     enum class SavePreference(val raw: String) {
         ASK_EACH_TIME("askEachTime"),
         PHOTOS("photos"),
-        FILES("files");
+        FILES("files"),
+        ;
 
         companion object {
             fun fromRaw(raw: String?): SavePreference? = values().firstOrNull { it.raw == raw }
@@ -41,8 +41,9 @@ class MediaPartnerSavePreferenceStore(context: Context) {
         return SavePreference.fromRaw(raw) ?: SavePreference.ASK_EACH_TIME
     }
 
-    fun preferenceFlow(peerDeviceId: String): Flow<SavePreference> =
-        store.data.map { SavePreference.fromRaw(it[keyFor(peerDeviceId)]) ?: SavePreference.ASK_EACH_TIME }
+    fun preferenceFlow(peerDeviceId: String): Flow<SavePreference> = store.data.map {
+        SavePreference.fromRaw(it[keyFor(peerDeviceId)]) ?: SavePreference.ASK_EACH_TIME
+    }
 
     suspend fun setPreference(preference: SavePreference, peerDeviceId: String) {
         store.edit { prefs ->
@@ -60,8 +61,9 @@ class MediaPartnerSavePreferenceStore(context: Context) {
 
     suspend fun forgetAll() {
         store.edit { prefs ->
-            val keys = prefs.asMap().keys.filterIsInstance<Preferences.Key<String>>()
-                .filter { it.name.startsWith(KEY_PREFIX) }
+            val keys =
+                prefs.asMap().keys.filterIsInstance<Preferences.Key<String>>()
+                    .filter { it.name.startsWith(KEY_PREFIX) }
             keys.forEach { prefs.remove(it) }
         }
     }

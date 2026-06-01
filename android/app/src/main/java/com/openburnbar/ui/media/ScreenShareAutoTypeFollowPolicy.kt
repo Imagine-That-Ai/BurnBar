@@ -25,15 +25,14 @@ internal object ScreenShareAutoTypeFollowPolicy {
     )
 
     fun shouldOpen(input: Input): Boolean {
-        if (!input.autoKeyboardEnabled) return false
-        if (!input.standardControlEnabled) return false
-        if (input.controlMode == ScreenMirrorControlMode.COPILOT) return false
-        if (input.typingOpen) return false
-        if (input.manualDismissUntilMillis != null && input.manualDismissUntilMillis > input.nowMillis) {
-            return false
-        }
-        val context = input.context ?: return false
-        return isFreshTextFocus(context, input.selectedDisplayId, input.nowMillis)
+        val context = input.context
+        return input.autoKeyboardEnabled &&
+            input.standardControlEnabled &&
+            input.controlMode != ScreenMirrorControlMode.COPILOT &&
+            !input.typingOpen &&
+            (input.manualDismissUntilMillis == null || input.manualDismissUntilMillis <= input.nowMillis) &&
+            context != null &&
+            isFreshTextFocus(context, input.selectedDisplayId, input.nowMillis)
     }
 
     fun shouldClose(input: Input): Boolean {
@@ -43,30 +42,19 @@ internal object ScreenShareAutoTypeFollowPolicy {
         return !isFreshTextFocus(context, input.selectedDisplayId, input.nowMillis)
     }
 
-    fun isFreshTextFocus(
-        context: ScreenShareSmartZoomContext,
-        selectedDisplayId: String?,
-        nowMillis: Long,
-    ): Boolean {
-        if (context.targetKind != HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT) return false
-        if (nowMillis - context.receivedAtMillis > STALE_AFTER_MILLIS) return false
-        if (
-            context.displayId != null &&
-            selectedDisplayId != null &&
-            context.displayId != selectedDisplayId
-        ) {
-            return false
-        }
+    fun isFreshTextFocus(context: ScreenShareSmartZoomContext, selectedDisplayId: String?, nowMillis: Long): Boolean {
         val confidence = context.confidence
-        if (confidence != null && confidence < MIN_CONFIDENCE) return false
-        return true
+        val displayMatches =
+            context.displayId == null ||
+                selectedDisplayId == null ||
+                context.displayId == selectedDisplayId
+        return context.targetKind == HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT &&
+            nowMillis - context.receivedAtMillis <= STALE_AFTER_MILLIS &&
+            displayMatches &&
+            (confidence == null || confidence >= MIN_CONFIDENCE)
     }
 
-    fun hasActiveTextFocus(
-        context: ScreenShareSmartZoomContext?,
-        selectedDisplayId: String?,
-        nowMillis: Long,
-    ): Boolean {
+    fun hasActiveTextFocus(context: ScreenShareSmartZoomContext?, selectedDisplayId: String?, nowMillis: Long): Boolean {
         val ctx = context ?: return false
         return isFreshTextFocus(ctx, selectedDisplayId, nowMillis)
     }

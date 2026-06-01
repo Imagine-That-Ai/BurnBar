@@ -4,6 +4,29 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
+private object MediaAnalyticsBuckets {
+    const val ROUND_TRIP_LT_50_MS = 50
+    const val ROUND_TRIP_LT_150_MS = 150
+    const val ROUND_TRIP_LT_400_MS = 400
+    const val SESSION_LT_30_SECONDS = 30
+    const val SESSION_LT_120_SECONDS = 120
+    const val SESSION_LT_600_SECONDS = 600
+    const val SESSION_LT_1800_SECONDS = 1800
+    const val SESSION_LT_3600_SECONDS = 3600
+    const val TRANSFER_MB_LT_10 = 10
+    const val BYTES_PER_MEGABYTE = 1_000_000
+    const val BYTES_PER_MEGABYTE_DOUBLE = 1_000_000.0
+    const val BITRATE_LT_300_KBPS = 300_000
+    const val BITRATE_LT_600_KBPS = 600_000
+    const val BITRATE_LT_1_MBPS = 1_000_000
+    const val BITRATE_LT_2_MBPS = 2_000_000
+    const val BITRATE_LT_4_MBPS = 4_000_000
+    const val BITRATE_LT_8_MBPS = 8_000_000
+    const val CONTROL_STREAM_REASON_MAX_CHARS = 120
+    const val FREEZE_COUNT_LOW_MAX = 3
+    const val FREEZE_COUNT_MID_MAX = 10
+}
+
 /**
  * 1:1 Kotlin port of `MediaAnalyticsLogger` (iOS + Mac side). Writes
  * structured analytics envelopes into the existing `iroh_audit_events`
@@ -32,12 +55,13 @@ class MediaAnalyticsLogger(
 
     suspend fun record(event: EventName, parameters: Map<String, Any?> = emptyMap()) {
         val uid = auth.currentUser?.uid ?: return
-        val payload = mapOf(
-            "name" to event.raw,
-            "platform" to "android",
-            "occurredAtMillis" to nowMillis(),
-            "parameters" to parameters.filterValues { it != null },
-        )
+        val payload =
+            mapOf(
+                "name" to event.raw,
+                "platform" to "android",
+                "occurredAtMillis" to nowMillis(),
+                "parameters" to parameters.filterValues { it != null },
+            )
         try {
             firestore.collection("users").document(uid)
                 .collection("iroh_audit_events").document()
@@ -48,10 +72,7 @@ class MediaAnalyticsLogger(
         }
     }
 
-    suspend fun sessionStarted(
-        feature: MediaStreamClass.Feature,
-        streamClass: MediaStreamClass,
-    ) = record(
+    suspend fun sessionStarted(feature: MediaStreamClass.Feature, streamClass: MediaStreamClass) = record(
         EventName.SESSION_STARTED,
         mapOf(
             "feature" to featureRaw(feature),
@@ -101,7 +122,7 @@ class MediaAnalyticsLogger(
 
     suspend fun controlStreamLost(reason: String) = record(
         EventName.CONTROL_STREAM_LOST,
-        mapOf("reason" to reason.take(120)),
+        mapOf("reason" to reason.take(MediaAnalyticsBuckets.CONTROL_STREAM_REASON_MAX_CHARS)),
     )
 
     private fun featureRaw(feature: MediaStreamClass.Feature): String = when (feature) {
@@ -113,19 +134,19 @@ class MediaAnalyticsLogger(
 
     companion object Buckets {
         fun sessionDurationBucket(duration: Double): String = when {
-            duration < 30 -> "lt_30s"
-            duration < 120 -> "30s_2m"
-            duration < 600 -> "2m_10m"
-            duration < 1800 -> "10m_30m"
-            duration < 3600 -> "30m_60m"
+            duration < MediaAnalyticsBuckets.SESSION_LT_30_SECONDS -> "lt_30s"
+            duration < MediaAnalyticsBuckets.SESSION_LT_120_SECONDS -> "30s_2m"
+            duration < MediaAnalyticsBuckets.SESSION_LT_600_SECONDS -> "2m_10m"
+            duration < MediaAnalyticsBuckets.SESSION_LT_1800_SECONDS -> "10m_30m"
+            duration < MediaAnalyticsBuckets.SESSION_LT_3600_SECONDS -> "30m_60m"
             else -> "gte_60m"
         }
 
         fun transferSizeBucket(bytes: Long): String {
-            val mb = bytes.toDouble() / 1_000_000.0
+            val mb = bytes.toDouble() / MediaAnalyticsBuckets.BYTES_PER_MEGABYTE_DOUBLE
             return when {
                 mb < 1 -> "lt_1mb"
-                mb < 10 -> "1_10mb"
+                mb < MediaAnalyticsBuckets.TRANSFER_MB_LT_10 -> "1_10mb"
                 mb < 100 -> "10_100mb"
                 mb < 1000 -> "100mb_1gb"
                 else -> "gte_1gb"
@@ -133,26 +154,26 @@ class MediaAnalyticsLogger(
         }
 
         fun roundTripBucket(millis: Int): String = when {
-            millis < 50 -> "lt_50ms"
-            millis < 150 -> "50_150ms"
-            millis < 400 -> "150_400ms"
+            millis < MediaAnalyticsBuckets.ROUND_TRIP_LT_50_MS -> "lt_50ms"
+            millis < MediaAnalyticsBuckets.ROUND_TRIP_LT_150_MS -> "50_150ms"
+            millis < MediaAnalyticsBuckets.ROUND_TRIP_LT_400_MS -> "150_400ms"
             else -> "gte_400ms"
         }
 
         fun freezeCountBucket(count: Int): String = when {
             count == 0 -> "0"
-            count in 1..3 -> "1_3"
-            count in 4..10 -> "4_10"
+            count in 1..MediaAnalyticsBuckets.FREEZE_COUNT_LOW_MAX -> "1_3"
+            count in MediaAnalyticsBuckets.FREEZE_COUNT_LOW_MAX + 1..MediaAnalyticsBuckets.FREEZE_COUNT_MID_MAX -> "4_10"
             else -> "gt_10"
         }
 
         fun bitrateBucket(bps: Int): String = when {
-            bps < 300_000 -> "lt_300kbps"
-            bps < 600_000 -> "300_600kbps"
-            bps < 1_000_000 -> "600kbps_1mbps"
-            bps < 2_000_000 -> "1_2mbps"
-            bps < 4_000_000 -> "2_4mbps"
-            bps < 8_000_000 -> "4_8mbps"
+            bps < MediaAnalyticsBuckets.BITRATE_LT_300_KBPS -> "lt_300kbps"
+            bps < MediaAnalyticsBuckets.BITRATE_LT_600_KBPS -> "300_600kbps"
+            bps < MediaAnalyticsBuckets.BITRATE_LT_1_MBPS -> "600kbps_1mbps"
+            bps < MediaAnalyticsBuckets.BITRATE_LT_2_MBPS -> "1_2mbps"
+            bps < MediaAnalyticsBuckets.BITRATE_LT_4_MBPS -> "2_4mbps"
+            bps < MediaAnalyticsBuckets.BITRATE_LT_8_MBPS -> "4_8mbps"
             else -> "gte_8mbps"
         }
     }

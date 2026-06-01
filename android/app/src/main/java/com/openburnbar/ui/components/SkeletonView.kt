@@ -1,8 +1,18 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -19,58 +29,54 @@ import com.openburnbar.ui.theme.AuroraRadius
  */
 
 @Composable
-fun SkeletonView(
-    modifier: Modifier = Modifier,
-    cornerRadius: Int = AuroraRadius.lg
-) {
+fun SkeletonView(modifier: Modifier = Modifier, cornerRadius: Int = AuroraRadius.lg) {
     val infiniteTransition = rememberInfiniteTransition()
     val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
+            repeatMode = RepeatMode.Restart,
+        ),
     )
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(cornerRadius.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(
+                    colors =
+                    listOf(
                         MaterialTheme.colorScheme.surface,
                         MaterialTheme.colorScheme.surfaceVariant,
-                        MaterialTheme.colorScheme.surface
+                        MaterialTheme.colorScheme.surface,
                     ),
                     start = Offset(shimmerOffset * 2000f - 1000f, 0f),
-                    end = Offset(shimmerOffset * 2000f + 1000f, 0f)
-                )
-            )
+                    end = Offset(shimmerOffset * 2000f + 1000f, 0f),
+                ),
+            ),
     )
 }
 
 @Composable
-fun SkeletonCard(
-    height: Int = 120,
-    modifier: Modifier = Modifier
-) {
+fun SkeletonCard(height: Int = 120, modifier: Modifier = Modifier) {
     SkeletonView(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxWidth()
-            .height(height.dp)
+            .height(height.dp),
     )
 }
 
 @Composable
-fun SkeletonText(
-    widthFraction: Float = 0.6f,
-    height: Int = 14,
-    modifier: Modifier = Modifier
-) {
+fun SkeletonText(widthFraction: Float = 0.6f, height: Int = 14, modifier: Modifier = Modifier) {
     SkeletonView(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxWidth(widthFraction)
             .height(height.dp)
-            .clip(RoundedCornerShape(AuroraRadius.full.dp))
+            .clip(RoundedCornerShape(AuroraRadius.full.dp)),
     )
 }

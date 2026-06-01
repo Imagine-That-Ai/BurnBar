@@ -1,8 +1,8 @@
 package com.openburnbar.data.insights
 
+import java.util.UUID
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import java.util.UUID
 
 @Serializable
 data class InsightAnalysisResult(
@@ -26,7 +26,7 @@ data class InsightAnalysisResult(
     val tokenUsage: InsightTokenUsage? = null,
     val estimatedCostUSD: Double? = null,
     val auditID: String? = null,
-    val resultHash: String = ""
+    val resultHash: String = "",
 ) {
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
@@ -42,7 +42,7 @@ data class InsightBriefingAnswer(
     val citations: List<InsightCitation> = emptyList(),
     val source: Source = Source.LOCAL_RULES,
     val modelDisplayName: String = "Local rules",
-    val isFallback: Boolean = false
+    val isFallback: Boolean = false,
 ) {
     companion object {
         /**
@@ -59,15 +59,20 @@ data class InsightBriefingAnswer(
     @Serializable
     enum class Source {
         /** Answered by a user-owned LLM gateway (Hermes, Claude, OpenAI, etc.). */
-        @SerialName("modelGateway") MODEL_GATEWAY,
+        @SerialName("modelGateway")
+        MODEL_GATEWAY,
+
         /**
          * Answered by the BurnBar-hosted fallback route (OpenRouter →
          * MiniMax) when no user-owned route was reachable. Disclosed
          * honestly to the user via the brief eyebrow + CTA.
          */
-        @SerialName("hostedFallback") HOSTED_FALLBACK,
+        @SerialName("hostedFallback")
+        HOSTED_FALLBACK,
+
         /** Deterministic local-rules answer (no LLM). */
-        @SerialName("localRules") LOCAL_RULES
+        @SerialName("localRules")
+        LOCAL_RULES,
     }
 }
 
@@ -80,14 +85,21 @@ data class InsightAnalysisRequest(
     val selectedModel: InsightModelTag,
     val instruction: Instruction = Instruction.DEFAULT_BRIEF,
     val allowDeepTranscriptAnalysis: Boolean = false,
-    val maxGeneratedWidgets: Int = 8
+    val maxGeneratedWidgets: Int = 8,
 ) {
     @Serializable
     enum class Instruction {
-        @SerialName("defaultBrief") DEFAULT_BRIEF,
-        @SerialName("answerFollowUp") ANSWER_FOLLOW_UP,
-        @SerialName("generateReport") GENERATE_REPORT,
-        @SerialName("updateCanvas") UPDATE_CANVAS
+        @SerialName("defaultBrief")
+        DEFAULT_BRIEF,
+
+        @SerialName("answerFollowUp")
+        ANSWER_FOLLOW_UP,
+
+        @SerialName("generateReport")
+        GENERATE_REPORT,
+
+        @SerialName("updateCanvas")
+        UPDATE_CANVAS,
     }
 }
 
@@ -97,7 +109,7 @@ data class InsightAnalysisContext(
     val evidenceIndex: List<InsightEvidence>,
     val budgetReport: InsightContextBudgetReport,
     val priorRunSummaries: List<String> = emptyList(),
-    val evidencePacks: List<InsightEvidencePack> = emptyList()
+    val evidencePacks: List<InsightEvidencePack> = emptyList(),
 )
 
 @Serializable
@@ -106,7 +118,7 @@ data class InsightEvidence(
     val citation: InsightCitation,
     val source: String,
     val summary: String,
-    val numericValue: Double? = null
+    val numericValue: Double? = null,
 )
 
 @Serializable
@@ -120,7 +132,7 @@ data class InsightEvidencePack(
     val evidence: List<InsightEvidence>,
     val summary: String,
     val contentHash: String,
-    val deepTranscriptIncluded: Boolean = false
+    val deepTranscriptIncluded: Boolean = false,
 )
 
 @Serializable
@@ -134,23 +146,46 @@ data class InsightPlatformCapabilityReport(
     val supportsConversation: Boolean = true,
     val supportsGeneratedWidgetPinning: Boolean = true,
     val supportsAuditAndCache: Boolean = true,
-    val gaps: List<String> = emptyList()
+    val gaps: List<String> = emptyList(),
 )
 
 @Serializable
 enum class InsightProviderFamily {
-    @SerialName("codex") CODEX,
-    @SerialName("claude") CLAUDE,
-    @SerialName("minimax") MINIMAX,
-    @SerialName("zai") ZAI,
-    @SerialName("kimi") KIMI,
-    @SerialName("ollama") OLLAMA,
-    @SerialName("hermes") HERMES,
-    @SerialName("openai") OPENAI,
-    @SerialName("pi") PI,
-    @SerialName("openrouter") OPENROUTER,
-    @SerialName("local-rules") LOCAL_RULES,
-    @SerialName("other") OTHER
+    @SerialName("codex")
+    CODEX,
+
+    @SerialName("claude")
+    CLAUDE,
+
+    @SerialName("minimax")
+    MINIMAX,
+
+    @SerialName("zai")
+    ZAI,
+
+    @SerialName("kimi")
+    KIMI,
+
+    @SerialName("ollama")
+    OLLAMA,
+
+    @SerialName("hermes")
+    HERMES,
+
+    @SerialName("openai")
+    OPENAI,
+
+    @SerialName("pi")
+    PI,
+
+    @SerialName("openrouter")
+    OPENROUTER,
+
+    @SerialName("local-rules")
+    LOCAL_RULES,
+
+    @SerialName("other")
+    OTHER,
 }
 
 @Serializable
@@ -160,7 +195,7 @@ data class InsightContextBudgetReport(
     val estimatedPromptTokens: Int,
     val includedDataSources: List<String>,
     val truncatedDataSources: List<String> = emptyList(),
-    val truncationSummary: String = "No truncation."
+    val truncationSummary: String = "No truncation.",
 )
 
 @Serializable
@@ -172,7 +207,7 @@ data class InsightFinding(
     val confidence: InsightConfidence,
     val severity: InsightSeverity = InsightSeverity.MEDIUM,
     val recommendedAction: String,
-    val generatedWidgetID: String? = null
+    val generatedWidgetID: String? = null,
 )
 
 @Serializable
@@ -183,7 +218,7 @@ data class InsightAnomaly(
     val detail: String,
     val score: Double,
     val evidence: List<InsightCitation>,
-    val confidence: InsightConfidence
+    val confidence: InsightConfidence,
 )
 
 @Serializable
@@ -195,7 +230,7 @@ data class InsightRecommendation(
     val estimatedImpact: String? = null,
     val evidence: List<InsightCitation>,
     val confidence: InsightConfidence,
-    val severity: InsightSeverity = InsightSeverity.MEDIUM
+    val severity: InsightSeverity = InsightSeverity.MEDIUM,
 )
 
 @Serializable
@@ -213,31 +248,54 @@ data class InsightMissionCandidate(
     val acceptanceCriteria: List<String>,
     val sourceInsightIDs: List<String> = emptyList(),
     val evidence: List<InsightCitation>,
-    val dispatchMetadata: Map<String, String> = emptyMap()
+    val dispatchMetadata: Map<String, String> = emptyMap(),
 ) {
     @Serializable
     enum class Lens {
-        @SerialName("accretion") ACCRETION,
-        @SerialName("diligence") DILIGENCE,
-        @SerialName("techDebt") TECH_DEBT,
-        @SerialName("routing") ROUTING,
-        @SerialName("quota") QUOTA,
-        @SerialName("focus") FOCUS
+        @SerialName("accretion")
+        ACCRETION,
+
+        @SerialName("diligence")
+        DILIGENCE,
+
+        @SerialName("techDebt")
+        TECH_DEBT,
+
+        @SerialName("routing")
+        ROUTING,
+
+        @SerialName("quota")
+        QUOTA,
+
+        @SerialName("focus")
+        FOCUS,
     }
 
     @Serializable
     enum class Priority {
-        @SerialName("low") LOW,
-        @SerialName("medium") MEDIUM,
-        @SerialName("high") HIGH,
-        @SerialName("critical") CRITICAL
+        @SerialName("low")
+        LOW,
+
+        @SerialName("medium")
+        MEDIUM,
+
+        @SerialName("high")
+        HIGH,
+
+        @SerialName("critical")
+        CRITICAL,
     }
 
     @Serializable
     enum class Effort {
-        @SerialName("small") SMALL,
-        @SerialName("medium") MEDIUM,
-        @SerialName("large") LARGE
+        @SerialName("small")
+        SMALL,
+
+        @SerialName("medium")
+        MEDIUM,
+
+        @SerialName("large")
+        LARGE,
     }
 }
 
@@ -246,14 +304,14 @@ data class InsightGeneratedWidget(
     val id: String = UUID.randomUUID().toString(),
     val widget: InsightWidget,
     val reason: String,
-    val citations: List<InsightCitation>
+    val citations: List<InsightCitation>,
 )
 
 @Serializable
 data class InsightFollowUpQuestion(
     val id: String = UUID.randomUUID().toString(),
     val question: String,
-    val rationale: String? = null
+    val rationale: String? = null,
 )
 
 @Serializable
@@ -275,17 +333,30 @@ data class InsightAnalysisAuditEntry(
     val errorDescription: String? = null,
     val tokenUsage: InsightTokenUsage? = null,
     val estimatedCostUSD: Double? = null,
-    val ranAt: String = java.time.Instant.now().toString()
+    val ranAt: String = java.time.Instant.now().toString(),
 ) {
     @Serializable
     enum class Status {
-        @SerialName("started") STARTED,
-        @SerialName("succeeded") SUCCEEDED,
-        @SerialName("partial") PARTIAL,
-        @SerialName("modelUnavailable") MODEL_UNAVAILABLE,
-        @SerialName("schemaViolation") SCHEMA_VIOLATION,
-        @SerialName("cancelled") CANCELLED,
-        @SerialName("failed") FAILED
+        @SerialName("started")
+        STARTED,
+
+        @SerialName("succeeded")
+        SUCCEEDED,
+
+        @SerialName("partial")
+        PARTIAL,
+
+        @SerialName("modelUnavailable")
+        MODEL_UNAVAILABLE,
+
+        @SerialName("schemaViolation")
+        SCHEMA_VIOLATION,
+
+        @SerialName("cancelled")
+        CANCELLED,
+
+        @SerialName("failed")
+        FAILED,
     }
 }
 
@@ -295,12 +366,15 @@ data class InsightModelPreference(
     val explicitModel: InsightModelTag? = null,
     val restrictToLocalOnly: Boolean = false,
     val maxEgressTier: InsightEgressTier? = null,
-    val deepTranscriptOptIn: Boolean = false
+    val deepTranscriptOptIn: Boolean = false,
 ) {
     @Serializable
     enum class Mode {
-        @SerialName("automatic") AUTOMATIC,
-        @SerialName("explicit") EXPLICIT
+        @SerialName("automatic")
+        AUTOMATIC,
+
+        @SerialName("explicit")
+        EXPLICIT,
     }
 
     companion object {
@@ -310,24 +384,45 @@ data class InsightModelPreference(
 
 @Serializable
 enum class InsightAnalysisPlatform {
-    @SerialName("macOS") MACOS,
-    @SerialName("iOS") IOS,
-    @SerialName("iPadOS") IPADOS,
-    @SerialName("android") ANDROID
+    @SerialName("macOS")
+    MACOS,
+
+    @SerialName("iOS")
+    IOS,
+
+    @SerialName("iPadOS")
+    IPADOS,
+
+    @SerialName("android")
+    ANDROID,
 }
 
 @Serializable
 enum class InsightConfidence {
-    @SerialName("low") LOW,
-    @SerialName("medium") MEDIUM,
-    @SerialName("high") HIGH
+    @SerialName("low")
+    LOW,
+
+    @SerialName("medium")
+    MEDIUM,
+
+    @SerialName("high")
+    HIGH,
 }
 
 @Serializable
 enum class InsightSeverity {
-    @SerialName("info") INFO,
-    @SerialName("low") LOW,
-    @SerialName("medium") MEDIUM,
-    @SerialName("high") HIGH,
-    @SerialName("critical") CRITICAL
+    @SerialName("info")
+    INFO,
+
+    @SerialName("low")
+    LOW,
+
+    @SerialName("medium")
+    MEDIUM,
+
+    @SerialName("high")
+    HIGH,
+
+    @SerialName("critical")
+    CRITICAL,
 }

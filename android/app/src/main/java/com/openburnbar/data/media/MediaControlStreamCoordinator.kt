@@ -1,7 +1,9 @@
+@file:Suppress("MagicNumber", "TooGenericExceptionCaught", "SwallowedException", "UseCheckOrError", "UseRequire")
+// Mercury media wire constants and defensive relay error handling; split from coordinator for detekt size limits.
+
 package com.openburnbar.data.media
 
 import android.util.Log
-import com.openburnbar.data.computeruse.AgentCapabilityGrantState
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
@@ -15,14 +17,11 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorStop
-import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 import com.openburnbar.irohrelay.IrohRelayStream
-import java.io.ByteArrayOutputStream
 import java.time.Instant
-import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -213,8 +212,8 @@ class MediaControlStreamCoordinator(
             return true
         }
 
-        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
-        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val uid = checkNotNull(activeUID) { "Mercury control stream is not paired yet." }
+        val connectionID = checkNotNull(activeConnectionID) { "Mercury control stream is not paired yet." }
         val stream = mutex.withLock { currentStream }
         if (stream == null) {
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
@@ -224,7 +223,7 @@ class MediaControlStreamCoordinator(
         val beforeProbe = _lastPeerHeartbeatAtMillis.value
         return try {
             val sentAtMillis = System.currentTimeMillis()
-            stream.send(makePresenceHeartbeat(uid = uid, connectionID = connectionID))
+            stream.send(makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
             pendingHeartbeatSentAtMillis = sentAtMillis
 
             val replied = withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
@@ -405,20 +404,22 @@ class MediaControlStreamCoordinator(
                 resolvePending(stream)
 
                 val heartbeatJob = scope.launch {
-                    presenceHeartbeatLoop(stream = stream, uid = uid, connectionID = connectionID)
+                    runMercuryPresenceHeartbeatLoop(stream = stream, uid = uid, connectionID = connectionID)
                 }
                 try {
-                    readLoop(stream = stream, uid = uid, connectionID = connectionID)
+                    runMercuryInboundReadLoop(stream = stream, uid = uid, connectionID = connectionID)
                 } finally {
                     heartbeatJob.cancel()
                 }
 
                 mutex.withLock { currentStream = null }
                 logInfo("Mercury control read loop ended connectionID=$connectionID")
-                if (supervisorJob?.isActive != true) break
+                if (supervisorJob?.isActive != true) {
+                    return@runSupervisor
+                }
                 attempt = (attempt - 1).coerceAtLeast(0)
             } catch (_: CancellationException) {
-                break
+                return@runSupervisor
             } catch (t: Throwable) {
                 _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
                 _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
@@ -430,7 +431,11 @@ class MediaControlStreamCoordinator(
             attempt += 1
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = backoff)
             logInfo("Mercury control reconnect scheduled connectionID=$connectionID backoffMs=$backoff")
-            try { delay(backoff) } catch (_: CancellationException) { break }
+            try {
+                delay(backoff)
+            } catch (_: CancellationException) {
+                return@runSupervisor
+            }
         }
         logInfo("Mercury control supervisor stopped connectionID=$connectionID")
         _phase.value = Phase.Stopped
@@ -439,155 +444,13 @@ class MediaControlStreamCoordinator(
         _activePair.value = null
     }
 
-    private suspend fun readLoop(
-        stream: IrohRelayStream,
-        uid: String,
-        connectionID: String,
-    ) {
-        val ackSender = AndroidFileTransferService.AdvertiseSender { outbound -> stream.send(outbound) }
-        try {
-            while (true) {
-                val frame = stream.receive() ?: return
-                if (frame.uid != uid || frame.connectionId != connectionID) continue
-                when (frame.type) {
-                    HermesRealtimeRelayFrameType.MEDIA_BLOB_ADVERTISE ->
-                        receiver?.handleAdvertise(frame = frame, ackSender = ackSender)
-                    HermesRealtimeRelayFrameType.MEDIA_BLOB_ACK -> {
-                        // Phase 2 surfaces this to per-row UI state; Phase 1 logs only.
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK -> {
-                        frame.media?.mirrorAck?.let { _lastMirrorAck.value = it }
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_CALL_ACK -> {
-                        frame.media?.callAck?.let { _lastCallAck.value = it }
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME -> {
-                        handleStreamFrame(frame)
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT -> {
-                        val receivedAtMillis = System.currentTimeMillis()
-                        _lastPeerHeartbeatAtMillis.value = receivedAtMillis
-                        pendingHeartbeatSentAtMillis?.let { sentAtMillis ->
-                            _lastRoundTripMillis.value = (receivedAtMillis - sentAtMillis)
-                                .coerceAtLeast(0L)
-                                .coerceAtMost(Int.MAX_VALUE.toLong())
-                                .toInt()
-                            pendingHeartbeatSentAtMillis = null
-                        }
-                        _lastPeerCapabilities.value = frame.media?.presence?.capabilities.orEmpty().toSet()
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_RECEIPT -> {
-                        frame.control?.agentGrantReceipt?.let { receipt ->
-                            _lastAgentGrantReceipt.value = receipt
-                            AgentCapabilityGrantState.apply(receipt)
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
-                        frame.control?.denied?.let { denied ->
-                            _lastControlDenied.value = denied
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_SYSTEM_PERMISSION_STATUS -> {
-                        frame.control?.systemPermissionStatus?.let { status ->
-                            com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder
-                                .ingest(status, threadId = frame.control?.sessionId)
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_CLIPBOARD_RESPONSE -> {
-                        frame.control?.clipboardResponse?.let { response ->
-                            _lastClipboardResponse.value = response
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE -> {
-                        frame.control?.remoteUnlockState?.let { state ->
-                            _lastRemoteUnlockState.value = state
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT,
-                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_DENIED -> {
-                        frame.control?.remoteUnlockResult?.let { result ->
-                            _lastRemoteUnlockResult.value = result
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> {
-                        // Re-classification mid-stream — protocol noise.
-                    }
-                    else -> {
-                        // Ignore non-media frames on the control bi-stream.
-                    }
-                }
-            }
-        } catch (t: Throwable) {
-            _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
-            logWarning("Mercury control read failed connectionID=$connectionID error=${t.message}", t)
-        }
-    }
-
-    private suspend fun presenceHeartbeatLoop(
-        stream: IrohRelayStream,
-        uid: String,
-        connectionID: String,
-    ) {
-        while (scope.isActive && supervisorJob?.isActive == true) {
-            val sentAtMillis = System.currentTimeMillis()
-            stream.send(makePresenceHeartbeat(uid = uid, connectionID = connectionID))
-            pendingHeartbeatSentAtMillis = sentAtMillis
-            delay(presenceHeartbeatIntervalMillis)
-        }
-    }
-
-    private fun makePresenceHeartbeat(uid: String, connectionID: String): HermesRealtimeRelayFrame =
-        HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
-            uid = uid,
-            connectionId = connectionID,
-            media = HermesRealtimeRelayMediaPayload(
-                presence = HermesRealtimeRelayPresenceHeartbeat(
-                    peerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
-                    displayName = displayNameProvider().ifBlank { "Android" },
-                    deviceDisplayName = displayNameProvider().ifBlank { "Android" },
-                    capabilities = listOf(
-                        "media.control",
-                        "media.mirror.request",
-                        "media.call.invite",
-                        "media.blob.transfer",
-                    ),
-                    streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
-                        mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
-                    ).toWire(),
-                    sentAt = Instant.now().toString(),
-                )
-            ),
-        )
-
     private fun swiftReferenceDateSecondsNow(): Double =
-        (System.currentTimeMillis() / 1_000.0) - SWIFT_REFERENCE_DATE_UNIX_SECONDS
-
-    private suspend fun handleStreamFrame(frame: HermesRealtimeRelayFrame) {
-        val media = frame.media ?: return
-        media.focusContext?.let { focus ->
-            focusContextHandler?.invoke(focus)
-        }
-        if (media.streamClass != MediaStreamClass.SCREEN_VIDEO.raw) return
-        val encoded = media.encodedFrameBase64 ?: return
-        val chunkBytes = runCatching { Base64.getDecoder().decode(encoded) }.getOrNull() ?: return
-        val data = frameChunkAssembler.accept(media.frameChunk, chunkBytes) ?: return
-
-        runCatching {
-            if (MediaFrameV2Codec.isEncodedEnvelope(data)) {
-                val handler = mirrorFrameV2Handler ?: return
-                handler(mediaFrameV2Codec.decode(data).frame)
-            } else {
-                val handler = mirrorFrameHandler ?: return
-                handler(mediaPacketCodec.decode(data).frame)
-            }
-        }
-    }
+        System.currentTimeMillis() / 1_000.0 - SWIFT_REFERENCE_DATE_UNIX_SECONDS
 
     private fun nextBackoff(attempt: Int): Long {
         val exp = min(
             maxBackoffMillis.toDouble(),
-            initialBackoffMillis.toDouble() * (2.0.pow(attempt.toDouble())),
+            initialBackoffMillis.toDouble() * 2.0.pow(attempt.toDouble()),
         )
         val jitter = Random.nextDouble(initialBackoffMillis.toDouble(), exp + 1)
         return min(maxBackoffMillis, jitter.toLong())
@@ -601,66 +464,36 @@ class MediaControlStreamCoordinator(
         runCatching { Log.w(TAG, message, error) }
     }
 
+    internal val inboundReceiver get() = receiver
+    internal val inboundPhase get() = _phase
+    internal val inboundInitialBackoffMillis get() = initialBackoffMillis
+    internal var inboundPendingHeartbeatSentAtMillis
+        get() = pendingHeartbeatSentAtMillis
+        set(value) {
+            pendingHeartbeatSentAtMillis = value
+        }
+    internal val inboundLastMirrorAck get() = _lastMirrorAck
+    internal val inboundLastCallAck get() = _lastCallAck
+    internal val inboundLastAgentGrantReceipt get() = _lastAgentGrantReceipt
+    internal val inboundLastControlDenied get() = _lastControlDenied
+    internal val inboundLastClipboardResponse get() = _lastClipboardResponse
+    internal val inboundLastRemoteUnlockState get() = _lastRemoteUnlockState
+    internal val inboundLastRemoteUnlockResult get() = _lastRemoteUnlockResult
+    internal val inboundLastPeerHeartbeatAtMillis get() = _lastPeerHeartbeatAtMillis
+    internal val inboundLastRoundTripMillis get() = _lastRoundTripMillis
+    internal val inboundLastPeerCapabilities get() = _lastPeerCapabilities
+    internal val inboundScope get() = scope
+    internal val inboundSupervisorJob get() = supervisorJob
+    internal val inboundPresenceHeartbeatIntervalMillis get() = presenceHeartbeatIntervalMillis
+    internal val inboundPeerDeviceIdProvider get() = peerDeviceIdProvider
+    internal val inboundDisplayNameProvider get() = displayNameProvider
+    internal val inboundFrameChunkAssembler get() = frameChunkAssembler
+    internal val inboundMediaPacketCodec get() = mediaPacketCodec
+    internal val inboundMediaFrameV2Codec get() = mediaFrameV2Codec
+    internal fun inboundLogWarning(message: String, error: Throwable) = logWarning(message, error)
+
     private companion object {
         private const val TAG = "BurnBar"
         private const val SWIFT_REFERENCE_DATE_UNIX_SECONDS = 978_307_200.0
-    }
-}
-
-private class MediaFrameChunkAssembler(
-    private val maxAssemblies: Int = 8,
-    private val maxTotalBytes: Int = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES + 4096,
-) {
-    private data class Assembly(
-        val chunkCount: Int,
-        val totalBytes: Int,
-        val chunks: Array<ByteArray?>,
-    )
-
-    private val assemblies = LinkedHashMap<String, Assembly>()
-
-    fun accept(
-        chunk: com.openburnbar.irohrelay.HermesRealtimeRelayMediaFrameChunk?,
-        bytes: ByteArray,
-    ): ByteArray? {
-        if (chunk == null) return bytes
-        if (chunk.chunkCount <= 0 ||
-            chunk.chunkIndex !in 0 until chunk.chunkCount ||
-            chunk.totalBytes <= 0 ||
-            chunk.totalBytes > maxTotalBytes
-        ) {
-            assemblies.remove(chunk.chunkId)
-            return null
-        }
-
-        val assembly = assemblies.getOrPut(chunk.chunkId) {
-            trimOldestIfNeeded()
-            Assembly(
-                chunkCount = chunk.chunkCount,
-                totalBytes = chunk.totalBytes,
-                chunks = arrayOfNulls(chunk.chunkCount),
-            )
-        }
-        if (assembly.chunkCount != chunk.chunkCount || assembly.totalBytes != chunk.totalBytes) {
-            assemblies.remove(chunk.chunkId)
-            return null
-        }
-
-        assembly.chunks[chunk.chunkIndex] = bytes
-        if (assembly.chunks.any { it == null }) return null
-
-        val output = ByteArrayOutputStream(assembly.totalBytes)
-        for (part in assembly.chunks) {
-            output.write(part ?: return null)
-        }
-        val complete = output.toByteArray()
-        assemblies.remove(chunk.chunkId)
-        return complete.takeIf { it.size == assembly.totalBytes }
-    }
-
-    private fun trimOldestIfNeeded() {
-        if (assemblies.size < maxAssemblies) return
-        val oldest = assemblies.keys.firstOrNull() ?: return
-        assemblies.remove(oldest)
     }
 }

@@ -25,17 +25,27 @@ import org.json.JSONObject
  *   - trailing `/v1` paths and `/health` stripped so callers can append them safely
  */
 object HermesProtocol {
+    private const val URL_SCHEME_SUFFIX_LENGTH = 3
+    private const val IPV4_OCTET_COUNT = 4
+    private const val RFC1918_CLASS_A_FIRST_OCTET = 10
+    private const val RFC1918_CLASS_B_FIRST_OCTET = 172
+    private const val RFC1918_CLASS_C_FIRST_OCTET = 192
+    private const val RFC1918_CLASS_C_SECOND_OCTET = 168
+    private const val MAX_IPV4_OCTET = 255
+    private const val RFC172_SUBNET_MIN = 16
+    private const val RFC172_SUBNET_MAX = 31
 
     /** Normalize a user-entered URL into a base URL suitable for OpenAI-compatible endpoints. */
     fun normalizeBaseURL(raw: String?): String? {
         val trimmed = raw?.trim()?.trimEnd('/').orEmpty()
         if (trimmed.isBlank()) return null
-        val httpURL = when {
-            trimmed.startsWith("ws://") -> "http://" + trimmed.removePrefix("ws://")
-            trimmed.startsWith("wss://") -> "https://" + trimmed.removePrefix("wss://")
-            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
-            else -> "http://$trimmed"
-        }
+        val httpURL =
+            when {
+                trimmed.startsWith("ws://") -> "http://" + trimmed.removePrefix("ws://")
+                trimmed.startsWith("wss://") -> "https://" + trimmed.removePrefix("wss://")
+                trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+                else -> "http://$trimmed"
+            }
         return httpURL
             .substringBefore("/v1/chat/completions")
             .substringBefore("/v1/models")
@@ -53,13 +63,12 @@ object HermesProtocol {
         val schemeEnd = normalized.indexOf("://")
         if (schemeEnd < 0) return null
         val scheme = normalized.substring(0, schemeEnd).lowercase()
-        val rest = normalized.substring(schemeEnd + 3)
-        if (rest.isEmpty()) return null
+        val rest = normalized.substring(schemeEnd + URL_SCHEME_SUFFIX_LENGTH)
         val hostPart = rest.substringBefore('/').substringBefore(':').lowercase()
-        if (hostPart.isEmpty()) return null
+        if (rest.isEmpty() || hostPart.isEmpty()) return null
         return when (scheme) {
             "https" -> normalized
-            "http" -> if (isLocalOrPrivateHost(hostPart)) normalized else null
+            "http" -> normalized.takeIf { isLocalOrPrivateHost(hostPart) }
             else -> null
         }
     }
@@ -69,10 +78,10 @@ object HermesProtocol {
         if (host == "localhost") return true
         if (host == "127.0.0.1" || host == "::1") return true
         val parts = host.split('.').mapNotNull { it.toIntOrNull() }
-        if (parts.size != 4 || parts.any { it !in 0..255 }) return false
-        return parts[0] == 10 ||
-            (parts[0] == 172 && parts[1] in 16..31) ||
-            (parts[0] == 192 && parts[1] == 168)
+        if (parts.size != IPV4_OCTET_COUNT || parts.any { it !in 0..MAX_IPV4_OCTET }) return false
+        return parts[0] == RFC1918_CLASS_A_FIRST_OCTET ||
+            parts[0] == RFC1918_CLASS_B_FIRST_OCTET && parts[1] in RFC172_SUBNET_MIN..RFC172_SUBNET_MAX ||
+            parts[0] == RFC1918_CLASS_C_FIRST_OCTET && parts[1] == RFC1918_CLASS_C_SECOND_OCTET
     }
 
     /**
@@ -82,22 +91,22 @@ object HermesProtocol {
      */
     fun extractStreamedText(json: JSONObject): String {
         val choices = json.optJSONArray("choices")
-        if (choices != null && choices.length() > 0) {
-            val choice = choices.optJSONObject(0)
-            extractContentValue(choice?.optJSONObject("delta")?.opt("content"))
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { return it }
-            extractContentValue(choice?.optJSONObject("message")?.opt("content"))
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { return it }
-            choice?.optString("text").orEmpty()
-                .takeIf { it.isNotEmpty() }
-                ?.let { return it }
-        }
-        extractContentValue(json.opt("content"))?.takeIf { it.isNotEmpty() }?.let { return it }
-        json.optString("output_text").takeIf { it.isNotEmpty() }?.let { return it }
-        json.optString("text").takeIf { it.isNotEmpty() }?.let { return it }
-        return ""
+        val fromChoice =
+            if (choices != null && choices.length() > 0) {
+                val choice = choices.optJSONObject(0)
+                extractContentValue(choice?.optJSONObject("delta")?.opt("content"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: extractContentValue(choice?.optJSONObject("message")?.opt("content"))
+                        ?.takeIf { it.isNotEmpty() }
+                    ?: choice?.optString("text")?.takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
+        return fromChoice
+            ?: extractContentValue(json.opt("content"))?.takeIf { it.isNotEmpty() }
+            ?: json.optString("output_text").takeIf { it.isNotEmpty() }
+            ?: json.optString("text").takeIf { it.isNotEmpty() }
+            ?: ""
     }
 
     /** Recursively extract text from `String`, `{text|content|value}`, or arrays of those. */
@@ -111,9 +120,10 @@ object HermesProtocol {
                     when (val item = value.opt(index)) {
                         is String -> builder.append(item)
                         is JSONObject -> {
-                            val nested = extractContentValue(item.opt("text"))
-                                ?: extractContentValue(item.opt("value"))
-                                ?: extractContentValue(item.opt("content"))
+                            val nested =
+                                extractContentValue(item.opt("text"))
+                                    ?: extractContentValue(item.opt("value"))
+                                    ?: extractContentValue(item.opt("content"))
                             if (nested != null) builder.append(nested)
                         }
                         else -> Unit
@@ -121,9 +131,10 @@ object HermesProtocol {
                 }
                 builder.toString().takeIf { it.isNotEmpty() }
             }
-            is JSONObject -> extractContentValue(value.opt("text"))
-                ?: extractContentValue(value.opt("value"))
-                ?: extractContentValue(value.opt("content"))
+            is JSONObject ->
+                extractContentValue(value.opt("text"))
+                    ?: extractContentValue(value.opt("value"))
+                    ?: extractContentValue(value.opt("content"))
             else -> null
         }
     }
@@ -137,14 +148,16 @@ object HermesProtocol {
             val item = data.optJSONObject(idx) ?: return@mapNotNull null
             val id = item.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val owner = item.optString("owned_by", "hermes").takeIf { it.isNotBlank() } ?: "hermes"
-            val displayName = item.optString("display_name").takeIf { it.isNotBlank() }
-                ?: item.optString("name").takeIf { it.isNotBlank() }
-                ?: id
+            val displayName =
+                item.optString("display_name").takeIf { it.isNotBlank() }
+                    ?: item.optString("name").takeIf { it.isNotBlank() }
+                    ?: id
             HermesRuntimeModelOption(
                 providerID = owner,
                 providerName = owner.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                 modelID = id,
-                displayName = displayName
+                displayName = displayName,
+                sourceKind = item.optString("source_kind").takeIf { it.isNotBlank() },
             )
         }
     }

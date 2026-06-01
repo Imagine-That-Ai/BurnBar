@@ -1,338 +1,123 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.insights
 
-import android.content.Context
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.openburnbar.data.db.AppDatabase
 import com.openburnbar.data.models.OrgRollupRow
-import com.openburnbar.ui.components.AuroraGlassCard
-import com.openburnbar.ui.theme.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.util.Calendar
+import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.theme.AuroraSpacing
+
+private data class OrgRollupScaffoldState(
+    val isDark: Boolean,
+    val enterpriseOrgViewEnabled: Boolean,
+    val sharedPrefs: android.content.SharedPreferences,
+    val selectedSegment: String,
+    val selectedPeriod: String,
+    val isLoading: Boolean,
+    val rollupRows: List<OrgRollupRow>,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrgRollupView(
-    modifier: Modifier = Modifier
-) {
+fun OrgRollupView(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
-    val scope = rememberCoroutineScope()
-
     val database = remember { AppDatabase.getDatabase(context) }
-    val dao = remember { database.budgetDao() }
+    val dao = remember { database.budgetDatabaseAccess() }
+    val sharedPrefs = remember(context) { orgRollupSharedPrefs(context) }
 
-    var selectedSegment by remember { mutableStateOf("user") } // user, project, credential, provider
-    var selectedPeriod by remember { mutableStateOf("month") } // day, week, month, allTime
+    var selectedSegment by remember { mutableStateOf("user") }
+    var selectedPeriod by remember { mutableStateOf("month") }
     var rollupRows by remember { mutableStateOf<List<OrgRollupRow>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
-
-    // Gate setting
-    val sharedPrefs = remember(context) { context.getSharedPreferences("burnbar_enterprise", Context.MODE_PRIVATE) }
     var enterpriseOrgViewEnabled by remember {
-        mutableStateOf(sharedPrefs.getBoolean("enterpriseOrgViewEnabled", true)) // default on for SOTA parity
-    }
-
-    fun loadRollup() {
-        scope.launch {
-            isLoading = true
-            withContext(Dispatchers.IO) {
-                val calendar = Calendar.getInstance()
-                val nowMs = System.currentTimeMillis()
-
-                val windowStart = when (selectedPeriod) {
-                    "day" -> {
-                        calendar.set(Calendar.HOUR_OF_DAY, 0)
-                        calendar.set(Calendar.MINUTE, 0)
-                        calendar.set(Calendar.SECOND, 0)
-                        calendar.set(Calendar.MILLISECOND, 0)
-                        calendar.timeInMillis
-                    }
-                    "week" -> {
-                        calendar.set(Calendar.HOUR_OF_DAY, 0)
-                        calendar.set(Calendar.MINUTE, 0)
-                        calendar.set(Calendar.SECOND, 0)
-                        calendar.set(Calendar.MILLISECOND, 0)
-                        calendar.set(Calendar.DAY_OF_WEEK, calendar.firstDayOfWeek)
-                        calendar.timeInMillis
-                    }
-                    "month" -> {
-                        calendar.set(Calendar.HOUR_OF_DAY, 0)
-                        calendar.set(Calendar.MINUTE, 0)
-                        calendar.set(Calendar.SECOND, 0)
-                        calendar.set(Calendar.MILLISECOND, 0)
-                        calendar.set(Calendar.DAY_OF_MONTH, 1)
-                        calendar.timeInMillis
-                    }
-                    else -> 0L
-                }
-
-                val loaded = when (selectedSegment) {
-                    "user" -> dao.orgRollupByUser(windowStart, 50)
-                    "project" -> dao.orgRollupByProject(windowStart, 50)
-                    "credential" -> dao.orgRollupByCredential(windowStart, 50)
-                    "provider" -> dao.orgRollupByProvider(windowStart, 50)
-                    else -> emptyList()
-                }
-
-                withContext(Dispatchers.Main) {
-                    rollupRows = loaded
-                    isLoading = false
-                }
-            }
-        }
+        mutableStateOf(sharedPrefs.getBoolean("enterpriseOrgViewEnabled", true))
     }
 
     LaunchedEffect(selectedSegment, selectedPeriod, enterpriseOrgViewEnabled) {
-        if (enterpriseOrgViewEnabled) {
-            loadRollup()
-        }
+        if (!enterpriseOrgViewEnabled) return@LaunchedEffect
+        isLoading = true
+        rollupRows = fetchOrgRollupRows(dao, selectedSegment, selectedPeriod)
+        isLoading = false
     }
 
+    OrgRollupScaffold(
+        modifier = modifier,
+        state =
+        OrgRollupScaffoldState(
+            isDark = isDark,
+            enterpriseOrgViewEnabled = enterpriseOrgViewEnabled,
+            sharedPrefs = sharedPrefs,
+            selectedSegment = selectedSegment,
+            selectedPeriod = selectedPeriod,
+            isLoading = isLoading,
+            rollupRows = rollupRows,
+        ),
+        onEnableEnterprise = { enterpriseOrgViewEnabled = true },
+        onSegmentSelected = { selectedSegment = it },
+        onPeriodSelected = { selectedPeriod = it },
+    )
+}
+
+@Composable
+private fun OrgRollupScaffold(
+    modifier: Modifier,
+    state: OrgRollupScaffoldState,
+    onEnableEnterprise: () -> Unit,
+    onSegmentSelected: (String) -> Unit,
+    onPeriodSelected: (String) -> Unit,
+) {
     Column(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxSize()
-            .background(
-                if (isDark) AuroraColors.darkBackground
-                else AuroraColors.lightBackground
-            )
-            .padding(horizontal = AuroraSpacing.lg.dp)
+            .background(if (state.isDark) AuroraColors.darkBackground else AuroraColors.lightBackground)
+            .padding(horizontal = AuroraSpacing.lg.dp),
     ) {
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-
-        // Hero Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(
-                imageVector = Icons.Default.Business,
-                contentDescription = "Enterprise Rollup",
-                tint = if (isDark) AuroraColors.purpleDark else AuroraColors.purple,
-                modifier = Modifier.size(28.dp)
+        OrgRollupHeader(isDark = state.isDark)
+        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        if (!state.enterpriseOrgViewEnabled) {
+            OrgRollupLockedGate(
+                sharedPrefs = state.sharedPrefs,
+                onEnable = onEnableEnterprise,
+                modifier = Modifier.fillMaxWidth().weight(1f),
             )
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
-            Column {
-                Text(
-                    text = "ENTERPRISE",
-                    style = AuroraType.caption,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDark) AuroraColors.purpleDark else AuroraColors.purple
-                )
-                Text(
-                    text = "Cross-Seat Spend Rollup",
-                    style = AuroraType.displayLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            return@Column
         }
-
+        OrgRollupFilterBar(
+            selectedSegment = state.selectedSegment,
+            selectedPeriod = state.selectedPeriod,
+            onSegmentSelected = onSegmentSelected,
+            onPeriodSelected = onPeriodSelected,
+        )
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-
-        if (!enterpriseOrgViewEnabled) {
-            // Locked Gate Screen
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                AuroraGlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(AuroraSpacing.lg.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(AuroraSpacing.lg.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Enterprise Gated",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
-                        Text(
-                            text = "Enterprise View Disabled",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-                        Text(
-                            text = "Enable enterpriseOrgViewEnabled settings to aggregate cross-device token spends, cost metrics, and device seat counts.",
-                            style = AuroraType.caption,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-                        Button(
-                            onClick = {
-                                enterpriseOrgViewEnabled = true
-                                sharedPrefs.edit().putBoolean("enterpriseOrgViewEnabled", true).apply()
-                            }
-                        ) {
-                            Text("Enable Dashboard")
-                        }
-                    }
-                }
-            }
-            return
-        }
-
-        // Filters Section
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Segment picker
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("user" to "User", "project" to "Proj", "credential" to "Cred", "provider" to "Prov").forEach { (segmentKey, label) ->
-                    FilterChip(
-                        selected = selectedSegment == segmentKey,
-                        onClick = { selectedSegment = segmentKey },
-                        label = { Text(label, fontSize = 10.sp) },
-                        modifier = Modifier.height(28.dp)
-                    )
-                }
-            }
-
-            // Period picker
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("day" to "D", "week" to "W", "month" to "M", "allTime" to "All").forEach { (periodKey, label) ->
-                    FilterChip(
-                        selected = selectedPeriod == periodKey,
-                        onClick = { selectedPeriod = periodKey },
-                        label = { Text(label, fontSize = 10.sp) },
-                        modifier = Modifier.height(28.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-
-        // Rollup Rows
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (rollupRows.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No seat usage data found for this window.",
-                    style = AuroraType.caption,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            val totalCost = rollupRows.sumOf { it.totalCost }
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
-            ) {
-                items(rollupRows) { row ->
-                    val share = if (totalCost > 0.0) row.totalCost / totalCost else 0.0
-
-                    AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(AuroraSpacing.md.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = row.label,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "$${"%.2f".format(row.totalCost)}",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) AuroraColors.emberDark else AuroraColors.ember
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "${row.totalTokens} tokens · ${row.sessionCount} sessions",
-                                    style = AuroraType.caption,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (selectedSegment != "user") {
-                                    Text(
-                                        text = "${row.deviceCount} seats",
-                                        style = AuroraType.caption,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-
-                            // Share Percentage Bar
-                            LinearProgressIndicator(
-                                progress = { share.toFloat().coerceIn(0f, 1f) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp),
-                                color = if (isDark) AuroraColors.purpleDark else AuroraColors.purple,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
+        OrgRollupContentBody(
+            isLoading = state.isLoading,
+            rollupRows = state.rollupRows,
+            selectedSegment = state.selectedSegment,
+            isDark = state.isDark,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        )
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
     }
 }

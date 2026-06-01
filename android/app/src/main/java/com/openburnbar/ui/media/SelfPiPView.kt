@@ -29,16 +29,13 @@ import androidx.compose.ui.viewinterop.AndroidView
  * encoder.
  */
 @Composable
-fun SelfPiPView(
-    onSurfaceAvailable: (android.view.Surface) -> Unit,
-    onSurfaceDestroyed: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+fun SelfPiPView(onSurfaceAvailable: (android.view.Surface) -> Unit, onSurfaceDestroyed: () -> Unit, modifier: Modifier = Modifier) {
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
             .size(88.dp, 128.dp)
             .clip(RoundedCornerShape(12.dp))
@@ -53,17 +50,19 @@ fun SelfPiPView(
         AndroidView(
             factory = { ctx ->
                 SurfaceView(ctx).apply {
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            onSurfaceAvailable(holder.surface)
-                        }
+                    holder.addCallback(
+                        object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                onSurfaceAvailable(holder.surface)
+                            }
 
-                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+                            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            onSurfaceDestroyed()
-                        }
-                    })
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                onSurfaceDestroyed()
+                            }
+                        },
+                    )
                 }
             },
         )

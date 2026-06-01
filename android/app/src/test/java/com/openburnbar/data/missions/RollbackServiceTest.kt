@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.missions
 
 import org.junit.Assert.assertEquals
@@ -11,7 +14,6 @@ import org.junit.Test
  * so the Mac sees byte-identical scope payloads.
  */
 class RollbackServiceTest {
-
     @Test
     fun full_session_serialises_to_full_session_kind() {
         assertEquals("{\"kind\":\"fullSession\"}", RollbackScope.FullSession.asJson)

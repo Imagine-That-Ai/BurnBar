@@ -1,15 +1,24 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
+import com.google.firebase.firestore.DocumentSnapshot
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.ProjectSummary
+import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.StreamsSegment
-import io.mockk.*
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -63,8 +72,9 @@ class ActivityStoreTest {
         val mockRepo = mockk<FirestoreRepository>()
         val page1 = listOf(TokenUsage(id = "1", provider = "openai"))
         val page2 = listOf(TokenUsage(id = "2", provider = "claude-code"))
-        coEvery { mockRepo.fetchUsagePage(any(), null, any(), any(), any(), any(), any()) } returns (page1 to mockk(relaxed = true))
-        coEvery { mockRepo.fetchUsagePage(any(), ofType(), any(), any(), any(), any(), any()) } returns (page2 to null)
+        val pageCursor = mockk<DocumentSnapshot>(relaxed = true)
+        coEvery { mockRepo.fetchUsagePage(any(), null, any(), any(), any(), any(), any()) } returns (page1 to pageCursor)
+        coEvery { mockRepo.fetchUsagePage(any(), pageCursor, any(), any(), any(), any(), any()) } returns (page2 to null)
         every { mockRepo.listenToUsagePage() } returns flowOf(page1 + page2)
 
         val store = ActivityStore(mockRepo)

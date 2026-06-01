@@ -10,7 +10,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,25 +23,28 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class MediaControlStreamCoordinatorTest {
-
     private val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
 
     private class FakeStream : IrohRelayStream {
         val sent = CopyOnWriteArrayList<HermesRealtimeRelayFrame>()
         private val receiveSignal = CompletableDeferred<Unit>()
         private var closed = false
+
         override suspend fun send(frame: HermesRealtimeRelayFrame) {
             sent.add(frame)
         }
+
         override suspend fun receive(): HermesRealtimeRelayFrame? {
             // Block until close() is called → emulate a clean stream close.
             receiveSignal.await()
             return null
         }
+
         override suspend fun close() {
             closed = true
             receiveSignal.complete(Unit)
         }
+
         val didClose: Boolean get() = closed
     }
 
@@ -50,15 +52,17 @@ class MediaControlStreamCoordinatorTest {
     fun start_sends_media_classify_frame_first_and_stop_cleans_up() = runBlocking {
         val stream = FakeStream()
         val backing = io.mockk.mockk<MediaFileTransferService>(relaxed = true)
-        val receiver = AndroidFileTransferService(
-            appContext = context,
-            service = backing,
-            settingsProvider = { true },
-        )
-        val coordinator = MediaControlStreamCoordinator(
-            dialer = { _, _ -> stream },
-            receiver = receiver,
-        )
+        val receiver =
+            AndroidFileTransferService(
+                appContext = context,
+                service = backing,
+                settingsProvider = { true },
+            )
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = { _, _ -> stream },
+                receiver = receiver,
+            )
         coordinator.start(uid = "uid", connectionID = "conn")
         // Wait up to 2s for the first frame to land. `phase` reaches
         // Live after the classify frame is emitted; we poll until then.

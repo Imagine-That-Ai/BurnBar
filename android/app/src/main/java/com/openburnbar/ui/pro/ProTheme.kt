@@ -1,13 +1,7 @@
 package com.openburnbar.ui.pro
 
 import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -34,49 +28,55 @@ object ProPalette {
     val aureate = AuroraColors.hermesAureateDark
     val emberPop = AuroraColors.ember
 
-    /// Foil edge — gradient stroke colors for borders.
-    val aureateStrokeStops: List<Color> = listOf(
-        aureate.copy(alpha = 0.95f),
-        mercury.copy(alpha = 0.98f),
-        aureate.copy(alpha = 0.95f)
-    )
+    // / Foil edge — gradient stroke colors for borders.
+    val aureateStrokeStops: List<Color> =
+        listOf(
+            aureate.copy(alpha = 0.95f),
+            mercury.copy(alpha = 0.98f),
+            aureate.copy(alpha = 0.95f),
+        )
 
-    /// Darkened aurora ribbon descending from top of posters.
-    val darkAuroraRibbonStops: List<Color> = listOf(
-        emberPop.copy(alpha = 0.32f),
-        AuroraColors.amber.copy(alpha = 0.18f),
-        mercury.copy(alpha = 0.14f),
-        Color.Transparent
-    )
+    // / Darkened aurora ribbon descending from top of posters.
+    val darkAuroraRibbonStops: List<Color> =
+        listOf(
+            emberPop.copy(alpha = 0.32f),
+            AuroraColors.amber.copy(alpha = 0.18f),
+            mercury.copy(alpha = 0.14f),
+            Color.Transparent,
+        )
 }
 
 object ProTypography {
-    val displaySerif = TextStyle(
-        fontFamily = FontFamily.Serif,
-        fontWeight = FontWeight.Black,
-        fontSize = 40.sp,
-        lineHeight = 48.sp,
-        letterSpacing = (-0.4).sp
-    )
-    val titleSerif = TextStyle(
-        fontFamily = FontFamily.Serif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 26.sp,
-        lineHeight = 32.sp,
-        letterSpacing = (-0.2).sp
-    )
-    val headlineSerif = TextStyle(
-        fontFamily = FontFamily.Serif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp
-    )
-    val priceMono = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp
-    )
+    val displaySerif =
+        TextStyle(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Black,
+            fontSize = 40.sp,
+            lineHeight = 48.sp,
+            letterSpacing = (-0.4).sp,
+        )
+    val titleSerif =
+        TextStyle(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold,
+            fontSize = 26.sp,
+            lineHeight = 32.sp,
+            letterSpacing = (-0.2).sp,
+        )
+    val headlineSerif =
+        TextStyle(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+        )
+    val priceMono =
+        TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
+        )
 }
 
 object ProMotion {
@@ -84,8 +84,7 @@ object ProMotion {
     const val mercuryShimmerDurationMs = 3000L
     const val breathingDurationMs = 2400
 
-    fun <T> posterSettleSpec(): AnimationSpec<T> =
-        spring(stiffness = 240f, dampingRatio = 0.78f)
+    fun <T> posterSettleSpec(): AnimationSpec<T> = spring(stiffness = 240f, dampingRatio = 0.78f)
 }
 
 object ProLayout {

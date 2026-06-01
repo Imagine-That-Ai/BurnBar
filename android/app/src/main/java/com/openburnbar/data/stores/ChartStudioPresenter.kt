@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class ChartStudioMode {
-    HIDDEN, FULLSCREEN, MINIMIZED
+    HIDDEN,
+    FULLSCREEN,
+    MINIMIZED,
 }
 
 class ChartStudioPresenter(context: Context) : ViewModel() {

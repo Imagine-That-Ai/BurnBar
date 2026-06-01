@@ -10,6 +10,17 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.floor
 
+private object TimeThresholds {
+    const val SECONDS_PER_MINUTE = 60L
+    const val SECONDS_PER_HOUR = 60L * SECONDS_PER_MINUTE
+    const val SECONDS_PER_DAY = 24L * SECONDS_PER_HOUR
+    const val SECONDS_PER_WEEK = 7L * SECONDS_PER_DAY
+    const val HOURS_FIVE = 5L
+    const val DAYS_SEVEN = 7L
+    const val DAYS_ONE = 1L
+    const val MONTH_ADVANCE_MAX_STEPS = 60
+}
+
 /**
  * Formats a provider quota bucket's reset moment into the same
  * "relative · absolute" pair every other platform uses (Mac micro-badge,
@@ -21,6 +32,14 @@ import kotlin.math.floor
  * the quota window cannot be inferred well enough to advance it.
  */
 object QuotaResetFormatter {
+    private const val SECONDS_PER_MINUTE = 60L
+    private const val SECONDS_PER_HOUR = 3600L
+    private const val SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
+    private const val SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY
+    private const val HOURS_FIVE = 5L
+    private const val DAYS_SEVEN = 7L
+    private const val DAYS_ONE = 1L
+    private const val MONTH_ADVANCE_MAX_STEPS = 60
 
     /** Convenience: combined "relative · absolute" line. */
     fun combinedLabel(
@@ -51,22 +70,17 @@ object QuotaResetFormatter {
 
     data class Parts(val relative: String, val absolute: String)
 
-    private fun displayResetInstant(
-        resetsAt: Instant,
-        windowLabel: String?,
-        now: Instant,
-        zone: ZoneId,
-    ): Instant? {
+    private fun displayResetInstant(resetsAt: Instant, windowLabel: String?, now: Instant, zone: ZoneId): Instant? {
         if (resetsAt.isAfter(now)) return resetsAt
 
         val marker = windowLabel.orEmpty().lowercase(Locale.US)
         return when {
             marker.contains("5") || marker.contains("five") ->
-                advance(resetsAt, Duration.ofHours(5), now)
+                advance(resetsAt, Duration.ofHours(TimeThresholds.HOURS_FIVE), now)
             marker.contains("7") || marker.contains("seven") || marker.contains("week") ->
-                advance(resetsAt, Duration.ofDays(7), now)
+                advance(resetsAt, Duration.ofDays(TimeThresholds.DAYS_SEVEN), now)
             marker.contains("day") ->
-                advance(resetsAt, Duration.ofDays(1), now)
+                advance(resetsAt, Duration.ofDays(TimeThresholds.DAYS_ONE), now)
             marker.contains("month") ->
                 advanceMonthly(resetsAt, now, zone)
             else -> null
@@ -82,7 +96,7 @@ object QuotaResetFormatter {
 
     private fun advanceMonthly(resetsAt: Instant, now: Instant, zone: ZoneId): Instant? {
         var candidate = ZonedDateTime.ofInstant(resetsAt, zone)
-        repeat(60) {
+        repeat(TimeThresholds.MONTH_ADVANCE_MAX_STEPS) {
             candidate = candidate.plusMonths(1)
             if (candidate.toInstant().isAfter(now)) return candidate.toInstant()
         }
@@ -96,33 +110,31 @@ object QuotaResetFormatter {
 
         // Same bucketing the Swift `RelativeDateTimeFormatter` produces at
         // the `.abbreviated` style so the two platforms read interchangeably.
-        val core = when {
-            abs < 60 -> "${abs}s"
-            abs < 3600 -> "${abs / 60}m"
-            abs < 24 * 3600 -> {
-                val h = abs / 3600
-                val m = (abs % 3600) / 60
-                if (m > 0) "${h}h ${m}m" else "${h}h"
+        val core =
+            when {
+                abs < TimeThresholds.SECONDS_PER_MINUTE -> "${abs}s"
+                abs < TimeThresholds.SECONDS_PER_HOUR -> "${abs / TimeThresholds.SECONDS_PER_MINUTE}m"
+                abs < TimeThresholds.SECONDS_PER_DAY -> {
+                    val h = abs / TimeThresholds.SECONDS_PER_HOUR
+                    val m = abs % TimeThresholds.SECONDS_PER_HOUR / TimeThresholds.SECONDS_PER_MINUTE
+                    if (m > 0) "${h}h ${m}m" else "${h}h"
+                }
+                abs < TimeThresholds.SECONDS_PER_WEEK -> {
+                    val d = abs / TimeThresholds.SECONDS_PER_DAY
+                    val h = abs % TimeThresholds.SECONDS_PER_DAY / TimeThresholds.SECONDS_PER_HOUR
+                    if (h > 0) "${d}d ${h}h" else "${d}d"
+                }
+                else -> "${abs / TimeThresholds.SECONDS_PER_DAY}d"
             }
-            abs < 7 * 24 * 3600 -> {
-                val d = abs / (24 * 3600)
-                val h = (abs % (24 * 3600)) / 3600
-                if (h > 0) "${d}d ${h}h" else "${d}d"
-            }
-            else -> "${abs / (24 * 3600)}d"
-        }
         return "in $core"
     }
 
-    private fun absoluteLabel(
-        resetsAt: Instant,
-        zone: ZoneId,
-        locale: Locale,
-    ): String {
-        val formatter = DateTimeFormatter
-            .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-            .withLocale(locale)
-            .withZone(zone)
+    private fun absoluteLabel(resetsAt: Instant, zone: ZoneId, locale: Locale): String {
+        val formatter =
+            DateTimeFormatter
+                .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+                .withLocale(locale)
+                .withZone(zone)
         return formatter.format(resetsAt)
     }
 }

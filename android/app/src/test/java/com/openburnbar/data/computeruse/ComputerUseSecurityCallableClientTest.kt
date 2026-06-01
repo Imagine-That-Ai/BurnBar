@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.computeruse
 
 import com.google.firebase.functions.FirebaseFunctions
@@ -10,11 +13,12 @@ class ComputerUseSecurityCallableClientTest {
     @Test
     fun requireOk_acceptsSuccessfulCallablePayload() {
         val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
-        val method = ComputerUseSecurityCallableClient::class.java.getDeclaredMethod(
-            "requireOk",
-            Any::class.java,
-            String::class.java,
-        )
+        val method =
+            ComputerUseSecurityCallableClient::class.java.getDeclaredMethod(
+                "requireOk",
+                Any::class.java,
+                String::class.java,
+            )
         method.isAccessible = true
         method.invoke(client, mapOf("ok" to true), "failure")
     }
@@ -22,11 +26,12 @@ class ComputerUseSecurityCallableClientTest {
     @Test
     fun requireOk_rejectsMissingOkFlag() {
         val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
-        val method = ComputerUseSecurityCallableClient::class.java.getDeclaredMethod(
-            "requireOk",
-            Any::class.java,
-            String::class.java,
-        )
+        val method =
+            ComputerUseSecurityCallableClient::class.java.getDeclaredMethod(
+                "requireOk",
+                Any::class.java,
+                String::class.java,
+            )
         method.isAccessible = true
         try {
             method.invoke(client, mapOf("ok" to false), "Escrow device trust approval failed.")

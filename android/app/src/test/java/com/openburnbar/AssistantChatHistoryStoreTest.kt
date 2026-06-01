@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.assistants.AssistantChatCloudMirror
@@ -16,11 +19,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistantChatHistoryStoreTest {
-
     @Test
     fun `upsert persists to local store`() = runTest {
         val local = InMemoryLocalStore()
@@ -47,10 +48,11 @@ class AssistantChatHistoryStoreTest {
     @Test
     fun `tombstoned thread is hidden after restore`() = runTest {
         val local = InMemoryLocalStore()
-        local.partitions["local"] = AssistantChatHistorySnapshot(
-            threads = listOf(makeThread("dead", "pi", "Bye")),
-            tombstones = mapOf("dead" to System.currentTimeMillis())
-        )
+        local.partitions["local"] =
+            AssistantChatHistorySnapshot(
+                threads = listOf(makeThread("dead", "pi", "Bye")),
+                tombstones = mapOf("dead" to System.currentTimeMillis()),
+            )
         val store = AssistantChatHistoryStore(local, cloud = null, scope = CoroutineScope(StandardTestDispatcher(testScheduler)))
         store.loadFromDiskIfNeeded()
         assertTrue(store.threads.value.isEmpty())
@@ -108,8 +110,10 @@ class AssistantChatHistoryStoreTest {
         store.refreshFromCloud()
         advanceUntilIdle()
 
-        assertTrue("local-only thread must backfill once online",
-            cloud.upserts.any { it.id == "local-only" })
+        assertTrue(
+            "local-only thread must backfill once online",
+            cloud.upserts.any { it.id == "local-only" },
+        )
     }
 
     @Test
@@ -162,14 +166,15 @@ class AssistantChatHistoryStoreTest {
             modelName = null,
             createdAtMillis = now,
             updatedAtMillis = now,
-            messages = listOf(
+            messages =
+            listOf(
                 AssistantChatMessage(
                     id = "$id-m0",
                     role = "user",
                     text = "Hello $title",
-                    timestampMillis = now
-                )
-            )
+                    timestampMillis = now,
+                ),
+            ),
         )
     }
 }

@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.missions
 
 import android.content.Context
@@ -8,7 +11,6 @@ import io.mockk.slot
 import java.util.concurrent.ConcurrentHashMap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -19,7 +21,6 @@ import org.junit.Test
  * serialise / restore round-trip can run without an Android device.
  */
 class ApprovalPolicyStoreTest {
-
     private val backing = ConcurrentHashMap<String, String?>()
     private lateinit var context: Context
 
@@ -61,18 +62,19 @@ class ApprovalPolicyStoreTest {
     @Test
     fun record_and_resolve_round_trip() {
         val store = ApprovalPolicyStore.shared(context)
-        val policy = ApprovalPolicy(
-            id = "p-1",
-            agentURI = "agent://a",
-            scopeKey = "tool::ripgrep",
-            missionKind = "research",
-            toolName = "ripgrep",
-            fileGlob = null,
-            runtimeID = "claude",
-            targetProject = null,
-            decision = ApprovalDecision.REMEMBER_ALLOW,
-            displayLabel = "Allow ripgrep",
-        )
+        val policy =
+            ApprovalPolicy(
+                id = "p-1",
+                agentURI = "agent://a",
+                scopeKey = "tool::ripgrep",
+                missionKind = "research",
+                toolName = "ripgrep",
+                fileGlob = null,
+                runtimeID = "claude",
+                targetProject = null,
+                decision = ApprovalDecision.REMEMBER_ALLOW,
+                displayLabel = "Allow ripgrep",
+            )
         store.record(policy)
         val resolved = requireNotNull(store.resolve(agentURI = "agent://a", scopeKey = "tool::ripgrep"))
         assertEquals(ApprovalDecision.REMEMBER_ALLOW, resolved.decision)
@@ -94,7 +96,7 @@ class ApprovalPolicyStoreTest {
                 targetProject = null,
                 decision = ApprovalDecision.REMEMBER_DENY,
                 displayLabel = "Deny edit",
-            )
+            ),
         )
         assertNull(store.resolve(agentURI = "agent://b", scopeKey = "tool::diff"))
     }
@@ -115,7 +117,7 @@ class ApprovalPolicyStoreTest {
                 decision = ApprovalDecision.REMEMBER_ALLOW,
                 displayLabel = "Once",
                 expiresAtEpoch = System.currentTimeMillis() - 1_000,
-            )
+            ),
         )
         assertNull(store.resolve(agentURI = "agent://c", scopeKey = "tool::shell"))
     }
@@ -135,7 +137,7 @@ class ApprovalPolicyStoreTest {
                 targetProject = null,
                 decision = ApprovalDecision.REMEMBER_ALLOW,
                 displayLabel = "yank",
-            )
+            ),
         )
         assertEquals(1, store.policies.value.size)
         store.remove("p-4")

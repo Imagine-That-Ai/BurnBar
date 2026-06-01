@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.hermes
 
 import com.openburnbar.test.atomInRuns
@@ -9,13 +12,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private const val VAL_3 = 3
+
 /**
  * Parity fixtures for `HermesAtomParser`. Each input string mirrors a
  * fixture the iOS suite (`HermesAtomParserTests.swift`) exercises so a
  * regression on one platform surfaces on the other.
  */
 class HermesAtomParserTest {
-
     @Test
     fun plain_text_collapses_to_single_run() {
         val runs = HermesAtomParser.parse("Hello, Hermes.")
@@ -36,7 +40,7 @@ class HermesAtomParserTest {
     @Test
     fun mixed_atom_and_text_segments() {
         val runs = HermesAtomParser.parse("Open [your session](burnbar://session?id=zzz) now.")
-        assertEquals(3, runs.size)
+        assertEquals(VAL_3, runs.size)
         assertTrue(runs[0] is HermesAtomRun.Text)
         assertTrue(runs[1] is HermesAtomRun.Atom)
         assertTrue(runs[2] is HermesAtomRun.Text)

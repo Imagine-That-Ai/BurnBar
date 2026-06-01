@@ -40,27 +40,25 @@ import com.openburnbar.ui.theme.AuroraColors
 // inside `HermesTabView.swift`.
 
 @Composable
-fun HermesOutcomeBadge(
-    outcome: HermesChatMessageOutcome,
-    modifier: Modifier = Modifier
-) {
+fun HermesOutcomeBadge(outcome: HermesChatMessageOutcome, modifier: Modifier = Modifier) {
     val label = outcome.label ?: return
     val color = outcomeBadgeColor(outcome)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(percent = 50))
             .background(color.copy(alpha = 0.12f))
             .border(0.5.dp, color.copy(alpha = 0.45f), RoundedCornerShape(percent = 50))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         outcome.iconName?.let { name ->
             Icon(
                 imageVector = iconForOutcome(name),
                 contentDescription = null,
                 tint = color,
-                modifier = Modifier.size(10.dp)
+                modifier = Modifier.size(10.dp),
             )
         }
         Text(
@@ -68,7 +66,7 @@ fun HermesOutcomeBadge(
             color = color,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1
+            maxLines = 1,
         )
     }
 }
@@ -78,35 +76,32 @@ fun HermesOutcomeBadge(
  * supports retry. Tactile (the caller can wire haptics on tap).
  */
 @Composable
-fun HermesRetryPill(
-    outcome: HermesChatMessageOutcome,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun HermesRetryPill(outcome: HermesChatMessageOutcome, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     if (!outcome.supportsRetry) return
     val color = outcomeBadgeColor(outcome)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(percent = 50))
             .clickable(onClick = onRetry)
             .background(color.copy(alpha = 0.10f))
             .border(0.75.dp, color.copy(alpha = 0.55f), RoundedCornerShape(percent = 50))
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Icon(
             imageVector = Icons.Filled.Refresh,
             contentDescription = "Try again",
             tint = color,
-            modifier = Modifier.size(11.dp)
+            modifier = Modifier.size(11.dp),
         )
         Text(
             text = "Try again",
             color = color,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1
+            maxLines = 1,
         )
     }
 }
@@ -114,11 +109,13 @@ fun HermesRetryPill(
 private fun outcomeBadgeColor(outcome: HermesChatMessageOutcome): Color = when (outcome) {
     HermesChatMessageOutcome.NORMAL -> AuroraColors.lightTextSecondary
     HermesChatMessageOutcome.REFUSAL,
-    HermesChatMessageOutcome.REASONING_FALLBACK -> AuroraColors.hermesAureate
+    HermesChatMessageOutcome.REASONING_FALLBACK,
+    -> AuroraColors.hermesAureate
     HermesChatMessageOutcome.LENGTH_CAP,
     HermesChatMessageOutcome.CONTENT_FILTER,
     HermesChatMessageOutcome.TOOL_CALL_NO_FOLLOW_UP,
-    HermesChatMessageOutcome.EMPTY -> AuroraColors.error
+    HermesChatMessageOutcome.EMPTY,
+    -> AuroraColors.error
 }
 
 private fun iconForOutcome(name: String): ImageVector = when (name) {

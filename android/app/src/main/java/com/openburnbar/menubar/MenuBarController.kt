@@ -15,7 +15,7 @@ data class MenuBarSnapshot(
     val sparkline: List<Float> = emptyList(),
     val recentProviders: List<String> = emptyList(),
     val lastUpdated: Long = System.currentTimeMillis(),
-    val streaming: Boolean = false
+    val streaming: Boolean = false,
 )
 
 object MenuBarController {
@@ -27,14 +27,17 @@ object MenuBarController {
     }
 
     fun updateCost(costToday: Double, totalTokensToday: Long) {
-        _snapshot.value = _snapshot.value.copy(
-            costToday = costToday,
-            totalTokensToday = totalTokensToday,
-            lastUpdated = System.currentTimeMillis()
-        )
+        _snapshot.value =
+            _snapshot.value.copy(
+                costToday = costToday,
+                totalTokensToday = totalTokensToday,
+                lastUpdated = System.currentTimeMillis(),
+            )
     }
 
-    fun formatCost(value: Double): String =
-        if (value >= 100.0) "$${"%.0f".format(value)}"
-        else "$${"%.2f".format(value)}"
+    fun formatCost(value: Double): String = if (value >= 100.0) {
+        "$${"%.0f".format(value)}"
+    } else {
+        "$${"%.2f".format(value)}"
+    }
 }

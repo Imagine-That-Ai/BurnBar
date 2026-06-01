@@ -14,6 +14,27 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.max
 
+internal object TrendDigestConstants {
+    const val DEFAULT_SEMANTIC_HASH_LIMIT = 24
+    const val PERCENT_SCALE = 1_000_000_000
+    const val PERCENT_SCALE_DOUBLE = 1_000_000_000.0
+    const val PERCENT_SCALE_MILLION = 1_000_000
+    const val MIN_COST_DELTA_USD = 0.01
+    const val CACHE_RATE_HIGH_THRESHOLD = 0.5
+    const val CACHE_RATE_LOW_THRESHOLD = 0.25
+    const val SAVINGS_COST_FACTOR = 0.9
+    const val AVG_INPUT_COST_USD_PER_MILLION_TOKENS = 3.0
+    const val PROVIDER_SHARE_DOMINANT_THRESHOLD = 50.0
+    const val WEEK_OVER_WEEK_ALERT_THRESHOLD_PERCENT = 5.0
+    const val HIGH_TOKEN_VOLUME_THRESHOLD = 100_000
+    const val MIN_SESSION_DURATION_SECONDS = 5.0
+    const val HOURS_PER_DAY = 24
+    const val SECONDS_PER_MINUTE = 60
+    const val MILLIS_PER_SECOND = 1000L
+    const val MAX_HOUR_OF_DAY = 23
+    const val ROLLING_WINDOW_DAYS = 7.0
+}
+
 /**
  * Compact, immutable analytics snapshot consumed by the Trend Atlas card and
  * insight rotator. Pure-Kotlin port of the iOS `TrendDataDigest` — same shape,
@@ -32,22 +53,22 @@ data class TrendDataDigest(
     val daily: List<DailySeries>,
     val hourly: List<HourBucket>,
     val recentSessions: List<SessionSlice>,
-    val cache: CacheAggregate
+    val cache: CacheAggregate,
 ) {
     data class WindowTotals(
-        val window: String,    // "today" | "7d" | "30d"
-        val costUsd: Double,
-        val tokens: Long,
-        val requests: Int
-    )
-
-    data class ProviderSlice(
-        val provider: String,         // display name
-        val providerKey: String,      // raw persisted token
+        val window: String, // "today" | "7d" | "30d"
         val costUsd: Double,
         val tokens: Long,
         val requests: Int,
-        val sharePct: Double          // 0..100
+    )
+
+    data class ProviderSlice(
+        val provider: String, // display name
+        val providerKey: String, // raw persisted token
+        val costUsd: Double,
+        val tokens: Long,
+        val requests: Int,
+        val sharePct: Double, // 0..100
     )
 
     data class ModelSlice(
@@ -58,32 +79,32 @@ data class TrendDataDigest(
         val costUsd: Double,
         val tokens: Long,
         val requests: Int,
-        val sharePct: Double
+        val sharePct: Double,
     )
 
     data class ProjectSlice(
         val project: String,
         val costUsd: Double,
         val tokens: Long,
-        val sessions: Int
+        val sessions: Int,
     )
 
     data class DeviceSlice(
         val device: String,
         val tokens: Long,
-        val requests: Int
+        val requests: Int,
     )
 
     data class DailySeries(
-        val date: String,             // ISO yyyy-MM-dd
+        val date: String, // ISO yyyy-MM-dd
         val total: Double,
-        val perProvider: Map<String, Double>  // providerKey → cost
+        val perProvider: Map<String, Double>, // providerKey → cost
     )
 
     data class HourBucket(
-        val hour: Int,                // 0..23
+        val hour: Int, // 0..23
         val costUsd: Double,
-        val tokens: Long
+        val tokens: Long,
     )
 
     data class SessionSlice(
@@ -100,16 +121,16 @@ data class TrendDataDigest(
         val cacheCreationTokens: Int,
         val reasoningTokens: Int,
         val costUsd: Double,
-        val cacheHitRate: Double,             // 0..1
-        val outputTokensPerSecond: Double
+        val cacheHitRate: Double, // 0..1
+        val outputTokensPerSecond: Double,
     )
 
     data class CacheAggregate(
         val totalCacheReadTokens: Long,
         val totalCacheCreationTokens: Long,
         val totalInputTokens: Long,
-        val cacheHitRate: Double,            // 0..1 across window
-        val estSavingsUsd: Double
+        val cacheHitRate: Double, // 0..1 across window
+        val estSavingsUsd: Double,
     )
 
     companion object {
@@ -127,34 +148,36 @@ data class TrendDataDigest(
          * `recentUsages` should be sorted desc by timestamp — we never order
          * them ourselves so the caller's existing pagination semantics win.
          */
+        @Suppress("UnusedParameter")
         fun build(
             rollups: UsageRollups,
             recentUsages: List<TokenUsage>,
             quotaSnapshots: List<ProviderQuotaSnapshot> = emptyList(),
             displayMode: UsageDisplayMode = UsageDisplayMode.CURRENCY,
             windowDescription: String = "last 30 days",
-            now: Date = Date()
+            now: Date = Date(),
         ): TrendDataDigest {
-            val totals = listOf(
-                WindowTotals(
-                    window = "today",
-                    costUsd = rollups.today,
-                    tokens = rollups.todayTokens,
-                    requests = countRequests(recentUsages, withinDays = 1, now = now)
-                ),
-                WindowTotals(
-                    window = "7d",
-                    costUsd = rollups.sevenDays,
-                    tokens = rollups.sevenDayTokens,
-                    requests = countRequests(recentUsages, withinDays = 7, now = now)
-                ),
-                WindowTotals(
-                    window = "30d",
-                    costUsd = rollups.thirtyDays,
-                    tokens = rollups.thirtyDayTokens,
-                    requests = countRequests(recentUsages, withinDays = 30, now = now)
+            val totals =
+                listOf(
+                    WindowTotals(
+                        window = "today",
+                        costUsd = rollups.today,
+                        tokens = rollups.todayTokens,
+                        requests = countRequests(recentUsages, withinDays = 1, now = now),
+                    ),
+                    WindowTotals(
+                        window = "7d",
+                        costUsd = rollups.sevenDays,
+                        tokens = rollups.sevenDayTokens,
+                        requests = countRequests(recentUsages, withinDays = 7, now = now),
+                    ),
+                    WindowTotals(
+                        window = "30d",
+                        costUsd = rollups.thirtyDays,
+                        tokens = rollups.thirtyDayTokens,
+                        requests = countRequests(recentUsages, withinDays = 30, now = now),
+                    ),
                 )
-            )
 
             val providers = buildProviders(rollups.providerSummaries)
             val models = buildModels(rollups.modelSummaries)
@@ -163,7 +186,7 @@ data class TrendDataDigest(
             val daily = buildDailySeries(rollups.dailyPoints, recentUsages, now)
             val hourly = buildHourly(recentUsages, now)
             val sessions = buildSessions(recentUsages)
-            val cache = buildCache(recentUsages)
+            val cache = trendDigestBuildCache(recentUsages)
 
             return TrendDataDigest(
                 displayMode = displayMode,
@@ -177,32 +200,39 @@ data class TrendDataDigest(
                 daily = daily,
                 hourly = hourly,
                 recentSessions = sessions,
-                cache = cache
+                cache = cache,
             )
         }
 
         // ── Builders ──
 
         private fun countRequests(usages: List<TokenUsage>, withinDays: Int, now: Date): Int {
-            val cutoff = now.time - withinDays.toLong() * 24 * 60 * 60 * 1000
+            val cutoff =
+                now.time -
+                    withinDays.toLong() *
+                    TrendDigestConstants.HOURS_PER_DAY *
+                    TrendDigestConstants.SECONDS_PER_MINUTE *
+                    TrendDigestConstants.SECONDS_PER_MINUTE *
+                    TrendDigestConstants.MILLIS_PER_SECOND
             return usages.count { it.timestamp >= cutoff }
         }
 
         private fun buildProviders(summaries: List<RollupSummary>): List<ProviderSlice> {
             // Collapse summaries by provider so duplicate account rows fold
             // together — the per-account view lives elsewhere.
-            val byProvider = summaries.groupBy { it.provider }
-                .map { (key, group) ->
-                    RollupSummary(
-                        provider = key,
-                        providerId = group.first().providerId,
-                        accountLabel = "",
-                        totalRequests = group.sumOf { it.totalRequests },
-                        totalTokens = group.sumOf { it.totalTokens },
-                        totalCost = group.sumOf { it.totalCost }
-                    )
-                }
-                .sortedByDescending { it.totalCost }
+            val byProvider =
+                summaries.groupBy { it.provider }
+                    .map { (key, group) ->
+                        RollupSummary(
+                            provider = key,
+                            providerId = group.first().providerId,
+                            accountLabel = "",
+                            totalRequests = group.sumOf { it.totalRequests },
+                            totalTokens = group.sumOf { it.totalTokens },
+                            totalCost = group.sumOf { it.totalCost },
+                        )
+                    }
+                    .sortedByDescending { it.totalCost }
 
             val total = byProvider.sumOf { it.totalTokens }.toDouble().coerceAtLeast(1.0)
             return byProvider.take(MAX_PROVIDERS).map { p ->
@@ -213,7 +243,7 @@ data class TrendDataDigest(
                     costUsd = p.totalCost,
                     tokens = p.totalTokens,
                     requests = p.totalRequests,
-                    sharePct = (p.totalTokens.toDouble() / total) * 100.0
+                    sharePct = p.totalTokens.toDouble() / total * 100.0,
                 )
             }
         }
@@ -236,7 +266,7 @@ data class TrendDataDigest(
                         costUsd = m.totalCost,
                         tokens = m.totalTokens,
                         requests = m.totalRequests,
-                        sharePct = (m.totalTokens.toDouble() / total) * 100.0
+                        sharePct = m.totalTokens.toDouble() / total * 100.0,
                     )
                 }
         }
@@ -252,7 +282,7 @@ data class TrendDataDigest(
                         project = project,
                         costUsd = list.sumOf { it.effectiveCost },
                         tokens = list.sumOf { it.totalTokens.toLong() },
-                        sessions = list.distinctBy { it.sessionId ?: it.id }.size
+                        sessions = list.distinctBy { it.sessionId ?: it.id }.size,
                     )
                 }
                 .sortedByDescending { it.costUsd }
@@ -262,8 +292,9 @@ data class TrendDataDigest(
         private fun buildDevices(usages: List<TokenUsage>): List<DeviceSlice> {
             return usages
                 .mapNotNull { usage ->
-                    val deviceId = usage.deviceId?.takeIf { it.isNotBlank() }
-                        ?: usage.sourceDeviceId?.takeIf { it.isNotBlank() }
+                    val deviceId =
+                        usage.deviceId?.takeIf { it.isNotBlank() }
+                            ?: usage.sourceDeviceId?.takeIf { it.isNotBlank() }
                     deviceId?.let { it to usage }
                 }
                 .groupBy(keySelector = { it.first }, valueTransform = { it.second })
@@ -271,18 +302,15 @@ data class TrendDataDigest(
                     DeviceSlice(
                         device = device,
                         tokens = list.sumOf { it.totalTokens.toLong() },
-                        requests = list.size
+                        requests = list.size,
                     )
                 }
                 .sortedByDescending { it.tokens }
                 .take(MAX_DEVICES)
         }
 
-        private fun buildDailySeries(
-            dailyPoints: Map<String, Double>,
-            usages: List<TokenUsage>,
-            now: Date
-        ): List<DailySeries> {
+        @Suppress("UnusedParameter")
+        private fun buildDailySeries(dailyPoints: Map<String, Double>, usages: List<TokenUsage>, now: Date): List<DailySeries> {
             // Group usages by day-of-timestamp in user's local TZ so the
             // x-axis lines up with what the user sees on the calendar.
             val cal = Calendar.getInstance()
@@ -306,43 +334,51 @@ data class TrendDataDigest(
             // Union all day keys from dailyPoints (server-side totals) AND
             // any days we found locally. dailyPoints supplies fallback totals
             // for days that aren't in the recent-usages window.
-            val allDays = (dailyPoints.keys + perDayProviderTotals.keys)
-                .toSortedSet()
-                .toList()
-                .takeLast(MAX_DAILY_DAYS)
+            val allDays =
+                (dailyPoints.keys + perDayProviderTotals.keys)
+                    .toSortedSet()
+                    .toList()
+                    .takeLast(MAX_DAILY_DAYS)
 
             return allDays.map { date ->
                 val perProvider = perDayProviderTotals[date] ?: emptyMap()
                 // Keep only the top providers per day so the JSON / stacks
                 // don't explode when a user has 10+ active providers.
-                val topPerProvider = perProvider.entries
-                    .sortedByDescending { it.value }
-                    .take(MAX_PROVIDERS_PER_DAY)
-                    .associate { it.key to it.value }
+                val topPerProvider =
+                    perProvider.entries
+                        .sortedByDescending { it.value }
+                        .take(MAX_PROVIDERS_PER_DAY)
+                        .associate { it.key to it.value }
 
                 val computedTotal = topPerProvider.values.sum()
                 val total = dailyPoints[date] ?: computedTotal
                 DailySeries(
                     date = date,
                     total = max(total, computedTotal),
-                    perProvider = topPerProvider
+                    perProvider = topPerProvider,
                 )
             }
         }
 
         private fun buildHourly(usages: List<TokenUsage>, now: Date): List<HourBucket> {
-            val cutoff = now.time - MAX_HOURLY_LOOKBACK_DAYS.toLong() * 24 * 60 * 60 * 1000
+            val cutoff =
+                now.time -
+                    MAX_HOURLY_LOOKBACK_DAYS.toLong() *
+                    TrendDigestConstants.HOURS_PER_DAY *
+                    TrendDigestConstants.SECONDS_PER_MINUTE *
+                    TrendDigestConstants.SECONDS_PER_MINUTE *
+                    TrendDigestConstants.MILLIS_PER_SECOND
             val cal = Calendar.getInstance()
-            val buckets = LongArray(24)
-            val costs = DoubleArray(24)
+            val buckets = LongArray(TrendDigestConstants.DEFAULT_SEMANTIC_HASH_LIMIT)
+            val costs = DoubleArray(TrendDigestConstants.DEFAULT_SEMANTIC_HASH_LIMIT)
             for (u in usages) {
                 if (u.timestamp < cutoff) continue
                 cal.time = Date(u.timestamp)
-                val h = cal.get(Calendar.HOUR_OF_DAY).coerceIn(0, 23)
+                val h = cal.get(Calendar.HOUR_OF_DAY).coerceIn(0, TrendDigestConstants.MAX_HOUR_OF_DAY)
                 buckets[h] = buckets[h] + u.totalTokens
                 costs[h] = costs[h] + u.effectiveCost
             }
-            return (0..23).map { h ->
+            return (0..TrendDigestConstants.MAX_HOUR_OF_DAY).map { h ->
                 HourBucket(hour = h, costUsd = costs[h], tokens = buckets[h])
             }
         }
@@ -351,9 +387,12 @@ data class TrendDataDigest(
             return usages.take(MAX_SESSIONS).map { u ->
                 val duration = ((u.endTime - u.startTime).coerceAtLeast(0) / 1000L).toInt()
                 val cacheTotal = u.cacheReadTokens + u.cacheCreationTokens
-                val hitRate = if (cacheTotal > 0) {
-                    u.cacheReadTokens.toDouble() / cacheTotal.toDouble()
-                } else 0.0
+                val hitRate =
+                    if (cacheTotal > 0) {
+                        u.cacheReadTokens.toDouble() / cacheTotal.toDouble()
+                    } else {
+                        0.0
+                    }
                 val velocity = if (duration > 0) u.outputTokens.toDouble() / duration else 0.0
 
                 SessionSlice(
@@ -371,35 +410,15 @@ data class TrendDataDigest(
                     reasoningTokens = u.reasoningTokens,
                     costUsd = u.effectiveCost,
                     cacheHitRate = hitRate,
-                    outputTokensPerSecond = velocity
+                    outputTokensPerSecond = velocity,
                 )
             }
         }
 
-        private fun buildCache(usages: List<TokenUsage>): CacheAggregate {
-            val totalRead = usages.sumOf { it.cacheReadTokens.toLong() }
-            val totalCreate = usages.sumOf { it.cacheCreationTokens.toLong() }
-            val totalInput = usages.sumOf { it.inputTokens.toLong() }
-            val denom = totalRead + totalCreate
-            val rate = if (denom > 0) totalRead.toDouble() / denom.toDouble() else 0.0
-            // Rough savings estimate: assume cache read is ≈10× cheaper than
-            // a fresh input token. Numeric magnitude is illustrative only —
-            // the iOS source uses the same multiplier as a hint to the user.
-            val avgInputCostPerMillion = 3.0  // typical mid-range LLM USD/M
-            val savedTokens = totalRead.toDouble()
-            val estSavings = (savedTokens / 1_000_000.0) * avgInputCostPerMillion * 0.9
-            return CacheAggregate(
-                totalCacheReadTokens = totalRead,
-                totalCacheCreationTokens = totalCreate,
-                totalInputTokens = totalInput,
-                cacheHitRate = rate,
-                estSavingsUsd = estSavings
-            )
-        }
-
-        private val ISO_DAY: SimpleDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-            timeZone = TimeZone.getDefault()
-        }
+        private val ISO_DAY: SimpleDateFormat =
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getDefault()
+            }
     }
 }
 
@@ -414,7 +433,7 @@ data class TrendInsight(
     val tone: TrendInsightTone,
     /** Material symbol name (Compose `Icons.Filled.X` lookup happens at render time). */
     val symbolName: String,
-    val rank: Int
+    val rank: Int,
 )
 
 /**
@@ -424,115 +443,16 @@ data class TrendInsight(
  */
 object TrendInsightEngine {
     fun insights(digest: TrendDataDigest): List<TrendInsight> {
-        val out = mutableListOf<TrendInsight>()
         val today = digest.totals.firstOrNull { it.window == "today" }
         val sevenDay = digest.totals.firstOrNull { it.window == "7d" }
         val thirtyDay = digest.totals.firstOrNull { it.window == "30d" }
-
-        // Spend-velocity vs trailing 7-day average
-        if (today != null && sevenDay != null && sevenDay.costUsd > 0.01) {
-            val avg7 = sevenDay.costUsd / 7.0
-            val pct = ((today.costUsd - avg7) / avg7) * 100.0
-            val absPct = kotlin.math.abs(pct).toInt()
-            if (kotlin.math.abs(pct) >= 5.0) {
-                out += TrendInsight(
-                    id = "spend.delta",
-                    title = if (pct > 0) "Spend up $absPct%" else "Spend down $absPct%",
-                    detail = "vs your 7-day average",
-                    tone = if (pct > 0) TrendInsightTone.WARNING else TrendInsightTone.POSITIVE,
-                    symbolName = if (pct > 0) "TrendingUp" else "TrendingDown",
-                    rank = 100 + absPct
-                )
-            }
-        }
-
-        // Top provider concentration
-        digest.providers.firstOrNull()?.let { top ->
-            if (top.sharePct >= 50.0) {
-                out += TrendInsight(
-                    id = "provider.concentration",
-                    title = "${top.provider} = ${top.sharePct.toInt()}% of tokens",
-                    detail = "Most of your activity flows through one provider",
-                    tone = TrendInsightTone.NEUTRAL,
-                    symbolName = "DonutLarge",
-                    rank = 80
-                )
-            }
-        }
-
-        // Cache hit rate
-        val cacheRate = digest.cache.cacheHitRate
-        if (digest.cache.totalCacheReadTokens > 0) {
-            if (cacheRate >= 0.5) {
-                out += TrendInsight(
-                    id = "cache.healthy",
-                    title = "Cache hit ${(cacheRate * 100).toInt()}%",
-                    detail = "Saving ≈ $${"%.2f".format(digest.cache.estSavingsUsd)} on input tokens",
-                    tone = TrendInsightTone.POSITIVE,
-                    symbolName = "Bolt",
-                    rank = 70
-                )
-            } else if (cacheRate < 0.25) {
-                out += TrendInsight(
-                    id = "cache.cold",
-                    title = "Cache hit ${(cacheRate * 100).toInt()}%",
-                    detail = "Re-using context could reduce input cost",
-                    tone = TrendInsightTone.WARNING,
-                    symbolName = "AcUnit",
-                    rank = 75
-                )
-            }
-        }
-
-        // Peak hour
-        digest.hourly.maxByOrNull { it.tokens }?.let { peak ->
-            if (peak.tokens > 0) {
-                val label = "${peak.hour.toString().padStart(2, '0')}:00"
-                out += TrendInsight(
-                    id = "hour.peak",
-                    title = "Peak hour $label",
-                    detail = "Most tokens flow through this slot in your typical day",
-                    tone = TrendInsightTone.NEUTRAL,
-                    symbolName = "Schedule",
-                    rank = 50
-                )
-            }
-        }
-
-        // Velocity champion
-        digest.recentSessions
-            .filter { it.outputTokensPerSecond > 0 && it.durationSec > 5 }
-            .maxByOrNull { it.outputTokensPerSecond }
-            ?.let { fastest ->
-                out += TrendInsight(
-                    id = "session.velocity",
-                    title = "${fastest.model.ifBlank { fastest.provider }} streamed ${fastest.outputTokensPerSecond.toInt()} tok/s",
-                    detail = "Your fastest recent session",
-                    tone = TrendInsightTone.POSITIVE,
-                    symbolName = "RocketLaunch",
-                    rank = 40
-                )
-            }
-
-        // Long-tail token volume
-        if (thirtyDay != null && thirtyDay.tokens > 100_000) {
-            out += TrendInsight(
-                id = "tokens.30d",
-                title = "${formatTokens(thirtyDay.tokens)} tokens in 30 days",
-                detail = "$${"%.2f".format(thirtyDay.costUsd)} total spend",
-                tone = TrendInsightTone.NEUTRAL,
-                symbolName = "Analytics",
-                rank = 30
-            )
-        }
-
+        val out = mutableListOf<TrendInsight>()
+        trendSpendVelocityInsight(today, sevenDay)?.let { out += it }
+        trendProviderConcentrationInsight(digest)?.let { out += it }
+        out += trendCacheInsights(digest)
+        trendPeakHourInsight(digest)?.let { out += it }
+        trendVelocityChampionInsight(digest)?.let { out += it }
+        trendLongTailVolumeInsight(thirtyDay)?.let { out += it }
         return out.sortedByDescending { it.rank }
-    }
-
-    private fun formatTokens(n: Long): String = when {
-        n >= 1_000_000_000 -> "%.1fB".format(n / 1_000_000_000.0)
-        n >= 1_000_000     -> "%.1fM".format(n / 1_000_000.0)
-        n >= 1_000         -> "%.1fK".format(n / 1_000.0)
-        else               -> n.toString()
     }
 }

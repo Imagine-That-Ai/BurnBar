@@ -34,7 +34,6 @@ import kotlinx.coroutines.launch
  * the service stops itself when suppression is enabled.
  */
 class MenuBarService : Service() {
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var collectorJob: Job? = null
 
@@ -44,11 +43,12 @@ class MenuBarService : Service() {
         super.onCreate()
         ensureChannel(this)
         postSnapshotNotification(MenuBarController.snapshot.value)
-        collectorJob = scope.launch {
-            MenuBarController.snapshot.collectLatest { snap ->
-                notificationManager()?.notify(NOTIFICATION_ID, buildNotification(this@MenuBarService, snap))
+        collectorJob =
+            scope.launch {
+                MenuBarController.snapshot.collectLatest { snap ->
+                    notificationManager()?.notify(NOTIFICATION_ID, buildNotification(this@MenuBarService, snap))
+                }
             }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -92,16 +92,17 @@ class MenuBarService : Service() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.notificationManager() ?: return
             if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Quick glance",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "BurnBar cost glance bar"
-                setShowBadge(false)
-                setSound(null, null)
-                enableVibration(false)
-            }
+            val channel =
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Quick glance",
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    description = "BurnBar cost glance bar"
+                    setShowBadge(false)
+                    setSound(null, null)
+                    enableVibration(false)
+                }
             nm.createNotificationChannel(channel)
         }
 
@@ -109,28 +110,35 @@ class MenuBarService : Service() {
             // Different tap-targets depending on state — a streaming notif
             // jumps straight to Hermes; an idle glance lands on the dashboard.
             val tapUri = if (snap.streaming) "burnbar://hermes" else "burnbar://dashboard"
-            val tapIntent = PendingIntent.getActivity(
-                context, 0,
-                Intent(context, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    data = android.net.Uri.parse(tapUri)
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val tapIntent =
+                PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        data = android.net.Uri.parse(tapUri)
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
 
             val title = "BurnBar — ${MenuBarController.formatCost(snap.costToday)} today"
-            val sub = if (snap.streaming) "Hermes is thinking…"
-                else "Δ ${MenuBarController.formatCost(snap.costToday - snap.costYesterday)} vs. yesterday"
+            val sub =
+                if (snap.streaming) {
+                    "Hermes is thinking…"
+                } else {
+                    "Δ ${MenuBarController.formatCost(snap.costToday - snap.costYesterday)} vs. yesterday"
+                }
 
-            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(title)
-                .setContentText(sub)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setContentIntent(tapIntent)
-                .setShowWhen(false)
+            val builder =
+                NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle(title)
+                    .setContentText(sub)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setContentIntent(tapIntent)
+                    .setShowWhen(false)
 
             if (snap.streaming) {
                 // Streaming → upgrade to a Live-Update analog of iOS's Live
@@ -143,8 +151,8 @@ class MenuBarService : Service() {
                         NotificationCompat.BigTextStyle()
                             .bigText(
                                 "Drawing your chart — ${MenuBarController.formatCost(snap.costToday)} today, " +
-                                "${snap.totalTokensToday} tokens. Tap to open Hermes."
-                            )
+                                    "${snap.totalTokensToday} tokens. Tap to open Hermes.",
+                            ),
                     )
                     .setProgress(0, 0, true)
                     .setUsesChronometer(true)
@@ -157,5 +165,4 @@ class MenuBarService : Service() {
     }
 }
 
-private fun Context.notificationManager(): NotificationManager? =
-    getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+private fun Context.notificationManager(): NotificationManager? = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
