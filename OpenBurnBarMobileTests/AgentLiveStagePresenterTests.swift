@@ -202,7 +202,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
         presenter.setPiPActive(true)
 
         state.clear()
-        try await Task.sleep(nanoseconds: 80_000_000)
+        try await waitForMode(.hidden, presenter: presenter)
 
         XCTAssertFalse(presenter.pipActive)
         XCTAssertEqual(presenter.mode, .hidden)
@@ -395,6 +395,21 @@ final class AgentLiveStagePresenterTests: XCTestCase {
         try await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(presenter.mode, .hidden)
         XCTAssertEqual(presenter.collapseReason, .dismissed)
+    }
+
+    private func waitForMode(
+        _ expected: AgentLiveStagePresenter.Mode,
+        presenter: AgentLiveStagePresenter,
+        timeout: TimeInterval = 1.0
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while presenter.mode != expected {
+            if Date() >= deadline {
+                XCTFail("Timed out waiting for mode \(expected); current mode is \(presenter.mode)")
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 }
 #endif
