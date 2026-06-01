@@ -39,6 +39,18 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         XCTAssertEqual(source, .stderr)
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("monthly credit limit"))
     }
+
+    func test_classifierTreatsOutOfLimitAsFiveHourQuotaWindow() {
+        let detail = "Codex is out of limit for this account."
+        XCTAssertEqual(
+            CLIQuotaExhaustionClassifier.classify(for: .codex, in: detail),
+            detail
+        )
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = CLIQuotaExhaustionClassifier.exhaustionWindowEnd(from: detail, now: now)
+        XCTAssertEqual(reset, now.addingTimeInterval(5 * 60 * 60))
+    }
 }
 
 private final class SupervisorEventRecorder: Sendable {
