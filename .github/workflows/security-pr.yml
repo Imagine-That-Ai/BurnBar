@@ -37,8 +37,10 @@ jobs:
         run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
 
       - name: Run gitleaks
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          "$HOME/go/bin/gitleaks" detect --source . --redact --verbose
+          "$HOME/go/bin/gitleaks" detect --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
 
   dependency-review:
     name: Dependency Review (CVE check)
