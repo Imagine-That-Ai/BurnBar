@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-06-01T18:58:42.782Z",
+  "project": "burnbar",
+  "query": "collectionGroup(\"entitlements\").where(\"source\",\"==\", source).where(\"active\",\"==\", true).limit(20)",
+  "queryResults": {
+    "apple_jws_verified": [
+      {
+        "path": "users/<uid>/entitlements/burnbar_pro",
+        "uidHash16": "da261f1959f7c871",
+        "id": "burnbar_pro",
+        "active": true,
+        "source": "apple_jws_verified",
+        "productID": "com.openburnbar.pro.monthly",
+        "environment": "Sandbox",
+        "expiresAt": "2026-06-02T18:39:50.000Z"
+      },
+      {
+        "path": "users/<uid>/entitlements/hosted_quota_sync",
+        "uidHash16": "da261f1959f7c871",
+        "id": "hosted_quota_sync",
+        "active": true,
+        "source": "apple_jws_verified",
+        "productID": "com.openburnbar.pro.monthly",
+        "environment": "Sandbox",
+        "expiresAt": "2026-06-02T18:39:50.000Z"
+      }
+    ],
+    "client_callable": [],
+    "apple_s2s": [],
+    "scheduled_reconcile": [],
+    "google_play_verified": [
+      {
+        "path": "users/<uid>/entitlements/burnbar_pro",
+        "uidHash16": "e82314a10622bcee",
+        "id": "burnbar_pro",
+        "active": true,
+        "source": "google_play_verified",
+        "productID": "com.openburnbar.pro.monthly",
+        "environment": "Production",
+        "expiresAt": "2026-06-01T18:56:01.348Z"
+      }
+    ],
+    "stripe_webhook_verified": [
+      {
+        "path": "users/<uid>/entitlements/burnbar_pro_max",
+        "uidHash16": "e82314a10622bcee",
+        "id": "burnbar_pro_max",
+        "active": true,
+        "source": "stripe_webhook_verified",
+        "productID": "com.openburnbar.proMax.v2.monthly",
+        "environment": "Production",
+        "expiresAt": "2026-07-01T08:51:04.000Z"
+      }
+    ]
+  },
+  "conclusion": "Live production collection-group source+active entitlement queries succeeded for all requested provider source buckets. Empty arrays mean no currently active document for that source, not an index failure."
+}
