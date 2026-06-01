@@ -7,12 +7,17 @@
  * `request.app` (console-only App Check enforcement on the Firestore product).
  */
 
+import { createHash } from "node:crypto";
+
 import * as functions from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth, assertOwnership } from "./auth.js";
 import { isRecord } from "./guards.js";
+
+/** Matches Swift `AppCheckAttestationBinding.canonicalPrefix`. */
+export const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
 
 export const APP_CHECK_ATTESTATION_CLAIM_KEY = "obb_app_check" as const;
 export const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
@@ -51,6 +56,18 @@ export function isAppCheckAttestationClaimFresh(
   nowMillis: number = Date.now(),
 ): boolean {
   return nowMillis - claim.boundAtMillis <= APP_CHECK_ATTESTATION_MAX_AGE_MS;
+}
+
+/**
+ * SHA-256 hex digest placed in `attestationHashBlake3` on phone-control envelopes.
+ * (Field name is historical; digest algorithm is SHA-256, shared with Swift.)
+ */
+export function appCheckAttestationDigestHex(
+  appId: string,
+  boundAtMillis: number,
+): string {
+  const payload = `${APP_CHECK_ATTESTATION_DIGEST_PREFIX}|${appId}|${boundAtMillis}`;
+  return createHash("sha256").update(payload).digest("hex");
 }
 
 /**

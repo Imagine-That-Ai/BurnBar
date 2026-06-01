@@ -1,0 +1,12 @@
+[package]
+name = "burnbar-remote-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnbar-remote-core.workspace = true
+burnbar-remote-media.workspace = true
+burnbar-remote-network.workspace = true
+burnbar-remote-security.workspace = true

@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "burnbar-remote-core",
+    "burnbar-remote-protocol",
+    "burnbar-remote-observability",
+    "burnbar-remote-security",
+    "burnbar-remote-media",
+    "burnbar-remote-network",
+    "burnbar-remote-host",
+    "burnbar-remote-client",
+    "burnbar-remote-bench",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+publish = false
+
+[workspace.dependencies]
+async-trait = "0.1"
+bytes = "1"
+iroh = "=1.0.0-rc.0"
+postcard = { version = "1", features = ["use-std"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+tokio-stream = "0.1"
+tokio-util = "0.7"
+tracing = "0.1"
+
+burnbar-remote-core = { path = "burnbar-remote-core" }
+burnbar-remote-protocol = { path = "burnbar-remote-protocol" }
+burnbar-remote-observability = { path = "burnbar-remote-observability" }
+burnbar-remote-security = { path = "burnbar-remote-security" }
+burnbar-remote-media = { path = "burnbar-remote-media" }
+burnbar-remote-network = { path = "burnbar-remote-network" }

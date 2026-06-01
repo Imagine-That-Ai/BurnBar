@@ -47,6 +47,12 @@ import {
 } from "../hermesGateway.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import {
+  assertCallableApprovalNotLocked,
+  checkPublicHttpRateLimit,
+  clientIpFromHttpRequest,
+  recordCallableApprovalFailure,
+} from "./publicRateLimit.js";
+import {
   boundedTrimmedString,
   isActiveBurnBarCloudProEntitlement,
   isActiveHostedQuotaEntitlement,
@@ -61,6 +67,9 @@ type HttpRequest = {
   path?: string;
   url?: string;
   body?: unknown;
+  headers?: Record<string, unknown>;
+  ip?: string;
+  socket?: { remoteAddress?: string };
   query: Record<string, unknown>;
   get(name: string): string | undefined;
 };
@@ -98,6 +107,23 @@ function sendJSON(res: HttpResponse, status: number, body: Record<string, unknow
 
 function setNoStore(res: HttpResponse): void {
   res.set("Cache-Control", "no-store");
+}
+
+function assertSafeAttachmentContentType(contentType: string): void {
+  const mediaType = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const blocked = new Set([
+    "text/html",
+    "text/javascript",
+    "application/javascript",
+    "application/ecmascript",
+    "application/xhtml+xml",
+    "application/xml",
+    "text/xml",
+    "image/svg+xml",
+  ]);
+  if (!mediaType || blocked.has(mediaType)) {
+    throw httpError(400, "unsafe_content_type");
+  }
 }
 
 function gatewayPath(req: HttpRequest): string {
@@ -174,6 +200,7 @@ async function ensureDefaultDestination(uid: string, now = nowISO()): Promise<vo
 
 async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  await checkPublicHttpRateLimit(clientIpFromHttpRequest(req), "hermes_gateway_device_start");
   const body = requestBody(req);
   const providedSecretHash = typeof body.deviceSecretHash === "string" ? body.deviceSecretHash.trim() : "";
   if (providedSecretHash && !isSha256Hex(providedSecretHash)) {
@@ -402,6 +429,7 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   const body = requestBody(req);
   const fileName = boundedTrimmedString(body.fileName, "fileName", 255, true).replace(/[\\/]/g, "-");
   const contentType = boundedTrimmedString(body.contentType, "contentType", 128, true);
+  assertSafeAttachmentContentType(contentType);
   const byteCount = typeof body.byteCount === "number" ? body.byteCount : Number(body.byteCount);
   if (!Number.isFinite(byteCount) || byteCount < 1 || byteCount > HERMES_GATEWAY_MAX_ATTACHMENT_BYTES) {
     throw httpError(400, "invalid_byte_count");
@@ -491,6 +519,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving Hermes Gateway.");
       enforceAuthAndAppCheck(request, uid);
+      await assertCallableApprovalNotLocked(uid, "hermes_gateway_approve_fail");
       await assertActiveHermesGatewayEntitlement(uid);
       const userCode = canonicalHermesGatewayUserCode(request.data.userCode);
       if (!userCode) throw new HttpsError("invalid-argument", "userCode must be an 8-character Hermes Gateway code.");
@@ -501,7 +530,10 @@ export const approveHermesGatewayDeviceGrant = onCall(
         .where("status", "==", "pending")
         .limit(1)
         .get();
-      if (sessions.empty) throw new HttpsError("not-found", "Hermes Gateway pairing code was not found.");
+      if (sessions.empty) {
+        await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
+        throw new HttpsError("not-found", "Hermes Gateway pairing code was not found.");
+      }
       const sessionRef = sessions.docs[0].ref;
       const session = recordOrUndefined(sessions.docs[0].data());
       if (!session) throw new HttpsError("failed-precondition", "Hermes Gateway pairing session is invalid.");

@@ -271,7 +271,7 @@ export interface HermesConnectionAuditEventDoc {
  *   1. Look up the user's `irohPairingPublicKey` (32 raw bytes, base64).
  *   2. Verify `signature` over
  *      `openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{relayURL}|{directAddresses}|{publishedAtMillis}`.
- *   3. Reject records older than `IROH_PAIRING_FRESHNESS_MS` (24h) or with
+ *   3. Reject records older than `IROH_PAIRING_FRESHNESS_MS` (3 minutes) or with
  *      a `protocolVersion` newer than the client understands.
  *   4. Dial `nodeId` plus the signed relay/direct addresses over the QUIC ALPN advertised by
  *      `IrohRelayProtocol.alpn`.
@@ -312,8 +312,8 @@ export interface IrohPairingRecordDoc {
   schemaVersion: number;
 }
 
-/** Max age (ms) the iOS client will trust an `IrohPairingRecordDoc`. */
-export const IROH_PAIRING_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+/** Max age (ms) clients trust a signed `IrohPairingRecordDoc`. Matches Swift/Android 3-minute policy. */
+export const IROH_PAIRING_FRESHNESS_MS = 3 * 60 * 1000;
 
 /** Canonical AAD prefix the Mac signs. Mirrors `IrohPairingSignature` in
  *  Swift: `openburnbar.iroh.pairing.v\(protocolVersion)` interpolated into

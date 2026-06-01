@@ -175,12 +175,17 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public func validate(
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         grantRequest: HermesRealtimeRelayAgentGrantRequest,
+        requiredAttestationHashBlake3: String? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        try validateAuthorityEnvelope(envelope, now: now)
+        try validateAuthorityEnvelope(
+            envelope,
+            now: now,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        )
         if queue.sync(execute: { revokedEscrowDeviceIds.contains(grantRequest.sourceDeviceId) }) {
             throw ValidationError.escrowDeviceRevoked(deviceId: grantRequest.sourceDeviceId)
         }

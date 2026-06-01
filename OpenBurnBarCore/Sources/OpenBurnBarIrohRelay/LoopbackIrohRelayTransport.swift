@@ -25,7 +25,11 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
         let waiters = pendingByPeer.removeValue(forKey: nodeId) ?? []
         lock.unlock()
         for waiter in waiters {
-            transport._fulfillDial(connectId: waiter.id, continuation: waiter.continuation)
+            transport._fulfillDial(
+                fromPeer: waiter.fromPeer,
+                connectId: waiter.id,
+                continuation: waiter.continuation
+            )
         }
     }
 
@@ -37,6 +41,7 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
     /// Used by `connect(to:)`. Resolves immediately if the peer is already
     /// registered; otherwise parks the continuation until the peer registers.
     func dial(
+        fromPeer: String,
         toPeer peer: String,
         timeout: TimeInterval
     ) async throws -> any IrohRelayStream {
@@ -47,10 +52,10 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
                 lock.lock()
                 if let host = registeredHosts[peer] {
                     lock.unlock()
-                    host._fulfillDial(connectId: connectId, continuation: continuation)
+                    host._fulfillDial(fromPeer: fromPeer, connectId: connectId, continuation: continuation)
                 } else {
                     pendingByPeer[peer, default: []].append(
-                        PendingConnect(id: connectId, continuation: continuation)
+                        PendingConnect(fromPeer: fromPeer, id: connectId, continuation: continuation)
                     )
                     lock.unlock()
                     Task {
@@ -75,6 +80,7 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
     }
 
     private struct PendingConnect {
+        let fromPeer: String
         let id: UUID
         let continuation: CheckedContinuation<any IrohRelayStream, Error>
     }
@@ -130,15 +136,22 @@ struct LoopbackStreamPair: Sendable {
 /// is single-reader / single-writer by contract — the recv side accumulates
 /// into a private buffer protected by an actor.
 public final class LoopbackIrohRelayStream: IrohRelayStream, @unchecked Sendable {
+    public let remotePeerNodeId: String?
     private let readQueue: LoopbackQueue
     private let writeQueue: LoopbackQueue
     private let codec: IrohRelayFrameCodec
     private let receiveBuffer = LoopbackStreamReceiveBuffer()
 
-    init(readQueue: LoopbackQueue, writeQueue: LoopbackQueue, codec: IrohRelayFrameCodec) {
+    init(
+        readQueue: LoopbackQueue,
+        writeQueue: LoopbackQueue,
+        codec: IrohRelayFrameCodec,
+        remotePeerNodeId: String? = nil
+    ) {
         self.readQueue = readQueue
         self.writeQueue = writeQueue
         self.codec = codec
+        self.remotePeerNodeId = remotePeerNodeId
     }
 
     public func send(_ frame: HermesRealtimeRelayFrame) async throws {
@@ -228,7 +241,7 @@ public final class LoopbackIrohRelayTransport: IrohRelayTransport, @unchecked Se
 
     public func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
         guard await state.isStarted() else { throw IrohRelayTransportError.endpointNotReady }
-        return try await rendezvous.dial(toPeer: target.nodeId, timeout: timeout)
+        return try await rendezvous.dial(fromPeer: identity.nodeId, toPeer: target.nodeId, timeout: timeout)
     }
 
     public func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
@@ -248,6 +261,7 @@ public final class LoopbackIrohRelayTransport: IrohRelayTransport, @unchecked Se
     /// continuation with the client-side stream, and enqueues the host-side
     /// stream for the next `accept(timeout:)` call.
     func _fulfillDial(
+        fromPeer: String,
         connectId: UUID,
         continuation: CheckedContinuation<any IrohRelayStream, Error>
     ) {
@@ -255,12 +269,14 @@ public final class LoopbackIrohRelayTransport: IrohRelayTransport, @unchecked Se
         let clientStream = LoopbackIrohRelayStream(
             readQueue: pair.hostToClient,
             writeQueue: pair.clientToHost,
-            codec: codec
+            codec: codec,
+            remotePeerNodeId: identity.nodeId
         )
         let hostStream = LoopbackIrohRelayStream(
             readQueue: pair.clientToHost,
             writeQueue: pair.hostToClient,
-            codec: codec
+            codec: codec,
+            remotePeerNodeId: fromPeer
         )
         continuation.resume(returning: clientStream)
         Task { [acceptQueue, hostStream] in

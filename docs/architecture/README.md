@@ -12,6 +12,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [004-schema-canon.md](004-schema-canon.md) | TypeSpec / `types.ts` / generated Swift & Kotlin |
 | [005-sync-ownership.md](005-sync-ownership.md) | Local SQLite vs Firestore vs iCloud planes |
 | [007-ops-notification-plane.md](007-ops-notification-plane.md) | GCP Monitoring + Sentry + deploy gates |
+| [008-remote-control-engine.md](008-remote-control-engine.md) | Iroh-first remote desktop, media, and remote-control engine |
 
 Related operational docs:
 

@@ -370,13 +370,29 @@ struct ChatDesktopControlButton: View {
     private func applySelection() {
         if selectedCapabilities.isEmpty {
             controller.revokeDesktopControl()
-        } else {
-            controller.grantDesktopControl(
-                capabilities: selectedCapabilities,
-                trustMode: selectedTrustMode
-            )
+            showsPopover = false
+            return
         }
-        showsPopover = false
+        Task { @MainActor in
+            do {
+                if let preset = matchingPreset {
+                    _ = try await DesktopGrantLocalAuthenticator.authenticateIfNeeded(for: preset)
+                } else {
+                    _ = try await DesktopGrantLocalAuthenticator.authenticateIfNeeded(
+                        capabilities: selectedCapabilities,
+                        trustMode: selectedTrustMode,
+                        promptName: "Custom"
+                    )
+                }
+                controller.grantDesktopControl(
+                    capabilities: selectedCapabilities,
+                    trustMode: selectedTrustMode
+                )
+                showsPopover = false
+            } catch {
+                controller.desktopControlError = "Device authentication is required for this permission level."
+            }
+        }
     }
 
     private func syncFromGrant() {

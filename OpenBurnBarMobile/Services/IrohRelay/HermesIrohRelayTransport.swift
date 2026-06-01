@@ -1,5 +1,7 @@
-import Foundation
+import FirebaseCore
 @preconcurrency import FirebaseAuth
+@preconcurrency import FirebaseFirestore
+import Foundation
 import FirebaseRemoteConfig
 import Network
 import OpenBurnBarCore
@@ -393,6 +395,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             }
             stage = "dial_start"
             let localNodeId = identity?.nodeId ?? ""
+            if !localNodeId.isEmpty {
+                await persistIrohPeerNodeId(localNodeId, uid: uid)
+            }
             await auditLogger.record(
                 event: .pairingVerified,
                 uid: uid,
@@ -919,6 +924,29 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         }
         let rendezvous = LoopbackIrohRelayRendezvous()
         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
+    }
+
+    private func persistIrohPeerNodeId(_ nodeId: String, uid: String) async {
+        guard FirebaseApp.app() != nil else { return }
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        do {
+            try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("devices").document(deviceId)
+                .setData(
+                    [
+                        "deviceId": deviceId,
+                        "irohPeerNodeId": nodeId,
+                        "updated_at_millis": nowMillis,
+                    ],
+                    merge: true
+                )
+        } catch {
+            #if DEBUG
+            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(error.localizedDescription)")
+            #endif
+        }
     }
 }
 

@@ -5,11 +5,21 @@ import OpenBurnBarComputerUseCore
 public final class PrivilegedInputDispatchHandler: @unchecked Sendable {
     public let auditSocketLabel: String
     private let keyboard: VirtualHIDKeyboardEngine
+    private let capabilityVerifier: CapabilityTokenLeafVerifier
     private let maximumCredentialUTF8Bytes = 1_024
 
-    public init(auditSocketLabel: String, keyboard: VirtualHIDKeyboardEngine) {
+    public init(
+        auditSocketLabel: String,
+        keyboard: VirtualHIDKeyboardEngine,
+        capabilityVerifier: CapabilityTokenLeafVerifier? = nil
+    ) {
         self.auditSocketLabel = auditSocketLabel
         self.keyboard = keyboard
+        self.capabilityVerifier = capabilityVerifier ?? CapabilityTokenLeafVerifier(
+            nonceStore: FileCapabilityTokenNonceStore()
+        ) {
+            try? CapabilityTokenIssuerTrustMaterial.load()?.issuerTrust()
+        }
     }
 
     public func handle(envelope: PrivilegedInputDispatchEnvelope) throws -> PrivilegedInputDispatchResponse {
@@ -26,7 +36,7 @@ public final class PrivilegedInputDispatchHandler: @unchecked Sendable {
             try keyboard.typeCredential(password)
             return PrivilegedInputDispatchResponse(ok: true)
         case "input":
-            try validateBridgeInput(envelope.request)
+            try validateBridgeInput(envelope.request, capabilityToken: envelope.capabilityToken)
             try keyboard.dispatch(envelope.request)
             PrivilegedSocketAudit.record(
                 PrivilegedSocketAuditRecord(
@@ -42,14 +52,15 @@ public final class PrivilegedInputDispatchHandler: @unchecked Sendable {
         }
     }
 
-    private func validateBridgeInput(_ request: PrivilegedInputDispatchRequest) throws {
-        let policyRequest = VirtualHIDBridgeInputPolicy.Request(
+    private func validateBridgeInput(_ request: PrivilegedInputDispatchRequest, capabilityToken: CapabilityToken?) throws {
+        let gateRequest = VirtualHIDBridgeCapabilityGate.Request(
             kind: request.kind,
             text: request.text,
             key: request.key,
-            modifiers: request.modifiers
+            modifiers: request.modifiers,
+            capabilityToken: capabilityToken
         )
-        switch VirtualHIDBridgeInputPolicy.validate(policyRequest) {
+        switch VirtualHIDBridgeCapabilityGate.validate(gateRequest, verifier: capabilityVerifier) {
         case .success:
             return
         case .failure(let reason):
