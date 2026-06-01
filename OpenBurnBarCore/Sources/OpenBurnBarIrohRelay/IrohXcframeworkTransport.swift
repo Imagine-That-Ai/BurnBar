@@ -159,6 +159,10 @@ public final class IrohBackendStreamAdapter: IrohRelayStream, @unchecked Sendabl
         self.codec = codec
     }
 
+    public var remotePeerNodeId: String? {
+        stream.remotePeerNodeId
+    }
+
     public func send(_ frame: HermesRealtimeRelayFrame) async throws {
         let envelope: Data
         do {

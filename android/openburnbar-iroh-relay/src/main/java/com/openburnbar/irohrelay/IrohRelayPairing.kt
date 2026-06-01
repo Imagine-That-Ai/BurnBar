@@ -64,8 +64,8 @@ sealed class IrohPairingError(message: String) : RuntimeException(message) {
 }
 
 object IrohPairingFreshness {
-    /** Reject records older than 24h. Matches Swift `maximumAgeSeconds`. */
-    const val MAXIMUM_AGE_MILLIS: Long = 24L * 60 * 60 * 1000
+    /** Reject records older than 3 minutes. Matches Swift `maximumAgeSeconds` and TS `IROH_PAIRING_FRESHNESS_MS`. */
+    const val MAXIMUM_AGE_MILLIS: Long = 3L * 60 * 1000
 }
 
 object IrohPairingSignature {

@@ -60,6 +60,27 @@ final class AgentCapabilityGrantTests: XCTestCase {
         XCTAssertEqual(AgentPermissionPreset.yolo.trustMode, .trusted)
     }
 
+    func test_customDangerousCapabilitySetRequiresLocalAuthentication() {
+        XCTAssertFalse(
+            AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: [.workspaceRead, .workspaceWrite, .shell],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: [.workspaceRead, .desktopSystemInput],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: [.workspaceRead],
+                trustMode: .trusted
+            )
+        )
+    }
+
     func test_desktopPresetCanExportWorkspaceFilesToDesktopDrop() {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .hermes,

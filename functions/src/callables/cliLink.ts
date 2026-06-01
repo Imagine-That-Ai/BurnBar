@@ -12,15 +12,19 @@ import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
 import { assertActiveBurnBarProEntitlement, REMOTE_MCP_TOKEN_HMAC_SECRET } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
+import { isSha256Hex, safeEqualHex } from "../hermesGateway.js";
+import {
+  assertCallableApprovalNotLocked,
+  checkPublicHttpRateLimit,
+  clientIpFromHttpRequest,
+  recordCallableApprovalFailure,
+} from "./publicRateLimit.js";
 
 function generateUserCode(): string {
   const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ23456789"; // Omit confusing chars: 0, 1, I, L
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    if (i === 4) code += "-";
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
+  const bytes = randomBytes(8);
+  const code = Array.from(bytes, (byte) => chars.charAt(byte % chars.length)).join("");
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
 
 /**
@@ -38,11 +42,13 @@ export const startCliLink = onRequest(
       return;
     }
     try {
+      await checkPublicHttpRateLimit(clientIpFromHttpRequest(req), "cli_link_start");
       const { clientType, displayName, deviceSecretHash } = req.body;
-      if (!deviceSecretHash || typeof deviceSecretHash !== "string") {
-        res.status(400).json({ error: "missing_device_secret_hash" });
+      if (!deviceSecretHash || typeof deviceSecretHash !== "string" || !isSha256Hex(deviceSecretHash)) {
+        res.status(400).json({ error: "invalid_device_secret_hash" });
         return;
       }
+      const normalizedDeviceSecretHash = deviceSecretHash.trim().toLowerCase();
 
       const deviceCode = randomBytes(24).toString("hex");
       const userCode = generateUserCode();
@@ -50,7 +56,7 @@ export const startCliLink = onRequest(
 
       await db.doc(`cli_link_sessions/${deviceCode}`).set({
         userCode,
-        deviceSecretHash,
+        deviceSecretHash: normalizedDeviceSecretHash,
         status: "pending",
         clientType: clientType || "cli",
         displayName: displayName || "CLI Session",
@@ -107,7 +113,7 @@ export const pollCliLink = onRequest(
 
       // Verify deviceSecretHash matches sha256(deviceSecret)
       const computedHash = createHash("sha256").update(deviceSecret).digest("hex");
-      if (computedHash !== data.deviceSecretHash) {
+      if (!safeEqualHex(computedHash, data.deviceSecretHash)) {
         res.status(403).json({ error: "invalid_secret" });
         return;
       }
@@ -161,6 +167,7 @@ export const completeCliLink = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before completing CLI link.");
     enforceHighRiskComputerUseCallable(request, uid);
+    await assertCallableApprovalNotLocked(uid, "cli_link_approve_fail");
     await assertActiveBurnBarProEntitlement(uid);
 
     const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
@@ -182,6 +189,7 @@ export const completeCliLink = onCall(
       .get();
 
     if (sessionsQuery.empty) {
+      await recordCallableApprovalFailure(uid, "cli_link_approve_fail");
       throw new HttpsError("not-found", "No pending link session found for this code.");
     }
 

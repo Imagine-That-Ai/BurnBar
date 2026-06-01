@@ -137,9 +137,9 @@ same `HermesService` build by toggling the transport factory.
 
 Two independent guards:
 
-1. **`IrohRelayFrameCodec.maxFrameBytes`** (default 256 KiB) — drops
-   frames before they hit the JSON decoder. Matches the Cloud Run relay
-   payload ceiling.
+1. **`IrohRelayFrameCodec.maxFrameBytes`** (default 512 KiB) — drops
+   frames before they hit the JSON decoder. The native Rust FFI layer also
+   enforces this ceiling before allocating receive buffers.
 2. **`HermesRealtimeRelayProtocol.maxFrameBytes`** — the existing in-app
    guard, kept identical so producers cannot silently exceed the
    transport limit.
@@ -183,8 +183,9 @@ prevent connection-hijacking. `IrohRelayPairing` solves this:
   with the Ed25519 key and writes the signed record to
   `/users/{uid}/iroh_pairing/{connectionId}`.
 * When iOS reads the record, `IrohPairingSignature.verify` checks the
-  signature against the published Ed25519 key, enforces a 24h freshness
-  window, and rejects malformed/tampered records. Only after a clean
+  signature against the published Ed25519 key, enforces a **3-minute** freshness
+  window (180s; aligned across iOS, Android, and `IROH_PAIRING_FRESHNESS_MS`),
+  and rejects malformed/tampered records. Only after a clean
   verification does iOS dial the `NodeId`.
 
 Firestore rules updates (Phase 2) restrict `/users/{uid}/iroh_pairing/*`

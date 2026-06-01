@@ -21,11 +21,8 @@ export const triggerVoIPCall = onCall(
     if (!data) {
       throw new HttpsError("invalid-argument", "Missing required call fields.");
     }
-    if (!data.voipDeviceToken && !data.androidDeviceId) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Either voipDeviceToken (APNs) or androidDeviceId (FCM) must be provided.",
-      );
+    if (!data.pairedDeviceId) {
+      throw new HttpsError("invalid-argument", "pairedDeviceId is required.");
     }
     if (!(await macHasActiveMediaEntitlement(request.auth.uid))) {
       throw new HttpsError("permission-denied", "Hosted Media Sync entitlement required to start a call.");
@@ -34,8 +31,7 @@ export const triggerVoIPCall = onCall(
     const firestore = getFirestore();
     const fanOut = await resolveFanOut({
       uid: request.auth.uid,
-      apnsToken: data.voipDeviceToken,
-      androidDeviceId: data.androidDeviceId,
+      pairedDeviceId: data.pairedDeviceId,
       firestore,
     });
 
@@ -90,7 +86,10 @@ export const triggerVoIPCall = onCall(
     }
 
     if (writes.length === 0) {
-      throw new HttpsError("failed-precondition", "No push channel available for the paired device.");
+      throw new HttpsError(
+        "failed-precondition",
+        "No push channel available for the paired device. Ensure the phone has registered push tokens.",
+      );
     }
 
     await Promise.all(writes);

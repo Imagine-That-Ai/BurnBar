@@ -192,6 +192,47 @@ jobs:
           fi
           echo "All AGENTS.md script references valid."
 
+  # ── Rust: cargo-deny on iroh crate (WS5) ─────────────────────────────────
+  rust-deny-fast:
+    name: Rust (cargo-deny)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: cargo deny check (openburnbar-iroh)
+        run: cd crates/openburnbar-iroh && cargo deny check
+
+  # ── Security vitest + iroh bindgen gate ───────────────────────────────────
+  functions-security-fast:
+    name: Functions (security vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: npm ci (functions)
+        working-directory: functions
+        run: npm ci
+
+      - name: Security vitest bundle
+        working-directory: functions
+        run: npm run test:security
+
+      - name: Verify iroh remoteNodeId in UniFFI bindings
+        run: bash scripts/ci/verify-iroh-remote-node-id-binding.sh
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate
@@ -203,6 +244,8 @@ jobs:
       - schema-drift
       - version-consistency
       - agents-md-fast
+      - rust-deny-fast
+      - functions-security-fast
     runs-on: ubuntu-latest
     if: always()
     steps:

@@ -84,12 +84,14 @@ public final class PhoneControlSender: @unchecked Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
         )
 
         var intentWithAuthority = intent
@@ -148,12 +150,14 @@ public final class PhoneControlSender: @unchecked Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
         )
         let frame = HermesRealtimeRelayFrame(
             type: .controlAgentGrantRequest,
@@ -214,12 +218,14 @@ public final class PhoneControlSender: @unchecked Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
         )
 
         var signedRequest = unsignedRequest
@@ -317,12 +323,14 @@ public final class PhoneControlSender: @unchecked Sendable {
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
         }
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
         )
         unsignedCredential.authority = authority
         let frame = HermesRealtimeRelayFrame(
@@ -395,12 +403,14 @@ public final class PhoneControlSender: @unchecked Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
         )
         var signedRequest = unsignedRequest
         signedRequest.authority = authority
@@ -459,12 +469,14 @@ public final class PhoneControlSender: @unchecked Sendable {
             throw SendError.signingFailed(error.localizedDescription)
         }
 
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         let authority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
         )
 
         var targetWithAuthority = target

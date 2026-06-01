@@ -68,40 +68,40 @@ interface ResolvedFanOut {
  */
 export async function resolveFanOut(args: {
   uid: string;
-  apnsToken?: string;
-  apnsTokenUpdatedAtMillis?: number;
-  androidDeviceId?: string;
+  pairedDeviceId: string;
   firestore?: FirebaseFirestore.Firestore;
 }): Promise<ResolvedFanOut> {
   const firestore = args.firestore ?? getFirestore();
-  const apnsToken = args.apnsToken?.trim();
-  const apnsUpdatedAt = args.apnsTokenUpdatedAtMillis ?? 0;
-  let resolvedApns = apnsToken;
-  let resolvedAndroidDeviceId = args.androidDeviceId?.trim();
-  let fcmToken: string | undefined;
-  if (resolvedAndroidDeviceId) {
-    const snap = await firestore.doc(`users/${args.uid}/devices/${resolvedAndroidDeviceId}`).get();
-    const data = snap.exists ? snap.data() : undefined;
-    fcmToken = isRecord(data) ? stringField(data, "fcm_token")?.trim() : undefined;
-    const fcmUpdatedAt = isRecord(data) ? Number(data.updated_at_millis ?? 0) : 0;
-    if (fcmToken) {
-      if (!resolvedApns) {
-        // Android only.
-      } else if (fcmUpdatedAt > apnsUpdatedAt) {
-        resolvedApns = undefined;
-      } else {
-        fcmToken = undefined;
-        resolvedAndroidDeviceId = undefined;
-      }
-    } else {
-      resolvedAndroidDeviceId = undefined;
-    }
+  const deviceId = args.pairedDeviceId?.trim() ?? "";
+  if (!deviceId) {
+    return {};
   }
-  return {
-    apnsToken: resolvedApns,
-    androidDeviceId: resolvedAndroidDeviceId,
-    fcmToken,
-  };
+  const snap = await firestore.doc(`users/${args.uid}/devices/${deviceId}`).get();
+  if (!snap.exists) {
+    return {};
+  }
+  const data = snap.data();
+  const apnsToken = isRecord(data)
+    ? (stringField(data, "voipDeviceToken") ?? stringField(data, "voip_token"))?.trim()
+    : undefined;
+  const fcmToken = isRecord(data) ? stringField(data, "fcm_token")?.trim() : undefined;
+  const platform = isRecord(data) ? stringField(data, "platform")?.trim().toLowerCase() : undefined;
+  if (platform === "android" || (fcmToken && !apnsToken)) {
+    return {
+      androidDeviceId: deviceId,
+      fcmToken,
+    };
+  }
+  if (apnsToken) {
+    return { apnsToken };
+  }
+  if (fcmToken) {
+    return {
+      androidDeviceId: deviceId,
+      fcmToken,
+    };
+  }
+  return {};
 }
 
 export async function macHasActiveMediaEntitlement(
