@@ -152,15 +152,15 @@ function buildConfig(): EnvConfig {
     googlePlayCloudProMonthlyProductID:
       process.env.GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID ??
       configString(googleplay, "cloud_pro_monthly_product_id") ??
-      "com.openburnbar.proMax.v2.monthly",
+      "com.openburnbar.promax.v2.monthly",
     googlePlayCloudProAnnualProductID:
       process.env.GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID ??
       configString(googleplay, "cloud_pro_annual_product_id") ??
-      "com.openburnbar.proMax.annual",
+      "com.openburnbar.promax.annual",
     googlePlayAgentControl100ActionsProductID:
       process.env.GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID ??
       configString(googleplay, "agent_control_100_actions_product_id") ??
-      "com.openburnbar.agentControl.actions100",
+      "com.openburnbar.agentcontrol.actions100",
     googlePlayFlooRelay50GBProductID:
       process.env.GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID ??
       configString(googleplay, "floo_relay_50gb_product_id") ??
