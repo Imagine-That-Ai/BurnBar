@@ -1,12 +1,31 @@
 package com.openburnbar.ui.you
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,9 +47,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CloudSyncDetailsView(
-    syncStore: CloudSyncHealthStore = viewModel()
-) {
+fun CloudSyncDetailsView(syncStore: CloudSyncHealthStore = viewModel()) {
     val health by syncStore.health.collectAsState()
     val isLoading by syncStore.isLoading.collectAsState()
     val lastPublishedAt by syncStore.lastPublishedAt.collectAsState()
@@ -46,17 +63,18 @@ fun CloudSyncDetailsView(
                         Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = PaddingValues(AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp)
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
         ) {
             item { StatusCard(health = health, isLoading = isLoading, onRefresh = { syncStore.refresh() }) }
             item { TimestampsCard(lastPublishedAt = lastPublishedAt, lastReadAt = lastReadAt) }
@@ -67,35 +85,38 @@ fun CloudSyncDetailsView(
 
 @Composable
 private fun StatusCard(health: CloudSyncHealth, isLoading: Boolean, onRefresh: () -> Unit) {
-    val (icon, tint) = when (health) {
-        CloudSyncHealth.HEALTHY -> "✓" to AuroraColors.success
-        CloudSyncHealth.SYNCING -> "↻" to AuroraColors.amber
-        CloudSyncHealth.OFFLINE -> "✕" to AuroraColors.warning
-        CloudSyncHealth.FIREBASE_UNAVAILABLE, CloudSyncHealth.APP_CHECK_BLOCKED -> "!" to AuroraColors.error
-        CloudSyncHealth.PERMISSION_DENIED -> "🔒" to AuroraColors.error
-        CloudSyncHealth.DEGRADED -> "~" to AuroraColors.warning
-        CloudSyncHealth.UNKNOWN -> "?" to MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-    }
+    val (icon, tint) =
+        when (health) {
+            CloudSyncHealth.HEALTHY -> "✓" to AuroraColors.success
+            CloudSyncHealth.SYNCING -> "↻" to AuroraColors.amber
+            CloudSyncHealth.OFFLINE -> "✕" to AuroraColors.warning
+            CloudSyncHealth.FIREBASE_UNAVAILABLE, CloudSyncHealth.APP_CHECK_BLOCKED -> "!" to AuroraColors.error
+            CloudSyncHealth.PERMISSION_DENIED -> "🔒" to AuroraColors.error
+            CloudSyncHealth.DEGRADED -> "~" to AuroraColors.warning
+            CloudSyncHealth.UNKNOWN -> "?" to MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        }
 
-    val detailText = when (health) {
-        CloudSyncHealth.UNKNOWN -> "Tap refresh to check the latest cloud state."
-        CloudSyncHealth.HEALTHY -> "Your mobile app can read the latest synced usage data."
-        CloudSyncHealth.SYNCING -> "Checking Firestore for the newest sync snapshot."
-        CloudSyncHealth.OFFLINE -> "Network unavailable. Check your connection."
-        CloudSyncHealth.PERMISSION_DENIED -> "You don't have permission to access this data."
-        CloudSyncHealth.APP_CHECK_BLOCKED -> "App Check verification failed."
-        CloudSyncHealth.FIREBASE_UNAVAILABLE -> "Firebase service is temporarily unavailable."
-        CloudSyncHealth.DEGRADED -> "Sync is slower than usual."
-    }
+    val detailText =
+        when (health) {
+            CloudSyncHealth.UNKNOWN -> "Tap refresh to check the latest cloud state."
+            CloudSyncHealth.HEALTHY -> "Your mobile app can read the latest synced usage data."
+            CloudSyncHealth.SYNCING -> "Checking Firestore for the newest sync snapshot."
+            CloudSyncHealth.OFFLINE -> "Network unavailable. Check your connection."
+            CloudSyncHealth.PERMISSION_DENIED -> "You don't have permission to access this data."
+            CloudSyncHealth.APP_CHECK_BLOCKED -> "App Check verification failed."
+            CloudSyncHealth.FIREBASE_UNAVAILABLE -> "Firebase service is temporarily unavailable."
+            CloudSyncHealth.DEGRADED -> "Sync is slower than usual."
+        }
 
     AuroraGlassCard {
         Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier
+                    modifier =
+                    Modifier
                         .size(44.dp)
                         .background(tint.copy(alpha = 0.16f), CircleShape),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(icon, color = tint, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.headline.sp)
                 }
@@ -132,13 +153,21 @@ private fun TimestampsCard(lastPublishedAt: java.util.Date?, lastReadAt: java.ut
 private fun PublisherCard(publisher: com.openburnbar.data.stores.CloudPublisherDevice?) {
     AuroraGlassCard {
         Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
-            Text("Publishing device", fontWeight = FontWeight.SemiBold, fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Publishing device",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = AuroraTypography.caption.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (publisher != null) {
                 DetailRow("Name", publisher.displayName.ifEmpty { "Unknown" })
                 DetailRow("Platform", publisher.platform)
-                DetailRow("Last seen", publisher.lastSeen?.let {
-                    SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(it)
-                } ?: "Never")
+                DetailRow(
+                    "Last seen",
+                    publisher.lastSeen?.let {
+                        SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(it)
+                    } ?: "Never",
+                )
             } else {
                 Text("No publishing device has written sync data yet.", fontSize = AuroraTypography.body.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -151,7 +180,7 @@ private fun DetailRow(title: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, fontSize = AuroraTypography.body.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, fontSize = AuroraTypography.caption.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)

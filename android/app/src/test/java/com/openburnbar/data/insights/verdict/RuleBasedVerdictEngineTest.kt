@@ -1,18 +1,22 @@
 package com.openburnbar.data.insights.verdict
 
-import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightDigest
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+private const val VAL_0_0001 = 0.0001
+private const val VAL_2_5 = 2.5
+private const val VAL_24 = 24
+private const val VAL_3 = 3
+private const val VAL_3_5 = 3.5
 
 /**
  * Android-side smoke tests for the Kotlin rule engine port.
@@ -23,7 +27,6 @@ import java.util.TimeZone
  * just verify the engine produces the same canonical shape Swift does.
  */
 class RuleBasedVerdictEngineTest {
-
     private val engine = RuleBasedVerdictEngine()
 
     private fun isoDate(daysAgo: Int): String {
@@ -40,90 +43,95 @@ class RuleBasedVerdictEngineTest {
         cacheReadTokens: Long = 9100,
         inputTokens: Long = 900,
         dailyCount: Int = 30,
-        anomalyZ: Double? = null
-    ): InsightDigest {
-        val daily = (0 until dailyCount).map { i ->
-            InsightDigest.DailyPoint(
-                day = isoDate(i),
-                costUSD = 4.0,
-                totalTokens = 8000,
-                sessionCount = 2,
-                perProvider = mapOf("anthropic" to 3.5)
-            )
-        }
-        val anomalies = anomalyZ?.let {
-            listOf(
-                InsightDigest.PrecomputedAnomaly(
-                    id = "anom-1",
-                    occurredAt = isoDate(0),
-                    label = "Cache drop on agentlens-mobile",
-                    score = it,
-                    detail = "Cache hit dropped 27 points"
-                )
-            )
-        } ?: emptyList()
-        return InsightDigest(
-            contentHash = "h",
-            generatedAt = isoDate(0),
-            windowStart = isoDate(1),
-            windowEnd = isoDate(0),
-            rowCount = sessionCount,
-            totals = InsightDigest.Totals(
-                costUSD = costUSD,
-                totalTokens = cacheReadTokens + inputTokens,
-                inputTokens = inputTokens,
-                outputTokens = 0, reasoningTokens = 0,
-                cacheReadTokens = cacheReadTokens, cacheCreationTokens = 0,
-                sessionCount = sessionCount
-            ),
-            providers = listOf(
-                InsightDigest.ProviderSnapshot(
-                    id = "anthropic",
-                    displayName = "Claude Code",
-                    costUSD = 3.5,
-                    totalTokens = 8000,
-                    sessionCount = 2,
-                    topModels = listOf("claude-sonnet-4-6"),
-                    topInferredTaskTitles = emptyList(),
-                    topKeyTools = emptyList()
-                )
-            ),
-            models = listOf(
-                InsightDigest.ModelSnapshot(
-                    id = "claude-sonnet-4-6",
-                    providerID = "anthropic",
-                    costUSD = 3.5,
-                    totalTokens = 8000,
-                    sessionCount = 2,
-                    avgCostPerSession = 1.75,
-                    cacheHitRate = 0.91,
-                    topInferredTaskTitles = emptyList(),
-                    topProjects = emptyList()
-                )
-            ),
-            projects = emptyList(),
-            devices = emptyList(),
-            daily = daily,
-            hourly = List(24) { 0 },
-            useCaseHistogram = listOf(
-                InsightDigest.UseCaseBin(id = "refactor", count = 5, costUSD = 1.5)
-            ),
-            agentFocusSignals = emptyList(),
-            modelFocusSignals = emptyList(),
-            quotaSnapshots = emptyList(),
-            operatingActions = emptyList(),
-            summaryRunsLog = emptyList(),
-            anomalies = anomalies
+        anomalyZ: Double? = null,
+    ): InsightDigest = InsightDigest(
+        contentHash = "h",
+        generatedAt = isoDate(0),
+        windowStart = isoDate(1),
+        windowEnd = isoDate(0),
+        rowCount = sessionCount,
+        totals = digestTotals(costUSD, sessionCount, cacheReadTokens, inputTokens),
+        providers = listOf(defaultProviderSnapshot()),
+        models = listOf(defaultModelSnapshot()),
+        projects = emptyList(),
+        devices = emptyList(),
+        daily = dailyPoints(dailyCount),
+        hourly = List(VAL_24) { 0 },
+        useCaseHistogram =
+        listOf(
+            InsightDigest.UseCaseBin(id = "refactor", count = 5, costUSD = 1.5),
+        ),
+        agentFocusSignals = emptyList(),
+        modelFocusSignals = emptyList(),
+        quotaSnapshots = emptyList(),
+        operatingActions = emptyList(),
+        summaryRunsLog = emptyList(),
+        anomalies = precomputedAnomalies(anomalyZ),
+    )
+
+    private fun dailyPoints(count: Int): List<InsightDigest.DailyPoint> = (0 until count).map { i ->
+        InsightDigest.DailyPoint(
+            day = isoDate(i),
+            costUSD = 4.0,
+            totalTokens = 8000,
+            sessionCount = 2,
+            perProvider = mapOf("anthropic" to VAL_3_5),
         )
     }
+
+    private fun precomputedAnomalies(anomalyZ: Double?): List<InsightDigest.PrecomputedAnomaly> = anomalyZ?.let {
+        listOf(
+            InsightDigest.PrecomputedAnomaly(
+                id = "anom-1",
+                occurredAt = isoDate(0),
+                label = "Cache drop on agentlens-mobile",
+                score = it,
+                detail = "Cache hit dropped 27 points",
+            ),
+        )
+    } ?: emptyList()
+
+    private fun digestTotals(costUSD: Double, sessionCount: Int, cacheReadTokens: Long, inputTokens: Long): InsightDigest.Totals = InsightDigest.Totals(
+        costUSD = costUSD,
+        totalTokens = cacheReadTokens + inputTokens,
+        inputTokens = inputTokens,
+        outputTokens = 0,
+        reasoningTokens = 0,
+        cacheReadTokens = cacheReadTokens,
+        cacheCreationTokens = 0,
+        sessionCount = sessionCount,
+    )
+
+    private fun defaultProviderSnapshot(): InsightDigest.ProviderSnapshot = InsightDigest.ProviderSnapshot(
+        id = "anthropic",
+        displayName = "Claude Code",
+        costUSD = 3.5,
+        totalTokens = 8000,
+        sessionCount = 2,
+        topModels = listOf("claude-sonnet-4-6"),
+        topInferredTaskTitles = emptyList(),
+        topKeyTools = emptyList(),
+    )
+
+    private fun defaultModelSnapshot(): InsightDigest.ModelSnapshot = InsightDigest.ModelSnapshot(
+        id = "claude-sonnet-4-6",
+        providerID = "anthropic",
+        costUSD = 3.5,
+        totalTokens = 8000,
+        sessionCount = 2,
+        avgCostPerSession = 1.75,
+        cacheHitRate = 0.91,
+        topInferredTaskTitles = emptyList(),
+        topProjects = emptyList(),
+    )
 
     @Test
     fun producesExactlyThreeRingsInCanonicalOrder() {
         val v = engine.produce(digest = makeDigest(), window = VerdictWindow.today)
-        assertEquals(3, v.rings.size)
+        assertEquals(VAL_3, v.rings.size)
         assertEquals(
             listOf(VerdictRing.Identity.spend, VerdictRing.Identity.cache, VerdictRing.Identity.sessions),
-            v.rings.map { it.identity }
+            v.rings.map { it.identity },
         )
     }
 
@@ -131,7 +139,7 @@ class RuleBasedVerdictEngineTest {
     fun anomalyAtOrAboveZThresholdIsSurfaced() {
         val v = engine.produce(digest = makeDigest(anomalyZ = 2.5), window = VerdictWindow.today)
         val anomaly = requireNotNull(v.anomaly)
-        assertEquals(2.5, anomaly.zScore, 0.0001)
+        assertEquals(VAL_2_5, anomaly.zScore, VAL_0_0001)
         assertEquals(VerdictAcceptAction.Intent.investigate, anomaly.acceptAction?.intent)
     }
 

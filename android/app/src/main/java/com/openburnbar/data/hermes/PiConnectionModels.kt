@@ -6,11 +6,11 @@ import com.google.firebase.firestore.PropertyName
 enum class PiConnectionMode(val token: String) {
     LOCAL("local"),
     DIRECT_URL("directURL"),
-    RELAY_LINK("relayLink");
+    RELAY_LINK("relayLink"),
+    ;
 
     companion object {
-        fun fromToken(value: String?): PiConnectionMode =
-            values().firstOrNull { it.token == value } ?: LOCAL
+        fun fromToken(value: String?): PiConnectionMode = values().firstOrNull { it.token == value } ?: LOCAL
     }
 }
 
@@ -20,11 +20,11 @@ enum class PiConnectionStatus(val token: String) {
     OFFLINE("offline"),
     UNAUTHORIZED("unauthorized"),
     REVOKED("revoked"),
-    DEGRADED("degraded");
+    DEGRADED("degraded"),
+    ;
 
     companion object {
-        fun fromToken(value: String?): PiConnectionStatus =
-            values().firstOrNull { it.token == value } ?: OFFLINE
+        fun fromToken(value: String?): PiConnectionStatus = values().firstOrNull { it.token == value } ?: OFFLINE
     }
 }
 
@@ -37,7 +37,7 @@ data class PiAgentInstanceRecord(
     var modelName: String? = null,
     var capabilities: List<String> = emptyList(),
     var lastSeenAt: String? = null,
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 1,
 ) {
     val resolvedStatus: PiConnectionStatus
         get() = PiConnectionStatus.fromToken(status)
@@ -57,7 +57,7 @@ data class PiAgentRuntimeModelOption(
     @get:PropertyName("instanceID")
     @set:PropertyName("instanceID")
     var instanceId: String? = null,
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 1,
 )
 
 @IgnoreExtraProperties
@@ -85,7 +85,7 @@ data class PiConnectionRecord(
     var createdAt: String? = null,
     var updatedAt: String? = null,
     var lastSeenAt: String? = null,
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 1,
 ) {
     val resolvedMode: PiConnectionMode
         get() = PiConnectionMode.fromToken(mode)
@@ -94,14 +94,15 @@ data class PiConnectionRecord(
         get() = PiConnectionStatus.fromToken(status)
 
     companion object {
-        val localDefault = PiConnectionRecord(
-            id = "local-pi",
-            displayName = "Local Pi",
-            mode = PiConnectionMode.LOCAL.token,
-            endpointURL = "http://127.0.0.1:8765",
-            status = PiConnectionStatus.OFFLINE.token,
-            capabilities = listOf("chat_completions")
-        )
+        val localDefault =
+            PiConnectionRecord(
+                id = "local-pi",
+                displayName = "Local Pi",
+                mode = PiConnectionMode.LOCAL.token,
+                endpointURL = "http://127.0.0.1:8765",
+                status = PiConnectionStatus.OFFLINE.token,
+                capabilities = listOf("chat_completions"),
+            )
     }
 }
 
@@ -109,7 +110,7 @@ data class PiConnectionRecord(
 data class PiPairingSessionRecord(
     var id: String = "",
     var code: String = "",
-    var expiresAt: String = ""
+    var expiresAt: String = "",
 )
 
 @IgnoreExtraProperties
@@ -130,16 +131,16 @@ data class PiAgentSessionSummary(
     var toolCallCount: Int = 0,
     var inputTokens: Int = 0,
     var outputTokens: Int = 0,
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 1,
 )
 
 enum class RuntimeConnectionPreferenceKind(val token: String) {
     HERMES("hermes"),
-    PI_AGENT("piAgent");
+    PI_AGENT("piAgent"),
+    ;
 
     companion object {
-        fun fromToken(value: String?): RuntimeConnectionPreferenceKind =
-            values().firstOrNull { it.token == value } ?: HERMES
+        fun fromToken(value: String?): RuntimeConnectionPreferenceKind = values().firstOrNull { it.token == value } ?: HERMES
     }
 }
 
@@ -161,7 +162,7 @@ data class RuntimeConnectionPreferenceRecord(
     var selectedModelId: String? = null,
     var createdAt: String? = null,
     var updatedAt: String? = null,
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 1,
 ) {
     val resolvedRuntimeKind: RuntimeConnectionPreferenceKind
         get() = RuntimeConnectionPreferenceKind.fromToken(runtimeKind)
@@ -174,7 +175,7 @@ enum class PiAgentRelayOperation(val token: String) {
     CLI_AGENT_SESSION_ACTION("cliAgentSessionAction"),
     MODELS("models"),
     SESSIONS("sessions"),
-    SESSION_DETAIL("sessionDetail")
+    SESSION_DETAIL("sessionDetail"),
 }
 
 enum class PiAgentRelayRequestStatus(val token: String) {
@@ -184,13 +185,13 @@ enum class PiAgentRelayRequestStatus(val token: String) {
     COMPLETED("completed"),
     FAILED("failed"),
     CANCELLED("cancelled"),
-    EXPIRED("expired")
+    EXPIRED("expired"),
 }
 
 enum class PiAgentRelayChunkKind(val token: String) {
     SSE("sse"),
     DATA("data"),
-    ERROR("error")
+    ERROR("error"),
 }
 
 enum class AssistantRuntimeID(val token: String, val displayName: String, val glyph: String) {
@@ -203,14 +204,14 @@ enum class AssistantRuntimeID(val token: String, val displayName: String, val gl
     FORGE("forge", "Forge", "\u25B0"),
     ANTIGRAVITY("antigravity", "Antigravity", "\u2727"),
     GROK("grok", "Grok", "\u25CE"),
-    CURSOR_AGENT("cursorAgent", "Cursor Agent", "\u25A3");
+    CURSOR_AGENT("cursorAgent", "Cursor Agent", "\u25A3"),
+    ;
 
     /** True for runtimes that have a first-class Android surface today. */
     val hasMobileChatSurface: Boolean get() = true
 
     companion object {
-        fun fromToken(value: String?): AssistantRuntimeID =
-            values().firstOrNull { it.token == value } ?: HERMES
+        fun fromToken(value: String?): AssistantRuntimeID = values().firstOrNull { it.token == value } ?: HERMES
 
         /** Default-visible tiles for a fresh install. */
         val defaultEnabledTiles: Set<AssistantRuntimeID> = values().toSet()
@@ -227,7 +228,8 @@ enum class HermesSubProvider(val token: String, val displayName: String, val def
     ZAI("zai", "Z.ai", "glm-4.6", "Z"),
     KIMI("kimi", "Kimi", "kimi-k2", "K"),
     MINIMAX("minimax", "MiniMax", "minimax-m1", "M"),
-    OLLAMA("ollama", "Ollama", "llama3", "\u2299");
+    OLLAMA("ollama", "Ollama", "llama3", "\u2299"),
+    ;
 
     companion object {
         fun fromToken(value: String?): HermesSubProvider? {

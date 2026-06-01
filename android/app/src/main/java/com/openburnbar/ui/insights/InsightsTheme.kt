@@ -1,10 +1,5 @@
 package com.openburnbar.ui.insights
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.ui.theme.AuroraColors
@@ -76,7 +71,7 @@ object InsightsColors {
 object InsightsSpacing {
     val widgetPadding = AuroraSpacing.sm // 8dp
     val widgetGap = AuroraSpacing.md // 12dp
-    val cardRadius = 8 // dp
-    val chartHeight = 128 // dp
-    val sparklineHeight = 22 // dp
+    const val cardRadius = 8 // dp
+    const val chartHeight = 128 // dp
+    const val sparklineHeight = 22 // dp
 }

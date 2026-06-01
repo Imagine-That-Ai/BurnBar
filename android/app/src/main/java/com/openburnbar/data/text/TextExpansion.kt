@@ -2,11 +2,11 @@ package com.openburnbar.data.text
 
 enum class TextExpansionMode(val wireName: String) {
     STATIC("static"),
-    LLM_REWRITE("llm_rewrite");
+    LLM_REWRITE("llm_rewrite"),
+    ;
 
     companion object {
-        fun fromWireName(value: String): TextExpansionMode =
-            entries.firstOrNull { it.wireName == value } ?: STATIC
+        fun fromWireName(value: String): TextExpansionMode = entries.firstOrNull { it.wireName == value } ?: STATIC
     }
 }
 
@@ -22,21 +22,13 @@ data class TextExpansionScope(
     val bundleIdentifiers: Set<String> = emptySet(),
     val threadIds: Set<String> = emptySet(),
 ) {
-    fun allows(
-        surface: TextExpansionSurface,
-        bundleIdentifier: String? = null,
-        threadId: String? = null,
-    ): Boolean {
-        if (!surfaces.contains(surface)) return false
-        if (bundleIdentifiers.isNotEmpty()) {
-            val bundle = bundleIdentifier ?: return false
-            if (bundleIdentifiers.none { it.equals(bundle, ignoreCase = true) }) return false
-        }
-        if (threadIds.isNotEmpty()) {
-            val thread = threadId ?: return false
-            if (!threadIds.contains(thread)) return false
-        }
-        return true
+    fun allows(surface: TextExpansionSurface, bundleIdentifier: String? = null, threadId: String? = null): Boolean {
+        val bundleAllowed =
+            bundleIdentifiers.isEmpty() ||
+                bundleIdentifier != null &&
+                bundleIdentifiers.any { it.equals(bundleIdentifier, ignoreCase = true) }
+        val threadAllowed = threadIds.isEmpty() || threadId != null && threadIds.contains(threadId)
+        return surfaces.contains(surface) && bundleAllowed && threadAllowed
     }
 }
 
@@ -92,8 +84,7 @@ data class TextExpansionResult(
 )
 
 object TextExpansionMatcher {
-    fun isBoundary(char: Char): Boolean =
-        char.isWhitespace() || (isPunctuation(char) && char != '&' && char != '_' && char != '-')
+    fun isBoundary(char: Char): Boolean = char.isWhitespace() || isPunctuation(char) && char != '&' && char != '_' && char != '-'
 
     fun match(
         text: String,
@@ -104,11 +95,11 @@ object TextExpansionMatcher {
         cursor: Int = text.length,
         expandWhenUnambiguous: Boolean = true,
     ): TextExpansionMatch? {
-        if (cursor <= 0 || cursor > text.length) return null
-        val active = snippets.filter {
-            it.isActive && it.scope.allows(surface, bundleIdentifier, threadId)
-        }
-        if (active.isEmpty()) return null
+        val active =
+            snippets.filter {
+                it.isActive && it.scope.allows(surface, bundleIdentifier, threadId)
+            }
+        if (cursor <= 0 || cursor > text.length || active.isEmpty()) return null
 
         val last = text[cursor - 1]
         val hasBoundary = isBoundary(last)
@@ -120,23 +111,27 @@ object TextExpansionMatcher {
             tokenStart -= 1
         }
         val token = text.substring(tokenStart, tokenEnd)
-        if (!token.startsWith(TextExpansionTrigger.PREFIX)) return null
         val canonical = TextExpansionTrigger.canonicalName(token)
-        if (canonical.isBlank()) return null
-
-        val snippet = active.firstOrNull { it.canonicalTrigger == canonical } ?: return null
-        if (!hasBoundary && !expandWhenUnambiguous) return null
-        if (!hasBoundary && active.any { it.canonicalTrigger != canonical && it.canonicalTrigger.startsWith(canonical) }) {
-            return null
+        val snippet = active.firstOrNull { it.canonicalTrigger == canonical }
+        val ambiguousPrefix =
+            !hasBoundary &&
+                active.any { it.canonicalTrigger != canonical && it.canonicalTrigger.startsWith(canonical) }
+        val canExpand =
+            token.startsWith(TextExpansionTrigger.PREFIX) &&
+                canonical.isNotBlank() &&
+                snippet != null &&
+                (hasBoundary || expandWhenUnambiguous) &&
+                !ambiguousPrefix
+        return snippet?.takeIf { canExpand }?.let { resolved ->
+            TextExpansionMatch(
+                snippet = resolved,
+                token = token,
+                start = tokenStart,
+                end = tokenEnd,
+                boundary = if (hasBoundary) last else null,
+                requiresPreview = resolved.mode == TextExpansionMode.LLM_REWRITE,
+            )
         }
-        return TextExpansionMatch(
-            snippet = snippet,
-            token = token,
-            start = tokenStart,
-            end = tokenEnd,
-            boundary = if (hasBoundary) last else null,
-            requiresPreview = snippet.mode == TextExpansionMode.LLM_REWRITE,
-        )
     }
 
     fun replace(text: String, match: TextExpansionMatch, replacement: String = match.snippet.body): String =
@@ -151,8 +146,9 @@ object TextExpansionMatcher {
         cursor: Int = text.length,
         expandWhenUnambiguous: Boolean = true,
     ): TextExpansionResult? {
-        val match = match(text, snippets, surface, bundleIdentifier, threadId, cursor, expandWhenUnambiguous)
-            ?: return null
+        val match =
+            match(text, snippets, surface, bundleIdentifier, threadId, cursor, expandWhenUnambiguous)
+                ?: return null
         if (match.requiresPreview) return null
         return TextExpansionResult(replace(text, match), match)
     }

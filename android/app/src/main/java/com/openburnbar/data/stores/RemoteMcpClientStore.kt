@@ -23,23 +23,25 @@ data class RemoteMcpClientRecord(
     val grantMode: String,
     val createdAt: Date?,
     val lastUsedAt: Date?,
-    val revokedAt: Date?
+    val revokedAt: Date?,
 ) {
     val isRevoked: Boolean get() = revokedAt != null
 
     val displayType: String get() = clientType.ifBlank { "generic MCP" }
 
     val scopeSummary: String
-        get() = allowedScopes.takeIf { it.isNotEmpty() }?.sorted()?.joinToString(", ")
-            ?: "No scopes recorded"
+        get() =
+            allowedScopes.takeIf { it.isNotEmpty() }?.sorted()?.joinToString(", ")
+                ?: "No scopes recorded"
 
     val modeSummary: String
-        get() = when (grantMode) {
-            "sealed_only" -> "Sealed only"
-            "local_decrypt_shim" -> "Local decrypt shim"
-            "remote_readable_explicit_opt_in" -> "Remote readable opt-in"
-            else -> grantMode.ifBlank { "Local decrypt shim" }.replace("_", " ")
-        }
+        get() =
+            when (grantMode) {
+                "sealed_only" -> "Sealed only"
+                "local_decrypt_shim" -> "Local decrypt shim"
+                "remote_readable_explicit_opt_in" -> "Remote readable opt-in"
+                else -> grantMode.ifBlank { "Local decrypt shim" }.replace("_", " ")
+            }
 }
 
 class RemoteMcpClientStore : ViewModel() {
@@ -73,21 +75,23 @@ class RemoteMcpClientStore : ViewModel() {
         }
 
         _isLoading.value = true
-        listener = db.collection("users").document(uid)
-            .collection("remote_mcp_clients")
-            .orderBy("updatedAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                _isLoading.value = false
-                if (error != null) {
-                    _clients.value = emptyList()
-                    _error.value = error.localizedMessage
-                    return@addSnapshotListener
+        listener =
+            db.collection("users").document(uid)
+                .collection("remote_mcp_clients")
+                .orderBy("updatedAt", Query.Direction.DESCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    _isLoading.value = false
+                    if (error != null) {
+                        _clients.value = emptyList()
+                        _error.value = error.localizedMessage
+                        return@addSnapshotListener
+                    }
+                    _clients.value =
+                        snapshot?.documents
+                            ?.mapNotNull { doc -> decode(doc.id, doc.data.orEmpty()) }
+                            ?.sortedByDescending { it.lastUsedAt ?: it.createdAt ?: Date(0) }
+                            .orEmpty()
                 }
-                _clients.value = snapshot?.documents
-                    ?.mapNotNull { doc -> decode(doc.id, doc.data.orEmpty()) }
-                    ?.sortedByDescending { it.lastUsedAt ?: it.createdAt ?: Date(0) }
-                    .orEmpty()
-            }
     }
 
     fun stopListening() {
@@ -103,7 +107,7 @@ class RemoteMcpClientStore : ViewModel() {
             _error.value = null
             try {
                 functions.revokeRemoteMcpClient(client.id)
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
                 _error.value = e.localizedMessage
             } finally {
                 _revokingClientId.value = null
@@ -119,14 +123,16 @@ class RemoteMcpClientStore : ViewModel() {
 
     private fun decode(documentId: String, data: Map<String, Any>): RemoteMcpClientRecord {
         val clientId = (data["clientId"] as? String)?.trim().orEmpty().ifBlank { documentId }
-        val displayName = (data["displayName"] as? String)?.trim().orEmpty().ifBlank {
-            "OpenBurnBar MCP client"
-        }
+        val displayName =
+            (data["displayName"] as? String)?.trim().orEmpty().ifBlank {
+                "OpenBurnBar MCP client"
+            }
         val clientType = (data["clientType"] as? String)?.trim().orEmpty()
         val scopes = (data["allowedScopes"] as? List<*>)?.filterIsInstance<String>().orEmpty()
-        val grantMode = (data["grantMode"] as? String)?.trim().orEmpty().ifBlank {
-            "local_decrypt_shim"
-        }
+        val grantMode =
+            (data["grantMode"] as? String)?.trim().orEmpty().ifBlank {
+                "local_decrypt_shim"
+            }
 
         return RemoteMcpClientRecord(
             id = clientId,
@@ -136,7 +142,7 @@ class RemoteMcpClientStore : ViewModel() {
             grantMode = grantMode,
             createdAt = dateValue(data["createdAt"]),
             lastUsedAt = dateValue(data["lastUsedAt"]),
-            revokedAt = dateValue(data["revokedAt"])
+            revokedAt = dateValue(data["revokedAt"]),
         )
     }
 
@@ -144,9 +150,10 @@ class RemoteMcpClientStore : ViewModel() {
         is Timestamp -> value.toDate()
         is Date -> value
         is Number -> Date(value.toLong() * 1000L)
-        is String -> runCatching {
-            java.time.Instant.parse(value).let(Date::from)
-        }.getOrNull()
+        is String ->
+            runCatching {
+                java.time.Instant.parse(value).let(Date::from)
+            }.getOrNull()
         else -> null
     }
 }

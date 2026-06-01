@@ -23,18 +23,16 @@ import com.openburnbar.ui.theme.AuroraColors
  * `useImagePicker = true` parameter.
  */
 @Composable
-fun PaperclipButton(
-    onPicked: (Uri) -> Unit,
-    modifier: Modifier = Modifier,
-    useImagePicker: Boolean = false,
-) {
-    val documentPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let(onPicked) }
+fun PaperclipButton(onPicked: (Uri) -> Unit, modifier: Modifier = Modifier, useImagePicker: Boolean = false) {
+    val documentPicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri -> uri?.let(onPicked) }
 
-    val imagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> uri?.let(onPicked) }
+    val imagePicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.PickVisualMedia(),
+        ) { uri -> uri?.let(onPicked) }
 
     IconButton(
         onClick = {

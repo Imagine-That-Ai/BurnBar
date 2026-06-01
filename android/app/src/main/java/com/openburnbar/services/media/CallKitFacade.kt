@@ -26,23 +26,24 @@ import android.telecom.TelecomManager
  * `registerPhoneAccount`; subsequent calls reuse the handle.
  */
 class CallKitFacade(private val context: Context) {
-
     fun register(): PhoneAccountHandle? {
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager ?: return null
         val handle = phoneAccountHandle(context)
-        val existing = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            telecom.getPhoneAccount(handle)
-        } else {
-            null
-        }
+        val existing =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                telecom.getPhoneAccount(handle)
+            } else {
+                null
+            }
         if (existing != null) return handle
 
-        val account = PhoneAccount.builder(handle, "OpenBurnBar Mercury")
-            .setShortDescription("Mac → Android Mercury calls")
-            .setCapabilities(
-                PhoneAccount.CAPABILITY_SELF_MANAGED or PhoneAccount.CAPABILITY_VIDEO_CALLING
-            )
-            .build()
+        val account =
+            PhoneAccount.builder(handle, "OpenBurnBar Mercury")
+                .setShortDescription("Mac → Android Mercury calls")
+                .setCapabilities(
+                    PhoneAccount.CAPABILITY_SELF_MANAGED or PhoneAccount.CAPABILITY_VIDEO_CALLING,
+                )
+                .build()
         runCatching { telecom.registerPhoneAccount(account) }
         return handle
     }
@@ -50,9 +51,10 @@ class CallKitFacade(private val context: Context) {
     fun addIncomingCall(connectionId: String) {
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager ?: return
         val handle = register() ?: return
-        val extras = Bundle().apply {
-            putString(CONNECTION_ID_KEY, connectionId)
-        }
+        val extras =
+            Bundle().apply {
+                putString(CONNECTION_ID_KEY, connectionId)
+            }
         runCatching { telecom.addNewIncomingCall(handle, extras) }
     }
 
@@ -60,10 +62,11 @@ class CallKitFacade(private val context: Context) {
     fun cancelIncomingCall(connectionId: String) {
         // Hand-off to the broadcast-driven decline path so the
         // foreground service stays the single owner of call lifecycle.
-        val intent = android.content.Intent(IncomingCallActivity.ACTION_BROADCAST_DECLINE).apply {
-            setPackage(context.packageName)
-            putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
-        }
+        val intent =
+            android.content.Intent(IncomingCallActivity.ACTION_BROADCAST_DECLINE).apply {
+                setPackage(context.packageName)
+                putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
+            }
         context.sendBroadcast(intent)
     }
 

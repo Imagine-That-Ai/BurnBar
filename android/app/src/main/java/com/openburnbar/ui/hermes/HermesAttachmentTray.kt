@@ -7,18 +7,36 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,31 +60,33 @@ fun HermesAttachmentTray(
     attachments: List<HermesAttachment>,
     onAddAttachment: (HermesAttachment) -> Unit,
     onRemoveAttachment: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
 
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { onAddAttachment(buildAttachment(context, it, fallbackName = "image.jpg", fallbackMime = "image/jpeg")) }
-    }
+    val photoPicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent(),
+        ) { uri: Uri? ->
+            uri?.let { onAddAttachment(buildAttachment(context, it, fallbackName = "image.jpg", fallbackMime = "image/jpeg")) }
+        }
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let { onAddAttachment(buildAttachment(context, it, fallbackName = "file", fallbackMime = "application/octet-stream")) }
-    }
+    val filePicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri: Uri? ->
+            uri?.let { onAddAttachment(buildAttachment(context, it, fallbackName = "file", fallbackMime = "application/octet-stream")) }
+        }
 
     Column(modifier = modifier.fillMaxWidth()) {
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             items(attachments) { attachment ->
                 AttachmentChip(
                     attachment = attachment,
-                    onRemove = { onRemoveAttachment(attachment.id) }
+                    onRemove = { onRemoveAttachment(attachment.id) },
                 )
             }
         }
@@ -75,126 +95,137 @@ fun HermesAttachmentTray(
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             AttachmentActionChip(
                 icon = Icons.Filled.Image,
                 label = "Photo",
-                onClick = { photoPicker.launch("image/*") }
+                onClick = { photoPicker.launch("image/*") },
             )
             AttachmentActionChip(
                 icon = Icons.Filled.AttachFile,
                 label = "File",
-                onClick = { filePicker.launch(arrayOf("*/*")) }
+                onClick = { filePicker.launch(arrayOf("*/*")) },
             )
         }
     }
 }
 
 @Composable
-private fun AttachmentChip(
-    attachment: HermesAttachment,
-    onRemove: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val isImage = attachment.mimeType.startsWith("image/")
-    var thumbnail by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-
-    LaunchedEffect(attachment.uriString) {
-        if (isImage && attachment.uriString != null) {
-            try {
-                val uri = Uri.parse(attachment.uriString)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val bitmap = BitmapFactory.decodeStream(stream)
-                    thumbnail = bitmap?.asImageBitmap()
-                }
-            } catch (_: Exception) {
-            }
-        }
-    }
-
+private fun AttachmentChip(attachment: HermesAttachment, onRemove: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .width(80.dp)
-                .clip(RoundedCornerShape(AuroraRadius.md.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
-                .padding(AuroraSpacing.sm.dp)
-        ) {
-            val previewThumbnail = thumbnail
-            if (previewThumbnail != null) {
-                Image(
-                    bitmap = previewThumbnail,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(AuroraRadius.sm.dp))
-                )
-            } else {
-                Icon(
-                    imageVector = if (isImage) Icons.Filled.Image else Icons.Filled.InsertDriveFile,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = AuroraColors.hermesMercury
-                )
-            }
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-            Text(
-                text = attachment.fileName,
-                fontSize = AuroraTypography.tiny.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        AttachmentChipBody(attachment = attachment)
         IconButton(
             onClick = onRemove,
-            modifier = Modifier
+            modifier =
+            Modifier
                 .size(20.dp)
                 .align(Alignment.TopEnd)
                 .offset(x = 4.dp, y = (-4).dp)
-                .background(AuroraColors.error, CircleShape)
+                .background(AuroraColors.error, CircleShape),
         ) {
             Icon(
                 Icons.Filled.Close,
                 contentDescription = "Remove",
                 tint = Color.White,
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(12.dp),
             )
         }
     }
 }
 
 @Composable
-private fun AttachmentActionChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun AttachmentChipBody(attachment: HermesAttachment) {
+    val isImage = attachment.mimeType.startsWith("image/")
+    var thumbnail by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    val context = LocalContext.current
+
+    LaunchedEffect(attachment.uriString) {
+        if (isImage && attachment.uriString != null) {
+            thumbnail = loadAttachmentThumbnail(context, attachment.uriString)
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier =
+        Modifier
+            .width(80.dp)
+            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+            .padding(AuroraSpacing.sm.dp),
+    ) {
+        AttachmentChipPreview(isImage = isImage, thumbnail = thumbnail)
+        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        Text(
+            text = attachment.fileName,
+            fontSize = AuroraTypography.tiny.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AttachmentChipPreview(isImage: Boolean, thumbnail: androidx.compose.ui.graphics.ImageBitmap?) {
+    if (thumbnail != null) {
+        Image(
+            bitmap = thumbnail,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier =
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(AuroraRadius.sm.dp)),
+        )
+    } else {
+        Icon(
+            imageVector = if (isImage) Icons.Filled.Image else Icons.Filled.InsertDriveFile,
+            contentDescription = null,
+            modifier = Modifier.size(32.dp),
+            tint = AuroraColors.hermesMercury,
+        )
+    }
+}
+
+private suspend fun loadAttachmentThumbnail(
+    context: android.content.Context,
+    uriString: String,
+): androidx.compose.ui.graphics.ImageBitmap? {
+    return try {
+        val uri = Uri.parse(uriString)
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream)?.asImageBitmap()
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@Composable
+private fun AttachmentActionChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(AuroraRadius.full.dp))
             .clickable(onClick = onClick)
             .background(AuroraColors.hermesMercury.copy(alpha = 0.12f))
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)
+            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(16.dp),
-            tint = AuroraColors.hermesAureate
+            tint = AuroraColors.hermesAureate,
         )
         Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
         Text(
             text = label,
             fontSize = AuroraTypography.caption.sp,
             fontWeight = FontWeight.SemiBold,
-            color = AuroraColors.hermesAureate
+            color = AuroraColors.hermesAureate,
         )
     }
 }
@@ -224,12 +255,7 @@ private fun getFileName(context: android.content.Context, uri: Uri): String? {
  * encoder falls back to `[unreadable attachment ...]` for every
  * attachment — silently breaking multimodal sends.
  */
-private fun buildAttachment(
-    context: android.content.Context,
-    uri: Uri,
-    fallbackName: String,
-    fallbackMime: String
-): HermesAttachment {
+private fun buildAttachment(context: android.content.Context, uri: Uri, fallbackName: String, fallbackMime: String): HermesAttachment {
     val displayName = getFileName(context, uri) ?: fallbackName
     val mime = context.contentResolver.getType(uri) ?: fallbackMime
     val materialised = HermesAttachmentLoader.materialise(context, uri, displayName)
@@ -239,6 +265,6 @@ private fun buildAttachment(
         mimeType = mime,
         uriString = uri.toString(),
         absolutePath = materialised,
-        sizeBytes = size
+        sizeBytes = size,
     )
 }

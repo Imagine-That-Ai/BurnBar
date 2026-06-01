@@ -6,6 +6,11 @@ import com.openburnbar.irohrelay.IrohBlobBackend
 import com.openburnbar.irohrelay.IrohBlobBackendError
 import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -14,11 +19,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.UUID
 
 /**
  * Transport-agnostic Mercury file transfer driver. 1:1 Kotlin port of
@@ -56,10 +56,15 @@ class MediaFileTransferService(
 
     sealed class ServiceError(message: String) : RuntimeException(message) {
         object BackendUnavailable : ServiceError("Iroh blob backend is unavailable.")
+
         object NotBootstrapped : ServiceError("Mercury blob backend has not been bootstrapped yet.")
+
         data class PublishFailed(val detail: String) : ServiceError("Publish failed: $detail")
+
         data class FetchFailed(val detail: String) : ServiceError("Fetch failed: $detail")
+
         data class LocalFileMissing(val path: String) : ServiceError("Missing file: $path")
+
         data class InvalidTicket(val detail: String) : ServiceError("Invalid ticket: $detail")
     }
 
@@ -76,16 +81,17 @@ class MediaFileTransferService(
             if (pending != null) {
                 return pending.await()
             }
-            val deferred = scope.async {
-                ensureDirectoryExists(configuration.storeDirectory)
-                ensureDirectoryExists(configuration.inboxDirectory)
-                val secret = configuration.secretKeyProvider()
-                backend.bootstrap(
-                    secret = secret.raw,
-                    storeDirectoryPath = configuration.storeDirectory.absolutePath,
-                    relayURL = configuration.relayURL,
-                )
-            }
+            val deferred =
+                scope.async {
+                    ensureDirectoryExists(configuration.storeDirectory)
+                    ensureDirectoryExists(configuration.inboxDirectory)
+                    val secret = configuration.secretKeyProvider()
+                    backend.bootstrap(
+                        secret = secret.raw,
+                        storeDirectoryPath = configuration.storeDirectory.absolutePath,
+                        relayURL = configuration.relayURL,
+                    )
+                }
             inflightBootstrap = deferred
             try {
                 val identity = deferred.await()
@@ -102,37 +108,39 @@ class MediaFileTransferService(
         if (!localFile.exists()) throw ServiceError.LocalFileMissing(localFile.absolutePath)
         bootstrap()
 
-        val ticketText: String = try {
-            backend.publishBlob(localFile.absolutePath)
-        } catch (err: IrohBlobBackendError) {
-            throw ServiceError.PublishFailed(err.message ?: err.javaClass.simpleName)
-        }
+        val ticketText: String =
+            try {
+                backend.publishBlob(localFile.absolutePath)
+            } catch (err: IrohBlobBackendError) {
+                throw ServiceError.PublishFailed(err.message ?: err.javaClass.simpleName)
+                    .also { it.initCause(err) }
+            }
 
         val mime = inferMime(localFile)
-        val manifest = HermesRealtimeRelayAttachmentManifest(
-            manifestId = "att_" + UUID.randomUUID().toString().lowercase(),
-            blobHash = ticketText,
-            filename = localFile.name,
-            mime = mime,
-            size = localFile.length(),
-            peerDeviceId = peerDeviceID,
-            createdAt = isoDate(System.currentTimeMillis()),
-        )
+        val manifest =
+            HermesRealtimeRelayAttachmentManifest(
+                manifestId = "att_" + UUID.randomUUID().toString().lowercase(),
+                blobHash = ticketText,
+                filename = localFile.name,
+                mime = mime,
+                size = localFile.length(),
+                peerDeviceId = peerDeviceID,
+                createdAt = isoDate(System.currentTimeMillis()),
+            )
         return PublishResult(manifest = manifest, ticketText = ticketText)
     }
 
     /** Fetch a peer's blob into the inbox directory and return the destination URL + transfer stats. */
-    suspend fun fetch(
-        ticketText: String,
-        manifest: HermesRealtimeRelayAttachmentManifest,
-    ): Pair<File, BlobTransferStats> {
+    suspend fun fetch(ticketText: String, manifest: HermesRealtimeRelayAttachmentManifest): Pair<File, BlobTransferStats> {
         bootstrap()
         val destination = inboxFile(manifest)
-        val stats = try {
-            backend.fetchBlob(ticketText = ticketText, destination = destination.absolutePath)
-        } catch (err: IrohBlobBackendError) {
-            throw ServiceError.FetchFailed(err.message ?: err.javaClass.simpleName)
-        }
+        val stats =
+            try {
+                backend.fetchBlob(ticketText = ticketText, destination = destination.absolutePath)
+            } catch (err: IrohBlobBackendError) {
+                throw ServiceError.FetchFailed(err.message ?: err.javaClass.simpleName)
+                    .also { it.initCause(err) }
+            }
         return destination to stats
     }
 
@@ -154,10 +162,8 @@ class MediaFileTransferService(
     }
 
     private fun ensureDirectoryExists(directory: File) {
-        if (!directory.exists()) {
-            if (!directory.mkdirs() && !directory.exists()) {
-                throw ServiceError.BackendUnavailable
-            }
+        if (!directory.exists() && !directory.mkdirs() && !directory.exists()) {
+            throw ServiceError.BackendUnavailable
         }
     }
 

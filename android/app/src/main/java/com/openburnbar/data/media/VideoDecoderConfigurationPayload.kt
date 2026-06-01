@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber", "ThrowsCount", "UnnecessaryParentheses")
+// Wire-format NAL/codec byte layout literals; named constants obscure OBVCFG1 parsing.
+
 package com.openburnbar.data.media
 
 import java.nio.ByteBuffer
@@ -54,27 +57,27 @@ internal data class VideoDecoderConfigurationPayload(
         fun decodeIfPresent(data: ByteArray): VideoDecoderConfigurationPayload? {
             if (data.size < MAGIC.size || !data.startsWith(MAGIC)) return null
             var offset = MAGIC.size
-            if (data.size < offset + 2) throw IllegalArgumentException("truncated video decoder config")
+            require(data.size >= offset + 2) { "truncated video decoder config" }
             val codec = Codec.from(data[offset++])
                 ?: throw IllegalArgumentException("unknown video decoder config codec")
             val count = data[offset++].toInt() and 0xFF
-            if (count <= 0) throw IllegalArgumentException("empty video decoder parameter sets")
+            require(count > 0) { "empty video decoder parameter sets" }
 
             val parameterSets = mutableListOf<ByteArray>()
             repeat(count) {
-                if (data.size < offset + 2) throw IllegalArgumentException("truncated video decoder parameter set length")
+                require(data.size >= offset + 2) { "truncated video decoder parameter set length" }
                 val length = readUInt16(data, offset)
                 offset += 2
-                if (data.size < offset + length) throw IllegalArgumentException("truncated video decoder parameter set")
+                require(data.size >= offset + length) { "truncated video decoder parameter set" }
                 parameterSets += data.copyOfRange(offset, offset + length)
                 offset += length
             }
 
-            if (data.size < offset + 4) throw IllegalArgumentException("truncated video decoder sample length")
+            require(data.size >= offset + 4) { "truncated video decoder sample length" }
             val sampleLength = readInt32(data, offset)
             offset += 4
-            if (sampleLength < 0 || data.size < offset + sampleLength) {
-                throw IllegalArgumentException("truncated video decoder sample payload")
+            require(sampleLength >= 0 && data.size >= offset + sampleLength) {
+                "truncated video decoder sample payload"
             }
             return VideoDecoderConfigurationPayload(
                 codec = codec,
@@ -87,13 +90,13 @@ internal data class VideoDecoderConfigurationPayload(
             size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
 
         private fun readUInt16(data: ByteArray, offset: Int): Int =
-            ((data[offset].toInt() and 0xFF) shl 8) or
+            (data[offset].toInt() and 0xFF shl 8) or
                 (data[offset + 1].toInt() and 0xFF)
 
         private fun readInt32(data: ByteArray, offset: Int): Int =
-            ((data[offset].toInt() and 0xFF) shl 24) or
-                ((data[offset + 1].toInt() and 0xFF) shl 16) or
-                ((data[offset + 2].toInt() and 0xFF) shl 8) or
+            (data[offset].toInt() and 0xFF shl 24) or
+                (data[offset + 1].toInt() and 0xFF shl 16) or
+                (data[offset + 2].toInt() and 0xFF shl 8) or
                 (data[offset + 3].toInt() and 0xFF)
     }
 }
@@ -123,9 +126,9 @@ internal object VideoPayloadNormalizer {
         var offset = 0
         while (offset < payload.size) {
             if (payload.size - offset < 4) return null
-            val length = ((payload[offset].toInt() and 0xFF) shl 24) or
-                ((payload[offset + 1].toInt() and 0xFF) shl 16) or
-                ((payload[offset + 2].toInt() and 0xFF) shl 8) or
+            val length = (payload[offset].toInt() and 0xFF shl 24) or
+                (payload[offset + 1].toInt() and 0xFF shl 16) or
+                (payload[offset + 2].toInt() and 0xFF shl 8) or
                 (payload[offset + 3].toInt() and 0xFF)
             offset += 4
             if (length <= 0 || payload.size - offset < length) return null
@@ -137,7 +140,7 @@ internal object VideoPayloadNormalizer {
 
     private fun ByteArray.hasAnnexBStartCode(): Boolean =
         size >= 4 && this[0] == 0.toByte() && this[1] == 0.toByte() &&
-            ((this[2] == 1.toByte()) || (this[2] == 0.toByte() && this[3] == 1.toByte()))
+            (this[2] == 1.toByte() || this[2] == 0.toByte() && this[3] == 1.toByte())
 
     private fun withStartCode(nal: ByteArray): ByteArray = START_CODE + nal
 

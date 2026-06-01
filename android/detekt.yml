@@ -173,8 +173,6 @@ exceptions:
     active: true
   NotImplementedDeclaration:
     active: false
-  NullChecksElvisReturn:
-    active: false
   ObjectExtendsThrowable:
     active: false
   PrintStackTrace:
@@ -238,7 +236,7 @@ naming:
     excludeClassPattern: '$^'
   EnumNaming:
     active: true
-    enumEntryPattern: '[A-Z][_a-zA-Z0-9]*'
+    enumEntryPattern: '[a-zA-Z][_a-zA-Z0-9]*'
   ForbiddenClassName:
     active: false
   FunctionMaxLength:
@@ -304,17 +302,6 @@ performance:
     active: true
   SpreadOperator:
     active: true
-    excludedFunctions:
-      - 'arrayOf'
-      - 'listOf'
-      - 'mutableListOf'
-      - 'setOf'
-      - 'mutableSetOf'
-      - 'linkedSetOf'
-      - 'mapOf'
-      - 'mutableMapOf'
-      - 'linkedMapOf'
-      - 'sortedMapOf'
   UnnecessaryPartOfBinaryExpression:
     active: false
   UnnecessaryTemporaryInstantiation:
@@ -479,7 +466,7 @@ style:
     active: true
     ignoreOverridableFunction: true
     ignoreActualFunction: true
-    excludedFunctions: ''
+    excludedFunctions: []
     ignoreAnnotated:
       - 'dagger.Provides'
   LoopWithTooManyJumpStatements:
@@ -637,8 +624,6 @@ style:
     active: true
   UseSumOfInsteadOfFlatMapSize:
     active: false
-  UseToFindFirstOrFirstOrNull:
-    active: true
   UselessCallOnNotNull:
     active: true
   UtilityClassWithPublicConstructor:

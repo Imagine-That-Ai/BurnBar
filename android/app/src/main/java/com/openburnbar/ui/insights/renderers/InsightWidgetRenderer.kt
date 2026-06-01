@@ -1,12 +1,5 @@
 package com.openburnbar.ui.insights.renderers
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,9 +24,7 @@ import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightFreshness
 import com.openburnbar.data.insights.InsightTheme
@@ -59,8 +49,6 @@ import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.ValueFormat
 import com.openburnbar.ui.insights.InsightsColors
 import com.openburnbar.ui.insights.InsightsSpacing
-import com.openburnbar.ui.insights.InsightsViewModel
-import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
@@ -72,20 +60,26 @@ internal fun formatValue(value: Double, format: ValueFormat?): String = when (fo
         val hours = (value / 3600).toInt()
         val mins = ((value % 3600) / 60).toInt()
         val secs = (value % 60).toInt()
-        when { hours > 0 -> "${hours}h ${mins}m"; mins > 0 -> "${mins}m ${secs}s"; else -> "${secs}s" }
+        when {
+            hours > 0 -> "${hours}h ${mins}m"
+            mins > 0 -> "${mins}m ${secs}s"
+            else -> "${secs}s"
+        }
     }
-    ValueFormat.TOKENS -> when {
-        value >= 1_000_000_000 -> String.format("%.1fB", value / 1_000_000_000)
-        value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
-        value >= 1_000 -> String.format("%.1fK", value / 1_000)
-        else -> String.format("%.0f", value)
-    }
-    ValueFormat.COUNT -> when {
-        value >= 1_000_000_000 -> String.format("%.1fB", value / 1_000_000_000)
-        value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
-        value >= 1_000 -> String.format("%.1fK", value / 1_000)
-        else -> String.format("%.0f", value)
-    }
+    ValueFormat.TOKENS ->
+        when {
+            value >= 1_000_000_000 -> String.format("%.1fB", value / 1_000_000_000)
+            value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
+            value >= 1_000 -> String.format("%.1fK", value / 1_000)
+            else -> String.format("%.0f", value)
+        }
+    ValueFormat.COUNT ->
+        when {
+            value >= 1_000_000_000 -> String.format("%.1fB", value / 1_000_000_000)
+            value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
+            value >= 1_000 -> String.format("%.1fK", value / 1_000)
+            else -> String.format("%.0f", value)
+        }
     ValueFormat.RAW -> String.format("%.2f", value)
     null -> String.format("%.1f", value)
 }
@@ -97,6 +91,7 @@ internal fun parseColor(hex: String): Color = try {
 }
 
 private fun Modifier.coloredRect(color: Color): Modifier = this.drawBehind { drawRect(color) }
+
 private fun Modifier.coloredCircle(color: Color): Modifier = this.drawBehind { drawCircle(color) }
 
 // ─── Main renderer (exhaustive when) ─────────────────────────────────────────
@@ -115,32 +110,32 @@ fun InsightWidgetRenderer(
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
         }
         when (widget.kind) {
-            InsightWidgetKind.KPI_TILE            -> KpiTileRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.TIME_SERIES_LINE    -> TimeSeriesRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.TIME_SERIES_AREA    -> TimeSeriesRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.STREAM_GRAPH        -> TimeSeriesRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.BAR_RANKING         -> RankingRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.DONUT               -> DonutRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.TREEMAP             -> TreemapRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.HEATMAP             -> HeatmapRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.SCATTER             -> ScatterRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.SANKEY              -> SankeyRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.RADAR               -> RadarRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.COHORT              -> CohortRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.FUNNEL              -> FunnelRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.QUOTA_PULSE         -> QuotaPulseRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.FORECAST            -> ForecastRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.ANOMALY_TABLE       -> AnomalyTableRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.NARRATIVE            -> NarrativeRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.RECOMMENDATION       -> RecommendationRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.USE_CASE_CLUSTER     -> UseCaseClusterRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.AGENT_FOCUS_MATRIX   -> FocusMatrixRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.MODEL_FOCUS_MATRIX   -> FocusMatrixRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.DRILLDOWN_LIST       -> DrilldownListRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.MERMAID             -> MermaidRenderer(widget, onCitationTap)
-            InsightWidgetKind.ASCII               -> AsciiRenderer(widget, onCitationTap)
-            InsightWidgetKind.COMPOSED             -> ComposedRenderer(widget, onCitationTap)
-            InsightWidgetKind.ERROR               -> ErrorRenderer(widget, onCitationTap)
+            InsightWidgetKind.KPI_TILE -> KpiTileRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.TIME_SERIES_LINE -> TimeSeriesRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.TIME_SERIES_AREA -> TimeSeriesRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.STREAM_GRAPH -> TimeSeriesRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.BAR_RANKING -> RankingRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.DONUT -> DonutRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.TREEMAP -> TreemapRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.HEATMAP -> HeatmapRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.SCATTER -> ScatterRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.SANKEY -> SankeyRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.RADAR -> RadarRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.COHORT -> CohortRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.FUNNEL -> FunnelRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.QUOTA_PULSE -> QuotaPulseRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.FORECAST -> ForecastRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.ANOMALY_TABLE -> AnomalyTableRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.NARRATIVE -> NarrativeRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.RECOMMENDATION -> RecommendationRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.USE_CASE_CLUSTER -> UseCaseClusterRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.AGENT_FOCUS_MATRIX -> FocusMatrixRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.MODEL_FOCUS_MATRIX -> FocusMatrixRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.DRILLDOWN_LIST -> DrilldownListRenderer(widget, theme, onCitationTap)
+            InsightWidgetKind.MERMAID -> MermaidRenderer(widget, onCitationTap)
+            InsightWidgetKind.ASCII -> AsciiRenderer(widget, onCitationTap)
+            InsightWidgetKind.COMPOSED -> ComposedRenderer(widget, onCitationTap)
+            InsightWidgetKind.ERROR -> ErrorRenderer(widget, onCitationTap)
         }
     }
 }
@@ -157,26 +152,27 @@ private fun WidgetHeader(widget: InsightWidget, theme: InsightTheme) {
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
-        val (freshColor, freshLabel) = when (widget.freshness) {
-            InsightFreshness.FRESH     -> InsightsColors.freshnessFresh to "fresh"
-            InsightFreshness.STALE     -> MaterialTheme.colorScheme.onSurfaceVariant to "stale"
-            InsightFreshness.COMPUTING -> InsightsColors.freshnessComputing to "computing"
-            InsightFreshness.ERROR     -> InsightsColors.freshnessError to "error"
-            InsightFreshness.LOCKED    -> InsightsColors.freshnessLocked to "locked"
-        }
+        val (freshColor, freshLabel) =
+            when (widget.freshness) {
+                InsightFreshness.FRESH -> InsightsColors.freshnessFresh to "fresh"
+                InsightFreshness.STALE -> MaterialTheme.colorScheme.onSurfaceVariant to "stale"
+                InsightFreshness.COMPUTING -> InsightsColors.freshnessComputing to "computing"
+                InsightFreshness.ERROR -> InsightsColors.freshnessError to "error"
+                InsightFreshness.LOCKED -> InsightsColors.freshnessLocked to "locked"
+            }
         Surface(
             shape = RoundedCornerShape(4.dp),
             color = Color.Transparent,
-            modifier = Modifier.padding(start = 8.dp)
+            modifier = Modifier.padding(start = 8.dp),
         ) {
             Text(
                 text = freshLabel.replaceFirstChar { it.uppercase() },
                 style = MaterialTheme.typography.labelSmall,
                 color = freshColor,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1
+                maxLines = 1,
             )
         }
     }
@@ -197,15 +193,22 @@ private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
                 fontWeight = FontWeight.Bold,
                 color = if (data.value >= 0) accent else InsightsColors.kpiNegative,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
             if (data.delta != null) {
                 val sign = if (data.delta >= 0) "+" else ""
-                val deltaText = if (data.deltaIsPercent) "$sign${String.format("%.1f", data.delta * 100)}%"
-                    else "$sign${formatValue(data.delta, data.valueFormat)}"
-                Text(text = deltaText, style = MaterialTheme.typography.bodySmall,
+                val deltaText =
+                    if (data.deltaIsPercent) {
+                        "$sign${String.format("%.1f", data.delta * 100)}%"
+                    } else {
+                        "$sign${formatValue(data.delta, data.valueFormat)}"
+                    }
+                Text(
+                    text = deltaText,
+                    style = MaterialTheme.typography.bodySmall,
                     color = if (data.delta >= 0) InsightsColors.kpiPositive else InsightsColors.kpiNegative,
-                    maxLines = 1)
+                    maxLines = 1,
+                )
             }
             if (data.contextLabel != null) {
                 Text(
@@ -213,7 +216,7 @@ private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -234,7 +237,7 @@ private fun TimeSeriesRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
             SparklineChart(
                 series = data.series,
                 yFormat = data.yFormat,
-                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp)
+                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp),
             )
         } else {
             Text("No data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -251,7 +254,13 @@ private fun RankingRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         data.rows.take(5).forEach { row ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = row.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = row.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(text = formatValue(row.value, data.valueFormat), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
             LinearProgressIndicator(
@@ -259,7 +268,7 @@ private fun RankingRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
                 modifier = Modifier.fillMaxWidth().height(4.dp),
                 color = InsightsColors.accentsFor(theme).first(),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                strokeCap = ProgressIndicatorDefaults.CircularDeterminateStrokeCap
+                strokeCap = ProgressIndicatorDefaults.CircularDeterminateStrokeCap,
             )
         }
     }
@@ -276,11 +285,20 @@ private fun DonutRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insigh
         Spacer(modifier = Modifier.height(8.dp))
         data.slices.forEachIndexed { idx, slice ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).coloredCircle(
-                    slice.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { Color.Gray }
-                ))
+                Box(
+                    modifier =
+                    Modifier.size(8.dp).clip(CircleShape).coloredCircle(
+                        slice.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { Color.Gray },
+                    ),
+                )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(text = slice.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = slice.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(text = formatValue(slice.value, data.valueFormat), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -295,15 +313,24 @@ private fun QuotaPulseRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         data.buckets.forEach { bucket ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = bucket.providerLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = "${String.format("%.1f", bucket.used)} / ${bucket.limit?.let { String.format("%.1f", it) } ?: "inf"}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text = bucket.providerLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${String.format("%.1f", bucket.used)} / ${bucket.limit?.let { String.format("%.1f", it) } ?: "inf"}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             LinearProgressIndicator(
                 progress = { bucket.fraction.toFloat().coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().height(6.dp),
                 color = if (bucket.fraction > 0.8) InsightsColors.kpiNegative else InsightsColors.kpiPositive,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                strokeCap = ProgressIndicatorDefaults.CircularDeterminateStrokeCap
+                strokeCap = ProgressIndicatorDefaults.CircularDeterminateStrokeCap,
             )
         }
     }
@@ -314,12 +341,13 @@ private fun QuotaPulseRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
 @Composable
 private fun NarrativeRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.Narrative) ?: return EmptyWidget()
-    val toneColor = when (data.tone) {
-        InsightWidgetData.Narrative.Tone.POSITIVE -> InsightsColors.kpiPositive
-        InsightWidgetData.Narrative.Tone.NEUTRAL -> MaterialTheme.colorScheme.onSurface
-        InsightWidgetData.Narrative.Tone.WARNING -> InsightsColors.freshnessComputing
-        InsightWidgetData.Narrative.Tone.NEGATIVE -> InsightsColors.kpiNegative
-    }
+    val toneColor =
+        when (data.tone) {
+            InsightWidgetData.Narrative.Tone.POSITIVE -> InsightsColors.kpiPositive
+            InsightWidgetData.Narrative.Tone.NEUTRAL -> MaterialTheme.colorScheme.onSurface
+            InsightWidgetData.Narrative.Tone.WARNING -> InsightsColors.freshnessComputing
+            InsightWidgetData.Narrative.Tone.NEGATIVE -> InsightsColors.kpiNegative
+        }
     Column {
         Text(text = data.headline, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = toneColor)
         Spacer(modifier = Modifier.height(4.dp))
@@ -339,7 +367,7 @@ private fun RecommendationRenderer(w: InsightWidget, theme: InsightTheme, onCite
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(InsightsSpacing.cardRadius.dp)
+        shape = RoundedCornerShape(InsightsSpacing.cardRadius.dp),
     ) {
         Column(modifier = Modifier.padding(AuroraSpacing.sm.dp)) {
             Text(text = data.headline, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -360,16 +388,34 @@ private fun FocusMatrixRenderer(w: InsightWidget, theme: InsightTheme, onCite: (
     Column {
         Row(modifier = Modifier.fillMaxWidth()) {
             Spacer(modifier = Modifier.width(60.dp))
-            data.columnLabels.forEach { Text(text = it, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            data.columnLabels.forEach {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         data.rowLabels.forEachIndexed { rowIdx, rowLabel ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = rowLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(60.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = rowLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(60.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 data.cells.getOrElse(rowIdx) { emptyList() }.forEachIndexed { colIdx, value ->
                     val intensity = value.toFloat().coerceIn(0f, 1f)
-                    Box(modifier = Modifier.weight(1f).height(24.dp).padding(1.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .coloredRect(colors.getOrElse(colIdx % colors.size) { colors[0] }.copy(alpha = intensity.coerceIn(0.15f, 1f))))
+                    Box(
+                        modifier =
+                        Modifier.weight(1f).height(24.dp).padding(1.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .coloredRect(colors.getOrElse(colIdx % colors.size) { colors[0] }.copy(alpha = intensity.coerceIn(0.15f, 1f))),
+                    )
                 }
             }
         }
@@ -381,12 +427,27 @@ private fun FocusMatrixRenderer(w: InsightWidget, theme: InsightTheme, onCite: (
 @Composable
 private fun AnomalyTableRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.AnomalyTable) ?: return EmptyWidget()
-    if (data.rows.isEmpty()) { Text("No anomalies detected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); return }
+    if (data.rows.isEmpty()) {
+        Text("No anomalies detected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         data.rows.take(5).forEach { row ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = String.format("%.1f", row.score), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = InsightsColors.kpiNegative, modifier = Modifier.width(32.dp))
-                Text(text = row.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = String.format("%.1f", row.score),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = InsightsColors.kpiNegative,
+                    modifier = Modifier.width(32.dp),
+                )
+                Text(
+                    text = row.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 if (row.detail != null) Text(text = row.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -400,14 +461,29 @@ private fun DrilldownListRenderer(w: InsightWidget, theme: InsightTheme, onCite:
     val data = (w.data as? InsightWidgetData.Drilldown) ?: return EmptyWidget()
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         data.rows.forEach { row ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp), shape = RoundedCornerShape(8.dp)) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                shape = RoundedCornerShape(8.dp),
+            ) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = row.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                        if (row.subtitle != null) Text(text = row.subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (row.subtitle != null) {
+                            Text(
+                                text = row.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    if (row.costUSD != null) Text(text = formatValue(row.costUSD, ValueFormat.CURRENCY), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    if (row.costUSD != null) {
+                        Text(
+                            text = formatValue(row.costUSD, ValueFormat.CURRENCY),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }
@@ -424,10 +500,26 @@ private fun SankeyRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
         data.nodes.forEachIndexed { idx, node ->
             val totalOutflow = data.links.filter { it.source == node.id }.sumOf { it.value }
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = node.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(80.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Box(modifier = Modifier.weight(1f).height(16.dp).clip(RoundedCornerShape(4.dp))
-                    .coloredRect(colors.getOrElse(idx % colors.size) { Color.Gray }.copy(alpha = 0.7f)))
-                if (totalOutflow > 0) Text(text = formatValue(totalOutflow, ValueFormat.CURRENCY), style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(50.dp), textAlign = TextAlign.End)
+                Text(
+                    text = node.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.width(80.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Box(
+                    modifier =
+                    Modifier.weight(1f).height(16.dp).clip(RoundedCornerShape(4.dp))
+                        .coloredRect(colors.getOrElse(idx % colors.size) { Color.Gray }.copy(alpha = 0.7f)),
+                )
+                if (totalOutflow > 0) {
+                    Text(
+                        text = formatValue(totalOutflow, ValueFormat.CURRENCY),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.width(50.dp),
+                        textAlign = TextAlign.End,
+                    )
+                }
             }
         }
     }
@@ -447,11 +539,17 @@ private fun RadarRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insigh
         Canvas(modifier = Modifier.size(140.dp)) {
             val center = size / 2f
             val radius = minOf(size.width, size.height) / 2f * 0.8f
-            for (i in 1..4) { drawCircle(Color.Gray.copy(alpha = 0.2f), radius * i / 4f, center = Offset(center.width, center.height), style = Stroke(width = 1f)) }
+            for (i in 1..4) {
+                drawCircle(Color.Gray.copy(alpha = 0.2f), radius * i / 4f, center = Offset(center.width, center.height), style = Stroke(width = 1f))
+            }
             for (i in 0 until n) {
                 val angle = Math.toRadians(90.0 - 360.0 * i / n)
-                drawLine(Color.Gray.copy(alpha = 0.3f), Offset(center.width, center.height),
-                    Offset(center.width + radius * kotlin.math.cos(angle).toFloat(), center.height - radius * kotlin.math.sin(angle).toFloat()), strokeWidth = 1f)
+                drawLine(
+                    Color.Gray.copy(alpha = 0.3f),
+                    Offset(center.width, center.height),
+                    Offset(center.width + radius * kotlin.math.cos(angle).toFloat(), center.height - radius * kotlin.math.sin(angle).toFloat()),
+                    strokeWidth = 1f,
+                )
             }
             data.series.forEachIndexed { idx, series ->
                 val color = series.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { Color.Gray }
@@ -484,15 +582,33 @@ private fun CohortRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
     Column {
         Row(modifier = Modifier.fillMaxWidth()) {
             Spacer(modifier = Modifier.width(60.dp))
-            data.periodLabels.forEach { Text(text = it, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            data.periodLabels.forEach {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         data.cohortLabels.forEachIndexed { rowIdx, rowLabel ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = rowLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(60.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = rowLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(60.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 data.cells.getOrElse(rowIdx) { emptyList() }.forEachIndexed { colIdx, value ->
                     val intensity = value?.toFloat()?.coerceIn(0f, 1f) ?: 0f
-                    Box(modifier = Modifier.weight(1f).height(24.dp).padding(1.dp).clip(RoundedCornerShape(2.dp))
-                        .coloredRect(colors.getOrElse(colIdx % colors.size) { colors[0] }.copy(alpha = 0.15f + intensity * 0.85f)))
+                    Box(
+                        modifier =
+                        Modifier.weight(1f).height(24.dp).padding(1.dp).clip(RoundedCornerShape(2.dp))
+                            .coloredRect(colors.getOrElse(colIdx % colors.size) { colors[0] }.copy(alpha = 0.15f + intensity * 0.85f)),
+                    )
                 }
             }
         }
@@ -510,11 +626,25 @@ private fun FunnelRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
         data.steps.forEachIndexed { idx, step ->
             val fraction = (step.count / maxCount).toFloat().coerceIn(0f, 1f)
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = step.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                LinearProgressIndicator(progress = { fraction },
+                Text(
+                    text = step.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LinearProgressIndicator(
+                    progress = { fraction },
                     modifier = Modifier.width(100.dp).height(12.dp),
-                    color = colors.getOrElse(idx % colors.size) { colors[0] }, trackColor = MaterialTheme.colorScheme.surfaceVariant)
-                Text(text = String.format("%.0f", step.count), style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(40.dp), textAlign = TextAlign.End)
+                    color = colors.getOrElse(idx % colors.size) { colors[0] },
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+                Text(
+                    text = String.format("%.0f", step.count),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(40.dp),
+                    textAlign = TextAlign.End,
+                )
             }
         }
     }
@@ -529,7 +659,9 @@ private fun ForecastRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Ins
         if (data.actual.isNotEmpty()) {
             SparklineChart(
                 series = listOf(InsightWidgetData.TimeSeries.Series(id = "actual", name = "Actual", points = data.actual, colorHex = null)),
-                yFormat = data.yFormat, modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp))
+                yFormat = data.yFormat,
+                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp),
+            )
         }
         if (data.summary != null) Text(text = data.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -558,9 +690,19 @@ private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
         Text(text = "${data.xAxisLabel} vs ${data.yAxisLabel}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         data.points.take(10).forEachIndexed { idx, point ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).coloredCircle(point.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { colors[0] }))
+                Box(
+                    modifier = Modifier.size(
+                        6.dp,
+                    ).clip(CircleShape).coloredCircle(point.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { colors[0] }),
+                )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(text = point.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = point.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(text = formatValue(point.x, data.xFormat), style = MaterialTheme.typography.labelSmall)
                 Text(text = " \u00d7 ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(text = formatValue(point.y, data.yFormat), style = MaterialTheme.typography.labelSmall)
@@ -585,15 +727,33 @@ private fun HeatmapRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
     Column {
         Row(modifier = Modifier.fillMaxWidth()) {
             Spacer(modifier = Modifier.width(60.dp))
-            data.columnLabels.take(8).forEach { Text(text = it, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            data.columnLabels.take(8).forEach {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         data.rowLabels.forEachIndexed { rowIdx, rowLabel ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = rowLabel, style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(60.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = rowLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(60.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 data.cells.getOrElse(rowIdx) { emptyList() }.take(8).forEachIndexed { colIdx, value ->
                     val intensity = value.toFloat().coerceIn(0f, 1f)
-                    Box(modifier = Modifier.weight(1f).height(20.dp).padding(1.dp).clip(RoundedCornerShape(2.dp))
-                        .coloredRect(InsightsColors.heatmapEmber[1].copy(alpha = 0.15f + intensity * 0.85f)))
+                    Box(
+                        modifier =
+                        Modifier.weight(1f).height(20.dp).padding(1.dp).clip(RoundedCornerShape(2.dp))
+                            .coloredRect(InsightsColors.heatmapEmber[1].copy(alpha = 0.15f + intensity * 0.85f)),
+                    )
                 }
             }
         }
@@ -608,8 +768,12 @@ private fun MermaidRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit)
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = w.kind.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = data.source.take(200) + if (data.source.length > 200) "..." else "",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
+        Text(
+            text = data.source.take(200) + if (data.source.length > 200) "..." else "",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+        )
     }
 }
 
@@ -621,7 +785,12 @@ private fun AsciiRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
     Column {
         Text(text = data.headline, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = data.monoBody, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = data.monoBody,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (data.caption != null) Text(text = data.caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -666,12 +835,9 @@ private fun MiniSparkline(data: List<Double>, color: Color, modifier: Modifier =
 }
 
 @Composable
-private fun SparklineChart(
-    series: List<InsightWidgetData.TimeSeries.Series>,
-    yFormat: ValueFormat?,
-    modifier: Modifier = Modifier
-) {
-    val colors = listOf(InsightsColors.chartLinePrimary, InsightsColors.chartLineSecondary, InsightsColors.chartLineTertiary, InsightsColors.chartLineQuaternary)
+private fun SparklineChart(series: List<InsightWidgetData.TimeSeries.Series>, yFormat: ValueFormat?, modifier: Modifier = Modifier) {
+    val colors =
+        listOf(InsightsColors.chartLinePrimary, InsightsColors.chartLineSecondary, InsightsColors.chartLineTertiary, InsightsColors.chartLineQuaternary)
     Canvas(modifier = modifier) {
         series.forEachIndexed { seriesIdx, s ->
             if (s.points.size < 2) return@forEachIndexed
@@ -693,12 +859,7 @@ private fun SparklineChart(
 }
 
 @Composable
-private fun DonutChart(
-    slices: List<InsightWidgetData.Distribution.Slice>,
-    total: Double,
-    colors: List<Color>,
-    modifier: Modifier = Modifier
-) {
+private fun DonutChart(slices: List<InsightWidgetData.Distribution.Slice>, total: Double, colors: List<Color>, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val strokeWidth = 16.dp.toPx()
         val radius = (minOf(size.width, size.height) - strokeWidth) / 2f
@@ -708,9 +869,12 @@ private fun DonutChart(
             val sweepAngle = if (total > 0) (slice.value / total * 360f).toFloat() else 0f
             drawArc(
                 color = slice.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { Color.Gray },
-                startAngle = startAngle, sweepAngle = sweepAngle, useCenter = false,
-                topLeft = Offset(center.x - radius, center.y - radius), size = Size(radius * 2f, radius * 2f),
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                startAngle = startAngle,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                topLeft = Offset(center.x - radius, center.y - radius),
+                size = Size(radius * 2f, radius * 2f),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
             startAngle += sweepAngle
         }

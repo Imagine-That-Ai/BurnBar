@@ -8,10 +8,21 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class InsightTheme {
-    @SerialName("aurora") AURORA,
-    @SerialName("ember") EMBER,
-    @SerialName("mercury") MERCURY,
-    @SerialName("whimsy") WHIMSY,
-    @SerialName("mono") MONO,
-    @SerialName("print") PRINT;
+    @SerialName("aurora")
+    AURORA,
+
+    @SerialName("ember")
+    EMBER,
+
+    @SerialName("mercury")
+    MERCURY,
+
+    @SerialName("whimsy")
+    WHIMSY,
+
+    @SerialName("mono")
+    MONO,
+
+    @SerialName("print")
+    PRINT,
 }

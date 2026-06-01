@@ -3,14 +3,15 @@ package com.openburnbar.data.stores
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.openburnbar.data.firebase.FunctionsRepository
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
-import com.openburnbar.data.stores.SelfHostedQuotaRunnerStore
+import java.time.Instant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,18 +22,20 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.time.Instant
+
+private const val VAL_15 = 15
+private const val VAL_60 = 60
 
 class QuotaStore(
     application: Application,
     private val repo: FirestoreRepository = FirestoreRepository(),
-    functions: FunctionsRepository? = null
+    functions: FunctionsRepository? = null,
 ) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, FirestoreRepository(), null)
 
     constructor(
         repo: FirestoreRepository = FirestoreRepository(),
-        functions: FunctionsRepository? = null
+        functions: FunctionsRepository? = null,
     ) : this(Application(), repo, functions)
 
     private val functions: FunctionsRepository by lazy { functions ?: FunctionsRepository() }
@@ -60,7 +63,7 @@ class QuotaStore(
                 _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
                 _accounts.value = repo.fetchProviderAccounts()
                 refreshStaleCloudQuotaIfPossible()
-            } catch (e: Exception) {
+            } catch (e: FirebaseFunctionsException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -76,7 +79,7 @@ class QuotaStore(
                 _accounts.value = repo.fetchProviderAccounts()
                 refreshStaleCloudQuotaIfPossible()
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: FirebaseFunctionsException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -87,22 +90,24 @@ class QuotaStore(
     fun startListening() {
         listenJob?.cancel()
         startAutomaticRefresh()
-        listenJob = viewModelScope.launch {
-            // See ActivityStore.startListening for the rationale —
-            // Firestore listener errors must NEVER reach
-            // Dispatchers.Main.immediate as unhandled exceptions.
-            repo.listenToQuotaSnapshotUpdates()
-                .catch { e -> _error.value = e.message ?: e::class.simpleName }
-                .collect { update ->
-                    val incoming = update.snapshots.dedupeFresh()
-                    _snapshots.value = if (update.isFromCache && _snapshots.value.isNotEmpty()) {
-                        (_snapshots.value + incoming).dedupeFresh()
-                    } else {
-                        incoming
+        listenJob =
+            viewModelScope.launch {
+                // See ActivityStore.startListening for the rationale —
+                // Firestore listener errors must NEVER reach
+                // Dispatchers.Main.immediate as unhandled exceptions.
+                repo.listenToQuotaSnapshotUpdates()
+                    .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                    .collect { update ->
+                        val incoming = update.snapshots.dedupeFresh()
+                        _snapshots.value =
+                            if (update.isFromCache && _snapshots.value.isNotEmpty()) {
+                                (_snapshots.value + incoming).dedupeFresh()
+                            } else {
+                                incoming
+                            }
+                        refreshStaleCloudQuotaIfPossible()
                     }
-                    refreshStaleCloudQuotaIfPossible()
-                }
-        }
+            }
     }
 
     fun stopListening() {
@@ -114,38 +119,41 @@ class QuotaStore(
 
     private fun startAutomaticRefresh() {
         if (automaticRefreshJob != null) return
-        automaticRefreshJob = viewModelScope.launch {
-            while (true) {
-                delay(15 * 60 * 1000L)
-                refreshStaleCloudQuotaIfPossible(maxRefreshes = 10)
+        automaticRefreshJob =
+            viewModelScope.launch {
+                while (true) {
+                    delay(VAL_15 * VAL_60 * 1000L)
+                    refreshStaleCloudQuotaIfPossible(maxRefreshes = 10)
+                }
             }
-        }
     }
 
     private fun refreshStaleCloudQuotaIfPossible(maxRefreshes: Int = 3) {
-        val snapshotByAccount = _snapshots.value
-            .filter { !it.accountId.isNullOrBlank() }
-            .groupBy { it.accountId.orEmpty() }
-        val accountsToRefresh = _accounts.value
-            .filter { it.status in setOf("connected", "stale", "error") }
-            .filter { account ->
-                account.storageScope in setOf("cloud_refreshable", "server_private")
-                    || (account.storageScope == "local_only"
-                        && account.providerId in setOf("claude-code", "codex"))
-            }
-            .filter { account ->
-                val accountSnapshots = snapshotByAccount[account.id].orEmpty()
-                accountSnapshots.isEmpty() || accountSnapshots.any { it.isStale() }
-            }
-            .filter { staleRefreshInFlight.add(it.id) }
-            .take(maxRefreshes)
+        val snapshotByAccount =
+            _snapshots.value
+                .filter { !it.accountId.isNullOrBlank() }
+                .groupBy { it.accountId.orEmpty() }
+        val accountsToRefresh =
+            _accounts.value
+                .filter { it.status in setOf("connected", "stale", "error") }
+                .filter { account ->
+                    account.storageScope in setOf("cloud_refreshable", "server_private") ||
+                        account.storageScope == "local_only" &&
+                        account.providerId in setOf("claude-code", "codex")
+                }
+                .filter { account ->
+                    val accountSnapshots = snapshotByAccount[account.id].orEmpty()
+                    accountSnapshots.isEmpty() || accountSnapshots.any { it.isStale() }
+                }
+                .filter { staleRefreshInFlight.add(it.id) }
+                .take(maxRefreshes)
 
         if (accountsToRefresh.isEmpty()) return
         viewModelScope.launch {
             for (account in accountsToRefresh) {
                 try {
-                    if (account.storageScope == "local_only"
-                        && account.providerId in setOf("claude-code", "codex")
+                    if (account.storageScope == "local_only" &&
+                        account.providerId in setOf("claude-code", "codex")
                     ) {
                         refreshSelfHostedRunner(account)
                     } else {
@@ -172,11 +180,13 @@ class QuotaStore(
         val baseUrl = config.endpointUrl.trim().trimEnd('/')
         val url = "$baseUrl/v1/quota/refresh"
         val jsonBody = """{"provider":"${account.providerId}","accountID":"${account.id}"}"""
-        val requestBody = jsonBody.toByteArray()
-            .toRequestBody("application/json".toMediaType())
-        val requestBuilder = Request.Builder()
-            .url(url)
-            .post(requestBody)
+        val requestBody =
+            jsonBody.toByteArray()
+                .toRequestBody("application/json".toMediaType())
+        val requestBuilder =
+            Request.Builder()
+                .url(url)
+                .post(requestBody)
         if (config.apiKey.isNotBlank()) {
             requestBuilder.addHeader("Authorization", "Bearer ${config.apiKey}")
         }
@@ -218,13 +228,15 @@ internal fun List<ProviderQuotaSnapshot>.dedupeFresh(): List<ProviderQuotaSnapsh
     if (size < 2) return this
 
     fun groupKey(s: ProviderQuotaSnapshot): String {
-        val providerKey = AgentProvider.fromKey(s.provider)?.key
-            ?: AgentProvider.fromKey(s.providerId)?.key
-            ?: s.provider.lowercase().filter { it.isLetterOrDigit() }.ifBlank { s.provider }
-        val accountKey = s.accountId?.takeIf { it.isNotBlank() }
-            ?: s.sourceId.takeIf { it.isNotBlank() }
-            ?: s.accountLabel?.takeIf { it.isNotBlank() }
-            ?: ""
+        val providerKey =
+            AgentProvider.fromKey(s.provider)?.key
+                ?: AgentProvider.fromKey(s.providerId)?.key
+                ?: s.provider.lowercase().filter { it.isLetterOrDigit() }.ifBlank { s.provider }
+        val accountKey =
+            s.accountId?.takeIf { it.isNotBlank() }
+                ?: s.sourceId.takeIf { it.isNotBlank() }
+                ?: s.accountLabel?.takeIf { it.isNotBlank() }
+                ?: ""
         return "$providerKey|$accountKey"
     }
 
@@ -241,8 +253,8 @@ internal fun List<ProviderQuotaSnapshot>.dedupeFresh(): List<ProviderQuotaSnapsh
     return freshest.values.sortedWith(
         compareBy(
             { providerOrder[AgentProvider.fromKey(it.provider)?.key] ?: Int.MAX_VALUE },
-            { it.accountLabel.orEmpty().lowercase() }
-        )
+            { it.accountLabel.orEmpty().lowercase() },
+        ),
     )
 }
 

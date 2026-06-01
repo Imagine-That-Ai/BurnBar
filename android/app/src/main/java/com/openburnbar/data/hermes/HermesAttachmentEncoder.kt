@@ -2,9 +2,9 @@ package com.openburnbar.data.hermes
 
 import android.content.Context
 import android.net.Uri
+import java.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Base64
 
 /** Soft cap so the multimodal payload stays under typical Hermes limits. */
 object HermesAttachmentLimits {
@@ -25,19 +25,16 @@ object HermesAttachmentLimits {
  *   inline `text` parts that quote the file body (size-capped).
  */
 object HermesAttachmentEncoder {
-
-    fun encodeUserTurn(
-        prompt: String,
-        attachments: List<HermesAttachment>,
-        modelCapabilities: ModelIOCapabilities? = null
-    ): Any {
+    fun encodeUserTurn(prompt: String, attachments: List<HermesAttachment>, modelCapabilities: ModelIOCapabilities? = null): Any {
         if (attachments.isEmpty()) return prompt
         val array = JSONArray()
         if (prompt.isNotBlank()) {
-            array.put(JSONObject().apply {
-                put("type", "text")
-                put("text", prompt)
-            })
+            array.put(
+                JSONObject().apply {
+                    put("type", "text")
+                    put("text", prompt)
+                },
+            )
         }
         for (attachment in attachments) {
             array.put(encodePart(attachment, modelCapabilities))
@@ -45,32 +42,30 @@ object HermesAttachmentEncoder {
         return array
     }
 
-    private fun encodePart(
-        attachment: HermesAttachment,
-        modelCapabilities: ModelIOCapabilities?
-    ): JSONObject {
+    private fun encodePart(attachment: HermesAttachment, modelCapabilities: ModelIOCapabilities?): JSONObject {
         val bytes = readBytesSafely(attachment)
         if (attachment.isImage && bytes != null && canInlineImage(attachment, modelCapabilities)) {
             val b64 = Base64.getEncoder().encodeToString(bytes)
             return JSONObject().apply {
                 put("type", "image_url")
-                put("image_url", JSONObject().apply {
-                    put("url", "data:${attachment.mimeType};base64,$b64")
-                })
+                put(
+                    "image_url",
+                    JSONObject().apply {
+                        put("url", "data:${attachment.mimeType};base64,$b64")
+                    },
+                )
             }
         }
-        val body = bytes?.let { decodeBodyForText(it, attachment.mimeType) }
-            ?: "[unreadable attachment ${attachment.fileName}]"
+        val body =
+            bytes?.let { decodeBodyForText(it, attachment.mimeType) }
+                ?: "[unreadable attachment ${attachment.fileName}]"
         return JSONObject().apply {
             put("type", "text")
             put("text", "Attachment ${attachment.fileName} (${attachment.mimeType}):\n$body")
         }
     }
 
-    private fun canInlineImage(
-        attachment: HermesAttachment,
-        modelCapabilities: ModelIOCapabilities?
-    ): Boolean {
+    private fun canInlineImage(attachment: HermesAttachment, modelCapabilities: ModelIOCapabilities?): Boolean {
         return modelCapabilities?.let {
             it.supportsImageInput && it.acceptsInputMimeType(attachment.mimeType)
         } ?: true
@@ -101,7 +96,6 @@ object HermesAttachmentEncoder {
 
 /** Helpers for materialising a content-URI attachment to an app-private path. */
 object HermesAttachmentLoader {
-
     /**
      * Copy the contents at [uri] to the cache dir and return the absolute
      * path so the encoder can read it without keeping a URI permission
@@ -109,11 +103,13 @@ object HermesAttachmentLoader {
      */
     fun materialise(context: Context, uri: Uri, suggestedName: String?): String? {
         return runCatching {
-            val name = suggestedName?.takeIf { it.isNotBlank() }
-                ?: "hermes-${System.currentTimeMillis()}.bin"
-            val target = java.io.File(context.cacheDir, "hermes-attachments").apply {
-                if (!exists()) mkdirs()
-            }.resolve(name)
+            val name =
+                suggestedName?.takeIf { it.isNotBlank() }
+                    ?: "hermes-${System.currentTimeMillis()}.bin"
+            val target =
+                java.io.File(context.cacheDir, "hermes-attachments").apply {
+                    if (!exists()) mkdirs()
+                }.resolve(name)
             context.contentResolver.openInputStream(uri)?.use { input ->
                 target.outputStream().use { output ->
                     input.copyTo(output)

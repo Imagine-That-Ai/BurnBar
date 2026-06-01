@@ -23,12 +23,13 @@ android {
     val releaseKeystorePassword = providers.environmentVariable("OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD").orNull
     val releaseKeyAlias = providers.environmentVariable("OPENBURNBAR_ANDROID_KEY_ALIAS").orNull
     val releaseKeyPassword = providers.environmentVariable("OPENBURNBAR_ANDROID_KEY_PASSWORD").orNull
-    val hasReleaseSigningConfig = listOf(
-        releaseKeystorePath,
-        releaseKeystorePassword,
-        releaseKeyAlias,
-        releaseKeyPassword
-    ).all { !it.isNullOrBlank() }
+    val hasReleaseSigningConfig =
+        listOf(
+            releaseKeystorePath,
+            releaseKeystorePassword,
+            releaseKeyAlias,
+            releaseKeyPassword
+        ).all { !it.isNullOrBlank() }
 
     signingConfigs {
         if (hasReleaseSigningConfig) {
@@ -45,7 +46,7 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
+        versionCode = 18
         versionName = "1.0.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -56,21 +57,24 @@ android {
         // Real Play Store production builds leave the env var unset, which
         // keeps Play Integrity in place. Enforcement on the server side
         // stays ON in both cases.
-        val useDebugAppCheck = providers.environmentVariable("OPENBURNBAR_USE_DEBUG_APP_CHECK")
-            .map { it.equals("true", ignoreCase = true) }
-            .orElse(false)
-            .get()
+        val useDebugAppCheck =
+            providers.environmentVariable("OPENBURNBAR_USE_DEBUG_APP_CHECK")
+                .map { it.equals("true", ignoreCase = true) }
+                .orElse(false)
+                .get()
         buildConfigField("boolean", "USE_DEBUG_APP_CHECK", useDebugAppCheck.toString())
-        val debugAppCheckToken = providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
-            .orElse("")
-            .get()
+        val debugAppCheckToken =
+            providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
+                .orElse("")
+                .get()
         buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
 
         // Sentry DSN injected at build time — empty string disables Sentry.
         // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.
-        val sentryDsn = providers.environmentVariable("OPENBURNBAR_ANDROID_SENTRY_DSN")
-            .orElse("")
-            .get()
+        val sentryDsn =
+            providers.environmentVariable("OPENBURNBAR_ANDROID_SENTRY_DSN")
+                .orElse("")
+                .get()
         manifestPlaceholders["sentryDsn"] = sentryDsn
         manifestPlaceholders["sentryEnvironment"] = if (sentryDsn.isNotEmpty()) "production" else "development"
     }
@@ -107,13 +111,14 @@ android {
 
     packaging {
         resources {
-            excludes += setOf(
-                "META-INF/LICENSE",
-                "META-INF/LICENSE.md",
-                "META-INF/LICENSE-notice.md",
-                "META-INF/NOTICE",
-                "META-INF/NOTICE.md"
-            )
+            excludes +=
+                setOf(
+                    "META-INF/LICENSE",
+                    "META-INF/LICENSE.md",
+                    "META-INF/LICENSE-notice.md",
+                    "META-INF/NOTICE",
+                    "META-INF/NOTICE.md"
+                )
         }
     }
 
@@ -134,16 +139,17 @@ tasks.register<JacocoReport>("jacocoTestReport") {
             layout.buildDirectory.file("reports/jacoco/testDebugUnitTest/jacocoTestReport.xml")
         )
     }
-    val debugTree = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
-        exclude(
-            "**/R.class",
-            "**/R\$*.class",
-            "**/BuildConfig.*",
-            "**/Manifest*.*",
-            "**/*Test*.*",
-            "**/*\$Lambda\$*.*"
-        )
-    }
+    val debugTree =
+        fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+            exclude(
+                "**/R.class",
+                "**/R\$*.class",
+                "**/BuildConfig.*",
+                "**/Manifest*.*",
+                "**/*Test*.*",
+                "**/*\$Lambda\$*.*"
+            )
+        }
     classDirectories.setFrom(debugTree)
     sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
     executionData.setFrom(
@@ -158,18 +164,20 @@ tasks.register<JacocoReport>("jacocoTestReport") {
 tasks.register("jacocoCoverageVerification") {
     dependsOn("jacocoTestReport")
     doLast {
-        val reportFile = layout.buildDirectory.file(
-            "reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"
-        ).get().asFile
+        val reportFile =
+            layout.buildDirectory.file(
+                "reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"
+            ).get().asFile
         if (!reportFile.exists()) {
             logger.warn("JaCoCo XML report not found; skipping coverage verification.")
             return@doLast
         }
         val xml = reportFile.readText()
         // Extract instruction coverage (most stable metric for Kotlin)
-        val instructionMatch = Regex(
-            """<counter type="INSTRUCTION" missed="(\d+)" covered="(\d+)"/>"""
-        ).findAll(xml).lastOrNull()
+        val instructionMatch =
+            Regex(
+                """<counter type="INSTRUCTION" missed="(\d+)" covered="(\d+)"/>"""
+            ).findAll(xml).lastOrNull()
         if (instructionMatch != null) {
             val missed = instructionMatch.groupValues[1].toLong()
             val covered = instructionMatch.groupValues[2].toLong()
@@ -301,6 +309,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Glance for Widget
+    implementation("androidx.glance:glance:1.1.1")
     implementation("androidx.glance:glance-appwidget:1.1.1")
 
     // WorkManager — schedules the periodic widget snapshot refresh.
@@ -340,4 +349,20 @@ dependencies {
     // bytebuddy classes the ART runtime can't load, so the instrumented
     // suites use `mockk-android` instead.
     androidTestImplementation("io.mockk:mockk-android:1.13.13")
+}
+
+detekt {
+    config.setFrom(files("$projectDir/../detekt.yml"))
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    if (name.contains("test", ignoreCase = true)) {
+        enabled = false
+    } else {
+        exclude("**/SwarmTextCoordinates.kt")
+        exclude("**/SwarmBackground.kt")
+        exclude("**/AuroraTheme.kt")
+        exclude("**/AuroraNavGlyphs.kt")
+        exclude("**/renderers/**")
+    }
 }

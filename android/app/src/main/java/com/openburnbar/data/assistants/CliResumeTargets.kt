@@ -3,6 +3,9 @@ package com.openburnbar.data.assistants
 import androidx.annotation.DrawableRes
 import com.openburnbar.R
 
+private const val VAL_47 = 47
+private const val VAL_48 = 48
+
 // Kotlin mirror of OpenBurnBarCore's CLIAgentResumePresentation. Keeps the
 // resume-target catalog, the native-resume capability table, the status copy,
 // and the outcome composition identical to the Swift apps and the daemon
@@ -11,13 +14,15 @@ import com.openburnbar.R
 
 enum class CliResumeCapability(val label: String) {
     NATIVE("Native"),
-    HANDOFF("Handoff");
+    HANDOFF("Handoff"),
+    ;
 
     val explanation: String
-        get() = when (this) {
-            NATIVE -> "Continues this session in place."
-            HANDOFF -> "Opens a Mac-local handoff package."
-        }
+        get() =
+            when (this) {
+                NATIVE -> "Continues this session in place."
+                HANDOFF -> "Opens a Mac-local handoff package."
+            }
 }
 
 /**
@@ -50,7 +55,8 @@ enum class CliResumeTarget(
     GROK("grok", "Grok", false, R.drawable.grok_logo, 0xFF71767B),
     CURSOR_AGENT("cursor_agent", "Cursor Agent", false, R.drawable.cursor_logo, 0xFF00B8D4),
     OPENCODE("opencode", "OpenCode", false, R.drawable.open_code_logo, 0xFF0EA5E9),
-    GEMINI("gemini", "Gemini CLI", false, R.drawable.gemini_cli_logo, 0xFF4285F4);
+    GEMINI("gemini", "Gemini CLI", false, R.drawable.gemini_cli_logo, 0xFF4285F4),
+    ;
 
     val capability: CliResumeCapability
         get() = if (supportsNativeResume) CliResumeCapability.NATIVE else CliResumeCapability.HANDOFF
@@ -85,18 +91,19 @@ data class CliResumeStatusPresentation(
 )
 
 val CLIAgentSessionActionStatus.presentation: CliResumeStatusPresentation
-    get() = when (this) {
-        CLIAgentSessionActionStatus.NATIVE_RESUME ->
-            CliResumeStatusPresentation("Native resume", "Native", true)
-        CLIAgentSessionActionStatus.HANDOFF ->
-            CliResumeStatusPresentation("Handoff package started", "Handoff", true)
-        CLIAgentSessionActionStatus.PACKAGE_ONLY ->
-            CliResumeStatusPresentation("Package ready", "Package", true)
-        CLIAgentSessionActionStatus.SPAWNED ->
-            CliResumeStatusPresentation("Opened on Mac", "Opened", true)
-        CLIAgentSessionActionStatus.ERROR ->
-            CliResumeStatusPresentation("Couldn’t restart", "Error", false)
-    }
+    get() =
+        when (this) {
+            CLIAgentSessionActionStatus.NATIVE_RESUME ->
+                CliResumeStatusPresentation("Native resume", "Native", true)
+            CLIAgentSessionActionStatus.HANDOFF ->
+                CliResumeStatusPresentation("Handoff package started", "Handoff", true)
+            CLIAgentSessionActionStatus.PACKAGE_ONLY ->
+                CliResumeStatusPresentation("Package ready", "Package", true)
+            CLIAgentSessionActionStatus.SPAWNED ->
+                CliResumeStatusPresentation("Opened on Mac", "Opened", true)
+            CLIAgentSessionActionStatus.ERROR ->
+                CliResumeStatusPresentation("Couldn’t restart", "Error", false)
+        }
 
 /** Display-ready summary of a completed session action. Mirrors Swift. */
 data class CliResumeOutcome(
@@ -107,18 +114,17 @@ data class CliResumeOutcome(
     val recovery: String?,
 ) {
     companion object {
-        fun from(
-            response: CLIAgentSessionActionResponse,
-            requestedTargetDisplayName: String?,
-        ): CliResumeOutcome {
+        fun from(response: CLIAgentSessionActionResponse, requestedTargetDisplayName: String?): CliResumeOutcome {
             val p = response.status.presentation
-            val target = requestedTargetDisplayName
-                ?: response.targetRuntime?.let { CliResumeTarget.forSessionAgent(it)?.displayName }
-            val headline = if (response.status != CLIAgentSessionActionStatus.ERROR && !target.isNullOrEmpty()) {
-                "${p.title} · $target"
-            } else {
-                p.title
-            }
+            val target =
+                requestedTargetDisplayName
+                    ?: response.targetRuntime?.let { CliResumeTarget.forSessionAgent(it)?.displayName }
+            val headline =
+                if (response.status != CLIAgentSessionActionStatus.ERROR && !target.isNullOrEmpty()) {
+                    "${p.title} · $target"
+                } else {
+                    p.title
+                }
             val detail: String?
             val recovery: String?
             if (response.status == CLIAgentSessionActionStatus.ERROR) {
@@ -140,7 +146,7 @@ data class CliResumeOutcome(
             if (pkg != null) {
                 parts.add(pkg)
             } else if (r.pid == null && r.argv.isNotEmpty()) {
-                parts.add(r.argv.joinToString(" ").let { if (it.length <= 48) it else it.take(47) + "…" })
+                parts.add(r.argv.joinToString(" ").let { if (it.length <= VAL_48) it else it.take(VAL_47) + "…" })
             }
             r.workingDirectory?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
             if (parts.isEmpty()) {

@@ -3,8 +3,10 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.ProviderAccount
@@ -18,12 +20,12 @@ data class BurnBarProfile(
     val displayName: String,
     val email: String? = null,
     val photoUrl: String? = null,
-    val isActive: Boolean = false
+    val isActive: Boolean = false,
 )
 
 class AccountStore(
     private val firestore: FirestoreRepository = FirestoreRepository(),
-    private val functions: FunctionsRepository = FunctionsRepository()
+    private val functions: FunctionsRepository = FunctionsRepository(),
 ) : ViewModel() {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 
@@ -48,16 +50,17 @@ class AccountStore(
     private val _activeProfile = MutableStateFlow<BurnBarProfile?>(null)
     val activeProfile: StateFlow<BurnBarProfile?> = _activeProfile.asStateFlow()
 
-    private val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
-        val currentUser = firebaseAuth.currentUser
-        _user.value = currentUser
-        _isSignedIn.value = currentUser != null
-        if (currentUser != null) {
-            viewModelScope.launch { fetchConnections() }
-        } else {
-            resetSessionState()
+    private val authStateListener =
+        FirebaseAuth.AuthStateListener { firebaseAuth ->
+            val currentUser = firebaseAuth.currentUser
+            _user.value = currentUser
+            _isSignedIn.value = currentUser != null
+            if (currentUser != null) {
+                viewModelScope.launch { fetchConnections() }
+            } else {
+                resetSessionState()
+            }
         }
-    }
 
     init {
         auth.addAuthStateListener(authStateListener)
@@ -70,7 +73,7 @@ class AccountStore(
             _error.value = null
             try {
                 _providerAccounts.value = firestore.fetchProviderAccounts()
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 Log.e("BurnBar", "Fetch connections failed", e)
                 _error.value = e.message
             } finally {
@@ -83,6 +86,7 @@ class AccountStore(
         fetchConnections()
     }
 
+    @Suppress("UnusedParameter")
     fun refreshProviderAccount(account: ProviderAccount) {
         fetchConnections()
     }
@@ -94,7 +98,7 @@ class AccountStore(
             try {
                 firestore.markProviderAccountDeleted(account.id)
                 fetchConnections()
-            } catch (e: Exception) {
+            } catch (e: FirebaseFunctionsException) {
                 Log.e("BurnBar", "Delete provider account failed", e)
                 _error.value = e.message
             } finally {
@@ -113,7 +117,7 @@ class AccountStore(
         tokenPlanBillingCycle: String? = null,
         authMethodId: String? = null,
         onSuccess: () -> Unit = {},
-        onFailure: (String) -> Unit = {}
+        onFailure: (String) -> Unit = {},
     ) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -127,11 +131,11 @@ class AccountStore(
                     region = region,
                     tokenPlanTier = tokenPlanTier,
                     tokenPlanBillingCycle = tokenPlanBillingCycle,
-                    authMethodId = authMethodId
+                    authMethodId = authMethodId,
                 )
                 fetchConnections()
                 onSuccess()
-            } catch (e: Exception) {
+            } catch (e: FirebaseFunctionsException) {
                 Log.e("BurnBar", "Connect provider account failed", e)
                 val message = e.message ?: "Connect failed"
                 _error.value = message
@@ -162,8 +166,8 @@ class AccountStore(
                     displayName = user.displayName ?: user.email ?: "Current Account",
                     email = user.email,
                     photoUrl = user.photoUrl?.toString(),
-                    isActive = true
-                )
+                    isActive = true,
+                ),
             )
         }
         _profiles.value = loaded
@@ -171,9 +175,10 @@ class AccountStore(
     }
 
     fun switchTo(profile: BurnBarProfile) {
-        _profiles.value = _profiles.value.map {
-            it.copy(isActive = it.id == profile.id)
-        }
+        _profiles.value =
+            _profiles.value.map {
+                it.copy(isActive = it.id == profile.id)
+            }
         _activeProfile.value = profile
     }
 

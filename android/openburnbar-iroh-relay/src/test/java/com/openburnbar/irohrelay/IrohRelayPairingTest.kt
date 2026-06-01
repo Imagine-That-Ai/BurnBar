@@ -1,8 +1,6 @@
 package com.openburnbar.irohrelay
 
 import com.google.crypto.tink.signature.SignatureConfig
-import java.security.SecureRandom
-import java.util.Base64
 import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
@@ -13,6 +11,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
+import java.security.SecureRandom
+import java.util.Base64
 
 /**
  * The Mac signs pairing records with iOS CryptoKit Curve25519 (Ed25519).
@@ -46,51 +46,55 @@ class IrohRelayPairingTest {
     @Test
     fun verify_accepts_signed_record() {
         val publishedAt = System.currentTimeMillis()
-        val payload = IrohPairingSignature.canonicalPayload(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-1",
-            relayURL = "https://relay.example.com",
-            directAddresses = listOf("10.0.0.5:443", "192.168.1.2:443"),
-            publishedAtMillis = publishedAt,
-            protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
-        )
+        val payload =
+            IrohPairingSignature.canonicalPayload(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-1",
+                relayURL = "https://relay.example.com",
+                directAddresses = listOf("10.0.0.5:443", "192.168.1.2:443"),
+                publishedAtMillis = publishedAt,
+                protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
+            )
         val signature = sign(payload)
-        val record = IrohPairingRecord(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-1",
-            relayURL = "https://relay.example.com",
-            directAddresses = listOf("10.0.0.5:443", "192.168.1.2:443"),
-            publishedAtMillis = publishedAt,
-            signature = signature,
-        )
+        val record =
+            IrohPairingRecord(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-1",
+                relayURL = "https://relay.example.com",
+                directAddresses = listOf("10.0.0.5:443", "192.168.1.2:443"),
+                publishedAtMillis = publishedAt,
+                signature = signature,
+            )
         IrohPairingSignature.verify(record, publicKey = rawPublicKey, nowMillis = publishedAt + 1_000)
     }
 
     @Test
     fun verify_rejects_record_with_wrong_signature() {
         val publishedAt = System.currentTimeMillis()
-        val payload = IrohPairingSignature.canonicalPayload(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-1",
-            relayURL = null,
-            directAddresses = emptyList(),
-            publishedAtMillis = publishedAt,
-            protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
-        )
+        val payload =
+            IrohPairingSignature.canonicalPayload(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-1",
+                relayURL = null,
+                directAddresses = emptyList(),
+                publishedAtMillis = publishedAt,
+                protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
+            )
         val signature = sign(payload)
-        val record = IrohPairingRecord(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-1",
-            relayURL = null,
-            directAddresses = emptyList(),
-            publishedAtMillis = publishedAt,
-            // Tamper with the nodeId AFTER signing.
-            signature = signature,
-        ).copy(nodeId = "tampered")
+        val record =
+            IrohPairingRecord(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-1",
+                relayURL = null,
+                directAddresses = emptyList(),
+                publishedAtMillis = publishedAt,
+                // Tamper with the nodeId AFTER signing.
+                signature = signature,
+            ).copy(nodeId = "tampered")
         assertThrows(IrohPairingError.InvalidSignature::class.java) {
             IrohPairingSignature.verify(record, publicKey = rawPublicKey, nowMillis = publishedAt + 1_000)
         }
@@ -99,22 +103,24 @@ class IrohRelayPairingTest {
     @Test
     fun verify_rejects_record_older_than_max_age() {
         val publishedAt = System.currentTimeMillis() - (25 * 60 * 60 * 1000L)
-        val payload = IrohPairingSignature.canonicalPayload(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-1",
-            relayURL = null,
-            directAddresses = emptyList(),
-            publishedAtMillis = publishedAt,
-            protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
-        )
-        val record = IrohPairingRecord(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-1",
-            publishedAtMillis = publishedAt,
-            signature = sign(payload),
-        )
+        val payload =
+            IrohPairingSignature.canonicalPayload(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-1",
+                relayURL = null,
+                directAddresses = emptyList(),
+                publishedAtMillis = publishedAt,
+                protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
+            )
+        val record =
+            IrohPairingRecord(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-1",
+                publishedAtMillis = publishedAt,
+                signature = sign(payload),
+            )
         assertThrows(IrohPairingError.Expired::class.java) {
             IrohPairingSignature.verify(record, publicKey = rawPublicKey)
         }
@@ -122,15 +128,16 @@ class IrohRelayPairingTest {
 
     @Test
     fun canonical_payload_round_trips_through_pipe_format() {
-        val payload = IrohPairingSignature.canonicalPayload(
-            uid = "uid-1",
-            connectionId = "conn-1",
-            nodeId = "node-xyz",
-            relayURL = "  https://relay.example  ",
-            directAddresses = listOf("  10.0.0.1:1 ", "10.0.0.1:1", "10.0.0.2:1"),
-            publishedAtMillis = 12345L,
-            protocolVersion = 1,
-        )
+        val payload =
+            IrohPairingSignature.canonicalPayload(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                nodeId = "node-xyz",
+                relayURL = "  https://relay.example  ",
+                directAddresses = listOf("  10.0.0.1:1 ", "10.0.0.1:1", "10.0.0.2:1"),
+                publishedAtMillis = 12345L,
+                protocolVersion = 1,
+            )
         val expected = "openburnbar.iroh.pairing.v1|uid-1|conn-1|node-xyz|https://relay.example|10.0.0.1:1,10.0.0.2:1|12345"
         assertEquals(expected, String(payload, Charsets.UTF_8))
     }
@@ -138,14 +145,15 @@ class IrohRelayPairingTest {
     @Test
     fun verify_rejects_unsupported_protocol_version() {
         val publishedAt = System.currentTimeMillis()
-        val record = IrohPairingRecord(
-            uid = "uid",
-            connectionId = "conn",
-            nodeId = "node",
-            publishedAtMillis = publishedAt,
-            protocolVersion = 99,
-            signature = Base64.getEncoder().encodeToString(ByteArray(64)),
-        )
+        val record =
+            IrohPairingRecord(
+                uid = "uid",
+                connectionId = "conn",
+                nodeId = "node",
+                publishedAtMillis = publishedAt,
+                protocolVersion = 99,
+                signature = Base64.getEncoder().encodeToString(ByteArray(64)),
+            )
         assertThrows(IrohPairingError.UnsupportedProtocolVersion::class.java) {
             IrohPairingSignature.verify(record, publicKey = rawPublicKey)
         }

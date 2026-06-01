@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.stores.CloudSyncErrorClassifier
@@ -10,7 +13,7 @@ class CloudSyncErrorClassifierTest {
     fun `permission denied with app check language is app check blocked`() {
         assertEquals(
             CloudSyncHealth.APP_CHECK_BLOCKED,
-            CloudSyncErrorClassifier.permissionDeniedHealth("Firebase App Check token is invalid.")
+            CloudSyncErrorClassifier.permissionDeniedHealth("Firebase App Check token is invalid."),
         )
     }
 
@@ -18,7 +21,7 @@ class CloudSyncErrorClassifierTest {
     fun `rules permission denied remains permission denied`() {
         assertEquals(
             CloudSyncHealth.PERMISSION_DENIED,
-            CloudSyncErrorClassifier.permissionDeniedHealth("Missing or insufficient permissions.")
+            CloudSyncErrorClassifier.permissionDeniedHealth("Missing or insufficient permissions."),
         )
     }
 }

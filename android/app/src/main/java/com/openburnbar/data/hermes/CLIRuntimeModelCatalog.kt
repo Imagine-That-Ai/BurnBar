@@ -55,25 +55,25 @@ enum class CliModelSource(
     GROK_MODEL_CATALOG(
         "Grok live catalog",
         "Discovered from this Mac's Grok Build CLI model catalog.",
-    );
+    ),
+    ;
 
     companion object {
-        fun fromWire(value: String?): CliModelSource =
-            when (value) {
-                "cliProfile" -> CLI_PROFILE
-                "droidStandardQuota" -> DROID_STANDARD_QUOTA
-                "droidCoreQuota" -> DROID_CORE_QUOTA
-                "droidCustomModel" -> DROID_CUSTOM_MODEL
-                "openBurnBarProxy" -> OPENBURNBAR_PROXY
-                "forgeAgent" -> FORGE_AGENT
-                "antigravityProfile" -> ANTIGRAVITY_PROFILE
-                "antigravityModelCatalog" -> ANTIGRAVITY_MODEL_CATALOG
-                "claudeModelCatalog" -> CLAUDE_MODEL_CATALOG
-                "cursorAgentProfile" -> CURSOR_AGENT_PROFILE
-                "codexModelCatalog" -> CODEX_MODEL_CATALOG
-                "grokModelCatalog" -> GROK_MODEL_CATALOG
-                else -> CLI_PROFILE
-            }
+        fun fromWire(value: String?): CliModelSource = when (value) {
+            "cliProfile" -> CLI_PROFILE
+            "droidStandardQuota" -> DROID_STANDARD_QUOTA
+            "droidCoreQuota" -> DROID_CORE_QUOTA
+            "droidCustomModel" -> DROID_CUSTOM_MODEL
+            "openBurnBarProxy" -> OPENBURNBAR_PROXY
+            "forgeAgent" -> FORGE_AGENT
+            "antigravityProfile" -> ANTIGRAVITY_PROFILE
+            "antigravityModelCatalog" -> ANTIGRAVITY_MODEL_CATALOG
+            "claudeModelCatalog" -> CLAUDE_MODEL_CATALOG
+            "cursorAgentProfile" -> CURSOR_AGENT_PROFILE
+            "codexModelCatalog" -> CODEX_MODEL_CATALOG
+            "grokModelCatalog" -> GROK_MODEL_CATALOG
+            else -> CLI_PROFILE
+        }
     }
 }
 
@@ -100,14 +100,15 @@ data class CliRuntimeModelCatalogResponse(
             if (optionsJSON != null) {
                 for (index in 0 until optionsJSON.length()) {
                     val item = optionsJSON.optJSONObject(index) ?: continue
-                    rows += CliRuntimeModelOption(
-                        modelID = item.optString("modelID"),
-                        displayName = item.optString("displayName", item.optString("modelID")),
-                        providerID = item.optString("providerID"),
-                        providerName = item.optString("providerName"),
-                        tier = item.optString("tier", "mid"),
-                        source = CliModelSource.fromWire(item.optString("source")),
-                    )
+                    rows +=
+                        CliRuntimeModelOption(
+                            modelID = item.optString("modelID"),
+                            displayName = item.optString("displayName", item.optString("modelID")),
+                            providerID = item.optString("providerID"),
+                            providerName = item.optString("providerName"),
+                            tier = item.optString("tier", "mid"),
+                            source = CliModelSource.fromWire(item.optString("source")),
+                        )
                 }
             }
             return CliRuntimeModelCatalogResponse(

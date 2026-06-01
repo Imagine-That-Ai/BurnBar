@@ -3,8 +3,6 @@ package com.openburnbar.data.cloud
 import android.content.Context
 import com.openburnbar.BurnBarApplication
 import java.io.File
-import java.security.MessageDigest
-import java.util.Locale
 
 data class CloudTranscriptCacheSnapshot(
     val usageBytes: Long,
@@ -15,6 +13,7 @@ data class CloudTranscriptCacheSnapshot(
 }
 
 object CloudTranscriptCacheSettings {
+    private const val KIBIBYTES_PER_MEBIBYTE = 1_024.0
     const val DEFAULT_MAX_MEGABYTES = 250
     const val MAXIMUM_MEGABYTES = 2_048
     const val BYTES_PER_MEGABYTE = 1_024L * 1_024L
@@ -32,34 +31,26 @@ object CloudTranscriptCacheSettings {
         prefs.edit().putInt(MAX_MEGABYTES_KEY, clampMegabytes(value)).apply()
     }
 
-    fun maxBytes(context: Context = BurnBarApplication.appContext): Long =
-        maxMegabytes(context).toLong() * BYTES_PER_MEGABYTE
+    fun maxBytes(context: Context = BurnBarApplication.appContext): Long = maxMegabytes(context).toLong() * BYTES_PER_MEGABYTE
 
-    fun clampMegabytes(value: Int): Int =
-        value.coerceIn(0, MAXIMUM_MEGABYTES)
+    fun clampMegabytes(value: Int): Int = value.coerceIn(0, MAXIMUM_MEGABYTES)
 
     fun formatBytes(bytes: Long): String {
         val safeBytes = bytes.coerceAtLeast(0L)
         val megabytes = safeBytes.toDouble() / BYTES_PER_MEGABYTE.toDouble()
-        return if (megabytes >= 1_024.0) {
-            String.format(Locale.US, "%.1f GB", megabytes / 1_024.0)
+        return if (megabytes >= KIBIBYTES_PER_MEBIBYTE) {
+            String.format(java.util.Locale.US, "%.1f GB", megabytes / KIBIBYTES_PER_MEBIBYTE)
         } else {
-            String.format(Locale.US, "%.0f MB", megabytes)
+            String.format(java.util.Locale.US, "%.0f MB", megabytes)
         }
     }
 }
 
 object CloudTranscriptCache {
-    private const val CACHE_DIR = "OpenBurnBarCloudTranscripts"
-
     @Synchronized
-    fun cachedEnvelopeBytes(
-        storagePath: String,
-        bodyHash: String,
-        context: Context = BurnBarApplication.appContext,
-    ): ByteArray? {
+    fun cachedEnvelopeBytes(storagePath: String, bodyHash: String, context: Context = BurnBarApplication.appContext): ByteArray? {
         if (CloudTranscriptCacheSettings.maxBytes(context) <= 0L) return null
-        val file = blobFile(context, storagePath, bodyHash)
+        val file = CloudTranscriptCacheStorage.blobFile(context, storagePath, bodyHash)
         if (!file.exists()) return null
         return runCatching {
             val bytes = file.readBytes()
@@ -69,12 +60,7 @@ object CloudTranscriptCache {
     }
 
     @Synchronized
-    fun storeEnvelopeBytes(
-        storagePath: String,
-        bodyHash: String,
-        bytes: ByteArray,
-        context: Context = BurnBarApplication.appContext,
-    ) {
+    fun storeEnvelopeBytes(storagePath: String, bodyHash: String, bytes: ByteArray, context: Context = BurnBarApplication.appContext) {
         val maxBytes = CloudTranscriptCacheSettings.maxBytes(context)
         if (maxBytes <= 0L) {
             clear(context)
@@ -82,9 +68,9 @@ object CloudTranscriptCache {
         }
         if (bytes.size.toLong() > maxBytes) return
 
-        val dir = directory(context)
+        val dir = CloudTranscriptCacheStorage.directory(context)
         dir.mkdirs()
-        val destination = blobFile(context, storagePath, bodyHash)
+        val destination = CloudTranscriptCacheStorage.blobFile(context, storagePath, bodyHash)
         val tmp = File(dir, "${destination.name}.tmp")
         tmp.writeBytes(bytes)
         if (!tmp.renameTo(destination)) {
@@ -96,17 +82,13 @@ object CloudTranscriptCache {
     }
 
     @Synchronized
-    fun remove(
-        storagePath: String,
-        bodyHash: String,
-        context: Context = BurnBarApplication.appContext,
-    ) {
-        blobFile(context, storagePath, bodyHash).delete()
+    fun remove(storagePath: String, bodyHash: String, context: Context = BurnBarApplication.appContext) {
+        CloudTranscriptCacheStorage.blobFile(context, storagePath, bodyHash).delete()
     }
 
     @Synchronized
     fun clear(context: Context = BurnBarApplication.appContext) {
-        val dir = directory(context)
+        val dir = CloudTranscriptCacheStorage.directory(context)
         if (dir.exists()) dir.deleteRecursively()
         dir.mkdirs()
     }
@@ -118,7 +100,7 @@ object CloudTranscriptCache {
             clear(context)
             return
         }
-        val files = cacheFiles(context).sortedBy { it.lastModified() }.toMutableList()
+        val files = CloudTranscriptCacheStorage.cacheFiles(context).sortedBy { it.lastModified() }.toMutableList()
         var usage = files.sumOf { it.length() }
         while (usage > maxBytes && files.isNotEmpty()) {
             val file = files.removeAt(0)
@@ -131,25 +113,8 @@ object CloudTranscriptCache {
     fun snapshot(context: Context = BurnBarApplication.appContext): CloudTranscriptCacheSnapshot {
         trimToLimit(context)
         return CloudTranscriptCacheSnapshot(
-            usageBytes = cacheFiles(context).sumOf { it.length() },
+            usageBytes = CloudTranscriptCacheStorage.cacheFiles(context).sumOf { it.length() },
             maxBytes = CloudTranscriptCacheSettings.maxBytes(context),
         )
     }
-
-    private fun directory(context: Context): File =
-        File(context.cacheDir, CACHE_DIR)
-
-    private fun blobFile(context: Context, storagePath: String, bodyHash: String): File =
-        File(directory(context), "${cacheKey(storagePath, bodyHash)}.json")
-
-    private fun cacheFiles(context: Context): List<File> =
-        directory(context).listFiles()?.filter { it.isFile && it.extension == "json" } ?: emptyList()
-
-    private fun cacheKey(storagePath: String, bodyHash: String): String =
-        sha256Hex("$storagePath\n$bodyHash".toByteArray(Charsets.UTF_8))
-
-    private fun sha256Hex(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
-            "%02x".format(it.toInt() and 0xff)
-        }
 }

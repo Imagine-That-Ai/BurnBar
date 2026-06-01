@@ -3,20 +3,19 @@ package com.openburnbar.ui.burn
 import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 
-fun matchingQuotaAccounts(
-    snapshot: ProviderQuotaSnapshot,
-    accounts: List<ProviderAccount>
-): List<ProviderAccount> {
-    val accountMatches = snapshot.accountId
-        ?.takeIf { it.isNotBlank() }
-        ?.let { id -> accounts.filter { it.id == id } }
-        .orEmpty()
+fun matchingQuotaAccounts(snapshot: ProviderQuotaSnapshot, accounts: List<ProviderAccount>): List<ProviderAccount> {
+    val accountMatches =
+        snapshot.accountId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { id -> accounts.filter { it.id == id } }
+            .orEmpty()
     if (accountMatches.isNotEmpty()) return accountMatches
 
-    val providerKeys = setOfNotNull(
-        snapshot.provider.takeIf { it.isNotBlank() },
-        snapshot.providerId?.takeIf { it.isNotBlank() }
-    )
+    val providerKeys =
+        setOfNotNull(
+            snapshot.provider.takeIf { it.isNotBlank() },
+            snapshot.providerId?.takeIf { it.isNotBlank() },
+        )
     return accounts.filter { it.providerId in providerKeys }
 }
 
@@ -33,18 +32,14 @@ fun quotaAccountEmail(snapshot: ProviderQuotaSnapshot, accounts: List<ProviderAc
     return quotaAccountEmail(snapshot, accounts, fallbackEmail = null)
 }
 
-fun quotaAccountEmail(
-    snapshot: ProviderQuotaSnapshot,
-    accounts: List<ProviderAccount>,
-    fallbackEmail: String?
-): String? {
+fun quotaAccountEmail(snapshot: ProviderQuotaSnapshot, accounts: List<ProviderAccount>, fallbackEmail: String?): String? {
     val account = matchingQuotaAccounts(snapshot, accounts).firstOrNull()
     return firstEmailLike(
         account?.identityHint,
         account?.label,
         snapshot.accountLabel,
         account?.redactedLabel,
-        fallbackEmail
+        fallbackEmail,
     )
 }
 

@@ -3,13 +3,8 @@ package com.openburnbar.ui.pro
 import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
@@ -17,18 +12,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.openburnbar.R
@@ -47,37 +39,38 @@ enum class CloudBadgeStyle(
     val key: String,
     val title: String,
     val blurb: String,
-    val drawableRes: Int
+    val drawableRes: Int,
 ) {
     Shield(
         key = "shield",
         title = "Silver Shield",
         blurb = "Pewter heraldry — clean, classic.",
-        drawableRes = R.drawable.cloud_badge_shield
+        drawableRes = R.drawable.cloud_badge_shield,
     ),
     WaxSeal(
         key = "wax_seal",
         title = "Wax Seal",
         blurb = "Coral wax + silver flame — handcrafted.",
-        drawableRes = R.drawable.cloud_badge_wax_seal
+        drawableRes = R.drawable.cloud_badge_wax_seal,
     ),
     BrassCoin(
         key = "brass_coin",
         title = "Brass Signet",
         blurb = "Engraved brass coin — coveted signet.",
-        drawableRes = R.drawable.cloud_badge_brass_coin
+        drawableRes = R.drawable.cloud_badge_brass_coin,
     ),
     SunDisc(
         key = "sun_disc",
         title = "Sun Disc",
         blurb = "Obsidian sunburst — ornate and cinematic.",
-        drawableRes = R.drawable.cloud_badge_sun_disc
-    );
+        drawableRes = R.drawable.cloud_badge_sun_disc,
+    ),
+    ;
 
     companion object {
         val DEFAULT: CloudBadgeStyle = BrassCoin
-        fun fromKey(key: String?): CloudBadgeStyle =
-            entries.firstOrNull { it.key == key } ?: DEFAULT
+
+        fun fromKey(key: String?): CloudBadgeStyle = entries.firstOrNull { it.key == key } ?: DEFAULT
     }
 }
 
@@ -149,7 +142,7 @@ fun rememberLocalCloudBadgeSelection(): MutableState<CloudBadgeStyle> {
 enum class CloudBadgeSize(val dp: Dp) {
     Small(28.dp),
     Medium(56.dp),
-    Large(104.dp);
+    Large(104.dp),
 }
 
 /**
@@ -157,17 +150,13 @@ enum class CloudBadgeSize(val dp: Dp) {
  * Pass [styleOverride] from the picker preview to show a specific style.
  */
 @Composable
-fun CloudBadge(
-    size: CloudBadgeSize = CloudBadgeSize.Medium,
-    styleOverride: CloudBadgeStyle? = null,
-    modifier: Modifier = Modifier
-) {
+fun CloudBadge(size: CloudBadgeSize = CloudBadgeSize.Medium, styleOverride: CloudBadgeStyle? = null, modifier: Modifier = Modifier) {
     val style = styleOverride ?: rememberCloudBadgeSelection().value
     Image(
         painter = painterResource(id = style.drawableRes),
         contentDescription = "OpenBurnBar Cloud member badge",
         modifier = modifier.size(size.dp),
-        contentScale = ContentScale.Fit
+        contentScale = ContentScale.Fit,
     )
 }
 
@@ -176,29 +165,28 @@ fun CloudBadge(
  * adds a soft ember halo behind the badge so it lifts off the gradient.
  */
 @Composable
-fun CloudBadgeWithHalo(
-    size: CloudBadgeSize = CloudBadgeSize.Medium,
-    styleOverride: CloudBadgeStyle? = null,
-    modifier: Modifier = Modifier
-) {
+fun CloudBadgeWithHalo(size: CloudBadgeSize = CloudBadgeSize.Medium, styleOverride: CloudBadgeStyle? = null, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .size(size.dp + 16.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .size(size.dp + 8.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(
+                        colors =
+                        listOf(
                             AuroraColors.amber.copy(alpha = 0.55f),
                             AuroraColors.ember.copy(alpha = 0.25f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
         )
         CloudBadge(size = size, styleOverride = styleOverride)
     }

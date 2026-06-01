@@ -9,6 +9,8 @@ import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.DispatchException
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.toMissionSnapshotOrNull
+import java.lang.IllegalStateException
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,8 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
+
+private const val VAL_12 = 12
 
 // MARK: - Mobile Mission Console Host (Android parity)
 //
@@ -47,21 +49,24 @@ class MobileMissionConsoleHost private constructor(
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private val perMissionObservers = ConcurrentHashMap<String, Job>()
     private val observedMissions = ConcurrentHashMap<String, CLIAgentMissionSnapshot>()
+
     @Volatile private var observedOrder: List<String> = emptyList()
     private val dismissedTerminalIDs = ConcurrentHashMap.newKeySet<String>()
 
     fun start() {
         if (authListener != null) return
-        val listener = FirebaseAuth.AuthStateListener { firebase ->
-            restartListListener(firebase.currentUser?.uid)
-        }
+        val listener =
+            FirebaseAuth.AuthStateListener { firebase ->
+                restartListListener(firebase.currentUser?.uid)
+            }
         authListener = listener
         auth.addAuthStateListener(listener)
         restartListListener(auth.currentUser?.uid)
     }
 
     fun stop() {
-        listListener?.remove(); listListener = null
+        listListener?.remove()
+        listListener = null
         perMissionObservers.values.forEach { it.cancel() }
         perMissionObservers.clear()
         observedMissions.clear()
@@ -86,25 +91,26 @@ class MobileMissionConsoleHost private constructor(
     ): String? {
         _isDispatching.value = true
         return try {
-            val id = dispatcher.dispatch(
-                title = title.trim().ifBlank { "Mission · $missionKind" },
-                prompt = prompt,
-                missionKind = missionKind,
-                requestedRuntime = runtimeID,
-                targetProject = targetProject,
-                commandsAllowed = commandsAllowed,
-                fileEditsAllowed = fileEditsAllowed,
-                sourceSkillID = sourceSkillID,
-                sourceSurface = sourceSurface,
-                deliveryMode = deliveryMode,
-                parentHermesThreadID = parentHermesThreadID,
-            )
+            val id =
+                dispatcher.dispatch(
+                    title = title.trim().ifBlank { "Mission · $missionKind" },
+                    prompt = prompt,
+                    missionKind = missionKind,
+                    requestedRuntime = runtimeID,
+                    targetProject = targetProject,
+                    commandsAllowed = commandsAllowed,
+                    fileEditsAllowed = fileEditsAllowed,
+                    sourceSkillID = sourceSkillID,
+                    sourceSurface = sourceSurface,
+                    deliveryMode = deliveryMode,
+                    parentHermesThreadID = parentHermesThreadID,
+                )
             beginObservingIfNeeded(id)
             id
         } catch (e: DispatchException) {
             _inlineError.value = e.message
             null
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             _inlineError.value = e.localizedMessage ?: "Dispatch failed."
             null
         } finally {
@@ -115,7 +121,7 @@ class MobileMissionConsoleHost private constructor(
     suspend fun respond(ask: ApprovalAsk, approve: Boolean) {
         try {
             dispatcher.respondToApproval(requestID = ask.missionID, approve = approve)
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             _inlineError.value = e.localizedMessage ?: "Approval response failed."
         }
     }
@@ -123,7 +129,7 @@ class MobileMissionConsoleHost private constructor(
     suspend fun cancelMission(id: String) {
         try {
             dispatcher.cancelMission(id)
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             _inlineError.value = e.localizedMessage ?: "Cancellation failed."
         }
     }
@@ -133,10 +139,13 @@ class MobileMissionConsoleHost private constructor(
         rebuildSnapshot()
     }
 
-    fun clearInlineError() { _inlineError.value = null }
+    fun clearInlineError() {
+        _inlineError.value = null
+    }
 
     private fun restartListListener(uid: String?) {
-        listListener?.remove(); listListener = null
+        listListener?.remove()
+        listListener = null
         perMissionObservers.values.forEach { it.cancel() }
         perMissionObservers.clear()
         observedMissions.clear()
@@ -146,20 +155,22 @@ class MobileMissionConsoleHost private constructor(
             rebuildSnapshot()
             return
         }
-        listListener = firestore.collection("users").document(uid)
-            .collection("cli_agent_mission_requests")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(12)
-            .addSnapshotListener { snap, error ->
-                if (error != null) {
-                    _inlineError.value = error.localizedMessage
-                    return@addSnapshotListener
+        listListener =
+            firestore.collection("users").document(uid)
+                .collection("cli_agent_mission_requests")
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .limit(VAL_12.toLong())
+                .addSnapshotListener { snap, error ->
+                    if (error != null) {
+                        _inlineError.value = error.localizedMessage
+                        return@addSnapshotListener
+                    }
+                    val missions =
+                        snap?.documents.orEmpty().mapNotNull { doc ->
+                            doc.toMissionSnapshotOrNull()
+                        }
+                    absorb(missions)
                 }
-                val missions = snap?.documents.orEmpty().mapNotNull { doc ->
-                    doc.toMissionSnapshotOrNull()
-                }
-                absorb(missions)
-            }
     }
 
     private fun absorb(missions: List<CLIAgentMissionSnapshot>) {
@@ -180,97 +191,48 @@ class MobileMissionConsoleHost private constructor(
 
     private fun beginObservingIfNeeded(missionID: String) {
         if (perMissionObservers.containsKey(missionID)) return
-        val job = scope.launch {
-            try {
-                dispatcher.observe(missionID).collect { snapshot ->
-                    observedMissions[snapshot.id] = snapshot
-                    if (snapshot.id !in observedOrder) {
-                        observedOrder = listOf(snapshot.id) + observedOrder
+        val job =
+            scope.launch {
+                try {
+                    dispatcher.observe(missionID).collect { snapshot ->
+                        observedMissions[snapshot.id] = snapshot
+                        if (snapshot.id !in observedOrder) {
+                            observedOrder = listOf(snapshot.id) + observedOrder
+                        }
+                        rebuildSnapshot()
                     }
-                    rebuildSnapshot()
+                } catch (_: Throwable) {
+                    // listener torn down — auth change or sign-out; ignore.
                 }
-            } catch (_: Throwable) {
-                // listener torn down — auth change or sign-out; ignore.
             }
-        }
         perMissionObservers[missionID] = job
     }
 
     private fun rebuildSnapshot() {
-        val orderedMissions = observedOrder.mapNotNull { observedMissions[it] }
-            .filter { it.id !in dismissedTerminalIDs }
-        val macOnline = orderedMissions.any { snap ->
-            (snap.selectedRuntime ?: "").isNotBlank() || snap.status !in setOf("pending", "queued")
-        }
-        val activeTiles = orderedMissions
-            .filter { !it.isTerminal && !(it.displayStatus == "mac_offline" && macOnline) }
-            .map { it.toActiveMission() }
-        val approvalAsks = orderedMissions.mapNotNull { it.toApprovalAskOrNull() }
-        val ticker = orderedMissions
-            .flatMap { mission ->
-                mission.events.takeLast(6).map { ev ->
-                    TickerEntry(
-                        id = "${mission.id}-${ev.sequence}",
-                        timestampEpoch = runCatching { Instant.parse(ev.timestamp).toEpochMilli() }.getOrDefault(System.currentTimeMillis()),
-                        kind = when (ev.kind) {
-                            "tool_call" -> TickerEntry.Kind.TOOL_CALL
-                            "tool_result" -> TickerEntry.Kind.TOOL_RESULT
-                            "llm_response" -> TickerEntry.Kind.LLM_RESPONSE
-                            "final_answer" -> TickerEntry.Kind.FINAL_ANSWER
-                            "changed_file" -> TickerEntry.Kind.CHANGED_FILE
-                            "artifact" -> TickerEntry.Kind.ARTIFACT
-                            "error" -> TickerEntry.Kind.ERROR
-                            "approval_request" -> TickerEntry.Kind.APPROVAL
-                            else -> TickerEntry.Kind.STATUS
-                        },
-                        phase = ev.phase,
-                        title = ev.title,
-                        message = ev.fullMessage ?: ev.message,
-                        toolName = ev.toolName,
-                        pathDetail = ev.changedFilePath ?: ev.artifactPath,
-                        missionID = mission.id,
-                        runtimeID = runtimeIDGuess(mission.selectedRuntime ?: mission.requestedRuntime),
-                        isError = ev.isError,
-                    )
-                }
-            }
-            .sortedByDescending { it.timestampEpoch }
-            .take(16)
-        val knownProjects = orderedMissions
-            .mapNotNull { snap ->
-                snap.toProjectField()
-            }
-            .distinct()
-            .take(24)
-        val recentProjects = knownProjects.take(12)
-        _snapshot.value = MissionConsoleSnapshot(
-            activeMissions = activeTiles,
-            approvalQueue = approvalAsks,
-            groups = emptyList(),
-            recentTicker = ticker,
-            knownProjects = knownProjects,
-            recentProjects = recentProjects,
-            openMissions = activeTiles.count { it.phase.isLive },
-            queuedMissions = activeTiles.count { it.phase == ActiveMission.Phase.QUEUED },
-            blockedMissions = activeTiles.count { it.phase == ActiveMission.Phase.FAILED || it.phase == ActiveMission.Phase.BLOCKED },
-            daemonState = when {
-                orderedMissions.any { it.displayStatus == "mac_offline" } && !macOnline -> DaemonState.MAC_OFFLINE
-                macOnline -> DaemonState.LIVE
-                else -> DaemonState.UNKNOWN
-            },
-        )
+        val orderedMissions =
+            observedOrder.mapNotNull { observedMissions[it] }
+                .filter { it.id !in dismissedTerminalIDs }
+        val parts = buildMissionConsoleSnapshotParts(orderedMissions, ::runtimeIDGuess)
+        _snapshot.value =
+            MissionConsoleSnapshot(
+                activeMissions = parts.activeTiles,
+                approvalQueue = parts.approvalAsks,
+                groups = emptyList(),
+                recentTicker = parts.ticker,
+                knownProjects = parts.knownProjects,
+                recentProjects = parts.knownProjects.take(VAL_12),
+                openMissions = parts.activeTiles.count { it.phase.isLive },
+                queuedMissions = parts.activeTiles.count { it.phase == ActiveMission.Phase.QUEUED },
+                blockedMissions = parts.activeTiles.count { it.phase == ActiveMission.Phase.FAILED || it.phase == ActiveMission.Phase.BLOCKED },
+                daemonState = parts.daemonState,
+            )
     }
 
     companion object {
         @Volatile private var instance: MobileMissionConsoleHost? = null
 
-        fun shared(): MobileMissionConsoleHost =
-            instance ?: synchronized(this) {
-                instance ?: MobileMissionConsoleHost().also { instance = it }
-            }
+        fun shared(): MobileMissionConsoleHost = instance ?: synchronized(this) {
+            instance ?: MobileMissionConsoleHost().also { instance = it }
+        }
     }
-}
-
-private fun CLIAgentMissionSnapshot.toProjectField(): String? {
-    return targetProject
 }

@@ -1,5 +1,6 @@
 package com.openburnbar.data.media
 
+import java.io.IOException
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.MercuryAudioDatagramChannel
@@ -47,9 +48,13 @@ class CallSessionCoordinator(
 
     sealed class Phase {
         object Idle : Phase()
+
         object Connecting : Phase()
+
         object Live : Phase()
+
         object Stopped : Phase()
+
         data class Failed(val reason: String) : Phase()
     }
 
@@ -76,49 +81,56 @@ class CallSessionCoordinator(
     private var controlReceiveJob: Job? = null
 
     /** Open all transports and start receive loops. */
-    suspend fun start(
-        onAudioReceived: suspend (MediaFrame) -> Unit,
-        onControlReceived: suspend (HermesRealtimeRelayFrame) -> Unit,
-    ) = mutex.withLock {
+    suspend fun start(onAudioReceived: suspend (MediaFrame) -> Unit, onControlReceived: suspend (HermesRealtimeRelayFrame) -> Unit) = mutex.withLock {
         _phase.value = Phase.Connecting
         try {
             controlStream = controlStreamOpener.open()
             audioChannel = audioChannelOpener.open()
             _phase.value = Phase.Live
-        } catch (t: Throwable) {
+        } catch (t: IOException) {
             _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
             throw t
         }
 
-        audioReceiveJob = scope.launch {
-            val channel = audioChannel ?: return@launch
-            while (isActive) {
-                try {
-                    val data = channel.recv(timeoutMillis = 500) ?: continue
-                    val (frame, _) = packetCodec.decode(data)
-                    if (frame.kind == MediaFrame.Kind.AUDIO_OPUS) {
-                        onAudioReceived(frame)
-                        bumpStats { it.copy(audioDatagramReceiveCount = it.audioDatagramReceiveCount + 1) }
+        audioReceiveJob =
+            scope.launch {
+                val channel = audioChannel ?: return@launch
+                while (isActive) {
+                    val data =
+                        try {
+                            channel.recv(timeoutMillis = 500)
+                        } catch (_: Throwable) {
+                            break
+                        }
+                    if (data != null) {
+                        val (frame, _) = packetCodec.decode(data)
+                        if (frame.kind == MediaFrame.Kind.AUDIO_OPUS) {
+                            onAudioReceived(frame)
+                            bumpStats { it.copy(audioDatagramReceiveCount = it.audioDatagramReceiveCount + 1) }
+                        }
                     }
-                } catch (_: Throwable) {
-                    break
                 }
             }
-        }
 
-        controlReceiveJob = scope.launch {
-            val stream = controlStream ?: return@launch
-            while (isActive) {
-                val frame = try { stream.receive() } catch (_: Throwable) { null } ?: break
-                onControlReceived(frame)
+        controlReceiveJob =
+            scope.launch {
+                val stream = controlStream ?: return@launch
+                while (isActive) {
+                    val frame =
+                        try {
+                            stream.receive()
+                        } catch (_: Throwable) {
+                            null
+                        } ?: break
+                    onControlReceived(frame)
+                }
             }
-        }
     }
 
     /** Encode + ship a single audio packet via the datagram channel. */
     suspend fun sendAudio(frame: MediaFrame) {
         require(frame.kind == MediaFrame.Kind.AUDIO_OPUS) { "sendAudio called with non-audio frame" }
-        val channel = mutex.withLock { audioChannel } ?: throw IllegalStateException("no audio channel")
+        val channel = mutex.withLock { audioChannel } ?: error("no audio channel")
         val encoded = packetCodec.encode(frame)
         channel.send(encoded)
         bumpStats { it.copy(audioDatagramSendCount = it.audioDatagramSendCount + 1) }
@@ -127,19 +139,20 @@ class CallSessionCoordinator(
     /** Encode + ship a single video frame on the current GOP's stream. Opens a new stream per GOP. */
     suspend fun sendVideo(frame: MediaFrame) {
         require(frame.kind == MediaFrame.Kind.VIDEO_NAL) { "sendVideo called with non-video frame" }
-        val stream = mutex.withLock {
-            val existing = currentVideoStream
-            val sameGop = currentVideoGOPID == frame.gopID
-            if (existing != null && sameGop) {
-                existing
-            } else {
-                runCatching { existing?.close() }
-                val fresh = videoStreamOpener.open(frame.gopID)
-                currentVideoStream = fresh
-                currentVideoGOPID = frame.gopID
-                fresh
+        val stream =
+            mutex.withLock {
+                val existing = currentVideoStream
+                val sameGop = currentVideoGOPID == frame.gopID
+                if (existing != null && sameGop) {
+                    existing
+                } else {
+                    runCatching { existing?.close() }
+                    val fresh = videoStreamOpener.open(frame.gopID)
+                    currentVideoStream = fresh
+                    currentVideoGOPID = frame.gopID
+                    fresh
+                }
             }
-        }
         // Re-encode as JSON-less control frame? No — video rides bytes-only on the bi-stream.
         // We piggy-back the per-frame envelope by repurposing `payload` of a media-classify-style
         // frame would lose data; instead we ship raw bytes via the relay frame `media.payload`.
@@ -147,14 +160,16 @@ class CallSessionCoordinator(
         // IrohRelayStream we expose is JSON-only, so callers should write raw bytes to a dedicated
         // bytes-only stream that the audio channel substitutes — here we serialise to JSON
         // envelope via the standard frame type and let the iOS receiver decode the payload field.
-        val envelope = HermesRealtimeRelayFrame(
-            type = com.openburnbar.irohrelay.HermesRealtimeRelayFrameType.MEDIA_CLASSIFY,
-            uid = "",
-            connectionId = "",
-            media = com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload(
-                streamClass = MediaStreamClass.VIDEO_OUT.raw,
-            ),
-        )
+        val envelope =
+            HermesRealtimeRelayFrame(
+                type = com.openburnbar.irohrelay.HermesRealtimeRelayFrameType.MEDIA_CLASSIFY,
+                uid = "",
+                connectionId = "",
+                media =
+                com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload(
+                    streamClass = MediaStreamClass.VIDEO_OUT.raw,
+                ),
+            )
         stream.send(envelope)
         // Then send the raw frame bytes as a second iroh send. Loopback transport supports
         // multi-frame send; production iroh transports treat each send as one bidi message.

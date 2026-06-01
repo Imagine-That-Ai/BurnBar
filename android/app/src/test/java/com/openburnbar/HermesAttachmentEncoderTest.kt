@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.hermes.HermesAttachment
@@ -12,7 +15,6 @@ import org.junit.rules.TemporaryFolder
 
 /** Verifies the multimodal payload shape that hits `/v1/chat/completions`. */
 class HermesAttachmentEncoderTest {
-
     @get:Rule
     val tempFolder = TemporaryFolder()
 
@@ -24,10 +26,11 @@ class HermesAttachmentEncoderTest {
 
     @Test
     fun `with attachments returns array of text and image parts`() {
-        val attachments = listOf(
-            HermesAttachment(fileName = "note.txt", mimeType = "text/plain"),
-            HermesAttachment(fileName = "snap.jpg", mimeType = "image/jpeg")
-        )
+        val attachments =
+            listOf(
+                HermesAttachment(fileName = "note.txt", mimeType = "text/plain"),
+                HermesAttachment(fileName = "snap.jpg", mimeType = "image/jpeg"),
+            )
         val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("describe", attachments))
         assertEquals(3, encoded.length())
         assertEquals("text", encoded.getJSONObject(0).getString("type"))
@@ -39,9 +42,10 @@ class HermesAttachmentEncoderTest {
 
     @Test
     fun `blank prompt with attachment skips the leading text part`() {
-        val attachments = listOf(
-            HermesAttachment(fileName = "snap.jpg", mimeType = "image/jpeg")
-        )
+        val attachments =
+            listOf(
+                HermesAttachment(fileName = "snap.jpg", mimeType = "image/jpeg"),
+            )
         val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("", attachments))
         assertEquals(1, encoded.length())
     }
@@ -53,12 +57,13 @@ class HermesAttachmentEncoderTest {
         val image = tempFolder.newFile("hermes-fixture.png")
         image.writeBytes(pngBytes)
 
-        val attachment = HermesAttachment(
-            fileName = "hermes-fixture.png",
-            mimeType = "image/png",
-            absolutePath = image.absolutePath,
-            sizeBytes = pngBytes.size.toLong()
-        )
+        val attachment =
+            HermesAttachment(
+                fileName = "hermes-fixture.png",
+                mimeType = "image/png",
+                absolutePath = image.absolutePath,
+                sizeBytes = pngBytes.size.toLong(),
+            )
         val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("describe this image", listOf(attachment)))
         assertEquals(2, encoded.length())
         val imagePart = encoded.getJSONObject(1)
@@ -75,25 +80,29 @@ class HermesAttachmentEncoderTest {
         val image = tempFolder.newFile("capability-fixture.png")
         image.writeBytes(pngBytes)
 
-        val attachment = HermesAttachment(
-            fileName = "capability-fixture.png",
-            mimeType = "image/png",
-            absolutePath = image.absolutePath,
-            sizeBytes = pngBytes.size.toLong()
-        )
-        val kimiK26 = ModelIOCapabilities(
-            inputModalities = listOf("text", "image"),
-            outputModalities = listOf("text"),
-            contextWindowTokens = 262_144,
-            maxOutputTokens = 262_142,
-            acceptedInputMimeTypes = listOf("image/*")
-        )
-        val encoded = requireJsonArray(
-            HermesAttachmentEncoder.encodeUserTurn(
-            "describe",
-            listOf(attachment),
-            kimiK26
-        ))
+        val attachment =
+            HermesAttachment(
+                fileName = "capability-fixture.png",
+                mimeType = "image/png",
+                absolutePath = image.absolutePath,
+                sizeBytes = pngBytes.size.toLong(),
+            )
+        val kimiK26 =
+            ModelIOCapabilities(
+                inputModalities = listOf("text", "image"),
+                outputModalities = listOf("text"),
+                contextWindowTokens = 262_144,
+                maxOutputTokens = 262_142,
+                acceptedInputMimeTypes = listOf("image/*"),
+            )
+        val encoded =
+            requireJsonArray(
+                HermesAttachmentEncoder.encodeUserTurn(
+                    "describe",
+                    listOf(attachment),
+                    kimiK26,
+                ),
+            )
 
         assertEquals("image_url", encoded.getJSONObject(1).getString("type"))
     }
@@ -102,12 +111,13 @@ class HermesAttachmentEncoderTest {
     fun `materialised text becomes an inline text part with the file body`() {
         val txt = tempFolder.newFile("notes.txt")
         txt.writeText("hello hermes")
-        val attachment = HermesAttachment(
-            fileName = "notes.txt",
-            mimeType = "text/plain",
-            absolutePath = txt.absolutePath,
-            sizeBytes = txt.length()
-        )
+        val attachment =
+            HermesAttachment(
+                fileName = "notes.txt",
+                mimeType = "text/plain",
+                absolutePath = txt.absolutePath,
+                sizeBytes = txt.length(),
+            )
         val encoded = requireJsonArray(HermesAttachmentEncoder.encodeUserTurn("read this", listOf(attachment)))
         val textPart = encoded.getJSONObject(1)
         assertEquals("text", textPart.getString("type"))

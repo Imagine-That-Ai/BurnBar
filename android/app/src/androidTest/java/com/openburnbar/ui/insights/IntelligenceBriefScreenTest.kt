@@ -1,6 +1,7 @@
 package com.openburnbar.ui.insights
 
 import android.graphics.Bitmap
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,13 +11,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.SemanticsNodeInteractionCollection
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -34,14 +34,14 @@ import com.openburnbar.data.insights.InsightAnomaly
 import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightConfidence
 import com.openburnbar.data.insights.InsightContextBudgetReport
+import com.openburnbar.data.insights.InsightDataBinding
 import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightFinding
 import com.openburnbar.data.insights.InsightFollowUpQuestion
-import com.openburnbar.data.insights.InsightModelTag
-import com.openburnbar.data.insights.InsightSeverity
-import com.openburnbar.data.insights.InsightDataBinding
 import com.openburnbar.data.insights.InsightFreshness
 import com.openburnbar.data.insights.InsightGeneratedWidget
+import com.openburnbar.data.insights.InsightModelTag
+import com.openburnbar.data.insights.InsightSeverity
 import com.openburnbar.data.insights.InsightTimeWindow
 import com.openburnbar.data.insights.InsightTokenUsage
 import com.openburnbar.data.insights.InsightWidget
@@ -51,15 +51,14 @@ import com.openburnbar.data.insights.InsightWidgetSpec
 import com.openburnbar.data.insights.ValueFormat
 import com.openburnbar.ui.theme.AuroraTheme
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import java.io.File
+import java.io.FileOutputStream
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class IntelligenceBriefScreenTest {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
@@ -69,24 +68,29 @@ class IntelligenceBriefScreenTest {
         requestID = "test-full",
         platform = InsightAnalysisPlatform.ANDROID,
         timeWindow = InsightTimeWindow.Last7d,
-        executiveSummary = "Spend on Claude Opus jumped 38% this week, driven by three long " +
+        executiveSummary =
+        "Spend on Claude Opus jumped 38% this week, driven by three long " +
             "refactor sessions on the payments service. Switch the daily routine work to " +
             "Haiku and gate Opus behind explicit opt-in to recover the budget.",
-        modelTag = InsightModelTag(
+        modelTag =
+        InsightModelTag(
             providerKey = "anthropic",
             modelID = "claude-sonnet-4-6",
             displayName = "Claude Sonnet 4.6",
             egressTier = InsightEgressTier.USER_KEY,
         ),
-        contextBudget = InsightContextBudgetReport(
+        contextBudget =
+        InsightContextBudgetReport(
             encodedBytes = 18 * 1024,
             estimatedPromptTokens = 4_200,
             includedDataSources = listOf("usage_rollups", "quota_snapshots", "agent_sessions"),
         ),
-        findings = listOf(
+        findings =
+        listOf(
             finding(
                 title = "Claude Opus is now your top spend",
-                why = "Opus accounts for 62% of weekly cost (was 41%). Most traffic is " +
+                why =
+                "Opus accounts for 62% of weekly cost (was 41%). Most traffic is " +
                     "exploratory edits where Sonnet would suffice.",
                 severity = InsightSeverity.HIGH,
                 action = "Default new Claude sessions to Sonnet 4.6; promote to Opus on demand.",
@@ -94,7 +98,8 @@ class IntelligenceBriefScreenTest {
             ),
             finding(
                 title = "Codex usage dropped after Wednesday",
-                why = "Codex sessions fell from ~9/day to 2/day. The router shifted Codex " +
+                why =
+                "Codex sessions fell from ~9/day to 2/day. The router shifted Codex " +
                     "tasks to Claude Sonnet, raising per-task cost ~3.4×.",
                 severity = InsightSeverity.MEDIUM,
                 action = "Re-enable Codex in the router pool and confirm a healthy auth token.",
@@ -102,14 +107,16 @@ class IntelligenceBriefScreenTest {
             ),
             finding(
                 title = "Cache hit-rate slipped to 11%",
-                why = "Prompt cache reads dropped by half. Session prompts have grown 1.6× — " +
+                why =
+                "Prompt cache reads dropped by half. Session prompts have grown 1.6× — " +
                     "each one busts the cache.",
                 severity = InsightSeverity.LOW,
                 action = "Trim system prompts and reuse the canonical project preamble.",
                 citations = emptyList(),
             ),
         ),
-        anomalies = listOf(
+        anomalies =
+        listOf(
             anomaly(
                 title = "MiniMax burst Tuesday 02:14",
                 detail = "11 calls in 6 minutes from a cron — looks like a retry storm.",
@@ -129,10 +136,12 @@ class IntelligenceBriefScreenTest {
                 confidence = InsightConfidence.MEDIUM,
             ),
         ),
-        recommendations = listOf(
+        recommendations =
+        listOf(
             recommendation(
                 title = "Move daily refactors to Sonnet 4.6",
-                rationale = "Sonnet handles the same prompts at ~28% of Opus cost with " +
+                rationale =
+                "Sonnet handles the same prompts at ~28% of Opus cost with " +
                     "comparable quality on this codebase's review history.",
                 action = "Set the Claude routing pool default to Sonnet 4.6.",
                 impact = "$54/week saved",
@@ -140,24 +149,28 @@ class IntelligenceBriefScreenTest {
             ),
             recommendation(
                 title = "Re-enable Codex pool",
-                rationale = "Cost-per-task is 3.4× higher when Codex is offline; the auth " +
+                rationale =
+                "Cost-per-task is 3.4× higher when Codex is offline; the auth " +
                     "token expired at 11:48 Wednesday.",
                 action = "Refresh the Codex auth and toggle the router pool back on.",
                 impact = "Restores ~$12/day",
                 severity = InsightSeverity.MEDIUM,
             ),
         ),
-        generatedWidgets = listOf(
+        generatedWidgets =
+        listOf(
             generatedTimeSeriesWidget(),
             generatedRankingWidget(),
             generatedDonutWidget(),
         ),
-        followUpQuestions = listOf(
+        followUpQuestions =
+        listOf(
             followUp("How does this week compare to last week?"),
             followUp("Which sessions used Claude Opus?"),
             followUp("Show MiniMax burst sessions"),
         ),
-        tokenUsage = InsightTokenUsage(
+        tokenUsage =
+        InsightTokenUsage(
             providerKey = "anthropic",
             modelID = "claude-sonnet-4-6",
             inputTokens = 3_800,
@@ -327,26 +340,29 @@ class IntelligenceBriefScreenTest {
         var capturedPrompt: String? = null
         var capturedTargetProject: String? = null
 
-        val result = fullFixture().copy(
-            missionCandidates = listOf(
-                com.openburnbar.data.insights.InsightMissionCandidate(
-                    title = "Fix router fallback churn",
-                    summary = "Provider routing is changing too often during routine sessions.",
-                    projectID = "burnbar",
-                    projectDisplayName = "~/Documents/Windsurf/BurnBar",
-                    lens = com.openburnbar.data.insights.InsightMissionCandidate.Lens.ROUTING,
-                    priority = com.openburnbar.data.insights.InsightMissionCandidate.Priority.HIGH,
-                    confidence = InsightConfidence.HIGH,
-                    expectedImpact = "Stable favorite routing",
-                    effort = com.openburnbar.data.insights.InsightMissionCandidate.Effort.MEDIUM,
-                    acceptanceCriteria = listOf(
-                        "Codex remains sticky for routine edits",
-                        "Fallback only happens on quota exhaustion",
+        val result =
+            fullFixture().copy(
+                missionCandidates =
+                listOf(
+                    com.openburnbar.data.insights.InsightMissionCandidate(
+                        title = "Fix router fallback churn",
+                        summary = "Provider routing is changing too often during routine sessions.",
+                        projectID = "burnbar",
+                        projectDisplayName = "~/Documents/Windsurf/BurnBar",
+                        lens = com.openburnbar.data.insights.InsightMissionCandidate.Lens.ROUTING,
+                        priority = com.openburnbar.data.insights.InsightMissionCandidate.Priority.HIGH,
+                        confidence = InsightConfidence.HIGH,
+                        expectedImpact = "Stable favorite routing",
+                        effort = com.openburnbar.data.insights.InsightMissionCandidate.Effort.MEDIUM,
+                        acceptanceCriteria =
+                        listOf(
+                            "Codex remains sticky for routine edits",
+                            "Fallback only happens on quota exhaustion",
+                        ),
+                        evidence = listOf(citation("routing-digest", "BurnBar routing digest")),
                     ),
-                    evidence = listOf(citation("routing-digest", "BurnBar routing digest")),
                 ),
-            ),
-        )
+            )
 
         composeRule.setContent {
             AuroraTheme(darkTheme = false) {
@@ -396,23 +412,25 @@ class IntelligenceBriefScreenTest {
         // Reading order is hero → generated views (CHARTS) → findings →
         // anomalies → recommendations → follow-ups → audit. Charts sit
         // second so a reader gets a graph before they get prose.
-        val orderedTags = listOf(
-            SECTION_TAG_HERO,
-            SECTION_TAG_GENERATED,
-            SECTION_TAG_FINDINGS,
-            SECTION_TAG_ANOMALIES,
-            SECTION_TAG_RECOMMENDATIONS,
-            SECTION_TAG_FOLLOWUPS,
-            SECTION_TAG_AUDIT,
-        )
-        val tops = orderedTags.map { tag ->
-            val node = composeRule.onNodeWithTag(tag)
-            node.assertExists()
-            // `positionInRoot.y` gives the section's top inside the scroll
-            // content even when the section is currently below the viewport,
-            // which is exactly the layout order TalkBack will follow.
-            node.fetchSemanticsNode().positionInRoot.y
-        }
+        val orderedTags =
+            listOf(
+                SECTION_TAG_HERO,
+                SECTION_TAG_GENERATED,
+                SECTION_TAG_FINDINGS,
+                SECTION_TAG_ANOMALIES,
+                SECTION_TAG_RECOMMENDATIONS,
+                SECTION_TAG_FOLLOWUPS,
+                SECTION_TAG_AUDIT,
+            )
+        val tops =
+            orderedTags.map { tag ->
+                val node = composeRule.onNodeWithTag(tag)
+                node.assertExists()
+                // `positionInRoot.y` gives the section's top inside the scroll
+                // content even when the section is currently below the viewport,
+                // which is exactly the layout order TalkBack will follow.
+                node.fetchSemanticsNode().positionInRoot.y
+            }
         for (i in 1 until tops.size) {
             require(tops[i] > tops[i - 1]) {
                 "Section order violated: ${orderedTags[i]} (top=${tops[i]}) is not below " +
@@ -473,8 +491,10 @@ class IntelligenceBriefScreenTest {
                 CompositionLocalProvider(LocalAuroraReduceMotion provides true) {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                         IntelligenceBriefScreen(
-                            result = fullFixture().copy(
-                                recommendations = listOf(
+                            result =
+                            fullFixture().copy(
+                                recommendations =
+                                listOf(
                                     com.openburnbar.data.insights.InsightRecommendation(
                                         title = "Savings recommendation",
                                         rationale = "Cut Opus daily routine work.",
@@ -559,11 +579,7 @@ class IntelligenceBriefScreenTest {
         composeRule.onNodeWithText("FOLLOW-UP QUESTIONS").assertExists()
     }
 
-    private fun captureBriefScreenshot(
-        fileName: String,
-        darkTheme: Boolean,
-        fontScale: Float,
-    ) {
+    private fun captureBriefScreenshot(fileName: String, darkTheme: Boolean, fontScale: Float) {
         composeRule.setContent {
             val baseDensity = LocalDensity.current
             CompositionLocalProvider(
@@ -572,7 +588,8 @@ class IntelligenceBriefScreenTest {
             ) {
                 AuroraTheme(darkTheme = darkTheme) {
                     Surface(
-                        modifier = Modifier
+                        modifier =
+                        Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                             .testTag("screenshot-surface"),
@@ -585,29 +602,23 @@ class IntelligenceBriefScreenTest {
         }
         composeRule.waitForIdle()
         val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
-        val outDir = File(
-            InstrumentationRegistry.getInstrumentation().targetContext
-                .getExternalFilesDir(null),
-            "insights-editorial",
-        ).apply { mkdirs() }
+        val outDir =
+            File(
+                InstrumentationRegistry.getInstrumentation().targetContext
+                    .getExternalFilesDir(null),
+                "insights-editorial",
+            ).apply { mkdirs() }
         val outFile = File(outDir, fileName)
         FileOutputStream(outFile).use { stream ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
     }
 
-    private fun SemanticsNodeInteractionCollection.assertCountEquals0() =
-        this.assertCountEquals(0)
+    private fun SemanticsNodeInteractionCollection.assertCountEquals0() = this.assertCountEquals(0)
 
     // ─── Fixture builders ────────────────────────────────────────────────
 
-    private fun finding(
-        title: String,
-        why: String,
-        severity: InsightSeverity,
-        action: String,
-        citations: List<InsightCitation>,
-    ) = InsightFinding(
+    private fun finding(title: String, why: String, severity: InsightSeverity, action: String, citations: List<InsightCitation>) = InsightFinding(
         title = title,
         whyItMatters = why,
         evidence = citations,
@@ -616,12 +627,7 @@ class IntelligenceBriefScreenTest {
         recommendedAction = action,
     )
 
-    private fun anomaly(
-        title: String,
-        detail: String,
-        score: Double,
-        confidence: InsightConfidence,
-    ) = InsightAnomaly(
+    private fun anomaly(title: String, detail: String, score: Double, confidence: InsightConfidence) = InsightAnomaly(
         title = title,
         detail = detail,
         score = score,
@@ -629,21 +635,16 @@ class IntelligenceBriefScreenTest {
         confidence = confidence,
     )
 
-    private fun recommendation(
-        title: String,
-        rationale: String,
-        action: String,
-        impact: String,
-        severity: InsightSeverity,
-    ) = com.openburnbar.data.insights.InsightRecommendation(
-        title = title,
-        rationale = rationale,
-        recommendedAction = action,
-        estimatedImpact = impact,
-        evidence = emptyList(),
-        confidence = InsightConfidence.MEDIUM,
-        severity = severity,
-    )
+    private fun recommendation(title: String, rationale: String, action: String, impact: String, severity: InsightSeverity) =
+        com.openburnbar.data.insights.InsightRecommendation(
+            title = title,
+            rationale = rationale,
+            recommendedAction = action,
+            estimatedImpact = impact,
+            evidence = emptyList(),
+            confidence = InsightConfidence.MEDIUM,
+            severity = severity,
+        )
 
     private fun followUp(text: String) = InsightFollowUpQuestion(question = text)
 
@@ -657,24 +658,30 @@ class IntelligenceBriefScreenTest {
 
     /** Provider-mix cost-over-time. 7 daily points, 3 series. */
     private fun generatedTimeSeriesWidget() = InsightGeneratedWidget(
-        widget = InsightWidget(
+        widget =
+        InsightWidget(
             kind = InsightWidgetKind.TIME_SERIES_LINE,
             title = "Weekly cost · provider mix",
-            spec = InsightWidgetSpec.TimeSeries(
+            spec =
+            InsightWidgetSpec.TimeSeries(
                 InsightWidgetSpec.TimeSeriesSpec(style = InsightWidgetSpec.TimeSeriesSpec.Style.LINE),
             ),
-            dataBinding = InsightDataBinding.TimeSeries(
+            dataBinding =
+            InsightDataBinding.TimeSeries(
                 metric = "cost",
                 dimension = InsightWidgetSpec.Dimension.PROVIDER,
                 window = InsightTimeWindow.Last7d,
             ),
-            data = InsightWidgetData.TimeSeries(
-                series = listOf(
+            data =
+            InsightWidgetData.TimeSeries(
+                series =
+                listOf(
                     InsightWidgetData.TimeSeries.Series(
                         id = "anthropic",
                         name = "Anthropic",
                         colorHex = "#E07868",
-                        points = listOf(
+                        points =
+                        listOf(
                             timePoint("2026-05-06", 4.20),
                             timePoint("2026-05-07", 5.10),
                             timePoint("2026-05-08", 6.40),
@@ -688,7 +695,8 @@ class IntelligenceBriefScreenTest {
                         id = "openai",
                         name = "OpenAI",
                         colorHex = "#8E86D0",
-                        points = listOf(
+                        points =
+                        listOf(
                             timePoint("2026-05-06", 2.10),
                             timePoint("2026-05-07", 2.30),
                             timePoint("2026-05-08", 2.80),
@@ -702,7 +710,8 @@ class IntelligenceBriefScreenTest {
                         id = "minimax",
                         name = "MiniMax",
                         colorHex = "#2CBEC8",
-                        points = listOf(
+                        points =
+                        listOf(
                             timePoint("2026-05-06", 0.80),
                             timePoint("2026-05-07", 0.90),
                             timePoint("2026-05-08", 1.00),
@@ -719,25 +728,30 @@ class IntelligenceBriefScreenTest {
             ),
             freshness = InsightFreshness.FRESH,
         ),
-        reason = "Provider mix tells the cost story the executive summary references " +
+        reason =
+        "Provider mix tells the cost story the executive summary references " +
             "— Anthropic is the rising line.",
         citations = emptyList(),
     )
 
     /** Top models by cost — horizontal bar ranking. */
     private fun generatedRankingWidget() = InsightGeneratedWidget(
-        widget = InsightWidget(
+        widget =
+        InsightWidget(
             kind = InsightWidgetKind.BAR_RANKING,
             title = "Top models by cost",
             spec = InsightWidgetSpec.Ranking(InsightWidgetSpec.RankingSpec()),
-            dataBinding = InsightDataBinding.Ranking(
+            dataBinding =
+            InsightDataBinding.Ranking(
                 metric = "cost",
                 dimension = InsightWidgetSpec.Dimension.MODEL,
                 limit = 5,
                 window = InsightTimeWindow.Last7d,
             ),
-            data = InsightWidgetData.Ranking(
-                rows = listOf(
+            data =
+            InsightWidgetData.Ranking(
+                rows =
+                listOf(
                     InsightWidgetData.Ranking.Row("opus", "Claude Opus", 42.18, "62% share"),
                     InsightWidgetData.Ranking.Row("sonnet", "Claude Sonnet 4.6", 18.46, "27% share"),
                     InsightWidgetData.Ranking.Row("gpt5", "OpenAI GPT-5", 6.91, "10% share"),
@@ -749,24 +763,29 @@ class IntelligenceBriefScreenTest {
             ),
             freshness = InsightFreshness.FRESH,
         ),
-        reason = "Pinning this puts the Sonnet-default recommendation one tap away " +
+        reason =
+        "Pinning this puts the Sonnet-default recommendation one tap away " +
             "from its evidence.",
         citations = emptyList(),
     )
 
     /** Provider distribution donut. */
     private fun generatedDonutWidget() = InsightGeneratedWidget(
-        widget = InsightWidget(
+        widget =
+        InsightWidget(
             kind = InsightWidgetKind.DONUT,
             title = "Spend distribution by provider",
             spec = InsightWidgetSpec.Distribution(InsightWidgetSpec.DistributionSpec()),
-            dataBinding = InsightDataBinding.Distribution(
+            dataBinding =
+            InsightDataBinding.Distribution(
                 metric = "cost",
                 dimension = InsightWidgetSpec.Dimension.PROVIDER,
                 window = InsightTimeWindow.Last7d,
             ),
-            data = InsightWidgetData.Distribution(
-                slices = listOf(
+            data =
+            InsightWidgetData.Distribution(
+                slices =
+                listOf(
                     InsightWidgetData.Distribution.Slice("anthropic", "Anthropic", 60.64, "#E07868"),
                     InsightWidgetData.Distribution.Slice("openai", "OpenAI", 18.70, "#8E86D0"),
                     InsightWidgetData.Distribution.Slice("minimax", "MiniMax", 11.90, "#2CBEC8"),
@@ -781,6 +800,5 @@ class IntelligenceBriefScreenTest {
         citations = emptyList(),
     )
 
-    private fun timePoint(date: String, value: Double) =
-        InsightWidgetData.TimeSeries.Point(date = date, value = value)
+    private fun timePoint(date: String, value: Double) = InsightWidgetData.TimeSeries.Point(date = date, value = value)
 }

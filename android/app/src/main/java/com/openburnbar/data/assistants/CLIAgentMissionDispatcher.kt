@@ -4,12 +4,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
-import java.time.Instant
-import java.util.UUID
+
+private const val VAL_3 = 3
 
 enum class HermesSkillRunID(val wire: String, val displayLabel: String) {
     WHAT_HAPPENED("what_happened", "What Happened?"),
@@ -19,33 +21,33 @@ enum class HermesSkillRunID(val wire: String, val displayLabel: String) {
     NEXT_ACTION_COACH("next_action_coach", "Next Action Coach"),
     HANDOFF_BUILDER("handoff_builder", "Handoff Builder"),
     REGRESSION_WATCH("regression_watch", "Regression Watch"),
-    RUN_PULSE("run_pulse", "Run Pulse");
+    RUN_PULSE("run_pulse", "Run Pulse"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): HermesSkillRunID? =
-            values().firstOrNull { it.wire == value }
+        fun fromWire(value: String?): HermesSkillRunID? = values().firstOrNull { it.wire == value }
     }
 }
 
 enum class SkillRunDeliveryMode(val wire: String, val displayLabel: String) {
     ACTION_ONLY("action_only", "Action alerts"),
     FULL_STREAM("full_stream", "Full stream"),
-    MUTED("muted", "Muted");
+    MUTED("muted", "Muted"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): SkillRunDeliveryMode =
-            values().firstOrNull { it.wire == value } ?: ACTION_ONLY
+        fun fromWire(value: String?): SkillRunDeliveryMode = values().firstOrNull { it.wire == value } ?: ACTION_ONLY
     }
 }
 
 enum class CLIAgentChatPresentationMode(val wire: String, val displayLabel: String) {
     NATIVE_CHAT("native_chat", "Chat"),
     MAC_VISIBLE_CLI("mac_visible_cli", "Mac CLI"),
-    MAC_INTERACTIVE_CLI("mac_interactive_cli", "Mac interactive CLI");
+    MAC_INTERACTIVE_CLI("mac_interactive_cli", "Mac interactive CLI"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): CLIAgentChatPresentationMode =
-            values().firstOrNull { it.wire == value } ?: NATIVE_CHAT
+        fun fromWire(value: String?): CLIAgentChatPresentationMode = values().firstOrNull { it.wire == value } ?: NATIVE_CHAT
     }
 }
 
@@ -53,11 +55,11 @@ enum class SkillRunEventImportance(val wire: String) {
     QUIET("quiet"),
     NORMAL("normal"),
     ACTION_REQUIRED("action_required"),
-    TERMINAL("terminal");
+    TERMINAL("terminal"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): SkillRunEventImportance =
-            values().firstOrNull { it.wire == value } ?: NORMAL
+        fun fromWire(value: String?): SkillRunEventImportance = values().firstOrNull { it.wire == value } ?: NORMAL
     }
 }
 
@@ -89,87 +91,57 @@ class CLIAgentMissionDispatcher(
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         parentHermesThreadID: String? = null,
     ): FanOutDispatchResult {
-        val uid = auth.currentUser?.uid
-            ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
-        if (runtimeTokens.size < 2) throw DispatchException("Fan-out dispatch needs at least 2 runtimes.")
+        val uid =
+            auth.currentUser?.uid
+                ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
-        if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
+        val validationMessage =
+            when {
+                runtimeTokens.size < 2 -> "Fan-out dispatch needs at least 2 runtimes."
+                trimmedPrompt.isBlank() -> "Mission prompt was empty."
+                else -> null
+            }
+        if (validationMessage != null) throw DispatchException(validationMessage)
 
-        val groupID = "grp-${UUID.randomUUID()}"
-        val trimmedTitle = title.trim().ifBlank { "Fan-out mission" }
-        val childMissionIDs = runtimeTokens.map { UUID.randomUUID().toString() }
-        val plim = (parallelismLimit ?: runtimeTokens.size).coerceAtLeast(1)
-        val now = Instant.now().toString()
-
-        val groupRef = firestore.collection("users").document(uid)
-            .collection("mission_groups").document(groupID)
+        val plan = planFanOutDispatch(title, prompt, runtimeTokens)
+        val groupRef =
+            firestore.collection("users").document(uid)
+                .collection("mission_groups").document(plan.groupID)
         val batch = firestore.batch()
-
-        val groupPayload: Map<String, Any> = mapOf(
-            "id" to groupID,
-            "title" to trimmedTitle,
-            "prompt" to trimmedPrompt,
-            "missionKind" to missionKind,
-            "targetProject" to (targetProject ?: ""),
-            "childMissionIDs" to childMissionIDs,
-            "runtimeTokens" to runtimeTokens,
-            "parallelismLimit" to plim,
-            "mergeStrategy" to mergeStrategy,
-            "phase" to "queued",
-            "winnerMissionID" to "",
-            "forecast" to mapOf(
-                "tokensLow" to 0,
-                "tokensHigh" to 0,
-                "costLowUSD" to 0.0,
-                "costHighUSD" to 0.0,
-                "etaLow" to 0.0,
-                "etaHigh" to 0.0,
-            ),
-            "createdAt" to now,
-            "updatedAt" to now,
-            "schemaVersion" to 1,
-            "source" to "android-hermes-square",
-        )
-        batch.set(groupRef, groupPayload)
-
-        runtimeTokens.forEachIndexed { index, runtimeToken ->
-            val missionID = childMissionIDs[index]
-            val childPayload = CLIAgentMissionRequestPayloadFactory.build(
-                id = missionID,
-                title = "$trimmedTitle · $runtimeToken",
-                prompt = trimmedPrompt,
+        batch.set(
+            groupRef,
+            fanOutGroupPayload(
+                plan = plan,
                 missionKind = missionKind,
-                requestedRuntime = runtimeToken,
+                targetProject = targetProject,
+                runtimeTokens = runtimeTokens,
+                parallelismLimit = parallelismLimit,
+                mergeStrategy = mergeStrategy,
+            ),
+        )
+        appendFanOutChildMissionWrites(
+            FanOutChildWriteRequest(
+                batch = batch,
+                firestore = firestore,
+                uid = uid,
+                plan = plan,
+                runtimeTokens = runtimeTokens,
+                missionKind = missionKind,
                 targetProject = targetProject,
                 depth = depth,
                 approvalMode = approvalMode,
                 commandsAllowed = commandsAllowed,
                 fileEditsAllowed = fileEditsAllowed,
-                requestedModelID = requestedModelIDsByRuntime[runtimeToken]?.trim()?.takeIf { it.isNotEmpty() },
+                requestedModelIDsByRuntime = requestedModelIDsByRuntime,
                 sourceSkillID = sourceSkillID,
                 sourceSurface = sourceSurface,
                 deliveryMode = deliveryMode,
                 parentHermesThreadID = parentHermesThreadID,
-            ).toMutableMap().apply {
-                put("groupID", groupID)
-                put("siblingIndex", index)
-                put("siblingCount", runtimeTokens.size)
-                put("isGroupChild", true)
-            }
-            val requestRef = firestore.collection("users").document(uid)
-                .collection("cli_agent_mission_requests").document(missionID)
-            batch.set(requestRef, childPayload.toMap())
-            batch.set(
-                requestRef.collection("events").document("000001"),
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
-                    sourceSkillID = sourceSkillID,
-                    deliveryMode = deliveryMode,
-                ),
-            )
-        }
+            ),
+        )
 
         batch.commit().await()
-        return FanOutDispatchResult(groupID = groupID, childMissionIDs = childMissionIDs)
+        return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
     data class FanOutDispatchResult(
@@ -202,36 +174,39 @@ class CLIAgentMissionDispatcher(
         if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
 
         val id = UUID.randomUUID().toString()
-        val payload = CLIAgentMissionRequestPayloadFactory.build(
-            id = id,
-            title = title,
-            prompt = trimmedPrompt,
-            missionKind = missionKind,
-            requestedRuntime = requestedRuntime,
-            targetProject = targetProject,
-            depth = depth,
-            approvalMode = approvalMode,
-            commandsAllowed = commandsAllowed,
-            fileEditsAllowed = fileEditsAllowed,
-            requestedModelID = requestedModelID,
-            clientThreadID = clientThreadID,
-            parentSessionID = parentSessionID,
-            resumeAction = resumeAction,
-            sourceSkillID = sourceSkillID,
-            sourceSurface = sourceSurface,
-            deliveryMode = deliveryMode,
-            parentHermesThreadID = parentHermesThreadID,
-            presentationMode = presentationMode,
-        )
-        val requestRef = firestore.collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(id)
+        val payload =
+            CLIAgentMissionRequestPayloadFactory.build(
+                id = id,
+                title = title,
+                prompt = trimmedPrompt,
+                missionKind = missionKind,
+                requestedRuntime = requestedRuntime,
+                targetProject = targetProject,
+                depth = depth,
+                approvalMode = approvalMode,
+                commandsAllowed = commandsAllowed,
+                fileEditsAllowed = fileEditsAllowed,
+                requestedModelID = requestedModelID,
+                clientThreadID = clientThreadID,
+                parentSessionID = parentSessionID,
+                resumeAction = resumeAction,
+                sourceSkillID = sourceSkillID,
+                sourceSurface = sourceSurface,
+                deliveryMode = deliveryMode,
+                parentHermesThreadID = parentHermesThreadID,
+                presentationMode = presentationMode,
+            )
+        val requestRef =
+            firestore.collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(id)
         firestore.batch()
             .set(requestRef, payload)
             .set(
                 requestRef.collection("events").document("000001"),
                 CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
                     label = if (missionKind.trim().equals("chat", ignoreCase = true)) "Chat" else "Mission",
-                    source = sourceSurface?.trim()?.takeIf { it.isNotEmpty() }
+                    source =
+                    sourceSurface?.trim()?.takeIf { it.isNotEmpty() }
                         ?: if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
                     sourceSkillID = sourceSkillID,
                     deliveryMode = deliveryMode,
@@ -248,48 +223,49 @@ class CLIAgentMissionDispatcher(
             close(DispatchException("Sign in before watching Mac agent missions."))
             return@callbackFlow
         }
-        val requestRef = firestore.collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
+        val requestRef =
+            firestore.collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(requestID)
         var latestSnapshot: DocumentSnapshot? = null
         var latestEvents: List<CLIAgentMissionEvent> = emptyList()
 
         fun emitLatest() {
-            val mission = latestSnapshot?.toMissionSnapshot(
-                fallbackID = requestID,
-                eventOverride = latestEvents.takeIf { it.isNotEmpty() },
-            )
+            val mission =
+                latestSnapshot?.toMissionSnapshot(
+                    fallbackID = requestID,
+                    eventOverride = latestEvents.takeIf { it.isNotEmpty() },
+                )
             if (mission != null) trySend(mission)
         }
 
-        val requestRegistration = requestRef.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            latestSnapshot = snapshot
-            emitLatest()
-        }
-        val eventsRegistration = requestRef.collection("events")
-            .orderBy("sequence")
-            .limit(1000)
-            .addSnapshotListener { snapshot, error ->
+        val requestRegistration =
+            requestRef.addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
                     return@addSnapshotListener
                 }
-                latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent() }
+                latestSnapshot = snapshot
                 emitLatest()
             }
+        val eventsRegistration =
+            requestRef.collection("events")
+                .orderBy("sequence")
+                .limit(1000)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent() }
+                    emitLatest()
+                }
         awaitClose {
             requestRegistration.remove()
             eventsRegistration.remove()
         }
     }
 
-    suspend fun respondToApproval(
-        requestID: String,
-        approve: Boolean,
-    ) {
+    suspend fun respondToApproval(requestID: String, approve: Boolean) {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before approving Mac agent missions.")
         firestore.collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(requestID)
@@ -297,11 +273,12 @@ class CLIAgentMissionDispatcher(
                 mapOf(
                     "approvalStatus" to if (approve) "approved" else "rejected",
                     "approvalRespondedAt" to Instant.now().toString(),
-                    "liveSummary" to if (approve) {
-                        "Approval granted from mobile. Waiting for the Mac to resume."
-                    } else {
-                        "Approval rejected from mobile."
-                    },
+                    "liveSummary" to
+                        if (approve) {
+                            "Approval granted from mobile. Waiting for the Mac to resume."
+                        } else {
+                            "Approval rejected from mobile."
+                        },
                     "updatedAt" to FieldValue.serverTimestamp(),
                 ),
                 com.google.firebase.firestore.SetOptions.merge(),
@@ -324,10 +301,7 @@ class CLIAgentMissionDispatcher(
             .await()
     }
 
-    suspend fun createImportJob(
-        selectedHarnesses: List<String>,
-        source: String = "android-import",
-    ): String {
+    suspend fun createImportJob(selectedHarnesses: List<String>, source: String = "android-import"): String {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before importing Mac agent history.")
         val normalized = selectedHarnesses.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
         if (normalized.isEmpty()) throw DispatchException("Choose at least one agent history source.")
@@ -360,27 +334,28 @@ class CLIAgentMissionDispatcher(
             close(DispatchException("Sign in before watching Mac agent imports."))
             return@callbackFlow
         }
-        val registration = firestore.collection("users").document(uid)
-            .collection("agent_import_jobs").document(jobID)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
-                }
-                val data = snapshot?.data.orEmpty()
-                trySend(
-                    AgentImportJobSnapshot(
-                        id = snapshot?.id ?: jobID,
-                        status = data["status"] as? String ?: "pending",
-                        progressMessage = data["progressMessage"] as? String ?: "",
-                        scannedCount = (data["scannedCount"] as? Number)?.toInt() ?: 0,
-                        importedCount = (data["importedCount"] as? Number)?.toInt() ?: 0,
-                        mirroredSessionCount = (data["mirroredSessionCount"] as? Number)?.toInt() ?: 0,
-                        uploadedSessionLogCount = (data["uploadedSessionLogCount"] as? Number)?.toInt() ?: 0,
-                        errorMessage = data["errorMessage"] as? String,
+        val registration =
+            firestore.collection("users").document(uid)
+                .collection("agent_import_jobs").document(jobID)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val data = snapshot?.data.orEmpty()
+                    trySend(
+                        AgentImportJobSnapshot(
+                            id = snapshot?.id ?: jobID,
+                            status = data["status"] as? String ?: "pending",
+                            progressMessage = data["progressMessage"] as? String ?: "",
+                            scannedCount = (data["scannedCount"] as? Number)?.toInt() ?: 0,
+                            importedCount = (data["importedCount"] as? Number)?.toInt() ?: 0,
+                            mirroredSessionCount = (data["mirroredSessionCount"] as? Number)?.toInt() ?: 0,
+                            uploadedSessionLogCount = (data["uploadedSessionLogCount"] as? Number)?.toInt() ?: 0,
+                            errorMessage = data["errorMessage"] as? String,
+                        ),
                     )
-                )
-            }
+                }
         awaitClose { registration.remove() }
     }
 }
@@ -400,6 +375,7 @@ data class AgentImportJobSnapshot(
 }
 
 object CLIAgentMissionRequestPayloadFactory {
+    @Suppress("LongParameterList")
     fun build(
         id: String,
         title: String,
@@ -451,7 +427,7 @@ object CLIAgentMissionRequestPayloadFactory {
             )
             put("createdAt", now.toString())
             put("updatedAt", FieldValue.serverTimestamp())
-            put("schemaVersion", 3)
+            put("schemaVersion", VAL_3)
             sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
             clientThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("clientThreadID", it) }
             parentHermesThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentHermesThreadID", it) }
@@ -467,7 +443,7 @@ object CLIAgentMissionRequestPayloadFactory {
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         eventImportance: SkillRunEventImportance = SkillRunEventImportance.NORMAL,
         skillStepID: String = "queued",
-        now: Instant = Instant.now()
+        now: Instant = Instant.now(),
     ): Map<String, Any> = buildMap {
         put("sequence", 1)
         put("timestamp", now.toString())
@@ -518,7 +494,7 @@ data class CLIAgentMissionSnapshot(
         get() = status in setOf("completed", "failed", "canceled", "cancelled", "unauthorized", "agent_launch_failed")
 
     val isWaitingForApproval: Boolean
-        get() = status == "waiting_for_approval" && (approvalStatus ?: "pending") == "pending"
+        get() = status == "waiting_for_approval" && approvalStatus ?: "pending" == "pending"
 
     val displayStatus: String
         get() {
@@ -529,37 +505,41 @@ data class CLIAgentMissionSnapshot(
         }
 
     val displayLiveSummary: String?
-        get() = if (displayStatus == "mac_offline") {
-            "No signed-in Mac has claimed this mission yet. Open BurnBar on the paired Mac to start execution."
-        } else {
-            liveSummary
-        }
+        get() =
+            if (displayStatus == "mac_offline") {
+                "No signed-in Mac has claimed this mission yet. Open BurnBar on the paired Mac to start execution."
+            } else {
+                liveSummary
+            }
 
     val currentStepLabel: String
-        get() = events.lastOrNull()?.let { event ->
-            event.title?.takeIf { it.isNotBlank() }
-                ?: event.phase.replace("_", " ").replaceFirstChar { it.uppercase() }
-        } ?: displayStatus
+        get() =
+            events.lastOrNull()?.let { event ->
+                event.title?.takeIf { it.isNotBlank() }
+                    ?: event.phase.replace("_", " ").replaceFirstChar { it.uppercase() }
+            } ?: displayStatus
 
     val activeToolName: String?
         get() {
-            val event = events.asReversed().firstOrNull { event ->
-                !event.toolName.isNullOrBlank() ||
-                    event.kind == "tool_call" ||
-                    event.kind == "tool_result" ||
-                    event.phase == "tool_use" ||
-                    event.phase == "tool_result"
-            } ?: return null
+            val event =
+                events.asReversed().firstOrNull { event ->
+                    !event.toolName.isNullOrBlank() ||
+                        event.kind == "tool_call" ||
+                        event.kind == "tool_result" ||
+                        event.phase == "tool_use" ||
+                        event.phase == "tool_result"
+                } ?: return null
             return event.toolName?.takeIf { it.isNotBlank() }
                 ?: event.title?.takeIf { it.isNotBlank() }
         }
 
     val latestArtifactLabel: String?
-        get() = events.asReversed()
-            .firstNotNullOfOrNull { event ->
-                event.changedFilePath?.takeIf { it.isNotBlank() }
-                    ?: event.artifactPath?.takeIf { it.isNotBlank() }
-            }
+        get() =
+            events.asReversed()
+                .firstNotNullOfOrNull { event ->
+                    event.changedFilePath?.takeIf { it.isNotBlank() }
+                        ?: event.artifactPath?.takeIf { it.isNotBlank() }
+                }
 
     val skillRunID: HermesSkillRunID?
         get() = HermesSkillRunID.fromWire(sourceSkillID)
@@ -590,20 +570,17 @@ data class CLIAgentMissionEvent(
 /** Public alias used by mission/host code outside this file. Mirrors
  *  the iOS `CLIAgentMissionSnapshot` decoder so the mission console host
  *  can decode list-listener documents without re-implementing the parser. */
-fun DocumentSnapshot.toMissionSnapshotOrNull(): CLIAgentMissionSnapshot? =
-    toMissionSnapshot(fallbackID = id)
+fun DocumentSnapshot.toMissionSnapshotOrNull(): CLIAgentMissionSnapshot? = toMissionSnapshot(fallbackID = id)
 
-private fun DocumentSnapshot.toMissionSnapshot(
-    fallbackID: String,
-    eventOverride: List<CLIAgentMissionEvent>? = null,
-): CLIAgentMissionSnapshot? {
+private fun DocumentSnapshot.toMissionSnapshot(fallbackID: String, eventOverride: List<CLIAgentMissionEvent>? = null): CLIAgentMissionSnapshot? {
     val title = getString("title") ?: return null
     val status = getString("status") ?: return null
     val rawEvents = get("events") as? List<*> ?: emptyList<Any>()
-    val events = eventOverride ?: rawEvents.mapNotNull { raw ->
-        val map = raw as? Map<*, *> ?: return@mapNotNull null
-        map.toMissionEvent()
-    }
+    val events =
+        eventOverride ?: rawEvents.mapNotNull { raw ->
+            val map = raw as? Map<*, *> ?: return@mapNotNull null
+            map.toMissionEvent()
+        }
     return CLIAgentMissionSnapshot(
         id = getString("id") ?: fallbackID,
         title = title,

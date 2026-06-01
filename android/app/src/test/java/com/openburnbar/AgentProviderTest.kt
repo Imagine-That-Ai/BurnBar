@@ -1,11 +1,15 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.models.AgentProvider
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentProviderTest {
-
     @Test
     fun `fromKey returns correct provider`() {
         assertEquals(AgentProvider.OPEN_AI, AgentProvider.fromKey("openai"))
