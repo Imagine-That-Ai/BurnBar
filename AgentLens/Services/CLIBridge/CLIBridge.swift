@@ -452,18 +452,22 @@ final class CLIBridge: ObservableObject {
 
         for profileID in activeProfileIDs {
             guard let profile = profileStore.fetchProfile(id: profileID),
-                  isCodexProfile(profile) else {
+                  isUsableCodexProfile(profile) else {
                 continue
             }
             return profile
         }
 
         return profileStore.fetchAllProfiles()
-            .first { isCodexProfile($0) && !$0.isDisabled }
+            .first { isUsableCodexProfile($0) }
     }
 
     private nonisolated static func isCodexProfile(_ profile: SwitcherProfileRecord) -> Bool {
         profile.targetKind == .cli && profile.cliType == .codex
+    }
+
+    private nonisolated static func isUsableCodexProfile(_ profile: SwitcherProfileRecord) -> Bool {
+        isCodexProfile(profile) && !profile.isDisabled
     }
 
     /// Streams using Claude Code CLI only.

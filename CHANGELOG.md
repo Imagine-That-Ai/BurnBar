@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — LLM/GenAI prompt-injection hardening
+
+- Added a dedicated LLM/GenAI agent threat model covering log parsing, RAG, hosted insights, Computer Use, MCP, model routing, tool grants, and budget/loop guardrails.
+- Wrapped untrusted RAG snippets, transcript summaries, CLI chat user messages, and hosted insight questions with provenance-tagged untrusted-content blocks so prompt-injection payloads remain data, not instructions.
+- Added prompt-injection hardening tests for the wrapper and CLI prompt assembly paths.
+
 ### Added — macOS 1.0.1 beta
 
 - Cut a new Developer ID direct-download beta for macOS with unique `1.0.1`
