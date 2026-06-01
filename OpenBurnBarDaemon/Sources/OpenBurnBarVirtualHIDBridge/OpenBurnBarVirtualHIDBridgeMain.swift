@@ -167,7 +167,8 @@ private final class VirtualHIDBridgeSocketAdapter {
             )
             let envelope = PrivilegedInputDispatchEnvelope(
                 request: dispatchRequest,
-                peerAuditToken: peerToken
+                peerAuditToken: peerToken,
+                capabilityToken: legacy.capabilityToken
             )
             let response = try xpcClient.perform(envelope)
             try write(
@@ -273,6 +274,7 @@ private struct LegacyBridgeRequest: Decodable {
     var text: String?
     var key: String?
     var modifiers: [String]?
+    var capabilityToken: CapabilityToken?
 }
 
 private struct BridgeResponse: Encodable {

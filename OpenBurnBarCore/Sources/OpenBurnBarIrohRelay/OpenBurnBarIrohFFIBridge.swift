@@ -125,11 +125,17 @@ public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Senda
     private let stream: IrohStream
     private let sendQueue: DispatchQueue
     private let receiveQueue: DispatchQueue
+    private let cachedRemoteNodeId: String?
 
     init(stream: IrohStream, queue: DispatchQueue) {
         self.stream = stream
+        self.cachedRemoteNodeId = stream.remoteNodeId()
         self.sendQueue = DispatchQueue(label: "\(queue.label).stream.send", qos: .userInitiated)
         self.receiveQueue = DispatchQueue(label: "\(queue.label).stream.receive", qos: .userInitiated)
+    }
+
+    public var remotePeerNodeId: String? {
+        cachedRemoteNodeId
     }
 
     public func sendFrame(_ envelope: Data) async throws {

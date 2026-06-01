@@ -46,9 +46,15 @@ public extension IrohEndpointBackend {
 /// Backend stream handle. Length-prefixed JSON envelopes are pushed through
 /// `send` and `recv` exactly as the Rust crate would write to QUIC.
 public protocol IrohBackendStream: AnyObject, Sendable {
+    /// Base32 NodeId of the remote peer when the backend exposes it (inbound accept).
+    var remotePeerNodeId: String? { get }
     func sendFrame(_ envelope: Data) async throws
     func recvFrame() async throws -> Data?
     func close() async
+}
+
+public extension IrohBackendStream {
+    var remotePeerNodeId: String? { nil }
 }
 
 /// 32-byte secret material we hand the backend on `bootstrap`. The Swift

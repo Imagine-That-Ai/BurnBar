@@ -35,6 +35,7 @@ import Stripe from "stripe";
 import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
 import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
 import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
+import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
@@ -301,6 +302,12 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
       const expiresAtMillis = googlePlayExpiryMillis(lineItem);
       const active = GOOGLE_PLAY_ACTIVE_STATES.has(subscriptionState) && expiresAtMillis > Date.now();
       const tokenHash = sha256Hex(purchaseToken);
+      await claimGooglePlayPurchaseToken({
+        uid,
+        purchaseTokenHash: tokenHash,
+        productID: entitlementTarget.canonicalProductID,
+        kind: "subscription",
+      });
       const entitlement = await writeBurnBarProEntitlement({
         uid,
         productID: entitlementTarget.canonicalProductID,
@@ -365,6 +372,12 @@ export const verifyGooglePlayCloudProTopUp = onCall(
       const productID = boundedTrimmedString(request.data.productID, "productID", 256, true);
       const kind = googlePlayTopUpKind(productID);
       const tokenHash = sha256Hex(purchaseToken);
+      await claimGooglePlayPurchaseToken({
+        uid,
+        purchaseTokenHash: tokenHash,
+        productID,
+        kind: "topup",
+      });
 
       const authClient = await google.auth.getClient({
         scopes: ["https://www.googleapis.com/auth/androidpublisher"],

@@ -2,13 +2,20 @@ package com.openburnbar.data.hermes.relay
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
+import java.security.KeyStore
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.spec.PKCS8EncodedKeySpec
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 private const val VAL_32 = 32
 
@@ -25,8 +32,8 @@ class HermesRelayKeyStore(context: Context) {
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun loadOrCreateClientKeyPair(): KeyPair {
-        val storedPrivate = prefs.getString(KEY_PRIVATE_PKCS8, null)
         val storedPublic = prefs.getString(KEY_PUBLIC_X963, null)
+        val storedPrivate = loadPrivateKeyPkcs8()
         if (storedPrivate != null && storedPublic != null) {
             return runCatching { restore(storedPrivate, storedPublic) }
                 .getOrElse {
@@ -53,27 +60,16 @@ class HermesRelayKeyStore(context: Context) {
      * use (NodeId vs E2E sealing), so we never reuse bytes.
      */
     fun irohSecretKeyMaterial(): IrohSecretKeyMaterial {
-        val stored = prefs.getString(KEY_IROH_SECRET, null)
         val raw =
-            if (stored != null) {
-                try {
-                    Base64.decode(stored, Base64.NO_WRAP).also {
-                        if (it.size != VAL_32) error("iroh secret length != 32")
-                    }
-                } catch (_: Throwable) {
-                    generateIrohSecretAndStore()
-                }
-            } else {
-                generateIrohSecretAndStore()
-            }
+            loadWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, expectedBytes = VAL_32)
+                ?: migrateLegacyIrohKeyMaterial()
+                ?: generateIrohSecretAndStore()
         return IrohSecretKeyMaterial(raw)
     }
 
     private fun generateIrohSecretAndStore(): ByteArray {
         val bytes = ByteArray(VAL_32).also { SecureRandom().nextBytes(it) }
-        prefs.edit()
-            .putString(KEY_IROH_SECRET, Base64.encodeToString(bytes, Base64.NO_WRAP))
-            .apply()
+        saveWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, bytes)
         return bytes
     }
 
@@ -89,15 +85,14 @@ class HermesRelayKeyStore(context: Context) {
             HermesRelayCryptoEc.encodeUncompressedPublicKey(
                 publicKey,
             )
+        saveWrapped(KEY_WRAPPED_PRIVATE_PKCS8, KEY_PRIVATE_WRAP_IV, privateBytes)
         prefs.edit()
-            .putString(KEY_PRIVATE_PKCS8, Base64.encodeToString(privateBytes, Base64.NO_WRAP))
             .putString(KEY_PUBLIC_X963, Base64.encodeToString(publicBytes, Base64.NO_WRAP))
             .apply()
         return kp
     }
 
-    private fun restore(privateB64: String, publicB64: String): KeyPair {
-        val privateBytes = Base64.decode(privateB64, Base64.NO_WRAP)
+    private fun restore(privateBytes: ByteArray, publicB64: String): KeyPair {
         val publicBytes = Base64.decode(publicB64, Base64.NO_WRAP)
         val privateKey: PrivateKey =
             KeyFactory.getInstance("EC")
@@ -106,12 +101,99 @@ class HermesRelayKeyStore(context: Context) {
         return KeyPair(publicKey, privateKey)
     }
 
+    private fun loadPrivateKeyPkcs8(): ByteArray? {
+        loadWrapped(KEY_WRAPPED_PRIVATE_PKCS8, KEY_PRIVATE_WRAP_IV)?.let { return it }
+        val legacy = prefs.getString(KEY_PRIVATE_PKCS8, null) ?: return null
+        val privateBytes = runCatching { Base64.decode(legacy, Base64.NO_WRAP) }.getOrNull() ?: return null
+        saveWrapped(KEY_WRAPPED_PRIVATE_PKCS8, KEY_PRIVATE_WRAP_IV, privateBytes)
+        prefs.edit().remove(KEY_PRIVATE_PKCS8).apply()
+        return privateBytes
+    }
+
+    private fun migrateLegacyIrohKeyMaterial(): ByteArray? {
+        val legacy = prefs.getString(KEY_IROH_SECRET, null) ?: return null
+        val raw =
+            runCatching {
+                Base64.decode(legacy, Base64.NO_WRAP).also {
+                    require(it.size == VAL_32) { "iroh secret length != 32" }
+                }
+            }.getOrNull() ?: return null
+        saveWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, raw)
+        prefs.edit().remove(KEY_IROH_SECRET).apply()
+        return raw
+    }
+
+    private fun loadWrapped(wrappedKey: String, ivKey: String, expectedBytes: Int? = null): ByteArray? {
+        val wrapped = prefs.getString(wrappedKey, null)?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
+        val iv = prefs.getString(ivKey, null)?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
+        val secretKey = runCatching { wrappingKey() }.getOrNull()
+        if (wrapped == null || iv == null || secretKey == null) return null
+        return try {
+            val cipher =
+                Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                    init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
+                }
+            cipher.doFinal(wrapped).takeIf { expectedBytes == null || it.size == expectedBytes }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun saveWrapped(wrappedKey: String, ivKey: String, raw: ByteArray) {
+        val secretKey = wrappingKey()
+        val cipher =
+            Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                init(Cipher.ENCRYPT_MODE, secretKey)
+            }
+        val iv = cipher.iv
+        require(iv.size == GCM_IV_BYTES) { "Unexpected AES-GCM IV length ${iv.size}" }
+        val wrapped = cipher.doFinal(raw)
+        prefs.edit()
+            .putString(wrappedKey, Base64.encodeToString(wrapped, Base64.NO_WRAP))
+            .putString(ivKey, Base64.encodeToString(iv, Base64.NO_WRAP))
+            .apply()
+    }
+
+    private fun wrappingKey(): SecretKey {
+        val store = keystore()
+        store.getEntry(KEY_ALIAS, null)?.let { entry ->
+            val secretEntry =
+                entry as? KeyStore.SecretKeyEntry
+                    ?: error("Keystore entry $KEY_ALIAS is not a secret key")
+            return secretEntry.secretKey
+        }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+        val spec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(VAL_256)
+                .build()
+        generator.init(spec)
+        return generator.generateKey()
+    }
+
+    private fun keystore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+
     companion object {
+        private const val VAL_256 = 256
         private const val PREFS_NAME = "hermes_relay_keys"
         private const val KEY_PRIVATE_PKCS8 = "************************"
         private const val KEY_PUBLIC_X963 = "**********************"
 
-        /** Persisted as a base64-encoded 32-byte secret; ed25519 surface form. */
+        /** Legacy plaintext base64 32-byte secret; migrated to AES-GCM-wrapped storage on read. */
         private const val KEY_IROH_SECRET = "iroh_secret_v1"
+        private const val KEY_WRAPPED_PRIVATE_PKCS8 = "wrapped_private_pkcs8_v2"
+        private const val KEY_PRIVATE_WRAP_IV = "private_wrap_iv_v2"
+        private const val KEY_WRAPPED_IROH_MATERIAL = "iroh_material_wrapped_v2"
+        private const val KEY_IROH_WRAP_IV = "iroh_wrap_iv_v2"
+        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val KEY_ALIAS = "ai.openburnbar.hermes-relay-keys"
+        private const val AES_GCM_TRANSFORM = "AES/GCM/NoPadding"
+        private const val GCM_IV_BYTES = 12
+        private const val GCM_TAG_BITS = 128
     }
 }

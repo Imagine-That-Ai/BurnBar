@@ -2620,6 +2620,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- Global Google Play token claims (server-only) ---
+    match /google_play_token_claims/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    // --- Public HTTP / approval rate limits (server-only) ---
+    match /public_rate_limits/{limitId} {
+      allow read, write: if false;
+    }
+
     // --- CLI Link Sessions (Deny All - Server Only) ---
     match /cli_link_sessions/{sessionId} {
       allow read, write: if false;

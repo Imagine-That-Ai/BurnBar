@@ -15,6 +15,7 @@ export const HERMES_GATEWAY_DEFAULT_DESTINATION_ID = "burnbar:home";
 export const HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID = "home";
 
 export const HERMES_GATEWAY_SCOPES = ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"] as const;
+export const HERMES_GATEWAY_DEFAULT_SCOPES = ["hermes.gateway.read", "hermes.gateway.write"] as const;
 
 export type HermesGatewayScope = (typeof HERMES_GATEWAY_SCOPES)[number];
 
@@ -169,7 +170,7 @@ export function sanitizeHermesGatewayScopes(raw: unknown): HermesGatewayScope[] 
   const requested = Array.isArray(raw) ? raw : [];
   const allowed = new Set<string>(HERMES_GATEWAY_SCOPES);
   const scopes = requested.filter((item): item is HermesGatewayScope => typeof item === "string" && allowed.has(item));
-  return scopes.length ? Array.from(new Set(scopes)) : [...HERMES_GATEWAY_SCOPES];
+  return scopes.length ? Array.from(new Set(scopes)) : [...HERMES_GATEWAY_DEFAULT_SCOPES];
 }
 
 export function hasHermesGatewayScope(scopes: readonly string[], scope: HermesGatewayScope): boolean {

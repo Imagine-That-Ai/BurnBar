@@ -28,6 +28,7 @@
     "test:router-rundown": "npm run build && node scripts/test-router-rundown.mjs",
     "test:iroh-monitoring": "npm run build && node scripts/test-iroh-monitoring.mjs",
     "test:fcm-android": "npm run build && node scripts/test-fcm-android.mjs",
+    "test:security": "vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts",
     "test:agent-notifications": "npm run build && node scripts/test-agent-notifications.mjs",
     "test:providers": "npm run build && node scripts/test-providers.mjs && node scripts/test-mimo-probe-fixture.mjs && node scripts/test-provider-account-schema.mjs",
     "test:conversation-query": "npm run build && node scripts/test-conversation-query.mjs",
@@ -72,7 +73,7 @@
     "@types/node": "^24.6.0",
     "@typescript-eslint/eslint-plugin": "8.60.0",
     "@typescript-eslint/parser": "8.60.0",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "4.1.8",
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "firebase": "12.14.0",
@@ -80,7 +81,7 @@
     "knip": "5.88.1",
     "prettier": "3.8.3",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.8"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1",

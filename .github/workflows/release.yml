@@ -529,16 +529,24 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: SLSA provenance attestations (SBOM + VEX + checksums)
+      - name: SLSA provenance attestations (SBOM + VEX + checksums + binaries)
         env:
           SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
           VEX_PATH: ${{ steps.vex.outputs.vex_path }}
           CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
         run: |
           cosign attest --yes "$SBOM_PATH"
           cosign attest --yes "$VEX_PATH"
           if [[ -f "$CHECKSUMS_PATH" ]]; then
             cosign attest --yes "$CHECKSUMS_PATH"
+          fi
+          if [[ -f "$DMG_PATH" ]]; then
+            cosign attest --yes "$DMG_PATH"
+          fi
+          if [[ -f "$ZIP_PATH" ]]; then
+            cosign attest --yes "$ZIP_PATH"
           fi
 
       - name: Verify Apple privacy manifests in release bundles

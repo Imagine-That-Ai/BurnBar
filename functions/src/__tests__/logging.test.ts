@@ -129,6 +129,14 @@ describe("PII scrubbing in structured logging", () => {
       const payload = captureLog(logSpy);
       expect(payload.code).toBe("sk-123");
     });
+
+    it("redacts sensitive field names even when values do not match known token patterns", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", accessToken: "short-secret", tokenPreview: "obb_...abcd" });
+      const payload = captureLog(logSpy);
+      expect(payload.accessToken).toBe("[REDACTED]");
+      expect(payload.tokenPreview).toBe("[REDACTED]");
+    });
   });
 
   // ── Credit card redaction ───────────────────────────────────────────────
@@ -221,6 +229,18 @@ describe("PII scrubbing in structured logging", () => {
       const ctx = payload.context as string;
       expect(ctx).not.toContain("admin@company.com");
       expect(ctx).not.toContain("1.2.3.4");
+    });
+
+    it("recursively redacts sensitive nested keys", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({
+        event: "test",
+        nested: {
+          privateKey: "not-patterned-but-sensitive",
+        } as unknown as string,
+      });
+      const payload = captureLog(logSpy);
+      expect((payload.nested as { privateKey: string }).privateKey).toBe("[REDACTED]");
     });
   });
 
@@ -359,7 +379,9 @@ describe("PII scrubbing in structured logging", () => {
       const result = await withCallableLogging("fn", {}, undefined, async () => "result-value");
       expect(result).toBe("result-value");
       expect(logSpy).toHaveBeenCalledTimes(2);
-      const [startLog, successLog] = logSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
+      const [startLog, successLog] = logSpy.mock.calls.map((c: unknown[]) =>
+        JSON.parse(c[0] as string),
+      );
       expect((startLog as Record<string, unknown>).event).toBe("callable_start");
       expect((successLog as Record<string, unknown>).event).toBe("callable_success");
     });
