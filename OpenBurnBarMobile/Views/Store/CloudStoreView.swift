@@ -83,6 +83,24 @@ struct CloudStoreView: View {
                                 .padding(.horizontal, MobileTheme.Spacing.lg)
                                 .settingsAnchor(SettingsAnchor.cloudPlan)
                                 .staggeredEntrance(delay: 0.08)
+                        } else {
+                            CloudBillingPeriodToggle(period: $billingPeriod)
+                                .padding(.horizontal, MobileTheme.Spacing.lg)
+                                .settingsAnchor(SettingsAnchor.cloudPlan)
+                                .staggeredEntrance(delay: 0.08)
+
+                            CloudTierLineup(
+                                store: store,
+                                billingPeriod: billingPeriod,
+                                showsCloudPlan: false
+                            )
+                            .padding(.horizontal, MobileTheme.Spacing.lg)
+                            .staggeredEntrance(delay: 0.10)
+
+                            CloudTopUpStrip(store: store)
+                                .padding(.horizontal, MobileTheme.Spacing.lg)
+                                .settingsAnchor(SettingsAnchor.cloudPlan)
+                                .staggeredEntrance(delay: 0.12)
                         }
                     } else {
                         CloudBillingPeriodToggle(period: $billingPeriod)
