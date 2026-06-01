@@ -620,6 +620,20 @@
       ]
     },
     {
+      "collectionGroup": "entitlements",
+      "fieldPath": "source",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "chunks",
       "fieldPath": "ciphertext",
       "indexes": []
