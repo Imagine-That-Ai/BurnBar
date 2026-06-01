@@ -9,17 +9,7 @@ import org.json.JSONObject
 interface CLIAgentRelayChatTransporting {
     suspend fun fetchModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse
 
-    suspend fun stream(
-        runtime: AssistantRuntimeID,
-        threadID: String,
-        prompt: String,
-        title: String,
-        modelID: String?,
-        parentSessionID: String?,
-        resumeAction: String?,
-        presentationMode: CLIAgentChatPresentationMode,
-        onEvent: suspend (CLIAgentRelayChatEvent) -> Unit,
-    )
+    suspend fun stream(request: CLIAgentRelayChatStreamRequest, onEvent: suspend (CLIAgentRelayChatEvent) -> Unit)
 
     suspend fun performSessionAction(request: CLIAgentSessionActionRequest): CLIAgentSessionActionResponse
 }
@@ -27,16 +17,9 @@ interface CLIAgentRelayChatTransporting {
 interface CLIAgentRelayChatPayloadStreamer {
     suspend fun fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse
 
-    suspend fun streamCLIAgentChatPayload(
-        body: ByteArray,
-        sessionID: String,
-        onRawEvent: suspend (String) -> Unit,
-    )
+    suspend fun streamCLIAgentChatPayload(body: ByteArray, sessionID: String, onRawEvent: suspend (String) -> Unit)
 
-    suspend fun sendCLIAgentSessionActionPayload(
-        body: ByteArray,
-        sessionID: String,
-    ): String
+    suspend fun sendCLIAgentSessionActionPayload(body: ByteArray, sessionID: String): String
 }
 
 private class HermesServiceCLIAgentRelayChatPayloadStreamer(
@@ -45,11 +28,7 @@ private class HermesServiceCLIAgentRelayChatPayloadStreamer(
     override suspend fun fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse =
         hermesService.fetchCLIRuntimeModelCatalog(runtime)
 
-    override suspend fun streamCLIAgentChatPayload(
-        body: ByteArray,
-        sessionID: String,
-        onRawEvent: suspend (String) -> Unit,
-    ) {
+    override suspend fun streamCLIAgentChatPayload(body: ByteArray, sessionID: String, onRawEvent: suspend (String) -> Unit) {
         hermesService.streamCLIAgentChatPayload(
             body = body,
             sessionID = sessionID,
@@ -57,14 +36,10 @@ private class HermesServiceCLIAgentRelayChatPayloadStreamer(
         )
     }
 
-    override suspend fun sendCLIAgentSessionActionPayload(
-        body: ByteArray,
-        sessionID: String,
-    ): String =
-        hermesService.sendCLIAgentSessionActionPayload(
-            body = body,
-            sessionID = sessionID,
-        )
+    override suspend fun sendCLIAgentSessionActionPayload(body: ByteArray, sessionID: String): String = hermesService.sendCLIAgentSessionActionPayload(
+        body = body,
+        sessionID = sessionID,
+    )
 }
 
 class CLIAgentRelayChatTransport(
@@ -74,33 +49,31 @@ class CLIAgentRelayChatTransport(
         HermesServiceCLIAgentRelayChatPayloadStreamer(hermesService),
     )
 
-    override suspend fun fetchModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse =
-        payloadStreamer.fetchCLIRuntimeModelCatalog(runtime)
+    override suspend fun fetchModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse = payloadStreamer.fetchCLIRuntimeModelCatalog(runtime)
 
-    override suspend fun stream(
-        runtime: AssistantRuntimeID,
-        threadID: String,
-        prompt: String,
-        title: String,
-        modelID: String?,
-        parentSessionID: String?,
-        resumeAction: String?,
-        presentationMode: CLIAgentChatPresentationMode,
-        onEvent: suspend (CLIAgentRelayChatEvent) -> Unit,
-    ) {
+    override suspend fun stream(request: CLIAgentRelayChatStreamRequest, onEvent: suspend (CLIAgentRelayChatEvent) -> Unit) {
+        val runtime = request.runtime
+        val threadID = request.threadID
+        val prompt = request.prompt
+        val title = request.title
+        val modelID = request.modelID
+        val parentSessionID = request.parentSessionID
+        val resumeAction = request.resumeAction
+        val presentationMode = request.presentationMode
         val trimmedPrompt = prompt.trim()
         require(trimmedPrompt.isNotEmpty()) { "Cannot send an empty CLI agent prompt." }
 
-        val request = CLIAgentRelayChatRequest(
-            runtime = runtime.token,
-            prompt = trimmedPrompt,
-            clientThreadID = threadID,
-            modelID = modelID?.trim()?.takeIf { it.isNotEmpty() },
-            title = title.trim().takeIf { it.isNotEmpty() },
-            parentSessionID = parentSessionID?.trim()?.takeIf { it.isNotEmpty() },
-            resumeAction = resumeAction?.trim()?.takeIf { it.isNotEmpty() },
-            presentationMode = presentationMode,
-        )
+        val request =
+            CLIAgentRelayChatRequest(
+                runtime = runtime.token,
+                prompt = trimmedPrompt,
+                clientThreadID = threadID,
+                modelID = modelID?.trim()?.takeIf { it.isNotEmpty() },
+                title = title.trim().takeIf { it.isNotEmpty() },
+                parentSessionID = parentSessionID?.trim()?.takeIf { it.isNotEmpty() },
+                resumeAction = resumeAction?.trim()?.takeIf { it.isNotEmpty() },
+                presentationMode = presentationMode,
+            )
         var decodeError: Throwable? = null
         payloadStreamer.streamCLIAgentChatPayload(
             body = request.toJsonByteArray(),
@@ -109,7 +82,7 @@ class CLIAgentRelayChatTransport(
             if (decodeError != null) return@streamCLIAgentChatPayload
             try {
                 onEvent(CLIAgentRelayChatEvent.decode(rawEvent))
-            } catch (t: Throwable) {
+            } catch (t: IllegalStateException) {
                 decodeError = t
             }
         }
@@ -118,13 +91,25 @@ class CLIAgentRelayChatTransport(
 
     override suspend fun performSessionAction(request: CLIAgentSessionActionRequest): CLIAgentSessionActionResponse {
         val body = request.toJsonByteArray()
-        val raw = payloadStreamer.sendCLIAgentSessionActionPayload(
-            body = body,
-            sessionID = "cli-session-action-${request.sessionID}",
-        )
+        val raw =
+            payloadStreamer.sendCLIAgentSessionActionPayload(
+                body = body,
+                sessionID = "cli-session-action-${request.sessionID}",
+            )
         return CLIAgentSessionActionResponse.decode(raw)
     }
 }
+
+data class CLIAgentRelayChatStreamRequest(
+    val runtime: AssistantRuntimeID,
+    val threadID: String,
+    val prompt: String,
+    val title: String,
+    val modelID: String? = null,
+    val parentSessionID: String? = null,
+    val resumeAction: String? = null,
+    val presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+)
 
 data class CLIAgentRelayChatRequest(
     val runtime: String,
@@ -137,11 +122,12 @@ data class CLIAgentRelayChatRequest(
     val presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
 ) {
     fun toJsonByteArray(): ByteArray {
-        val json = JSONObject()
-            .put("runtime", runtime)
-            .put("prompt", prompt)
-            .put("clientThreadID", clientThreadID)
-            .put("presentationMode", presentationMode.wire)
+        val json =
+            JSONObject()
+                .put("runtime", runtime)
+                .put("prompt", prompt)
+                .put("clientThreadID", clientThreadID)
+                .put("presentationMode", presentationMode.wire)
         json.putIfPresent("modelID", modelID)
         json.putIfPresent("title", title)
         json.putIfPresent("parentSessionID", parentSessionID)
@@ -153,42 +139,42 @@ data class CLIAgentRelayChatRequest(
 enum class CLIAgentRelayChatEventKind(val wire: String) {
     ASSISTANT_SNAPSHOT("assistantSnapshot"),
     COMPLETED("completed"),
-    FAILED("failed");
+    FAILED("failed"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): CLIAgentRelayChatEventKind? =
-            values().firstOrNull { it.wire == value }
-                ?: when (value) {
-                    "assistant_snapshot" -> ASSISTANT_SNAPSHOT
-                    else -> null
-                }
+        fun fromWire(value: String?): CLIAgentRelayChatEventKind? = values().firstOrNull { it.wire == value }
+            ?: when (value) {
+                "assistant_snapshot" -> ASSISTANT_SNAPSHOT
+                else -> null
+            }
     }
 }
 
 enum class CLIAgentRelayTranscriptPieceKind(val wire: String) {
     TEXT("text"),
     TOOL_USE("toolUse"),
-    TOOL_RESULT("toolResult");
+    TOOL_RESULT("toolResult"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): CLIAgentRelayTranscriptPieceKind? =
-            values().firstOrNull { it.wire == value }
-                ?: when (value) {
-                    "tool_use" -> TOOL_USE
-                    "tool_result" -> TOOL_RESULT
-                    else -> null
-                }
+        fun fromWire(value: String?): CLIAgentRelayTranscriptPieceKind? = values().firstOrNull { it.wire == value }
+            ?: when (value) {
+                "tool_use" -> TOOL_USE
+                "tool_result" -> TOOL_RESULT
+                else -> null
+            }
     }
 }
 
 enum class CLIAgentSessionActionKind(val wire: String) {
     RESUME("resume"),
     HANDOFF("handoff"),
-    PACKAGE_ONLY("package_only");
+    PACKAGE_ONLY("package_only"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): CLIAgentSessionActionKind =
-            values().firstOrNull { it.wire == value } ?: RESUME
+        fun fromWire(value: String?): CLIAgentSessionActionKind = values().firstOrNull { it.wire == value } ?: RESUME
     }
 }
 
@@ -200,10 +186,11 @@ data class CLIAgentSessionActionRequest(
     val presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.MAC_VISIBLE_CLI,
 ) {
     fun toJsonByteArray(): ByteArray {
-        val json = JSONObject()
-            .put("sessionID", sessionID)
-            .put("action", action.wire)
-            .put("presentationMode", presentationMode.wire)
+        val json =
+            JSONObject()
+                .put("sessionID", sessionID)
+                .put("action", action.wire)
+                .put("presentationMode", presentationMode.wire)
         json.putIfPresent("targetRuntime", targetRuntime)
         json.putIfPresent("targetModelID", targetModelID)
         return json.toString().toByteArray(Charsets.UTF_8)
@@ -215,11 +202,11 @@ enum class CLIAgentSessionActionStatus(val wire: String) {
     HANDOFF("handoff"),
     PACKAGE_ONLY("package_only"),
     SPAWNED("spawned"),
-    ERROR("error");
+    ERROR("error"),
+    ;
 
     companion object {
-        fun fromWire(value: String?): CLIAgentSessionActionStatus =
-            values().firstOrNull { it.wire == value } ?: ERROR
+        fun fromWire(value: String?): CLIAgentSessionActionStatus = values().firstOrNull { it.wire == value } ?: ERROR
     }
 }
 
@@ -239,11 +226,12 @@ data class CLIAgentSessionActionResponse(
         fun decode(raw: String): CLIAgentSessionActionResponse {
             val json = JSONObject(raw)
             val argvJSON = json.optJSONArray("argv") ?: JSONArray()
-            val argv = buildList {
-                for (i in 0 until argvJSON.length()) {
-                    add(argvJSON.optString(i))
+            val argv =
+                buildList {
+                    for (i in 0 until argvJSON.length()) {
+                        add(argvJSON.optString(i))
+                    }
                 }
-            }
             return CLIAgentSessionActionResponse(
                 status = CLIAgentSessionActionStatus.fromWire(json.optString("status")),
                 targetRuntime = json.optNullableString("targetRuntime"),
@@ -275,8 +263,9 @@ data class CLIAgentRelayChatEvent(
     val errorMessage: String? = null,
 ) {
     val isTerminal: Boolean
-        get() = kind == CLIAgentRelayChatEventKind.COMPLETED ||
-            kind == CLIAgentRelayChatEventKind.FAILED
+        get() =
+            kind == CLIAgentRelayChatEventKind.COMPLETED ||
+                kind == CLIAgentRelayChatEventKind.FAILED
 
     val isError: Boolean
         get() = kind == CLIAgentRelayChatEventKind.FAILED
@@ -284,8 +273,9 @@ data class CLIAgentRelayChatEvent(
     companion object {
         fun decode(raw: String): CLIAgentRelayChatEvent {
             val json = JSONObject(raw)
-            val kind = CLIAgentRelayChatEventKind.fromWire(json.optNullableString("kind"))
-                ?: throw IllegalArgumentException("Unknown CLI agent relay chat event kind.")
+            val kind =
+                CLIAgentRelayChatEventKind.fromWire(json.optNullableString("kind"))
+                    ?: require(false) { "Unknown CLI agent relay chat event kind." }
             return CLIAgentRelayChatEvent(
                 kind = kind,
                 text = json.optNullableString("text"),
@@ -316,16 +306,20 @@ private fun JSONArray?.toTranscriptPieces(): List<CLIAgentRelayTranscriptPiece> 
     if (this == null) return emptyList()
     val pieces = mutableListOf<CLIAgentRelayTranscriptPiece>()
     for (index in 0 until length()) {
-        val item = optJSONObject(index) ?: continue
-        val id = item.optNullableString("id") ?: continue
-        val kind = CLIAgentRelayTranscriptPieceKind.fromWire(item.optNullableString("kind")) ?: continue
-        val value = item.optNullableString("value") ?: ""
-        pieces += CLIAgentRelayTranscriptPiece(
-            id = id,
-            kind = kind,
-            value = value,
-            detail = item.optNullableString("detail"),
-        )
+        val item = optJSONObject(index)
+        if (item != null) {
+            val id = item.optNullableString("id")
+            val kind = CLIAgentRelayTranscriptPieceKind.fromWire(item.optNullableString("kind"))
+            if (id != null && kind != null) {
+                pieces +=
+                    CLIAgentRelayTranscriptPiece(
+                        id = id,
+                        kind = kind,
+                        value = item.optNullableString("value") ?: "",
+                        detail = item.optNullableString("detail"),
+                    )
+            }
+        }
     }
     return pieces
 }

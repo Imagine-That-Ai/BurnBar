@@ -10,13 +10,14 @@ import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.auth.*
+import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,18 +26,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
+private const val VAL_12501 = 12501
+
 data class AppUser(
     val uid: String = "",
     val displayName: String? = null,
     val email: String? = null,
     val photoUrl: String? = null,
     val isSignedIn: Boolean = false,
-    val provider: String? = null
+    val provider: String? = null,
 )
 
 data class AuthError(
     val message: String,
-    val isTransient: Boolean = false
+    val isTransient: Boolean = false,
 )
 
 class UserStore : ViewModel() {
@@ -63,11 +66,12 @@ class UserStore : ViewModel() {
     private val _isSigningIn = MutableStateFlow(false)
     val isSigningIn: StateFlow<Boolean> = _isSigningIn.asStateFlow()
 
-    private val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
-        val currentUser = firebaseAuth.currentUser
-        _user.value = currentUser?.toAppUser() ?: AppUser()
-        Log.d("BurnBar", "Auth state: uid=${currentUser?.uid ?: "null"}")
-    }
+    private val authStateListener =
+        FirebaseAuth.AuthStateListener { firebaseAuth ->
+            val currentUser = firebaseAuth.currentUser
+            _user.value = currentUser?.toAppUser() ?: AppUser()
+            Log.d("BurnBar", "Auth state: uid=${currentUser?.uid ?: "null"}")
+        }
 
     init {
         Log.d("BurnBar", "UserStore init: uid=${auth.currentUser?.uid ?: "null"}")
@@ -101,23 +105,25 @@ class UserStore : ViewModel() {
             _isSigningIn.value = true
             _authError.value = null
             val credentialManager = CredentialManager.create(activity)
-            val request = GetCredentialRequest.Builder()
-                .addCredentialOption(
-                    GetGoogleIdOption.Builder()
-                        .setServerClientId(WEB_CLIENT_ID)
-                        .setFilterByAuthorizedAccounts(false)
-                        .setAutoSelectEnabled(false)
-                        .build()
-                )
-                .addCredentialOption(
-                    GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build()
-                )
-                .build()
+            val request =
+                GetCredentialRequest.Builder()
+                    .addCredentialOption(
+                        GetGoogleIdOption.Builder()
+                            .setServerClientId(WEB_CLIENT_ID)
+                            .setFilterByAuthorizedAccounts(false)
+                            .setAutoSelectEnabled(false)
+                            .build(),
+                    )
+                    .addCredentialOption(
+                        GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build(),
+                    )
+                    .build()
             try {
-                val response = credentialManager.getCredential(
-                    context = activity,
-                    request = request,
-                )
+                val response =
+                    credentialManager.getCredential(
+                        context = activity,
+                        request = request,
+                    )
                 val credential = response.credential
                 if (credential is CustomCredential &&
                     credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
@@ -128,16 +134,16 @@ class UserStore : ViewModel() {
                 } else {
                     _authError.value = AuthError("Unexpected Google credential response.")
                 }
-            } catch (e: GetCredentialCancellationException) {
+            } catch (_: GetCredentialCancellationException) {
                 // User dismissed picker — no error.
-            } catch (e: NoCredentialException) {
+            } catch (_: NoCredentialException) {
                 // No account on device. Trigger legacy account-picker.
                 Log.d("BurnBar", "Credential Manager NoCredentialException — falling back to legacy flow")
                 _needsLegacyGoogleFallback.value = true
             } catch (e: GetCredentialException) {
                 _authError.value = AuthError(e.localizedMessage ?: "Google sign-in failed.")
                 Log.w("BurnBar", "Credential Manager Google sign-in failed", e)
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _authError.value = AuthError(e.localizedMessage ?: "Google sign-in failed.")
                 Log.w("BurnBar", "Google sign-in unexpected error", e)
             } finally {
@@ -154,10 +160,11 @@ class UserStore : ViewModel() {
     // ── Legacy Google Sign-In intent fallback ──
 
     fun getGoogleSignInIntent(context: android.content.Context): android.content.Intent {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(WEB_CLIENT_ID)
-            .requestEmail()
-            .build()
+        val gso =
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(WEB_CLIENT_ID)
+                .requestEmail()
+                .build()
         return GoogleSignIn.getClient(context, gso).signInIntent
     }
 
@@ -170,13 +177,14 @@ class UserStore : ViewModel() {
                 val cred = GoogleAuthProvider.getCredential(account.idToken, null)
                 auth.signInWithCredential(cred).await()
             } catch (e: ApiException) {
-                if (e.statusCode != 12501) {
-                    val msg = "Google sign-in failed (status ${e.statusCode}). " +
-                        "If this is a release build, register the upload key SHA-1 in Firebase Console."
+                if (e.statusCode != VAL_12501) {
+                    val msg =
+                        "Google sign-in failed (status ${e.statusCode}). " +
+                            "If this is a release build, register the upload key SHA-1 in Firebase Console."
                     _authError.value = AuthError(msg)
                     Log.w("BurnBar", msg, e)
                 }
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _authError.value = AuthError(e.localizedMessage ?: "Sign-in failed")
                 Log.w("BurnBar", "Google sign-in exception", e)
             } finally {
@@ -189,10 +197,11 @@ class UserStore : ViewModel() {
     fun signInWithApple(activity: android.app.Activity) {
         _isSigningIn.value = true
         _authError.value = null
-        val provider = OAuthProvider.newBuilder("apple.com")
-            .setScopes(listOf("email", "name"))
-            .addCustomParameter("locale", java.util.Locale.getDefault().language)
-            .build()
+        val provider =
+            OAuthProvider.newBuilder("apple.com")
+                .setScopes(listOf("email", "name"))
+                .addCustomParameter("locale", java.util.Locale.getDefault().language)
+                .build()
         // If a pending result already exists (e.g. activity recreated mid-flow),
         // prefer it so we don't kick off a second auth web sheet.
         val pending = auth.pendingAuthResult
@@ -203,16 +212,17 @@ class UserStore : ViewModel() {
                 val e = completed.exception
                 Log.w("BurnBar", "Apple sign-in failed", e)
                 val raw = e?.localizedMessage.orEmpty()
-                val hint = when {
-                    raw.contains("invalid_client", ignoreCase = true) ||
-                        raw.contains("CONFIGURATION_NOT_FOUND", ignoreCase = true) ->
-                        "Apple Sign-In isn't fully configured for this app yet. " +
-                            "An admin needs to add the Apple Services ID + key in Firebase Console → Authentication → Apple."
-                    raw.contains("web-context-cancelled", ignoreCase = true) ||
-                        raw.contains("cancelled", ignoreCase = true) -> ""
-                    raw.isBlank() -> "Apple sign-in failed."
-                    else -> raw
-                }
+                val hint =
+                    when {
+                        raw.contains("invalid_client", ignoreCase = true) ||
+                            raw.contains("CONFIGURATION_NOT_FOUND", ignoreCase = true) ->
+                            "Apple Sign-In isn't fully configured for this app yet. " +
+                                "An admin needs to add the Apple Services ID + key in Firebase Console → Authentication → Apple."
+                        raw.contains("web-context-cancelled", ignoreCase = true) ||
+                            raw.contains("cancelled", ignoreCase = true) -> ""
+                        raw.isBlank() -> "Apple sign-in failed."
+                        else -> raw
+                    }
                 if (hint.isNotEmpty()) {
                     _authError.value = AuthError(hint)
                 }
@@ -223,34 +233,59 @@ class UserStore : ViewModel() {
     // ═══ Email ═══
     fun signUpWithEmail(email: String, password: String) {
         viewModelScope.launch {
-            _isSigningIn.value = true; _authError.value = null
-            try { auth.createUserWithEmailAndPassword(email, password).await() }
-            catch (e: Exception) { _authError.value = AuthError(e.localizedMessage ?: "Sign-up failed") }
-            finally { _isSigningIn.value = false }
+            _isSigningIn.value = true
+            _authError.value = null
+            try {
+                auth.createUserWithEmailAndPassword(email, password).await()
+            } catch (
+                e: FirebaseException,
+            ) {
+                _authError.value = AuthError(e.localizedMessage ?: "Sign-up failed")
+            } finally {
+                _isSigningIn.value = false
+            }
         }
     }
 
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
-            _isSigningIn.value = true; _authError.value = null
-            try { auth.signInWithEmailAndPassword(email, password).await() }
-            catch (e: Exception) { _authError.value = AuthError(e.localizedMessage ?: "Sign-in failed") }
-            finally { _isSigningIn.value = false }
+            _isSigningIn.value = true
+            _authError.value = null
+            try {
+                auth.signInWithEmailAndPassword(email, password).await()
+            } catch (
+                e: FirebaseException,
+            ) {
+                _authError.value = AuthError(e.localizedMessage ?: "Sign-in failed")
+            } finally {
+                _isSigningIn.value = false
+            }
         }
     }
 
     // ═══ Anonymous ═══
     fun signInAnonymously() {
         viewModelScope.launch {
-            _isSigningIn.value = true; _authError.value = null
-            try { auth.signInAnonymously().await() }
-            catch (e: Exception) { _authError.value = AuthError(e.localizedMessage ?: "Sign-in failed") }
-            finally { _isSigningIn.value = false }
+            _isSigningIn.value = true
+            _authError.value = null
+            try {
+                auth.signInAnonymously().await()
+            } catch (e: FirebaseException) {
+                _authError.value = AuthError(e.localizedMessage ?: "Sign-in failed")
+            } finally {
+                _isSigningIn.value = false
+            }
         }
     }
 
-    fun signOut() { auth.signOut(); _user.value = AppUser() }
-    fun clearError() { _authError.value = null }
+    fun signOut() {
+        auth.signOut()
+        _user.value = AppUser()
+    }
+
+    fun clearError() {
+        _authError.value = null
+    }
 
     override fun onCleared() {
         super.onCleared()
@@ -259,7 +294,10 @@ class UserStore : ViewModel() {
 }
 
 private fun FirebaseUser.toAppUser(): AppUser = AppUser(
-    uid = uid, displayName = displayName, email = email,
-    photoUrl = photoUrl?.toString(), isSignedIn = true,
-    provider = providerData.firstOrNull()?.providerId
+    uid = uid,
+    displayName = displayName,
+    email = email,
+    photoUrl = photoUrl?.toString(),
+    isSignedIn = true,
+    provider = providerData.firstOrNull()?.providerId,
 )

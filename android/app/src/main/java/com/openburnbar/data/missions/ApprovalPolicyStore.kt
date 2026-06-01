@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
-import java.time.Instant
 
 // MARK: - Approval Policy Store (Android parity, Hermes Square §6.9)
 //
@@ -25,11 +24,11 @@ enum class ApprovalDecision(val token: String) {
     ALLOW_FOR_SESSION("allow_for_session"),
     DENY("deny"),
     REMEMBER_ALLOW("remember_allow"),
-    REMEMBER_DENY("remember_deny");
+    REMEMBER_DENY("remember_deny"),
+    ;
 
     companion object {
-        fun fromToken(token: String?): ApprovalDecision? =
-            values().firstOrNull { it.token == token }
+        fun fromToken(token: String?): ApprovalDecision? = values().firstOrNull { it.token == token }
     }
 }
 
@@ -50,8 +49,9 @@ data class ApprovalPolicy(
 )
 
 class ApprovalPolicyStore private constructor(context: Context) {
-    private val prefs: SharedPreferences = context.applicationContext
-        .getSharedPreferences("hermes.approval_policies", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences =
+        context.applicationContext
+            .getSharedPreferences("hermes.approval_policies", Context.MODE_PRIVATE)
 
     private val _policies = MutableStateFlow<List<ApprovalPolicy>>(emptyList())
     val policies: StateFlow<List<ApprovalPolicy>> = _policies.asStateFlow()
@@ -76,10 +76,11 @@ class ApprovalPolicyStore private constructor(context: Context) {
     /** Resolve a policy by `(agentURI, scopeKey)`; returns null if no
      *  policy matches and bumps matchCount on a hit. */
     fun resolve(agentURI: String?, scopeKey: String): ApprovalPolicy? {
-        val match = _policies.value.firstOrNull {
-            it.agentURI == agentURI && it.scopeKey == scopeKey &&
-                (it.expiresAtEpoch == null || it.expiresAtEpoch > System.currentTimeMillis())
-        } ?: return null
+        val match =
+            _policies.value.firstOrNull {
+                it.agentURI == agentURI && it.scopeKey == scopeKey &&
+                    (it.expiresAtEpoch == null || it.expiresAtEpoch > System.currentTimeMillis())
+            } ?: return null
         val bumped = match.copy(matchCount = match.matchCount + 1)
         record(bumped)
         return bumped
@@ -100,7 +101,8 @@ class ApprovalPolicyStore private constructor(context: Context) {
                     fileGlob = obj.optString("fileGlob").takeIf { it.isNotBlank() },
                     runtimeID = obj.optString("runtimeID").takeIf { it.isNotBlank() },
                     targetProject = obj.optString("targetProject").takeIf { it.isNotBlank() },
-                    decision = ApprovalDecision.fromToken(obj.optString("decision"))
+                    decision =
+                    ApprovalDecision.fromToken(obj.optString("decision"))
                         ?: ApprovalDecision.ALLOW_ONCE,
                     displayLabel = obj.optString("displayLabel"),
                     createdAtEpoch = obj.optLong("createdAt", System.currentTimeMillis()),
@@ -138,13 +140,11 @@ class ApprovalPolicyStore private constructor(context: Context) {
 
         @Volatile private var instance: ApprovalPolicyStore? = null
 
-        fun shared(context: Context): ApprovalPolicyStore =
-            instance ?: synchronized(this) {
-                instance ?: ApprovalPolicyStore(context).also { instance = it }
-            }
+        fun shared(context: Context): ApprovalPolicyStore = instance ?: synchronized(this) {
+            instance ?: ApprovalPolicyStore(context).also { instance = it }
+        }
 
         /** Stable class hash for `(agentURI, scopeKey)`. */
-        fun classKey(agentURI: String?, scopeKey: String): String =
-            "${agentURI ?: ""}|$scopeKey"
+        fun classKey(agentURI: String?, scopeKey: String): String = "${agentURI ?: ""}|$scopeKey"
     }
 }

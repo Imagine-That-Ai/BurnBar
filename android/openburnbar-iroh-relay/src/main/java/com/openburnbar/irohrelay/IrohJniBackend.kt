@@ -14,10 +14,20 @@ package com.openburnbar.irohrelay
  * to real QUIC.
  */
 interface IrohEndpointBackend {
-    suspend fun bootstrap(secret: ByteArray, relayURL: String?): IrohEndpointIdentity
+    suspend fun bootstrap(
+        secret: ByteArray,
+        relayURL: String?,
+    ): IrohEndpointIdentity
+
     suspend fun identity(): IrohEndpointIdentity
-    suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohBackendStream
+
+    suspend fun connect(
+        target: IrohDialTarget,
+        timeoutMillis: Long,
+    ): IrohBackendStream
+
     suspend fun acceptOne(timeoutMillis: Long): IrohBackendStream
+
     suspend fun shutdown()
 }
 
@@ -28,8 +38,10 @@ interface IrohEndpointBackend {
  */
 interface IrohBackendStream {
     suspend fun sendFrame(envelope: ByteArray)
+
     /** Returns `null` on clean stream close. */
     suspend fun recvFrame(): ByteArray?
+
     suspend fun close()
 }
 
@@ -51,11 +63,18 @@ value class IrohSecretKeyMaterial(val raw: ByteArray) {
 
 sealed class IrohBackendError(message: String) : RuntimeException(message) {
     object NotInitialized : IrohBackendError("iroh backend not initialized")
+
     object InvalidSecretKey : IrohBackendError("invalid iroh secret key")
+
     object InvalidNodeId : IrohBackendError("invalid iroh node id")
+
     data class ConnectFailed(val detail: String) : IrohBackendError("connect failed: $detail")
+
     data class StreamFailed(val detail: String) : IrohBackendError("stream failed: $detail")
+
     data class AcceptFailed(val detail: String) : IrohBackendError("accept failed: $detail")
+
     data class ShutdownFailed(val detail: String) : IrohBackendError("shutdown failed: $detail")
+
     data class RuntimeFailed(val detail: String) : IrohBackendError("runtime failed: $detail")
 }

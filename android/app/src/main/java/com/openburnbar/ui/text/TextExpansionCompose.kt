@@ -21,12 +21,13 @@ fun rememberTextExpansionSnippets(): State<List<TextExpansionSnippet>> {
     val context = LocalContext.current
     val snippets = remember { mutableStateOf<List<TextExpansionSnippet>>(emptyList()) }
     LaunchedEffect(context) {
-        snippets.value = withContext(Dispatchers.IO) {
-            AppDatabase.getDatabase(context)
-                .textExpansionDao()
-                .getEnabled()
-                .map { it.toTextExpansionSnippet() }
-        }
+        snippets.value =
+            withContext(Dispatchers.IO) {
+                AppDatabase.getDatabase(context)
+                    .textExpansionDao()
+                    .getEnabled()
+                    .map { it.toTextExpansionSnippet() }
+            }
     }
     return snippets
 }
@@ -35,21 +36,19 @@ fun expandStaticTextSnippetDraft(
     draft: String,
     snippets: List<TextExpansionSnippet>,
     surface: TextExpansionSurface = TextExpansionSurface.IN_APP_THREAD,
-): String =
-    TextExpansionMatcher.expandStaticIfAvailable(
-        text = draft,
-        snippets = snippets,
-        surface = surface,
-    )?.text ?: draft
+): String = TextExpansionMatcher.expandStaticIfAvailable(
+    text = draft,
+    snippets = snippets,
+    surface = surface,
+)?.text ?: draft
 
-private fun TextExpansionSnippetEntity.toTextExpansionSnippet(): TextExpansionSnippet =
-    TextExpansionSnippet(
-        id = id,
-        title = title,
-        trigger = trigger,
-        body = body,
-        mode = TextExpansionMode.fromWireName(mode),
-        isEnabled = isEnabled,
-        scope = TextExpansionScope(),
-        deletedAtMillis = deletedAtMillis,
-    )
+private fun TextExpansionSnippetEntity.toTextExpansionSnippet(): TextExpansionSnippet = TextExpansionSnippet(
+    id = id,
+    title = title,
+    trigger = trigger,
+    body = body,
+    mode = TextExpansionMode.fromWireName(mode),
+    isEnabled = isEnabled,
+    scope = TextExpansionScope(),
+    deletedAtMillis = deletedAtMillis,
+)

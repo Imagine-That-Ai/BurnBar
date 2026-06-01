@@ -1,7 +1,7 @@
 package com.openburnbar.data.insights
 
-import kotlinx.serialization.Serializable
 import java.util.UUID
+import kotlinx.serialization.Serializable
 
 /**
  * A single widget on a canvas. Mirrors Swift InsightWidget.
@@ -21,7 +21,7 @@ data class InsightWidget(
     val lockedAt: String? = null,
     val lastComputedAt: String? = null,
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
-    val rationale: String? = null
+    val rationale: String? = null,
 ) {
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1

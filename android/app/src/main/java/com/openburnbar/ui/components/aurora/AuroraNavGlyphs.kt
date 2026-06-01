@@ -1,6 +1,7 @@
-package com.openburnbar.ui.components.aurora
+@file:Suppress("MagicNumber")
+// generated-by: scripts/generate-aurora-nav-glyphs (path coordinate tables)
 
-import androidx.compose.animation.core.LinearEasing
+package com.openburnbar.ui.components.aurora
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,7 +37,6 @@ import coil.compose.AsyncImage
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
@@ -55,11 +54,7 @@ import kotlin.math.sin
 // ── Pulse (heartbeat waveform) ─────────────────────────────────────────────
 
 @Composable
-fun PulseGlyph(
-    size: Dp,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun PulseGlyph(size: Dp, isSelected: Boolean, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
@@ -69,59 +64,65 @@ fun PulseGlyph(
         // ECG-style heartbeat: long flat → small up tick → sharp R-spike →
         // deep S-trough → bounce-back → flat. Eight control points sketched
         // across the available width.
-        val pts = listOf(
-            Offset(padX, midY),
-            Offset(w * 0.22f, midY),
-            Offset(w * 0.32f, midY * 0.85f),
-            Offset(w * 0.38f, h * 0.12f),    // sharp peak
-            Offset(w * 0.46f, h * 0.88f),    // deep trough
-            Offset(w * 0.55f, midY * 0.95f),
-            Offset(w * 0.68f, midY),
-            Offset(w - padX, midY)
-        )
+        val pts =
+            listOf(
+                Offset(padX, midY),
+                Offset(w * 0.22f, midY),
+                Offset(w * 0.32f, midY * 0.85f),
+                Offset(w * 0.38f, h * 0.12f), // sharp peak
+                Offset(w * 0.46f, h * 0.88f), // deep trough
+                Offset(w * 0.55f, midY * 0.95f),
+                Offset(w * 0.68f, midY),
+                Offset(w - padX, midY),
+            )
 
-        val line = Path().apply {
-            moveTo(pts.first().x, pts.first().y)
-            for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
-        }
+        val line =
+            Path().apply {
+                moveTo(pts.first().x, pts.first().y)
+                for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
+            }
 
         if (isSelected) {
             // Filled area beneath the waveform — ember→amber gradient.
-            val area = Path().apply {
-                moveTo(pts.first().x, h)
-                lineTo(pts.first().x, pts.first().y)
-                for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
-                lineTo(pts.last().x, h)
-                close()
-            }
+            val area =
+                Path().apply {
+                    moveTo(pts.first().x, h)
+                    lineTo(pts.first().x, pts.first().y)
+                    for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
+                    lineTo(pts.last().x, h)
+                    close()
+                }
             drawPath(
                 path = area,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
+                brush =
+                Brush.verticalGradient(
+                    colors =
+                    listOf(
                         AuroraColors.ember.copy(alpha = 0.55f),
                         AuroraColors.amber.copy(alpha = 0.25f),
-                        Color.Transparent
-                    )
-                )
+                        Color.Transparent,
+                    ),
+                ),
             )
             drawPath(
                 path = line,
-                brush = Brush.horizontalGradient(
-                    colors = listOf(AuroraColors.ember, AuroraColors.amber)
+                brush =
+                Brush.horizontalGradient(
+                    colors = listOf(AuroraColors.ember, AuroraColors.amber),
                 ),
-                style = Stroke(width = max(1.5f, w * 0.07f), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                style = Stroke(width = max(1.5f, w * 0.07f), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
             // Specular highlight blip at the peak
             drawCircle(
                 color = Color.White.copy(alpha = 0.85f),
                 radius = w * 0.05f,
-                center = pts[3]
+                center = pts[3],
             )
         } else {
             drawPath(
                 path = line,
                 color = AuroraColors.hermesMercury.copy(alpha = 0.78f),
-                style = Stroke(width = max(1.5f, w * 0.07f), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                style = Stroke(width = max(1.5f, w * 0.07f), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
     }
@@ -130,21 +131,18 @@ fun PulseGlyph(
 // ── Burn (flame + particles) ───────────────────────────────────────────────
 
 @Composable
-fun BurnGlyph(
-    size: Dp,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun BurnGlyph(size: Dp, isSelected: Boolean, modifier: Modifier = Modifier) {
     val reduce = LocalAuroraReduceMotion.current
     val transition = rememberInfiniteTransition(label = "burn-fire")
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "burn-phase"
+        label = "burn-phase",
     )
 
     Canvas(modifier = modifier.size(size)) {
@@ -155,74 +153,95 @@ fun BurnGlyph(
         val cx = w / 2f
         val baseY = h * 0.94f
         val tipY = h * 0.10f
-        val flame = Path().apply {
-            moveTo(cx, tipY)
-            cubicTo(
-                w * 0.78f, h * 0.30f,
-                w * 0.88f, h * 0.65f,
-                cx, baseY
-            )
-            cubicTo(
-                w * 0.12f, h * 0.65f,
-                w * 0.22f, h * 0.30f,
-                cx, tipY
-            )
-            close()
-        }
+        val flame =
+            Path().apply {
+                moveTo(cx, tipY)
+                cubicTo(
+                    w * 0.78f,
+                    h * 0.30f,
+                    w * 0.88f,
+                    h * 0.65f,
+                    cx,
+                    baseY,
+                )
+                cubicTo(
+                    w * 0.12f,
+                    h * 0.65f,
+                    w * 0.22f,
+                    h * 0.30f,
+                    cx,
+                    tipY,
+                )
+                close()
+            }
 
         // Wick / coal base — a charcoal-tinted rounded bar under the flame.
-        val wickRect = Rect(
-            offset = Offset(w * 0.30f, h * 0.88f),
-            size = Size(w * 0.40f, h * 0.08f)
-        )
-        val wickPath = Path().apply {
-            addRoundRect(RoundRect(wickRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(h * 0.04f)))
-        }
+        val wickRect =
+            Rect(
+                offset = Offset(w * 0.30f, h * 0.88f),
+                size = Size(w * 0.40f, h * 0.08f),
+            )
+        val wickPath =
+            Path().apply {
+                addRoundRect(RoundRect(wickRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(h * 0.04f)))
+            }
 
         if (isSelected) {
             // Gradient body
             drawPath(
                 path = flame,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
+                brush =
+                Brush.verticalGradient(
+                    colors =
+                    listOf(
                         AuroraColors.amber,
                         AuroraColors.ember,
-                        AuroraColors.blaze.copy(alpha = 0.85f)
-                    )
-                )
+                        AuroraColors.blaze.copy(alpha = 0.85f),
+                    ),
+                ),
             )
             // Inner brighter core (heart of the flame)
-            val core = Path().apply {
-                moveTo(cx, h * 0.30f)
-                cubicTo(
-                    w * 0.66f, h * 0.46f,
-                    w * 0.72f, h * 0.74f,
-                    cx, h * 0.82f
-                )
-                cubicTo(
-                    w * 0.28f, h * 0.74f,
-                    w * 0.34f, h * 0.46f,
-                    cx, h * 0.30f
-                )
-                close()
-            }
+            val core =
+                Path().apply {
+                    moveTo(cx, h * 0.30f)
+                    cubicTo(
+                        w * 0.66f,
+                        h * 0.46f,
+                        w * 0.72f,
+                        h * 0.74f,
+                        cx,
+                        h * 0.82f,
+                    )
+                    cubicTo(
+                        w * 0.28f,
+                        h * 0.74f,
+                        w * 0.34f,
+                        h * 0.46f,
+                        cx,
+                        h * 0.30f,
+                    )
+                    close()
+                }
             drawPath(
                 path = core,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
+                brush =
+                Brush.verticalGradient(
+                    colors =
+                    listOf(
                         Color.White.copy(alpha = 0.85f),
                         AuroraColors.amber.copy(alpha = 0.85f),
-                        AuroraColors.ember.copy(alpha = 0.3f)
-                    )
+                        AuroraColors.ember.copy(alpha = 0.3f),
+                    ),
                 ),
-                blendMode = BlendMode.Plus
+                blendMode = BlendMode.Plus,
             )
             // Charcoal log
             drawPath(
                 path = wickPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF3A1F18), Color(0xFF1B0E0A))
-                )
+                brush =
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF3A1F18), Color(0xFF1B0E0A)),
+                ),
             )
             // Ember dots near the wick edges
             drawCircle(AuroraColors.amber.copy(alpha = 0.85f), w * 0.04f, Offset(w * 0.32f, h * 0.91f))
@@ -239,7 +258,7 @@ fun BurnGlyph(
                 if (lifetime <= 0.01f) continue
 
                 // Drift in a cone from wick to above the flame tip.
-                val angle = (sin(seed * 2.0 * PI) * 0.45).toFloat()  // -0.45..0.45 radians
+                val angle = (sin(seed * 2.0 * PI) * 0.45).toFloat() // -0.45..0.45 radians
                 val drift = angle * (localPhase * w * 0.18f)
                 val px = cx + drift
                 val py = baseY - localPhase * (baseY - tipY * 0.8f)
@@ -250,23 +269,23 @@ fun BurnGlyph(
                     color = lerpColor(AuroraColors.amber, AuroraColors.ember, localPhase).copy(alpha = alpha),
                     radius = r,
                     center = Offset(px, py),
-                    blendMode = BlendMode.Plus
+                    blendMode = BlendMode.Plus,
                 )
             }
         } else {
             // Dormant ember silhouette
             drawPath(
                 path = flame,
-                color = AuroraColors.hermesMercury.copy(alpha = 0.42f)
+                color = AuroraColors.hermesMercury.copy(alpha = 0.42f),
             )
             drawPath(
                 path = flame,
                 color = AuroraColors.hermesMercury.copy(alpha = 0.78f),
-                style = Stroke(width = max(1.5f, w * 0.06f), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                style = Stroke(width = max(1.5f, w * 0.06f), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
             drawPath(
                 path = wickPath,
-                color = AuroraColors.hermesMercury.copy(alpha = 0.55f)
+                color = AuroraColors.hermesMercury.copy(alpha = 0.55f),
             )
         }
     }
@@ -275,30 +294,28 @@ fun BurnGlyph(
 // ── Streams (vintage TV + SMPTE bars) ──────────────────────────────────────
 
 @Composable
-fun StreamsGlyph(
-    size: Dp,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun StreamsGlyph(size: Dp, isSelected: Boolean, modifier: Modifier = Modifier) {
     val reduce = LocalAuroraReduceMotion.current
     val transition = rememberInfiniteTransition(label = "streams-tv")
     val sweep by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "streams-sweep"
+        label = "streams-sweep",
     )
     val wiggle by transition.animateFloat(
         initialValue = -1f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 620, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "streams-wiggle"
+        label = "streams-wiggle",
     )
 
     Canvas(modifier = modifier.size(size)) {
@@ -306,23 +323,27 @@ fun StreamsGlyph(
         val h = this.size.height
 
         // Cabinet (rounded rect, lower 75% of height)
-        val cabinetRect = Rect(
-            offset = Offset(w * 0.05f, h * 0.30f),
-            size = Size(w * 0.90f, h * 0.62f)
-        )
-        val cabinetPath = Path().apply {
-            addRoundRect(RoundRect(cabinetRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.07f)))
-        }
+        val cabinetRect =
+            Rect(
+                offset = Offset(w * 0.05f, h * 0.30f),
+                size = Size(w * 0.90f, h * 0.62f),
+            )
+        val cabinetPath =
+            Path().apply {
+                addRoundRect(RoundRect(cabinetRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.07f)))
+            }
 
         // Screen inside the cabinet
         val screenInset = w * 0.10f
-        val screenRect = Rect(
-            offset = Offset(cabinetRect.left + screenInset, cabinetRect.top + screenInset),
-            size = Size(cabinetRect.width - screenInset * 2, cabinetRect.height - screenInset * 2)
-        )
-        val screenPath = Path().apply {
-            addRoundRect(RoundRect(screenRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)))
-        }
+        val screenRect =
+            Rect(
+                offset = Offset(cabinetRect.left + screenInset, cabinetRect.top + screenInset),
+                size = Size(cabinetRect.width - screenInset * 2, cabinetRect.height - screenInset * 2),
+            )
+        val screenPath =
+            Path().apply {
+                addRoundRect(RoundRect(screenRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)))
+            }
 
         // Antennae — two diagonal lines from top of cabinet
         val antennaBaseLeft = Offset(w * 0.35f, h * 0.32f)
@@ -334,29 +355,39 @@ fun StreamsGlyph(
         // Cabinet body
         drawPath(
             path = cabinetPath,
-            color = if (isSelected) Color(0xFF1B1729) else AuroraColors.hermesMercury.copy(alpha = 0.42f)
+            color = if (isSelected) Color(0xFF1B1729) else AuroraColors.hermesMercury.copy(alpha = 0.42f),
         )
         // Cabinet outline
         drawPath(
             path = cabinetPath,
-            color = if (isSelected) AuroraColors.hermesMercury.copy(alpha = 0.7f)
-                    else AuroraColors.hermesMercury.copy(alpha = 0.78f),
-            style = Stroke(width = max(1.2f, w * 0.04f), join = StrokeJoin.Round)
+            color =
+            if (isSelected) {
+                AuroraColors.hermesMercury.copy(alpha = 0.7f)
+            } else {
+                AuroraColors.hermesMercury.copy(alpha = 0.78f)
+            },
+            style = Stroke(width = max(1.2f, w * 0.04f), join = StrokeJoin.Round),
         )
 
         // Screen
         if (isSelected) {
             // SMPTE 7-bar pattern revealed by a CRT downward sweep.
-            val bars = listOf(
-                Color(0xFFFFFFFF), Color(0xFFE5E020), Color(0xFF20DDE5), Color(0xFF36D451),
-                Color(0xFFE03BC1), Color(0xFFE03B3B), Color(0xFF3B5BE0)
-            )
+            val bars =
+                listOf(
+                    Color(0xFFFFFFFF),
+                    Color(0xFFE5E020),
+                    Color(0xFF20DDE5),
+                    Color(0xFF36D451),
+                    Color(0xFFE03BC1),
+                    Color(0xFFE03B3B),
+                    Color(0xFF3B5BE0),
+                )
             val barW = screenRect.width / bars.size
             for ((i, c) in bars.withIndex()) {
                 drawRect(
                     color = c.copy(alpha = 0.92f),
                     topLeft = Offset(screenRect.left + i * barW, screenRect.top),
-                    size = Size(barW, screenRect.height)
+                    size = Size(barW, screenRect.height),
                 )
             }
             // Re-clip screen to the rounded screen path so the rectangles
@@ -364,7 +395,7 @@ fun StreamsGlyph(
             drawPath(
                 path = screenPath,
                 color = Color.Transparent,
-                style = Stroke(width = 0f)
+                style = Stroke(width = 0f),
             )
             // Subtle CRT scan line moving down
             val phase = if (reduce) 0.5f else sweep
@@ -373,23 +404,23 @@ fun StreamsGlyph(
                 color = Color.White.copy(alpha = 0.22f),
                 topLeft = Offset(screenRect.left, scanY - 1f),
                 size = Size(screenRect.width, max(1.5f, h * 0.012f)),
-                blendMode = BlendMode.Plus
+                blendMode = BlendMode.Plus,
             )
             // Bezel highlight
             drawPath(
                 path = screenPath,
                 color = Color.White.copy(alpha = 0.08f),
-                style = Stroke(width = max(1f, w * 0.025f))
+                style = Stroke(width = max(1f, w * 0.025f)),
             )
         } else {
             drawPath(
                 path = screenPath,
-                color = Color(0xFF14121E)
+                color = Color(0xFF14121E),
             )
             drawPath(
                 path = screenPath,
                 color = AuroraColors.hermesMercury.copy(alpha = 0.55f),
-                style = Stroke(width = max(1f, w * 0.03f))
+                style = Stroke(width = max(1f, w * 0.03f)),
             )
         }
 
@@ -399,7 +430,7 @@ fun StreamsGlyph(
             drawCircle(
                 color = AuroraColors.hermesMercury.copy(alpha = if (isSelected) 0.85f else 0.55f),
                 radius = w * 0.025f,
-                center = Offset(kx, chinY)
+                center = Offset(kx, chinY),
             )
         }
 
@@ -410,14 +441,14 @@ fun StreamsGlyph(
             start = antennaBaseLeft,
             end = antennaTipLeft,
             strokeWidth = max(1.5f, w * 0.05f),
-            cap = StrokeCap.Round
+            cap = StrokeCap.Round,
         )
         drawLine(
             color = antennaColor,
             start = antennaBaseRight,
             end = antennaTipRight,
             strokeWidth = max(1.5f, w * 0.05f),
-            cap = StrokeCap.Round
+            cap = StrokeCap.Round,
         )
         drawCircle(antennaColor, w * 0.025f, antennaTipLeft)
         drawCircle(antennaColor, w * 0.025f, antennaTipRight)
@@ -427,21 +458,18 @@ fun StreamsGlyph(
 // ── Hermes (robot face) ────────────────────────────────────────────────────
 
 @Composable
-fun HermesGlyph(
-    size: Dp,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun HermesGlyph(size: Dp, isSelected: Boolean, modifier: Modifier = Modifier) {
     val reduce = LocalAuroraReduceMotion.current
     val transition = rememberInfiniteTransition(label = "hermes-pulse")
     val heartPulse by transition.animateFloat(
         initialValue = 0.85f,
         targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 1400, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "hermes-heart"
+        label = "hermes-heart",
     )
 
     Canvas(modifier = modifier.size(size)) {
@@ -452,23 +480,27 @@ fun HermesGlyph(
         val muted = AuroraColors.hermesMercury.copy(alpha = 0.45f)
 
         // Head — rounded square slightly taller than wide
-        val headRect = Rect(
-            offset = Offset(w * 0.15f, h * 0.22f),
-            size = Size(w * 0.70f, h * 0.62f)
-        )
-        val headPath = Path().apply {
-            addRoundRect(RoundRect(headRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.18f)))
-        }
+        val headRect =
+            Rect(
+                offset = Offset(w * 0.15f, h * 0.22f),
+                size = Size(w * 0.70f, h * 0.62f),
+            )
+        val headPath =
+            Path().apply {
+                addRoundRect(RoundRect(headRect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.18f)))
+            }
 
         // Earcups (headphones) — small ovals on left/right of head
         val earL = Rect(Offset(headRect.left - w * 0.06f, h * 0.40f), Size(w * 0.10f, h * 0.22f))
         val earR = Rect(Offset(headRect.right - w * 0.04f, h * 0.40f), Size(w * 0.10f, h * 0.22f))
-        val earLPath = Path().apply {
-            addRoundRect(RoundRect(earL, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)))
-        }
-        val earRPath = Path().apply {
-            addRoundRect(RoundRect(earR, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)))
-        }
+        val earLPath =
+            Path().apply {
+                addRoundRect(RoundRect(earL, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)))
+            }
+        val earRPath =
+            Path().apply {
+                addRoundRect(RoundRect(earR, cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.04f)))
+            }
 
         // Antenna line + heart
         val antennaBottom = Offset(cx, headRect.top)
@@ -478,12 +510,14 @@ fun HermesGlyph(
             // Head — gradient fill
             drawPath(
                 path = headPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
+                brush =
+                Brush.verticalGradient(
+                    colors =
+                    listOf(
                         AuroraColors.hermesMercury.copy(alpha = 0.85f),
-                        AuroraColors.hermesAureate.copy(alpha = 0.65f)
-                    )
-                )
+                        AuroraColors.hermesAureate.copy(alpha = 0.65f),
+                    ),
+                ),
             )
             drawPath(path = headPath, color = accent, style = Stroke(width = max(1.2f, w * 0.04f)))
             // Earcups
@@ -496,25 +530,27 @@ fun HermesGlyph(
             val rightEye = Offset(cx + w * 0.13f, eyeY)
             for (eyeCenter in listOf(leftEye, rightEye)) {
                 drawCircle(
-                    brush = Brush.radialGradient(
+                    brush =
+                    Brush.radialGradient(
                         colors = listOf(Color.White, AuroraColors.ember, AuroraColors.ember.copy(alpha = 0f)),
                         center = eyeCenter,
-                        radius = eyeR * 1.6f
+                        radius = eyeR * 1.6f,
                     ),
                     radius = eyeR,
-                    center = eyeCenter
+                    center = eyeCenter,
                 )
                 drawCircle(
                     color = Color.White,
                     radius = eyeR * 0.35f,
-                    center = eyeCenter
+                    center = eyeCenter,
                 )
             }
             // Smile arc
-            val smileRect = Rect(
-                offset = Offset(cx - w * 0.16f, h * 0.60f),
-                size = Size(w * 0.32f, h * 0.12f)
-            )
+            val smileRect =
+                Rect(
+                    offset = Offset(cx - w * 0.16f, h * 0.60f),
+                    size = Size(w * 0.32f, h * 0.12f),
+                )
             drawArc(
                 color = AuroraColors.ember,
                 startAngle = 10f,
@@ -522,7 +558,7 @@ fun HermesGlyph(
                 useCenter = false,
                 topLeft = smileRect.topLeft,
                 size = smileRect.size,
-                style = Stroke(width = max(1.5f, w * 0.05f), cap = StrokeCap.Round)
+                style = Stroke(width = max(1.5f, w * 0.05f), cap = StrokeCap.Round),
             )
             // Eye smile arcs (small)
             for ((sx, dir) in listOf(leftEye.x to 1f, rightEye.x to -1f)) {
@@ -534,7 +570,7 @@ fun HermesGlyph(
                     useCenter = false,
                     topLeft = r.topLeft,
                     size = r.size,
-                    style = Stroke(width = max(0.8f, w * 0.025f), cap = StrokeCap.Round)
+                    style = Stroke(width = max(0.8f, w * 0.025f), cap = StrokeCap.Round),
                 )
             }
             // Antenna
@@ -543,16 +579,17 @@ fun HermesGlyph(
                 start = antennaBottom,
                 end = antennaTop,
                 strokeWidth = max(1.5f, w * 0.04f),
-                cap = StrokeCap.Round
+                cap = StrokeCap.Round,
             )
             // Heart on antenna
             val pulse = if (reduce) 1f else heartPulse
             drawHeart(
                 center = Offset(antennaTop.x, antennaTop.y - h * 0.025f),
                 size = w * 0.18f * pulse,
-                brush = Brush.verticalGradient(
-                    colors = listOf(AuroraColors.ember, AuroraColors.amber)
-                )
+                brush =
+                Brush.verticalGradient(
+                    colors = listOf(AuroraColors.ember, AuroraColors.amber),
+                ),
             )
         } else {
             // Idle: clean outline + soft fill
@@ -571,7 +608,7 @@ fun HermesGlyph(
                 start = Offset(cx - w * 0.06f, h * 0.66f),
                 end = Offset(cx + w * 0.06f, h * 0.66f),
                 strokeWidth = max(1.2f, w * 0.035f),
-                cap = StrokeCap.Round
+                cap = StrokeCap.Round,
             )
             // Antenna
             drawLine(
@@ -579,7 +616,7 @@ fun HermesGlyph(
                 start = antennaBottom,
                 end = antennaTop,
                 strokeWidth = max(1.2f, w * 0.035f),
-                cap = StrokeCap.Round
+                cap = StrokeCap.Round,
             )
             drawCircle(accent, w * 0.04f, antennaTop)
         }
@@ -589,52 +626,50 @@ fun HermesGlyph(
 // ── You (avatar + rotating halo) ───────────────────────────────────────────
 
 @Composable
-fun YouGlyph(
-    size: Dp,
-    isSelected: Boolean,
-    photoUrl: String? = null,
-    initials: String? = null,
-    modifier: Modifier = Modifier
-) {
+fun YouGlyph(size: Dp, isSelected: Boolean, photoUrl: String? = null, initials: String? = null, modifier: Modifier = Modifier) {
     val reduce = LocalAuroraReduceMotion.current
     val transition = rememberInfiniteTransition(label = "you-halo")
     val rotation by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 16_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "you-rotation"
+        label = "you-rotation",
     )
 
     Box(
         modifier = modifier.size(size),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         // Rotating halo — sweep gradient ring drawn behind the avatar.
         if (isSelected) {
             Canvas(
-                modifier = Modifier
+                modifier =
+                Modifier
                     .size(size)
-                    .rotate(if (reduce) 0f else rotation)
+                    .rotate(if (reduce) 0f else rotation),
             ) {
                 val r = this.size.minDimension / 2f
                 val center = Offset(this.size.width / 2f, this.size.height / 2f)
                 drawCircle(
-                    brush = Brush.sweepGradient(
-                        colors = listOf(
+                    brush =
+                    Brush.sweepGradient(
+                        colors =
+                        listOf(
                             AuroraColors.ember,
                             AuroraColors.amber,
                             AuroraColors.blaze,
                             AuroraColors.ember.copy(alpha = 0f),
-                            AuroraColors.ember
+                            AuroraColors.ember,
                         ),
-                        center = center
+                        center = center,
                     ),
                     radius = r,
                     center = center,
-                    style = Stroke(width = r * 0.18f)
+                    style = Stroke(width = r * 0.18f),
                 )
             }
         }
@@ -642,33 +677,39 @@ fun YouGlyph(
         // Avatar — Coil image with initial-fallback circle
         val avatarSize = size * 0.78f
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .size(avatarSize)
                 .clip(CircleShape)
                 .background(AuroraColors.whimsy.copy(alpha = 0.35f))
                 .border(
                     width = if (isSelected) 0.5.dp else 1.dp,
-                    color = if (isSelected) AuroraColors.amber.copy(alpha = 0.4f)
-                            else AuroraColors.hermesMercury.copy(alpha = 0.55f),
-                    shape = CircleShape
+                    color =
+                    if (isSelected) {
+                        AuroraColors.amber.copy(alpha = 0.4f)
+                    } else {
+                        AuroraColors.hermesMercury.copy(alpha = 0.55f)
+                    },
+                    shape = CircleShape,
                 ),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             if (!photoUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = photoUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
+                    modifier =
+                    Modifier
                         .size(avatarSize)
-                        .clip(CircleShape)
+                        .clip(CircleShape),
                 )
             } else if (!initials.isNullOrBlank()) {
                 androidx.compose.material3.Text(
                     text = initials,
                     color = Color.White,
                     fontSize = (avatarSize.value * 0.38f).let { androidx.compose.ui.unit.TextUnit(it, androidx.compose.ui.unit.TextUnitType.Sp) },
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 )
             }
         }
@@ -683,104 +724,109 @@ private fun lerpColor(from: Color, to: Color, t: Float): Color {
         red = from.red + (to.red - from.red) * tt,
         green = from.green + (to.green - from.green) * tt,
         blue = from.blue + (to.blue - from.blue) * tt,
-        alpha = from.alpha + (to.alpha - from.alpha) * tt
+        alpha = from.alpha + (to.alpha - from.alpha) * tt,
     )
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHeart(
-    center: Offset,
-    size: Float,
-    brush: Brush
-) {
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHeart(center: Offset, size: Float, brush: Brush) {
     val half = size / 2f
-    val path = Path().apply {
-        moveTo(center.x, center.y + half * 0.35f)
-        cubicTo(
-            center.x + half * 1.2f, center.y - half * 0.4f,
-            center.x + half * 0.6f, center.y - half * 1.1f,
-            center.x, center.y - half * 0.45f
-        )
-        cubicTo(
-            center.x - half * 0.6f, center.y - half * 1.1f,
-            center.x - half * 1.2f, center.y - half * 0.4f,
-            center.x, center.y + half * 0.35f
-        )
-        close()
-    }
+    val path =
+        Path().apply {
+            moveTo(center.x, center.y + half * 0.35f)
+            cubicTo(
+                center.x + half * 1.2f,
+                center.y - half * 0.4f,
+                center.x + half * 0.6f,
+                center.y - half * 1.1f,
+                center.x,
+                center.y - half * 0.45f,
+            )
+            cubicTo(
+                center.x - half * 0.6f,
+                center.y - half * 1.1f,
+                center.x - half * 1.2f,
+                center.y - half * 0.4f,
+                center.x,
+                center.y + half * 0.35f,
+            )
+            close()
+        }
     drawPath(path = path, brush = brush)
 }
 
 // ── Insights (sparkles/star constellation) ─────────────────────────────────
 
 @Composable
-fun InsightsGlyph(
-    size: Dp,
-    isSelected: Boolean,
-    isPressed: Boolean = false
-) {
+fun InsightsGlyph(size: Dp, isSelected: Boolean, isPressed: Boolean = false) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val infiniteTransition = rememberInfiniteTransition(label = "insights")
 
     val shimmer by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(durationMillis = 2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "insightsShimmer"
+        label = "insightsShimmer",
     )
 
     Canvas(modifier = Modifier.size(size)) {
         val half = size.toPx() / 2f
         val center = Offset(size.toPx() / 2f, size.toPx() / 2f)
-        val brush = if (isSelected) {
-            Brush.linearGradient(
-                colors = listOf(AuroraColors.purple, AuroraColors.whimsy),
-                start = Offset(center.x - half * 0.5f, center.y - half * 0.5f),
-                end = Offset(center.x + half * 0.5f, center.y + half * 0.5f)
-            )
-        } else {
-            Brush.linearGradient(
-                colors = listOf(AuroraColors.darkTextSecondary, AuroraColors.darkTextSecondary)
-            )
-        }
+        val brush =
+            if (isSelected) {
+                Brush.linearGradient(
+                    colors = listOf(AuroraColors.purple, AuroraColors.whimsy),
+                    start = Offset(center.x - half * 0.5f, center.y - half * 0.5f),
+                    end = Offset(center.x + half * 0.5f, center.y + half * 0.5f),
+                )
+            } else {
+                Brush.linearGradient(
+                    colors = listOf(AuroraColors.darkTextSecondary, AuroraColors.darkTextSecondary),
+                )
+            }
 
         // 4-point star (sparkle) — central
         val starSize = half * 0.7f
-        val sparkPath = Path().apply {
-            // Vertical diamond
-            moveTo(center.x, center.y - starSize)
-            lineTo(center.x + starSize * 0.28f, center.y)
-            lineTo(center.x, center.y + starSize)
-            lineTo(center.x - starSize * 0.28f, center.y)
-            close()
-            // Horizontal diamond
-            moveTo(center.x - starSize, center.y)
-            lineTo(center.x, center.y - starSize * 0.28f)
-            lineTo(center.x + starSize, center.y)
-            lineTo(center.x, center.y + starSize * 0.28f)
-            close()
-        }
+        val sparkPath =
+            Path().apply {
+                // Vertical diamond
+                moveTo(center.x, center.y - starSize)
+                lineTo(center.x + starSize * 0.28f, center.y)
+                lineTo(center.x, center.y + starSize)
+                lineTo(center.x - starSize * 0.28f, center.y)
+                close()
+                // Horizontal diamond
+                moveTo(center.x - starSize, center.y)
+                lineTo(center.x, center.y - starSize * 0.28f)
+                lineTo(center.x + starSize, center.y)
+                lineTo(center.x, center.y + starSize * 0.28f)
+                close()
+            }
         drawPath(path = sparkPath, brush = brush)
 
         // Small accent dots around the star
         val dotRadius = size.toPx() * 0.035f
-        val dotAlpha = if (isSelected && !reduceMotion) {
-            (0.4f + 0.6f * ((shimmer * 4f) % 1f)).coerceIn(0f, 1f)
-        } else 0.5f
+        val dotAlpha =
+            if (isSelected && !reduceMotion) {
+                (0.4f + 0.6f * ((shimmer * 4f) % 1f)).coerceIn(0f, 1f)
+            } else {
+                0.5f
+            }
 
         drawCircle(
             brush = brush,
             radius = dotRadius,
             center = Offset(center.x + half * 0.65f, center.y - half * 0.65f),
-            alpha = dotAlpha
+            alpha = dotAlpha,
         )
         drawCircle(
             brush = brush,
             radius = dotRadius * 0.8f,
             center = Offset(center.x - half * 0.55f, center.y + half * 0.55f),
-            alpha = dotAlpha * 0.7f
+            alpha = dotAlpha * 0.7f,
         )
     }
 }

@@ -35,52 +35,129 @@ data class HermesRealtimeRelayFrame(
 
 @Serializable
 enum class HermesRealtimeRelayFrameType {
-    @SerialName("host.register") HOST_REGISTER,
-    @SerialName("host.ready") HOST_READY,
-    @SerialName("request.start") REQUEST_START,
-    @SerialName("request.cancel") REQUEST_CANCEL,
-    @SerialName("response.chunk") RESPONSE_CHUNK,
-    @SerialName("response.complete") RESPONSE_COMPLETE,
-    @SerialName("response.error") RESPONSE_ERROR,
-    @SerialName("ping") PING,
-    @SerialName("pong") PONG,
+    @SerialName("host.register")
+    HOST_REGISTER,
+
+    @SerialName("host.ready")
+    HOST_READY,
+
+    @SerialName("request.start")
+    REQUEST_START,
+
+    @SerialName("request.cancel")
+    REQUEST_CANCEL,
+
+    @SerialName("response.chunk")
+    RESPONSE_CHUNK,
+
+    @SerialName("response.complete")
+    RESPONSE_COMPLETE,
+
+    @SerialName("response.error")
+    RESPONSE_ERROR,
+
+    @SerialName("ping")
+    PING,
+
+    @SerialName("pong")
+    PONG,
 
     // Mercury media. Older peers skip unknown frame types on the chat
     // stream so adding cases here is forward-compatible with iOS.
-    @SerialName("media.classify") MEDIA_CLASSIFY,
-    @SerialName("media.blob.advertise") MEDIA_BLOB_ADVERTISE,
-    @SerialName("media.blob.ack") MEDIA_BLOB_ACK,
-    @SerialName("media.mirror.request") MEDIA_MIRROR_REQUEST,
-    @SerialName("media.mirror.ack") MEDIA_MIRROR_ACK,
-    @SerialName("media.mirror.stop") MEDIA_MIRROR_STOP,
-    @SerialName("media.mirror.display.select") MEDIA_MIRROR_DISPLAY_SELECT,
-    @SerialName("media.presence.heartbeat") MEDIA_PRESENCE_HEARTBEAT,
-    @SerialName("media.call.invite") MEDIA_CALL_INVITE,
-    @SerialName("media.call.ack") MEDIA_CALL_ACK,
-    @SerialName("media.ltr.ack") MEDIA_LONG_TERM_REFERENCE_ACK,
-    @SerialName("media.stream.frame") MEDIA_STREAM_FRAME,
+    @SerialName("media.classify")
+    MEDIA_CLASSIFY,
+
+    @SerialName("media.blob.advertise")
+    MEDIA_BLOB_ADVERTISE,
+
+    @SerialName("media.blob.ack")
+    MEDIA_BLOB_ACK,
+
+    @SerialName("media.mirror.request")
+    MEDIA_MIRROR_REQUEST,
+
+    @SerialName("media.mirror.ack")
+    MEDIA_MIRROR_ACK,
+
+    @SerialName("media.mirror.stop")
+    MEDIA_MIRROR_STOP,
+
+    @SerialName("media.mirror.display.select")
+    MEDIA_MIRROR_DISPLAY_SELECT,
+
+    @SerialName("media.presence.heartbeat")
+    MEDIA_PRESENCE_HEARTBEAT,
+
+    @SerialName("media.call.invite")
+    MEDIA_CALL_INVITE,
+
+    @SerialName("media.call.ack")
+    MEDIA_CALL_ACK,
+
+    @SerialName("media.ltr.ack")
+    MEDIA_LONG_TERM_REFERENCE_ACK,
+
+    @SerialName("media.stream.frame")
+    MEDIA_STREAM_FRAME,
 
     // Computer Use control plane. Mirrors the Swift enum so Android can
     // receive Agent Watch frames and emit signed phone-control intents.
-    @SerialName("control.classify") CONTROL_CLASSIFY,
-    @SerialName("control.action.log.entry") CONTROL_ACTION_LOG_ENTRY,
-    @SerialName("control.input.intent") CONTROL_INPUT_INTENT,
-    @SerialName("control.approval.request") CONTROL_APPROVAL_REQUEST,
-    @SerialName("control.approval.response") CONTROL_APPROVAL_RESPONSE,
-    @SerialName("control.agent.grant.request") CONTROL_AGENT_GRANT_REQUEST,
-    @SerialName("control.agent.grant.receipt") CONTROL_AGENT_GRANT_RECEIPT,
-    @SerialName("control.clipboard.request") CONTROL_CLIPBOARD_REQUEST,
-    @SerialName("control.clipboard.response") CONTROL_CLIPBOARD_RESPONSE,
-    @SerialName("control.agent.context.target") CONTROL_AGENT_CONTEXT_TARGET,
-    @SerialName("control.system.permission.request") CONTROL_SYSTEM_PERMISSION_REQUEST,
-    @SerialName("control.system.permission.status") CONTROL_SYSTEM_PERMISSION_STATUS,
-    @SerialName("control.denied") CONTROL_DENIED,
-    @SerialName("remote_unlock.session") REMOTE_UNLOCK_SESSION,
-    @SerialName("remote_unlock.state") REMOTE_UNLOCK_STATE,
-    @SerialName("remote_unlock.input") REMOTE_UNLOCK_INPUT,
-    @SerialName("remote_unlock.credential") REMOTE_UNLOCK_CREDENTIAL,
-    @SerialName("remote_unlock.result") REMOTE_UNLOCK_RESULT,
-    @SerialName("remote_unlock.denied") REMOTE_UNLOCK_DENIED,
+    @SerialName("control.classify")
+    CONTROL_CLASSIFY,
+
+    @SerialName("control.action.log.entry")
+    CONTROL_ACTION_LOG_ENTRY,
+
+    @SerialName("control.input.intent")
+    CONTROL_INPUT_INTENT,
+
+    @SerialName("control.approval.request")
+    CONTROL_APPROVAL_REQUEST,
+
+    @SerialName("control.approval.response")
+    CONTROL_APPROVAL_RESPONSE,
+
+    @SerialName("control.agent.grant.request")
+    CONTROL_AGENT_GRANT_REQUEST,
+
+    @SerialName("control.agent.grant.receipt")
+    CONTROL_AGENT_GRANT_RECEIPT,
+
+    @SerialName("control.clipboard.request")
+    CONTROL_CLIPBOARD_REQUEST,
+
+    @SerialName("control.clipboard.response")
+    CONTROL_CLIPBOARD_RESPONSE,
+
+    @SerialName("control.agent.context.target")
+    CONTROL_AGENT_CONTEXT_TARGET,
+
+    @SerialName("control.system.permission.request")
+    CONTROL_SYSTEM_PERMISSION_REQUEST,
+
+    @SerialName("control.system.permission.status")
+    CONTROL_SYSTEM_PERMISSION_STATUS,
+
+    @SerialName("control.denied")
+    CONTROL_DENIED,
+
+    @SerialName("remote_unlock.session")
+    REMOTE_UNLOCK_SESSION,
+
+    @SerialName("remote_unlock.state")
+    REMOTE_UNLOCK_STATE,
+
+    @SerialName("remote_unlock.input")
+    REMOTE_UNLOCK_INPUT,
+
+    @SerialName("remote_unlock.credential")
+    REMOTE_UNLOCK_CREDENTIAL,
+
+    @SerialName("remote_unlock.result")
+    REMOTE_UNLOCK_RESULT,
+
+    @SerialName("remote_unlock.denied")
+    REMOTE_UNLOCK_DENIED,
 }
 
 @Serializable
@@ -111,11 +188,16 @@ data class HermesRealtimeRelayPayload(
 @Serializable
 enum class HermesRelayChunkKind(val wireValue: String) {
     /** Server-Sent Events fragment (text token). Used by streaming chat. */
-    @SerialName("sse") SSE("sse"),
+    @SerialName("sse")
+    SSE("sse"),
+
     /** Binary blob (currently base64 in JSON). Used by unary forwards. */
-    @SerialName("data") DATA("data"),
+    @SerialName("data")
+    DATA("data"),
+
     /** Terminal error chunk. */
-    @SerialName("error") ERROR("error"),
+    @SerialName("error")
+    ERROR("error"),
 }
 
 @Serializable
@@ -139,10 +221,17 @@ data class HermesRealtimeRelayMediaPayload(
 
 @Serializable
 enum class HermesRealtimeRelayFocusTargetKind {
-    @SerialName("cursor") CURSOR,
-    @SerialName("focused_element") FOCUSED_ELEMENT,
-    @SerialName("focused_window") FOCUSED_WINDOW,
-    @SerialName("agent_workspace") AGENT_WORKSPACE,
+    @SerialName("cursor")
+    CURSOR,
+
+    @SerialName("focused_element")
+    FOCUSED_ELEMENT,
+
+    @SerialName("focused_window")
+    FOCUSED_WINDOW,
+
+    @SerialName("agent_workspace")
+    AGENT_WORKSPACE,
 }
 
 @Serializable
@@ -210,8 +299,11 @@ data class HermesRealtimeRelayMediaAck(
 ) {
     @Serializable
     enum class Status {
-        @SerialName("received") RECEIVED,
-        @SerialName("rejected") REJECTED,
+        @SerialName("received")
+        RECEIVED,
+
+        @SerialName("rejected")
+        REJECTED,
     }
 }
 
@@ -258,11 +350,20 @@ data class HermesRealtimeRelayMirrorAck(
 ) {
     @Serializable
     enum class Decision {
-        @SerialName("accepted") ACCEPTED,
-        @SerialName("denied") DENIED,
-        @SerialName("cooling_down") COOLING_DOWN,
-        @SerialName("unsupported") UNSUPPORTED,
-        @SerialName("busy") BUSY,
+        @SerialName("accepted")
+        ACCEPTED,
+
+        @SerialName("denied")
+        DENIED,
+
+        @SerialName("cooling_down")
+        COOLING_DOWN,
+
+        @SerialName("unsupported")
+        UNSUPPORTED,
+
+        @SerialName("busy")
+        BUSY,
     }
 }
 
@@ -303,10 +404,17 @@ data class HermesRealtimeRelayCallAck(
 ) {
     @Serializable
     enum class Decision {
-        @SerialName("accepted") ACCEPTED,
-        @SerialName("denied") DENIED,
-        @SerialName("unsupported") UNSUPPORTED,
-        @SerialName("busy") BUSY,
+        @SerialName("accepted")
+        ACCEPTED,
+
+        @SerialName("denied")
+        DENIED,
+
+        @SerialName("unsupported")
+        UNSUPPORTED,
+
+        @SerialName("busy")
+        BUSY,
     }
 }
 
@@ -333,9 +441,14 @@ data class HermesRealtimeRelayPresenceHeartbeat(
 
 @Serializable
 enum class HermesRealtimeRelayVideoCodec {
-    @SerialName("av1") AV1,
-    @SerialName("hevc") HEVC,
-    @SerialName("h264") H264,
+    @SerialName("av1")
+    AV1,
+
+    @SerialName("hevc")
+    HEVC,
+
+    @SerialName("h264")
+    H264,
 }
 
 @Serializable
@@ -371,35 +484,74 @@ data class HermesRealtimeRelayStreamingCapabilities(
 
 @Serializable
 enum class HermesRealtimeRelayMacLockState {
-    @SerialName("unlocked") UNLOCKED,
-    @SerialName("screen_saver") SCREEN_SAVER,
-    @SerialName("screen_locked") SCREEN_LOCKED,
-    @SerialName("display_sleeping") DISPLAY_SLEEPING,
-    @SerialName("login_window") LOGIN_WINDOW,
-    @SerialName("security_agent") SECURITY_AGENT,
-    @SerialName("fast_user_switching") FAST_USER_SWITCHING,
-    @SerialName("remote_desktop_curtain") REMOTE_DESKTOP_CURTAIN,
-    @SerialName("reboot_login_window") REBOOT_LOGIN_WINDOW,
-    @SerialName("filevault_preboot") FILEVAULT_PREBOOT,
-    @SerialName("unknown") UNKNOWN,
+    @SerialName("unlocked")
+    UNLOCKED,
+
+    @SerialName("screen_saver")
+    SCREEN_SAVER,
+
+    @SerialName("screen_locked")
+    SCREEN_LOCKED,
+
+    @SerialName("display_sleeping")
+    DISPLAY_SLEEPING,
+
+    @SerialName("login_window")
+    LOGIN_WINDOW,
+
+    @SerialName("security_agent")
+    SECURITY_AGENT,
+
+    @SerialName("fast_user_switching")
+    FAST_USER_SWITCHING,
+
+    @SerialName("remote_desktop_curtain")
+    REMOTE_DESKTOP_CURTAIN,
+
+    @SerialName("reboot_login_window")
+    REBOOT_LOGIN_WINDOW,
+
+    @SerialName("filevault_preboot")
+    FILEVAULT_PREBOOT,
+
+    @SerialName("unknown")
+    UNKNOWN,
 }
 
 @Serializable
 enum class HermesRealtimeRelayRemoteUnlockBackend {
-    @SerialName("screen_capture_kit") SCREEN_CAPTURE_KIT,
-    @SerialName("persistent_screen_capture_kit") PERSISTENT_SCREEN_CAPTURE_KIT,
-    @SerialName("apple_screen_sharing_loopback") APPLE_SCREEN_SHARING_LOOPBACK,
-    @SerialName("filevault_ssh") FILEVAULT_SSH,
-    @SerialName("unavailable") UNAVAILABLE,
+    @SerialName("screen_capture_kit")
+    SCREEN_CAPTURE_KIT,
+
+    @SerialName("persistent_screen_capture_kit")
+    PERSISTENT_SCREEN_CAPTURE_KIT,
+
+    @SerialName("apple_screen_sharing_loopback")
+    APPLE_SCREEN_SHARING_LOOPBACK,
+
+    @SerialName("filevault_ssh")
+    FILEVAULT_SSH,
+
+    @SerialName("unavailable")
+    UNAVAILABLE,
 }
 
 @Serializable
 enum class HermesRealtimeRelayRemoteUnlockCertificationStatus {
-    @SerialName("uncertified") UNCERTIFIED,
-    @SerialName("certified") CERTIFIED,
-    @SerialName("stale") STALE,
-    @SerialName("blocked") BLOCKED,
-    @SerialName("failed") FAILED,
+    @SerialName("uncertified")
+    UNCERTIFIED,
+
+    @SerialName("certified")
+    CERTIFIED,
+
+    @SerialName("stale")
+    STALE,
+
+    @SerialName("blocked")
+    BLOCKED,
+
+    @SerialName("failed")
+    FAILED,
 }
 
 @Serializable
@@ -436,9 +588,14 @@ data class HermesRealtimeRelayRemoteUnlockSession(
 ) {
     @Serializable
     enum class Intent {
-        @SerialName("request") REQUEST,
-        @SerialName("attach") ATTACH,
-        @SerialName("cancel") CANCEL,
+        @SerialName("request")
+        REQUEST,
+
+        @SerialName("attach")
+        ATTACH,
+
+        @SerialName("cancel")
+        CANCEL,
     }
 }
 
@@ -454,13 +611,26 @@ data class HermesRealtimeRelayRemoteUnlockState(
 
 @Serializable
 enum class HermesRealtimeRelayRemoteUnlockInputAction {
-    @SerialName("focus_password_field") FOCUS_PASSWORD_FIELD,
-    @SerialName("submit") SUBMIT,
-    @SerialName("escape") ESCAPE,
-    @SerialName("disconnect") DISCONNECT,
-    @SerialName("key") KEY,
-    @SerialName("pointer_move") POINTER_MOVE,
-    @SerialName("pointer_click") POINTER_CLICK,
+    @SerialName("focus_password_field")
+    FOCUS_PASSWORD_FIELD,
+
+    @SerialName("submit")
+    SUBMIT,
+
+    @SerialName("escape")
+    ESCAPE,
+
+    @SerialName("disconnect")
+    DISCONNECT,
+
+    @SerialName("key")
+    KEY,
+
+    @SerialName("pointer_move")
+    POINTER_MOVE,
+
+    @SerialName("pointer_click")
+    POINTER_CLICK,
 }
 
 @Serializable
@@ -493,9 +663,14 @@ data class HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
 ) {
     @Serializable
     enum class CredentialKind {
-        @SerialName("typed_password") TYPED_PASSWORD,
-        @SerialName("clipboard_password") CLIPBOARD_PASSWORD,
-        @SerialName("saved_password") SAVED_PASSWORD,
+        @SerialName("typed_password")
+        TYPED_PASSWORD,
+
+        @SerialName("clipboard_password")
+        CLIPBOARD_PASSWORD,
+
+        @SerialName("saved_password")
+        SAVED_PASSWORD,
     }
 }
 
@@ -511,12 +686,23 @@ data class HermesRealtimeRelayRemoteUnlockResult(
 ) {
     @Serializable
     enum class Status {
-        @SerialName("accepted") ACCEPTED,
-        @SerialName("denied") DENIED,
-        @SerialName("failed") FAILED,
-        @SerialName("expired") EXPIRED,
-        @SerialName("unlocked") UNLOCKED,
-        @SerialName("disconnected") DISCONNECTED,
+        @SerialName("accepted")
+        ACCEPTED,
+
+        @SerialName("denied")
+        DENIED,
+
+        @SerialName("failed")
+        FAILED,
+
+        @SerialName("expired")
+        EXPIRED,
+
+        @SerialName("unlocked")
+        UNLOCKED,
+
+        @SerialName("disconnected")
+        DISCONNECTED,
     }
 }
 
@@ -546,31 +732,62 @@ data class HermesRealtimeRelayControlPayload(
 
 @Serializable
 enum class HermesRealtimeRelaySystemPermissionKind {
-    @SerialName("screen_recording") SCREEN_RECORDING,
-    @SerialName("accessibility") ACCESSIBILITY,
-    @SerialName("camera") CAMERA,
-    @SerialName("microphone") MICROPHONE,
-    @SerialName("full_disk_access") FULL_DISK_ACCESS,
-    @SerialName("automation") AUTOMATION,
+    @SerialName("screen_recording")
+    SCREEN_RECORDING,
+
+    @SerialName("accessibility")
+    ACCESSIBILITY,
+
+    @SerialName("camera")
+    CAMERA,
+
+    @SerialName("microphone")
+    MICROPHONE,
+
+    @SerialName("full_disk_access")
+    FULL_DISK_ACCESS,
+
+    @SerialName("automation")
+    AUTOMATION,
 }
 
 @Serializable
 enum class HermesRealtimeRelaySystemPermissionStatusKind {
-    @SerialName("needs_access") NEEDS_ACCESS,
-    @SerialName("requesting") REQUESTING,
-    @SerialName("granted") GRANTED,
-    @SerialName("denied") DENIED,
-    @SerialName("timeout") TIMEOUT,
-    @SerialName("unknown") UNKNOWN,
+    @SerialName("needs_access")
+    NEEDS_ACCESS,
+
+    @SerialName("requesting")
+    REQUESTING,
+
+    @SerialName("granted")
+    GRANTED,
+
+    @SerialName("denied")
+    DENIED,
+
+    @SerialName("timeout")
+    TIMEOUT,
+
+    @SerialName("unknown")
+    UNKNOWN,
 }
 
 @Serializable
 enum class HermesRealtimeRelaySystemPermissionAction {
-    @SerialName("prompt") PROMPT,
-    @SerialName("open_settings") OPEN_SETTINGS,
-    @SerialName("prompt_and_open_settings") PROMPT_AND_OPEN_SETTINGS,
-    @SerialName("probe_only") PROBE_ONLY,
-    @SerialName("retry_failed_tool") RETRY_FAILED_TOOL,
+    @SerialName("prompt")
+    PROMPT,
+
+    @SerialName("open_settings")
+    OPEN_SETTINGS,
+
+    @SerialName("prompt_and_open_settings")
+    PROMPT_AND_OPEN_SETTINGS,
+
+    @SerialName("probe_only")
+    PROBE_ONLY,
+
+    @SerialName("retry_failed_tool")
+    RETRY_FAILED_TOOL,
 }
 
 @Serializable
@@ -620,18 +837,32 @@ data class HermesRealtimeRelayAgentContextTarget(
 
 @Serializable
 enum class HermesRealtimeRelayClipboardAction {
-    @SerialName("paste_to_mac") PASTE_TO_MAC,
-    @SerialName("grab_from_mac") GRAB_FROM_MAC,
+    @SerialName("paste_to_mac")
+    PASTE_TO_MAC,
+
+    @SerialName("grab_from_mac")
+    GRAB_FROM_MAC,
 }
 
 @Serializable
 enum class HermesRealtimeRelayClipboardStatus {
-    @SerialName("accepted") ACCEPTED,
-    @SerialName("denied") DENIED,
-    @SerialName("empty") EMPTY,
-    @SerialName("too_large") TOO_LARGE,
-    @SerialName("unsupported") UNSUPPORTED,
-    @SerialName("error") ERROR,
+    @SerialName("accepted")
+    ACCEPTED,
+
+    @SerialName("denied")
+    DENIED,
+
+    @SerialName("empty")
+    EMPTY,
+
+    @SerialName("too_large")
+    TOO_LARGE,
+
+    @SerialName("unsupported")
+    UNSUPPORTED,
+
+    @SerialName("error")
+    ERROR,
 }
 
 @Serializable
@@ -663,19 +894,44 @@ data class HermesRealtimeRelayControlDenied(
 ) {
     @Serializable
     enum class Reason {
-        @SerialName("entitlement") ENTITLEMENT,
-        @SerialName("session_limit") SESSION_LIMIT,
-        @SerialName("daily_limit") DAILY_LIMIT,
-        @SerialName("soft_cap") SOFT_CAP,
-        @SerialName("hard_cap") HARD_CAP,
-        @SerialName("scope") SCOPE,
-        @SerialName("deny_region") DENY_REGION,
-        @SerialName("kill_switch") KILL_SWITCH,
-        @SerialName("signature_failure") SIGNATURE_FAILURE,
-        @SerialName("counter_replay") COUNTER_REPLAY,
-        @SerialName("stale_timestamp") STALE_TIMESTAMP,
-        @SerialName("agent_unavailable") AGENT_UNAVAILABLE,
-        @SerialName("unknown") UNKNOWN,
+        @SerialName("entitlement")
+        ENTITLEMENT,
+
+        @SerialName("session_limit")
+        SESSION_LIMIT,
+
+        @SerialName("daily_limit")
+        DAILY_LIMIT,
+
+        @SerialName("soft_cap")
+        SOFT_CAP,
+
+        @SerialName("hard_cap")
+        HARD_CAP,
+
+        @SerialName("scope")
+        SCOPE,
+
+        @SerialName("deny_region")
+        DENY_REGION,
+
+        @SerialName("kill_switch")
+        KILL_SWITCH,
+
+        @SerialName("signature_failure")
+        SIGNATURE_FAILURE,
+
+        @SerialName("counter_replay")
+        COUNTER_REPLAY,
+
+        @SerialName("stale_timestamp")
+        STALE_TIMESTAMP,
+
+        @SerialName("agent_unavailable")
+        AGENT_UNAVAILABLE,
+
+        @SerialName("unknown")
+        UNKNOWN,
     }
 }
 
@@ -708,9 +964,14 @@ data class HermesRealtimeRelayApprovalResponse(
 ) {
     @Serializable
     enum class Decision {
-        @SerialName("approve") APPROVE,
-        @SerialName("reject") REJECT,
-        @SerialName("reject_and_halt") REJECT_AND_HALT,
+        @SerialName("approve")
+        APPROVE,
+
+        @SerialName("reject")
+        REJECT,
+
+        @SerialName("reject_and_halt")
+        REJECT_AND_HALT,
     }
 }
 
@@ -771,16 +1032,35 @@ data class HermesRealtimeRelayInputIntent(
 
 @Serializable
 enum class HermesRealtimeRelayInputIntentKind {
-    @SerialName("tap") TAP,
-    @SerialName("drag_start") DRAG_START,
-    @SerialName("drag_move") DRAG_MOVE,
-    @SerialName("drag_end") DRAG_END,
-    @SerialName("type") TYPE,
-    @SerialName("shortcut") SHORTCUT,
-    @SerialName("scroll") SCROLL,
-    @SerialName("pointer_move") POINTER_MOVE,
-    @SerialName("pointer_click") POINTER_CLICK,
-    @SerialName("panic") PANIC,
+    @SerialName("tap")
+    TAP,
+
+    @SerialName("drag_start")
+    DRAG_START,
+
+    @SerialName("drag_move")
+    DRAG_MOVE,
+
+    @SerialName("drag_end")
+    DRAG_END,
+
+    @SerialName("type")
+    TYPE,
+
+    @SerialName("shortcut")
+    SHORTCUT,
+
+    @SerialName("scroll")
+    SCROLL,
+
+    @SerialName("pointer_move")
+    POINTER_MOVE,
+
+    @SerialName("pointer_click")
+    POINTER_CLICK,
+
+    @SerialName("panic")
+    PANIC,
 }
 
 @Serializable
@@ -801,8 +1081,9 @@ data class HermesRealtimeRelayAuthorityEnvelope(
  * field exists, matching the Swift encoder defaults that drop optional
  * properties when they are `nil`.
  */
-internal val HermesRealtimeRelayJson: Json = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = false
-    explicitNulls = false
-}
+internal val HermesRealtimeRelayJson: Json =
+    Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = false
+        explicitNulls = false
+    }

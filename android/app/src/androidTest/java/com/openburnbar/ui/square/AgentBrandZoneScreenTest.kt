@@ -1,9 +1,9 @@
 package com.openburnbar.ui.square
 
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -30,7 +30,6 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class AgentBrandZoneScreenTest {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
@@ -43,21 +42,23 @@ class AgentBrandZoneScreenTest {
 
     @Test
     fun renders_display_name_and_capabilities() {
-        val identity = AgentIdentity(
-            id = AgentIdentity.builtInURI(AssistantRuntimeID.HERMES),
-            runtimeID = AssistantRuntimeID.HERMES,
-            displayName = "Hermes",
-            glyph = "☿",
-            paletteHex = "C8BFB5",
-            tier = AgentTier.SERVICE,
-            capabilities = AgentCapabilities(0xFF),
-            tagline = "Mercury chat",
-            lastSevenDays = AgentRecentStats(threadCount = 4, missionCount = 1, burnUSD = 0.12),
-        )
-        val registry = AgentIdentityRegistry.shared().also {
-            // Ensure the singleton has at least our identity available.
-            it.refreshAvailability(emptyMap())
-        }
+        val identity =
+            AgentIdentity(
+                id = AgentIdentity.builtInURI(AssistantRuntimeID.HERMES),
+                runtimeID = AssistantRuntimeID.HERMES,
+                displayName = "Hermes",
+                glyph = "☿",
+                paletteHex = "C8BFB5",
+                tier = AgentTier.SERVICE,
+                capabilities = AgentCapabilities(0xFF),
+                tagline = "Mercury chat",
+                lastSevenDays = AgentRecentStats(threadCount = 4, missionCount = 1, burnUSD = 0.12),
+            )
+        val registry =
+            AgentIdentityRegistry.shared().also {
+                // Ensure the singleton has at least our identity available.
+                it.refreshAvailability(emptyMap())
+            }
         composeRule.setContent {
             CompositionLocalProvider(LocalAuroraReduceMotion provides true) {
                 MaterialTheme {

@@ -2,7 +2,6 @@ package com.openburnbar.ui.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
@@ -46,36 +45,39 @@ class BurnBarLockCircularWidgetReceiver : GlanceAppWidgetReceiver() {
 private fun CircularContent(snap: BurnBarWidgetSnapshot) {
     val progress = (snap.heroTotalCost / REFERENCE_DAILY_BUDGET).toFloat().coerceIn(0f, 1f)
     Box(
-        modifier = GlanceModifier
+        modifier =
+        GlanceModifier
             .fillMaxSize()
             .clickable(openDashboardAction()),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         val ring = renderRingBitmap(progress = progress, sizePx = 200)
         Image(
             provider = ImageProvider(ring),
             contentDescription = null,
             modifier = GlanceModifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
+            contentScale = ContentScale.Fit,
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = formatCostCompact(snap.heroTotalCost),
-                style = TextStyle(
+                style =
+                TextStyle(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = ColorProvider(WidgetTheme.ember)
+                    color = ColorProvider(WidgetTheme.ember),
                 ),
-                maxLines = 1
+                maxLines = 1,
             )
             Text(
                 text = formatTokensCompact(snap.heroTotalTokens),
-                style = TextStyle(
+                style =
+                TextStyle(
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Medium,
-                    color = WidgetTheme.textSubtle
+                    color = WidgetTheme.textSubtle,
                 ),
-                maxLines = 1
+                maxLines = 1,
             )
         }
     }

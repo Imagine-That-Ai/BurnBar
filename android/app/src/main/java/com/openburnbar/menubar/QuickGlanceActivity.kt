@@ -5,7 +5,15 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
@@ -16,15 +24,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.openburnbar.MainActivity
-import com.openburnbar.ui.components.AuroraBadge
 import com.openburnbar.ui.components.AuroraBadgeTone
-import com.openburnbar.ui.components.AuroraBottomSheet
 import com.openburnbar.ui.components.AuroraButton
 import com.openburnbar.ui.components.AuroraSparkline
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTheme
 import com.openburnbar.ui.theme.AuroraType
+
+private const val MAX_RECENT_PROVIDERS_SHOWN = 5
+private const val RECENT_PROVIDERS_LIST_MAX_HEIGHT_DP = 200
 
 /**
  * Quick-glance popover hosted as a transparent activity. Tapping the system
@@ -35,17 +44,18 @@ import com.openburnbar.ui.theme.AuroraType
  * recent providers, "Open Dashboard" CTA.
  */
 class QuickGlanceActivity : ComponentActivity() {
-
     @androidx.compose.material3.ExperimentalMaterial3Api
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             AuroraTheme {
                 QuickGlanceContent(onClose = { finish() }, onOpenDashboard = {
-                    startActivity(Intent(this@QuickGlanceActivity, MainActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        data = Uri.parse("burnbar://dashboard")
-                    })
+                    startActivity(
+                        Intent(this@QuickGlanceActivity, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            data = Uri.parse("burnbar://dashboard")
+                        },
+                    )
                     finish()
                 })
             }
@@ -55,35 +65,36 @@ class QuickGlanceActivity : ComponentActivity() {
 
 @androidx.compose.runtime.Composable
 @androidx.compose.material3.ExperimentalMaterial3Api
-private fun QuickGlanceContent(
-    onClose: () -> Unit,
-    onOpenDashboard: () -> Unit
-) {
+private fun QuickGlanceContent(onClose: () -> Unit, onOpenDashboard: () -> Unit) {
     val snap by MenuBarController.snapshot.collectAsState()
     AuroraBottomSheet(onDismissRequest = onClose) {
         Column(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxWidth()
                 .padding(AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
-                    Text(text = "BurnBar", style = AuroraType.caption,
-                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "BurnBar",
+                        style = AuroraType.caption,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text(
                         text = MenuBarController.formatCost(snap.costToday),
                         style = AuroraType.displayLarge,
-                        color = AuroraColors.ember
+                        color = AuroraColors.ember,
                     )
                 }
                 AuroraBadge(
                     text = if (snap.streaming) "Hermes thinking…" else "Today",
-                    tone = if (snap.streaming) AuroraBadgeTone.Info else AuroraBadgeTone.Accent
+                    tone = if (snap.streaming) AuroraBadgeTone.Info else AuroraBadgeTone.Accent,
                 )
             }
 
@@ -97,13 +108,13 @@ private fun QuickGlanceContent(
                 Text(
                     text = "Recent",
                     style = AuroraType.caption,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-                    modifier = Modifier.heightIn(max = 200.dp)
+                    modifier = Modifier.heightIn(max = RECENT_PROVIDERS_LIST_MAX_HEIGHT_DP.dp),
                 ) {
-                    items(snap.recentProviders.take(5)) { provider ->
+                    items(snap.recentProviders.take(MAX_RECENT_PROVIDERS_SHOWN)) { provider ->
                         Text(text = provider, style = AuroraType.body)
                     }
                 }

@@ -13,7 +13,6 @@ import java.util.Locale
  * - Tie-break by lowercase title ascending. Capped at [DEFAULT_RESULT_LIMIT].
  */
 object SettingsSearchEngine {
-
     const val WEIGHT_TITLE = 3
     const val WEIGHT_KEYWORD = 2
     const val WEIGHT_SUBTITLE = 2
@@ -22,21 +21,20 @@ object SettingsSearchEngine {
     const val DEFAULT_RESULT_LIMIT = 25
 
     /** Returns the items ranked against [query]. Empty/whitespace yields []. */
-    fun search(
-        query: String,
-        items: List<SettingsItem>,
-        limit: Int = DEFAULT_RESULT_LIMIT,
-    ): List<SettingsItem> {
+    fun search(query: String, items: List<SettingsItem>, limit: Int = DEFAULT_RESULT_LIMIT): List<SettingsItem> {
         val tokens = tokenize(query)
         if (tokens.isEmpty()) return emptyList()
 
-        val scored = items.mapNotNull { item ->
-            score(item, tokens)?.let { item to it }
-        }
+        val scored =
+            items.mapNotNull { item ->
+                score(item, tokens)?.let { item to it }
+            }
 
         return scored
-            .sortedWith(compareByDescending<Pair<SettingsItem, Int>> { it.second }
-                .thenBy { foldedTitle(it.first) })
+            .sortedWith(
+                compareByDescending<Pair<SettingsItem, Int>> { it.second }
+                    .thenBy { foldedTitle(it.first) },
+            )
             .take(limit)
             .map { it.first }
     }
@@ -68,10 +66,9 @@ object SettingsSearchEngine {
         return stripped.lowercase(Locale.ROOT)
     }
 
-    internal fun tokenize(query: String): List<String> =
-        fold(query)
-            .split(Regex("\\s+"))
-            .filter { it.isNotEmpty() }
+    internal fun tokenize(query: String): List<String> = fold(query)
+        .split(Regex("\\s+"))
+        .filter { it.isNotEmpty() }
 
     private fun foldedTitle(item: SettingsItem): String = fold(item.title)
 }

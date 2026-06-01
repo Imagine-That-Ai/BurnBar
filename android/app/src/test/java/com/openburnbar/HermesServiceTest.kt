@@ -1,16 +1,16 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
-import com.openburnbar.data.hermes.HermesService
-import com.openburnbar.data.hermes.HermesConnection
-import com.openburnbar.data.hermes.ConnectionType
 import com.openburnbar.data.hermes.ChatTilePreferences
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import com.openburnbar.data.hermes.HermesService
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HermesServiceTest {
-
     @Test
     fun `initial state is disconnected`() = runTest {
         val service = HermesService()
@@ -33,12 +33,12 @@ class HermesServiceTest {
         val service = HermesService()
         try {
             service.setChatTilePreferences(
-                ChatTilePreferences.DEFAULT.setSelectedHermesModel("gpt-5-4-mini")
+                ChatTilePreferences.DEFAULT.setSelectedHermesModel("gpt-5-4-mini"),
             )
 
             assertEquals(
                 "minimax-m2.7-highspeed",
-                service.resolvedModelNameForSend("minimax-m2.7-highspeed")
+                service.resolvedModelNameForSend("minimax-m2.7-highspeed"),
             )
         } finally {
             service.destroy()
@@ -50,12 +50,12 @@ class HermesServiceTest {
         val service = HermesService()
         try {
             service.setChatTilePreferences(
-                ChatTilePreferences.DEFAULT.setSelectedHermesModel("minimax-m2.7-highspeed")
+                ChatTilePreferences.DEFAULT.setSelectedHermesModel("minimax-m2.7-highspeed"),
             )
 
             assertEquals(
                 "minimax-m2.7-highspeed",
-                service.resolvedModelNameForSend("hermes")
+                service.resolvedModelNameForSend("hermes"),
             )
         } finally {
             service.destroy()

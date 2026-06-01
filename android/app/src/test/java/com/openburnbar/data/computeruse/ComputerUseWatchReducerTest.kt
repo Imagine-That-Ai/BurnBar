@@ -7,8 +7,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ComputerUseWatchReducerTest {
+private const val MILLIS = 42L
+private const val VAL_44 = 44
+private const val VAL_88 = 88
 
+class ComputerUseWatchReducerTest {
     @Test
     fun approvalResponseClearsPendingAndAppendsAuditRow() {
         val reducer = ComputerUseWatchReducer()
@@ -20,7 +23,7 @@ class ComputerUseWatchReducerTest {
                 toolKind = "browser.goto",
                 actionSummary = "Open example.com",
                 requestedAtMillis = 10L,
-            )
+            ),
         )
 
         val response = reducer.approve(nowMillis = 20L)
@@ -48,17 +51,18 @@ class ComputerUseWatchReducerTest {
     @Test
     fun surfaceFrameStoresCursorMetadata() {
         val reducer = ComputerUseWatchReducer()
-        val frame = MediaFrame(
-            kind = MediaFrame.Kind.VIDEO_NAL,
-            flags = MediaFrame.Flags.HAS_CURSOR_METADATA,
-            cursor = MediaFrame.CursorMetadata(44, 88),
-        )
+        val frame =
+            MediaFrame(
+                kind = MediaFrame.Kind.VIDEO_NAL,
+                flags = MediaFrame.Flags.HAS_CURSOR_METADATA,
+                cursor = MediaFrame.CursorMetadata(VAL_44, VAL_88),
+            )
 
         reducer.ingestFrame(frame, receivedAtMillis = 42L)
 
         assertEquals(frame, reducer.state.value.currentFrame)
-        assertEquals(MediaFrame.CursorMetadata(44, 88), reducer.state.value.currentFrame?.cursor)
-        assertEquals(42L, reducer.state.value.lastFrameReceivedAtMillis)
+        assertEquals(MediaFrame.CursorMetadata(VAL_44, VAL_88), reducer.state.value.currentFrame?.cursor)
+        assertEquals(MILLIS, reducer.state.value.lastFrameReceivedAtMillis)
     }
 
     @Test
@@ -72,7 +76,7 @@ class ComputerUseWatchReducerTest {
                 toolKind = "mac.input.click",
                 actionSummary = "Click button",
                 requestedAtMillis = 1L,
-            )
+            ),
         )
 
         val response = reducer.reject(halt = true, nowMillis = 2L)
@@ -83,4 +87,3 @@ class ComputerUseWatchReducerTest {
         assertEquals(ComputerUseActionStatus.PANIC_HALTED, reducer.state.value.latestAction?.status)
     }
 }
-

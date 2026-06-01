@@ -1,15 +1,20 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.ProjectSummary
+import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.StreamsSegment
-import io.mockk.*
+import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import kotlinx.coroutines.test.advanceUntilIdle
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 

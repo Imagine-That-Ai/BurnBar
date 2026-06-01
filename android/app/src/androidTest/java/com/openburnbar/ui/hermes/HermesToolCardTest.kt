@@ -16,17 +16,17 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HermesToolCardTest {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    private val ripgrep = MobileTool(
-        id = "ripgrep",
-        name = "ripgrep",
-        description = "Search the repo for a pattern",
-        icon = "Search",
-        categoryGroup = MobileToolCategoryGroup.SEARCH,
-    )
+    private val ripgrep =
+        MobileTool(
+            id = "ripgrep",
+            name = "ripgrep",
+            description = "Search the repo for a pattern",
+            icon = "Search",
+            categoryGroup = MobileToolCategoryGroup.SEARCH,
+        )
 
     @Test
     fun running_card_shows_status_text() {

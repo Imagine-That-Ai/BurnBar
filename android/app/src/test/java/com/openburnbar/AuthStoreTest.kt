@@ -1,12 +1,14 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.stores.AuthStore
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AuthStoreTest {
-
     @Test
     fun `initial state reflects Firebase auth`() = runTest {
         val store = AuthStore()

@@ -17,44 +17,48 @@ class MercuryAudioDatagramChannel internal constructor(
     private val nativeHandle: Any,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    suspend fun send(packet: ByteArray) = withContext(dispatcher) {
-        try {
-            nativeHandle.javaClass.getMethod("send", ByteArray::class.java).invoke(nativeHandle, packet)
-        } catch (t: Throwable) {
-            throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
+    suspend fun send(packet: ByteArray) =
+        withContext(dispatcher) {
+            try {
+                nativeHandle.javaClass.getMethod("send", ByteArray::class.java).invoke(nativeHandle, packet)
+            } catch (t: Throwable) {
+                throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
+            }
+            Unit
         }
-        Unit
-    }
 
     /** `timeoutMillis` is the per-call wait ceiling; receivers loop tightly. */
-    suspend fun recv(timeoutMillis: Int): ByteArray? = withContext(dispatcher) {
-        try {
-            nativeHandle.javaClass.irohGeneratedMethod("recv", javaPrimitiveInt)
-                .invoke(nativeHandle, timeoutMillis)
-                .optionalFfiField<ByteArray>("IrohDatagramChannel.recv")
-        } catch (t: Throwable) {
-            throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
+    suspend fun recv(timeoutMillis: Int): ByteArray? =
+        withContext(dispatcher) {
+            try {
+                nativeHandle.javaClass.irohGeneratedMethod("recv", javaPrimitiveInt)
+                    .invoke(nativeHandle, timeoutMillis)
+                    .optionalFfiField<ByteArray>("IrohDatagramChannel.recv")
+            } catch (t: Throwable) {
+                throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
+            }
         }
-    }
 
-    suspend fun close() = withContext(dispatcher) {
-        try {
-            nativeHandle.javaClass.getMethod("closeChannel").invoke(nativeHandle)
-        } catch (_: Throwable) {
-            // idempotent close.
+    suspend fun close() =
+        withContext(dispatcher) {
+            try {
+                nativeHandle.javaClass.getMethod("closeChannel").invoke(nativeHandle)
+            } catch (_: Throwable) {
+                // idempotent close.
+            }
+            Unit
         }
-        Unit
-    }
 
-    suspend fun maxDatagramSize(): Int = withContext(dispatcher) {
-        try {
-            nativeHandle.javaClass.irohGeneratedMethod("maxDatagramSize")
-                .invoke(nativeHandle)
-                .requireFfiField<Int>("IrohDatagramChannel.maxDatagramSize")
-        } catch (t: Throwable) {
-            throw IrohBackendError.RuntimeFailed(t.message ?: t.javaClass.simpleName)
+    suspend fun maxDatagramSize(): Int =
+        withContext(dispatcher) {
+            try {
+                nativeHandle.javaClass.irohGeneratedMethod("maxDatagramSize")
+                    .invoke(nativeHandle)
+                    .requireFfiField<Int>("IrohDatagramChannel.maxDatagramSize")
+            } catch (t: Throwable) {
+                throw IrohBackendError.RuntimeFailed(t.message ?: t.javaClass.simpleName)
+            }
         }
-    }
 
     companion object {
         suspend fun open(

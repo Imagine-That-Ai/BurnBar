@@ -16,32 +16,36 @@ data class InsightCanvasTemplate(
     val theme: InsightTheme,
     val widgets: List<InsightWidget>,
     val layout: InsightLayout,
-    val filter: InsightFilter
+    val filter: InsightFilter,
 ) {
     fun instantiate(): InsightCanvas {
         val oldToNew = mutableMapOf<String, String>()
-        val renumberedWidgets = widgets.map { w ->
-            val newId = java.util.UUID.randomUUID().toString()
-            oldToNew[w.id] = newId
-            w.copy(id = newId, freshness = InsightFreshness.STALE, lastComputedAt = null)
-        }
-        var renumberedLayout = InsightLayout(
-            columnCount = layout.columnCount,
-            rowHeight = layout.rowHeight,
-            gap = layout.gap
-        )
+        val renumberedWidgets =
+            widgets.map { w ->
+                val newId = java.util.UUID.randomUUID().toString()
+                oldToNew[w.id] = newId
+                w.copy(id = newId, freshness = InsightFreshness.STALE, lastComputedAt = null)
+            }
+        var renumberedLayout =
+            InsightLayout(
+                columnCount = layout.columnCount,
+                rowHeight = layout.rowHeight,
+                gap = layout.gap,
+            )
         for ((oldID, placement) in layout.placements) {
             val newID = oldToNew[oldID] ?: continue
-            renumberedLayout = renumberedLayout.copy(
-                placements = renumberedLayout.placements.toMutableMap().apply { put(newID, placement) }
-            )
+            renumberedLayout =
+                renumberedLayout.copy(
+                    placements = renumberedLayout.placements.toMutableMap().apply { put(newID, placement) },
+                )
         }
         for (widget in renumberedWidgets) {
             if (widget.id !in renumberedLayout.placements) {
-                renumberedLayout = renumberedLayout.placeNew(
-                    widget.id,
-                    widget.kind.defaultSpanColumns to widget.kind.defaultSpanRows
-                )
+                renumberedLayout =
+                    renumberedLayout.placeNew(
+                        widget.id,
+                        widget.kind.defaultSpanColumns to widget.kind.defaultSpanRows,
+                    )
             }
         }
         return InsightCanvas(
@@ -52,7 +56,7 @@ data class InsightCanvasTemplate(
             widgets = renumberedWidgets,
             layout = renumberedLayout,
             filter = filter,
-            origin = InsightCanvas.Origin.Template(id = id)
+            origin = InsightCanvas.Origin.Template(id = id),
         )
     }
 }

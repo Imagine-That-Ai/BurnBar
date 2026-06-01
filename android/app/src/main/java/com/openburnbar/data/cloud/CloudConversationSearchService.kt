@@ -1,6 +1,5 @@
 package com.openburnbar.data.cloud
 
-import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -12,6 +11,8 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+private const val VAL_5 = 5
+
 data class CloudConversationSearchRow(
     val id: String,
     val title: String,
@@ -20,12 +21,12 @@ data class CloudConversationSearchRow(
     val projectName: String?,
     val storagePath: String,
     val bodyHash: String,
-    val score: Double
+    val score: Double,
 )
 
 class CloudConversationSearchService(
     private val functions: FunctionsRepository = FunctionsRepository(),
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) {
     private val firestore = Firebase.firestore
 
@@ -62,7 +63,7 @@ class CloudConversationSearchService(
                         projectName = hit.projectName,
                         storagePath = hit.storagePath,
                         bodyHash = hit.bodyHash,
-                        score = hit.score
+                        score = hit.score,
                     )
                 }.getOrNull()
             }
@@ -85,26 +86,26 @@ class CloudConversationSearchService(
      * SHA-256 matches [bodyHash]. Used by the cockpit to open a full transcript on demand without a
      * pre-built search row.
      */
-    suspend fun loadBodyAt(storagePath: String, bodyHash: String): String =
-        loadBody(
-            CloudConversationSearchRow(
-                id = "",
-                title = "",
-                snippet = "",
-                provider = null,
-                projectName = null,
-                storagePath = storagePath,
-                bodyHash = bodyHash,
-                score = 0.0
-            )
-        )
+    suspend fun loadBodyAt(storagePath: String, bodyHash: String): String = loadBody(
+        CloudConversationSearchRow(
+            id = "",
+            title = "",
+            snippet = "",
+            provider = null,
+            projectName = null,
+            storagePath = storagePath,
+            bodyHash = bodyHash,
+            score = 0.0,
+        ),
+    )
 
     suspend fun loadBody(row: CloudConversationSearchRow): String {
-        val uid = auth.currentUser?.uid ?: throw IllegalStateException("Sign in before opening cloud conversations.")
+        val uid = auth.currentUser?.uid ?: error("Sign in before opening cloud conversations.")
         val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
         registerDevice(uid, keypair)
-        val vaultKey = unlockVaultKey(uid, keypair)
-            ?: throw IllegalStateException("This device does not have the cloud vault key yet.")
+        val vaultKey =
+            unlockVaultKey(uid, keypair)
+                ?: error("This device does not have the cloud vault key yet.")
         val cachedBytes = CloudTranscriptCache.cachedEnvelopeBytes(row.storagePath, row.bodyHash)
         val envelopeBytes = cachedBytes ?: downloadEnvelopeBytes(row.storagePath)
 
@@ -145,20 +146,23 @@ class CloudConversationSearchService(
     }
 
     private suspend fun unlockVaultKey(uid: String, keypair: AndroidCloudVaultDeviceKeypair): ByteArray? {
-        val snapshot = firestore.collection("users")
-            .document(uid)
-            .collection("cloud_vault_key_wrappers")
-            .whereEqualTo("targetDeviceId", keypair.deviceId)
-            .whereEqualTo("status", "active")
-            .limit(5)
-            .get()
-            .await()
+        val snapshot =
+            firestore.collection("users")
+                .document(uid)
+                .collection("cloud_vault_key_wrappers")
+                .whereEqualTo("targetDeviceId", keypair.deviceId)
+                .whereEqualTo("status", "active")
+                .limit(VAL_5)
+                .get()
+                .await()
 
         for (document in snapshot.documents) {
-            val wrapped = document.getString("wrappedVaultKey") ?: continue
-            val version = document.getLong("keyVersion")?.toInt() ?: continue
-            if (version != keypair.keyVersion) continue
-            return runCatching { keypair.decryptWrappedVaultKey(wrapped) }.getOrNull() ?: continue
+            val wrapped = document.getString("wrappedVaultKey")
+            val version = document.getLong("keyVersion")?.toInt()
+            if (wrapped != null && version == keypair.keyVersion) {
+                val decrypted = runCatching { keypair.decryptWrappedVaultKey(wrapped) }.getOrNull()
+                if (decrypted != null) return decrypted
+            }
         }
         return null
     }
@@ -170,7 +174,7 @@ class CloudConversationSearchService(
             algorithm = objectJson.getString("algorithm"),
             keyVersion = objectJson.optInt("keyVersion", 1),
             plaintextSHA256 = objectJson.getString("plaintextSHA256"),
-            sealedBoxBase64 = objectJson.getString("sealedBoxBase64")
+            sealedBoxBase64 = objectJson.getString("sealedBoxBase64"),
         )
     }
 }

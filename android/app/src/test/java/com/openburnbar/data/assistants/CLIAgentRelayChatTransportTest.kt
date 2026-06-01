@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.assistants
 
 import com.openburnbar.data.hermes.AssistantRuntimeID
@@ -9,36 +12,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CLIAgentRelayChatTransportTest {
-
     @Test
     fun `stream sends ios parity cli agent relay request and decodes events`() = runTest {
-        val fake = FakePayloadStreamer(
-            rawEvents = listOf(
-                """
-                {
-                  "kind": "completed",
-                  "text": "Mac Codex answered.",
-                  "modelID": "gpt-test",
-                  "transcriptPieces": [
-                    {"id": "p1", "kind": "text", "value": "Mac Codex answered."},
-                    {"id": "p2", "kind": "toolUse", "value": "Read", "detail": "AgentLens/App.swift"}
-                  ]
-                }
-                """.trimIndent(),
-            ),
-        )
+        val fake =
+            FakePayloadStreamer(
+                rawEvents =
+                listOf(
+                    """
+                            {
+                              "kind": "completed",
+                              "text": "Mac Codex answered.",
+                              "modelID": "gpt-test",
+                              "transcriptPieces": [
+                                {"id": "p1", "kind": "text", "value": "Mac Codex answered."},
+                                {"id": "p2", "kind": "toolUse", "value": "Read", "detail": "AgentLens/App.swift"}
+                              ]
+                            }
+                    """.trimIndent(),
+                ),
+            )
         val transport = CLIAgentRelayChatTransport(fake)
         val events = mutableListOf<CLIAgentRelayChatEvent>()
 
         transport.stream(
-            runtime = AssistantRuntimeID.CODEX,
-            threadID = "android-codex-thread",
-            prompt = "  Hello from Android  ",
-            title = "  Android thread  ",
-            modelID = "  gpt-test  ",
-            parentSessionID = "parent-session",
-            resumeAction = "continue",
-            presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+            request =
+            CLIAgentRelayChatStreamRequest(
+                runtime = AssistantRuntimeID.CODEX,
+                threadID = "android-codex-thread",
+                prompt = "  Hello from Android  ",
+                title = "  Android thread  ",
+                modelID = "  gpt-test  ",
+                parentSessionID = "parent-session",
+                resumeAction = "continue",
+                presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+            ),
         ) { event ->
             events += event
         }
@@ -64,16 +71,17 @@ class CLIAgentRelayChatTransportTest {
 
     @Test
     fun `request defaults to native chat wire value`() {
-        val body = JSONObject(
-            String(
-                CLIAgentRelayChatRequest(
-                    runtime = "claude",
-                    prompt = "hello",
-                    clientThreadID = "thread-1",
-                ).toJsonByteArray(),
-                Charsets.UTF_8,
-            ),
-        )
+        val body =
+            JSONObject(
+                String(
+                    CLIAgentRelayChatRequest(
+                        runtime = "claude",
+                        prompt = "hello",
+                        clientThreadID = "thread-1",
+                    ).toJsonByteArray(),
+                    Charsets.UTF_8,
+                ),
+            )
 
         assertEquals("native_chat", body.getString("presentationMode"))
     }
@@ -83,18 +91,19 @@ class CLIAgentRelayChatTransportTest {
         val fake = FakePayloadStreamer(rawEvents = listOf("""{"kind":"bogus"}"""))
         val transport = CLIAgentRelayChatTransport(fake)
 
-        val error = runCatching {
-            transport.stream(
-                runtime = AssistantRuntimeID.CLAUDE,
-                threadID = "thread-1",
-                prompt = "hello",
-                title = "Thread",
-                modelID = null,
-                parentSessionID = null,
-                resumeAction = null,
-                presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
-            ) {}
-        }.exceptionOrNull()
+        val error =
+            runCatching {
+                transport.stream(
+                    request =
+                    CLIAgentRelayChatStreamRequest(
+                        runtime = AssistantRuntimeID.CLAUDE,
+                        threadID = "thread-1",
+                        prompt = "hello",
+                        title = "Thread",
+                        presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+                    ),
+                ) {}
+            }.exceptionOrNull()
 
         assertTrue(error is IllegalArgumentException)
     }
@@ -108,19 +117,14 @@ private class FakePayloadStreamer(
     var sessionID: String = ""
         private set
 
-    override suspend fun fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse =
-        CliRuntimeModelCatalogResponse(
-            runtime = runtime.token,
-            machineName = "Test Mac",
-            generatedAtEpochMillis = 1L,
-            options = emptyList(),
-        )
+    override suspend fun fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID): CliRuntimeModelCatalogResponse = CliRuntimeModelCatalogResponse(
+        runtime = runtime.token,
+        machineName = "Test Mac",
+        generatedAtEpochMillis = 1L,
+        options = emptyList(),
+    )
 
-    override suspend fun streamCLIAgentChatPayload(
-        body: ByteArray,
-        sessionID: String,
-        onRawEvent: suspend (String) -> Unit,
-    ) {
+    override suspend fun streamCLIAgentChatPayload(body: ByteArray, sessionID: String, onRawEvent: suspend (String) -> Unit) {
         bodyString = String(body, Charsets.UTF_8)
         this.sessionID = sessionID
         rawEvents.forEach { onRawEvent(it) }

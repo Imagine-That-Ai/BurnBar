@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "TooManyFunctions")
+// detekt: JUnit backtick BDD test names intentionally contain spaces; one test per wire helper.
+
 package com.openburnbar
 
 import com.openburnbar.data.hermes.HermesProtocol
@@ -15,7 +18,6 @@ import org.junit.Test
  * JVM test runner.
  */
 class HermesProtocolTest {
-
     // ── normalizeBaseURL ─────────────────────────────────────────────
 
     @Test
@@ -28,15 +30,15 @@ class HermesProtocolTest {
     fun `normalizeBaseURL strips trailing API paths`() {
         assertEquals(
             "http://localhost:8642",
-            HermesProtocol.normalizeBaseURL("http://localhost:8642/v1/chat/completions")
+            HermesProtocol.normalizeBaseURL("http://localhost:8642/v1/chat/completions"),
         )
         assertEquals(
             "https://hermes.example.com",
-            HermesProtocol.normalizeBaseURL("https://hermes.example.com/v1/models")
+            HermesProtocol.normalizeBaseURL("https://hermes.example.com/v1/models"),
         )
         assertEquals(
             "http://localhost:8642",
-            HermesProtocol.normalizeBaseURL("http://localhost:8642/health/")
+            HermesProtocol.normalizeBaseURL("http://localhost:8642/health/"),
         )
     }
 
@@ -45,7 +47,7 @@ class HermesProtocolTest {
         assertEquals("http://localhost:8642", HermesProtocol.normalizeBaseURL("ws://localhost:8642"))
         assertEquals(
             "https://hermes.example.com",
-            HermesProtocol.normalizeBaseURL("wss://hermes.example.com")
+            HermesProtocol.normalizeBaseURL("wss://hermes.example.com"),
         )
     }
 
@@ -112,46 +114,49 @@ class HermesProtocolTest {
 
     @Test
     fun `extractStreamedText reads delta content string`() {
-        val json = JSONObject(
-            """
-            {
-              "choices": [
-                { "delta": { "content": "Hello world" } }
-              ]
-            }
-            """.trimIndent()
-        )
+        val json =
+            JSONObject(
+                """
+                {
+                  "choices": [
+                    { "delta": { "content": "Hello world" } }
+                  ]
+                }
+                """.trimIndent(),
+            )
         assertEquals("Hello world", HermesProtocol.extractStreamedText(json))
     }
 
     @Test
     fun `extractStreamedText reads delta content array of objects`() {
-        val json = JSONObject(
-            """
-            {
-              "choices": [
-                { "delta": { "content": [
-                  { "type": "text", "text": "Hello, " },
-                  { "type": "text", "text": "Hermes" }
-                ] } }
-              ]
-            }
-            """.trimIndent()
-        )
+        val json =
+            JSONObject(
+                """
+                {
+                  "choices": [
+                    { "delta": { "content": [
+                      { "type": "text", "text": "Hello, " },
+                      { "type": "text", "text": "Hermes" }
+                    ] } }
+                  ]
+                }
+                """.trimIndent(),
+            )
         assertEquals("Hello, Hermes", HermesProtocol.extractStreamedText(json))
     }
 
     @Test
     fun `extractStreamedText falls back to choice text`() {
-        val json = JSONObject(
-            """
-            {
-              "choices": [
-                { "text": "raw text fallback" }
-              ]
-            }
-            """.trimIndent()
-        )
+        val json =
+            JSONObject(
+                """
+                {
+                  "choices": [
+                    { "text": "raw text fallback" }
+                  ]
+                }
+                """.trimIndent(),
+            )
         assertEquals("raw text fallback", HermesProtocol.extractStreamedText(json))
     }
 
@@ -177,14 +182,15 @@ class HermesProtocolTest {
 
     @Test
     fun `parseModelsResponse parses standard OpenAI list shape`() {
-        val raw = """
+        val raw =
+            """
             {
               "data": [
                 { "id": "hermes", "owned_by": "hermes", "display_name": "Hermes" },
                 { "id": "gpt-4o-mini", "owned_by": "openai" }
               ]
             }
-        """.trimIndent()
+            """.trimIndent()
         val models = HermesProtocol.parseModelsResponse(raw)
         assertEquals(2, models.size)
         assertEquals("hermes", models[0].modelID)

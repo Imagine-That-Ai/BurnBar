@@ -3,7 +3,6 @@ package com.openburnbar.ui.pro
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -31,39 +30,40 @@ import com.openburnbar.ui.theme.LocalAuroraReduceMotion
  * of Pro is never invisible without being intrusive.
  */
 @Composable
-fun ProBadgeDot(
-    modifier: Modifier = Modifier,
-    pulse: ProBadgePulse = ProBadgePulse.Breathing,
-    diameter: Dp = ProLayout.badgeDotDp.dp
-) {
+fun ProBadgeDot(modifier: Modifier = Modifier, pulse: ProBadgePulse = ProBadgePulse.Breathing, diameter: Dp = ProLayout.badgeDotDp.dp) {
     val reduceMotion = LocalAuroraReduceMotion.current
-    val breathing = if (pulse == ProBadgePulse.Breathing && !reduceMotion) {
-        rememberInfiniteTransition(label = "proBadgeBreath").animateFloat(
-            initialValue = 0.6f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(ProMotion.breathingDurationMs, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "proBadgeBreathPhase"
-        ).value
-    } else 1.0f
+    val breathing =
+        if (pulse == ProBadgePulse.Breathing && !reduceMotion) {
+            rememberInfiniteTransition(label = "proBadgeBreath").animateFloat(
+                initialValue = 0.6f,
+                targetValue = 1.0f,
+                animationSpec =
+                infiniteRepeatable(
+                    animation = tween(ProMotion.breathingDurationMs, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "proBadgeBreathPhase",
+            ).value
+        } else {
+            1.0f
+        }
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .size(diameter)
             .clip(CircleShape)
             .background(
                 brush = Brush.linearGradient(AuroraGradients.mercuryGradient),
-                shape = CircleShape
+                shape = CircleShape,
             )
             .border(0.7.dp, ProPalette.aureate.copy(alpha = 0.95f), CircleShape)
             .alpha(breathing)
-            .semantics(mergeDescendants = true) { invisibleToUser() }
+            .semantics(mergeDescendants = true) { invisibleToUser() },
     )
 }
 
 enum class ProBadgePulse {
     Breathing,
-    Still
+    Still,
 }

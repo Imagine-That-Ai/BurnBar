@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.hermes.HermesSessionParser
@@ -6,24 +9,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HermesSessionParserTest {
-
     @Test
     fun `parses sessions wrapped in sessions key`() {
-        val body = """
-        {
-          "sessions": [
+        val body =
+            """
             {
-              "id": "abc",
-              "title": "First session",
-              "preview": "hello",
-              "model": "hermes-1.7",
-              "started_at": 1700000000,
-              "last_active_at": 1700000100,
-              "message_count": 3
+              "sessions": [
+                {
+                  "id": "abc",
+                  "title": "First session",
+                  "preview": "hello",
+                  "model": "hermes-1.7",
+                  "started_at": 1700000000,
+                  "last_active_at": 1700000100,
+                  "message_count": 3
+                }
+              ]
             }
-          ]
-        }
-        """.trimIndent()
+            """.trimIndent()
         val out = HermesSessionParser.parseSessions(body)
         assertEquals(1, out.size)
         assertEquals("abc", out.first().id)
@@ -42,14 +45,15 @@ class HermesSessionParserTest {
 
     @Test
     fun `parses session detail with content as a string`() {
-        val body = """
-        {
-          "messages": [
-            {"role": "user", "content": "ping"},
-            {"role": "assistant", "content": "pong"}
-          ]
-        }
-        """.trimIndent()
+        val body =
+            """
+            {
+              "messages": [
+                {"role": "user", "content": "ping"},
+                {"role": "assistant", "content": "pong"}
+              ]
+            }
+            """.trimIndent()
         val out = HermesSessionParser.parseSessionMessages(body)
         assertEquals(2, out.size)
         assertEquals("user", out[0].role)
@@ -60,13 +64,14 @@ class HermesSessionParserTest {
 
     @Test
     fun `parses session detail with content as a parts array`() {
-        val body = """
-        {
-          "messages": [
-            {"role": "user", "content": [{"type":"text","text":"part1"},{"type":"text","text":"part2"}]}
-          ]
-        }
-        """.trimIndent()
+        val body =
+            """
+            {
+              "messages": [
+                {"role": "user", "content": [{"type":"text","text":"part1"},{"type":"text","text":"part2"}]}
+              ]
+            }
+            """.trimIndent()
         val out = HermesSessionParser.parseSessionMessages(body)
         assertEquals(1, out.size)
         assertTrue(out[0].text.contains("part1"))

@@ -5,22 +5,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.FieldValue
-import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
+import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.missions.MobileMissionConsoleHost
-import com.openburnbar.data.missions.ActiveMission
+import java.lang.IllegalStateException
 import kotlinx.coroutines.tasks.await
-import java.time.Instant
+
+private const val VAL_10000000000_L = 10_000_000_000L
+private const val VAL_200 = 200
 
 data class CLIAgentToolUse(
     val id: String,
     val name: String,
     val status: String,
     val detail: String?,
-    val startedAtEpoch: Long?
+    val startedAtEpoch: Long?,
 )
 
 data class CLIAgentMessage(
@@ -29,7 +31,7 @@ data class CLIAgentMessage(
     val text: String,
     val timestampEpoch: Long?,
     val isError: Boolean,
-    val toolUses: List<CLIAgentToolUse>
+    val toolUses: List<CLIAgentToolUse>,
 )
 
 data class CLIAgentSessionRecord(
@@ -49,24 +51,25 @@ data class CLIAgentSessionRecord(
     val customTitle: String? = null,
     val labelColorHex: String? = null,
     val isPinned: Boolean = false,
-    val priorityOrder: Int? = null
+    val priorityOrder: Int? = null,
 ) {
-    val searchableText: String = listOf(
-        title,
-        preview,
-        agent,
-        modelName.orEmpty(),
-        workspaceLabel.orEmpty(),
-        messages.joinToString(" ") { message ->
-            listOf(
-                message.role,
-                message.text,
-                message.toolUses.joinToString(" ") { tool ->
-                    listOf(tool.name, tool.status, tool.detail.orEmpty()).joinToString(" ")
-                }
-            ).joinToString(" ")
-        }
-    ).joinToString(" ")
+    val searchableText: String =
+        listOf(
+            title,
+            preview,
+            agent,
+            modelName.orEmpty(),
+            workspaceLabel.orEmpty(),
+            messages.joinToString(" ") { message ->
+                listOf(
+                    message.role,
+                    message.text,
+                    message.toolUses.joinToString(" ") { tool ->
+                        listOf(tool.name, tool.status, tool.detail.orEmpty()).joinToString(" ")
+                    },
+                ).joinToString(" ")
+            },
+        ).joinToString(" ")
 
     val resumeLookupID: String
         get() {
@@ -87,7 +90,7 @@ data class CLIAgentSessionRecord(
 
 class ThreadInboxStore private constructor(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) {
     var items by mutableStateOf<List<ThreadInboxItem>>(emptyList())
         private set
@@ -132,121 +135,21 @@ class ThreadInboxStore private constructor(
             }
 
             // 1. Fetch CLI mirrored sessions
-            val snapshot = firestore.collection("users")
-                .document(uid)
-                .collection("cli_sessions")
-                .orderBy("updatedAt", Query.Direction.DESCENDING)
-                .limit(200)
-                .get()
-                .await()
+            val snapshot =
+                firestore.collection("users")
+                    .document(uid)
+                    .collection("cli_sessions")
+                    .orderBy("updatedAt", Query.Direction.DESCENDING)
+                    .limit(VAL_200)
+                    .get()
+                    .await()
 
             val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id) }
-            cliSessionsByItemID = parsed.associateBy { "cli:${it.id}" }
-
-            val merged = mutableListOf<ThreadInboxItem>()
-
-            // A. Add mobile assistant chat threads from historyStore
-            val history = historyStore
-            val mobileCLIThreadIDs = mutableSetOf<String>()
-            if (history != null) {
-                val historyThreads = history.threads.value.mapNotNull { thread ->
-                    val agentURI: String
-                    val source: ThreadInboxItem.Source
-                    val runtimeLower = thread.runtime.lowercase().trim()
-                    when (runtimeLower) {
-                        "hermes" -> {
-                            agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.HERMES)
-                            source = ThreadInboxItem.Source.HERMES
-                        }
-                        "pi" -> {
-                            agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.PI)
-                            source = ThreadInboxItem.Source.PI
-                        }
-                        "codex", "claude", "openclaw", "droid", "forge", "antigravity", "grok", "cursoragent", "cursor_agent", "cursor-agent" -> {
-                            val runtime = when (runtimeLower) {
-                                "codex" -> AssistantRuntimeID.CODEX
-                                "claude" -> AssistantRuntimeID.CLAUDE
-                                "openclaw" -> AssistantRuntimeID.OPEN_CLAW
-                                "droid" -> AssistantRuntimeID.DROID
-                                "forge" -> AssistantRuntimeID.FORGE
-                                "antigravity" -> AssistantRuntimeID.ANTIGRAVITY
-                                "grok" -> AssistantRuntimeID.GROK
-                                "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
-                                else -> return@mapNotNull null
-                            }
-                            agentURI = AgentIdentity.builtInURI(runtime)
-                            source = ThreadInboxItem.Source.CLI_MIRROR
-                            mobileCLIThreadIDs.add(thread.id)
-                        }
-                        else -> return@mapNotNull null
-                    }
-                    ThreadInboxItem(
-                        id = "${source.token}:${thread.id}",
-                        agentURI = agentURI,
-                        title = thread.title.ifBlank { "(untitled)" },
-                        preview = thread.preview,
-                        lastActivityAtEpoch = thread.updatedAtMillis,
-                        unreadCount = 0,
-                        needsAttention = false,
-                        source = source,
-                        liveMissionID = null,
-                        searchText = listOf(thread.title, thread.preview, agentURI).joinToString(" "),
-                        customTitle = thread.customTitle,
-                        labelColorHex = thread.labelColorHex,
-                        isPinned = thread.isPinned,
-                        priorityOrder = thread.priorityOrder
-                    )
-                }
-                merged.addAll(historyThreads)
-            }
-
-            // B. Add parsed CLI sessions excluding mobileCLIThreadIDs
-            val cliItems = parsed.filter { it.id !in mobileCLIThreadIDs }.map { record ->
-                ThreadInboxItem(
-                    id = "cli:${record.id}",
-                    agentURI = record.agentURI,
-                    title = record.title.ifBlank { "(no title)" },
-                    preview = record.preview,
-                    lastActivityAtEpoch = record.updatedAtEpoch,
-                    unreadCount = 0,
-                    needsAttention = false,
-                    source = ThreadInboxItem.Source.CLI_MIRROR,
-                    liveMissionID = null,
-                    searchText = record.searchableText,
-                    customTitle = record.customTitle,
-                    labelColorHex = record.labelColorHex,
-                    isPinned = record.isPinned,
-                    priorityOrder = record.priorityOrder
-                )
-            }
-            merged.addAll(cliItems)
-
-            // C. Add active missions from missionHost
-            val host = missionHost
-            if (host != null) {
-                val missionItems = host.snapshot.value.activeMissions.map { tile ->
-                    val runtimeID = tile.runtimeID?.let { runtimeStr ->
-                        AssistantRuntimeID.values().firstOrNull { it.token == runtimeStr }
-                    }
-                    val agentURI = runtimeID?.let { AgentIdentity.builtInURI(it) } ?: "agent://burnbar/auto"
-                    ThreadInboxItem(
-                        id = "mission:${tile.id}",
-                        agentURI = agentURI,
-                        title = tile.title,
-                        preview = tile.phaseDetail ?: tile.phase.displayLabel,
-                        lastActivityAtEpoch = tile.startedAt?.toEpochMilli() ?: System.currentTimeMillis(),
-                        unreadCount = if (tile.approvalPending) 1 else 0,
-                        needsAttention = tile.approvalPending || tile.phase == ActiveMission.Phase.FAILED || tile.phase == ActiveMission.Phase.BLOCKED,
-                        source = ThreadInboxItem.Source.MISSION_GROUP,
-                        liveMissionID = tile.id
-                    )
-                }
-                merged.addAll(missionItems)
-            }
-
-            items = merged.sortedForInbox()
+            val parts = buildThreadInboxRefreshParts(parsed, historyStore, missionHost)
+            cliSessionsByItemID = parts.cliSessionsByItemID
+            items = parts.items
             lastRefreshedAtEpoch = System.currentTimeMillis()
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             refreshError = e.message ?: e::class.java.simpleName
         } finally {
             isLoading = false
@@ -258,13 +161,14 @@ class ThreadInboxStore private constructor(
         customTitle: String? = null,
         labelColorHex: String? = null,
         isPinned: Boolean? = null,
-        priorityOrder: Int? = null
+        priorityOrder: Int? = null,
     ) {
         val uid = auth.currentUser?.uid ?: return
-        val docRef = firestore.collection("users")
-            .document(uid)
-            .collection("cli_sessions")
-            .document(id)
+        val docRef =
+            firestore.collection("users")
+                .document(uid)
+                .collection("cli_sessions")
+                .document(id)
 
         val updates = mutableMapOf<String, Any?>()
         if (customTitle != null) {
@@ -286,8 +190,7 @@ class ThreadInboxStore private constructor(
         }
     }
 
-    fun cliSessionFor(item: ThreadInboxItem): CLIAgentSessionRecord? =
-        cliSessionsByItemID[item.id]
+    fun cliSessionFor(item: ThreadInboxItem): CLIAgentSessionRecord? = cliSessionsByItemID[item.id]
 
     private fun parseCLISession(data: Map<String, Any>, documentID: String): CLIAgentSessionRecord? {
         val agent = data["agent"] as? String ?: return null
@@ -316,52 +219,49 @@ class ThreadInboxStore private constructor(
             customTitle = customTitle,
             labelColorHex = labelColorHex,
             isPinned = isPinned,
-            priorityOrder = priorityOrder
+            priorityOrder = priorityOrder,
         )
     }
 
-    private fun parseMessages(raw: Any?): List<CLIAgentMessage> =
-        (raw as? List<*>)?.mapNotNull { entry ->
-            val map = entry as? Map<*, *> ?: return@mapNotNull null
-            CLIAgentMessage(
-                id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
-                role = map["role"] as? String ?: "assistant",
-                text = map["text"] as? String ?: "",
-                timestampEpoch = epochMillis(map["timestamp"]),
-                isError = map["isError"] as? Boolean ?: false,
-                toolUses = parseToolUses(map["toolUses"])
-            )
-        } ?: emptyList()
+    private fun parseMessages(raw: Any?): List<CLIAgentMessage> = (raw as? List<*>)?.mapNotNull { entry ->
+        val map = entry as? Map<*, *> ?: return@mapNotNull null
+        CLIAgentMessage(
+            id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
+            role = map["role"] as? String ?: "assistant",
+            text = map["text"] as? String ?: "",
+            timestampEpoch = epochMillis(map["timestamp"]),
+            isError = map["isError"] as? Boolean ?: false,
+            toolUses = parseToolUses(map["toolUses"]),
+        )
+    } ?: emptyList()
 
-    private fun parseToolUses(raw: Any?): List<CLIAgentToolUse> =
-        (raw as? List<*>)?.mapNotNull { entry ->
-            val map = entry as? Map<*, *> ?: return@mapNotNull null
-            CLIAgentToolUse(
-                id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
-                name = map["name"] as? String ?: "tool",
-                status = map["status"] as? String ?: "",
-                detail = map["detail"] as? String,
-                startedAtEpoch = epochMillis(map["startedAt"])
-            )
-        } ?: emptyList()
+    private fun parseToolUses(raw: Any?): List<CLIAgentToolUse> = (raw as? List<*>)?.mapNotNull { entry ->
+        val map = entry as? Map<*, *> ?: return@mapNotNull null
+        CLIAgentToolUse(
+            id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
+            name = map["name"] as? String ?: "tool",
+            status = map["status"] as? String ?: "",
+            detail = map["detail"] as? String,
+            startedAtEpoch = epochMillis(map["startedAt"]),
+        )
+    } ?: emptyList()
 
-    private fun runtimeForAgent(agent: String): AssistantRuntimeID? =
-        when (agent.lowercase()) {
-            "codex" -> AssistantRuntimeID.CODEX
-            "claude" -> AssistantRuntimeID.CLAUDE
-            "openclaw", "open_claw", "open-claw" -> AssistantRuntimeID.OPEN_CLAW
-            "droid", "factory", "factory_droid", "factory-droid" -> AssistantRuntimeID.DROID
-            "forge", "forge_dev", "forge-dev" -> AssistantRuntimeID.FORGE
-            "antigravity", "agy", "google_antigravity", "google-antigravity" -> AssistantRuntimeID.ANTIGRAVITY
-            "grok", "xai", "x-ai" -> AssistantRuntimeID.GROK
-            "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
-            else -> null
-        }
+    private fun runtimeForAgent(agent: String): AssistantRuntimeID? = when (agent.lowercase()) {
+        "codex" -> AssistantRuntimeID.CODEX
+        "claude" -> AssistantRuntimeID.CLAUDE
+        "openclaw", "open_claw", "open-claw" -> AssistantRuntimeID.OPEN_CLAW
+        "droid", "factory", "factory_droid", "factory-droid" -> AssistantRuntimeID.DROID
+        "forge", "forge_dev", "forge-dev" -> AssistantRuntimeID.FORGE
+        "antigravity", "agy", "google_antigravity", "google-antigravity" -> AssistantRuntimeID.ANTIGRAVITY
+        "grok", "xai", "x-ai" -> AssistantRuntimeID.GROK
+        "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
+        else -> null
+    }
 
     private fun epochMillis(raw: Any?): Long? = when (raw) {
         is Timestamp -> raw.toDate().time
         is java.util.Date -> raw.time
-        is Number -> raw.toLong().let { if (it < 10_000_000_000L) it * 1000L else it }
+        is Number -> raw.toLong().let { if (it < VAL_10000000000_L) it * 1000L else it }
         is String -> runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrNull()
         else -> null
     }
@@ -370,9 +270,8 @@ class ThreadInboxStore private constructor(
         @Volatile
         private var instance: ThreadInboxStore? = null
 
-        fun shared(): ThreadInboxStore =
-            instance ?: synchronized(this) {
-                instance ?: ThreadInboxStore().also { instance = it }
-            }
+        fun shared(): ThreadInboxStore = instance ?: synchronized(this) {
+            instance ?: ThreadInboxStore().also { instance = it }
+        }
     }
 }

@@ -10,33 +10,37 @@ class IrohRelayFrameCodecTest {
 
     @Test
     fun encode_emits_length_prefix_then_payload() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.PING,
-            uid = "u1",
-            connectionId = "c1",
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.PING,
+                uid = "u1",
+                connectionId = "c1",
+            )
         val envelope = codec.encode(frame)
         // First 4 bytes are big-endian length.
-        val length = ((envelope[0].toInt() and 0xff) shl 24) or
-            ((envelope[1].toInt() and 0xff) shl 16) or
-            ((envelope[2].toInt() and 0xff) shl 8) or
-            (envelope[3].toInt() and 0xff)
+        val length =
+            ((envelope[0].toInt() and 0xff) shl 24) or
+                ((envelope[1].toInt() and 0xff) shl 16) or
+                ((envelope[2].toInt() and 0xff) shl 8) or
+                (envelope[3].toInt() and 0xff)
         assertEquals(envelope.size - 4, length)
     }
 
     @Test
     fun encode_and_decode_round_trip() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.REQUEST_START,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "req-1",
-            payload = HermesRealtimeRelayPayload(
-                method = "hermes.chat",
-                wrappedKey = "AAA=",
-                payloadCiphertext = "BBB=",
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.REQUEST_START,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "req-1",
+                payload =
+                    HermesRealtimeRelayPayload(
+                        method = "hermes.chat",
+                        wrappedKey = "AAA=",
+                        payloadCiphertext = "BBB=",
+                    ),
+            )
         val envelope = codec.encode(frame)
         val decoded = codec.decode(envelope)
         assertEquals(frame.copy(protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION), decoded.frame)
@@ -45,81 +49,95 @@ class IrohRelayFrameCodecTest {
 
     @Test
     fun request_start_wire_json_uses_swift_codable_keys() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.REQUEST_START,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "req-1",
-            payload = HermesRealtimeRelayPayload(
-                operation = "chatCompletions",
-                method = "POST",
-                payloadCiphertext = "BBB=",
-                wrappedKey = "AAA=",
-                relayEncryption = "p256-hkdf-sha256-aesgcm",
-                relayKeyVersion = 1,
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.REQUEST_START,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "req-1",
+                payload =
+                    HermesRealtimeRelayPayload(
+                        operation = "chatCompletions",
+                        method = "POST",
+                        payloadCiphertext = "BBB=",
+                        wrappedKey = "AAA=",
+                        relayEncryption = "p256-hkdf-sha256-aesgcm",
+                        relayKeyVersion = 1,
+                    ),
+            )
         val envelope = codec.encode(frame)
-        val length = ((envelope[0].toInt() and 0xff) shl 24) or
-            ((envelope[1].toInt() and 0xff) shl 16) or
-            ((envelope[2].toInt() and 0xff) shl 8) or
-            (envelope[3].toInt() and 0xff)
+        val length =
+            ((envelope[0].toInt() and 0xff) shl 24) or
+                ((envelope[1].toInt() and 0xff) shl 16) or
+                ((envelope[2].toInt() and 0xff) shl 8) or
+                (envelope[3].toInt() and 0xff)
         val json = String(envelope.copyOfRange(4, 4 + length), Charsets.UTF_8)
         assertEquals(
-            """{"type":"request.start","uid":"user-1","connectionId":"conn-1","requestId":"req-1","protocolVersion":1,"payload":{"operation":"chatCompletions","method":"POST","payloadCiphertext":"BBB=","wrappedKey":"AAA=","relayEncryption":"p256-hkdf-sha256-aesgcm","relayKeyVersion":1}}""",
+            """
+            {"type":"request.start","uid":"user-1","connectionId":"conn-1","requestId":"req-1","protocolVersion":1,"payload":{"operation":"chatCompletions","method":"POST","payloadCiphertext":"BBB=","wrappedKey":"AAA=","relayEncryption":"p256-hkdf-sha256-aesgcm","relayKeyVersion":1}}
+            """.trimIndent(),
             json,
         )
     }
 
     @Test
     fun mirror_request_wire_json_uses_swift_codable_keys() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "mirror-1",
-            media = HermesRealtimeRelayMediaPayload(
-                mirrorRequest = HermesRealtimeRelayMirrorRequest(
-                    requestId = "mirror-1",
-                    requestedAt = "2026-05-18T09:30:00Z",
-                    requesterDisplayName = "Alberto's Android",
-                    streamClass = "media.screen.video",
-                )
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "mirror-1",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        mirrorRequest =
+                            HermesRealtimeRelayMirrorRequest(
+                                requestId = "mirror-1",
+                                requestedAt = "2026-05-18T09:30:00Z",
+                                requesterDisplayName = "Alberto's Android",
+                                streamClass = "media.screen.video",
+                            ),
+                    ),
+            )
         val envelope = codec.encode(frame)
-        val length = ((envelope[0].toInt() and 0xff) shl 24) or
-            ((envelope[1].toInt() and 0xff) shl 16) or
-            ((envelope[2].toInt() and 0xff) shl 8) or
-            (envelope[3].toInt() and 0xff)
+        val length =
+            ((envelope[0].toInt() and 0xff) shl 24) or
+                ((envelope[1].toInt() and 0xff) shl 16) or
+                ((envelope[2].toInt() and 0xff) shl 8) or
+                (envelope[3].toInt() and 0xff)
         val json = String(envelope.copyOfRange(4, 4 + length), Charsets.UTF_8)
         assertEquals(
-            """{"type":"media.mirror.request","uid":"user-1","connectionId":"conn-1","requestId":"mirror-1","protocolVersion":1,"media":{"mirrorRequest":{"requestId":"mirror-1","requestedAt":"2026-05-18T09:30:00Z","requesterDisplayName":"Alberto's Android","streamClass":"media.screen.video"}}}""",
+            """
+            {"type":"media.mirror.request","uid":"user-1","connectionId":"conn-1","requestId":"mirror-1","protocolVersion":1,"media":{"mirrorRequest":{"requestId":"mirror-1","requestedAt":"2026-05-18T09:30:00Z","requesterDisplayName":"Alberto's Android","streamClass":"media.screen.video"}}}
+            """.trimIndent(),
             json,
         )
     }
 
     @Test
     fun mirror_ack_round_trips_through_length_prefixed_codec() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "mirror-1",
-            media = HermesRealtimeRelayMediaPayload(
-                mirrorAck = HermesRealtimeRelayMirrorAck(
-                    requestId = "mirror-1",
-                    decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
-                    detail = "accepted",
-                    sessionId = "session-1",
-                    viewerId = "viewer-android-1",
-                    viewerRole = "controller",
-                    viewerCount = 2,
-                    maxViewers = 3,
-                    controlOwnerViewerId = "viewer-android-1",
-                )
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "mirror-1",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        mirrorAck =
+                            HermesRealtimeRelayMirrorAck(
+                                requestId = "mirror-1",
+                                decision = HermesRealtimeRelayMirrorAck.Decision.ACCEPTED,
+                                detail = "accepted",
+                                sessionId = "session-1",
+                                viewerId = "viewer-android-1",
+                                viewerRole = "controller",
+                                viewerCount = 2,
+                                maxViewers = 3,
+                                controlOwnerViewerId = "viewer-android-1",
+                            ),
+                    ),
+            )
         val decoded = codec.decode(codec.encode(frame)).frame
         assertEquals(HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK, decoded.type)
         assertEquals("mirror-1", decoded.media?.mirrorAck?.requestId)
@@ -135,7 +153,10 @@ class IrohRelayFrameCodecTest {
 
     @Test
     fun presence_heartbeat_accepts_swift_device_display_name_and_streaming_capabilities() {
-        val json = """{"type":"media.presence.heartbeat","uid":"user-1","connectionId":"conn-1","protocolVersion":1,"media":{"presence":{"sentAt":"2026-05-18T09:30:00Z","deviceDisplayName":"Alberto's Mac","capabilities":["mirror.host"],"streamingCapabilities":{"codecCapabilities":[{"codec":"hevc","canEncode":true,"canDecode":true,"hardwareAccelerated":true}],"mediaFrameVersions":{"supportsV1":true,"supportsV2":false},"videoDatagrams":{},"source":"VideoToolbox"}}}}"""
+        val json =
+            """
+            {"type":"media.presence.heartbeat","uid":"user-1","connectionId":"conn-1","protocolVersion":1,"media":{"presence":{"sentAt":"2026-05-18T09:30:00Z","deviceDisplayName":"Alberto's Mac","capabilities":["mirror.host"],"streamingCapabilities":{"codecCapabilities":[{"codec":"hevc","canEncode":true,"canDecode":true,"hardwareAccelerated":true}],"mediaFrameVersions":{"supportsV1":true,"supportsV2":false},"videoDatagrams":{},"source":"VideoToolbox"}}}}
+            """.trimIndent()
         val payload = json.toByteArray(Charsets.UTF_8)
         val envelope = ByteArray(payload.size + 4)
         envelope[0] = ((payload.size ushr 24) and 0xff).toByte()
@@ -153,19 +174,22 @@ class IrohRelayFrameCodecTest {
 
     @Test
     fun long_term_reference_ack_round_trips() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_LONG_TERM_REFERENCE_ACK,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "mirror-1",
-            media = HermesRealtimeRelayMediaPayload(
-                longTermReferenceAck = HermesRealtimeRelayLongTermReferenceAck(
-                    requestId = "mirror-1",
-                    tokenValue = 424242L,
-                    decodedAt = "2026-05-20T23:59:00.000Z",
-                )
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_LONG_TERM_REFERENCE_ACK,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "mirror-1",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        longTermReferenceAck =
+                            HermesRealtimeRelayLongTermReferenceAck(
+                                requestId = "mirror-1",
+                                tokenValue = 424242L,
+                                decodedAt = "2026-05-20T23:59:00.000Z",
+                            ),
+                    ),
+            )
 
         val decoded = codec.decode(codec.encode(frame)).frame
 
@@ -176,47 +200,56 @@ class IrohRelayFrameCodecTest {
 
     @Test
     fun call_invite_wire_json_uses_swift_codable_keys() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_CALL_INVITE,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "call-1",
-            media = HermesRealtimeRelayMediaPayload(
-                callInvite = HermesRealtimeRelayCallInvite(
-                    requestId = "call-1",
-                    requestedAt = "2026-05-18T10:30:00Z",
-                    requesterDisplayName = "Alberto's Android",
-                    callKind = "video",
-                )
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_CALL_INVITE,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "call-1",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        callInvite =
+                            HermesRealtimeRelayCallInvite(
+                                requestId = "call-1",
+                                requestedAt = "2026-05-18T10:30:00Z",
+                                requesterDisplayName = "Alberto's Android",
+                                callKind = "video",
+                            ),
+                    ),
+            )
         val envelope = codec.encode(frame)
-        val length = ((envelope[0].toInt() and 0xff) shl 24) or
-            ((envelope[1].toInt() and 0xff) shl 16) or
-            ((envelope[2].toInt() and 0xff) shl 8) or
-            (envelope[3].toInt() and 0xff)
+        val length =
+            ((envelope[0].toInt() and 0xff) shl 24) or
+                ((envelope[1].toInt() and 0xff) shl 16) or
+                ((envelope[2].toInt() and 0xff) shl 8) or
+                (envelope[3].toInt() and 0xff)
         val json = String(envelope.copyOfRange(4, 4 + length), Charsets.UTF_8)
         assertEquals(
-            """{"type":"media.call.invite","uid":"user-1","connectionId":"conn-1","requestId":"call-1","protocolVersion":1,"media":{"callInvite":{"requestId":"call-1","requestedAt":"2026-05-18T10:30:00Z","requesterDisplayName":"Alberto's Android","callKind":"video"}}}""",
+            """
+            {"type":"media.call.invite","uid":"user-1","connectionId":"conn-1","requestId":"call-1","protocolVersion":1,"media":{"callInvite":{"requestId":"call-1","requestedAt":"2026-05-18T10:30:00Z","requesterDisplayName":"Alberto's Android","callKind":"video"}}}
+            """.trimIndent(),
             json,
         )
     }
 
     @Test
     fun call_ack_round_trips_through_length_prefixed_codec() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_CALL_ACK,
-            uid = "user-1",
-            connectionId = "conn-1",
-            requestId = "call-1",
-            media = HermesRealtimeRelayMediaPayload(
-                callAck = HermesRealtimeRelayCallAck(
-                    requestId = "call-1",
-                    decision = HermesRealtimeRelayCallAck.Decision.ACCEPTED,
-                    detail = "accepted",
-                )
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_CALL_ACK,
+                uid = "user-1",
+                connectionId = "conn-1",
+                requestId = "call-1",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        callAck =
+                            HermesRealtimeRelayCallAck(
+                                requestId = "call-1",
+                                decision = HermesRealtimeRelayCallAck.Decision.ACCEPTED,
+                                detail = "accepted",
+                            ),
+                    ),
+            )
         val decoded = codec.decode(codec.encode(frame)).frame
         assertEquals(HermesRealtimeRelayFrameType.MEDIA_CALL_ACK, decoded.type)
         assertEquals("call-1", decoded.media?.callAck?.requestId)
@@ -252,11 +285,12 @@ class IrohRelayFrameCodecTest {
 
     @Test
     fun encode_then_decode_consumes_full_envelope() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.PONG,
-            uid = "u",
-            connectionId = "c",
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.PONG,
+                uid = "u",
+                connectionId = "c",
+            )
         val a = codec.encode(frame)
         val b = codec.encode(frame)
         val concatenated = a + b

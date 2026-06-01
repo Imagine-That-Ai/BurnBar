@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
-import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
@@ -52,17 +54,17 @@ fun SettingsSearchResultsScreen(router: SettingsRouter) {
             "${results.size} result${if (results.size == 1) "" else "s"}",
             style = AuroraType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = AuroraSpacing.xs.dp)
+            modifier = Modifier.padding(vertical = AuroraSpacing.xs.dp),
         )
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         ) {
             items(results) { item ->
                 SettingsResultRow(
                     item = item,
-                    onClick = { router.navigate(item) }
+                    onClick = { router.navigate(item) },
                 )
             }
         }
@@ -70,21 +72,19 @@ fun SettingsSearchResultsScreen(router: SettingsRouter) {
 }
 
 @Composable
-private fun SettingsResultRow(
-    item: SettingsItem,
-    onClick: () -> Unit,
-) {
+private fun SettingsResultRow(item: SettingsItem, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AuroraRadius.lg.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
     ) {
         Row(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxWidth()
                 .padding(AuroraSpacing.md.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             val logoProviders = item.logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
             if (logoProviders.isNotEmpty()) {
@@ -117,18 +117,6 @@ private fun SettingsResultRow(
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
-        }
-    }
-}
-
-@Composable
-private fun SettingsProviderLogoStack(
-    providers: List<AgentProvider>,
-    maxVisible: Int = 4,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
-        providers.take(maxVisible).forEach { provider ->
-            ProviderLogo(provider = provider, size = 28.dp)
         }
     }
 }
@@ -167,16 +155,17 @@ private fun EmptyState(router: SettingsRouter) {
 
 private fun breadcrumb(item: SettingsItem): String {
     val sectionTitle = item.section.displayTitle
-    val pageLabel = when (item.pageRoute) {
-        SettingsPageRoute.ROOT -> ""
-        SettingsPageRoute.SMART_DISPLAYS -> "Smart Displays"
-        SettingsPageRoute.MENU_BAR_PREFS -> "Quick-Glance"
-        SettingsPageRoute.THEME_PREFS -> "Theme & SOTA UX"
-        SettingsPageRoute.WALLPAPER_GENERATOR -> "Swarm Background"
-        SettingsPageRoute.QUOTA_PREFS -> "Quota Customisation"
-        SettingsPageRoute.BUDGET_PREFS -> "Budgeting & Rules"
-        SettingsPageRoute.TEXT_EXPANSION -> "Text Expansion"
-        SettingsPageRoute.TRANSCRIPT_CACHE -> "Transcript Cache"
-    }
+    val pageLabel =
+        when (item.pageRoute) {
+            SettingsPageRoute.ROOT -> ""
+            SettingsPageRoute.SMART_DISPLAYS -> "Smart Displays"
+            SettingsPageRoute.MENU_BAR_PREFS -> "Quick-Glance"
+            SettingsPageRoute.THEME_PREFS -> "Theme & SOTA UX"
+            SettingsPageRoute.WALLPAPER_GENERATOR -> "Swarm Background"
+            SettingsPageRoute.QUOTA_PREFS -> "Quota Customisation"
+            SettingsPageRoute.BUDGET_PREFS -> "Budgeting & Rules"
+            SettingsPageRoute.TEXT_EXPANSION -> "Text Expansion"
+            SettingsPageRoute.TRANSCRIPT_CACHE -> "Transcript Cache"
+        }
     return if (pageLabel.isEmpty()) sectionTitle else "$sectionTitle › $pageLabel"
 }

@@ -1,29 +1,29 @@
 package com.openburnbar.data.media
 
 import android.util.Log
-import com.openburnbar.data.computeruse.AgentCapabilityGrantState
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
+import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
+import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
-import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
-import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
-import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
-import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
-import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayLongTermReferenceAck
-import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
+import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorStop
-import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 import com.openburnbar.irohrelay.IrohRelayStream
-import java.io.ByteArrayOutputStream
+import java.lang.IllegalStateException
 import java.time.Instant
-import java.util.Base64
 import java.util.UUID
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -39,9 +39,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.min
-import kotlin.math.pow
-import kotlin.random.Random
+
+private const val MILLIS = 25
+private const val VAL_4096 = 4096
 
 /**
  * Android-side owner of the persistent media control stream. 1:1 port
@@ -79,10 +79,15 @@ class MediaControlStreamCoordinator(
 
     sealed class Phase {
         object Idle : Phase()
+
         object Dialing : Phase()
+
         object Live : Phase()
+
         data class Reconnecting(val nextAttemptInMillis: Long) : Phase()
+
         object Stopped : Phase()
+
         data class Failed(val reason: String) : Phase()
     }
 
@@ -97,10 +102,36 @@ class MediaControlStreamCoordinator(
     private var activeUID: String? = null
     private var activeConnectionID: String? = null
     private var pendingLive: MutableList<CompletableDeferred<IrohRelayStream>> = mutableListOf()
-    private val mediaPacketCodec = MediaPacketCodec(maxPayloadBytes = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES)
-    private val mediaFrameV2Codec = MediaFrameV2Codec()
-    private val frameChunkAssembler = MediaFrameChunkAssembler()
     private var pendingHeartbeatSentAtMillis: Long? = null
+
+    private val frameDispatcher by lazy {
+        MediaControlFrameDispatcher(
+            handlers =
+            MediaControlFrameDispatcherHandlers(
+                receiverProvider = { receiver },
+                mirrorFrameHandler = { mirrorFrameHandler },
+                mirrorFrameV2Handler = { mirrorFrameV2Handler },
+                focusContextHandler = { focusContextHandler },
+            ),
+            callbacks =
+            MediaControlFrameDispatcherCallbacks(
+                onMirrorAck = { _lastMirrorAck.value = it },
+                onCallAck = { _lastCallAck.value = it },
+                onAgentGrantReceipt = { _lastAgentGrantReceipt.value = it },
+                onControlDenied = { _lastControlDenied.value = it },
+                onClipboardResponse = { _lastClipboardResponse.value = it },
+                onRemoteUnlockState = { _lastRemoteUnlockState.value = it },
+                onRemoteUnlockResult = { _lastRemoteUnlockResult.value = it },
+                onPeerHeartbeat = { receivedAt, capabilities ->
+                    _lastPeerHeartbeatAtMillis.value = receivedAt
+                    _lastPeerCapabilities.value = capabilities
+                },
+                onRoundTripMillis = { _lastRoundTripMillis.value = it },
+                pendingHeartbeatSentAtMillis = { pendingHeartbeatSentAtMillis },
+                clearPendingHeartbeat = { pendingHeartbeatSentAtMillis = null },
+            ),
+        )
+    }
 
     @Volatile
     var mirrorFrameHandler: (suspend (MediaFrame) -> Unit)? = null
@@ -203,18 +234,15 @@ class MediaControlStreamCoordinator(
         stream.send(frame)
     }
 
-    suspend fun ensureResponsive(
-        freshnessIntervalMillis: Long = 2_000L,
-        probeTimeoutMillis: Long = 1_000L,
-    ): Boolean {
+    suspend fun ensureResponsive(freshnessIntervalMillis: Long = 2_000L, probeTimeoutMillis: Long = 1_000L): Boolean {
         val now = System.currentTimeMillis()
         val lastHeartbeat = _lastPeerHeartbeatAtMillis.value
         if (_phase.value == Phase.Live && lastHeartbeat > 0L && now - lastHeartbeat <= freshnessIntervalMillis) {
             return true
         }
 
-        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
-        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val uid = activeUID ?: error("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: error("Mercury control stream is not paired yet.")
         val stream = mutex.withLock { currentStream }
         if (stream == null) {
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
@@ -224,15 +252,23 @@ class MediaControlStreamCoordinator(
         val beforeProbe = _lastPeerHeartbeatAtMillis.value
         return try {
             val sentAtMillis = System.currentTimeMillis()
-            stream.send(makePresenceHeartbeat(uid = uid, connectionID = connectionID))
+            stream.send(
+                MediaControlPresence.makeHeartbeat(
+                    uid = uid,
+                    connectionID = connectionID,
+                    peerDeviceIdProvider = peerDeviceIdProvider,
+                    displayNameProvider = displayNameProvider,
+                ),
+            )
             pendingHeartbeatSentAtMillis = sentAtMillis
 
-            val replied = withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
-                while (_lastPeerHeartbeatAtMillis.value <= beforeProbe) {
-                    delay(25)
-                }
-                true
-            } == true
+            val replied =
+                withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
+                    while (_lastPeerHeartbeatAtMillis.value <= beforeProbe) {
+                        delay(MILLIS)
+                    }
+                    true
+                } == true
 
             if (replied) {
                 true
@@ -248,7 +284,7 @@ class MediaControlStreamCoordinator(
             }
         } catch (t: CancellationException) {
             throw t
-        } catch (t: Throwable) {
+        } catch (t: IllegalStateException) {
             mutex.withLock {
                 if (currentStream === stream) {
                     currentStream = null
@@ -261,27 +297,26 @@ class MediaControlStreamCoordinator(
         }
     }
 
-    suspend fun requestMirror(
-        requesterDisplayName: String,
-        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
-    ): String {
-        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
-        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+    suspend fun requestMirror(requesterDisplayName: String, remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null): String {
+        val uid = activeUID ?: error("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: error("Mercury control stream is not paired yet.")
         val requestID = UUID.randomUUID().toString()
         val viewerID = UUID.randomUUID().toString()
-        val request = HermesRealtimeRelayMirrorRequest(
-            requestId = requestID,
-            requestedAt = Instant.now().toString(),
-            requesterDisplayName = requesterDisplayName,
-            streamClass = "media.screen.video",
-            streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
-                mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
-            ).toWire(),
-            viewerId = viewerID,
-            viewerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
-            controlAuthorityPeerNodeId = controlAuthorityPeerNodeIdProvider(),
-            remoteUnlockSession = remoteUnlockSession,
-        )
+        val request =
+            HermesRealtimeRelayMirrorRequest(
+                requestId = requestID,
+                requestedAt = Instant.now().toString(),
+                requesterDisplayName = requesterDisplayName,
+                streamClass = "media.screen.video",
+                streamingCapabilities =
+                AndroidMediaCodecCapabilityProbe.snapshot(
+                    mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
+                ).toWire(),
+                viewerId = viewerID,
+                viewerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
+                controlAuthorityPeerNodeId = controlAuthorityPeerNodeIdProvider(),
+                remoteUnlockSession = remoteUnlockSession,
+            )
         send(
             HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST,
@@ -289,67 +324,69 @@ class MediaControlStreamCoordinator(
                 connectionId = connectionID,
                 requestId = requestID,
                 media = HermesRealtimeRelayMediaPayload(mirrorRequest = request),
-            )
+            ),
         )
         logInfo("Mercury mirror request sent requestID=$requestID connectionID=$connectionID")
         return requestID
     }
 
     suspend fun stopMirror(requestID: String, sessionID: String? = null, reason: String? = null) {
-        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
-        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val uid = activeUID ?: error("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: error("Mercury control stream is not paired yet.")
         send(
             HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP,
                 uid = uid,
                 connectionId = connectionID,
                 requestId = requestID,
-                media = HermesRealtimeRelayMediaPayload(
-                    mirrorStop = HermesRealtimeRelayMirrorStop(
+                media =
+                HermesRealtimeRelayMediaPayload(
+                    mirrorStop =
+                    HermesRealtimeRelayMirrorStop(
                         requestId = requestID,
                         sessionId = sessionID,
-                        stoppedAt = swiftReferenceDateSecondsNow(),
+                        stoppedAt = mediaControlSwiftReferenceDateSecondsNow(),
                         reason = reason,
-                    )
+                    ),
                 ),
-            )
+            ),
         )
         logInfo("Mercury mirror stop sent requestID=$requestID connectionID=$connectionID reason=${reason.orEmpty()}")
     }
 
-    suspend fun sendLongTermReferenceAcknowledgement(
-        token: MediaFrameV2LongTermReferenceToken,
-        requestID: String? = null,
-    ) {
-        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
-        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+    suspend fun sendLongTermReferenceAcknowledgement(token: MediaFrameV2LongTermReferenceToken, requestID: String? = null) {
+        val uid = activeUID ?: error("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: error("Mercury control stream is not paired yet.")
         send(
             HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.MEDIA_LONG_TERM_REFERENCE_ACK,
                 uid = uid,
                 connectionId = connectionID,
                 requestId = requestID,
-                media = HermesRealtimeRelayMediaPayload(
-                    longTermReferenceAck = HermesRealtimeRelayLongTermReferenceAck(
+                media =
+                HermesRealtimeRelayMediaPayload(
+                    longTermReferenceAck =
+                    HermesRealtimeRelayLongTermReferenceAck(
                         requestId = requestID,
                         tokenValue = token.value,
                         decodedAt = Instant.now().toString(),
-                    )
+                    ),
                 ),
-            )
+            ),
         )
     }
 
     suspend fun requestCall(requesterDisplayName: String): String {
-        val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
-        val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
+        val uid = activeUID ?: error("Mercury control stream is not paired yet.")
+        val connectionID = activeConnectionID ?: error("Mercury control stream is not paired yet.")
         val requestID = UUID.randomUUID().toString()
-        val invite = HermesRealtimeRelayCallInvite(
-            requestId = requestID,
-            requestedAt = Instant.now().toString(),
-            requesterDisplayName = requesterDisplayName,
-            callKind = "video",
-        )
+        val invite =
+            HermesRealtimeRelayCallInvite(
+                requestId = requestID,
+                requestedAt = Instant.now().toString(),
+                requesterDisplayName = requesterDisplayName,
+                callKind = "video",
+            )
         send(
             HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.MEDIA_CALL_INVITE,
@@ -357,16 +394,17 @@ class MediaControlStreamCoordinator(
                 connectionId = connectionID,
                 requestId = requestID,
                 media = HermesRealtimeRelayMediaPayload(callInvite = invite),
-            )
+            ),
         )
         return requestID
     }
 
     private suspend fun awaitLiveStream(): IrohRelayStream {
-        val immediate: IrohRelayStream? = mutex.withLock {
-            val live = currentStream
-            if (live != null && _phase.value == Phase.Live) live else null
-        }
+        val immediate: IrohRelayStream? =
+            mutex.withLock {
+                val live = currentStream
+                if (live != null && _phase.value == Phase.Live) live else null
+            }
         if (immediate != null) return immediate
         val deferred = CompletableDeferred<IrohRelayStream>()
         mutex.withLock { pendingLive.add(deferred) }
@@ -374,63 +412,39 @@ class MediaControlStreamCoordinator(
     }
 
     private suspend fun resolvePending(stream: IrohRelayStream) {
-        val waiting = mutex.withLock {
-            val snapshot = pendingLive.toList()
-            pendingLive.clear()
-            snapshot
-        }
+        val waiting =
+            mutex.withLock {
+                val snapshot = pendingLive.toList()
+                pendingLive.clear()
+                snapshot
+            }
         waiting.forEach { it.complete(stream) }
     }
 
     private suspend fun runSupervisor(uid: String, connectionID: String) {
         var attempt = 0
-        while (scope.isActive && supervisorJob?.isActive == true) {
-            try {
-                _phase.value = Phase.Dialing
-                logInfo("Mercury control dial attempt=${attempt + 1} connectionID=$connectionID")
-                val stream = dialer.dial(uid, connectionID)
-                val classifyFrame = HermesRealtimeRelayFrame(
-                    type = HermesRealtimeRelayFrameType.MEDIA_CLASSIFY,
-                    uid = uid,
-                    connectionId = connectionID,
-                    media = HermesRealtimeRelayMediaPayload(streamClass = MediaStreamClass.CONTROL.raw),
-                )
-                stream.send(classifyFrame)
-                mutex.withLock { currentStream = stream }
-                _consecutiveDialFailures.value = 0
-                attempt = 0
-                _phase.value = Phase.Live
-                logInfo("Mercury control live connectionID=$connectionID")
-                analytics?.controlStreamConnected()
-                resolvePending(stream)
-
-                val heartbeatJob = scope.launch {
-                    presenceHeartbeatLoop(stream = stream, uid = uid, connectionID = connectionID)
-                }
+        var active = scope.isActive && supervisorJob?.isActive == true
+        while (active) {
+            val keepRunning =
                 try {
-                    readLoop(stream = stream, uid = uid, connectionID = connectionID)
-                } finally {
-                    heartbeatJob.cancel()
+                    dialAndReadLoop(uid = uid, connectionID = connectionID, attempt = attempt)
+                } catch (_: CancellationException) {
+                    false
+                } catch (t: IllegalStateException) {
+                    _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
+                    _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
+                    logWarning("Mercury control dial failed connectionID=$connectionID error=${t.message}", t)
+                    analytics?.controlStreamLost(t.message ?: t.javaClass.simpleName)
+                    true
                 }
-
-                mutex.withLock { currentStream = null }
-                logInfo("Mercury control read loop ended connectionID=$connectionID")
-                if (supervisorJob?.isActive != true) break
-                attempt = (attempt - 1).coerceAtLeast(0)
-            } catch (_: CancellationException) {
-                break
-            } catch (t: Throwable) {
-                _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
-                _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
-                logWarning("Mercury control dial failed connectionID=$connectionID error=${t.message}", t)
-                analytics?.controlStreamLost(t.message ?: t.javaClass.simpleName)
+            active = keepRunning && scope.isActive && supervisorJob?.isActive == true
+            if (active) {
+                val backoff = nextBackoff(attempt)
+                attempt += 1
+                _phase.value = Phase.Reconnecting(nextAttemptInMillis = backoff)
+                logInfo("Mercury control reconnect scheduled connectionID=$connectionID backoffMs=$backoff")
+                active = scope.isActive && supervisorJob?.isActive == true && delayUnlessCancelled(backoff)
             }
-
-            val backoff = nextBackoff(attempt)
-            attempt += 1
-            _phase.value = Phase.Reconnecting(nextAttemptInMillis = backoff)
-            logInfo("Mercury control reconnect scheduled connectionID=$connectionID backoffMs=$backoff")
-            try { delay(backoff) } catch (_: CancellationException) { break }
         }
         logInfo("Mercury control supervisor stopped connectionID=$connectionID")
         _phase.value = Phase.Stopped
@@ -439,156 +453,83 @@ class MediaControlStreamCoordinator(
         _activePair.value = null
     }
 
-    private suspend fun readLoop(
-        stream: IrohRelayStream,
-        uid: String,
-        connectionID: String,
-    ) {
+    private suspend fun dialAndReadLoop(uid: String, connectionID: String, attempt: Int): Boolean {
+        _phase.value = Phase.Dialing
+        logInfo("Mercury control dial attempt=${attempt + 1} connectionID=$connectionID")
+        val stream = dialer.dial(uid, connectionID)
+        val classifyFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_CLASSIFY,
+                uid = uid,
+                connectionId = connectionID,
+                media = HermesRealtimeRelayMediaPayload(streamClass = MediaStreamClass.CONTROL.raw),
+            )
+        stream.send(classifyFrame)
+        mutex.withLock { currentStream = stream }
+        _consecutiveDialFailures.value = 0
+        _phase.value = Phase.Live
+        logInfo("Mercury control live connectionID=$connectionID")
+        analytics?.controlStreamConnected()
+        resolvePending(stream)
+
+        val heartbeatJob =
+            scope.launch {
+                MediaControlPresence.heartbeatLoop(
+                    MediaControlHeartbeatLoopParams(
+                        stream = stream,
+                        uid = uid,
+                        connectionID = connectionID,
+                        scopeActive = { scope.isActive },
+                        supervisorActive = { supervisorJob?.isActive == true },
+                        peerDeviceIdProvider = peerDeviceIdProvider,
+                        displayNameProvider = displayNameProvider,
+                        intervalMillis = presenceHeartbeatIntervalMillis,
+                        onHeartbeatSent = { sentAtMillis -> pendingHeartbeatSentAtMillis = sentAtMillis },
+                    ),
+                )
+            }
+        try {
+            readLoop(stream = stream, uid = uid, connectionID = connectionID)
+        } finally {
+            heartbeatJob.cancel()
+        }
+
+        mutex.withLock { currentStream = null }
+        logInfo("Mercury control read loop ended connectionID=$connectionID")
+        return supervisorJob?.isActive == true
+    }
+
+    private suspend fun delayUnlessCancelled(backoff: Long): Boolean {
+        return try {
+            delay(backoff)
+            true
+        } catch (_: CancellationException) {
+            false
+        }
+    }
+
+    private suspend fun readLoop(stream: IrohRelayStream, uid: String, connectionID: String) {
         val ackSender = AndroidFileTransferService.AdvertiseSender { outbound -> stream.send(outbound) }
         try {
             while (true) {
                 val frame = stream.receive() ?: return
-                if (frame.uid != uid || frame.connectionId != connectionID) continue
-                when (frame.type) {
-                    HermesRealtimeRelayFrameType.MEDIA_BLOB_ADVERTISE ->
-                        receiver?.handleAdvertise(frame = frame, ackSender = ackSender)
-                    HermesRealtimeRelayFrameType.MEDIA_BLOB_ACK -> {
-                        // Phase 2 surfaces this to per-row UI state; Phase 1 logs only.
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_MIRROR_ACK -> {
-                        frame.media?.mirrorAck?.let { _lastMirrorAck.value = it }
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_CALL_ACK -> {
-                        frame.media?.callAck?.let { _lastCallAck.value = it }
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME -> {
-                        handleStreamFrame(frame)
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT -> {
-                        val receivedAtMillis = System.currentTimeMillis()
-                        _lastPeerHeartbeatAtMillis.value = receivedAtMillis
-                        pendingHeartbeatSentAtMillis?.let { sentAtMillis ->
-                            _lastRoundTripMillis.value = (receivedAtMillis - sentAtMillis)
-                                .coerceAtLeast(0L)
-                                .coerceAtMost(Int.MAX_VALUE.toLong())
-                                .toInt()
-                            pendingHeartbeatSentAtMillis = null
-                        }
-                        _lastPeerCapabilities.value = frame.media?.presence?.capabilities.orEmpty().toSet()
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_RECEIPT -> {
-                        frame.control?.agentGrantReceipt?.let { receipt ->
-                            _lastAgentGrantReceipt.value = receipt
-                            AgentCapabilityGrantState.apply(receipt)
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
-                        frame.control?.denied?.let { denied ->
-                            _lastControlDenied.value = denied
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_SYSTEM_PERMISSION_STATUS -> {
-                        frame.control?.systemPermissionStatus?.let { status ->
-                            com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder
-                                .ingest(status, threadId = frame.control?.sessionId)
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.CONTROL_CLIPBOARD_RESPONSE -> {
-                        frame.control?.clipboardResponse?.let { response ->
-                            _lastClipboardResponse.value = response
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE -> {
-                        frame.control?.remoteUnlockState?.let { state ->
-                            _lastRemoteUnlockState.value = state
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT,
-                    HermesRealtimeRelayFrameType.REMOTE_UNLOCK_DENIED -> {
-                        frame.control?.remoteUnlockResult?.let { result ->
-                            _lastRemoteUnlockResult.value = result
-                        }
-                    }
-                    HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> {
-                        // Re-classification mid-stream — protocol noise.
-                    }
-                    else -> {
-                        // Ignore non-media frames on the control bi-stream.
-                    }
+                val isMatchingFrame = frame.uid == uid && frame.connectionId == connectionID
+                if (isMatchingFrame) {
+                    frameDispatcher.dispatch(frame, ackSender)
                 }
             }
-        } catch (t: Throwable) {
+        } catch (t: IllegalStateException) {
             _phase.value = Phase.Reconnecting(nextAttemptInMillis = initialBackoffMillis)
             logWarning("Mercury control read failed connectionID=$connectionID error=${t.message}", t)
         }
     }
 
-    private suspend fun presenceHeartbeatLoop(
-        stream: IrohRelayStream,
-        uid: String,
-        connectionID: String,
-    ) {
-        while (scope.isActive && supervisorJob?.isActive == true) {
-            val sentAtMillis = System.currentTimeMillis()
-            stream.send(makePresenceHeartbeat(uid = uid, connectionID = connectionID))
-            pendingHeartbeatSentAtMillis = sentAtMillis
-            delay(presenceHeartbeatIntervalMillis)
-        }
-    }
-
-    private fun makePresenceHeartbeat(uid: String, connectionID: String): HermesRealtimeRelayFrame =
-        HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
-            uid = uid,
-            connectionId = connectionID,
-            media = HermesRealtimeRelayMediaPayload(
-                presence = HermesRealtimeRelayPresenceHeartbeat(
-                    peerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
-                    displayName = displayNameProvider().ifBlank { "Android" },
-                    deviceDisplayName = displayNameProvider().ifBlank { "Android" },
-                    capabilities = listOf(
-                        "media.control",
-                        "media.mirror.request",
-                        "media.call.invite",
-                        "media.blob.transfer",
-                    ),
-                    streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
-                        mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
-                    ).toWire(),
-                    sentAt = Instant.now().toString(),
-                )
-            ),
-        )
-
-    private fun swiftReferenceDateSecondsNow(): Double =
-        (System.currentTimeMillis() / 1_000.0) - SWIFT_REFERENCE_DATE_UNIX_SECONDS
-
-    private suspend fun handleStreamFrame(frame: HermesRealtimeRelayFrame) {
-        val media = frame.media ?: return
-        media.focusContext?.let { focus ->
-            focusContextHandler?.invoke(focus)
-        }
-        if (media.streamClass != MediaStreamClass.SCREEN_VIDEO.raw) return
-        val encoded = media.encodedFrameBase64 ?: return
-        val chunkBytes = runCatching { Base64.getDecoder().decode(encoded) }.getOrNull() ?: return
-        val data = frameChunkAssembler.accept(media.frameChunk, chunkBytes) ?: return
-
-        runCatching {
-            if (MediaFrameV2Codec.isEncodedEnvelope(data)) {
-                val handler = mirrorFrameV2Handler ?: return
-                handler(mediaFrameV2Codec.decode(data).frame)
-            } else {
-                val handler = mirrorFrameHandler ?: return
-                handler(mediaPacketCodec.decode(data).frame)
-            }
-        }
-    }
-
     private fun nextBackoff(attempt: Int): Long {
-        val exp = min(
-            maxBackoffMillis.toDouble(),
-            initialBackoffMillis.toDouble() * (2.0.pow(attempt.toDouble())),
-        )
+        val exp =
+            min(
+                maxBackoffMillis.toDouble(),
+                initialBackoffMillis.toDouble() * 2.0.pow(attempt.toDouble()),
+            )
         val jitter = Random.nextDouble(initialBackoffMillis.toDouble(), exp + 1)
         return min(maxBackoffMillis, jitter.toLong())
     }
@@ -603,64 +544,5 @@ class MediaControlStreamCoordinator(
 
     private companion object {
         private const val TAG = "BurnBar"
-        private const val SWIFT_REFERENCE_DATE_UNIX_SECONDS = 978_307_200.0
-    }
-}
-
-private class MediaFrameChunkAssembler(
-    private val maxAssemblies: Int = 8,
-    private val maxTotalBytes: Int = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES + 4096,
-) {
-    private data class Assembly(
-        val chunkCount: Int,
-        val totalBytes: Int,
-        val chunks: Array<ByteArray?>,
-    )
-
-    private val assemblies = LinkedHashMap<String, Assembly>()
-
-    fun accept(
-        chunk: com.openburnbar.irohrelay.HermesRealtimeRelayMediaFrameChunk?,
-        bytes: ByteArray,
-    ): ByteArray? {
-        if (chunk == null) return bytes
-        if (chunk.chunkCount <= 0 ||
-            chunk.chunkIndex !in 0 until chunk.chunkCount ||
-            chunk.totalBytes <= 0 ||
-            chunk.totalBytes > maxTotalBytes
-        ) {
-            assemblies.remove(chunk.chunkId)
-            return null
-        }
-
-        val assembly = assemblies.getOrPut(chunk.chunkId) {
-            trimOldestIfNeeded()
-            Assembly(
-                chunkCount = chunk.chunkCount,
-                totalBytes = chunk.totalBytes,
-                chunks = arrayOfNulls(chunk.chunkCount),
-            )
-        }
-        if (assembly.chunkCount != chunk.chunkCount || assembly.totalBytes != chunk.totalBytes) {
-            assemblies.remove(chunk.chunkId)
-            return null
-        }
-
-        assembly.chunks[chunk.chunkIndex] = bytes
-        if (assembly.chunks.any { it == null }) return null
-
-        val output = ByteArrayOutputStream(assembly.totalBytes)
-        for (part in assembly.chunks) {
-            output.write(part ?: return null)
-        }
-        val complete = output.toByteArray()
-        assemblies.remove(chunk.chunkId)
-        return complete.takeIf { it.size == assembly.totalBytes }
-    }
-
-    private fun trimOldestIfNeeded() {
-        if (assemblies.size < maxAssemblies) return
-        val oldest = assemblies.keys.firstOrNull() ?: return
-        assemblies.remove(oldest)
     }
 }

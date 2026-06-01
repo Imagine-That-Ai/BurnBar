@@ -51,22 +51,23 @@ data class MercuryImpairmentScenario(
     val roundTripMillis: Int,
 ) {
     companion object {
-        val DEFAULT_MATRIX = listOf(
-            MercuryImpairmentScenario(0.0, 30),
-            MercuryImpairmentScenario(0.0, 100),
-            MercuryImpairmentScenario(0.0, 300),
-            MercuryImpairmentScenario(1.0, 30),
-            MercuryImpairmentScenario(1.0, 100),
-            MercuryImpairmentScenario(1.0, 300),
-            MercuryImpairmentScenario(3.0, 30),
-            MercuryImpairmentScenario(3.0, 100),
-            MercuryImpairmentScenario(3.0, 300),
-            MercuryImpairmentScenario(5.0, 30),
-            MercuryImpairmentScenario(5.0, 100),
-            MercuryImpairmentScenario(5.0, 300),
-            MercuryImpairmentScenario(10.0, 30),
-            MercuryImpairmentScenario(10.0, 100),
-            MercuryImpairmentScenario(10.0, 300),
-        )
+        val DEFAULT_MATRIX =
+            listOf(
+                MercuryImpairmentScenario(0.0, 30),
+                MercuryImpairmentScenario(0.0, 100),
+                MercuryImpairmentScenario(0.0, 300),
+                MercuryImpairmentScenario(1.0, 30),
+                MercuryImpairmentScenario(1.0, 100),
+                MercuryImpairmentScenario(1.0, 300),
+                MercuryImpairmentScenario(3.0, 30),
+                MercuryImpairmentScenario(3.0, 100),
+                MercuryImpairmentScenario(3.0, 300),
+                MercuryImpairmentScenario(5.0, 30),
+                MercuryImpairmentScenario(5.0, 100),
+                MercuryImpairmentScenario(5.0, 300),
+                MercuryImpairmentScenario(10.0, 30),
+                MercuryImpairmentScenario(10.0, 100),
+                MercuryImpairmentScenario(10.0, 300),
+            )
     }
 }

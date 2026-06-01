@@ -12,15 +12,15 @@ import org.json.JSONObject
 data class PinnedAgentGridConfig(
     val pinnedURIs: List<String> = defaultPinnedURIs(),
     val displayMode: DisplayMode = DisplayMode.COMFORTABLE,
-    val lastRearrangedAtEpoch: Long? = null
+    val lastRearrangedAtEpoch: Long? = null,
 ) {
     enum class DisplayMode(val token: String, val columns: Int, val rows: Int) {
         COMFORTABLE("comfortable", 4, 3),
-        COMPACT("compact", 6, 2);
+        COMPACT("compact", 6, 2),
+        ;
 
         companion object {
-            fun fromToken(value: String?): DisplayMode =
-                values().firstOrNull { it.token == value } ?: COMFORTABLE
+            fun fromToken(value: String?): DisplayMode = values().firstOrNull { it.token == value } ?: COMFORTABLE
         }
     }
 
@@ -28,17 +28,21 @@ data class PinnedAgentGridConfig(
         val seen = linkedSetOf<String>()
         val deduped = pinnedURIs.filter { uri -> seen.add(uri) }
         val trimmed = deduped.take(MAX_SLOTS)
-        val defaultMigrated = if (
-            lastRearrangedAtEpoch == null &&
-            trimmed == legacyDefaultPinnedURIsBeforeDroidForge()
-        ) {
-            defaultPinnedURIs()
-        } else {
-            trimmed
-        }
-        val nonEmpty = if (trimmed.isEmpty())
-            defaultPinnedURIs().take(1)
-        else defaultMigrated
+        val defaultMigrated =
+            if (
+                lastRearrangedAtEpoch == null &&
+                trimmed == legacyDefaultPinnedURIsBeforeDroidForge()
+            ) {
+                defaultPinnedURIs()
+            } else {
+                trimmed
+            }
+        val nonEmpty =
+            if (trimmed.isEmpty()) {
+                defaultPinnedURIs().take(1)
+            } else {
+                defaultMigrated
+            }
         return copy(pinnedURIs = nonEmpty)
     }
 
@@ -46,7 +50,7 @@ data class PinnedAgentGridConfig(
         if (uri in pinnedURIs || pinnedURIs.size >= MAX_SLOTS) return this
         return copy(
             pinnedURIs = pinnedURIs + uri,
-            lastRearrangedAtEpoch = System.currentTimeMillis()
+            lastRearrangedAtEpoch = System.currentTimeMillis(),
         )
     }
 
@@ -54,32 +58,32 @@ data class PinnedAgentGridConfig(
         if (!uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)) {
             return pinning(uri)
         }
-        val reordered = listOf(uri) + pinnedURIs.filterNot {
-            it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)
-        }
+        val reordered =
+            listOf(uri) +
+                pinnedURIs.filterNot {
+                    it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)
+                }
         if (reordered.take(MAX_SLOTS) == pinnedURIs) return this
         return copy(
             pinnedURIs = reordered.take(MAX_SLOTS),
-            lastRearrangedAtEpoch = System.currentTimeMillis()
+            lastRearrangedAtEpoch = System.currentTimeMillis(),
         ).sanitized()
     }
 
-    fun hasPairedMacPin(): Boolean =
-        pinnedURIs.any { it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) }
+    fun hasPairedMacPin(): Boolean = pinnedURIs.any { it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) }
 
-    fun removingPairedMacPins(): PinnedAgentGridConfig =
-        copy(
-            pinnedURIs = pinnedURIs.filterNot {
-                it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)
-            },
-            lastRearrangedAtEpoch = System.currentTimeMillis()
-        ).sanitized()
+    fun removingPairedMacPins(): PinnedAgentGridConfig = copy(
+        pinnedURIs =
+        pinnedURIs.filterNot {
+            it.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)
+        },
+        lastRearrangedAtEpoch = System.currentTimeMillis(),
+    ).sanitized()
 
-    fun unpinning(uri: String): PinnedAgentGridConfig =
-        copy(
-            pinnedURIs = pinnedURIs.filter { it != uri },
-            lastRearrangedAtEpoch = System.currentTimeMillis()
-        ).sanitized()
+    fun unpinning(uri: String): PinnedAgentGridConfig = copy(
+        pinnedURIs = pinnedURIs.filter { it != uri },
+        lastRearrangedAtEpoch = System.currentTimeMillis(),
+    ).sanitized()
 
     fun moving(from: Int, to: Int): PinnedAgentGridConfig {
         if (pinnedURIs.isEmpty()) return this
@@ -90,7 +94,7 @@ data class PinnedAgentGridConfig(
         mutable.add(safeTo.coerceAtMost(mutable.size), value)
         return copy(
             pinnedURIs = mutable,
-            lastRearrangedAtEpoch = System.currentTimeMillis()
+            lastRearrangedAtEpoch = System.currentTimeMillis(),
         )
     }
 
@@ -112,17 +116,15 @@ data class PinnedAgentGridConfig(
         val DEFAULT_PAIRED_MAC_URI: String
             get() = AgentIdentity.pairedMacURI(DEFAULT_PAIRED_MAC_CONNECTION_ID)
 
-        fun defaultPinnedURIs(): List<String> =
-            AssistantRuntimeID.values().map { AgentIdentity.builtInURI(it) }
+        fun defaultPinnedURIs(): List<String> = AssistantRuntimeID.values().map { AgentIdentity.builtInURI(it) }
 
-        fun legacyDefaultPinnedURIsBeforeDroidForge(): List<String> =
-            listOf(
-                AssistantRuntimeID.HERMES,
-                AssistantRuntimeID.PI,
-                AssistantRuntimeID.CODEX,
-                AssistantRuntimeID.CLAUDE,
-                AssistantRuntimeID.OPEN_CLAW
-            ).map { AgentIdentity.builtInURI(it) }
+        fun legacyDefaultPinnedURIsBeforeDroidForge(): List<String> = listOf(
+            AssistantRuntimeID.HERMES,
+            AssistantRuntimeID.PI,
+            AssistantRuntimeID.CODEX,
+            AssistantRuntimeID.CLAUDE,
+            AssistantRuntimeID.OPEN_CLAW,
+        ).map { AgentIdentity.builtInURI(it) }
 
         val DEFAULT = PinnedAgentGridConfig()
 
@@ -133,13 +135,16 @@ data class PinnedAgentGridConfig(
                 val arr = obj.optJSONArray("pinnedURIs") ?: JSONArray()
                 val uris = (0 until arr.length()).map { arr.optString(it) }
                 val display = DisplayMode.fromToken(obj.optString("displayMode", "comfortable"))
-                val ts = if (obj.has("lastRearrangedAtEpoch"))
-                    obj.optLong("lastRearrangedAtEpoch")
-                else null
+                val ts =
+                    if (obj.has("lastRearrangedAtEpoch")) {
+                        obj.optLong("lastRearrangedAtEpoch")
+                    } else {
+                        null
+                    }
                 PinnedAgentGridConfig(
                     pinnedURIs = uris,
                     displayMode = display,
-                    lastRearrangedAtEpoch = ts
+                    lastRearrangedAtEpoch = ts,
                 ).sanitized()
             }.getOrDefault(DEFAULT)
         }

@@ -16,7 +16,6 @@ import org.junit.Before
 import org.junit.Test
 
 class TextExpansionSyncManagerTest {
-
     private val context = mockk<Context>(relaxed = true)
     private val dao = mockk<TextExpansionDao>(relaxed = true)
     private val prefs = mockk<SharedPreferences>(relaxed = true)

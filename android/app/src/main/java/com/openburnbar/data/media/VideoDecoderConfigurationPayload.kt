@@ -3,6 +3,21 @@ package com.openburnbar.data.media
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+/** Wire-format constants for OBVCFG1 decoder configuration payloads and Annex-B normalization. */
+private object VideoDecoderWireFormat {
+    const val BITS_PER_BYTE = 8
+    const val BYTE_MASK = 0xFF
+    const val INT32_BYTE_1_SHIFT = 24
+    const val INT32_BYTE_2_SHIFT = 16
+    const val INT32_BYTE_3_SHIFT = 8
+    const val INT32_BYTE_4_INDEX = 3
+    const val UINT16_LENGTH_BYTES = 2
+    const val INT32_LENGTH_BYTES = 4
+    const val MIN_LENGTH_PREFIXED_PAYLOAD_BYTES = 5
+    const val ANNEX_B_SHORT_START_CODE_INDEX = 2
+    const val ANNEX_B_LONG_START_CODE_INDEX = 3
+}
+
 /**
  * Android port of the Mac/iOS `VideoDecoderConfigurationPayload`.
  *
@@ -19,7 +34,8 @@ internal data class VideoDecoderConfigurationPayload(
 ) {
     enum class Codec(val rawValue: Byte) {
         HEVC(1),
-        H264(2);
+        H264(2),
+        ;
 
         companion object {
             fun from(rawValue: Byte): Codec? = entries.firstOrNull { it.rawValue == rawValue }
@@ -28,17 +44,18 @@ internal data class VideoDecoderConfigurationPayload(
 
     fun encoded(): ByteArray {
         require(parameterSets.isNotEmpty()) { "parameter sets cannot be empty" }
-        val payloadSize = MAGIC.size +
-            1 +
-            1 +
-            parameterSets.sumOf { 2 + it.size } +
-            4 +
-            samplePayload.size
+        val payloadSize =
+            MAGIC.size +
+                1 +
+                1 +
+                parameterSets.sumOf { VideoDecoderWireFormat.UINT16_LENGTH_BYTES + it.size } +
+                VideoDecoderWireFormat.INT32_LENGTH_BYTES +
+                samplePayload.size
         val buffer = ByteBuffer.allocate(payloadSize).order(ByteOrder.BIG_ENDIAN)
         buffer.put(MAGIC)
         buffer.put(codec.rawValue)
-        buffer.put(parameterSets.size.coerceAtMost(255).toByte())
-        parameterSets.take(255).forEach { parameterSet ->
+        buffer.put(parameterSets.size.coerceAtMost(VideoDecoderWireFormat.BYTE_MASK).toByte())
+        parameterSets.take(VideoDecoderWireFormat.BYTE_MASK).forEach { parameterSet ->
             require(parameterSet.size <= UShort.MAX_VALUE.toInt()) { "parameter set too large" }
             buffer.putShort(parameterSet.size.toShort())
             buffer.put(parameterSet)
@@ -54,27 +71,32 @@ internal data class VideoDecoderConfigurationPayload(
         fun decodeIfPresent(data: ByteArray): VideoDecoderConfigurationPayload? {
             if (data.size < MAGIC.size || !data.startsWith(MAGIC)) return null
             var offset = MAGIC.size
-            if (data.size < offset + 2) throw IllegalArgumentException("truncated video decoder config")
-            val codec = Codec.from(data[offset++])
-                ?: throw IllegalArgumentException("unknown video decoder config codec")
-            val count = data[offset++].toInt() and 0xFF
-            if (count <= 0) throw IllegalArgumentException("empty video decoder parameter sets")
+            if (data.size < offset + 2) require(false) { "truncated video decoder config" }
+            val codec =
+                Codec.from(data[offset++])
+                    ?: require(false) { "unknown video decoder config codec" }
+            val count = data[offset++].toInt() and VideoDecoderWireFormat.BYTE_MASK
+            if (count <= 0) require(false) { "empty video decoder parameter sets" }
 
             val parameterSets = mutableListOf<ByteArray>()
             repeat(count) {
-                if (data.size < offset + 2) throw IllegalArgumentException("truncated video decoder parameter set length")
+                if (data.size < offset + VideoDecoderWireFormat.UINT16_LENGTH_BYTES) {
+                    require(false) { "truncated video decoder parameter set length" }
+                }
                 val length = readUInt16(data, offset)
-                offset += 2
-                if (data.size < offset + length) throw IllegalArgumentException("truncated video decoder parameter set")
+                offset += VideoDecoderWireFormat.UINT16_LENGTH_BYTES
+                if (data.size < offset + length) require(false) { "truncated video decoder parameter set" }
                 parameterSets += data.copyOfRange(offset, offset + length)
                 offset += length
             }
 
-            if (data.size < offset + 4) throw IllegalArgumentException("truncated video decoder sample length")
+            if (data.size < offset + VideoDecoderWireFormat.INT32_LENGTH_BYTES) {
+                require(false) { "truncated video decoder sample length" }
+            }
             val sampleLength = readInt32(data, offset)
-            offset += 4
+            offset += VideoDecoderWireFormat.INT32_LENGTH_BYTES
             if (sampleLength < 0 || data.size < offset + sampleLength) {
-                throw IllegalArgumentException("truncated video decoder sample payload")
+                require(false) { "truncated video decoder sample payload" }
             }
             return VideoDecoderConfigurationPayload(
                 codec = codec,
@@ -83,18 +105,17 @@ internal data class VideoDecoderConfigurationPayload(
             )
         }
 
-        private fun ByteArray.startsWith(prefix: ByteArray): Boolean =
-            size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
+        private fun ByteArray.startsWith(prefix: ByteArray): Boolean = size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
 
         private fun readUInt16(data: ByteArray, offset: Int): Int =
-            ((data[offset].toInt() and 0xFF) shl 8) or
-                (data[offset + 1].toInt() and 0xFF)
+            data[offset].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.BITS_PER_BYTE or
+                data[offset + 1].toInt() and VideoDecoderWireFormat.BYTE_MASK
 
         private fun readInt32(data: ByteArray, offset: Int): Int =
-            ((data[offset].toInt() and 0xFF) shl 24) or
-                ((data[offset + 1].toInt() and 0xFF) shl 16) or
-                ((data[offset + 2].toInt() and 0xFF) shl 8) or
-                (data[offset + 3].toInt() and 0xFF)
+            data[offset].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.INT32_BYTE_1_SHIFT or
+                (data[offset + 1].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.INT32_BYTE_2_SHIFT) or
+                (data[offset + 2].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.INT32_BYTE_3_SHIFT) or
+                (data[offset + VideoDecoderWireFormat.INT32_BYTE_4_INDEX].toInt() and VideoDecoderWireFormat.BYTE_MASK)
     }
 }
 
@@ -118,16 +139,17 @@ internal object VideoPayloadNormalizer {
     }
 
     private fun splitLengthPrefixedNalUnits(payload: ByteArray): List<ByteArray>? {
-        if (payload.size < 5) return null
+        if (payload.size < VideoDecoderWireFormat.MIN_LENGTH_PREFIXED_PAYLOAD_BYTES) return null
         val units = mutableListOf<ByteArray>()
         var offset = 0
         while (offset < payload.size) {
-            if (payload.size - offset < 4) return null
-            val length = ((payload[offset].toInt() and 0xFF) shl 24) or
-                ((payload[offset + 1].toInt() and 0xFF) shl 16) or
-                ((payload[offset + 2].toInt() and 0xFF) shl 8) or
-                (payload[offset + 3].toInt() and 0xFF)
-            offset += 4
+            if (payload.size - offset < VideoDecoderWireFormat.INT32_LENGTH_BYTES) return null
+            val length =
+                payload[offset].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.INT32_BYTE_1_SHIFT or
+                    (payload[offset + 1].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.INT32_BYTE_2_SHIFT) or
+                    (payload[offset + 2].toInt() and VideoDecoderWireFormat.BYTE_MASK shl VideoDecoderWireFormat.INT32_BYTE_3_SHIFT) or
+                    (payload[offset + VideoDecoderWireFormat.INT32_BYTE_4_INDEX].toInt() and VideoDecoderWireFormat.BYTE_MASK)
+            offset += VideoDecoderWireFormat.INT32_LENGTH_BYTES
             if (length <= 0 || payload.size - offset < length) return null
             units += payload.copyOfRange(offset, offset + length)
             offset += length
@@ -135,9 +157,14 @@ internal object VideoPayloadNormalizer {
         return units.takeIf { it.isNotEmpty() }
     }
 
-    private fun ByteArray.hasAnnexBStartCode(): Boolean =
-        size >= 4 && this[0] == 0.toByte() && this[1] == 0.toByte() &&
-            ((this[2] == 1.toByte()) || (this[2] == 0.toByte() && this[3] == 1.toByte()))
+    private fun ByteArray.hasAnnexBStartCode(): Boolean = size >= VideoDecoderWireFormat.INT32_LENGTH_BYTES &&
+        this[0] == 0.toByte() &&
+        this[1] == 0.toByte() &&
+        (
+            this[VideoDecoderWireFormat.ANNEX_B_SHORT_START_CODE_INDEX] == 1.toByte() ||
+                this[VideoDecoderWireFormat.ANNEX_B_SHORT_START_CODE_INDEX] == 0.toByte() &&
+                this[VideoDecoderWireFormat.ANNEX_B_LONG_START_CODE_INDEX] == 1.toByte()
+            )
 
     private fun withStartCode(nal: ByteArray): ByteArray = START_CODE + nal
 

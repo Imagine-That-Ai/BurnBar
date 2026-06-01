@@ -1,10 +1,12 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.missions
 
 import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,7 +20,6 @@ import org.junit.Test
  * gRPC). Hooking up an emulator is the instrumented suite's job.
  */
 class MobileMissionConsoleHostTest {
-
     private fun snapshot(
         id: String,
         status: String,
@@ -48,25 +49,27 @@ class MobileMissionConsoleHostTest {
 
     @Test
     fun snapshot_running_with_tool_event_promotes_to_tooling_phase() {
-        val event = CLIAgentMissionEvent(
-            sequence = 1,
-            timestamp = Instant.now().toString(),
-            kind = "tool_call",
-            phase = "tool_use",
-            title = "ripgrep search",
-            message = "rg HermesSquare",
-            fullMessage = null,
-            messageLength = null,
-            messageTruncated = false,
-            runtime = "claude",
-            source = "mac",
-            toolName = "ripgrep",
-            artifactPath = null,
-            changedFilePath = null,
-            isError = false,
-        )
-        val mission = snapshot(id = "m-1", status = "running", events = listOf(event), selectedRuntime = "claude")
-            .toActiveMission()
+        val event =
+            CLIAgentMissionEvent(
+                sequence = 1,
+                timestamp = Instant.now().toString(),
+                kind = "tool_call",
+                phase = "tool_use",
+                title = "ripgrep search",
+                message = "rg HermesSquare",
+                fullMessage = null,
+                messageLength = null,
+                messageTruncated = false,
+                runtime = "claude",
+                source = "mac",
+                toolName = "ripgrep",
+                artifactPath = null,
+                changedFilePath = null,
+                isError = false,
+            )
+        val mission =
+            snapshot(id = "m-1", status = "running", events = listOf(event), selectedRuntime = "claude")
+                .toActiveMission()
         assertEquals(ActiveMission.Phase.TOOLING, mission.phase)
         assertEquals("ripgrep", mission.currentToolName)
         assertEquals("claude", mission.runtimeID)

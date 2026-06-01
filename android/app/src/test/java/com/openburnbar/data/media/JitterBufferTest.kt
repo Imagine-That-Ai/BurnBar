@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.media
 
 import org.junit.Assert.assertEquals
@@ -7,7 +10,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JitterBufferTest {
-
     private fun frame(index: UInt) = MediaFrame(
         kind = MediaFrame.Kind.AUDIO_OPUS,
         frameIndex = index,

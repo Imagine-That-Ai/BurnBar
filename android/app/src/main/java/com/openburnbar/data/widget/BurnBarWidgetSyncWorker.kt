@@ -23,6 +23,10 @@ import com.openburnbar.ui.widget.BurnBarMediumWidget
 import com.openburnbar.ui.widget.BurnBarSmallWidget
 import java.util.concurrent.TimeUnit
 
+private const val VAL_15 = 15
+private const val VAL_3 = 3
+private const val VAL_7 = 7
+
 /**
  * Hydrates the widget snapshot from Firestore on a 15-minute cadence (the
  * minimum WorkManager periodic interval — matches iOS's hard-coded refresh
@@ -35,9 +39,8 @@ import java.util.concurrent.TimeUnit
  */
 class BurnBarWidgetSyncWorker(
     appContext: Context,
-    params: WorkerParameters
+    params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
-
     override suspend fun doWork(): Result {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
@@ -55,21 +58,25 @@ class BurnBarWidgetSyncWorker(
     }
 
     private fun buildSnapshot(rollups: UsageRollups): BurnBarWidgetSnapshot {
-        val topProviders = rollups.providerSummaries
-            .sortedByDescending { it.totalTokens }
-            .take(3)
-        val names = topProviders.map { p ->
-            AgentProvider.fromKey(p.provider)?.displayName ?: p.provider
-        }
+        val topProviders =
+            rollups.providerSummaries
+                .sortedByDescending { it.totalTokens }
+                .take(VAL_3)
+        val names =
+            topProviders.map { p ->
+                AgentProvider.fromKey(p.provider)?.displayName ?: p.provider
+            }
         val tokens = topProviders.map { it.totalTokens }
-        val models = rollups.modelSummaries
-            .sortedByDescending { it.totalCost }
-            .take(3)
-            .map { it.accountLabel.ifBlank { it.provider } }
-        val daily = rollups.dailyPoints.entries
-            .sortedBy { it.key }
-            .takeLast(7)
-            .map { it.value }
+        val models =
+            rollups.modelSummaries
+                .sortedByDescending { it.totalCost }
+                .take(VAL_3)
+                .map { it.accountLabel.ifBlank { it.provider } }
+        val daily =
+            rollups.dailyPoints.entries
+                .sortedBy { it.key }
+                .takeLast(VAL_7)
+                .map { it.value }
         return BurnBarWidgetSnapshot(
             heroTotalCost = rollups.today,
             heroTotalTokens = rollups.todayTokens,
@@ -79,7 +86,7 @@ class BurnBarWidgetSyncWorker(
             topModels = models,
             dailyPoints = daily,
             windowKey = "today",
-            lastSyncMs = System.currentTimeMillis()
+            lastSyncMs = System.currentTimeMillis(),
         )
     }
 
@@ -89,47 +96,51 @@ class BurnBarWidgetSyncWorker(
 
         /** Schedule the 15-min periodic job. Idempotent — replaces on conflict. */
         fun enqueuePeriodic(context: Context) {
-            val request = PeriodicWorkRequestBuilder<BurnBarWidgetSyncWorker>(
-                15, TimeUnit.MINUTES
-            )
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
+            val request =
+                PeriodicWorkRequestBuilder<BurnBarWidgetSyncWorker>(
+                    VAL_15,
+                    TimeUnit.MINUTES,
                 )
-                .build()
+                    .setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build(),
+                    )
+                    .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_PERIODIC,
                 ExistingPeriodicWorkPolicy.UPDATE,
-                request
+                request,
             )
         }
 
         /** Kick a one-shot refresh immediately. Used by DashboardStore after a rollup load. */
         fun requestImmediate(context: Context) {
-            val request = OneTimeWorkRequestBuilder<BurnBarWidgetSyncWorker>()
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
-                )
-                .build()
+            val request =
+                OneTimeWorkRequestBuilder<BurnBarWidgetSyncWorker>()
+                    .setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build(),
+                    )
+                    .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_IMMEDIATE,
                 ExistingWorkPolicy.REPLACE,
-                request
+                request,
             )
         }
 
         /** Push the latest snapshot into every Glance widget surface. */
         suspend fun refreshAllReceivers(context: Context) {
-            val widgets: List<GlanceAppWidget> = listOf(
-                BurnBarSmallWidget,
-                BurnBarMediumWidget,
-                BurnBarLargeWidget,
-                BurnBarLockCircularWidget,
-                BurnBarLockRectangularWidget
-            )
+            val widgets: List<GlanceAppWidget> =
+                listOf(
+                    BurnBarSmallWidget,
+                    BurnBarMediumWidget,
+                    BurnBarLargeWidget,
+                    BurnBarLockCircularWidget,
+                    BurnBarLockRectangularWidget,
+                )
             for (widget in widgets) {
                 runCatching { widget.updateAll(context) }
             }

@@ -2,7 +2,9 @@ package com.openburnbar.data.stores
 
 import android.content.Context
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -15,7 +17,6 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "burnbar_preferences")
 
 class PreferencesStore(private val context: Context) {
-
     private val dataStore = context.dataStore
 
     // Keys
@@ -28,56 +29,64 @@ class PreferencesStore(private val context: Context) {
     }
 
     enum class ThemeMode {
-        SYSTEM, LIGHT, DARK
+        SYSTEM,
+        LIGHT,
+        DARK,
     }
 
     enum class DisplayMode {
-        STANDARD, COMPACT
+        STANDARD,
+        COMPACT,
     }
 
     // ── Theme Mode ──
 
-    val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
-        when (prefs[THEME_MODE]) {
-            "light" -> ThemeMode.LIGHT
-            "dark" -> ThemeMode.DARK
-            else -> ThemeMode.SYSTEM
+    val themeMode: Flow<ThemeMode> =
+        dataStore.data.map { prefs ->
+            when (prefs[THEME_MODE]) {
+                "light" -> ThemeMode.LIGHT
+                "dark" -> ThemeMode.DARK
+                else -> ThemeMode.SYSTEM
+            }
         }
-    }
 
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { prefs ->
-            prefs[THEME_MODE] = when (mode) {
-                ThemeMode.LIGHT -> "light"
-                ThemeMode.DARK -> "dark"
-                ThemeMode.SYSTEM -> "system"
-            }
+            prefs[THEME_MODE] =
+                when (mode) {
+                    ThemeMode.LIGHT -> "light"
+                    ThemeMode.DARK -> "dark"
+                    ThemeMode.SYSTEM -> "system"
+                }
         }
     }
 
     // ── Display Mode ──
 
-    val displayMode: Flow<DisplayMode> = dataStore.data.map { prefs ->
-        when (prefs[DISPLAY_MODE]) {
-            "compact" -> DisplayMode.COMPACT
-            else -> DisplayMode.STANDARD
+    val displayMode: Flow<DisplayMode> =
+        dataStore.data.map { prefs ->
+            when (prefs[DISPLAY_MODE]) {
+                "compact" -> DisplayMode.COMPACT
+                else -> DisplayMode.STANDARD
+            }
         }
-    }
 
     suspend fun setDisplayMode(mode: DisplayMode) {
         dataStore.edit { prefs ->
-            prefs[DISPLAY_MODE] = when (mode) {
-                DisplayMode.COMPACT -> "compact"
-                DisplayMode.STANDARD -> "standard"
-            }
+            prefs[DISPLAY_MODE] =
+                when (mode) {
+                    DisplayMode.COMPACT -> "compact"
+                    DisplayMode.STANDARD -> "standard"
+                }
         }
     }
 
     // ── Cloud Banner ──
 
-    val cloudBannerDismissed: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[CLOUD_BANNER_DISMISSED] == true
-    }
+    val cloudBannerDismissed: Flow<Boolean> =
+        dataStore.data.map { prefs ->
+            prefs[CLOUD_BANNER_DISMISSED] == true
+        }
 
     suspend fun dismissCloudBanner() {
         dataStore.edit { prefs ->
@@ -87,9 +96,10 @@ class PreferencesStore(private val context: Context) {
 
     // ── Onboarding ──
 
-    val onboardingCompleted: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[ONBOARDING_COMPLETED] == true
-    }
+    val onboardingCompleted: Flow<Boolean> =
+        dataStore.data.map { prefs ->
+            prefs[ONBOARDING_COMPLETED] == true
+        }
 
     suspend fun setOnboardingCompleted(completed: Boolean) {
         dataStore.edit { prefs ->
@@ -99,9 +109,10 @@ class PreferencesStore(private val context: Context) {
 
     // ── Last Sync Time ──
 
-    val lastSyncTime: Flow<Long> = dataStore.data.map { prefs ->
-        prefs[LAST_SYNC_TIME] ?: 0L
-    }
+    val lastSyncTime: Flow<Long> =
+        dataStore.data.map { prefs ->
+            prefs[LAST_SYNC_TIME] ?: 0L
+        }
 
     suspend fun setLastSyncTime(time: Long) {
         dataStore.edit { prefs ->
@@ -111,8 +122,7 @@ class PreferencesStore(private val context: Context) {
 
     // ── Generic helpers ──
 
-    fun <T> flowFor(key: Preferences.Key<T>, defaultValue: T): Flow<T> =
-        dataStore.data.map { it[key] ?: defaultValue }
+    fun <T> flowFor(key: Preferences.Key<T>, defaultValue: T): Flow<T> = dataStore.data.map { it[key] ?: defaultValue }
 
     suspend fun <T> setValue(key: Preferences.Key<T>, value: T) {
         dataStore.edit { it[key] = value }

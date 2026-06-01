@@ -9,6 +9,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import java.io.File
+import java.lang.IllegalStateException
+import java.util.Date
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,9 +28,9 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.io.File
-import java.util.Date
-import java.util.UUID
+
+private const val VAL_200 = 200
+private const val VAL_600 = 600
 
 /**
  * Persisted shape of a single assistant chat thread on Android. Matches the
@@ -35,7 +39,7 @@ import java.util.UUID
 @Serializable
 data class AssistantChatThread(
     val id: String,
-    val runtime: String,            // "hermes" or "pi"
+    val runtime: String, // "hermes" or "pi"
     var title: String,
     var preview: String,
     var modelName: String? = null,
@@ -45,7 +49,7 @@ data class AssistantChatThread(
     var customTitle: String? = null,
     var labelColorHex: String? = null,
     var isPinned: Boolean = false,
-    var priorityOrder: Int? = null
+    var priorityOrder: Int? = null,
 ) {
     val messageCount: Int get() = messages.size
 }
@@ -53,13 +57,13 @@ data class AssistantChatThread(
 @Serializable
 data class AssistantChatMessage(
     val id: String = UUID.randomUUID().toString(),
-    val role: String,              // "user" | "assistant" | "system"
+    val role: String, // "user" | "assistant" | "system"
     var text: String,
     var timestampMillis: Long,
     var modelName: String? = null,
     var isError: Boolean = false,
     var attachments: List<AssistantChatAttachment> = emptyList(),
-    var hermes: AssistantChatHermesMetadata? = null
+    var hermes: AssistantChatHermesMetadata? = null,
 )
 
 @Serializable
@@ -70,7 +74,7 @@ data class AssistantChatAttachment(
     val mimeType: String,
     val byteSize: Long,
     val workspaceRelativePath: String,
-    val extractedTextPreview: String? = null
+    val extractedTextPreview: String? = null,
 )
 
 @Serializable
@@ -78,14 +82,14 @@ data class AssistantChatHermesMetadata(
     val requestedModelID: String? = null,
     val responseModelID: String? = null,
     val toolCalls: List<AssistantChatToolCall> = emptyList(),
-    val usage: AssistantChatTokenUsage? = null
+    val usage: AssistantChatTokenUsage? = null,
 )
 
 @Serializable
 data class AssistantChatToolCall(
     val id: String,
     val name: String,
-    val status: String
+    val status: String,
 )
 
 @Serializable
@@ -97,7 +101,7 @@ data class AssistantChatTokenUsage(
     val providerTotalDurationSeconds: Double? = null,
     val responseStartedAtMillis: Long? = null,
     val firstResponseChunkAtMillis: Long? = null,
-    val responseCompletedAtMillis: Long? = null
+    val responseCompletedAtMillis: Long? = null,
 )
 
 /**
@@ -108,7 +112,7 @@ data class AssistantChatTokenUsage(
 @Serializable
 data class AssistantChatHistorySnapshot(
     val threads: List<AssistantChatThread> = emptyList(),
-    val tombstones: Map<String, Long> = emptyMap()
+    val tombstones: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -116,15 +120,20 @@ data class AssistantChatHistorySnapshot(
  */
 interface AssistantChatLocalStore {
     fun setActivePartition(key: String)
+
     fun load(): AssistantChatHistorySnapshot
+
     fun save(snapshot: AssistantChatHistorySnapshot)
 }
 
 interface AssistantChatCloudMirror {
     val isAvailable: Boolean
     val currentUserID: String?
+
     suspend fun upsert(thread: AssistantChatThread)
+
     suspend fun delete(threadID: String)
+
     suspend fun fetchAll(): List<AssistantChatThread>
 }
 
@@ -140,7 +149,7 @@ interface AssistantChatCloudMirror {
 class AssistantChatHistoryStore internal constructor(
     private val local: AssistantChatLocalStore,
     private val cloud: AssistantChatCloudMirror?,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
     private val tag = "AssistantChatHistory"
     private val mutex = Mutex()
@@ -162,11 +171,9 @@ class AssistantChatHistoryStore internal constructor(
         switchPartition(cloud?.currentUserID)
     }
 
-    fun threadsFor(runtime: String): List<AssistantChatThread> =
-        _threads.value.filter { it.runtime == runtime }
+    fun threadsFor(runtime: String): List<AssistantChatThread> = _threads.value.filter { it.runtime == runtime }
 
-    fun thread(id: String): AssistantChatThread? =
-        _threads.value.firstOrNull { it.id == id }
+    fun thread(id: String): AssistantChatThread? = _threads.value.firstOrNull { it.id == id }
 
     /** Idempotent — safe on every app launch. */
     fun bootstrap() {
@@ -193,13 +200,14 @@ class AssistantChatHistoryStore internal constructor(
         val cloud = cloud ?: return
         if (!cloud.isAvailable) return
 
-        val remote: List<AssistantChatThread> = try {
-            cloud.fetchAll()
-        } catch (e: Exception) {
-            _lastSyncError.value = e.message
-            Log.w(tag, "Refresh from cloud failed", e)
-            return
-        }
+        val remote: List<AssistantChatThread> =
+            try {
+                cloud.fetchAll()
+            } catch (e: IllegalStateException) {
+                _lastSyncError.value = e.message
+                Log.w(tag, "Refresh from cloud failed", e)
+                return
+            }
 
         mutex.withLock {
             val filteredRemote = remote.filter { it.id !in tombstones }
@@ -233,7 +241,7 @@ class AssistantChatHistoryStore internal constructor(
     }
 
     fun upsert(thread: AssistantChatThread) {
-        if (thread.id in tombstones) return  // Refuse resurrection.
+        if (thread.id in tombstones) return // Refuse resurrection.
         val updated = thread.copy(updatedAtMillis = System.currentTimeMillis())
         val current = _threads.value.toMutableList()
         val idx = current.indexOfFirst { it.id == updated.id }
@@ -259,13 +267,7 @@ class AssistantChatHistoryStore internal constructor(
         }
     }
 
-    fun updateThreadMetadata(
-        id: String,
-        customTitle: String? = null,
-        labelColorHex: String? = null,
-        isPinned: Boolean? = null,
-        priorityOrder: Int? = null
-    ) {
+    fun updateThreadMetadata(id: String, customTitle: String? = null, labelColorHex: String? = null, isPinned: Boolean? = null, priorityOrder: Int? = null) {
         val thread = thread(id) ?: return
         if (customTitle != null) {
             thread.customTitle = customTitle.takeIf { it.isNotEmpty() }
@@ -317,15 +319,16 @@ class AssistantChatHistoryStore internal constructor(
 
     private fun scheduleCloudMirror(thread: AssistantChatThread, immediate: Boolean = false) {
         val cloud = cloud ?: return
-        val job = scope.launch {
-            if (!immediate) delay(600)
-            try {
-                cloud.upsert(thread)
-                synchronized(pendingMirrorsLock) { pendingMirrors.remove(thread.id) }
-            } catch (e: Exception) {
-                _lastSyncError.value = e.message
+        val job =
+            scope.launch {
+                if (!immediate) delay(VAL_600)
+                try {
+                    cloud.upsert(thread)
+                    synchronized(pendingMirrorsLock) { pendingMirrors.remove(thread.id) }
+                } catch (e: IllegalStateException) {
+                    _lastSyncError.value = e.message
+                }
             }
-        }
         synchronized(pendingMirrorsLock) {
             pendingMirrors[thread.id]?.cancel()
             pendingMirrors[thread.id] = job
@@ -340,23 +343,20 @@ class AssistantChatHistoryStore internal constructor(
             return if (cleaned.isEmpty()) "local" else cleaned
         }
 
-        fun sorted(threads: List<AssistantChatThread>): List<AssistantChatThread> =
-            threads.sortedByDescending { it.updatedAtMillis }
+        fun sorted(threads: List<AssistantChatThread>): List<AssistantChatThread> = threads.sortedByDescending { it.updatedAtMillis }
 
-        fun merge(
-            local: List<AssistantChatThread>,
-            remote: List<AssistantChatThread>
-        ): List<AssistantChatThread> {
+        fun merge(local: List<AssistantChatThread>, remote: List<AssistantChatThread>): List<AssistantChatThread> {
             val byID = local.associateBy { it.id }.toMutableMap()
             for (thread in remote) {
                 val existing = byID[thread.id]
-                byID[thread.id] = if (existing == null) {
-                    thread
-                } else if (existing.updatedAtMillis >= thread.updatedAtMillis) {
-                    existing
-                } else {
-                    thread
-                }
+                byID[thread.id] =
+                    if (existing == null) {
+                        thread
+                    } else if (existing.updatedAtMillis >= thread.updatedAtMillis) {
+                        existing
+                    } else {
+                        thread
+                    }
             }
             return sorted(byID.values.toList())
         }
@@ -373,10 +373,11 @@ class AssistantChatHistoryStore internal constructor(
             synchronized(this) {
                 val again = INSTANCE
                 if (again != null) return again
-                val store = AssistantChatHistoryStore(
-                    local = AssistantChatFileLocalStore(context.applicationContext),
-                    cloud = AssistantChatFirestoreMirror()
-                )
+                val store =
+                    AssistantChatHistoryStore(
+                        local = AssistantChatFileLocalStore(context.applicationContext),
+                        cloud = AssistantChatFirestoreMirror(),
+                    )
                 store.attachAuthListener()
                 INSTANCE = store
                 return store
@@ -392,11 +393,12 @@ class AssistantChatHistoryStore internal constructor(
 internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLocalStore {
     private val directory: File = File(context.filesDir, "assistant-chat-history").apply { mkdirs() }
     private var partitionKey: String = "local"
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-        prettyPrint = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+            prettyPrint = true
+        }
 
     override fun setActivePartition(key: String) {
         partitionKey = key
@@ -426,8 +428,7 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
         }
     }
 
-    private fun fileNameFor(partition: String): String =
-        "assistant-chat-history-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}.json"
+    private fun fileNameFor(partition: String): String = "assistant-chat-history-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}.json"
 
     private fun fileFor(partition: String): File = File(directory, fileNameFor(partition))
 }
@@ -438,34 +439,32 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
  */
 internal class AssistantChatFirestoreMirror(
     private val firestore: FirebaseFirestore = Firebase.firestore,
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) : AssistantChatCloudMirror {
-
     override val isAvailable: Boolean
         get() = auth.currentUser != null
 
     override val currentUserID: String?
         get() = auth.currentUser?.uid
 
-    private fun collection(uid: String) =
-        firestore.collection("users").document(uid).collection("mobile_assistant_chats")
+    private fun collection(uid: String) = firestore.collection("users").document(uid).collection("mobile_assistant_chats")
 
-    private fun requireUID(): String =
-        auth.currentUser?.uid ?: throw IllegalStateException("Not signed in")
+    private fun requireUID(): String = auth.currentUser?.uid ?: error("Not signed in")
 
     override suspend fun upsert(thread: AssistantChatThread) {
         val uid = requireUID()
-        val payload = mutableMapOf<String, Any?>(
-            "id" to thread.id,
-            "runtime" to thread.runtime,
-            "title" to thread.title,
-            "preview" to thread.preview,
-            "modelName" to thread.modelName,
-            "createdAt" to Timestamp(Date(thread.createdAtMillis)),
-            "updatedAt" to Timestamp(Date(thread.updatedAtMillis)),
-            "messageCount" to thread.messageCount,
-            "messages" to thread.messages.map(::encodeMessage)
-        )
+        val payload =
+            mutableMapOf<String, Any?>(
+                "id" to thread.id,
+                "runtime" to thread.runtime,
+                "title" to thread.title,
+                "preview" to thread.preview,
+                "modelName" to thread.modelName,
+                "createdAt" to Timestamp(Date(thread.createdAtMillis)),
+                "updatedAt" to Timestamp(Date(thread.updatedAtMillis)),
+                "messageCount" to thread.messageCount,
+                "messages" to thread.messages.map(::encodeMessage),
+            )
         if (thread.customTitle != null) {
             payload["customTitle"] = thread.customTitle
         }
@@ -486,37 +485,40 @@ internal class AssistantChatFirestoreMirror(
 
     override suspend fun fetchAll(): List<AssistantChatThread> {
         val uid = requireUID()
-        val snapshot = collection(uid)
-            .orderBy("updatedAt", Query.Direction.DESCENDING)
-            .limit(200)
-            .get()
-            .await()
+        val snapshot =
+            collection(uid)
+                .orderBy("updatedAt", Query.Direction.DESCENDING)
+                .limit(VAL_200)
+                .get()
+                .await()
         return snapshot.documents.mapNotNull { document ->
             decodeThread(document.id, document.data ?: return@mapNotNull null)
         }
     }
 
     private fun encodeMessage(message: AssistantChatMessage): Map<String, Any?> {
-        val map = mutableMapOf<String, Any?>(
-            "id" to message.id,
-            "role" to message.role,
-            "text" to message.text,
-            "timestamp" to Timestamp(Date(message.timestampMillis)),
-            "modelName" to message.modelName,
-            "isError" to message.isError
-        )
+        val map =
+            mutableMapOf<String, Any?>(
+                "id" to message.id,
+                "role" to message.role,
+                "text" to message.text,
+                "timestamp" to Timestamp(Date(message.timestampMillis)),
+                "modelName" to message.modelName,
+                "isError" to message.isError,
+            )
         if (message.attachments.isNotEmpty()) {
-            map["attachments"] = message.attachments.map { attachment ->
-                mapOf(
-                    "id" to attachment.id,
-                    "kind" to attachment.kind,
-                    "displayName" to attachment.displayName,
-                    "mimeType" to attachment.mimeType,
-                    "byteSize" to attachment.byteSize,
-                    "workspaceRelativePath" to attachment.workspaceRelativePath,
-                    "extractedTextPreview" to attachment.extractedTextPreview
-                )
-            }
+            map["attachments"] =
+                message.attachments.map { attachment ->
+                    mapOf(
+                        "id" to attachment.id,
+                        "kind" to attachment.kind,
+                        "displayName" to attachment.displayName,
+                        "mimeType" to attachment.mimeType,
+                        "byteSize" to attachment.byteSize,
+                        "workspaceRelativePath" to attachment.workspaceRelativePath,
+                        "extractedTextPreview" to attachment.extractedTextPreview,
+                    )
+                }
         }
         message.hermes?.let { hermes ->
             val dict = mutableMapOf<String, Any?>()
@@ -544,9 +546,9 @@ internal class AssistantChatFirestoreMirror(
 
     internal fun decodeThread(documentID: String, data: Map<String, Any?>): AssistantChatThread? {
         val runtime = data["runtime"] as? String ?: return null
-        val id = (data["id"] as? String) ?: documentID
-        val title = (data["title"] as? String) ?: "Chat"
-        val preview = (data["preview"] as? String) ?: ""
+        val id = data["id"] as? String ?: documentID
+        val title = data["title"] as? String ?: "Chat"
+        val preview = data["preview"] as? String ?: ""
         val modelName = data["modelName"] as? String
         val createdAt = (data["createdAt"] as? Timestamp)?.toDate()?.time ?: System.currentTimeMillis()
         val updatedAt = (data["updatedAt"] as? Timestamp)?.toDate()?.time ?: createdAt
@@ -568,17 +570,17 @@ internal class AssistantChatFirestoreMirror(
             customTitle = customTitle,
             labelColorHex = labelColorHex,
             isPinned = isPinned,
-            priorityOrder = priorityOrder
+            priorityOrder = priorityOrder,
         )
     }
 
     private fun decodeMessage(raw: Map<String, Any?>): AssistantChatMessage? {
         val role = raw["role"] as? String ?: return null
         val text = raw["text"] as? String ?: return null
-        val id = (raw["id"] as? String) ?: UUID.randomUUID().toString()
+        val id = raw["id"] as? String ?: UUID.randomUUID().toString()
         val timestamp = (raw["timestamp"] as? Timestamp)?.toDate()?.time ?: System.currentTimeMillis()
         val modelName = raw["modelName"] as? String
-        val isError = (raw["isError"] as? Boolean) ?: false
+        val isError = raw["isError"] as? Boolean ?: false
 
         val attachmentDicts = raw["attachments"].asStringAnyNullableMapList()
         val attachments = attachmentDicts.mapNotNull(::decodeAttachment)
@@ -594,17 +596,27 @@ internal class AssistantChatFirestoreMirror(
             modelName = modelName,
             isError = isError,
             attachments = attachments,
-            hermes = hermes
+            hermes = hermes,
         )
     }
 
     private fun decodeAttachment(raw: Map<String, Any?>): AssistantChatAttachment? {
-        val id = raw["id"] as? String ?: return null
-        val kind = raw["kind"] as? String ?: return null
-        val displayName = raw["displayName"] as? String ?: return null
-        val mimeType = raw["mimeType"] as? String ?: return null
-        val byteSize = (raw["byteSize"] as? Number)?.toLong() ?: return null
-        val path = raw["workspaceRelativePath"] as? String ?: return null
+        val id = raw["id"] as? String
+        val kind = raw["kind"] as? String
+        val displayName = raw["displayName"] as? String
+        val mimeType = raw["mimeType"] as? String
+        val byteSize = (raw["byteSize"] as? Number)?.toLong()
+        val path = raw["workspaceRelativePath"] as? String
+        val hasRequiredAttachmentFields =
+            id != null &&
+                kind != null &&
+                displayName != null &&
+                mimeType != null &&
+                byteSize != null &&
+                path != null
+        if (!hasRequiredAttachmentFields) {
+            return null
+        }
         return AssistantChatAttachment(
             id = id,
             kind = kind,
@@ -612,7 +624,7 @@ internal class AssistantChatFirestoreMirror(
             mimeType = mimeType,
             byteSize = byteSize,
             workspaceRelativePath = path,
-            extractedTextPreview = raw["extractedTextPreview"] as? String
+            extractedTextPreview = raw["extractedTextPreview"] as? String,
         )
     }
 
@@ -620,26 +632,30 @@ internal class AssistantChatFirestoreMirror(
         val requested = raw["requestedModelID"] as? String
         val response = raw["responseModelID"] as? String
         val toolCallDicts = raw["toolCalls"].asStringAnyNullableMapList()
-        val toolCalls = toolCallDicts.mapNotNull { tc ->
-            val id = tc["id"] as? String ?: return@mapNotNull null
-            val name = tc["name"] as? String ?: return@mapNotNull null
-            val status = tc["status"] as? String ?: return@mapNotNull null
-            AssistantChatToolCall(id, name, status)
-        }
+        val toolCalls =
+            toolCallDicts.mapNotNull { tc ->
+                val id = tc["id"] as? String ?: return@mapNotNull null
+                val name = tc["name"] as? String ?: return@mapNotNull null
+                val status = tc["status"] as? String ?: return@mapNotNull null
+                AssistantChatToolCall(id, name, status)
+            }
         val usageDict = raw["usage"].asStringAnyNullableMap()
-        val usage = usageDict?.let { dict ->
-            AssistantChatTokenUsage(
-                outputTokens = (dict["outputTokens"] as? Number)?.toInt(),
-                totalTokens = (dict["totalTokens"] as? Number)?.toInt(),
-                source = dict["source"] as? String,
-                providerGenerationDurationSeconds = (dict["providerGenerationDurationSeconds"] as? Number)?.toDouble(),
-                providerTotalDurationSeconds = (dict["providerTotalDurationSeconds"] as? Number)?.toDouble(),
-                responseStartedAtMillis = (dict["responseStartedAt"] as? Timestamp)?.toDate()?.time,
-                firstResponseChunkAtMillis = (dict["firstResponseChunkAt"] as? Timestamp)?.toDate()?.time,
-                responseCompletedAtMillis = (dict["responseCompletedAt"] as? Timestamp)?.toDate()?.time
-            )
-        }
-        if (requested == null && response == null && toolCalls.isEmpty() && usage == null) return null
+        val usage =
+            usageDict?.let { dict ->
+                AssistantChatTokenUsage(
+                    outputTokens = (dict["outputTokens"] as? Number)?.toInt(),
+                    totalTokens = (dict["totalTokens"] as? Number)?.toInt(),
+                    source = dict["source"] as? String,
+                    providerGenerationDurationSeconds = (dict["providerGenerationDurationSeconds"] as? Number)?.toDouble(),
+                    providerTotalDurationSeconds = (dict["providerTotalDurationSeconds"] as? Number)?.toDouble(),
+                    responseStartedAtMillis = (dict["responseStartedAt"] as? Timestamp)?.toDate()?.time,
+                    firstResponseChunkAtMillis = (dict["firstResponseChunkAt"] as? Timestamp)?.toDate()?.time,
+                    responseCompletedAtMillis = (dict["responseCompletedAt"] as? Timestamp)?.toDate()?.time,
+                )
+            }
+        val hasHermesMetadata =
+            requested != null || response != null || toolCalls.isNotEmpty() || usage != null
+        if (!hasHermesMetadata) return null
         return AssistantChatHermesMetadata(requested, response, toolCalls, usage)
     }
 }

@@ -1,37 +1,43 @@
 package com.openburnbar.data.models
 
+private const val VAL_12 = 12
+private const val VAL_3 = 3
+
 /**
  * Cloud quota snapshots are stored per provider account and sourceId. Mobile
  * account surfaces should show one row/card per real account, not one row per
  * source document.
  */
 fun List<ProviderQuotaSnapshot>.deduplicatedByProviderAccount(): List<ProviderQuotaSnapshot> {
-    val merged = groupBy { it.providerAccountDedupKey() }
-        .values
-        .map { snapshots -> snapshots.mergeQuotaSnapshotGroup() }
-        .dropShadowedProviderLevelSnapshots()
+    val merged =
+        groupBy { it.providerAccountDedupKey() }
+            .values
+            .map { snapshots -> snapshots.mergeQuotaSnapshotGroup() }
+            .dropShadowedProviderLevelSnapshots()
 
     return merged
         .sortedWith(
             compareBy<ProviderQuotaSnapshot> { it.providerDisplaySortKey() }
                 .thenBy { it.accountLabel.orEmpty().lowercase() }
-                .thenBy { it.accountId.orEmpty() }
+                .thenBy { it.accountId.orEmpty() },
         )
 }
 
 private fun ProviderQuotaSnapshot.providerAccountDedupKey(): String {
     val providerKey = providerId?.takeIf { it.isNotBlank() } ?: provider
-    val accountKey = accountId?.takeIf { it.isNotBlank() }
-        ?: accountLabel?.takeIf { it.isNotBlank() }?.trim()?.lowercase()
-        ?: "provider-level"
+    val accountKey =
+        accountId?.takeIf { it.isNotBlank() }
+            ?: accountLabel?.takeIf { it.isNotBlank() }?.trim()?.lowercase()
+            ?: "provider-level"
     return "${providerKey.lowercase()}::$accountKey"
 }
 
 private fun List<ProviderQuotaSnapshot>.mergeQuotaSnapshotGroup(): ProviderQuotaSnapshot {
-    val ordered = sortedWith(
-        compareByDescending<ProviderQuotaSnapshot> { it.freshnessKey() }
-            .thenByDescending { it.id }
-    )
+    val ordered =
+        sortedWith(
+            compareByDescending<ProviderQuotaSnapshot> { it.freshnessKey() }
+                .thenByDescending { it.id },
+        )
     val latest = ordered.first()
     if (ordered.size == 1) return latest
 
@@ -43,12 +49,13 @@ private fun List<ProviderQuotaSnapshot>.mergeQuotaSnapshotGroup(): ProviderQuota
     val freshSnapshots = nonExplicitSnapshots.filter { !it.isTimeStaleForDedupe() }
     val bucketSourceSnapshots = freshSnapshots.ifEmpty { nonExplicitSnapshots }
 
-    val buckets = bucketSourceSnapshots
-        .flatMap { snapshot ->
-            snapshot.buckets.map { bucket -> bucket.bucketDedupKey() to bucket }
-        }
-        .distinctBy { (key, _) -> key }
-        .map { (_, bucket) -> bucket }
+    val buckets =
+        bucketSourceSnapshots
+            .flatMap { snapshot ->
+                snapshot.buckets.map { bucket -> bucket.bucketDedupKey() to bucket }
+            }
+            .distinctBy { (key, _) -> key }
+            .map { (_, bucket) -> bucket }
 
     return latest.copy(
         id = ordered.map { it.id }.filter { it.isNotBlank() }.distinct().joinToString("+"),
@@ -62,48 +69,47 @@ private fun List<ProviderQuotaSnapshot>.mergeQuotaSnapshotGroup(): ProviderQuota
         managementUrl = latest.managementUrl ?: ordered.firstNotNullOfOrNull { it.managementUrl?.takeIf(String::isNotBlank) },
         statusMessage = latest.statusMessage ?: ordered.firstNotNullOfOrNull { it.statusMessage?.takeIf(String::isNotBlank) },
         buckets = buckets,
-        updatedAt = latest.updatedAt ?: ordered.firstNotNullOfOrNull { it.updatedAt?.takeIf(String::isNotBlank) }
+        updatedAt = latest.updatedAt ?: ordered.firstNotNullOfOrNull { it.updatedAt?.takeIf(String::isNotBlank) },
     )
 }
 
 private fun ProviderQuotaSnapshot.freshnessKey(): String = updatedAt ?: fetchedAt ?: ""
 
 private fun ProviderQuotaSnapshot.isTimeStaleForDedupe(now: java.time.Instant = java.time.Instant.now()): Boolean {
-    val fetched = listOfNotNull(updatedAt, fetchedAt)
-        .firstNotNullOfOrNull { iso ->
-            iso
-                .takeIf { it.isNotBlank() }
-                ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
-        }
-        ?: return true
-    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(12)
+    val fetched =
+        listOfNotNull(updatedAt, fetchedAt)
+            .firstNotNullOfOrNull { iso ->
+                iso
+                    .takeIf { it.isNotBlank() }
+                    ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+            }
+            ?: return true
+    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(VAL_12)
 }
 
 private fun ProviderQuotaSnapshot.confidenceRank(): Int = when (confidence.lowercase()) {
-    "high" -> 3
+    "high" -> VAL_3
     "medium" -> 2
     "low" -> 1
     else -> 0
 }
 
-private fun ProviderQuotaSnapshot.providerDisplaySortKey(): String =
-    (providerId?.takeIf { it.isNotBlank() } ?: provider).lowercase()
+private fun ProviderQuotaSnapshot.providerDisplaySortKey(): String = (providerId?.takeIf { it.isNotBlank() } ?: provider).lowercase()
 
-private fun QuotaBucket.bucketDedupKey(): String =
-    "${quotaBucketToken(name)}::${quotaBucketToken(window)}::${quotaBucketToken(meta?.get("unit")?.toString())}"
+private fun QuotaBucket.bucketDedupKey(): String = "${quotaBucketToken(name)}::${quotaBucketToken(window)}::${quotaBucketToken(meta?.get("unit")?.toString())}"
 
-private fun quotaBucketToken(value: String?): String =
-    value
-        ?.lowercase()
-        ?.filter { it.isLetterOrDigit() }
-        .orEmpty()
+private fun quotaBucketToken(value: String?): String = value
+    ?.lowercase()
+    ?.filter { it.isLetterOrDigit() }
+    .orEmpty()
 
 private fun List<ProviderQuotaSnapshot>.dropShadowedProviderLevelSnapshots(): List<ProviderQuotaSnapshot> {
-    val providersWithAccountSnapshots = filter { snapshot ->
-        !snapshot.accountId.isNullOrBlank() || !snapshot.accountLabel.isNullOrBlank()
-    }
-        .map { it.providerDisplaySortKey() }
-        .toSet()
+    val providersWithAccountSnapshots =
+        filter { snapshot ->
+            !snapshot.accountId.isNullOrBlank() || !snapshot.accountLabel.isNullOrBlank()
+        }
+            .map { it.providerDisplaySortKey() }
+            .toSet()
 
     if (providersWithAccountSnapshots.isEmpty()) return this
 

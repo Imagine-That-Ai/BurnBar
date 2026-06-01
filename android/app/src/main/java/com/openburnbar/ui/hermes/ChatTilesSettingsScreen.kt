@@ -1,9 +1,11 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.hermes
 
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,89 +49,100 @@ fun ChatTilesSettingsScreen(onBack: () -> Unit) {
     var prefs by remember { mutableStateOf(loadPrefs(context).sanitized()) }
 
     Column(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState()),
     ) {
-        Header(onBack = onBack)
-
-        SectionHeader(
-            title = "Chat tiles",
-            subtitle = "Choose which assistants appear in the Chat tab's runtime pill. Hermes always stays available."
+        ChatTilesSettingsHeader(onBack = onBack)
+        ChatTilesRuntimeSection(
+            prefs = prefs,
+            onPrefsChange = { next ->
+                prefs = next
+                savePrefs(context, next)
+            },
         )
-        AssistantRuntimeID.values().forEach { runtime ->
-            TileToggleRow(
-                title = runtime.displayName,
-                subtitle = tileSubtitle(runtime),
-                icon = {
-                    ProviderLogo(
-                        runtime = runtime,
-                        size = 28.dp,
-                        circular = false
-                    )
-                },
-                checked = prefs.enabledTiles.contains(runtime),
-                onCheckedChange = { enabled ->
-                    val next = prefs.withTile(runtime, enabled)
-                    prefs = next
-                    savePrefs(context, next)
-                }
-            )
-        }
-
         Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
-
-        SectionHeader(
-            title = "Hermes models",
-            subtitle = "Each toggle hides or shows a sub-provider in the Hermes model picker."
+        ChatTilesHermesModelsSection(
+            prefs = prefs,
+            onPrefsChange = { next ->
+                prefs = next
+                savePrefs(context, next)
+            },
         )
-        HermesSubProvider.values().forEach { sub ->
-            TileToggleRow(
-                title = sub.displayName,
-                subtitle = "Routes Hermes traffic through ${sub.displayName}.",
-                icon = {
-                    ProviderLogo(
-                        subProvider = sub,
-                        size = 28.dp,
-                        circular = false
-                    )
-                },
-                checked = prefs.enabledHermesSubProviders.contains(sub),
-                onCheckedChange = { enabled ->
-                    val next = prefs.withHermesSubProvider(sub, enabled)
-                    prefs = next
-                    savePrefs(context, next)
-                }
-            )
-        }
-
         SelectedHermesModelRow(
             selectedModel = prefs.selectedHermesModelOverride,
             onReset = {
                 val next = prefs.setSelectedHermesModel(null)
                 prefs = next
                 savePrefs(context, next)
-            }
+            },
         )
-
         Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
     }
 }
 
 @Composable
-private fun Header(onBack: () -> Unit) {
+private fun ChatTilesRuntimeSection(prefs: ChatTilePreferences, onPrefsChange: (ChatTilePreferences) -> Unit) {
+    SectionHeader(
+        title = "Chat tiles",
+        subtitle = "Choose which assistants appear in the Chat tab's runtime pill. Hermes always stays available.",
+    )
+    AssistantRuntimeID.values().forEach { runtime ->
+        TileToggleRow(
+            title = runtime.displayName,
+            subtitle = tileSubtitle(runtime),
+            icon = {
+                ProviderLogo(
+                    runtime = runtime,
+                    size = 28.dp,
+                    circular = false,
+                )
+            },
+            checked = prefs.enabledTiles.contains(runtime),
+            onCheckedChange = { enabled -> onPrefsChange(prefs.withTile(runtime, enabled)) },
+        )
+    }
+}
+
+@Composable
+private fun ChatTilesHermesModelsSection(prefs: ChatTilePreferences, onPrefsChange: (ChatTilePreferences) -> Unit) {
+    SectionHeader(
+        title = "Hermes models",
+        subtitle = "Each toggle hides or shows a sub-provider in the Hermes model picker.",
+    )
+    HermesSubProvider.values().forEach { sub ->
+        TileToggleRow(
+            title = sub.displayName,
+            subtitle = "Routes Hermes traffic through ${sub.displayName}.",
+            icon = {
+                ProviderLogo(
+                    subProvider = sub,
+                    size = 28.dp,
+                    circular = false,
+                )
+            },
+            checked = prefs.enabledHermesSubProviders.contains(sub),
+            onCheckedChange = { enabled -> onPrefsChange(prefs.withHermesSubProvider(sub, enabled)) },
+        )
+    }
+}
+
+@Composable
+private fun ChatTilesSettingsHeader(onBack: () -> Unit) {
     Row(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.onSurface
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
         Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
@@ -139,7 +150,7 @@ private fun Header(onBack: () -> Unit) {
             text = "Chat tiles",
             fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -147,43 +158,39 @@ private fun Header(onBack: () -> Unit) {
 @Composable
 private fun SectionHeader(title: String, subtitle: String) {
     Column(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp)
+            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
     ) {
         Text(
             text = title,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = subtitle,
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            modifier = Modifier.padding(top = 2.dp)
+            modifier = Modifier.padding(top = 2.dp),
         )
     }
 }
 
 @Composable
-private fun TileToggleRow(
-    title: String,
-    subtitle: String,
-    icon: @Composable () -> Unit,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
+private fun TileToggleRow(title: String, subtitle: String, icon: @Composable () -> Unit, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
             .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier.size(28.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             icon()
         }
@@ -197,42 +204,42 @@ private fun TileToggleRow(
 }
 
 @Composable
-private fun SelectedHermesModelRow(
-    selectedModel: String?,
-    onReset: () -> Unit
-) {
+private fun SelectedHermesModelRow(selectedModel: String?, onReset: () -> Unit) {
     Row(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Selected: ${selectedModel?.takeIf { it.isNotBlank() } ?: "Automatic"}",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = "Automatic lets Hermes use the gateway default.",
                 fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
             )
         }
         Text(
             text = "Reset",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (selectedModel.isNullOrBlank()) {
+            color =
+            if (selectedModel.isNullOrBlank()) {
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
             } else {
                 MaterialTheme.colorScheme.primary
             },
-            modifier = Modifier
+            modifier =
+            Modifier
                 .clip(RoundedCornerShape(7.dp))
                 .clickable(enabled = !selectedModel.isNullOrBlank()) { onReset() }
-                .padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xs.dp)
+                .padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xs.dp),
         )
     }
 }

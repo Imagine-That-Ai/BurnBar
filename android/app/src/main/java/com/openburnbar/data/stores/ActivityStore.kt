@@ -2,19 +2,23 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.cloud.CloudConversationSearchRow
 import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.models.*
+import com.openburnbar.data.models.ProjectSummary
+import com.openburnbar.data.models.TokenUsage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
+private const val VAL_250 = 250
+
 class ActivityStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
-    private val cloudSearchFactory: () -> CloudConversationSearchService = { CloudConversationSearchService() }
+    private val cloudSearchFactory: () -> CloudConversationSearchService = { CloudConversationSearchService() },
 ) : ViewModel() {
     private val _usages = MutableStateFlow<List<TokenUsage>>(emptyList())
     val usages = _usages.asStateFlow()
@@ -58,7 +62,7 @@ class ActivityStore(
                 }
                 lastDoc = last
                 _hasMore.value = last != null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -75,7 +79,7 @@ class ActivityStore(
                 _usages.value = _usages.value + page
                 lastDoc = last
                 _hasMore.value = last != null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -91,7 +95,7 @@ class ActivityStore(
                 _usages.value = page
                 lastDoc = last
                 _hasMore.value = last != null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -107,22 +111,21 @@ class ActivityStore(
             _cloudSearchHits.value = emptyList()
             return
         }
-        searchJob = viewModelScope.launch {
-            try {
-                kotlinx.coroutines.delay(250)
-                if (lastSearchQuery != trimmed) return@launch
-                _cloudSearchHits.value = cloudSearchService().search(trimmed)
-            } catch (_: Exception) {
-                _cloudSearchHits.value = emptyList()
+        searchJob =
+            viewModelScope.launch {
+                try {
+                    kotlinx.coroutines.delay(VAL_250)
+                    if (lastSearchQuery != trimmed) return@launch
+                    _cloudSearchHits.value = cloudSearchService().search(trimmed)
+                } catch (_: Exception) {
+                    _cloudSearchHits.value = emptyList()
+                }
             }
-        }
     }
 
-    suspend fun loadCloudConversationBody(row: CloudConversationSearchRow): String =
-        cloudSearchService().loadBody(row)
+    suspend fun loadCloudConversationBody(row: CloudConversationSearchRow): String = cloudSearchService().loadBody(row)
 
-    private fun cloudSearchService(): CloudConversationSearchService =
-        cloudSearch ?: cloudSearchFactory().also { cloudSearch = it }
+    private fun cloudSearchService(): CloudConversationSearchService = cloudSearch ?: cloudSearchFactory().also { cloudSearch = it }
 
     fun setSegment(segment: StreamsSegment) {
         _selectedSegment.value = segment
@@ -130,7 +133,7 @@ class ActivityStore(
             viewModelScope.launch {
                 try {
                     _projects.value = repo.fetchProjects()
-                } catch (e: Exception) {
+                } catch (e: FirebaseException) {
                     _error.value = e.message
                 }
             }
@@ -139,28 +142,30 @@ class ActivityStore(
 
     fun startListening() {
         listenJob?.cancel()
-        listenJob = viewModelScope.launch {
-            // `.catch` is critical: the underlying Firestore snapshot
-            // listener flow propagates `PERMISSION_DENIED`,
-            // `UNAVAILABLE`, App Check rejections, etc. as exceptions.
-            // Without this guard the exception bubbles up the
-            // viewModelScope on `Dispatchers.Main.immediate` and
-            // crashes the entire activity. We surface the error into
-            // `_error` so the UI can render a real degraded state
-            // (banner / retry) instead of dying.
-            repo.listenToUsagePage()
-                .catch { e -> _error.value = e.message ?: e::class.simpleName }
-                .collect { items -> _usages.value = items }
-        }
+        listenJob =
+            viewModelScope.launch {
+                // `.catch` is critical: the underlying Firestore snapshot
+                // listener flow propagates `PERMISSION_DENIED`,
+                // `UNAVAILABLE`, App Check rejections, etc. as exceptions.
+                // Without this guard the exception bubbles up the
+                // viewModelScope on `Dispatchers.Main.immediate` and
+                // crashes the entire activity. We surface the error into
+                // `_error` so the UI can render a real degraded state
+                // (banner / retry) instead of dying.
+                repo.listenToUsagePage()
+                    .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                    .collect { items -> _usages.value = items }
+            }
     }
 
     fun startLiveUsageListening(startDate: Long) {
         liveListenJob?.cancel()
-        liveListenJob = viewModelScope.launch {
-            repo.listenToUsageSince(startDate)
-                .catch { e -> _error.value = e.message ?: e::class.simpleName }
-                .collect { items -> _liveUsages.value = items }
-        }
+        liveListenJob =
+            viewModelScope.launch {
+                repo.listenToUsageSince(startDate)
+                    .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                    .collect { items -> _liveUsages.value = items }
+            }
     }
 
     fun stopListening() {
@@ -175,5 +180,5 @@ enum class StreamsSegment(val label: String) {
     COCKPIT("Cockpit"),
     SESSIONS("Sessions"),
     MODELS("Models"),
-    PROJECTS("Projects")
+    PROJECTS("Projects"),
 }

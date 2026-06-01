@@ -6,9 +6,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
-import com.openburnbar.irohrelay.HermesRealtimeRelayPayload
 import com.openburnbar.irohrelay.HermesRelayChunkKind as RelayChunkKind
 import com.openburnbar.irohrelay.IrohDialTarget
+import com.openburnbar.irohrelay.IrohJniTransport
 import com.openburnbar.irohrelay.IrohPairingDirectory
 import com.openburnbar.irohrelay.IrohPairingDirectoryException
 import com.openburnbar.irohrelay.IrohPairingError
@@ -18,20 +18,20 @@ import com.openburnbar.irohrelay.IrohRelayProtocol
 import com.openburnbar.irohrelay.IrohRelayTransport
 import com.openburnbar.irohrelay.IrohRelayTransportError
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
-import com.openburnbar.irohrelay.IrohTransportAuditLogging
 import com.openburnbar.irohrelay.IrohTransportAuditEvent
+import com.openburnbar.irohrelay.IrohTransportAuditLogging
 import com.openburnbar.irohrelay.IrohTransportSelection
-import com.openburnbar.irohrelay.IrohJniTransport
 import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
-import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
-import org.json.JSONObject
+import kotlinx.coroutines.withTimeoutOrNull
+
+private const val MILLIS = 256
+private const val VAL_32 = 32
 
 /**
  * Android iroh transport. Conforms to `HermesRelayTransporting` so it
@@ -46,11 +46,8 @@ import org.json.JSONObject
  */
 interface HermesRelayTransporting {
     suspend fun sendUnary(payload: HermesRelayPayload, timeoutMillis: Long): String
-    suspend fun sendStreaming(
-        payload: HermesRelayPayload,
-        timeoutMillis: Long,
-        onSseEvent: suspend (String) -> Unit,
-    )
+
+    suspend fun sendStreaming(payload: HermesRelayPayload, timeoutMillis: Long, onSseEvent: suspend (String) -> Unit)
 }
 
 /** Encrypted relay payload — wire shape mirrors iOS `HermesRelayPayload`. */
@@ -79,7 +76,6 @@ class HermesIrohRelayTransport(
     private val connectTimeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
 ) : HermesRelayTransporting {
-
     private val stateLock = Mutex()
     private var endpoint: IrohRelayTransport? = null
     private var startedOnce: Boolean = false
@@ -100,11 +96,7 @@ class HermesIrohRelayTransport(
         return fragments.values.joinToString("")
     }
 
-    override suspend fun sendStreaming(
-        payload: HermesRelayPayload,
-        timeoutMillis: Long,
-        onSseEvent: suspend (String) -> Unit,
-    ) {
+    override suspend fun sendStreaming(payload: HermesRelayPayload, timeoutMillis: Long, onSseEvent: suspend (String) -> Unit) {
         // Streaming chat (`POST /v1/chat/completions`) arrives as
         // `.sse` chunks, each carrying one SSE event payload. `.error`
         // is terminal.
@@ -120,29 +112,30 @@ class HermesIrohRelayTransport(
         }
     }
 
-    private suspend fun send(
-        payload: HermesRelayPayload,
-        timeoutMillis: Long,
-        onChunk: suspend (StreamingChunk) -> Unit,
-    ) {
-        val uid = auth.currentUser?.uid
-            ?: throw HermesRelayException("Iroh relay requires a signed-in Firebase user.")
-        if (payload.relayEncryption != HermesRelayCrypto.ALGORITHM || payload.relayPublicKey.isBlank()) {
+    private fun relayAuthenticatedUid(payload: HermesRelayPayload): String {
+        val uid =
+            auth.currentUser?.uid
+                ?: throw HermesRelayException("Iroh relay requires a signed-in Firebase user.")
+        val relayEncryptionValid =
+            payload.relayEncryption == HermesRelayCrypto.ALGORITHM && payload.relayPublicKey.isNotBlank()
+        if (!relayEncryptionValid) {
             throw HermesRelayException(
-                "Update OpenBurnBar on your Mac and re-enable Remote Relay so this Android device can use encrypted relay traffic."
+                "Update OpenBurnBar on your Mac and re-enable Remote Relay so this Android device can use encrypted relay traffic.",
             )
         }
+        return uid
+    }
 
-        val publicKey = pairingPublicKeyProvider.fetchPublicKey(uid)
-
+    private suspend fun verifiedDialTarget(uid: String, payload: HermesRelayPayload, publicKey: ByteArray): IrohDialTarget {
         val publisher = IrohPairingPublisher(pairingDirectory)
-        val verifiedTarget: IrohDialTarget = try {
-            val target = publisher.fetchAndVerify(
-                uid = uid,
-                connectionId = payload.connectionID,
-                publicKey = publicKey,
-                nowMillis = nowMillis(),
-            )
+        return try {
+            val target =
+                publisher.fetchAndVerify(
+                    uid = uid,
+                    connectionId = payload.connectionID,
+                    publicKey = publicKey,
+                    nowMillis = nowMillis(),
+                )
             auditLogger.record(
                 event = IrohTransportAuditEvent.PAIRING_VERIFIED,
                 uid = uid,
@@ -153,30 +146,32 @@ class HermesIrohRelayTransport(
             )
             target
         } catch (err: IrohPairingDirectoryException) {
-            auditLogger.record(
-                event = IrohTransportAuditEvent.PAIRING_REJECTED,
-                uid = uid,
-                connectionId = payload.connectionID,
-                transport = null,
-                rttMillis = null,
-                detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(256)),
-            )
-            throw HermesRelayException("Could not verify iroh pairing record: ${err.message}")
+            throw pairingVerificationFailure(uid, payload.connectionID, err)
         } catch (err: IrohPairingError) {
-            auditLogger.record(
-                event = IrohTransportAuditEvent.PAIRING_REJECTED,
-                uid = uid,
-                connectionId = payload.connectionID,
-                transport = null,
-                rttMillis = null,
-                detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(256)),
-            )
-            throw HermesRelayException("Could not verify iroh pairing record: ${err.message}")
+            throw pairingVerificationFailure(uid, payload.connectionID, err)
         }
+    }
 
+    private fun pairingVerificationFailure(uid: String, connectionId: String, err: Throwable): HermesRelayException {
+        auditLogger.record(
+            event = IrohTransportAuditEvent.PAIRING_REJECTED,
+            uid = uid,
+            connectionId = connectionId,
+            transport = null,
+            rttMillis = null,
+            detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(MILLIS)),
+        )
+        return HermesRelayException("Could not verify iroh pairing record: ${err.message}", err)
+    }
+
+    private suspend fun connectVerifiedStream(
+        verifiedTarget: IrohDialTarget,
+        uid: String,
+        connectionId: String,
+        dialTimeout: Long,
+    ): IrohRelayStream {
         val transport = transport(verifiedTarget.relayURL)
-        val dialTimeout = minOf(connectTimeoutMillis, timeoutMillis)
-        val stream = try {
+        return try {
             withTimeoutOrNull(dialTimeout) {
                 transport.connect(verifiedTarget, timeoutMillis = dialTimeout)
             } ?: throw IrohRelayTransportError.TimedOut
@@ -184,13 +179,24 @@ class HermesIrohRelayTransport(
             auditLogger.record(
                 event = IrohTransportAuditEvent.STREAM_FAILED,
                 uid = uid,
-                connectionId = payload.connectionID,
+                connectionId = connectionId,
                 transport = IrohTransportSelection.IROH_DIRECT,
                 rttMillis = null,
-                detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(256)),
+                detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(MILLIS)),
             )
             throw err
         }
+    }
+
+    private suspend fun send(payload: HermesRelayPayload, timeoutMillis: Long, onChunk: suspend (StreamingChunk) -> Unit) {
+        val uid = relayAuthenticatedUid(payload)
+
+        val publicKey = pairingPublicKeyProvider.fetchPublicKey(uid)
+
+        val verifiedTarget = verifiedDialTarget(uid, payload, publicKey)
+
+        val dialTimeout = minOf(connectTimeoutMillis, timeoutMillis)
+        val stream = connectVerifiedStream(verifiedTarget, uid, payload.connectionID, dialTimeout)
         auditLogger.record(
             event = IrohTransportAuditEvent.STREAM_OPENED,
             uid = uid,
@@ -201,115 +207,161 @@ class HermesIrohRelayTransport(
         )
 
         try {
-            val requestId = "iroh_${UUID.randomUUID().toString().lowercase()}"
-            val relayPubBytes = Base64.decode(payload.relayPublicKey, Base64.NO_WRAP)
+            val relayPubBytes = decodeRelayPublicKeyBytes(payload.relayPublicKey)
+            val frames = buildIrohRelaySendFrames(payload, uid, relayPubBytes)
+            stream.send(frames.startFrame)
 
-            // Fresh AES-256 symmetric key per request. The Mac unwraps it
-            // with its static P-256 private key and uses it for both the
-            // request body (with requestAAD) and every response chunk
-            // (with chunkAAD). Wire shape is identical to iOS' Hermes
-            // relay (`OpenBurnBarMobile/Services/IrohRelay/`).
-            val symmetricKey = HermesRelayCrypto.generateSymmetricKey()
-
-            val bodyString = payload.body?.let { String(it, Charsets.UTF_8) }
-            val plaintext = JSONObject().apply {
-                put("path", payload.path)
-                payload.sessionID?.let { put("sessionId", it) }
-                bodyString?.let { put("body", it) }
-            }.toString().toByteArray(Charsets.UTF_8)
-
-            val requestAad = HermesRelayCrypto.requestAAD(uid, payload.connectionID, requestId)
-            val keyAad = HermesRelayCrypto.keyAAD(uid, payload.connectionID, requestId)
-            val payloadCiphertextB64 = HermesRelayCrypto.sealToBase64(plaintext, symmetricKey, requestAad)
-            val wrappedKeyB64 = HermesRelayCrypto.wrapSymmetricKey(symmetricKey, relayPubBytes, keyAad)
-
-            val startFrame = HermesRealtimeRelayFrame(
-                type = HermesRealtimeRelayFrameType.REQUEST_START,
-                uid = uid,
-                connectionId = payload.connectionID,
-                requestId = requestId,
-                payload = HermesRealtimeRelayPayload(
-                    operation = payload.operation,
-                    method = payload.method,
-                    payloadCiphertext = payloadCiphertextB64,
-                    wrappedKey = wrappedKeyB64,
-                    relayEncryption = payload.relayEncryption,
-                    relayKeyVersion = payload.relayKeyVersion ?: HermesRelayCrypto.KEY_VERSION,
+            exchangeRelayRequest(
+                RelayExchangeRequest(
+                    stream = stream,
+                    uid = uid,
+                    payload = payload,
+                    timeoutMillis = timeoutMillis,
+                    symmetricKey = frames.symmetricKey,
+                    requestId = frames.requestId,
+                    onChunk = onChunk,
                 ),
             )
-            stream.send(startFrame)
+        } finally {
+            try {
+                stream.close()
+            } catch (_: Throwable) {
+            }
+        }
+    }
 
-            val deadline = nowMillis() + timeoutMillis
-            while (nowMillis() < deadline) {
-                val remaining = deadline - nowMillis()
-                val frame = withTimeoutOrNull(remaining) { stream.receive() }
-                    ?: throw HermesRelayException("Iroh relay timed out before response.complete.")
-                if (frame.uid != uid || frame.connectionId != payload.connectionID || frame.requestId != requestId) continue
-                when (frame.type) {
-                    HermesRealtimeRelayFrameType.RESPONSE_CHUNK -> {
-                        val chunk = chunkRecord(
-                            frame = frame,
-                            keyData = symmetricKey,
-                            requestId = requestId,
-                            uid = uid,
-                            connectionId = payload.connectionID,
-                        ) ?: continue
-                        auditLogger.record(
-                            event = IrohTransportAuditEvent.STREAM_OPENED,
-                            uid = uid,
-                            connectionId = payload.connectionID,
-                            transport = IrohTransportSelection.IROH_DIRECT,
-                            rttMillis = null,
-                            detail = mapOf(
-                                "side" to "android",
-                                "stage" to "android_response_chunk_received",
-                                "requestId" to requestId,
-                                "sequence" to chunk.sequence.toString(),
-                                "kind" to chunk.kind.wireValue,
-                                "textBytes" to (chunk.text?.toByteArray(Charsets.UTF_8)?.size ?: 0).toString(),
-                            ),
+    private data class RelayExchangeRequest(
+        val stream: IrohRelayStream,
+        val uid: String,
+        val payload: HermesRelayPayload,
+        val timeoutMillis: Long,
+        val symmetricKey: ByteArray,
+        val requestId: String,
+        val onChunk: suspend (StreamingChunk) -> Unit,
+    )
+
+    private suspend fun exchangeRelayRequest(request: RelayExchangeRequest) {
+        val deadline = nowMillis() + request.timeoutMillis
+        while (nowMillis() < deadline) {
+            val remaining = deadline - nowMillis()
+            val frame =
+                withTimeoutOrNull(remaining) { request.stream.receive() }
+                    ?: relayExchangeTimeout()
+            val isMatchingFrame =
+                frame.uid == request.uid &&
+                    frame.connectionId == request.payload.connectionID &&
+                    frame.requestId == request.requestId
+            if (isMatchingFrame) {
+                when (
+                    val action =
+                        relayFrameAction(
+                            frame,
+                            request.symmetricKey,
+                            request.requestId,
+                            request.uid,
+                            request.payload.connectionID,
                         )
-                        onChunk(chunk)
-                        auditLogger.record(
-                            event = IrohTransportAuditEvent.STREAM_OPENED,
-                            uid = uid,
-                            connectionId = payload.connectionID,
-                            transport = IrohTransportSelection.IROH_DIRECT,
-                            rttMillis = null,
-                            detail = mapOf(
-                                "side" to "android",
-                                "stage" to "android_response_chunk_processed",
-                                "requestId" to requestId,
-                                "sequence" to chunk.sequence.toString(),
-                            ),
-                        )
-                    }
-                    HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> {
+                ) {
+                    RelayFrameAction.Continue -> Unit
+                    RelayFrameAction.Complete -> {
                         auditLogger.record(
                             event = IrohTransportAuditEvent.STREAM_CLOSED,
-                            uid = uid,
-                            connectionId = payload.connectionID,
+                            uid = request.uid,
+                            connectionId = request.payload.connectionID,
                             transport = IrohTransportSelection.IROH_DIRECT,
-                            rttMillis = ((nowMillis() - (deadline - timeoutMillis)).toInt()),
-                            detail = mapOf(
+                            rttMillis = (nowMillis() - (deadline - request.timeoutMillis)).toInt(),
+                            detail =
+                            mapOf(
                                 "side" to "android",
                                 "stage" to "android_response_complete",
-                                "requestId" to requestId,
+                                "requestId" to request.requestId,
                             ),
                         )
                         return
                     }
-                    HermesRealtimeRelayFrameType.RESPONSE_ERROR -> {
-                        throw HermesRelayException(frame.payload?.error ?: "Hermes iroh relay failed.")
-                    }
-                    else -> continue
+                    is RelayFrameAction.Emit -> request.onChunk(action.chunk)
+                    is RelayFrameAction.Fail -> relayExchangeFail(action.error)
                 }
             }
-            throw HermesRelayException("Iroh relay timed out before response.complete.")
-        } finally {
-            try { stream.close() } catch (_: Throwable) {}
         }
+        relayExchangeTimeout()
     }
+
+    private fun relayExchangeTimeout(): Nothing =
+        throw HermesRelayException("Iroh relay timed out before response.complete.")
+
+    private fun relayExchangeFail(error: HermesRelayException): Nothing = throw error
+
+    private sealed class RelayFrameAction {
+        data object Continue : RelayFrameAction()
+
+        data object Complete : RelayFrameAction()
+
+        data class Emit(val chunk: StreamingChunk) : RelayFrameAction()
+
+        data class Fail(val error: HermesRelayException) : RelayFrameAction()
+    }
+
+    private fun relayFrameAction(
+        frame: HermesRealtimeRelayFrame,
+        symmetricKey: ByteArray,
+        requestId: String,
+        uid: String,
+        connectionId: String,
+    ): RelayFrameAction =
+        when (frame.type) {
+            HermesRealtimeRelayFrameType.RESPONSE_CHUNK -> {
+                val chunk =
+                    chunkRecord(
+                        frame = frame,
+                        keyData = symmetricKey,
+                        requestId = requestId,
+                        uid = uid,
+                        connectionId = connectionId,
+                    )
+                if (chunk == null) {
+                    RelayFrameAction.Continue
+                } else {
+                    auditLogger.record(
+                        event = IrohTransportAuditEvent.STREAM_OPENED,
+                        uid = uid,
+                        connectionId = connectionId,
+                        transport = IrohTransportSelection.IROH_DIRECT,
+                        rttMillis = null,
+                        detail =
+                        mapOf(
+                            "side" to "android",
+                            "stage" to "android_response_chunk_received",
+                            "requestId" to requestId,
+                            "sequence" to chunk.sequence.toString(),
+                            "kind" to chunk.kind.wireValue,
+                            "textBytes" to (chunk.text?.toByteArray(Charsets.UTF_8)?.size ?: 0).toString(),
+                        ),
+                    )
+                    auditLogger.record(
+                        event = IrohTransportAuditEvent.STREAM_OPENED,
+                        uid = uid,
+                        connectionId = connectionId,
+                        transport = IrohTransportSelection.IROH_DIRECT,
+                        rttMillis = null,
+                        detail =
+                        mapOf(
+                            "side" to "android",
+                            "stage" to "android_response_chunk_processed",
+                            "requestId" to requestId,
+                            "sequence" to chunk.sequence.toString(),
+                        ),
+                    )
+                    RelayFrameAction.Emit(chunk)
+                }
+            }
+            HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> RelayFrameAction.Complete
+            HermesRealtimeRelayFrameType.RESPONSE_ERROR ->
+                RelayFrameAction.Fail(
+                    HermesRelayException(frame.payload?.error ?: "Hermes iroh relay failed."),
+                )
+            else -> RelayFrameAction.Continue
+        }
 
     private suspend fun transport(relayURL: String?): IrohRelayTransport = stateLock.withLock {
         val existing = endpoint
@@ -326,29 +378,24 @@ class HermesIrohRelayTransport(
         fresh
     }
 
-    private fun chunkRecord(
-        frame: HermesRealtimeRelayFrame,
-        keyData: ByteArray,
-        requestId: String,
-        uid: String,
-        connectionId: String,
-    ): StreamingChunk? {
-        val payload = frame.payload ?: return null
-        val kind = payload.kind ?: return null
-        val sequence = payload.sequence ?: return null
-        val ciphertext = payload.ciphertext ?: return null
-        val aad = HermesRelayCrypto.chunkAAD(
-            uid = uid,
-            connectionId = connectionId,
-            requestId = requestId,
-            sequence = sequence,
-            kind = kind.wireValue,
-        )
-        val plaintext = try {
-            HermesRelayCrypto.openBase64(ciphertext, keyData, aad)
-        } catch (_: Throwable) {
-            return null
-        }
+    private fun chunkRecord(frame: HermesRealtimeRelayFrame, keyData: ByteArray, requestId: String, uid: String, connectionId: String): StreamingChunk? {
+        val payload = frame.payload
+        val kind = payload?.kind
+        val sequence = payload?.sequence
+        val ciphertext = payload?.ciphertext
+        val hasChunkFields = payload != null && kind != null && sequence != null && ciphertext != null
+        if (!hasChunkFields) return null
+        val aad =
+            HermesRelayCrypto.chunkAAD(
+                uid = uid,
+                connectionId = connectionId,
+                requestId = requestId,
+                sequence = sequence,
+                kind = kind.wireValue,
+            )
+        val plaintext =
+            runCatching { HermesRelayCrypto.openBase64(ciphertext, keyData, aad) }.getOrNull()
+                ?: return null
         return StreamingChunk(
             kind = kind,
             sequence = sequence,
@@ -398,9 +445,10 @@ class FirestoreIrohPairingDirectory(
     }
 
     override suspend fun fetch(uid: String, connectionId: String): IrohPairingRecord? {
-        val snap = firestore.collection("users").document(uid)
-            .collection("iroh_pairing").document(connectionId)
-            .get().await()
+        val snap =
+            firestore.collection("users").document(uid)
+                .collection("iroh_pairing").document(connectionId)
+                .get().await()
         if (!snap.exists()) return null
         return decodeIrohPairingRecord(
             documentId = snap.id,
@@ -426,23 +474,25 @@ private fun IrohPairingRecord.asMap(): Map<String, Any?> = mapOf(
     "signature" to signature,
 )
 
-internal fun decodeIrohPairingRecord(
-    documentId: String,
-    uid: String,
-    data: Map<String, Any?>,
-): IrohPairingRecord? {
-    val connectionId = (data["id"] as? String)
-        ?.takeIf { it.isNotBlank() }
-        ?: (data["connectionId"] as? String)?.takeIf { it.isNotBlank() }
-        ?: documentId.takeIf { it.isNotBlank() }
-        ?: return null
-    val nodeId = (data["nodeId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
-    val publishedAtMillis = data.longValue("publishedAtMillis") ?: return null
-    val signature = (data["signature"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+internal fun decodeIrohPairingRecord(documentId: String, uid: String, data: Map<String, Any?>): IrohPairingRecord? {
+    val connectionId =
+        (data["id"] as? String)
+            ?.takeIf { it.isNotBlank() }
+            ?: (data["connectionId"] as? String)?.takeIf { it.isNotBlank() }
+            ?: documentId.takeIf { it.isNotBlank() }
+    val nodeId = (data["nodeId"] as? String)?.takeIf { it.isNotBlank() }
+    val publishedAtMillis = data.longValue("publishedAtMillis")
+    val signature = (data["signature"] as? String)?.takeIf { it.isNotBlank() }
+    val hasRequiredPairingFields =
+        !connectionId.isNullOrBlank() && nodeId != null && publishedAtMillis != null && signature != null
+    if (!hasRequiredPairingFields) {
+        return null
+    }
     val protocolVersion = (data.longValue("protocolVersion") ?: IrohRelayProtocol.FRAME_PROTOCOL_VERSION.toLong()).toInt()
-    val directAddresses = (data["directAddresses"] as? List<*>)
-        ?.mapNotNull { it as? String }
-        ?: emptyList()
+    val directAddresses =
+        (data["directAddresses"] as? List<*>)
+            ?.mapNotNull { it as? String }
+            ?: emptyList()
     return IrohPairingRecord(
         uid = uid,
         connectionId = connectionId,
@@ -456,38 +506,39 @@ internal fun decodeIrohPairingRecord(
 }
 
 internal fun decodeIrohPairingPublicKey(data: Map<String, Any?>): ByteArray {
-    val raw = (data["publicKeyBase64"] as? String)
-        ?.takeIf { it.isNotBlank() }
-        ?: throw HermesRelayException("No paired Mac has published an iroh pairing public key yet.")
-    val decoded = try {
-        Base64.decode(raw, Base64.NO_WRAP)
-    } catch (_: IllegalArgumentException) {
-        throw HermesRelayException("Pairing public key is not valid base64.")
+    val raw = (data["publicKeyBase64"] as? String)?.takeIf { it.isNotBlank() }
+    if (raw == null) {
+        throw HermesRelayException("No paired Mac has published an iroh pairing public key yet.")
     }
-    if (decoded.size != 32) {
-        throw HermesRelayException("Pairing public key is not a valid Ed25519 public key.")
-    }
+    val decoded = runCatching { Base64.decode(raw, Base64.NO_WRAP) }.getOrNull()
+    val validationError =
+        when {
+            decoded == null -> "Pairing public key is not valid base64."
+            decoded.size != VAL_32 -> "Pairing public key is not a valid Ed25519 public key."
+            else -> null
+        }
+    if (validationError != null) throw HermesRelayException(validationError)
     return decoded
 }
 
-private fun Map<String, Any?>.longValue(key: String): Long? =
-    when (val value = this[key]) {
-        is Long -> value
-        is Int -> value.toLong()
-        is Number -> value.toLong()
-        else -> null
-    }
+private fun Map<String, Any?>.longValue(key: String): Long? = when (val value = this[key]) {
+    is Long -> value
+    is Int -> value.toLong()
+    is Number -> value.toLong()
+    else -> null
+}
 
 /** Firestore-backed pairing public-key provider — reads from `iroh_pairing_keys/host.publicKeyBase64`. */
 class FirestoreIrohPairingPublicKeyProvider(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : IrohPairingPublicKeyProviding {
     override suspend fun fetchPublicKey(uid: String): ByteArray {
-        val snap = firestore.collection("users").document(uid)
-            .collection("iroh_pairing_keys")
-            .document("host")
-            .get()
-            .await()
+        val snap =
+            firestore.collection("users").document(uid)
+                .collection("iroh_pairing_keys")
+                .document("host")
+                .get()
+                .await()
         return decodeIrohPairingPublicKey(snap.data.orEmpty())
     }
 }

@@ -2,18 +2,20 @@ package com.openburnbar.data.budget
 
 import android.content.Context
 import android.util.Log
-import com.openburnbar.data.db.*
+import com.openburnbar.data.db.BudgetDatabaseAccess
+import com.openburnbar.data.db.toEntity
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.models.BudgetRule
-import com.openburnbar.data.models.BudgetEvent
+import java.lang.IllegalStateException
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Date
+
+private const val VAL_500 = 500
 
 class BudgetSyncManager(
     private val context: Context,
-    private val dao: BudgetDao,
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val dao: BudgetDatabaseAccess,
+    private val repo: FirestoreRepository = FirestoreRepository(),
 ) {
     private val localDeviceId: String
         get() {
@@ -28,28 +30,30 @@ class BudgetSyncManager(
             val unsyncedRules = dao.getAllEnabledRules().filter { it.syncedAt == null }
             if (unsyncedRules.isNotEmpty()) {
                 Log.d("BudgetSync", "Uploading ${unsyncedRules.size} local rules...")
-                val modelsToUpload = unsyncedRules.map {
-                    it.toModel().copy(
-                        sourceDeviceID = localDeviceId,
-                        updatedAt = Date()
-                    )
-                }
-                repo.uploadBudgetRules(modelsToUpload)
+                val modelsToUpload =
+                    unsyncedRules.map {
+                        it.toModel().copy(
+                            sourceDeviceID = localDeviceId,
+                            updatedAt = Date(),
+                        )
+                    }
+                repo.budget.uploadBudgetRules(modelsToUpload)
                 for (rule in unsyncedRules) {
                     dao.upsertRule(rule.copy(syncedAt = System.currentTimeMillis()))
                 }
             }
 
             // 2. Upload local events that haven't been synced (syncedAt is null)
-            val unsyncedEvents = dao.getRecentEvents(500).filter { it.syncedAt == null }
+            val unsyncedEvents = dao.getRecentEvents(VAL_500).filter { it.syncedAt == null }
             if (unsyncedEvents.isNotEmpty()) {
                 Log.d("BudgetSync", "Uploading ${unsyncedEvents.size} local events...")
-                val modelsToUpload = unsyncedEvents.map {
-                    it.toModel().copy(
-                        sourceDeviceID = localDeviceId
-                    )
-                }
-                repo.uploadBudgetEvents(modelsToUpload)
+                val modelsToUpload =
+                    unsyncedEvents.map {
+                        it.toModel().copy(
+                            sourceDeviceID = localDeviceId,
+                        )
+                    }
+                repo.budget.uploadBudgetEvents(modelsToUpload)
                 for (event in unsyncedEvents) {
                     dao.insertEvent(event.copy(syncedAt = System.currentTimeMillis()))
                 }
@@ -57,7 +61,7 @@ class BudgetSyncManager(
 
             // 3. Download rules from Firestore and merge
             Log.d("BudgetSync", "Downloading rules from Firestore...")
-            val remoteRules = repo.downloadAllBudgetRules()
+            val remoteRules = repo.budget.downloadAllBudgetRules()
             for (remote in remoteRules) {
                 val local = dao.getAllEnabledRules().firstOrNull { it.id == remote.id }
                 if (local == null) {
@@ -68,13 +72,13 @@ class BudgetSyncManager(
                     if (remoteUpdated > localUpdated) {
                         dao.upsertRule(remote.copy(syncedAt = Date()).toEntity())
                     } else if (localUpdated > remoteUpdated && local.syncedAt == null) {
-                        repo.uploadBudgetRule(local.toModel().copy(sourceDeviceID = localDeviceId, updatedAt = Date()))
+                        repo.budget.uploadBudgetRule(local.toModel().copy(sourceDeviceID = localDeviceId, updatedAt = Date()))
                         dao.upsertRule(local.copy(syncedAt = System.currentTimeMillis()))
                     }
                 }
             }
             Log.d("BudgetSync", "Budget sync completed successfully.")
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             Log.e("BudgetSync", "Error syncing budget data: ${e.message}", e)
         }
     }

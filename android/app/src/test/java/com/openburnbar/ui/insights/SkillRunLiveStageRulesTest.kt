@@ -6,34 +6,34 @@ import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.SkillRunEventImportance
 import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SkillRunLiveStageRulesTest {
-
     @Test
-    fun `full stream skill run auto opens follow along tile`() {
+    fun fullStreamSkillRunAutoOpensFollowAlongTile() {
         val mission = skillRun(deliveryMode = SkillRunDeliveryMode.FULL_STREAM)
 
         assertTrue(shouldAutoOpenSkillRun(mission))
     }
 
     @Test
-    fun `muted skill run stays quiet`() {
+    fun mutedSkillRunStaysQuiet() {
         val mission = skillRun(deliveryMode = SkillRunDeliveryMode.MUTED)
 
         assertFalse(shouldAutoOpenSkillRun(mission))
     }
 
     @Test
-    fun `action only skill run opens for approvals and terminal results`() {
-        val approval = skillRun(
-            status = "waiting_for_approval",
-            approvalStatus = "pending",
-            events = listOf(event(SkillRunEventImportance.ACTION_REQUIRED))
-        )
+    fun actionOnlySkillRunOpensForApprovalsAndTerminalResults() {
+        val approval =
+            skillRun(
+                status = "waiting_for_approval",
+                approvalStatus = "pending",
+                events = listOf(event(SkillRunEventImportance.ACTION_REQUIRED)),
+            )
         val completed = skillRun(status = "completed")
 
         assertTrue(shouldAutoOpenSkillRun(approval))
@@ -41,48 +41,52 @@ class SkillRunLiveStageRulesTest {
     }
 
     @Test
-    fun `action only skill run ignores normal progress events`() {
+    fun actionOnlySkillRunIgnoresNormalProgressEvents() {
         val mission = skillRun(events = listOf(event(SkillRunEventImportance.NORMAL)))
 
         assertFalse(shouldAutoOpenSkillRun(mission))
     }
 
     @Test
-    fun `dismissal notification key changes when new approval event arrives`() {
-        val running = skillRun(
-            status = "running",
-            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-            events = listOf(event(SkillRunEventImportance.NORMAL, sequence = 1))
-        )
-        val approval = skillRun(
-            status = "waiting_for_approval",
-            deliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
-            approvalStatus = "pending",
-            events = listOf(event(SkillRunEventImportance.ACTION_REQUIRED, sequence = 2))
-        )
+    fun dismissalNotificationKeyChangesWhenNewApprovalEventArrives() {
+        val running =
+            skillRun(
+                status = "running",
+                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+                events = listOf(event(SkillRunEventImportance.NORMAL, sequence = 1)),
+            )
+        val approval =
+            skillRun(
+                status = "waiting_for_approval",
+                deliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+                approvalStatus = "pending",
+                events = listOf(event(SkillRunEventImportance.ACTION_REQUIRED, sequence = 2)),
+            )
 
         assertNotEquals(skillRunNotificationKey(running), skillRunNotificationKey(approval))
         assertTrue(shouldAutoOpenSkillRun(approval))
     }
 
     @Test
-    fun `dismissal notification key ignores normal full stream progress churn`() {
-        val firstProgress = skillRun(
-            status = "running",
-            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-            events = listOf(event(SkillRunEventImportance.NORMAL, sequence = 1))
-        )
-        val nextProgress = skillRun(
-            status = "running",
-            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-            events = listOf(event(SkillRunEventImportance.NORMAL, sequence = 2))
-        )
+    fun dismissalNotificationKeyIgnoresNormalFullStreamProgressChurn() {
+        val firstProgress =
+            skillRun(
+                status = "running",
+                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+                events = listOf(event(SkillRunEventImportance.NORMAL, sequence = 1)),
+            )
+        val nextProgress =
+            skillRun(
+                status = "running",
+                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+                events = listOf(event(SkillRunEventImportance.NORMAL, sequence = 2)),
+            )
 
         assertEquals(skillRunNotificationKey(firstProgress), skillRunNotificationKey(nextProgress))
     }
 
     @Test
-    fun `companion controls render only for skill run missions`() {
+    fun companionControlsRenderOnlyForSkillRunMissions() {
         assertTrue(shouldShowSkillRunCompanionControls(skillRun(sourceSkillID = "run_pulse")))
         assertFalse(shouldShowSkillRunCompanionControls(skillRun(sourceSkillID = null)))
     }
@@ -119,16 +123,14 @@ class SkillRunLiveStageRulesTest {
         createdAt = Instant.now(),
     )
 
-    private fun event(
-        importance: SkillRunEventImportance,
-        sequence: Int = 1,
-    ) = CLIAgentMissionEvent(
+    private fun event(importance: SkillRunEventImportance, sequence: Int = 1) = CLIAgentMissionEvent(
         sequence = sequence,
         timestamp = "2026-05-14T10:00:00Z",
         kind = if (importance == SkillRunEventImportance.ACTION_REQUIRED) "approval_request" else "status",
         phase = "running",
         title = if (importance == SkillRunEventImportance.ACTION_REQUIRED) "Approval needed" else "Running",
-        message = if (importance == SkillRunEventImportance.ACTION_REQUIRED) {
+        message =
+        if (importance == SkillRunEventImportance.ACTION_REQUIRED) {
             "Codex needs approval."
         } else {
             "Codex is reading recent sessions."

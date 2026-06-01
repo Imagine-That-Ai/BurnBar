@@ -4,6 +4,12 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 import kotlin.math.roundToInt
 
+private const val PERCENT_SCALE = 1_000_000_000
+private const val PERCENT_SCALE_2 = 1_000_000_000.0
+private const val PERCENT_SCALE_3 = 1_000_000
+private const val PERCENT_SCALE_4 = 1_000_000.0
+private const val VAL_12 = 12
+
 /**
  * Mirrors the Firestore `UsageEventDoc` from Cloud Functions types.ts.
  * Collection: users/{uid}/usage/{docId}
@@ -11,90 +17,63 @@ import kotlin.math.roundToInt
 @IgnoreExtraProperties
 data class TokenUsage(
     val id: String = "",
-
     @PropertyName("provider")
     val provider: String = "",
-
     @PropertyName("providerID")
     val providerId: String? = null,
-
     @PropertyName("providerAccountID")
     val providerAccountId: String? = null,
-
     @PropertyName("providerAccountLabel")
     val providerAccountLabel: String? = null,
-
     @PropertyName("providerAccountSource")
     val providerAccountSource: String? = null,
-
     @PropertyName("model")
     val model: String? = null,
-
     @PropertyName("sessionId")
     val sessionId: String? = null,
-
     @PropertyName("deviceId")
     val deviceId: String? = null,
-
     @PropertyName("sourceDeviceId")
     val sourceDeviceId: String? = null,
-
     @PropertyName("inputTokens")
     val inputTokens: Int = 0,
-
     @PropertyName("outputTokens")
     val outputTokens: Int = 0,
-
     @PropertyName("cacheCreationTokens")
     val cacheCreationTokens: Int = 0,
-
     @PropertyName("cacheReadTokens")
     val cacheReadTokens: Int = 0,
-
     @PropertyName("reasoningTokens")
     val reasoningTokens: Int = 0,
-
     @PropertyName("totalTokens")
     val totalTokens: Int = 0,
-
     /** Canonical cost field (Firestore "costUsd"). */
     @PropertyName("costUsd")
     val costUsd: Double = 0.0,
-
     /** Legacy cost field (Firestore "cost"), consumer falls back to costUsd. */
     @PropertyName("cost")
     val cost: Double = 0.0,
-
     @PropertyName("provenanceConfidence")
     val provenanceConfidence: String? = null,
-
     @PropertyName("provenanceMethod")
     val provenanceMethod: String? = null,
-
     @PropertyName("user_display_id")
     val userDisplayId: String? = null,
-
     @PropertyName("project_name")
     val projectName: String? = null,
-
     /** Millis since epoch — manually converted from Firestore Timestamp in repository. */
     @PropertyName("timestamp")
     val timestamp: Long = 0L,
-
     @PropertyName("startTime")
     val startTime: Long = 0L,
-
     @PropertyName("endTime")
     val endTime: Long = 0L,
-
     @PropertyName("createdAt")
     val createdAt: Long = 0L,
-
     @PropertyName("updatedAt")
     val updatedAt: Long = 0L,
-
     @PropertyName("schemaVersion")
-    val schemaVersion: Int = 0
+    val schemaVersion: Int = 0,
 ) {
     /** Effective cost — prefers costUsd, falls back to cost. */
     val effectiveCost: Double
@@ -108,91 +87,63 @@ data class TokenUsage(
 @IgnoreExtraProperties
 data class ProviderAccount(
     val id: String = "",
-
     /** Canonical provider key (matches UsageEventDoc.providerID). */
     @PropertyName("providerID")
     val providerId: String = "",
-
     /** User-visible label (Firestore "label"). */
     @PropertyName("label")
     val label: String = "",
-
     @PropertyName("identityHint")
     val identityHint: String? = null,
-
     @PropertyName("status")
     val status: String? = null,
-
     @PropertyName("credentialKind")
     val credentialKind: String? = null,
-
     @PropertyName("storageScope")
     val storageScope: String? = null,
-
     @PropertyName("redactedLabel")
     val redactedLabel: String? = null,
-
     @PropertyName("sourceDeviceID")
     val sourceDeviceId: String? = null,
-
     @PropertyName("linkedSwitcherProfileID")
     val linkedSwitcherProfileId: String? = null,
-
     @PropertyName("isDefault")
     val isDefault: Boolean = false,
-
     @PropertyName("sortKey")
     val sortKey: Double = 0.0,
-
     @PropertyName("lastValidatedAt")
     val lastValidatedAt: String? = null,
-
     @PropertyName("lastRefreshAt")
     val lastRefreshAt: String? = null,
-
     @PropertyName("lastErrorCode")
     val lastErrorCode: String? = null,
-
     @PropertyName("schemaVersion")
     val schemaVersion: Int = 0,
-
     @PropertyName("endpointProfileID")
     val endpointProfileId: String? = null,
-
     @PropertyName("region")
     val region: String? = null,
-
     @PropertyName("tokenPlanTier")
     val tokenPlanTier: String? = null,
-
     @PropertyName("tokenPlanBillingCycle")
     val tokenPlanBillingCycle: String? = null,
-
     @PropertyName("authMethodID")
     val authMethodId: String? = null,
-
     @PropertyName("createdAt")
     val createdAt: String? = null,
-
     @PropertyName("updatedAt")
     val updatedAt: String? = null,
-
     // ── Live-data extra fields (not in TS types, observed in Firestore) ──
-
     @PropertyName("usage_limit")
     val usageLimit: Long = 0,
-
     @PropertyName("usage_used")
     val usageUsed: Long = 0,
-
     @PropertyName("integration")
     val integration: String? = null,
-
     @PropertyName("latitude")
     val latitude: Double? = null,
-
     @PropertyName("organization_id")
-    val organizationId: String? = null
+    val organizationId: String? = null,
 )
 
 /**
@@ -202,51 +153,36 @@ data class ProviderAccount(
 @IgnoreExtraProperties
 data class ProviderQuotaSnapshot(
     val id: String = "",
-
     @PropertyName("sourceKind")
     val sourceKind: String = "provider",
-
     @PropertyName("sourceId")
     val sourceId: String = "",
-
     @PropertyName("provider")
     val provider: String = "",
-
     @PropertyName("providerID")
     val providerId: String? = null,
-
     @PropertyName("accountID")
     val accountId: String? = null,
-
     @PropertyName("accountLabel")
     val accountLabel: String? = null,
-
     @PropertyName("accountStorageScope")
     val accountStorageScope: String? = null,
-
     @PropertyName("fetchedAt")
     val fetchedAt: String? = null,
-
     @PropertyName("source")
     val source: String? = null,
-
     @PropertyName("confidence")
     val confidence: String = "low",
-
     @PropertyName("managementURL")
     val managementUrl: String? = null,
-
     @PropertyName("statusMessage")
     val statusMessage: String? = null,
-
     @PropertyName("buckets")
     val buckets: List<QuotaBucket> = emptyList(),
-
     @PropertyName("schemaVersion")
     val schemaVersion: Int = 0,
-
     @PropertyName("updatedAt")
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
 ) {
     /** Total remaining computed from buckets. Returns -1 if unlimited. */
     val quotaRemaining: Double
@@ -269,11 +205,11 @@ data class ProviderQuotaSnapshot(
                 ?: 100.0
         }
 
-    /** @deprecated Use accountId + accountLabel instead. */
+    @Deprecated("Use accountId + accountLabel instead.")
     val accountCount: Int
         get() = if (accountId != null) 1 else 0
 
-    /** @deprecated Use confidence check. */
+    @Deprecated("Use confidence check.")
     val isUnlimited: Boolean
         get() = buckets.any { it.limit < 0 }
 }
@@ -283,19 +219,14 @@ data class ProviderQuotaSnapshot(
 data class QuotaBucket(
     @PropertyName("name")
     val name: String = "",
-
     @PropertyName("used")
     val used: Double = 0.0,
-
     @PropertyName("limit")
     val limit: Double = 0.0,
-
     @PropertyName("remaining")
     val remaining: Double = 0.0,
-
     @PropertyName("window")
     val window: String? = null,
-
     /**
      * First-class refill moment. Mac writes a Firestore `Timestamp` on the
      * bucket directly; older docs may instead carry an ISO 8601 string at
@@ -303,9 +234,8 @@ data class QuotaBucket(
      */
     @PropertyName("resetsAt")
     val resetsAt: com.google.firebase.Timestamp? = null,
-
     @PropertyName("meta")
-    val meta: Map<String, Any?>? = null
+    val meta: Map<String, Any?>? = null,
 )
 
 /**
@@ -337,7 +267,7 @@ val QuotaBucket.displayRemainingFraction: Double?
             "used_percentage",
             "usagePercent",
             "usage_percent",
-            "percentage"
+            "percentage",
         )?.let { usedPercent ->
             return ((100.0 - usedPercent) / 100.0).coerceIn(0.0, 1.0)
         }
@@ -348,7 +278,7 @@ val QuotaBucket.displayRemainingFraction: Double?
             "remainingPercentage",
             "remaining_percentage",
             "percentRemaining",
-            "percent_remaining"
+            "percent_remaining",
         )?.let { remainingPercent ->
             return (remainingPercent / 100.0).coerceIn(0.0, 1.0)
         }
@@ -393,42 +323,33 @@ val QuotaBucket.key: String
     }
 
 val QuotaBucket.label: String
-    get() = (meta?.get("label") as? String) ?: name
+    get() = meta?.get("label") as? String ?: name
 
 fun QuotaBucket.isDisplayableQuotaSignal(): Boolean {
-    if (!used.isFinite() || !limit.isFinite() || !remaining.isFinite()) {
-        return false
-    }
-
-    val marker = "${name} ${(meta?.get("label") as? String) ?: ""}".lowercase()
-    if (listOf("cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file").any { marker.contains(it) }) {
-        return false
-    }
-
+    val finite = used.isFinite() && limit.isFinite() && remaining.isFinite()
+    val marker = "$name ${meta?.get("label") as? String ?: ""}".lowercase()
+    val hiddenMarker =
+        listOf("cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file")
+            .any { marker.contains(it) }
     val unit = (meta?.get("unit") as? String)?.lowercase()
-    if (unit != null) {
-        if (listOf("sessions", "session", "lines", "files", "models").contains(unit)) {
-            return false
-        }
-        if (unit == "count" && !(marker.contains("credit") || marker.contains("budget"))) {
-            return false
-        }
-    }
-
-    return displayRemainingFraction != null
+    val hiddenUnit =
+        unit != null &&
+            (
+                listOf("sessions", "session", "lines", "files", "models").contains(unit) ||
+                    unit == "count" && !(marker.contains("credit") || marker.contains("budget"))
+                )
+    return finite && !hiddenMarker && !hiddenUnit && displayRemainingFraction != null
 }
 
-fun ProviderQuotaSnapshot.customizedBuckets(
-    hiddenBuckets: Set<String>,
-    bucketOrders: Map<String, List<String>>
-): List<QuotaBucket> {
+fun ProviderQuotaSnapshot.customizedBuckets(hiddenBuckets: Set<String>, bucketOrders: Map<String, List<String>>): List<QuotaBucket> {
     val displayable = buckets.filter { it.isDisplayableQuotaSignal() }
     val token = provider.lowercase()
 
-    val filtered = displayable.filter { bucket ->
-        val compositeKey = "$token:${bucket.key}"
-        !hiddenBuckets.contains(compositeKey)
-    }
+    val filtered =
+        displayable.filter { bucket ->
+            val compositeKey = "$token:${bucket.key}"
+            !hiddenBuckets.contains(compositeKey)
+        }
 
     val customOrder = bucketOrders[token]
     if (customOrder != null) {
@@ -454,7 +375,7 @@ enum class ProviderQuotaUnit(val shortLabel: String) {
     LINES("lines"),
     FILES("files"),
     COUNT(""),
-    CURRENCY("$");
+    CURRENCY("$"),
 }
 
 val QuotaBucket.bucketUnit: ProviderQuotaUnit
@@ -509,8 +430,8 @@ fun QuotaBucket.formatValue(value: Double): String {
         }
         ProviderQuotaUnit.TOKENS -> {
             when {
-                value >= 1_000_000_000 -> "%.2fB".format(value / 1_000_000_000.0)
-                value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
+                value >= PERCENT_SCALE -> "%.2fB".format(value / PERCENT_SCALE_2)
+                value >= PERCENT_SCALE_3 -> "%.1fM".format(value / PERCENT_SCALE_4)
                 value >= 1_000 -> "%.1fK".format(value / 1_000.0)
                 else -> "${value.roundToInt()}"
             }
@@ -540,21 +461,23 @@ fun QuotaBucket.getRemainingText(displayMode: String): String {
             }
         }
         "usedPercent" -> {
-            val usedP = if (remainingPercent != null) {
-                (100.0 - remainingPercent).coerceIn(0.0, 100.0)
-            } else {
-                progressFraction * 100.0
-            }
+            val usedP =
+                if (remainingPercent != null) {
+                    (100.0 - remainingPercent).coerceIn(0.0, 100.0)
+                } else {
+                    progressFraction * 100.0
+                }
             "${usedP.roundToInt()}% used"
         }
         "fractional" -> {
-            val frac = if (remainingPercent != null) {
-                remainingPercent / 100.0
-            } else if (limit > 0.0) {
-                remaining / limit
-            } else {
-                1.0 - progressFraction
-            }
+            val frac =
+                if (remainingPercent != null) {
+                    remainingPercent / 100.0
+                } else if (limit > 0.0) {
+                    remaining / limit
+                } else {
+                    1.0 - progressFraction
+                }
             "%.2f left".format(frac.coerceIn(0.0, 1.0))
         }
         "absoluteValues" -> {
@@ -616,38 +539,40 @@ val QuotaBucket.effectiveWindowLabel: String
     get() = listOfNotNull(name, window).joinToString(" ")
 
 val ProviderQuotaSnapshot.isExplicitlyStale: Boolean
-    get() = confidence.equals("stale", ignoreCase = true) ||
-        confidence.equals("unavailable", ignoreCase = true) ||
-        statusMessage?.contains("stale", ignoreCase = true) == true
+    get() =
+        confidence.equals("stale", ignoreCase = true) ||
+            confidence.equals("unavailable", ignoreCase = true) ||
+            statusMessage?.contains("stale", ignoreCase = true) == true
 
 fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now()): Boolean {
     if (isExplicitlyStale) {
         android.util.Log.d(
             "QuotaStale",
             "provider=$provider account=${accountLabel ?: accountId} " +
-                "isExplicitlyStale=true confidence=$confidence statusMsg=$statusMessage"
+                "isExplicitlyStale=true confidence=$confidence statusMsg=$statusMessage",
         )
         return true
     }
     val fetchedAtStr = fetchedAt?.takeIf { it.isNotBlank() }
     val updatedAtStr = updatedAt?.takeIf { it.isNotBlank() }
-    val fetched = listOfNotNull(fetchedAtStr, updatedAtStr)
-        .firstNotNullOfOrNull { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+    val fetched =
+        listOfNotNull(fetchedAtStr, updatedAtStr)
+            .firstNotNullOfOrNull { runCatching { java.time.Instant.parse(it) }.getOrNull() }
     if (fetched == null) {
         android.util.Log.d(
             "QuotaStale",
             "provider=$provider account=${accountLabel ?: accountId} " +
-                "fetchedAt=$fetchedAtStr updatedAt=$updatedAtStr -> no parseable timestamp -> stale"
+                "fetchedAt=$fetchedAtStr updatedAt=$updatedAtStr -> no parseable timestamp -> stale",
         )
         return true
     }
     val age = java.time.Duration.between(fetched, now)
-    val stale = age > java.time.Duration.ofHours(12)
+    val stale = age > java.time.Duration.ofHours(VAL_12)
     if (stale) {
         android.util.Log.d(
             "QuotaStale",
             "provider=$provider account=${accountLabel ?: accountId} " +
-                "timestamp=${fetched} age=${age.toHours()}h -> stale (>12h)"
+                "timestamp=$fetched age=${age.toHours()}h -> stale (>12h)",
         )
     }
     return stale
@@ -666,9 +591,8 @@ data class ProjectSummary(
     @PropertyName("total_tokens")
     val totalTokens: Long = 0,
     @PropertyName("total_sessions")
-    val totalSessions: Int = 0
+    val totalSessions: Int = 0,
 )
-
 
 /**
  * Mirrors a summary entry in the `UsageRollupDoc` (providerSummaries, modelSummaries, etc.)
@@ -681,7 +605,7 @@ data class RollupSummary(
     val storageScope: String? = null,
     val totalRequests: Int = 0,
     val totalTokens: Long = 0,
-    val totalCost: Double = 0.0
+    val totalCost: Double = 0.0,
 )
 
 /**
@@ -711,32 +635,31 @@ data class UsageRollups(
     val deviceSummaries: List<RollupSummary> = emptyList(),
     val dailyPoints: Map<String, Double> = emptyMap(),
     val computedAt: String? = null,
-    val schemaVersion: Int = 0
+    val schemaVersion: Int = 0,
 ) {
     val topProviders: List<RollupSummary>
         get() = providerSummaries.sortedByDescending { it.totalCost }.take(5)
 
-    fun isEmpty(): Boolean =
-        today == 0.0 &&
-            sevenDays == 0.0 &&
-            thirtyDays == 0.0 &&
-            ninetyDays == 0.0 &&
-            allTime == 0.0 &&
-            todayTokens == 0L &&
-            sevenDayTokens == 0L &&
-            thirtyDayTokens == 0L &&
-            ninetyDayTokens == 0L &&
-            allTimeTokens == 0L &&
-            totals.isEmpty()
+    fun isEmpty(): Boolean = today == 0.0 &&
+        sevenDays == 0.0 &&
+        thirtyDays == 0.0 &&
+        ninetyDays == 0.0 &&
+        allTime == 0.0 &&
+        todayTokens == 0L &&
+        sevenDayTokens == 0L &&
+        thirtyDayTokens == 0L &&
+        ninetyDayTokens == 0L &&
+        allTimeTokens == 0L &&
+        totals.isEmpty()
 }
 
 enum class UsageDisplayMode(val key: String, val label: String) {
     CURRENCY("currency", "USD"),
-    TOKENS("tokens", "Tokens");
+    TOKENS("tokens", "Tokens"),
 }
 
 enum class TimelineScope(val rollupKey: String, val trailingKey: String, val label: String) {
     DAY("today", "today", "Day"),
     WEEK("7d", "7d", "Week"),
-    MONTH("30d", "last_30d", "Month");
+    MONTH("30d", "last_30d", "Month"),
 }

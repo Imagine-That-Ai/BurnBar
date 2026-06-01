@@ -5,7 +5,8 @@ import com.openburnbar.data.media.MediaFrame
 enum class ComputerUseTrustMode {
     MANUAL,
     STEP,
-    TRUSTED;
+    TRUSTED,
+    ;
 
     fun canDowngradeTo(target: ComputerUseTrustMode): Boolean = target.ordinal <= ordinal
 }
@@ -57,4 +58,3 @@ data class ComputerUseWatchState(
     val latestAction: ComputerUseActionLogEntry?
         get() = actionTimeline.maxByOrNull { it.entryIndex }
 }
-

@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.hermes.HermesConnectionMode
@@ -8,7 +11,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,7 +22,6 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HermesServiceStateTest {
-
     @Test
     fun `initial state surfaces local default connection`() = runTest {
         val service = HermesService()
@@ -82,7 +83,7 @@ class HermesServiceStateTest {
             service.revokeConnection(HermesConnectionRecord.localDefault)
             assertTrue(
                 "Local default should remain after revoke attempt",
-                service.connections.value.any { it.id == HermesConnectionRecord.localDefault.id }
+                service.connections.value.any { it.id == HermesConnectionRecord.localDefault.id },
             )
         } finally {
             service.destroy()
@@ -119,24 +120,25 @@ class HermesServiceStateTest {
         val mockRelayClient = io.mockk.mockk<com.openburnbar.data.hermes.relay.HermesRelayClient>()
         io.mockk.every { mockRelayClient.isUsable() } returns true
 
-        val descriptors = listOf(
-            com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor(
-                id = "mac-relay-1",
-                displayName = "Alberto's Mac",
-                relayPublicKey = "somekey",
-                capabilities = listOf("cli_agent_chat"),
-                status = "online",
-                updatedAt = 1000L
-            ),
-            com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor(
-                id = "mac-relay-2",
-                displayName = "Older Mac",
-                relayPublicKey = "somekey2",
-                capabilities = listOf("cli_agent_chat"),
-                status = "online",
-                updatedAt = 500L
+        val descriptors =
+            listOf(
+                com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor(
+                    id = "mac-relay-1",
+                    displayName = "Alberto's Mac",
+                    relayPublicKey = "somekey",
+                    capabilities = listOf("cli_agent_chat"),
+                    status = "online",
+                    updatedAt = 1000L,
+                ),
+                com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor(
+                    id = "mac-relay-2",
+                    displayName = "Older Mac",
+                    relayPublicKey = "somekey2",
+                    capabilities = listOf("cli_agent_chat"),
+                    status = "online",
+                    updatedAt = 500L,
+                ),
             )
-        )
         io.mockk.coEvery { mockRelayClient.listConnections() } returns descriptors
 
         val service = HermesService(relayClient = mockRelayClient)

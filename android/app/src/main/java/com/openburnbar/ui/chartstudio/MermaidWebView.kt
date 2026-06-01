@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.chartstudio
 
 import android.annotation.SuppressLint
@@ -25,10 +28,7 @@ import org.json.JSONObject
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun MermaidCanvas(
-    spec: MermaidSpec,
-    modifier: Modifier = Modifier
-) {
+fun MermaidCanvas(spec: MermaidSpec, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val sanitized = remember(spec.source) { spec.source.trim() }
 
@@ -45,7 +45,7 @@ fun MermaidCanvas(
                     cacheMode = WebSettings.LOAD_DEFAULT
                     domStorageEnabled = true
                 }
-                setBackgroundColor(0x00000000)            // transparent so the Aurora gradient bleeds through
+                setBackgroundColor(0x00000000) // transparent so the Aurora gradient bleeds through
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
                 loadUrl("file:///android_asset/mermaid/index.html")
@@ -55,15 +55,16 @@ fun MermaidCanvas(
             // Wait for the bundled shell to finish booting; the JS exposes a
             // ready promise but here we simply throw render at it — the shell
             // queues calls before init completes.
-            val payload = JSONObject().apply {
-                put("source", sanitized)
-                put("theme", spec.theme ?: "dark")
-                put("accent", "#${AuroraColors.ember.toArgb().toUInt().toString(16).takeLast(6)}")
-            }
+            val payload =
+                JSONObject().apply {
+                    put("source", sanitized)
+                    put("theme", spec.theme ?: "dark")
+                    put("accent", "#${AuroraColors.ember.toArgb().toUInt().toString(16).takeLast(6)}")
+                }
             web.evaluateJavascript(
-                "window.__burnbar_render && window.__burnbar_render(${payload})",
-                null
+                "window.__burnbar_render && window.__burnbar_render($payload)",
+                null,
             )
-        }
+        },
     )
 }

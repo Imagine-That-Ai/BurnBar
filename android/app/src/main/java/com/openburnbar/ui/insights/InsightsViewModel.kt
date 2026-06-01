@@ -3,6 +3,9 @@ package com.openburnbar.ui.insights
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
+import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightCanvas
@@ -12,25 +15,24 @@ import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.data.insights.services.AndroidBurnBarHostedInsightGateway
 import com.openburnbar.data.insights.services.AndroidHermesInsightAnalysisGateway
-import com.openburnbar.data.insights.services.AndroidInsightCredentialStore
 import com.openburnbar.data.insights.services.AndroidInsightAnalysisEngine
+import com.openburnbar.data.insights.services.AndroidInsightCredentialStore
 import com.openburnbar.data.insights.services.AndroidInsightGatewayRegistry
+import com.openburnbar.data.insights.services.BurnBarProSubscriptionRequiredException
 import com.openburnbar.data.insights.services.FirestoreInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.InsightAnalysisEngine
 import com.openburnbar.data.insights.services.InsightDataSource
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
-import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
-import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.insights.verdict.InsightVerdict
 import com.openburnbar.data.insights.verdict.RuleBasedVerdictEngine
 import com.openburnbar.data.insights.verdict.VerdictWindow
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class InsightsViewModel(
@@ -45,16 +47,16 @@ class InsightsViewModel(
      */
     private val hermesGateway: AndroidHermesInsightAnalysisGateway? = null,
 ) : AndroidViewModel(application) {
-
     constructor(application: Application) : this(application, FirestoreInsightDataSource(), null)
 
     private val auditLog = InsightAnalysisAuditLogRepository(application)
     private val cache = InsightAnalysisCacheRepository(application)
     private val credentialStore = AndroidInsightCredentialStore(application)
-    private val gateways = AndroidInsightGatewayRegistry.defaultGateways(
-        credentialStore,
-        hermesProvider = { hermesGateway }
-    ).associateBy { it.providerKey }
+    private val gateways =
+        AndroidInsightGatewayRegistry.defaultGateways(
+            credentialStore,
+            hermesProvider = { hermesGateway },
+        ).associateBy { it.providerKey }
     private val preferences = application.getSharedPreferences("insights_model_preferences", Application.MODE_PRIVATE)
     private val missionDispatcher = CLIAgentMissionDispatcher()
 
@@ -88,8 +90,11 @@ class InsightsViewModel(
 
     sealed interface MissionStatus {
         data object Idle : MissionStatus
+
         data class Dispatched(val title: String, val runtime: String) : MissionStatus
+
         data class Tracking(val mission: CLIAgentMissionSnapshot) : MissionStatus
+
         data class Failed(val title: String, val message: String) : MissionStatus
     }
 
@@ -97,13 +102,14 @@ class InsightsViewModel(
     val missionStatus = _missionStatus.asStateFlow()
     private var missionObservationJob: Job? = null
 
-    private val localRulesModel = InsightModelTag(
-        providerKey = "local-rules",
-        modelID = "local-rules-v1",
-        displayName = "Local rules",
-        egressTier = InsightEgressTier.LOCAL_ONLY,
-        stampedAt = java.time.Instant.now().toString()
-    )
+    private val localRulesModel =
+        InsightModelTag(
+            providerKey = "local-rules",
+            modelID = "local-rules-v1",
+            displayName = "Local rules",
+            egressTier = InsightEgressTier.LOCAL_ONLY,
+            stampedAt = java.time.Instant.now().toString(),
+        )
 
     private val _modelOptions = MutableStateFlow(listOf(localRulesModel) + gateways.values.flatMap { it.models })
     val modelOptions = _modelOptions.asStateFlow()
@@ -118,7 +124,7 @@ class InsightsViewModel(
         auditLog = auditLog,
         cache = cache,
         gateways = gateways,
-        restrictToLocalOnly = _localOnlyMode.value
+        restrictToLocalOnly = _localOnlyMode.value,
     )
 
     private fun loadSelectedModel(): InsightModelTag {
@@ -152,7 +158,7 @@ class InsightsViewModel(
             try {
                 runAnalysis("Generate the default Android Insights intelligence brief.")
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -166,7 +172,7 @@ class InsightsViewModel(
             try {
                 runAnalysis("Refresh the Android Insights intelligence brief.")
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: BurnBarProSubscriptionRequiredException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -181,7 +187,7 @@ class InsightsViewModel(
             try {
                 runAnalysis(prompt.trim(), InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP)
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: BurnBarProSubscriptionRequiredException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -205,23 +211,25 @@ class InsightsViewModel(
         if (trimmedPrompt.isEmpty()) return
         viewModelScope.launch {
             try {
-                val requestID = missionDispatcher.dispatch(
-                    title = trimmedTitle,
-                    prompt = trimmedPrompt,
-                    missionKind = missionKind,
-                    requestedRuntime = requestedRuntime,
-                    targetProject = targetProject,
-                    depth = depth,
-                    approvalMode = approvalMode,
-                    commandsAllowed = commandsAllowed,
-                    fileEditsAllowed = fileEditsAllowed,
-                )
-                _missionStatus.value = MissionStatus.Dispatched(
-                    trimmedTitle,
-                    if (requestedRuntime == "auto") "Mac agent fleet" else requestedRuntime,
-                )
+                val requestID =
+                    missionDispatcher.dispatch(
+                        title = trimmedTitle,
+                        prompt = trimmedPrompt,
+                        missionKind = missionKind,
+                        requestedRuntime = requestedRuntime,
+                        targetProject = targetProject,
+                        depth = depth,
+                        approvalMode = approvalMode,
+                        commandsAllowed = commandsAllowed,
+                        fileEditsAllowed = fileEditsAllowed,
+                    )
+                _missionStatus.value =
+                    MissionStatus.Dispatched(
+                        trimmedTitle,
+                        if (requestedRuntime == "auto") "Mac agent fleet" else requestedRuntime,
+                    )
                 observeMission(requestID, trimmedTitle)
-            } catch (e: Exception) {
+            } catch (e: BurnBarProSubscriptionRequiredException) {
                 _missionStatus.value = MissionStatus.Failed(trimmedTitle, e.message ?: "Mission dispatch failed.")
             }
         }
@@ -237,11 +245,12 @@ class InsightsViewModel(
         viewModelScope.launch {
             try {
                 missionDispatcher.respondToApproval(requestID, approve)
-            } catch (e: Exception) {
-                _missionStatus.value = MissionStatus.Failed(
-                    "Mission approval",
-                    e.message ?: "Mission approval response failed.",
-                )
+            } catch (e: BurnBarProSubscriptionRequiredException) {
+                _missionStatus.value =
+                    MissionStatus.Failed(
+                        "Mission approval",
+                        e.message ?: "Mission approval response failed.",
+                    )
             }
         }
     }
@@ -276,10 +285,7 @@ class InsightsViewModel(
         }
     }
 
-    private suspend fun runAnalysis(
-        prompt: String,
-        instruction: InsightAnalysisRequest.Instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF
-    ) {
+    private suspend fun runAnalysis(prompt: String, instruction: InsightAnalysisRequest.Instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF) {
         val filter = _canvas.value?.filter ?: InsightFilter()
         val digest = dataSource.buildDigest(filter)
         // Produce the rule-based verdict alongside the brief; the verdict
@@ -288,27 +294,30 @@ class InsightsViewModel(
         val producedVerdict = verdictEngine.produce(digest = digest, window = VerdictWindow.today)
         _verdict.value = producedVerdict
         _verdictIsDemo.value = false
-        val context = InsightAggregator.buildContext(
-            digest = digest,
-            includedDataSources = listOf(
-                "firestore_rollups",
-                "quota_snapshots",
-                "provider_summaries",
-                "model_summaries",
-                "prior_android_insight_runs",
-                "audit_history"
-            ),
-            priorRunSummaries = emptyList()
-        )
-        val request = InsightAnalysisRequest(
-            prompt = prompt,
-            context = context,
-            currentCanvas = _canvas.value,
-            selectedModel = modelForAnalysis(instruction),
-            instruction = instruction,
-            allowDeepTranscriptAnalysis = false,
-            maxGeneratedWidgets = 6
-        )
+        val context =
+            InsightAggregator.buildContext(
+                digest = digest,
+                includedDataSources =
+                listOf(
+                    "firestore_rollups",
+                    "quota_snapshots",
+                    "provider_summaries",
+                    "model_summaries",
+                    "prior_android_insight_runs",
+                    "audit_history",
+                ),
+                priorRunSummaries = emptyList(),
+            )
+        val request =
+            InsightAnalysisRequest(
+                prompt = prompt,
+                context = context,
+                currentCanvas = _canvas.value,
+                selectedModel = modelForAnalysis(instruction),
+                instruction = instruction,
+                allowDeepTranscriptAnalysis = false,
+                maxGeneratedWidgets = 6,
+            )
         val result = analysisEngine().analyze(request)
         _analysis.value = result
         _canvas.value = RuleBasedInsightAnalysisEngine.materializeCanvas(result, prompt)
@@ -318,18 +327,19 @@ class InsightsViewModel(
         val selected = _selectedModel.value
         if (instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) return selected
         if (selected.providerKey != "local-rules") return selected
-        val available = if (_localOnlyMode.value) {
-            _modelOptions.value.filter { it.egressTier == InsightEgressTier.LOCAL_ONLY }
-        } else {
-            _modelOptions.value
-        }
+        val available =
+            if (_localOnlyMode.value) {
+                _modelOptions.value.filter { it.egressTier == InsightEgressTier.LOCAL_ONLY }
+            } else {
+                _modelOptions.value
+            }
         // Preference order: user-relay (Hermes) → user-key cloud → Ollama
         // → BurnBar hosted → anything non-local-rules.
         return available.firstOrNull { it.providerKey == "hermes" }
             ?: available.firstOrNull {
-                it.egressTier != InsightEgressTier.LOCAL_ONLY
-                    && it.providerKey != "ollama"
-                    && it.providerKey != AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
+                it.egressTier != InsightEgressTier.LOCAL_ONLY &&
+                    it.providerKey != "ollama" &&
+                    it.providerKey != AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
             }
             ?: available.firstOrNull { it.providerKey == "ollama" }
             ?: available.firstOrNull { it.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY }
@@ -348,23 +358,25 @@ class InsightsViewModel(
 
     private fun observeMission(requestID: String, fallbackTitle: String) {
         missionObservationJob?.cancel()
-        missionObservationJob = viewModelScope.launch {
-            missionDispatcher.observe(requestID)
-                .catch { e ->
-                    _missionStatus.value = MissionStatus.Failed(
-                        fallbackTitle,
-                        e.message ?: "Mission status listener failed."
-                    )
-                    missionObservationJob = null
-                }
-                .collect { snapshot ->
-                    _missionStatus.value = MissionStatus.Tracking(snapshot)
-                    if (snapshot.isTerminal) {
-                        missionObservationJob?.cancel()
+        missionObservationJob =
+            viewModelScope.launch {
+                missionDispatcher.observe(requestID)
+                    .catch { e ->
+                        _missionStatus.value =
+                            MissionStatus.Failed(
+                                fallbackTitle,
+                                e.message ?: "Mission status listener failed.",
+                            )
                         missionObservationJob = null
                     }
-                }
-        }
+                    .collect { snapshot ->
+                        _missionStatus.value = MissionStatus.Tracking(snapshot)
+                        if (snapshot.isTerminal) {
+                            missionObservationJob?.cancel()
+                            missionObservationJob = null
+                        }
+                    }
+            }
     }
 
     override fun onCleared() {

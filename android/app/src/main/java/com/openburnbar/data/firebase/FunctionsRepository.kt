@@ -4,10 +4,12 @@ import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.cloud.CloudVaultSealedText
-import com.openburnbar.data.hermes.PiConnectionMode
-import com.openburnbar.data.hermes.PiConnectionStatus
 import com.openburnbar.data.models.DeviceLinkCapability
 import kotlinx.coroutines.tasks.await
+
+private const val VAL_10 = 10
+private const val VAL_12 = 12
+private const val VAL_50 = 50
 
 data class CloudConversationSearchHit(
     val id: String,
@@ -28,7 +30,7 @@ data class CloudConversationSearchHit(
     val matchKind: String? = null,
     val tokenHashVersion: Int? = null,
     val semanticHashVersion: Int? = null,
-    val indexVersion: Int? = null
+    val indexVersion: Int? = null,
 )
 
 /**
@@ -58,7 +60,7 @@ data class ConversationFacetRow(
     val bodyHash: String?,
     val startTimeMs: Long?,
     val endTimeMs: Long?,
-    val updatedAtMs: Long?
+    val updatedAtMs: Long?,
 )
 
 /** Filtered-set aggregates (count + cost + token sums) for the cockpit KPI header; `null` when the
@@ -66,7 +68,7 @@ data class ConversationFacetRow(
 data class ConversationQueryAggregates(
     val count: Int,
     val totalCostUSD: Double,
-    val totalTokens: Long
+    val totalTokens: Long,
 )
 
 /** Decoded `queryConversations` response: a page of facet rows, an opaque pagination cursor
@@ -76,16 +78,18 @@ data class ConversationQueryResponse(
     val nextCursor: String?,
     val sort: String?,
     val direction: String?,
-    val aggregates: ConversationQueryAggregates?
+    val aggregates: ConversationQueryAggregates?,
 )
 
 class FunctionsRepository {
     private val functions: FirebaseFunctions = Firebase.functions
+    val piAgent: FunctionsPiAgentRepository by lazy { FunctionsPiAgentRepository(functions, ::callMap) }
 
     suspend fun searchStreams(query: String, limit: Int = 20): List<Map<String, Any>> {
-        val result = functions.getHttpsCallable("searchStreams")
-            .call(mapOf("query" to query, "limit" to limit))
-            .await()
+        val result =
+            functions.getHttpsCallable("searchStreams")
+                .call(mapOf("query" to query, "limit" to limit))
+                .await()
         val data = result.getData() as? Map<*, *> ?: return emptyList()
         return data["hits"].asStringAnyMapList()
             ?: data["results"].asStringAnyMapList()
@@ -95,16 +99,17 @@ class FunctionsRepository {
     suspend fun searchEncryptedConversationIndex(
         tokenHashes: List<String>,
         semanticHashes: List<String> = emptyList(),
-        limit: Int = 25
+        limit: Int = 25,
     ): List<CloudConversationSearchHit> {
-        val data = callMap(
-            "searchEncryptedConversationIndex",
-            mapOf(
-                "tokenHashes" to tokenHashes.take(10),
-                "semanticHashes" to semanticHashes.take(12),
-                "limit" to limit.coerceIn(1, 50)
+        val data =
+            callMap(
+                "searchEncryptedConversationIndex",
+                mapOf(
+                    "tokenHashes" to tokenHashes.take(VAL_10),
+                    "semanticHashes" to semanticHashes.take(VAL_12),
+                    "limit" to limit.coerceIn(1, VAL_50),
+                ),
             )
-        )
         val hits = data["hits"].asStringAnyMapList() ?: return emptyList()
         return hits.mapNotNull { it.toCloudConversationSearchHit() }
     }
@@ -128,14 +133,15 @@ class FunctionsRepository {
         direction: String = "desc",
         limit: Int = 30,
         cursorDocId: String? = null,
-        includeAggregates: Boolean = true
+        includeAggregates: Boolean = true,
     ): ConversationQueryResponse {
-        val payload = mutableMapOf<String, Any>(
-            "sort" to sort,
-            "direction" to direction,
-            "limit" to limit.coerceIn(1, 100),
-            "includeAggregates" to includeAggregates
-        )
+        val payload =
+            mutableMapOf<String, Any>(
+                "sort" to sort,
+                "direction" to direction,
+                "limit" to limit.coerceIn(1, 100),
+                "includeAggregates" to includeAggregates,
+            )
         if (providers.isNotEmpty()) payload["providers"] = providers
         if (models.isNotEmpty()) payload["models"] = models
         projectName?.takeIf { it.isNotBlank() }?.let { payload["projectName"] = it }
@@ -146,48 +152,45 @@ class FunctionsRepository {
         cursorDocId?.takeIf { it.isNotBlank() }?.let { payload["cursorDocId"] = it }
 
         val data = callMap("queryConversations", payload)
-        val rows = data["rows"].asStringAnyMapList()
-            ?.mapNotNull { it.toConversationFacetRow() }
-            ?: emptyList()
-        val aggregates = (data["aggregates"] as? Map<*, *>)?.let { agg ->
-            ConversationQueryAggregates(
-                count = (agg["count"] as? Number)?.toInt() ?: 0,
-                totalCostUSD = (agg["totalCostUSD"] as? Number)?.toDouble() ?: 0.0,
-                totalTokens = (agg["totalTokens"] as? Number)?.toLong() ?: 0L
-            )
-        }
+        val rows =
+            data["rows"].asStringAnyMapList()
+                ?.mapNotNull { it.toConversationFacetRow() }
+                ?: emptyList()
+        val aggregates =
+            (data["aggregates"] as? Map<*, *>)?.let { agg ->
+                ConversationQueryAggregates(
+                    count = (agg["count"] as? Number)?.toInt() ?: 0,
+                    totalCostUSD = (agg["totalCostUSD"] as? Number)?.toDouble() ?: 0.0,
+                    totalTokens = (agg["totalTokens"] as? Number)?.toLong() ?: 0L,
+                )
+            }
         return ConversationQueryResponse(
             rows = rows,
             nextCursor = data["nextCursor"] as? String,
             sort = data["sort"] as? String,
             direction = data["direction"] as? String,
-            aggregates = aggregates
+            aggregates = aggregates,
         )
     }
 
     suspend fun encryptedSessionBlobDownloadURL(storagePath: String): String {
-        val data = callMap(
-            "getEncryptedSessionBlobDownloadUrl",
-            mapOf("storagePath" to storagePath)
-        )
+        val data =
+            callMap(
+                "getEncryptedSessionBlobDownloadUrl",
+                mapOf("storagePath" to storagePath),
+            )
         return data["downloadURL"] as? String
-            ?: throw IllegalStateException("Encrypted session download URL missing.")
+            ?: error("Encrypted session download URL missing.")
     }
 
-    suspend fun verifyGooglePlayBurnBarProSubscription(
-        purchaseToken: String,
-        productID: String = "com.openburnbar.pro.monthly"
-    ): Map<String, Any> = callMap(
+    suspend fun verifyGooglePlayBurnBarProSubscription(purchaseToken: String, productID: String = "com.openburnbar.pro.monthly"): Map<String, Any> = callMap(
         "verifyGooglePlayBurnBarProSubscription",
-        mapOf("purchaseToken" to purchaseToken, "productID" to productID)
+        mapOf("purchaseToken" to purchaseToken, "productID" to productID),
     )
 
-    suspend fun verifyGooglePlayCloudProTopUp(
-        purchaseToken: String,
-        productID: String
-    ): Map<String, Any> = callMap(
+    suspend fun verifyGooglePlayCloudProTopUp(purchaseToken: String, productID: String): Map<String, Any> = callMap(
         "verifyGooglePlayCloudProTopUp",
-        mapOf("purchaseToken" to purchaseToken, "productID" to productID)
+        mapOf("purchaseToken" to purchaseToken, "productID" to productID),
     )
 
     suspend fun rebuildUsageRollups() {
@@ -199,16 +202,18 @@ class FunctionsRepository {
     }
 
     suspend fun refreshQuota(accountId: String, providerId: String): Map<String, Any> {
-        val result = functions.getHttpsCallable("refreshQuota")
-            .call(mapOf("accountId" to accountId, "providerId" to providerId))
-            .await()
+        val result =
+            functions.getHttpsCallable("refreshQuota")
+                .call(mapOf("accountId" to accountId, "providerId" to providerId))
+                .await()
         return result.getData().asStringAnyMap() ?: emptyMap()
     }
 
     suspend fun refreshProviderAccountQuota(accountId: String): Map<String, Any> {
-        val result = functions.getHttpsCallable("refreshProviderAccountQuota")
-            .call(mapOf("accountID" to accountId))
-            .await()
+        val result =
+            functions.getHttpsCallable("refreshProviderAccountQuota")
+                .call(mapOf("accountID" to accountId))
+                .await()
         return result.getData().asStringAnyMap() ?: emptyMap()
     }
 
@@ -219,9 +224,10 @@ class FunctionsRepository {
     }
 
     suspend fun addProviderConnection(providerId: String, credentials: Map<String, String>): Map<String, Any> {
-        val result = functions.getHttpsCallable("addProviderConnection")
-            .call(mapOf("providerId" to providerId, "credentials" to credentials))
-            .await()
+        val result =
+            functions.getHttpsCallable("addProviderConnection")
+                .call(mapOf("providerId" to providerId, "credentials" to credentials))
+                .await()
         return result.getData().asStringAnyMap() ?: emptyMap()
     }
 
@@ -234,13 +240,14 @@ class FunctionsRepository {
         region: String? = null,
         tokenPlanTier: String? = null,
         tokenPlanBillingCycle: String? = null,
-        authMethodId: String? = null
+        authMethodId: String? = null,
     ): Map<String, Any> {
-        val payload = mutableMapOf<String, Any>(
-            "provider" to providerId,
-            "credential" to credential,
-            "credentialKind" to credentialKind
-        )
+        val payload =
+            mutableMapOf<String, Any>(
+                "provider" to providerId,
+                "credential" to credential,
+                "credentialKind" to credentialKind,
+            )
         label?.takeIf { it.isNotBlank() }?.let { payload["label"] = it }
         endpointProfileId?.takeIf { it.isNotBlank() }?.let { payload["endpointProfileID"] = it }
         region?.takeIf { it.isNotBlank() }?.let { payload["region"] = it }
@@ -250,112 +257,24 @@ class FunctionsRepository {
         return callMap("connectProviderAccount", payload)
     }
 
-    suspend fun createPiAgentPairing(
-        deviceId: String? = null,
-        platform: String? = null,
-        displayName: String? = null
-    ): Map<String, Any> {
-        val payload = mutableMapOf<String, Any>()
-        deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
-        platform?.takeIf { it.isNotBlank() }?.let { payload["platform"] = it }
-        displayName?.takeIf { it.isNotBlank() }?.let { payload["displayName"] = it }
-        return callMap("createPiAgentPairing", payload)
-    }
-
-    suspend fun completePiAgentPairing(
-        pairingId: String,
-        code: String,
-        displayName: String,
-        endpointURL: String,
-        connectionId: String? = null,
-        mode: PiConnectionMode = PiConnectionMode.DIRECT_URL,
-        advertisedModel: String? = null,
-        selectedInstanceId: String? = null,
-        redisURL: String? = null,
-        capabilities: List<String> = listOf("chat_completions"),
-        instances: List<Map<String, Any>> = emptyList(),
-        models: List<Map<String, Any>> = emptyList(),
-        relayPublicKey: String? = null,
-        relayKeyVersion: Int? = null,
-        relayEncryption: String? = null,
-        realtimeRelayURL: String? = null,
-        realtimeRelayStatus: String? = null,
-        deviceId: String? = null
-    ): Map<String, Any> {
-        val payload = mutableMapOf<String, Any>(
-            "pairingId" to pairingId,
-            "code" to code,
-            "displayName" to displayName,
-            "mode" to mode.token,
-            "endpointURL" to endpointURL,
-            "capabilities" to capabilities
-        )
-        connectionId?.takeIf { it.isNotBlank() }?.let { payload["connectionId"] = it }
-        advertisedModel?.takeIf { it.isNotBlank() }?.let { payload["advertisedModel"] = it }
-        selectedInstanceId?.takeIf { it.isNotBlank() }?.let { payload["selectedInstanceID"] = it }
-        redisURL?.takeIf { it.isNotBlank() }?.let { payload["redisURL"] = it }
-        if (instances.isNotEmpty()) payload["instances"] = instances
-        if (models.isNotEmpty()) payload["models"] = models
-        relayPublicKey?.takeIf { it.isNotBlank() }?.let { payload["relayPublicKey"] = it }
-        relayKeyVersion?.let { payload["relayKeyVersion"] = it }
-        relayEncryption?.takeIf { it.isNotBlank() }?.let { payload["relayEncryption"] = it }
-        realtimeRelayURL?.takeIf { it.isNotBlank() }?.let { payload["realtimeRelayURL"] = it }
-        realtimeRelayStatus?.takeIf { it.isNotBlank() }?.let { payload["realtimeRelayStatus"] = it }
-        deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
-        return callMap("completePiAgentPairing", payload)
-    }
-
-    suspend fun listPiAgentConnections(includeRevoked: Boolean = false): List<Map<String, Any>> {
-        val data = callMap("listPiAgentConnections", mapOf("includeRevoked" to includeRevoked))
-        return data["connections"].asStringAnyMapList() ?: emptyList()
-    }
-
-    suspend fun revokePiAgentConnection(connectionId: String, deviceId: String? = null) {
-        val payload = mutableMapOf<String, Any>("connectionId" to connectionId)
-        deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
-        functions.getHttpsCallable("revokePiAgentConnection").call(payload).await()
-    }
-
     suspend fun revokeRemoteMcpClient(clientId: String) {
         functions.getHttpsCallable("revokeRemoteMcpClient")
             .call(mapOf("clientId" to clientId))
             .await()
     }
 
-    suspend fun updatePiAgentConnectionStatus(
-        connectionId: String,
-        status: PiConnectionStatus,
-        advertisedModel: String? = null,
-        selectedInstanceId: String? = null,
-        capabilities: List<String>? = null,
-        instances: List<Map<String, Any>>? = null,
-        models: List<Map<String, Any>>? = null,
-        deviceId: String? = null
-    ) {
-        val payload = mutableMapOf<String, Any>(
-            "connectionId" to connectionId,
-            "status" to status.token
-        )
-        advertisedModel?.takeIf { it.isNotBlank() }?.let { payload["advertisedModel"] = it }
-        selectedInstanceId?.takeIf { it.isNotBlank() }?.let { payload["selectedInstanceID"] = it }
-        capabilities?.let { payload["capabilities"] = it }
-        instances?.let { payload["instances"] = it }
-        models?.let { payload["models"] = it }
-        deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
-        functions.getHttpsCallable("updatePiAgentConnectionStatus").call(payload).await()
-    }
-
     suspend fun adoptProviderAccountForDevice(
         accountId: String,
         deviceId: String,
         deviceDisplayName: String? = null,
-        capability: DeviceLinkCapability = DeviceLinkCapability.USE
+        capability: DeviceLinkCapability = DeviceLinkCapability.USE,
     ): Map<String, Any> {
-        val payload = mutableMapOf<String, Any>(
-            "accountID" to accountId,
-            "deviceID" to deviceId,
-            "capability" to capability.token
-        )
+        val payload =
+            mutableMapOf<String, Any>(
+                "accountID" to accountId,
+                "deviceID" to deviceId,
+                "capability" to capability.token,
+            )
         deviceDisplayName?.takeIf { it.isNotBlank() }?.let { payload["deviceDisplayName"] = it }
         return callMap("adoptProviderAccountForDevice", payload)
     }
@@ -366,10 +285,7 @@ class FunctionsRepository {
             .await()
     }
 
-    suspend fun backfillProviderAccountDeviceLinks(
-        callerDeviceId: String? = null,
-        callerDeviceDisplayName: String? = null
-    ) {
+    suspend fun backfillProviderAccountDeviceLinks(callerDeviceId: String? = null, callerDeviceDisplayName: String? = null) {
         val payload = mutableMapOf<String, Any>()
         callerDeviceId?.takeIf { it.isNotBlank() }?.let { payload["callerDeviceID"] = it }
         callerDeviceDisplayName?.takeIf { it.isNotBlank() }?.let { payload["callerDeviceDisplayName"] = it }
@@ -398,12 +314,26 @@ private fun Any?.asStringAnyMapList(): List<Map<String, Any>>? {
 }
 
 private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSearchHit? {
-    val sealedTitle = (this["sealedTitle"] as? Map<*, *>)?.toSealedText() ?: return null
-    val sealedSnippet = (this["sealedSnippet"] as? Map<*, *>)?.toSealedText() ?: return null
+    val sealedTitle = (this["sealedTitle"] as? Map<*, *>)?.toSealedText()
+    val sealedSnippet = (this["sealedSnippet"] as? Map<*, *>)?.toSealedText()
+    val id = this["id"] as? String
+    val documentID = this["documentID"] as? String
+    val storagePath = this["storagePath"] as? String
+    val bodyHash = this["bodyHash"] as? String
+    val hasRequiredSearchFields =
+        sealedTitle != null &&
+            sealedSnippet != null &&
+            id != null &&
+            documentID != null &&
+            storagePath != null &&
+            bodyHash != null
+    if (!hasRequiredSearchFields) {
+        return null
+    }
     return CloudConversationSearchHit(
-        id = this["id"] as? String ?: return null,
+        id = id,
         chunkID = this["chunkID"] as? String ?: "",
-        documentID = this["documentID"] as? String ?: return null,
+        documentID = documentID,
         sourceKind = this["sourceKind"] as? String ?: "conversation",
         sourceID = this["sourceID"] as? String ?: "",
         provider = this["provider"] as? String,
@@ -411,15 +341,15 @@ private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSe
         sealedTitle = sealedTitle,
         sealedSnippet = sealedSnippet,
         sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
-        storagePath = this["storagePath"] as? String ?: return null,
-        bodyHash = this["bodyHash"] as? String ?: return null,
+        storagePath = storagePath,
+        bodyHash = bodyHash,
         score = (this["score"] as? Number)?.toDouble() ?: 0.0,
         tokenScore = (this["tokenScore"] as? Number)?.toDouble(),
         semanticScore = (this["semanticScore"] as? Number)?.toDouble(),
         matchKind = this["matchKind"] as? String,
         tokenHashVersion = (this["tokenHashVersion"] as? Number)?.toInt(),
         semanticHashVersion = (this["semanticHashVersion"] as? Number)?.toInt(),
-        indexVersion = (this["indexVersion"] as? Number)?.toInt()
+        indexVersion = (this["indexVersion"] as? Number)?.toInt(),
     )
 }
 
@@ -446,7 +376,7 @@ private fun Map<String, Any>.toConversationFacetRow(): ConversationFacetRow? {
         bodyHash = this["bodyHash"] as? String,
         startTimeMs = parseIsoTimestampMs(this["startTime"]),
         endTimeMs = parseIsoTimestampMs(this["endTime"]),
-        updatedAtMs = parseIsoTimestampMs(this["updatedAt"])
+        updatedAtMs = parseIsoTimestampMs(this["updatedAt"]),
     )
 }
 
@@ -456,16 +386,25 @@ private fun parseIsoTimestampMs(value: Any?): Long? {
 }
 
 private fun Map<*, *>.toSealedText(): CloudVaultSealedText? {
-    val algorithm = this["algorithm"] as? String ?: return null
-    val keyVersion = (this["keyVersion"] as? Number)?.toInt() ?: return null
-    val nonce = this["nonce"] as? String ?: return null
-    val ciphertext = this["ciphertext"] as? String ?: return null
-    val tag = this["tag"] as? String ?: return null
+    val algorithm = this["algorithm"] as? String
+    val keyVersion = (this["keyVersion"] as? Number)?.toInt()
+    val nonce = this["nonce"] as? String
+    val ciphertext = this["ciphertext"] as? String
+    val tag = this["tag"] as? String
+    val hasRequiredSealedTextFields =
+        algorithm != null &&
+            keyVersion != null &&
+            nonce != null &&
+            ciphertext != null &&
+            tag != null
+    if (!hasRequiredSealedTextFields) {
+        return null
+    }
     return CloudVaultSealedText(
         algorithm = algorithm,
         keyVersion = keyVersion,
         nonce = nonce,
         ciphertext = ciphertext,
-        tag = tag
+        tag = tag,
     )
 }

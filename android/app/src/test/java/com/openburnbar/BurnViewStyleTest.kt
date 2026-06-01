@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// detekt: test fixtures use literal wire-format / timeout values.
+
 package com.openburnbar
 
 import com.openburnbar.data.models.RollupSummary
@@ -9,13 +12,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class BurnViewStyleTest {
-
     @Test
     fun hasFiveStylesWithStableKeys() {
         assertEquals(5, BurnViewStyle.entries.size)
         assertEquals(
             listOf("cards", "constellation", "grid", "leaderboard", "timeline"),
-            BurnViewStyle.entries.map { it.key }
+            BurnViewStyle.entries.map { it.key },
         )
     }
 
@@ -35,7 +37,7 @@ class BurnViewStyleTest {
     private fun summary(provider: String, cost: Double, tokens: Long) = RollupSummary(
         provider = provider,
         totalCost = cost,
-        totalTokens = tokens
+        totalTokens = tokens,
     )
 
     @Test
@@ -46,11 +48,11 @@ class BurnViewStyleTest {
 
         assertEquals(
             listOf("anthropic", "openai"),
-            BurnLeaderboardMath.ranked(listOf(a, b, zero), UsageDisplayMode.CURRENCY).map { it.provider }
+            BurnLeaderboardMath.ranked(listOf(a, b, zero), UsageDisplayMode.CURRENCY).map { it.provider },
         )
         assertEquals(
             listOf("openai", "anthropic"),
-            BurnLeaderboardMath.ranked(listOf(a, b, zero), UsageDisplayMode.TOKENS).map { it.provider }
+            BurnLeaderboardMath.ranked(listOf(a, b, zero), UsageDisplayMode.TOKENS).map { it.provider },
         )
     }
 
@@ -58,6 +60,6 @@ class BurnViewStyleTest {
     fun leaderboardFractionClampsAndGuardsZero() {
         assertEquals(0.5f, BurnLeaderboardMath.fraction(5.0, 10.0), 0.0001f)
         assertEquals(1.0f, BurnLeaderboardMath.fraction(20.0, 10.0), 0.0001f) // clamped
-        assertEquals(0.0f, BurnLeaderboardMath.fraction(5.0, 0.0), 0.0001f)   // zero-guard
+        assertEquals(0.0f, BurnLeaderboardMath.fraction(5.0, 0.0), 0.0001f) // zero-guard
     }
 }

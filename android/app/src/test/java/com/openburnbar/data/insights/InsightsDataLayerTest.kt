@@ -1,58 +1,78 @@
+@file:Suppress("FunctionNaming", "LargeClass", "TooManyFunctions")
+// detekt: JUnit backtick BDD test names; insights data-layer regression matrix across widgets and missions.
+
 package com.openburnbar.data.insights
 
-import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentChatPresentationMode
+import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.insights.services.InMemoryInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
-import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
 import com.openburnbar.data.insights.services.InsightExecutor
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
+import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
 import com.openburnbar.ui.insights.MissionRuntimeTarget
-import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
-import org.junit.Test
 import java.time.Instant
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+private const val SECONDS = 180
+private const val VAL_0_01 = 0.01
+private const val VAL_0_75 = 0.75
+private const val VAL_1024 = 1024
+private const val VAL_24 = 24
+private const val VAL_26 = 26
+private const val VAL_3 = 3
+private const val VAL_4 = 4
+private const val VAL_5 = 5
+private const val VAL_6 = 6
+private const val VAL_8 = 8
 
 class InsightsDataLayerTest {
-
-    private val testDigest = runBlocking {
-        InMemoryInsightDataSource().buildDigest(InsightFilter())
-    }
+    private val testDigest =
+        runBlocking {
+            InMemoryInsightDataSource().buildDigest(InsightFilter())
+        }
 
     @Test
     fun `placeNew positions widgets sequentially`() {
         val layout = InsightLayout()
-        val placed = layout.placeNew("w1", 3 to 2)
+        val placed = layout.placeNew("w1", VAL_3 to 2)
         assertEquals(0, placed.placements["w1"]?.column)
         assertEquals(0, placed.placements["w1"]?.row)
-        assertEquals(3, placed.placements["w1"]?.colSpan)
+        assertEquals(VAL_3, placed.placements["w1"]?.colSpan)
         assertEquals(2, placed.placements["w1"]?.rowSpan)
     }
 
     @Test
     fun `placeNew stacks widgets when row is full`() {
         var layout = InsightLayout(columnCount = 4)
-        layout = layout.placeNew("w1", 3 to 1)
-        layout = layout.placeNew("w2", 3 to 1)
+        layout = layout.placeNew("w1", VAL_3 to 1)
+        layout = layout.placeNew("w2", VAL_3 to 1)
         assertEquals(0, layout.placements["w1"]?.column)
     }
 
     @Test
     fun `move repositions a widget`() {
         var layout = InsightLayout(columnCount = 12)
-        layout = layout.placeNew("w1", 4 to 2)
+        layout = layout.placeNew("w1", VAL_4 to 2)
         layout = layout.move("w1", toColumn = 6, toRow = 3)
-        assertEquals(6, layout.placements["w1"]?.column)
-        assertEquals(3, layout.placements["w1"]?.row)
+        assertEquals(VAL_6, layout.placements["w1"]?.column)
+        assertEquals(VAL_3, layout.placements["w1"]?.row)
     }
 
     @Test
     fun `remove clears a placement`() {
         var layout = InsightLayout()
-        layout = layout.placeNew("w1", 4 to 2)
+        layout = layout.placeNew("w1", VAL_4 to 2)
         layout = layout.remove("w1")
         assertNull(layout.placements["w1"])
     }
@@ -60,16 +80,16 @@ class InsightsDataLayerTest {
     @Test
     fun `projectedTo shrinks column count proportionally`() {
         var layout = InsightLayout(columnCount = 12)
-        layout = layout.placeNew("w1", 8 to 2)
-        val projected = layout.projectedTo(4)
-        assertEquals(4, projected.columnCount)
+        layout = layout.placeNew("w1", VAL_8 to 2)
+        val projected = layout.projectedTo(VAL_4)
+        assertEquals(VAL_4, projected.columnCount)
         val w1 = requireNotNull(projected.placements["w1"])
         assertTrue(w1.colSpan >= 1)
     }
 
     @Test
     fun `all 26 widget kinds are registered`() {
-        assertEquals(26, InsightWidgetKind.entries.size)
+        assertEquals(VAL_26, InsightWidgetKind.entries.size)
     }
 
     @Test
@@ -81,17 +101,17 @@ class InsightsDataLayerTest {
 
     @Test
     fun `all 6 themes are registered`() {
-        assertEquals(6, InsightTheme.entries.size)
+        assertEquals(VAL_6, InsightTheme.entries.size)
     }
 
     @Test
     fun `all 5 freshness states are registered`() {
-        assertEquals(5, InsightFreshness.entries.size)
+        assertEquals(VAL_5, InsightFreshness.entries.size)
     }
 
     @Test
     fun `ValueFormat has 6 cases matching TypeScript`() {
-        assertEquals(6, ValueFormat.entries.size)
+        assertEquals(VAL_6, ValueFormat.entries.size)
     }
 
     @Test
@@ -107,71 +127,93 @@ class InsightsDataLayerTest {
 
     @Test
     fun `executor handles KPI binding`() {
-        val result = InsightExecutor.execute(
-            InsightDataBinding.Kpi(metric = "totalCost", window = InsightTimeWindow.Last7d),
-            testDigest, InsightFilter()
-        )
+        val result =
+            InsightExecutor.execute(
+                InsightDataBinding.Kpi(metric = "totalCost", window = InsightTimeWindow.Last7d),
+                testDigest,
+                InsightFilter(),
+            )
         assertNotNull(result)
         assertTrue(result is InsightWidgetData.KPI)
     }
 
     @Test
     fun `executor handles TimeSeries binding`() {
-        val result = InsightExecutor.execute(
-            InsightDataBinding.TimeSeries(metric = "cost", window = InsightTimeWindow.Last7d),
-            testDigest, InsightFilter()
-        )
+        val result =
+            InsightExecutor.execute(
+                InsightDataBinding.TimeSeries(metric = "cost", window = InsightTimeWindow.Last7d),
+                testDigest,
+                InsightFilter(),
+            )
         assertNotNull(result)
         assertTrue(result is InsightWidgetData.TimeSeries)
     }
 
     @Test
     fun `executor returns Empty for macOS-only bindings`() {
-        val result = InsightExecutor.execute(
-            InsightDataBinding.UseCaseClusters(window = InsightTimeWindow.Last7d),
-            testDigest, InsightFilter()
-        )
+        val result =
+            InsightExecutor.execute(
+                InsightDataBinding.UseCaseClusters(window = InsightTimeWindow.Last7d),
+                testDigest,
+                InsightFilter(),
+            )
         assertTrue(result is InsightWidgetData.Empty)
     }
 
     @Test
     fun `QuotaState bucket fraction is computed correctly`() {
-        val bucket = InsightWidgetData.QuotaState.Bucket(
-            id = "b1", providerLabel = "Anthropic", bucketName = "usage",
-            symbolName = "gauge", used = 75.0, limit = 100.0
-        )
-        assertEquals(0.75, bucket.fraction, 0.01)
+        val bucket =
+            InsightWidgetData.QuotaState.Bucket(
+                id = "b1",
+                providerLabel = "Anthropic",
+                bucketName = "usage",
+                symbolName = "gauge",
+                used = 75.0,
+                limit = 100.0,
+            )
+        assertEquals(VAL_0_75, bucket.fraction, VAL_0_01)
     }
 
     @Test
     fun `QuotaState bucket with null limit has zero fraction`() {
-        val bucket = InsightWidgetData.QuotaState.Bucket(
-            id = "b1", providerLabel = "Anthropic", bucketName = "usage",
-            symbolName = "gauge", used = 75.0, limit = null
-        )
-        assertEquals(0.0, bucket.fraction, 0.01)
+        val bucket =
+            InsightWidgetData.QuotaState.Bucket(
+                id = "b1",
+                providerLabel = "Anthropic",
+                bucketName = "usage",
+                symbolName = "gauge",
+                used = 75.0,
+                limit = null,
+            )
+        assertEquals(0.0, bucket.fraction, VAL_0_01)
     }
 
     @Test
     fun `QuotaState bucket fraction clamps to 1`() {
-        val bucket = InsightWidgetData.QuotaState.Bucket(
-            id = "b1", providerLabel = "Anthropic", bucketName = "usage",
-            symbolName = "gauge", used = 150.0, limit = 100.0
-        )
-        assertEquals(1.0, bucket.fraction, 0.01)
+        val bucket =
+            InsightWidgetData.QuotaState.Bucket(
+                id = "b1",
+                providerLabel = "Anthropic",
+                bucketName = "usage",
+                symbolName = "gauge",
+                used = 150.0,
+                limit = 100.0,
+            )
+        assertEquals(1.0, bucket.fraction, VAL_0_01)
     }
 
     @Test
     fun `digest has 24 KB max encoded bytes constant`() {
-        assertEquals(24 * 1024, InsightDigest.MAX_ENCODED_BYTES)
+        assertEquals(VAL_24 * VAL_1024, InsightDigest.MAX_ENCODED_BYTES)
     }
 
     @Test
     fun `InsightAggregator builds budget and evidence index`() {
-        val context = InsightAggregator.buildContext(
-            digest = testDigest,
-            includedDataSources = listOf("firestore_rollups", "quota_snapshots", "provider_summaries")
-        )
+        val context =
+            InsightAggregator.buildContext(
+                digest = testDigest,
+                includedDataSources = listOf("firestore_rollups", "quota_snapshots", "provider_summaries"),
+            )
 
         assertTrue(context.budgetReport.encodedBytes > 0)
         assertTrue(context.budgetReport.estimatedPromptTokens > 0)
@@ -180,21 +222,24 @@ class InsightsDataLayerTest {
 
     @Test
     fun `RuleBasedInsightAnalysisEngine returns structured result and canvas`() = runBlocking {
-        val context = InsightAggregator.buildContext(
-            digest = testDigest,
-            includedDataSources = listOf("firestore_rollups", "quota_snapshots", "provider_summaries")
-        )
-        val model = InsightModelTag(
-            providerKey = "local-rules",
-            modelID = "local-rules-v1",
-            displayName = "Local rules"
-        )
-        val request = InsightAnalysisRequest(
-            prompt = "Why did cost spike this week?",
-            context = context,
-            selectedModel = model,
-            instruction = InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP
-        )
+        val context =
+            InsightAggregator.buildContext(
+                digest = testDigest,
+                includedDataSources = listOf("firestore_rollups", "quota_snapshots", "provider_summaries"),
+            )
+        val model =
+            InsightModelTag(
+                providerKey = "local-rules",
+                modelID = "local-rules-v1",
+                displayName = "Local rules",
+            )
+        val request =
+            InsightAnalysisRequest(
+                prompt = "Why did cost spike this week?",
+                context = context,
+                selectedModel = model,
+                instruction = InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP,
+            )
 
         val result = RuleBasedInsightAnalysisEngine(InsightAnalysisPlatform.ANDROID).analyze(request)
         val canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(result, request.prompt)
@@ -215,55 +260,25 @@ class InsightsDataLayerTest {
 
     @Test
     fun `RuleBasedInsightAnalysisEngine uses benchmark evidence for model recommendations`() = runBlocking {
-        val digest = testDigest.copy(
-            modelBenchmarks = listOf(
-                InsightDigest.ModelBenchmarkSummary(
-                    id = "aa-claude-coding",
-                    source = "artificial_analysis",
-                    attribution = "Artificial Analysis",
-                    fetchedAt = "2026-05-13T00:00:00Z",
-                    modelID = "claude-sonnet-4-6",
-                    providerID = "anthropic",
-                    taskCategory = "coding",
-                    score = 0.86,
-                    rank = 3,
-                    costSignal = 0.24,
-                    confidence = 0.80,
-                    freshness = "fresh",
-                    blendedCostPerMtoken = 9.50
-                ),
-                InsightDigest.ModelBenchmarkSummary(
-                    id = "da-ui-fast",
-                    source = "design_arena",
-                    attribution = "Design Arena",
-                    fetchedAt = "2026-05-13T00:00:00Z",
-                    modelID = "ui-fast-model",
-                    providerID = "openai",
-                    taskCategory = "design",
-                    score = 0.84,
-                    rank = 2,
-                    costSignal = 0.82,
-                    confidence = 0.78,
-                    freshness = "fresh",
-                    blendedCostPerMtoken = 1.20
-                )
+        val digest = testDigest.copy(modelBenchmarks = benchmarkSummariesForRecommendations())
+        val context =
+            InsightAggregator.buildContext(
+                digest = digest,
+                includedDataSources = listOf("firestore_rollups", "provider_summaries", "model_benchmarks"),
             )
-        )
-        val context = InsightAggregator.buildContext(
-            digest = digest,
-            includedDataSources = listOf("firestore_rollups", "provider_summaries", "model_benchmarks")
-        )
-        val model = InsightModelTag(
-            providerKey = "local-rules",
-            modelID = "local-rules-v1",
-            displayName = "Local rules"
-        )
-        val request = InsightAnalysisRequest(
-            prompt = "Which model should handle UI tasks?",
-            context = context,
-            selectedModel = model,
-            instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF
-        )
+        val model =
+            InsightModelTag(
+                providerKey = "local-rules",
+                modelID = "local-rules-v1",
+                displayName = "Local rules",
+            )
+        val request =
+            InsightAnalysisRequest(
+                prompt = "Which model should handle UI tasks?",
+                context = context,
+                selectedModel = model,
+                instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF,
+            )
 
         val result = RuleBasedInsightAnalysisEngine(InsightAnalysisPlatform.ANDROID).analyze(request)
 
@@ -276,35 +291,40 @@ class InsightsDataLayerTest {
 
     @Test
     fun `mission enrichment fills remote results that omit missions`() = runBlocking {
-        val context = InsightAggregator.buildContext(
-            digest = testDigest,
-            includedDataSources = listOf("firestore_rollups", "provider_summaries")
-        )
-        val model = InsightModelTag(
-            providerKey = "remote-stub",
-            modelID = "remote-stub-model",
-            displayName = "Remote stub"
-        )
-        val request = InsightAnalysisRequest(
-            prompt = "Generate the default Android Insights intelligence brief.",
-            context = context,
-            selectedModel = model
-        )
-        val remoteResult = InsightAnalysisResult(
-            requestID = request.id,
-            platform = InsightAnalysisPlatform.ANDROID,
-            timeWindow = InsightTimeWindow.Last7d,
-            executiveSummary = "Remote result without missions.",
-            modelTag = model,
-            contextBudget = context.budgetReport,
-            resultHash = "remote-result"
-        )
+        val context =
+            InsightAggregator.buildContext(
+                digest = testDigest,
+                includedDataSources = listOf("firestore_rollups", "provider_summaries"),
+            )
+        val model =
+            InsightModelTag(
+                providerKey = "remote-stub",
+                modelID = "remote-stub-model",
+                displayName = "Remote stub",
+            )
+        val request =
+            InsightAnalysisRequest(
+                prompt = "Generate the default Android Insights intelligence brief.",
+                context = context,
+                selectedModel = model,
+            )
+        val remoteResult =
+            InsightAnalysisResult(
+                requestID = request.id,
+                platform = InsightAnalysisPlatform.ANDROID,
+                timeWindow = InsightTimeWindow.Last7d,
+                executiveSummary = "Remote result without missions.",
+                modelTag = model,
+                contextBudget = context.budgetReport,
+                resultHash = "remote-result",
+            )
 
-        val enriched = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
-            result = remoteResult,
-            request = request,
-            platform = InsightAnalysisPlatform.ANDROID
-        )
+        val enriched =
+            RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+                result = remoteResult,
+                request = request,
+                platform = InsightAnalysisPlatform.ANDROID,
+            )
 
         assertEquals("Remote result without missions.", enriched.executiveSummary)
         assertTrue(enriched.missionCandidates.isNotEmpty())
@@ -313,55 +333,57 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission snapshot exposes runtime label terminal state and feed`() {
-        val snapshot = CLIAgentMissionSnapshot(
-            id = "mission-1",
-            title = "Run debt mission",
-            status = "completed",
-            requestedRuntime = "auto",
-            requestedModelID = "gpt-5.5",
-            selectedRuntime = "codex",
-            selectedRuntimeName = "Codex",
-            selectedModelID = "gpt-5.5",
-            liveSummary = "Codex is summarizing the result.",
-            resultPreview = "Found three high-leverage refactors.",
-            errorMessage = null,
-            sessionID = "thread-123",
-            approvalRequestId = null,
-            approvalStatus = null,
-            approvalTitle = null,
-            approvalMessage = null,
-            createdAt = Instant.parse("2026-05-14T10:00:00Z"),
-            events = listOf(
-                CLIAgentMissionEvent(
-                    sequence = 1,
-                    timestamp = "2026-05-14T10:00:00Z",
-                    kind = "status",
-                    phase = "queued",
-                    title = "Queued",
-                    message = "Mission queued from this device.",
-                    runtime = null,
-                    source = "android",
-                    toolName = null,
-                    artifactPath = null,
-                    changedFilePath = null,
-                    isError = false
+        val snapshot =
+            CLIAgentMissionSnapshot(
+                id = "mission-1",
+                title = "Run debt mission",
+                status = "completed",
+                requestedRuntime = "auto",
+                requestedModelID = "gpt-5.5",
+                selectedRuntime = "codex",
+                selectedRuntimeName = "Codex",
+                selectedModelID = "gpt-5.5",
+                liveSummary = "Codex is summarizing the result.",
+                resultPreview = "Found three high-leverage refactors.",
+                errorMessage = null,
+                sessionID = "thread-123",
+                approvalRequestId = null,
+                approvalStatus = null,
+                approvalTitle = null,
+                approvalMessage = null,
+                createdAt = Instant.parse("2026-05-14T10:00:00Z"),
+                events =
+                listOf(
+                    CLIAgentMissionEvent(
+                        sequence = 1,
+                        timestamp = "2026-05-14T10:00:00Z",
+                        kind = "status",
+                        phase = "queued",
+                        title = "Queued",
+                        message = "Mission queued from this device.",
+                        runtime = null,
+                        source = "android",
+                        toolName = null,
+                        artifactPath = null,
+                        changedFilePath = null,
+                        isError = false,
+                    ),
+                    CLIAgentMissionEvent(
+                        sequence = 2,
+                        timestamp = "2026-05-14T10:00:10Z",
+                        kind = "final_answer",
+                        phase = "completed",
+                        title = "Completed",
+                        message = "Found three high-leverage refactors.",
+                        runtime = "codex",
+                        source = "mac",
+                        toolName = null,
+                        artifactPath = null,
+                        changedFilePath = null,
+                        isError = false,
+                    ),
                 ),
-                CLIAgentMissionEvent(
-                    sequence = 2,
-                    timestamp = "2026-05-14T10:00:10Z",
-                    kind = "final_answer",
-                    phase = "completed",
-                    title = "Completed",
-                    message = "Found three high-leverage refactors.",
-                    runtime = "codex",
-                    source = "mac",
-                    toolName = null,
-                    artifactPath = null,
-                    changedFilePath = null,
-                    isError = false
-                )
             )
-        )
 
         assertEquals("Codex", snapshot.runtimeLabel)
         assertEquals(listOf("queued", "completed"), snapshot.events.map { it.phase })
@@ -371,19 +393,20 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission request payload includes launch options without mutable parent events`() {
-        val payload = CLIAgentMissionRequestPayloadFactory.build(
-            id = "mission-123",
-            title = "  Run cost mission  ",
-            prompt = "  Inspect provider routing cost  ",
-            missionKind = "cost_efficiency",
-            requestedRuntime = "opencode",
-            targetProject = "  ~/Developer/OpenBurnBar  ",
-            depth = "deep",
-            approvalMode = "risky_only",
-            commandsAllowed = true,
-            fileEditsAllowed = false,
-            now = Instant.parse("2026-05-14T10:00:00Z"),
-        )
+        val payload =
+            CLIAgentMissionRequestPayloadFactory.build(
+                id = "mission-123",
+                title = "  Run cost mission  ",
+                prompt = "  Inspect provider routing cost  ",
+                missionKind = "cost_efficiency",
+                requestedRuntime = "opencode",
+                targetProject = "  ~/Developer/OpenBurnBar  ",
+                depth = "deep",
+                approvalMode = "risky_only",
+                commandsAllowed = true,
+                fileEditsAllowed = false,
+                now = Instant.parse("2026-05-14T10:00:00Z"),
+            )
 
         assertEquals("mission-123", payload["id"])
         assertEquals("Run cost mission", payload["title"])
@@ -400,28 +423,29 @@ class InsightsDataLayerTest {
         assertEquals("action_only", payload["deliveryMode"])
         assertEquals("native_chat", payload["presentationMode"])
         assertEquals("pending", payload["status"])
-        assertEquals(3, payload["schemaVersion"])
+        assertEquals(VAL_3, payload["schemaVersion"])
         assertFalse(payload.containsKey("events"))
     }
 
     @Test
     fun `CLI agent mission request payload includes Skill Run metadata`() {
-        val payload = CLIAgentMissionRequestPayloadFactory.build(
-            id = "mission-skill",
-            title = "Explain yesterday",
-            prompt = "What happened yesterday?",
-            missionKind = "chat",
-            requestedRuntime = "hermes",
-            targetProject = null,
-            depth = "standard",
-            approvalMode = "existing_policy",
-            commandsAllowed = false,
-            fileEditsAllowed = false,
-            sourceSkillID = "what_happened",
-            sourceSurface = "android-hermes-square",
-            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-            parentHermesThreadID = "thread-1",
-        )
+        val payload =
+            CLIAgentMissionRequestPayloadFactory.build(
+                id = "mission-skill",
+                title = "Explain yesterday",
+                prompt = "What happened yesterday?",
+                missionKind = "chat",
+                requestedRuntime = "hermes",
+                targetProject = null,
+                depth = "standard",
+                approvalMode = "existing_policy",
+                commandsAllowed = false,
+                fileEditsAllowed = false,
+                sourceSkillID = "what_happened",
+                sourceSurface = "android-hermes-square",
+                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+                parentHermesThreadID = "thread-1",
+            )
 
         assertEquals("what_happened", payload["sourceSkillID"])
         assertEquals("android-hermes-square", payload["sourceSurface"])
@@ -431,21 +455,22 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission request payload includes visible Mac CLI presentation mode`() {
-        val payload = CLIAgentMissionRequestPayloadFactory.build(
-            id = "mission-visible",
-            title = "Visible Codex",
-            prompt = "Run where I can watch it.",
-            missionKind = "chat",
-            requestedRuntime = "codex",
-            targetProject = null,
-            depth = "standard",
-            approvalMode = "existing_policy",
-            commandsAllowed = false,
-            fileEditsAllowed = false,
-            sourceSurface = "android-chat-mac-visible-cli",
-            deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-            presentationMode = CLIAgentChatPresentationMode.MAC_VISIBLE_CLI,
-        )
+        val payload =
+            CLIAgentMissionRequestPayloadFactory.build(
+                id = "mission-visible",
+                title = "Visible Codex",
+                prompt = "Run where I can watch it.",
+                missionKind = "chat",
+                requestedRuntime = "codex",
+                targetProject = null,
+                depth = "standard",
+                approvalMode = "existing_policy",
+                commandsAllowed = false,
+                fileEditsAllowed = false,
+                sourceSurface = "android-chat-mac-visible-cli",
+                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
+                presentationMode = CLIAgentChatPresentationMode.MAC_VISIBLE_CLI,
+            )
 
         assertEquals("android-chat-mac-visible-cli", payload["sourceSurface"])
         assertEquals("full_stream", payload["deliveryMode"])
@@ -454,19 +479,20 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission request payload includes requested model id`() {
-        val payload = CLIAgentMissionRequestPayloadFactory.build(
-            id = "mission-model",
-            title = "Run Codex",
-            prompt = "Answer using the selected model.",
-            missionKind = "chat",
-            requestedRuntime = "codex",
-            targetProject = null,
-            depth = "standard",
-            approvalMode = "existing_policy",
-            commandsAllowed = false,
-            fileEditsAllowed = false,
-            requestedModelID = "  gpt-5.5  ",
-        )
+        val payload =
+            CLIAgentMissionRequestPayloadFactory.build(
+                id = "mission-model",
+                title = "Run Codex",
+                prompt = "Answer using the selected model.",
+                missionKind = "chat",
+                requestedRuntime = "codex",
+                targetProject = null,
+                depth = "standard",
+                approvalMode = "existing_policy",
+                commandsAllowed = false,
+                fileEditsAllowed = false,
+                requestedModelID = "  gpt-5.5  ",
+            )
 
         assertEquals("codex", payload["requestedRuntime"])
         assertEquals("gpt-5.5", payload["requestedModelID"])
@@ -476,15 +502,16 @@ class InsightsDataLayerTest {
     fun `CLI agent mission launch contract includes all Android remote control runtimes`() {
         assertEquals(
             listOf("auto", "codex", "claude", "hermes", "openclaw", "piAgent", "opencode", "ollama"),
-            MissionRuntimeTarget.entries.map { it.firestoreValue }
+            MissionRuntimeTarget.entries.map { it.firestoreValue },
         )
     }
 
     @Test
     fun `CLI agent mission initial queued event targets durable subcollection`() {
-        val event = CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
-            now = Instant.parse("2026-05-14T10:00:00Z"),
-        )
+        val event =
+            CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                now = Instant.parse("2026-05-14T10:00:00Z"),
+            )
 
         assertEquals(1, event["sequence"])
         assertEquals("2026-05-14T10:00:00Z", event["timestamp"])
@@ -499,26 +526,27 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission snapshot derives mac offline for stale queued mission`() {
-        val snapshot = CLIAgentMissionSnapshot(
-            id = "mission-stale",
-            title = "Run modernization mission",
-            status = "pending",
-            requestedRuntime = "codex",
-            requestedModelID = null,
-            selectedRuntime = null,
-            selectedRuntimeName = null,
-            selectedModelID = null,
-            liveSummary = "Waiting for Mac.",
-            resultPreview = null,
-            errorMessage = null,
-            sessionID = null,
-            approvalRequestId = null,
-            approvalStatus = null,
-            approvalTitle = null,
-            approvalMessage = null,
-            createdAt = Instant.now().minusSeconds(180),
-            events = emptyList()
-        )
+        val snapshot =
+            CLIAgentMissionSnapshot(
+                id = "mission-stale",
+                title = "Run modernization mission",
+                status = "pending",
+                requestedRuntime = "codex",
+                requestedModelID = null,
+                selectedRuntime = null,
+                selectedRuntimeName = null,
+                selectedModelID = null,
+                liveSummary = "Waiting for Mac.",
+                resultPreview = null,
+                errorMessage = null,
+                sessionID = null,
+                approvalRequestId = null,
+                approvalStatus = null,
+                approvalTitle = null,
+                approvalMessage = null,
+                createdAt = Instant.now().minusSeconds(SECONDS),
+                events = emptyList(),
+            )
 
         assertEquals("mac_offline", snapshot.displayStatus)
         assertTrue(snapshot.displayLiveSummary.orEmpty().contains("No signed-in Mac"))
@@ -526,26 +554,27 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission snapshot exposes pending approval state`() {
-        val snapshot = CLIAgentMissionSnapshot(
-            id = "mission-approval",
-            title = "Run risky mission",
-            status = "waiting_for_approval",
-            requestedRuntime = "codex",
-            requestedModelID = "gpt-5.5",
-            selectedRuntime = "codex",
-            selectedRuntimeName = "Codex",
-            selectedModelID = "gpt-5.5",
-            liveSummary = "Codex is waiting for approval before commands and file edits.",
-            resultPreview = null,
-            errorMessage = null,
-            sessionID = null,
-            approvalRequestId = "approval-1",
-            approvalStatus = "pending",
-            approvalTitle = "Approve Run risky mission",
-            approvalMessage = "Codex is waiting for approval before commands and file edits.",
-            createdAt = Instant.parse("2026-05-14T10:00:00Z"),
-            events = emptyList()
-        )
+        val snapshot =
+            CLIAgentMissionSnapshot(
+                id = "mission-approval",
+                title = "Run risky mission",
+                status = "waiting_for_approval",
+                requestedRuntime = "codex",
+                requestedModelID = "gpt-5.5",
+                selectedRuntime = "codex",
+                selectedRuntimeName = "Codex",
+                selectedModelID = "gpt-5.5",
+                liveSummary = "Codex is waiting for approval before commands and file edits.",
+                resultPreview = null,
+                errorMessage = null,
+                sessionID = null,
+                approvalRequestId = "approval-1",
+                approvalStatus = "pending",
+                approvalTitle = "Approve Run risky mission",
+                approvalMessage = "Codex is waiting for approval before commands and file edits.",
+                createdAt = Instant.parse("2026-05-14T10:00:00Z"),
+                events = emptyList(),
+            )
 
         assertTrue(snapshot.isWaitingForApproval)
         assertEquals("approval-1", snapshot.approvalRequestId)
@@ -573,105 +602,105 @@ class InsightsDataLayerTest {
 
     @Test
     fun `CLI agent mission snapshot preserves durable event ordering after resume`() {
-        val snapshot = missionSnapshot(
-            status = "running",
-            events = listOf(
-                CLIAgentMissionEvent(
-                    sequence = 3,
-                    timestamp = "2026-05-14T10:00:03Z",
-                    kind = "tool_result",
-                    phase = "process_output",
-                    title = "Process",
-                    message = "Tests passed.",
-                    runtime = "codex",
-                    source = "mac",
-                    toolName = null,
-                    artifactPath = null,
-                    changedFilePath = null,
-                    isError = false
-                ),
-                CLIAgentMissionEvent(
-                    sequence = 2,
-                    timestamp = "2026-05-14T10:00:02Z",
-                    kind = "tool_call",
-                    phase = "tool_use",
-                    title = "Shell",
-                    message = "swift test",
-                    runtime = "codex",
-                    source = "mac",
-                    toolName = "exec_command",
-                    artifactPath = null,
-                    changedFilePath = null,
-                    isError = false
-                )
-            ).sortedWith(compareBy<CLIAgentMissionEvent> { it.sequence }.thenBy { it.timestamp })
-        )
+        val snapshot =
+            missionSnapshot(
+                status = "running",
+                events =
+                listOf(
+                    CLIAgentMissionEvent(
+                        sequence = 3,
+                        timestamp = "2026-05-14T10:00:03Z",
+                        kind = "tool_result",
+                        phase = "process_output",
+                        title = "Process",
+                        message = "Tests passed.",
+                        runtime = "codex",
+                        source = "mac",
+                        toolName = null,
+                        artifactPath = null,
+                        changedFilePath = null,
+                        isError = false,
+                    ),
+                    CLIAgentMissionEvent(
+                        sequence = 2,
+                        timestamp = "2026-05-14T10:00:02Z",
+                        kind = "tool_call",
+                        phase = "tool_use",
+                        title = "Shell",
+                        message = "swift test",
+                        runtime = "codex",
+                        source = "mac",
+                        toolName = "exec_command",
+                        artifactPath = null,
+                        changedFilePath = null,
+                        isError = false,
+                    ),
+                ).sortedWith(compareBy<CLIAgentMissionEvent> { it.sequence }.thenBy { it.timestamp }),
+            )
 
-        assertEquals(listOf(2, 3), snapshot.events.map { it.sequence })
+        assertEquals(listOf(2, VAL_3), snapshot.events.map { it.sequence })
         assertEquals(listOf("tool_call", "tool_result"), snapshot.events.map { it.kind })
         assertEquals("exec_command", snapshot.events.first().toolName)
     }
 
     @Test
     fun `CLI agent mission snapshot derives operator console status`() {
-        val snapshot = missionSnapshot(
-            status = "running",
-            events = listOf(
-                CLIAgentMissionEvent(
-                    sequence = 1,
-                    timestamp = "2026-05-14T10:00:00Z",
-                    kind = "status",
-                    phase = "starting",
-                    title = "Starting",
-                    message = "Starting Codex.",
-                    runtime = "codex",
-                    source = "mac",
-                    toolName = null,
-                    artifactPath = null,
-                    changedFilePath = null,
-                    isError = false,
+        val snapshot =
+            missionSnapshot(
+                status = "running",
+                events =
+                listOf(
+                    CLIAgentMissionEvent(
+                        sequence = 1,
+                        timestamp = "2026-05-14T10:00:00Z",
+                        kind = "status",
+                        phase = "starting",
+                        title = "Starting",
+                        message = "Starting Codex.",
+                        runtime = "codex",
+                        source = "mac",
+                        toolName = null,
+                        artifactPath = null,
+                        changedFilePath = null,
+                        isError = false,
+                    ),
+                    CLIAgentMissionEvent(
+                        sequence = 2,
+                        timestamp = "2026-05-14T10:00:01Z",
+                        kind = "tool_call",
+                        phase = "tool_use",
+                        title = "Shell",
+                        message = "Running tests.",
+                        runtime = "codex",
+                        source = "mac",
+                        toolName = "exec_command",
+                        artifactPath = null,
+                        changedFilePath = null,
+                        isError = false,
+                    ),
+                    CLIAgentMissionEvent(
+                        sequence = 3,
+                        timestamp = "2026-05-14T10:00:02Z",
+                        kind = "changed_file",
+                        phase = "changed_file",
+                        title = "Changed file",
+                        message = "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt",
+                        runtime = "codex",
+                        source = "mac",
+                        toolName = null,
+                        artifactPath = null,
+                        changedFilePath = "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt",
+                        isError = false,
+                    ),
                 ),
-                CLIAgentMissionEvent(
-                    sequence = 2,
-                    timestamp = "2026-05-14T10:00:01Z",
-                    kind = "tool_call",
-                    phase = "tool_use",
-                    title = "Shell",
-                    message = "Running tests.",
-                    runtime = "codex",
-                    source = "mac",
-                    toolName = "exec_command",
-                    artifactPath = null,
-                    changedFilePath = null,
-                    isError = false,
-                ),
-                CLIAgentMissionEvent(
-                    sequence = 3,
-                    timestamp = "2026-05-14T10:00:02Z",
-                    kind = "changed_file",
-                    phase = "changed_file",
-                    title = "Changed file",
-                    message = "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt",
-                    runtime = "codex",
-                    source = "mac",
-                    toolName = null,
-                    artifactPath = null,
-                    changedFilePath = "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt",
-                    isError = false,
-                ),
-            ),
-        )
+            )
 
         assertEquals("Changed file", snapshot.currentStepLabel)
         assertEquals("exec_command", snapshot.activeToolName)
         assertEquals("android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt", snapshot.latestArtifactLabel)
     }
 
-    private fun missionSnapshot(
-        status: String,
-        approvalStatus: String? = null,
-        events: List<CLIAgentMissionEvent> = emptyList(),
-    ) = CLIAgentMissionSnapshot(
+    private fun missionSnapshot(status: String, approvalStatus: String? = null, events: List<CLIAgentMissionEvent> = emptyList()) = CLIAgentMissionSnapshot(
         id = "mission-$status",
         title = "Mission $status",
         status = status,
@@ -689,6 +718,39 @@ class InsightsDataLayerTest {
         approvalTitle = if (status == "waiting_for_approval") "Approve Mission" else null,
         approvalMessage = if (status == "waiting_for_approval") "Codex is waiting for approval." else null,
         createdAt = Instant.now(),
-        events = events
+        events = events,
+    )
+
+    private fun benchmarkSummariesForRecommendations(): List<InsightDigest.ModelBenchmarkSummary> = listOf(
+        InsightDigest.ModelBenchmarkSummary(
+            id = "aa-claude-coding",
+            source = "artificial_analysis",
+            attribution = "Artificial Analysis",
+            fetchedAt = "2026-05-13T00:00:00Z",
+            modelID = "claude-sonnet-4-6",
+            providerID = "anthropic",
+            taskCategory = "coding",
+            score = 0.86,
+            rank = 3,
+            costSignal = 0.24,
+            confidence = 0.80,
+            freshness = "fresh",
+            blendedCostPerMtoken = 9.50,
+        ),
+        InsightDigest.ModelBenchmarkSummary(
+            id = "da-ui-fast",
+            source = "design_arena",
+            attribution = "Design Arena",
+            fetchedAt = "2026-05-13T00:00:00Z",
+            modelID = "ui-fast-model",
+            providerID = "openai",
+            taskCategory = "design",
+            score = 0.84,
+            rank = 2,
+            costSignal = 0.82,
+            confidence = 0.78,
+            freshness = "fresh",
+            blendedCostPerMtoken = 1.20,
+        ),
     )
 }

@@ -19,6 +19,7 @@ class AndroidMediaCapabilityGate(
 ) {
     sealed class Check {
         data class Allowed(val envelope: Envelope) : Check()
+
         data class Denied(val reason: DenialReason) : Check()
 
         val isAllowed: Boolean get() = this is Allowed
@@ -62,25 +63,27 @@ class AndroidMediaCapabilityGate(
         if (killSwitchProvider()) return Check.Denied(DenialReason.KILL_SWITCH_ACTIVE)
         val entitlement = entitlementProvider()
         if (!entitlement.active) return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
-        when (feature) {
-            MediaStreamClass.Feature.FILE_TRANSFER -> if (!entitlement.fileTransfer)
-                return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
-            MediaStreamClass.Feature.SCREEN_SHARE -> if (!entitlement.screenShare)
-                return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
-            MediaStreamClass.Feature.VIDEO_CALL -> if (!entitlement.videoCall)
-                return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
-            // Android is the informational viewer/controller for Computer
-            // Use; the Mac host enforces the paid host entitlement and
-            // dispatch policy. Android only mirrors the Mac's gate result.
-            MediaStreamClass.Feature.COMPUTER_USE -> Unit
-        }
+        val featureEntitled =
+            when (feature) {
+                MediaStreamClass.Feature.FILE_TRANSFER -> entitlement.fileTransfer
+                MediaStreamClass.Feature.SCREEN_SHARE -> entitlement.screenShare
+                MediaStreamClass.Feature.VIDEO_CALL -> entitlement.videoCall
+                // Android is the informational viewer/controller for Computer
+                // Use; the Mac host enforces the paid host entitlement and
+                // dispatch policy. Android only mirrors the Mac's gate result.
+                MediaStreamClass.Feature.COMPUTER_USE -> true
+            }
+        if (!featureEntitled) return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
         val budget = budgetProvider()
-        when (budget.level) {
-            BudgetLevel.HARD_CAP -> return Check.Denied(DenialReason.BUDGET_HARD_CAP_REACHED)
-            BudgetLevel.SOFT_CAP -> if (!budget.allowsFeature(feature))
-                return Check.Denied(DenialReason.BUDGET_SOFT_CAP_REACHED)
-            BudgetLevel.NORMAL -> Unit
+        return when (budget.level) {
+            BudgetLevel.HARD_CAP -> Check.Denied(DenialReason.BUDGET_HARD_CAP_REACHED)
+            BudgetLevel.SOFT_CAP ->
+                if (budget.allowsFeature(feature)) {
+                    Check.Allowed(Envelope(feature = feature))
+                } else {
+                    Check.Denied(DenialReason.BUDGET_SOFT_CAP_REACHED)
+                }
+            BudgetLevel.NORMAL -> Check.Allowed(Envelope(feature = feature))
         }
-        return Check.Allowed(Envelope(feature = feature))
     }
 }

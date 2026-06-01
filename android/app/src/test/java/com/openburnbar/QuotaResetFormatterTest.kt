@@ -1,20 +1,22 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.effectiveResetsAt
 import com.openburnbar.util.QuotaResetFormatter
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZonedDateTime
-import java.util.Locale
 
 class QuotaResetFormatterTest {
-
     private val now = Instant.parse("2026-05-12T12:00:00Z")
     private val zoneUTC = ZoneId.of("UTC")
     private val englishUS = Locale.US
@@ -56,7 +58,7 @@ class QuotaResetFormatterTest {
         val parts = requireNotNull(QuotaResetFormatter.format(target, now = now, zone = zoneUTC, locale = englishUS))
         assertTrue(
             "absolute output should mention month + time, got: ${parts.absolute}",
-            parts.absolute.contains("May") && parts.absolute.contains("3:35")
+            parts.absolute.contains("May") && parts.absolute.contains("3:35"),
         )
     }
 
@@ -75,13 +77,16 @@ class QuotaResetFormatterTest {
     @Test
     fun `effectiveResetsAt prefers top-level Timestamp over legacy meta string`() {
         val ts = com.google.firebase.Timestamp(now.epochSecond, 0)
-        val bucket = QuotaBucket(
-            name = "5h",
-            used = 50.0, limit = 100.0, remaining = 50.0,
-            window = "rollingHours",
-            resetsAt = ts,
-            meta = mapOf("resetsAt" to "2026-01-01T00:00:00Z") // far older
-        )
+        val bucket =
+            QuotaBucket(
+                name = "5h",
+                used = 50.0,
+                limit = 100.0,
+                remaining = 50.0,
+                resetsAt = ts,
+                // far older
+                meta = mapOf("resetsAt" to "2026-01-01T00:00:00Z"),
+            )
         val result = bucket.effectiveResetsAt
         assertEquals(now, result)
     }
@@ -89,22 +94,28 @@ class QuotaResetFormatterTest {
     @Test
     fun `effectiveResetsAt falls back to legacy meta string`() {
         val iso = "2026-05-12T12:00:00Z"
-        val bucket = QuotaBucket(
-            name = "weekly",
-            used = 1.0, limit = 5.0, remaining = 4.0,
-            window = "weekly",
-            resetsAt = null,
-            meta = mapOf("resetsAt" to iso)
-        )
+        val bucket =
+            QuotaBucket(
+                name = "weekly",
+                used = 1.0,
+                limit = 5.0,
+                remaining = 4.0,
+                window = "weekly",
+                resetsAt = null,
+                meta = mapOf("resetsAt" to iso),
+            )
         assertEquals(Instant.parse(iso), bucket.effectiveResetsAt)
     }
 
     @Test
     fun `effectiveResetsAt is null when neither field is present`() {
-        val bucket = QuotaBucket(
-            name = "lifetime",
-            used = 0.0, limit = -1.0, remaining = -1.0
-        )
+        val bucket =
+            QuotaBucket(
+                name = "lifetime",
+                used = 0.0,
+                limit = -1.0,
+                remaining = -1.0,
+            )
         assertNull(bucket.effectiveResetsAt)
     }
 }
