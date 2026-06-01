@@ -218,7 +218,7 @@ jobs:
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Extract code coverage
-        if: always() && env.INTERNAL_RUN == 'true'
+        if: success() && env.INTERNAL_RUN == 'true'
         run: |
           set -euo pipefail
           xcresult="$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
