@@ -55,7 +55,7 @@ fun Modifier.auroraGlass(
     @Suppress("UNUSED_PARAMETER") blurRadiusDp: Float = 12f, // retained for API compatibility
     tintAlpha: Float = 0.48f,
     shadow: AuroraShadowSpec = AuroraShadows.medium,
-    isDark: Boolean = isSystemInDarkTheme()
+    isDark: Boolean = isSystemInDarkTheme(),
 ): Modifier {
     val shape = RoundedCornerShape(cornerRadius)
 
@@ -65,31 +65,37 @@ fun Modifier.auroraGlass(
     // requested tint, letting the gradient warmth dominate and the slate
     // act as a faint cool wash that preserves legibility of light text on
     // top. Light mode keeps the cream surface at the full requested alpha.
-    val baseFill = if (isDark) {
-        AuroraColors.darkSurface.copy(alpha = (tintAlpha * 0.35f).coerceIn(0f, 1f))
-    } else {
-        AuroraColors.lightSurface.copy(alpha = tintAlpha)
-    }
+    val baseFill =
+        if (isDark) {
+            AuroraColors.darkSurface.copy(alpha = (tintAlpha * 0.35f).coerceIn(0f, 1f))
+        } else {
+            AuroraColors.lightSurface.copy(alpha = tintAlpha)
+        }
 
     // Subtle top-down lightening keeps the card feeling refractive without
     // blurring content underneath. Brand tint stays low so text wins.
-    val sheen = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.05f else 0.18f),
-            Color.Transparent,
-            AuroraColors.blaze.copy(alpha = if (isDark) 0.03f else 0.05f)
+    val sheen =
+        Brush.verticalGradient(
+            colors =
+            listOf(
+                Color.White.copy(alpha = if (isDark) 0.05f else 0.18f),
+                Color.Transparent,
+                AuroraColors.blaze.copy(alpha = if (isDark) 0.03f else 0.05f),
+            ),
         )
-    )
     val stroke = Brush.linearGradient(colors = AuroraGradients.glassStroke)
 
-    val withShadow = if (shadow.elevation > 0.dp) {
-        this.shadow(
-            elevation = shadow.elevation,
-            shape = shape,
-            spotColor = Color.Black.copy(alpha = shadow.spotAlpha),
-            ambientColor = Color.Black.copy(alpha = shadow.spotAlpha)
-        )
-    } else this
+    val withShadow =
+        if (shadow.elevation > 0.dp) {
+            this.shadow(
+                elevation = shadow.elevation,
+                shape = shape,
+                spotColor = Color.Black.copy(alpha = shadow.spotAlpha),
+                ambientColor = Color.Black.copy(alpha = shadow.spotAlpha),
+            )
+        } else {
+            this
+        }
 
     return withShadow
         .clip(shape)
@@ -109,14 +115,15 @@ fun AuroraGlassBox(
     cornerRadius: Dp = AuroraRadius.lg.dp,
     shadow: AuroraShadowSpec = AuroraShadows.medium,
     isDark: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
     Box(
-        modifier = modifier.auroraGlass(
+        modifier =
+        modifier.auroraGlass(
             cornerRadius = cornerRadius,
             shadow = shadow,
-            isDark = isDark
-        )
+            isDark = isDark,
+        ),
     ) { content() }
 }
 
@@ -126,8 +133,9 @@ fun AuroraGlassBox(
  * regular (non-prominent) state.
  */
 val auroraSheenBrush: Brush
-    get() = Brush.linearGradient(
-        colors = AuroraGradients.glassSheen,
-        start = Offset(0f, 0f),
-        end = Offset(800f, 800f)
-    )
+    get() =
+        Brush.linearGradient(
+            colors = AuroraGradients.glassSheen,
+            start = Offset(0f, 0f),
+            end = Offset(800f, 800f),
+        )

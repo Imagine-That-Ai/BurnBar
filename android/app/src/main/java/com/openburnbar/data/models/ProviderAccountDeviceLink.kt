@@ -15,21 +15,21 @@ import com.google.firebase.firestore.PropertyName
 enum class DeviceLinkCapability(val token: String) {
     OWNER("owner"),
     USE("use"),
-    ADD("add");
+    ADD("add"),
+    ;
 
     companion object {
-        fun fromToken(value: String?): DeviceLinkCapability =
-            values().firstOrNull { it.token == value } ?: USE
+        fun fromToken(value: String?): DeviceLinkCapability = values().firstOrNull { it.token == value } ?: USE
     }
 }
 
 enum class DeviceLinkStatus(val token: String) {
     ACTIVE("active"),
-    REVOKED("revoked");
+    REVOKED("revoked"),
+    ;
 
     companion object {
-        fun fromToken(value: String?): DeviceLinkStatus =
-            values().firstOrNull { it.token == value } ?: ACTIVE
+        fun fromToken(value: String?): DeviceLinkStatus = values().firstOrNull { it.token == value } ?: ACTIVE
     }
 }
 
@@ -52,7 +52,7 @@ data class ProviderAccountDeviceLink(
     @get:PropertyName("updatedAt")
     @set:PropertyName("updatedAt")
     var updatedAtMillis: Long = 0L,
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 1,
 ) {
     val resolvedCapability: DeviceLinkCapability
         get() = DeviceLinkCapability.fromToken(capability)

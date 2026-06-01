@@ -42,9 +42,11 @@ object AndroidRuntimeHealthProbe {
         val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         return when (status) {
             BatteryManager.BATTERY_STATUS_CHARGING,
-            BatteryManager.BATTERY_STATUS_FULL -> true
+            BatteryManager.BATTERY_STATUS_FULL,
+            -> true
             BatteryManager.BATTERY_STATUS_DISCHARGING,
-            BatteryManager.BATTERY_STATUS_NOT_CHARGING -> false
+            BatteryManager.BATTERY_STATUS_NOT_CHARGING,
+            -> false
             else -> null
         }
     }
@@ -57,21 +59,24 @@ object AndroidRuntimeHealthProbe {
             PowerManager.THERMAL_STATUS_NONE -> MercuryThermalState.NOMINAL
             PowerManager.THERMAL_STATUS_LIGHT -> MercuryThermalState.FAIR
             PowerManager.THERMAL_STATUS_MODERATE,
-            PowerManager.THERMAL_STATUS_SEVERE -> MercuryThermalState.SERIOUS
+            PowerManager.THERMAL_STATUS_SEVERE,
+            -> MercuryThermalState.SERIOUS
             PowerManager.THERMAL_STATUS_CRITICAL,
             PowerManager.THERMAL_STATUS_EMERGENCY,
-            PowerManager.THERMAL_STATUS_SHUTDOWN -> MercuryThermalState.CRITICAL
+            PowerManager.THERMAL_STATUS_SHUTDOWN,
+            -> MercuryThermalState.CRITICAL
             else -> MercuryThermalState.UNKNOWN
         }
     }
 
     private fun measuredCpuUsagePercent(): Double? {
         val processCpuMillis = Process.getElapsedCpuTime()
-        val processUptimeMillis = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()
-        } else {
-            SystemClock.uptimeMillis()
-        }
+        val processUptimeMillis =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()
+            } else {
+                SystemClock.uptimeMillis()
+            }
         if (processCpuMillis < 0 || processUptimeMillis <= 0) return null
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
         return (processCpuMillis.toDouble() / (processUptimeMillis.toDouble() * cores.toDouble()) * 100.0)

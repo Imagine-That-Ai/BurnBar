@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class DemoDataStore(
-    private val functions: FunctionsRepository = FunctionsRepository()
+    private val functions: FunctionsRepository = FunctionsRepository(),
 ) : ViewModel() {
     private val _isSeeding = MutableStateFlow(false)
     val isSeeding = _isSeeding.asStateFlow()
@@ -28,13 +28,14 @@ class DemoDataStore(
             try {
                 val result = functions.seedAndroidDemoAccount()
                 val usageCount = (result["usageCount"] as? Number)?.toInt() ?: 0
-                _message.value = if (usageCount > 0) {
-                    "Demo workspace loaded with $usageCount sessions."
-                } else {
-                    "Demo workspace loaded."
-                }
+                _message.value =
+                    if (usageCount > 0) {
+                        "Demo workspace loaded with $usageCount sessions."
+                    } else {
+                        "Demo workspace loaded."
+                    }
                 onSeeded()
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
                 _error.value = e.message ?: "Could not load demo data."
             } finally {
                 _isSeeding.value = false

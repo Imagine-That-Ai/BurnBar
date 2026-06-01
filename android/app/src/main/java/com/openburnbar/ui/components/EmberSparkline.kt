@@ -1,15 +1,25 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.theme.AuroraColors
 
 /**
@@ -25,14 +35,14 @@ fun EmberSparkline(
     fillColor: Color = AuroraColors.ember.copy(alpha = 0.15f),
     strokeWidth: Float = 2.5f,
     showFill: Boolean = true,
-    animate: Boolean = true
+    animate: Boolean = true,
 ) {
     if (data.size < 2) return
 
     val animProgress by animateFloatAsState(
         targetValue = 1f,
         animationSpec = if (animate) tween(800, easing = EaseOutCubic) else snap(),
-        label = "sparkline"
+        label = "sparkline",
     )
 
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -46,32 +56,34 @@ fun EmberSparkline(
 
         fun yFor(value: Float): Float {
             val normalized = (value - minVal) / range
-            return h - (normalized * h * animProgress)
+            return h - normalized * h * animProgress
         }
 
-        val path = Path().apply {
-            moveTo(0f, yFor(data.first()))
-            for (i in 1 until count) {
-                val x = i * stepX
-                val y = yFor(data[i])
-                lineTo(x, y)
+        val path =
+            Path().apply {
+                moveTo(0f, yFor(data.first()))
+                for (i in 1 until count) {
+                    val x = i * stepX
+                    val y = yFor(data[i])
+                    lineTo(x, y)
+                }
             }
-        }
 
         if (showFill && animProgress > 0.01f) {
-            val fillPath = Path().apply {
-                addPath(path)
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
-            }
+            val fillPath =
+                Path().apply {
+                    addPath(path)
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
             drawPath(path = fillPath, color = fillColor)
         }
 
         drawPath(
             path = path,
             color = strokeColor,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
     }
 }

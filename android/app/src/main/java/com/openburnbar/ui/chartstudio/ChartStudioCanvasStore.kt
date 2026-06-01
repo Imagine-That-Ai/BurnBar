@@ -1,6 +1,11 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.chartstudio
 
 import android.content.Context
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,8 +18,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.io.File
-import java.util.UUID
 
 /**
  * Persistent ring buffer of recently rendered Chart Studio canvases. The user
@@ -25,17 +28,16 @@ import java.util.UUID
  * its decoder; we avoid leaking any view state into the persisted blob.
  */
 object ChartStudioCanvasStore {
-
     private const val MAX_CANVASES = 20
     private const val FILENAME = "chart-studio-canvases.json"
 
     @Serializable
     data class Canvas(
         val id: String,
-        val title: String,            // user-visible label — first prompt line
-        val prompt: String,            // the natural-language prompt that produced this
-        val rawJson: String,           // the decoded JSON spec (raw, prose stripped)
-        val createdAtMs: Long
+        val title: String, // user-visible label — first prompt line
+        val prompt: String, // the natural-language prompt that produced this
+        val rawJson: String, // the decoded JSON spec (raw, prose stripped)
+        val createdAtMs: Long,
     )
 
     @Serializable
@@ -46,7 +48,11 @@ object ChartStudioCanvasStore {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
     private var bound = false
 
     fun bind(context: Context) {
@@ -68,18 +74,20 @@ object ChartStudioCanvasStore {
     }
 
     fun add(context: Context, prompt: String, rawJson: String) {
-        val canvas = Canvas(
-            id = UUID.randomUUID().toString(),
-            title = prompt.lineSequence().first().trim().take(60),
-            prompt = prompt,
-            rawJson = rawJson,
-            createdAtMs = System.currentTimeMillis()
-        )
+        val canvas =
+            Canvas(
+                id = UUID.randomUUID().toString(),
+                title = prompt.lineSequence().first().trim().take(60),
+                prompt = prompt,
+                rawJson = rawJson,
+                createdAtMs = System.currentTimeMillis(),
+            )
         scope.launch {
             mutex.withLock {
-                val updated = (listOf(canvas) + _canvases.value)
-                    .distinctBy { it.id }
-                    .take(MAX_CANVASES)
+                val updated =
+                    (listOf(canvas) + _canvases.value)
+                        .distinctBy { it.id }
+                        .take(MAX_CANVASES)
                 _canvases.value = updated
                 save(context, updated)
             }

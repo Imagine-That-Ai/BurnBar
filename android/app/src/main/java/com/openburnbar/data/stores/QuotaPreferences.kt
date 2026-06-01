@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,11 +16,10 @@ import com.openburnbar.data.models.QuotaBucket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -30,27 +31,30 @@ enum class QuotaWindowKind {
     SEVEN_DAY,
     MONTHLY,
     REQUEST,
-    OTHER;
+    OTHER,
+    ;
 
     val shortLabel: String
-        get() = when (this) {
-            FIVE_HOUR -> "5h"
-            DAILY     -> "1d"
-            SEVEN_DAY -> "7d"
-            MONTHLY   -> "30d"
-            REQUEST   -> "req"
-            OTHER     -> "—"
-        }
+        get() =
+            when (this) {
+                FIVE_HOUR -> "5h"
+                DAILY -> "1d"
+                SEVEN_DAY -> "7d"
+                MONTHLY -> "30d"
+                REQUEST -> "req"
+                OTHER -> "—"
+            }
 
     val displayLabel: String
-        get() = when (this) {
-            FIVE_HOUR -> "5-hour"
-            DAILY     -> "daily"
-            SEVEN_DAY -> "weekly"
-            MONTHLY   -> "monthly"
-            REQUEST   -> "requests"
-            OTHER     -> "quota"
-        }
+        get() =
+            when (this) {
+                FIVE_HOUR -> "5-hour"
+                DAILY -> "daily"
+                SEVEN_DAY -> "weekly"
+                MONTHLY -> "monthly"
+                REQUEST -> "requests"
+                OTHER -> "quota"
+            }
 
     companion object {
         /** Infer the window kind from a [QuotaBucket]'s name / window strings. */
@@ -58,13 +62,13 @@ enum class QuotaWindowKind {
             val name = bucket.name.trim().lowercase()
             val window = bucket.window?.trim()?.lowercase().orEmpty()
             return when {
-                (name.contains("five") || name.contains("5h") || window.contains("5h") ||
-                    window.contains("5_hour") || window.contains("five")) -> FIVE_HOUR
-                (name.contains("seven") || name.contains("week") ||
-                    window.contains("week") || name.contains("7d") || window.contains("7d")) -> SEVEN_DAY
-                (name.contains("month") || window.contains("month") || window.contains("30d")) -> MONTHLY
-                (name.contains("request") || name.contains("rpm") || window.contains("request")) -> REQUEST
-                (name.contains("day") || window.contains("day") || name.contains("1d")) -> DAILY
+                name.contains("five") || name.contains("5h") || window.contains("5h") ||
+                    window.contains("5_hour") || window.contains("five") -> FIVE_HOUR
+                name.contains("seven") || name.contains("week") ||
+                    window.contains("week") || name.contains("7d") || window.contains("7d") -> SEVEN_DAY
+                name.contains("month") || window.contains("month") || window.contains("30d") -> MONTHLY
+                name.contains("request") || name.contains("rpm") || window.contains("request") -> REQUEST
+                name.contains("day") || window.contains("day") || name.contains("1d") -> DAILY
                 else -> OTHER
             }
         }
@@ -78,55 +82,61 @@ enum class QuotaWindowKind {
  * single composable so the value stays sticky if YouView is rebuilt.
  */
 class QuotaPreferences private constructor(private val context: Context) {
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val defaultWindow: StateFlow<QuotaWindowKind> = context.dataStore.data
-        .map { prefs ->
-            when (prefs[KEY_DEFAULT_WINDOW]) {
-                QuotaWindowKind.SEVEN_DAY.name -> QuotaWindowKind.SEVEN_DAY
-                else -> QuotaWindowKind.FIVE_HOUR
+    val defaultWindow: StateFlow<QuotaWindowKind> =
+        context.dataStore.data
+            .map { prefs ->
+                when (prefs[KEY_DEFAULT_WINDOW]) {
+                    QuotaWindowKind.SEVEN_DAY.name -> QuotaWindowKind.SEVEN_DAY
+                    else -> QuotaWindowKind.FIVE_HOUR
+                }
             }
-        }
-        .stateIn(scope, SharingStarted.Eagerly, QuotaWindowKind.FIVE_HOUR)
+            .stateIn(scope, SharingStarted.Eagerly, QuotaWindowKind.FIVE_HOUR)
 
-    val providerOrder: StateFlow<List<AgentProvider>> = context.dataStore.data
-        .map { prefs ->
-            parseProviderOrder(prefs[KEY_PROVIDER_ORDER_CSV])
-        }
-        .stateIn(scope, SharingStarted.Eagerly, defaultOrder)
+    val providerOrder: StateFlow<List<AgentProvider>> =
+        context.dataStore.data
+            .map { prefs ->
+                parseProviderOrder(prefs[KEY_PROVIDER_ORDER_CSV])
+            }
+            .stateIn(scope, SharingStarted.Eagerly, defaultOrder)
 
-    val visibleProviders: StateFlow<Set<AgentProvider>> = context.dataStore.data
-        .map { prefs ->
-            parseVisibleProviders(prefs[KEY_VISIBLE_PROVIDERS_CSV])
-        }
-        .stateIn(scope, SharingStarted.Eagerly, defaultOrder.toSet())
+    val visibleProviders: StateFlow<Set<AgentProvider>> =
+        context.dataStore.data
+            .map { prefs ->
+                parseVisibleProviders(prefs[KEY_VISIBLE_PROVIDERS_CSV])
+            }
+            .stateIn(scope, SharingStarted.Eagerly, defaultOrder.toSet())
 
-    val hiddenBuckets: StateFlow<Set<String>> = context.dataStore.data
-        .map { prefs ->
-            parseHiddenBuckets(prefs[KEY_HIDDEN_BUCKETS_JSON])
-        }
-        .stateIn(scope, SharingStarted.Eagerly, emptySet())
+    val hiddenBuckets: StateFlow<Set<String>> =
+        context.dataStore.data
+            .map { prefs ->
+                parseHiddenBuckets(prefs[KEY_HIDDEN_BUCKETS_JSON])
+            }
+            .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
-    val bucketOrders: StateFlow<Map<String, List<String>>> = context.dataStore.data
-        .map { prefs ->
-            parseBucketOrders(prefs[KEY_BUCKET_ORDERS_JSON])
-        }
-        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+    val bucketOrders: StateFlow<Map<String, List<String>>> =
+        context.dataStore.data
+            .map { prefs ->
+                parseBucketOrders(prefs[KEY_BUCKET_ORDERS_JSON])
+            }
+            .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
-    val percentageDisplayMode: StateFlow<String> = context.dataStore.data
-        .map { prefs ->
-            prefs[KEY_PERCENTAGE_DISPLAY_MODE] ?: "remainingPercent"
-        }
-        .stateIn(scope, SharingStarted.Eagerly, "remainingPercent")
+    val percentageDisplayMode: StateFlow<String> =
+        context.dataStore.data
+            .map { prefs ->
+                prefs[KEY_PERCENTAGE_DISPLAY_MODE] ?: "remainingPercent"
+            }
+            .stateIn(scope, SharingStarted.Eagerly, "remainingPercent")
 
     // Persisted per-device Burn view style, stored as a raw key (e.g. "cards",
     // "grid") so this data layer stays decoupled from the UI `BurnViewStyle`.
-    val burnViewStyle: StateFlow<String> = context.dataStore.data
-        .map { prefs ->
-            prefs[KEY_BURN_VIEW_STYLE] ?: "cards"
-        }
-        .stateIn(scope, SharingStarted.Eagerly, "cards")
+    val burnViewStyle: StateFlow<String> =
+        context.dataStore.data
+            .map { prefs ->
+                prefs[KEY_BURN_VIEW_STYLE] ?: "cards"
+            }
+            .stateIn(scope, SharingStarted.Eagerly, "cards")
 
     fun setDefaultWindow(kind: QuotaWindowKind) {
         // Only FIVE_HOUR and SEVEN_DAY are user-selectable presets — anything
@@ -216,7 +226,7 @@ class QuotaPreferences private constructor(private val context: Context) {
                 result.add(array.getString(i))
             }
             result
-        } catch (e: Exception) {
+        } catch (_: IllegalStateException) {
             emptySet()
         }
     }
@@ -243,7 +253,7 @@ class QuotaPreferences private constructor(private val context: Context) {
                 result[key] = list
             }
             result
-        } catch (e: Exception) {
+        } catch (_: IllegalStateException) {
             emptyMap()
         }
     }
@@ -269,24 +279,25 @@ class QuotaPreferences private constructor(private val context: Context) {
         private val KEY_PERCENTAGE_DISPLAY_MODE = stringPreferencesKey("quota_percentageDisplayMode")
         private val KEY_BURN_VIEW_STYLE = stringPreferencesKey("quota_burnViewStyle")
 
-        val defaultOrder = listOf(
-            AgentProvider.CODEX,
-            AgentProvider.OPENCODE,
-            AgentProvider.CLAUDE_CODE,
-            AgentProvider.OPEN_AI,
-            AgentProvider.DEEP_SEEK,
-            AgentProvider.COPILOT,
-            AgentProvider.MINIMAX,
-            AgentProvider.ZAI,
-            AgentProvider.FACTORY,
-            AgentProvider.CURSOR,
-            AgentProvider.WARP,
-            AgentProvider.OLLAMA,
-            AgentProvider.KIMI,
-            AgentProvider.ANTIGRAVITY,
-            AgentProvider.XAI,
-            AgentProvider.MIMO
-        )
+        val defaultOrder =
+            listOf(
+                AgentProvider.CODEX,
+                AgentProvider.OPENCODE,
+                AgentProvider.CLAUDE_CODE,
+                AgentProvider.OPEN_AI,
+                AgentProvider.DEEP_SEEK,
+                AgentProvider.COPILOT,
+                AgentProvider.MINIMAX,
+                AgentProvider.ZAI,
+                AgentProvider.FACTORY,
+                AgentProvider.CURSOR,
+                AgentProvider.WARP,
+                AgentProvider.OLLAMA,
+                AgentProvider.KIMI,
+                AgentProvider.ANTIGRAVITY,
+                AgentProvider.XAI,
+                AgentProvider.MIMO,
+            )
 
         @Volatile private var instance: QuotaPreferences? = null
 

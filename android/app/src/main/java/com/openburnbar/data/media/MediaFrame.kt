@@ -27,7 +27,8 @@ data class MediaFrame(
         VIDEO_NAL(0x01),
         AUDIO_OPUS(0x02),
         BWE_FEEDBACK(0x10),
-        SESSION_CONTROL(0x20);
+        SESSION_CONTROL(0x20),
+        ;
 
         companion object {
             fun fromRaw(raw: Byte): Kind? = values().firstOrNull { it.rawValue == raw }
@@ -36,8 +37,7 @@ data class MediaFrame(
 
     @JvmInline
     value class Flags(val rawValue: Byte) {
-        operator fun contains(other: Flags): Boolean =
-            (rawValue.toInt() and other.rawValue.toInt()) == other.rawValue.toInt()
+        operator fun contains(other: Flags): Boolean = rawValue.toInt() and other.rawValue.toInt() == other.rawValue.toInt()
 
         fun or(other: Flags): Flags = Flags((rawValue.toInt() or other.rawValue.toInt()).toByte())
 

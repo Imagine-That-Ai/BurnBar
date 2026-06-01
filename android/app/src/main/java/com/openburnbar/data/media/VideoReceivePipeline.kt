@@ -6,6 +6,7 @@ import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.view.Surface
+import java.lang.IllegalStateException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,7 +17,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.nio.ByteBuffer
+
+private const val BITS_PER_BYTE = 8.0
+private const val VAL_20000 = 20_000
+private const val VAL_30 = 30
 
 /**
  * Android-side decode pipeline for inbound Mercury video frames. 1:1 port
@@ -46,8 +50,11 @@ class VideoReceivePipeline(
 
     sealed class Phase {
         object Idle : Phase()
+
         data class Running(val codec: Codec) : Phase()
+
         data class Failed(val reason: String) : Phase()
+
         object Stopped : Phase()
     }
 
@@ -81,46 +88,50 @@ class VideoReceivePipeline(
             val target = pickCodec(widthPx = widthPx, heightPx = heightPx)
             val format = videoFormat(codec = target, widthPx = widthPx, heightPx = heightPx)
             try {
-                val newDecoder = MediaCodec.createDecoderByType(target.mime).apply {
-                    configure(format, outputSurface, null, 0)
-                    start()
-                }
+                val newDecoder =
+                    MediaCodec.createDecoderByType(target.mime).apply {
+                        configure(format, outputSurface, null, 0)
+                        start()
+                    }
                 decoder = newDecoder
                 resolvedCodec = target
                 _phase.value = Phase.Running(target)
-                _stats.value = _stats.value.copy(
-                    widthPx = widthPx,
-                    heightPx = heightPx,
-                    codecName = target.name,
-                    bitsPerSecond = 0,
-                    queuedFrameCount = 0,
-                    lastFrameAtMillis = 0,
-                )
-                resetStatsWindow()
-                renderJob = scope.launch { drainOutput(newDecoder) }
-            } catch (t: Throwable) {
-                if (target == Codec.HEVC) {
-                    // Fallback to H.264.
-                    val fallback = MediaCodec.createDecoderByType(Codec.H264.mime).apply {
-                        configure(
-                            videoFormat(codec = Codec.H264, widthPx = widthPx, heightPx = heightPx),
-                            outputSurface,
-                            null,
-                            0,
-                        )
-                        start()
-                    }
-                    decoder = fallback
-                    resolvedCodec = Codec.H264
-                    _phase.value = Phase.Running(Codec.H264)
-                    _stats.value = _stats.value.copy(
+                _stats.value =
+                    _stats.value.copy(
                         widthPx = widthPx,
                         heightPx = heightPx,
-                        codecName = Codec.H264.name,
+                        codecName = target.name,
                         bitsPerSecond = 0,
                         queuedFrameCount = 0,
                         lastFrameAtMillis = 0,
                     )
+                resetStatsWindow()
+                renderJob = scope.launch { drainOutput(newDecoder) }
+            } catch (t: IllegalStateException) {
+                if (target == Codec.HEVC) {
+                    // Fallback to H.264.
+                    val fallback =
+                        MediaCodec.createDecoderByType(Codec.H264.mime).apply {
+                            configure(
+                                videoFormat(codec = Codec.H264, widthPx = widthPx, heightPx = heightPx),
+                                outputSurface,
+                                null,
+                                0,
+                            )
+                            start()
+                        }
+                    decoder = fallback
+                    resolvedCodec = Codec.H264
+                    _phase.value = Phase.Running(Codec.H264)
+                    _stats.value =
+                        _stats.value.copy(
+                            widthPx = widthPx,
+                            heightPx = heightPx,
+                            codecName = Codec.H264.name,
+                            bitsPerSecond = 0,
+                            queuedFrameCount = 0,
+                            lastFrameAtMillis = 0,
+                        )
                     resetStatsWindow()
                     renderJob = scope.launch { drainOutput(fallback) }
                 } else {
@@ -138,67 +149,79 @@ class VideoReceivePipeline(
     private suspend fun ingest(frame: MediaFrame, wireByteCount: Int): Boolean {
         if (frame.kind != MediaFrame.Kind.VIDEO_NAL) return false
         val codec = mutex.withLock { decoder } ?: return false
-
         val isKeyframe = MediaFrame.Flags.KEYFRAME in frame.flags
         if (!isKeyframe && frame.gopID != currentGopID) {
-            // Stale frame for a GOP we don't have — request a fresh key.
             onKeyframeRequest()
             return false
         }
+        return queueVideoFrame(codec, frame, wireByteCount, isKeyframe)
+    }
 
-        val inputIndex = try {
-            codec.dequeueInputBuffer(20_000)
-        } catch (_: IllegalStateException) {
-            return false
-        }
+    private fun queueVideoFrame(codec: MediaCodec, frame: MediaFrame, wireByteCount: Int, isKeyframe: Boolean): Boolean {
+        val inputIndex =
+            try {
+                codec.dequeueInputBuffer(VAL_20000.toLong())
+            } catch (_: IllegalStateException) {
+                -1
+            }
         if (inputIndex < 0) return false
-        val buffer: ByteBuffer = codec.getInputBuffer(inputIndex) ?: run {
+        val buffer = codec.getInputBuffer(inputIndex)
+        if (buffer == null) {
             returnDequeuedInputBuffer(codec, inputIndex, frame.presentationTimestampMillis)
             return false
         }
-        val normalizedPayload = runCatching {
-            VideoPayloadNormalizer.normalizeForMediaCodec(frame.payload)
-        }.getOrDefault(frame.payload)
+        val normalizedPayload =
+            runCatching {
+                VideoPayloadNormalizer.normalizeForMediaCodec(frame.payload)
+            }.getOrDefault(frame.payload)
         buffer.clear()
-        if (normalizedPayload.size > buffer.capacity()) {
+        val fitsBuffer = normalizedPayload.size <= buffer.capacity()
+        if (!fitsBuffer) {
             returnDequeuedInputBuffer(codec, inputIndex, frame.presentationTimestampMillis)
-            return false
+        } else {
+            buffer.put(normalizedPayload)
         }
-        buffer.put(normalizedPayload)
-        val queued = runCatching {
-            codec.queueInputBuffer(
-                inputIndex,
-                0,
-                normalizedPayload.size,
-                (frame.presentationTimestampMillis * 1_000uL).toLong(),
-                if (isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
-            )
-        }.isSuccess
-        if (!queued) return false
-        if (isKeyframe) currentGopID = frame.gopID
-        noteAcceptedFrame(wireByteCount = wireByteCount)
-        return true
+        val queued =
+            fitsBuffer &&
+                runCatching {
+                    codec.queueInputBuffer(
+                        inputIndex,
+                        0,
+                        normalizedPayload.size,
+                        (frame.presentationTimestampMillis * 1_000uL).toLong(),
+                        if (isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
+                    )
+                }.isSuccess
+        if (queued) {
+            if (isKeyframe) currentGopID = frame.gopID
+            noteAcceptedFrame(wireByteCount = wireByteCount)
+        }
+        return queued
     }
 
     suspend fun ingest(frame: MediaFrameV2): Boolean {
-        val kind = when (frame.kind) {
-            MediaFrameV2Kind.VIDEO_NAL, MediaFrameV2Kind.VIDEO_DATAGRAM -> MediaFrame.Kind.VIDEO_NAL
-            MediaFrameV2Kind.AUDIO_OPUS -> MediaFrame.Kind.AUDIO_OPUS
-            else -> return false
-        }
-        val metadata = runCatching { MediaFrameV2Metadata.decode(frame.metadata) }
-            .getOrDefault(MediaFrameV2Metadata())
-        val accepted = ingest(
-            frame = MediaFrame(
-                kind = kind,
-                flags = MediaFrame.Flags(frame.flags.toInt().toByte()),
-                gopID = frame.gopID,
-                frameIndex = frame.frameIndex,
-                presentationTimestampMillis = frame.presentationTimestampMillis,
-                payload = frame.payload,
-            ),
-            wireByteCount = estimatedWireByteCount(frame),
-        )
+        val kind =
+            when (frame.kind) {
+                MediaFrameV2Kind.VIDEO_NAL, MediaFrameV2Kind.VIDEO_DATAGRAM -> MediaFrame.Kind.VIDEO_NAL
+                MediaFrameV2Kind.AUDIO_OPUS -> MediaFrame.Kind.AUDIO_OPUS
+                else -> return false
+            }
+        val metadata =
+            runCatching { MediaFrameV2Metadata.decode(frame.metadata) }
+                .getOrDefault(MediaFrameV2Metadata())
+        val accepted =
+            ingest(
+                frame =
+                MediaFrame(
+                    kind = kind,
+                    flags = MediaFrame.Flags(frame.flags.toInt().toByte()),
+                    gopID = frame.gopID,
+                    frameIndex = frame.frameIndex,
+                    presentationTimestampMillis = frame.presentationTimestampMillis,
+                    payload = frame.payload,
+                ),
+                wireByteCount = estimatedWireByteCount(frame),
+            )
         if (accepted) {
             metadata.longTermReferenceToken?.let { onLongTermReferenceTokenDecoded(it) }
         }
@@ -226,7 +249,7 @@ class VideoReceivePipeline(
         val info = MediaCodec.BufferInfo()
         try {
             while (true) {
-                val outIndex = decoder.dequeueOutputBuffer(info, 20_000)
+                val outIndex = decoder.dequeueOutputBuffer(info, VAL_20000.toLong())
                 when {
                     outIndex >= 0 -> decoder.releaseOutputBuffer(outIndex, true)
                     outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
@@ -244,39 +267,39 @@ class VideoReceivePipeline(
     }
 
     fun updateRoundTripStats(rttMillis: Int, bitsPerSecond: Int) {
-        _stats.value = _stats.value.copy(
-            roundTripMillis = rttMillis.coerceAtLeast(0),
-            bitsPerSecond = bitsPerSecond.coerceAtLeast(0),
-        )
+        _stats.value =
+            _stats.value.copy(
+                roundTripMillis = rttMillis.coerceAtLeast(0),
+                bitsPerSecond = bitsPerSecond.coerceAtLeast(0),
+            )
     }
 
     fun updateRoundTripMillis(rttMillis: Int) {
         _stats.value = _stats.value.copy(roundTripMillis = rttMillis.coerceAtLeast(0))
     }
 
-    internal fun noteAcceptedFrame(
-        wireByteCount: Int,
-        nowMillis: Long = System.currentTimeMillis(),
-    ) {
+    internal fun noteAcceptedFrame(wireByteCount: Int, nowMillis: Long = System.currentTimeMillis()) {
         if (statsWindowStartedAtMillis == 0L) {
             statsWindowStartedAtMillis = nowMillis
         }
         bytesInStatsWindow += wireByteCount.coerceAtLeast(0)
 
         val elapsedMillis = (nowMillis - statsWindowStartedAtMillis).coerceAtLeast(0L)
-        val nextBitsPerSecond = if (elapsedMillis >= MIN_STATS_WINDOW_MILLIS) {
-            val sampled = ((bytesInStatsWindow.toDouble() * 8.0) / (elapsedMillis.toDouble() / 1_000.0)).toInt()
-            resetStatsWindow(startedAtMillis = nowMillis)
-            sampled
-        } else {
-            _stats.value.bitsPerSecond
-        }
+        val nextBitsPerSecond =
+            if (elapsedMillis >= MIN_STATS_WINDOW_MILLIS) {
+                val sampled = (bytesInStatsWindow.toDouble() * BITS_PER_BYTE / (elapsedMillis.toDouble() / 1_000.0)).toInt()
+                resetStatsWindow(startedAtMillis = nowMillis)
+                sampled
+            } else {
+                _stats.value.bitsPerSecond
+            }
 
-        _stats.value = _stats.value.copy(
-            bitsPerSecond = nextBitsPerSecond,
-            queuedFrameCount = _stats.value.queuedFrameCount + 1,
-            lastFrameAtMillis = nowMillis,
-        )
+        _stats.value =
+            _stats.value.copy(
+                bitsPerSecond = nextBitsPerSecond,
+                queuedFrameCount = _stats.value.queuedFrameCount + 1,
+                lastFrameAtMillis = nowMillis,
+            )
     }
 
     private fun resetStatsWindow(startedAtMillis: Long = 0L) {
@@ -284,11 +307,7 @@ class VideoReceivePipeline(
         bytesInStatsWindow = 0
     }
 
-    private fun returnDequeuedInputBuffer(
-        codec: MediaCodec,
-        inputIndex: Int,
-        presentationTimestampMillis: ULong,
-    ) {
+    private fun returnDequeuedInputBuffer(codec: MediaCodec, inputIndex: Int, presentationTimestampMillis: ULong) {
         runCatching {
             codec.queueInputBuffer(
                 inputIndex,
@@ -309,14 +328,13 @@ class VideoReceivePipeline(
         }.getOrDefault(Codec.HEVC)
     }
 
-    private fun videoFormat(codec: Codec, widthPx: Int, heightPx: Int): MediaFormat =
-        MediaFormat.createVideoFormat(codec.mime, widthPx, heightPx).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-            if (decoderSupportsLowLatency(codec)) {
-                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            }
+    private fun videoFormat(codec: Codec, widthPx: Int, heightPx: Int): MediaFormat = MediaFormat.createVideoFormat(codec.mime, widthPx, heightPx).apply {
+        setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+        setInteger(MediaFormat.KEY_FRAME_RATE, VAL_30)
+        if (decoderSupportsLowLatency(codec)) {
+            setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
         }
+    }
 
     private fun decoderSupportsLowLatency(codec: Codec): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
@@ -334,16 +352,16 @@ class VideoReceivePipeline(
     companion object {
         private const val MIN_STATS_WINDOW_MILLIS = 500L
 
-        internal fun estimatedWireByteCount(frame: MediaFrame): Int =
-            MediaFrame.HEADER_BYTE_COUNT +
-                (if (frame.flags.contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
+        internal fun estimatedWireByteCount(frame: MediaFrame): Int = MediaFrame.HEADER_BYTE_COUNT +
+            (
+                if (frame.flags.contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
                     MediaFrame.CURSOR_METADATA_BYTE_COUNT
                 } else {
                     0
-                }) +
-                frame.payload.size
+                }
+                ) +
+            frame.payload.size
 
-        internal fun estimatedWireByteCount(frame: MediaFrameV2): Int =
-            MediaFrameV2Codec.FIXED_HEADER_BYTE_COUNT + frame.metadata.size + frame.payload.size
+        internal fun estimatedWireByteCount(frame: MediaFrameV2): Int = MediaFrameV2Codec.FIXED_HEADER_BYTE_COUNT + frame.metadata.size + frame.payload.size
     }
 }

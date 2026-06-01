@@ -32,38 +32,42 @@ package com.openburnbar.data.media
  * ```
  */
 object OpusCodec {
-
     @Volatile private var cachedAvailability: Boolean? = null
 
     fun isAvailable(): Boolean {
         cachedAvailability?.let { return it }
-        val available = try {
-            Class.forName(ENCODER_CLASS)
-            Class.forName(DECODER_CLASS)
-            true
-        } catch (_: Throwable) {
-            false
-        }
+        val available =
+            try {
+                Class.forName(ENCODER_CLASS)
+                Class.forName(DECODER_CLASS)
+                true
+            } catch (_: Throwable) {
+                false
+            }
         cachedAvailability = available
         return available
     }
 
     /** Throws `IllegalStateException` when the AAR is not on the classpath. */
     fun encoder(sampleRateHz: Int = 48_000, channels: Int = 1, bitrate: Int = 32_000): Encoder {
-        val cls = loadClass(ENCODER_CLASS) ?: throw IllegalStateException("opus encoder unavailable")
+        val cls = loadClass(ENCODER_CLASS) ?: error("opus encoder unavailable")
         val ctor = cls.getConstructor(Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
         val instance = ctor.newInstance(sampleRateHz, channels, bitrate)
         return Encoder(cls = cls, instance = instance)
     }
 
     fun decoder(sampleRateHz: Int = 48_000, channels: Int = 1): Decoder {
-        val cls = loadClass(DECODER_CLASS) ?: throw IllegalStateException("opus decoder unavailable")
+        val cls = loadClass(DECODER_CLASS) ?: error("opus decoder unavailable")
         val ctor = cls.getConstructor(Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
         val instance = ctor.newInstance(sampleRateHz, channels)
         return Decoder(cls = cls, instance = instance)
     }
 
-    private fun loadClass(name: String): Class<*>? = try { Class.forName(name) } catch (_: Throwable) { null }
+    private fun loadClass(name: String): Class<*>? = try {
+        Class.forName(name)
+    } catch (_: Throwable) {
+        null
+    }
 
     class Encoder internal constructor(private val cls: Class<*>, private val instance: Any) : AutoCloseable {
         fun encode(pcm: ByteArray): ByteArray {

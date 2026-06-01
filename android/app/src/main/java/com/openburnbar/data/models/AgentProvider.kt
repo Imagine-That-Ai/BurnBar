@@ -30,39 +30,41 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111),
     XAI("xai", "xAI", 0xFF1A1A1A, 0xFF4A4A4A),
     MIMO("mimo", "MiMo", 0xFFFF6900, 0xFFFF8533),
-    ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF);
+    ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF),
+    ;
 
     companion object {
-        val swarmGlyphProviders: List<AgentProvider> = listOf(
-            FACTORY,
-            CLAUDE_CODE,
-            CODEX,
-            OPENCODE,
-            OPEN_CLAW,
-            HERMES,
-            GEMINI_CLI,
-            ANTIGRAVITY,
-            OPEN_AI,
-            DEEP_SEEK,
-            MINIMAX,
-            ZAI,
-            XAI,
-            MIMO,
-            CURSOR,
-            COPILOT,
-            KIMI,
-            AIDER,
-            CLINE,
-            KILO_CODE,
-            ROO_CODE,
-            FORGE_DEV,
-            AUGMENT,
-            PI_AGENT,
-            GOOSE,
-            OLLAMA,
-            WINDSURF,
-            WARP
-        )
+        val swarmGlyphProviders: List<AgentProvider> =
+            listOf(
+                FACTORY,
+                CLAUDE_CODE,
+                CODEX,
+                OPENCODE,
+                OPEN_CLAW,
+                HERMES,
+                GEMINI_CLI,
+                ANTIGRAVITY,
+                OPEN_AI,
+                DEEP_SEEK,
+                MINIMAX,
+                ZAI,
+                XAI,
+                MIMO,
+                CURSOR,
+                COPILOT,
+                KIMI,
+                AIDER,
+                CLINE,
+                KILO_CODE,
+                ROO_CODE,
+                FORGE_DEV,
+                AUGMENT,
+                PI_AGENT,
+                GOOSE,
+                OLLAMA,
+                WINDSURF,
+                WARP,
+            )
 
         /**
          * Looks up an [AgentProvider] from any incoming identifier — the Firestore
@@ -74,68 +76,66 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
          */
         fun fromKey(key: String?): AgentProvider? {
             if (key.isNullOrBlank()) return null
-            // 1. Direct key match (fast path)
-            entries.find { it.key == key }?.let { return it }
-            // 2. Normalized match against key & display name
+            val direct = entries.find { it.key == key }
+            if (direct != null) return direct
             val n = normalize(key)
-            entries.find { normalize(it.key) == n }?.let { return it }
-            entries.find { normalize(it.displayName) == n }?.let { return it }
-            // 3. Explicit aliases for known variants
-            return aliases[n]
+            return entries.find { normalize(it.key) == n }
+                ?: entries.find { normalize(it.displayName) == n }
+                ?: aliases[n]
         }
 
-        private fun normalize(s: String): String =
-            s.lowercase().filter { it.isLetterOrDigit() }
+        private fun normalize(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
 
-        private val aliases: Map<String, AgentProvider> = mapOf(
-            // OpenAI family
-            "openaicodex"   to CODEX,
-            "codexcli"      to CODEX,
-            "chatgpt"       to OPEN_AI,
-            "openaiapi"     to OPEN_AI,
-            "gpt"           to OPEN_AI,
-            "deepseek"      to DEEP_SEEK,
-            "deepseekapi"   to DEEP_SEEK,
-            "deepseekcoder" to DEEP_SEEK,
-            "opencodego"    to OPENCODE,
-            "open-code"     to OPENCODE,
-            // Anthropic family
-            "anthropic"     to CLAUDE_CODE,
-            "anthropicapi"  to CLAUDE_CODE,
-            "claude"        to CLAUDE_CODE,
-            "claudecli"     to CLAUDE_CODE,
-            "claudecodecli" to CLAUDE_CODE,
-            // Google family
-            "gemini"        to GEMINI_CLI,
-            "google"        to GEMINI_CLI,
-            "googleai"      to GEMINI_CLI,
-            "antigravitycli" to ANTIGRAVITY,
-            "antigravity-cli" to ANTIGRAVITY,
-            // Misc shorthand
-            "minmax"        to MINIMAX,
-            "rooclaw"       to OPEN_CLAW,
-            "openrouter"    to OPEN_AI,
-            "github"        to COPILOT,
-            "githubcopilot" to COPILOT,
-            "moonshot"      to KIMI,
-            "kimik2"        to KIMI,
-            "droid"         to FACTORY,
-            "factorydroid"  to FACTORY,
-            "factorycli"    to FACTORY,
-            "forge"         to FORGE_DEV,
-            "forgedev"      to FORGE_DEV,
-            "forgecli"      to FORGE_DEV,
-            "msft"          to COPILOT,
-            "pi"            to PI_AGENT,
-            "piagent"       to PI_AGENT,
-            "x-ai"          to XAI,
-            "xai"           to XAI,
-            "grok"          to XAI,
-            "supergrok"     to XAI,
-            "mimo"          to MIMO,
-            "xiaomi"        to MIMO,
-            "xiaomimimo"    to MIMO,
-        )
+        private val aliases: Map<String, AgentProvider> =
+            mapOf(
+                // OpenAI family
+                "openaicodex" to CODEX,
+                "codexcli" to CODEX,
+                "chatgpt" to OPEN_AI,
+                "openaiapi" to OPEN_AI,
+                "gpt" to OPEN_AI,
+                "deepseek" to DEEP_SEEK,
+                "deepseekapi" to DEEP_SEEK,
+                "deepseekcoder" to DEEP_SEEK,
+                "opencodego" to OPENCODE,
+                "open-code" to OPENCODE,
+                // Anthropic family
+                "anthropic" to CLAUDE_CODE,
+                "anthropicapi" to CLAUDE_CODE,
+                "claude" to CLAUDE_CODE,
+                "claudecli" to CLAUDE_CODE,
+                "claudecodecli" to CLAUDE_CODE,
+                // Google family
+                "gemini" to GEMINI_CLI,
+                "google" to GEMINI_CLI,
+                "googleai" to GEMINI_CLI,
+                "antigravitycli" to ANTIGRAVITY,
+                "antigravity-cli" to ANTIGRAVITY,
+                // Misc shorthand
+                "minmax" to MINIMAX,
+                "rooclaw" to OPEN_CLAW,
+                "openrouter" to OPEN_AI,
+                "github" to COPILOT,
+                "githubcopilot" to COPILOT,
+                "moonshot" to KIMI,
+                "kimik2" to KIMI,
+                "droid" to FACTORY,
+                "factorydroid" to FACTORY,
+                "factorycli" to FACTORY,
+                "forge" to FORGE_DEV,
+                "forgedev" to FORGE_DEV,
+                "forgecli" to FORGE_DEV,
+                "msft" to COPILOT,
+                "pi" to PI_AGENT,
+                "piagent" to PI_AGENT,
+                "x-ai" to XAI,
+                "xai" to XAI,
+                "grok" to XAI,
+                "supergrok" to XAI,
+                "mimo" to MIMO,
+                "xiaomi" to MIMO,
+                "xiaomimimo" to MIMO,
+            )
 
         fun chartPalette(provider: AgentProvider): List<Color> {
             val p = Color(provider.brandColor)

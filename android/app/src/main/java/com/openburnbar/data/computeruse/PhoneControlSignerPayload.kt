@@ -1,0 +1,20 @@
+package com.openburnbar.data.computeruse
+
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+private const val VAL_16 = 16
+
+internal object PhoneControlSignerPayload {
+    fun signablePayload(intentHashHex: String, counter: Long, timestampMillis: Long): ByteArray {
+        require(counter >= 0) { "counter must be non-negative" }
+        val hashBytes = intentHashHex.toByteArray(Charsets.UTF_8)
+        val suffix =
+            ByteBuffer.allocate(VAL_16)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putLong(counter)
+                .putLong(timestampMillis)
+                .array()
+        return hashBytes + suffix
+    }
+}

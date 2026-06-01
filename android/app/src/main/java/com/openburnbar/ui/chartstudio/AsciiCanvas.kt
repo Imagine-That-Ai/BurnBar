@@ -1,8 +1,19 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.chartstudio
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,37 +40,37 @@ import com.openburnbar.ui.theme.AuroraType
  * Matches the iOS `AsciiCanvasView` chrome.
  */
 @Composable
-fun AsciiCanvas(
-    spec: AsciiSpec,
-    modifier: Modifier = Modifier
-) {
+fun AsciiCanvas(spec: AsciiSpec, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF0E0C18))
             .border(
                 width = 0.75.dp,
                 color = AuroraColors.lightBorder.copy(alpha = 0.18f),
-                shape = RoundedCornerShape(12.dp)
-            )
+                shape = RoundedCornerShape(12.dp),
+            ),
     ) {
         TerminalChrome(variant = spec.variant, title = spec.title)
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxWidth()
                 .heightIn(min = 120.dp, max = 280.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             Text(
                 text = spec.body,
-                style = TextStyle(
+                style =
+                TextStyle(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     color = Color(0xFFD4E4FF),
                     fontWeight = FontWeight.Normal,
-                    lineHeight = 15.sp
-                )
+                    lineHeight = 15.sp,
+                ),
             )
         }
     }
@@ -68,11 +79,12 @@ fun AsciiCanvas(
 @Composable
 private fun TerminalChrome(variant: String, title: String?) {
     Row(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .background(Color(0xFF151229))
             .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF5F57)))
         Spacer(Modifier.width(4.dp))
@@ -83,15 +95,15 @@ private fun TerminalChrome(variant: String, title: String?) {
         Text(
             text = title ?: variantLabel(variant),
             style = AuroraType.tiny.copy(fontFamily = FontFamily.Monospace),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 private fun variantLabel(variant: String): String = when (variant) {
-    "bar"       -> "ascii — bar"
+    "bar" -> "ascii — bar"
     "sparkline" -> "ascii — sparkline"
-    "heatmap"   -> "ascii — heatmap"
-    "banner"    -> "ascii — banner"
-    else        -> "ascii — scene"
+    "heatmap" -> "ascii — heatmap"
+    "banner" -> "ascii — banner"
+    else -> "ascii — scene"
 }

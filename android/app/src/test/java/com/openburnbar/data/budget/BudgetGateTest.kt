@@ -1,16 +1,20 @@
 package com.openburnbar.data.budget
 
+import com.openburnbar.data.db.BudgetDatabaseAccess
+import com.openburnbar.data.db.BudgetRuleEntity
+import com.openburnbar.data.models.BudgetBillingMode
+import com.openburnbar.data.models.BudgetCredentialIdentity
+import com.openburnbar.data.models.BudgetGateDecision
+import com.openburnbar.data.models.BudgetRule
 import io.mockk.every
 import io.mockk.mockk
-import com.openburnbar.data.db.BudgetDao
-import com.openburnbar.data.db.BudgetRuleEntity
-import com.openburnbar.data.models.*
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
+private const val VAL_7_5 = 7.5
+private const val VAL_9_5 = 9.5
 class BudgetGateTest {
-
     @Test
     fun testBillingModeParsing() {
         assertEquals(BudgetBillingMode.SUBSCRIPTION, BudgetBillingMode.forSecretPrefix("sk-ant-oat-123"))
@@ -33,46 +37,50 @@ class BudgetGateTest {
 
     @Test
     fun testSubscriptionExemption() = runBlocking {
-        val dao = mockk<BudgetDao>()
+        val dao = mockk<BudgetDatabaseAccess>()
         val gate = BudgetGate(dao)
 
-        val subCredential = BudgetCredentialIdentity(
-            providerID = "anthropic",
-            slotID = "slot-1",
-            displayLabel = "Claude Pro",
-            billingMode = BudgetBillingMode.SUBSCRIPTION
-        )
+        val subCredential =
+            BudgetCredentialIdentity(
+                providerID = "anthropic",
+                slotID = "slot-1",
+                displayLabel = "Claude Pro",
+                billingMode = BudgetBillingMode.SUBSCRIPTION,
+            )
 
-        val result = gate.evaluate(
-            credential = subCredential,
-            estimatedCost = 1.0
-        )
+        val result =
+            gate.evaluate(
+                credential = subCredential,
+                estimatedCost = 1.0,
+            )
 
         assertEquals(BudgetGateDecision.Kind.ALLOW, result.decision)
     }
 
     @Test
     fun testEnforcementClassification() = runBlocking {
-        val dao = mockk<BudgetDao>()
+        val dao = mockk<BudgetDatabaseAccess>()
         val gate = BudgetGate(dao, warningThreshold = 0.8)
 
-        val credential = BudgetCredentialIdentity(
-            providerID = "openai",
-            slotID = "key-1",
-            displayLabel = "OpenAI Pay-as-you-go",
-            billingMode = BudgetBillingMode.PER_USAGE
-        )
+        val credential =
+            BudgetCredentialIdentity(
+                providerID = "openai",
+                slotID = "key-1",
+                displayLabel = "OpenAI Pay-as-you-go",
+                billingMode = BudgetBillingMode.PER_USAGE,
+            )
 
-        val ruleEntity = BudgetRuleEntity(
-            id = "rule-1",
-            scope = "global",
-            amountUSD = 10.0,
-            period = "month",
-            behavior = "warnThenBlock",
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis(),
-            isEnabled = true
-        )
+        val ruleEntity =
+            BudgetRuleEntity(
+                id = "rule-1",
+                scope = "global",
+                amountUSD = 10.0,
+                period = "month",
+                behavior = "warnThenBlock",
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                isEnabled = true,
+            )
 
         every { dao.getCredentialRules(any(), any()) } returns emptyList()
         every { dao.getProjectRules(any()) } returns emptyList()
@@ -84,12 +92,12 @@ class BudgetGateTest {
         assertEquals(BudgetGateDecision.Kind.ALLOW, resultAllow.decision)
 
         // Scenario 2: Spend reaches warning zone -> WARN
-        every { dao.getGlobalSpend(any(), any()) } returns 7.5
+        every { dao.getGlobalSpend(any(), any()) } returns VAL_7_5
         val resultWarn = gate.evaluate(credential, estimatedCost = 1.0)
         assertEquals(BudgetGateDecision.Kind.WARN, resultWarn.decision)
 
         // Scenario 3: Spend exceeds limit -> BLOCK
-        every { dao.getGlobalSpend(any(), any()) } returns 9.5
+        every { dao.getGlobalSpend(any(), any()) } returns VAL_9_5
         val resultBlock = gate.evaluate(credential, estimatedCost = 1.0)
         assertEquals(BudgetGateDecision.Kind.BLOCK, resultBlock.decision)
     }

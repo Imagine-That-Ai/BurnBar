@@ -10,14 +10,12 @@ import com.openburnbar.data.models.UsageDisplayMode
  */
 object BurnLeaderboardMath {
     /** The spend value for a provider summary in the active display mode. */
-    fun value(p: RollupSummary, displayMode: UsageDisplayMode): Double =
-        if (displayMode == UsageDisplayMode.CURRENCY) p.totalCost else p.totalTokens.toDouble()
+    fun value(p: RollupSummary, displayMode: UsageDisplayMode): Double = if (displayMode == UsageDisplayMode.CURRENCY) p.totalCost else p.totalTokens.toDouble()
 
     /** Providers with non-zero spend, sorted highest-first. */
-    fun ranked(summaries: List<RollupSummary>, displayMode: UsageDisplayMode): List<RollupSummary> =
-        summaries
-            .filter { value(it, displayMode) > 0.0 }
-            .sortedByDescending { value(it, displayMode) }
+    fun ranked(summaries: List<RollupSummary>, displayMode: UsageDisplayMode): List<RollupSummary> = summaries
+        .filter { value(it, displayMode) > 0.0 }
+        .sortedByDescending { value(it, displayMode) }
 
     /** A 0..1 bar fraction, clamped, safe against a zero/negative max. */
     fun fraction(value: Double, max: Double): Float {

@@ -1,5 +1,6 @@
 package com.openburnbar.data.projects
 
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +41,7 @@ class ProjectsStore(
             _error.value = null
             try {
                 _summaries.value = repo.fetchProjects()
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.localizedMessage
             } finally {
                 _isLoading.value = false
@@ -48,18 +49,15 @@ class ProjectsStore(
         }
     }
 
-    fun topByCost(limit: Int = 3): List<ProjectSummary> =
-        _summaries.value.sortedByDescending { it.totalCost }.take(limit)
+    fun topByCost(limit: Int = 3): List<ProjectSummary> = _summaries.value.sortedByDescending { it.totalCost }.take(limit)
 
-    fun mostRecent(limit: Int = 8): List<ProjectSummary> =
-        _summaries.value.take(limit)
+    fun mostRecent(limit: Int = 8): List<ProjectSummary> = _summaries.value.take(limit)
 
     companion object {
         @Volatile private var instance: ProjectsStore? = null
 
-        fun shared(): ProjectsStore =
-            instance ?: synchronized(this) {
-                instance ?: ProjectsStore().also { instance = it }
-            }
+        fun shared(): ProjectsStore = instance ?: synchronized(this) {
+            instance ?: ProjectsStore().also { instance = it }
+        }
     }
 }

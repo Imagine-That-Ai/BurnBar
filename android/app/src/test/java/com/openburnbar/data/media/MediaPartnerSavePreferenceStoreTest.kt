@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.media
 
 import android.content.Context
@@ -7,8 +10,8 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.test.runTest
 import org.junit.After
-import org.junit.Before
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -18,7 +21,6 @@ import org.junit.Test
  * preferences file without an Android emulator.
  */
 class MediaPartnerSavePreferenceStoreTest {
-
     private lateinit var tempDir: File
     private lateinit var context: Context
 

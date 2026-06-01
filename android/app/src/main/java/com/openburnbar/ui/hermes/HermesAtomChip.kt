@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.hermes
 
 import androidx.compose.foundation.background
@@ -10,22 +13,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Token
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,14 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.HermesAtom
 import com.openburnbar.data.hermes.HermesAtomKind
 import com.openburnbar.ui.theme.AuroraColors
@@ -64,63 +62,64 @@ fun HermesAtomChip(
     label: String,
     modifier: Modifier = Modifier,
     size: ChipSize = ChipSize.Standalone,
-    onTap: ((HermesAtom) -> Unit)? = null
+    onTap: ((HermesAtom) -> Unit)? = null,
 ) {
     val accent = atomAccent(atom.kind)
-    val cornerRadius = when (size) {
-        ChipSize.Standalone -> 9.dp
-        is ChipSize.Inline -> 7.dp
-    }
-    val hPad = when (size) {
-        ChipSize.Standalone -> 10.dp
-        is ChipSize.Inline -> 7.dp
-    }
-    val vPad = when (size) {
-        ChipSize.Standalone -> 5.dp
-        is ChipSize.Inline -> 1.5.dp
-    }
-    val fontSize = when (size) {
-        ChipSize.Standalone -> 14.sp
-        is ChipSize.Inline -> maxOf(11f, size.baseSize - 1f).sp
-    }
-    val iconSize = when (size) {
-        ChipSize.Standalone -> 12.dp
-        is ChipSize.Inline -> maxOf(9f, size.baseSize - 4f).dp
-    }
+    val cornerRadius =
+        when (size) {
+            ChipSize.Standalone -> 9.dp
+            is ChipSize.Inline -> 7.dp
+        }
+    val hPad =
+        when (size) {
+            ChipSize.Standalone -> 10.dp
+            is ChipSize.Inline -> 7.dp
+        }
+    val vPad =
+        when (size) {
+            ChipSize.Standalone -> 5.dp
+            is ChipSize.Inline -> 1.5.dp
+        }
+    val fontSize =
+        when (size) {
+            ChipSize.Standalone -> 14.sp
+            is ChipSize.Inline -> maxOf(11f, size.baseSize - 1f).sp
+        }
+    val iconSize =
+        when (size) {
+            ChipSize.Standalone -> 12.dp
+            is ChipSize.Inline -> maxOf(9f, size.baseSize - 4f).dp
+        }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(cornerRadius))
             .then(if (onTap != null) Modifier.clickable { onTap(atom) } else Modifier)
             .background(accent.copy(alpha = 0.13f))
             .border(0.5.dp, accent.copy(alpha = 0.32f), RoundedCornerShape(cornerRadius))
-            .padding(horizontal = hPad, vertical = vPad)
+            .padding(horizontal = hPad, vertical = vPad),
     ) {
         Icon(
             imageVector = iconForKind(atom.kind),
             contentDescription = null,
             tint = accent,
-            modifier = Modifier.size(iconSize)
+            modifier = Modifier.size(iconSize),
         )
         Text(
             text = label,
             color = accent,
             fontSize = fontSize,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1
+            maxLines = 1,
         )
     }
 }
 
 /** Legacy URL-driven entry point — kept for callers that already use raw URL strings. */
 @Composable
-fun HermesAtomChip(
-    label: String,
-    url: String,
-    onClick: (String, String) -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun HermesAtomChip(label: String, url: String, onClick: (String, String) -> Unit, modifier: Modifier = Modifier) {
     val atom = com.openburnbar.data.hermes.HermesAtomURL.decode(url)
     if (atom != null) {
         HermesAtomChip(
@@ -128,7 +127,7 @@ fun HermesAtomChip(
             label = label,
             modifier = modifier,
             size = ChipSize.Inline(baseSize = 15f),
-            onTap = { onClick(label, url) }
+            onTap = { onClick(label, url) },
         )
     } else {
         // Unknown / undecodable URL — fall back to the previous look so
@@ -136,18 +135,19 @@ fun HermesAtomChip(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = modifier
+            modifier =
+            modifier
                 .clip(RoundedCornerShape(7.dp))
                 .clickable { onClick(label, url) }
                 .background(AuroraColors.hermesMercury.copy(alpha = 0.13f))
                 .border(0.5.dp, AuroraColors.hermesMercury.copy(alpha = 0.32f), RoundedCornerShape(7.dp))
-                .padding(horizontal = 7.dp, vertical = 1.5.dp)
+                .padding(horizontal = 7.dp, vertical = 1.5.dp),
         ) {
             Icon(
                 imageVector = Icons.Filled.OpenInNew,
                 contentDescription = null,
                 tint = AuroraColors.hermesMercury,
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(12.dp),
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
@@ -155,7 +155,7 @@ fun HermesAtomChip(
                 color = AuroraColors.hermesMercury,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1
+                maxLines = 1,
             )
         }
     }
@@ -164,6 +164,7 @@ fun HermesAtomChip(
 /** Chip render-size variant — mirrors iOS `HermesAtomChip.ChipSize`. */
 sealed class ChipSize {
     object Standalone : ChipSize()
+
     data class Inline(val baseSize: Float) : ChipSize()
 }
 
@@ -177,12 +178,7 @@ sealed class ChipSize {
  * as atomic chips alongside body text — width is a coarse estimate
  * derived from the label length and the inline base size.
  */
-fun hermesAtomInlineTextContent(
-    atom: HermesAtom,
-    label: String,
-    baseSize: Float,
-    onTap: ((HermesAtom) -> Unit)?
-): InlineTextContent {
+fun hermesAtomInlineTextContent(atom: HermesAtom, label: String, baseSize: Float, onTap: ((HermesAtom) -> Unit)?): InlineTextContent {
     // Estimate width: 7pt horizontal padding × 2 + 12pt icon + 4pt gap +
     // ~0.6em per label character. Mirrors the extraWidth math iOS sends
     // to pretext (`14 + 12 + 4` + label width).
@@ -191,19 +187,20 @@ fun hermesAtomInlineTextContent(
     val chromeEm = (7 * 2 + 12 + 4) / baseSize
     val totalWidth = (labelWidthEm + chromeEm).coerceAtLeast(2.0f)
     return InlineTextContent(
-        placeholder = Placeholder(
+        placeholder =
+        Placeholder(
             width = totalWidth.em,
             height = 1.45.em,
-            placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+            placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
         ),
         children = {
             HermesAtomChip(
                 atom = atom,
                 label = label,
                 size = ChipSize.Inline(baseSize = baseSize),
-                onTap = onTap
+                onTap = onTap,
             )
-        }
+        },
     )
 }
 

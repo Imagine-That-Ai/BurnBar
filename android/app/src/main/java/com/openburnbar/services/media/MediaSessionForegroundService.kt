@@ -20,7 +20,6 @@ import com.openburnbar.MainActivity
  * service permissions and their Play Console declaration path.
  */
 class MediaSessionForegroundService : Service() {
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,24 +41,33 @@ class MediaSessionForegroundService : Service() {
     }
 
     private fun buildCallStyleNotification(): Notification {
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val pendingFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            android.app.PendingIntent.FLAG_IMMUTABLE
-        else 0
-        val launchPending = android.app.PendingIntent.getActivity(
-            this, 0, launchIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or pendingFlag,
-        )
+        val launchIntent =
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        val pendingFlag =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_IMMUTABLE
+            } else {
+                0
+            }
+        val launchPending =
+            android.app.PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or pendingFlag,
+            )
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
-            .setContentTitle("Mercury call in progress")
-            .setContentText("Tap to return to the call")
-            .setContentIntent(launchPending)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+        val builder =
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
+                .setContentTitle("Mercury call in progress")
+                .setContentText("Tap to return to the call")
+                .setContentIntent(launchPending)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
         return builder.build()
     }
 
@@ -72,14 +80,15 @@ class MediaSessionForegroundService : Service() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
             if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Active Mercury call session notification"
-                setShowBadge(false)
-            }
+            val channel =
+                NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Active Mercury call session notification"
+                    setShowBadge(false)
+                }
             manager.createNotificationChannel(channel)
         }
 

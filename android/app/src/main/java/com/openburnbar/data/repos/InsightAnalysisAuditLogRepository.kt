@@ -2,12 +2,12 @@ package com.openburnbar.data.repos
 
 import android.content.Context
 import com.openburnbar.data.insights.InsightAnalysisAuditEntry
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import java.io.File
 
 /**
  * Append-only audit log for the LLM-backed analysis layer.
@@ -23,16 +23,16 @@ import java.io.File
  * succeeded/failed without writing a second row.
  */
 class InsightAnalysisAuditLogRepository(context: Context) {
-
     private val logDir = File(context.filesDir, "Insights").apply { mkdirs() }
     private val logFile = File(logDir, "analysis_audit.jsonl")
     private val _entries = MutableStateFlow<List<InsightAnalysisAuditEntry>>(emptyList())
     val entries: Flow<List<InsightAnalysisAuditEntry>> = _entries
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
     suspend fun append(entry: InsightAnalysisAuditEntry) = withContext(Dispatchers.IO) {
         val line = json.encodeToString(InsightAnalysisAuditEntry.serializer(), entry) + "\n"
@@ -74,9 +74,10 @@ class InsightAnalysisAuditLogRepository(context: Context) {
     }
 
     private fun rewriteUnsafe(entries: List<InsightAnalysisAuditEntry>) {
-        val text = entries.joinToString(separator = "\n") {
-            json.encodeToString(InsightAnalysisAuditEntry.serializer(), it)
-        }
+        val text =
+            entries.joinToString(separator = "\n") {
+                json.encodeToString(InsightAnalysisAuditEntry.serializer(), it)
+            }
         logFile.writeText(if (entries.isEmpty()) "" else text + "\n")
     }
 }

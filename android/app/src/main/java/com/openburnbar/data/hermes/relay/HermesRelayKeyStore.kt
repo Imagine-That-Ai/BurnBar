@@ -10,6 +10,8 @@ import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.spec.PKCS8EncodedKeySpec
 
+private const val VAL_32 = 32
+
 /**
  * Per-app-install persistent client key store for the Hermes encrypted
  * relay. Persists both the PKCS#8 private key and the X9.63 public key
@@ -17,10 +19,10 @@ import java.security.spec.PKCS8EncodedKeySpec
  * key from a private key alone.
  */
 class HermesRelayKeyStore(context: Context) {
-
-    private val prefs: SharedPreferences = context
-        .applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences =
+        context
+            .applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun loadOrCreateClientKeyPair(): KeyPair {
         val storedPrivate = prefs.getString(KEY_PRIVATE_PKCS8, null)
@@ -37,9 +39,10 @@ class HermesRelayKeyStore(context: Context) {
 
     fun clientPublicKeyX963(): ByteArray {
         val kp = loadOrCreateClientKeyPair()
-        val publicKey = kp.public as? java.security.interfaces.ECPublicKey
-            ?: error("Hermes relay client keypair must use an EC public key")
-        return HermesRelayCrypto.encodeUncompressedPublicKey(publicKey)
+        val publicKey =
+            kp.public as? java.security.interfaces.ECPublicKey
+                ?: error("Hermes relay client keypair must use an EC public key")
+        return HermesRelayCryptoEc.encodeUncompressedPublicKey(publicKey)
     }
 
     /**
@@ -51,22 +54,23 @@ class HermesRelayKeyStore(context: Context) {
      */
     fun irohSecretKeyMaterial(): IrohSecretKeyMaterial {
         val stored = prefs.getString(KEY_IROH_SECRET, null)
-        val raw = if (stored != null) {
-            try {
-                Base64.decode(stored, Base64.NO_WRAP).also {
-                    if (it.size != 32) throw IllegalStateException("iroh secret length != 32")
+        val raw =
+            if (stored != null) {
+                try {
+                    Base64.decode(stored, Base64.NO_WRAP).also {
+                        if (it.size != VAL_32) error("iroh secret length != 32")
+                    }
+                } catch (_: Throwable) {
+                    generateIrohSecretAndStore()
                 }
-            } catch (_: Throwable) {
+            } else {
                 generateIrohSecretAndStore()
             }
-        } else {
-            generateIrohSecretAndStore()
-        }
         return IrohSecretKeyMaterial(raw)
     }
 
     private fun generateIrohSecretAndStore(): ByteArray {
-        val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val bytes = ByteArray(VAL_32).also { SecureRandom().nextBytes(it) }
         prefs.edit()
             .putString(KEY_IROH_SECRET, Base64.encodeToString(bytes, Base64.NO_WRAP))
             .apply()
@@ -74,14 +78,17 @@ class HermesRelayKeyStore(context: Context) {
     }
 
     private fun generateAndStore(): KeyPair {
-        val kp = HermesRelayCrypto.generateEphemeralKeyPair()
-        val privateBytes = kp.private.encoded
-            ?: throw IllegalStateException("EC private key has no PKCS#8 encoding")
-        val publicKey = kp.public as? java.security.interfaces.ECPublicKey
-            ?: error("Hermes relay generated keypair must use an EC public key")
-        val publicBytes = HermesRelayCrypto.encodeUncompressedPublicKey(
-            publicKey
-        )
+        val kp = HermesRelayCryptoEc.generateEphemeralKeyPair()
+        val privateBytes =
+            kp.private.encoded
+                ?: error("EC private key has no PKCS#8 encoding")
+        val publicKey =
+            kp.public as? java.security.interfaces.ECPublicKey
+                ?: error("Hermes relay generated keypair must use an EC public key")
+        val publicBytes =
+            HermesRelayCryptoEc.encodeUncompressedPublicKey(
+                publicKey,
+            )
         prefs.edit()
             .putString(KEY_PRIVATE_PKCS8, Base64.encodeToString(privateBytes, Base64.NO_WRAP))
             .putString(KEY_PUBLIC_X963, Base64.encodeToString(publicBytes, Base64.NO_WRAP))
@@ -92,9 +99,10 @@ class HermesRelayKeyStore(context: Context) {
     private fun restore(privateB64: String, publicB64: String): KeyPair {
         val privateBytes = Base64.decode(privateB64, Base64.NO_WRAP)
         val publicBytes = Base64.decode(publicB64, Base64.NO_WRAP)
-        val privateKey: PrivateKey = KeyFactory.getInstance("EC")
-            .generatePrivate(PKCS8EncodedKeySpec(privateBytes))
-        val publicKey = HermesRelayCrypto.decodeUncompressedPublicKey(publicBytes)
+        val privateKey: PrivateKey =
+            KeyFactory.getInstance("EC")
+                .generatePrivate(PKCS8EncodedKeySpec(privateBytes))
+        val publicKey = HermesRelayCryptoEc.decodeUncompressedPublicKey(publicBytes)
         return KeyPair(publicKey, privateKey)
     }
 
@@ -102,6 +110,7 @@ class HermesRelayKeyStore(context: Context) {
         private const val PREFS_NAME = "hermes_relay_keys"
         private const val KEY_PRIVATE_PKCS8 = "************************"
         private const val KEY_PUBLIC_X963 = "**********************"
+
         /** Persisted as a base64-encoded 32-byte secret; ed25519 surface form. */
         private const val KEY_IROH_SECRET = "iroh_secret_v1"
     }

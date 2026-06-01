@@ -1,3 +1,6 @@
+@file:Suppress("TooManyFunctions")
+// detekt: table-driven policy matrix — one @Test per shouldOpen/shouldClose scenario plus fixture helpers.
+
 package com.openburnbar.ui.media
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayFocusTargetKind
@@ -7,11 +10,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScreenShareAutoTypeFollowPolicyTest {
-
     private val nowMillis = 10_000L
 
     @Test
-    fun shouldOpen_whenFocusedElementAndPreferenceEnabled() {
+    fun shouldOpenWhenFocusedElementAndPreferenceEnabled() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(context = textContext(receivedAtMillis = nowMillis)),
@@ -20,7 +22,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenPreferenceOff() {
+    fun shouldOpenBlockedWhenPreferenceOff() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -32,7 +34,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenControlDisabled() {
+    fun shouldOpenBlockedWhenControlDisabled() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -44,11 +46,12 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenStale() {
+    fun shouldOpenBlockedWhenStale() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
-                    context = textContext(
+                    context =
+                    textContext(
                         receivedAtMillis = nowMillis - ScreenShareAutoTypeFollowPolicy.STALE_AFTER_MILLIS - 1,
                     ),
                 ),
@@ -57,7 +60,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenWrongDisplay() {
+    fun shouldOpenBlockedWhenWrongDisplay() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -69,7 +72,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_allowedWhenDisplayIdsMatch() {
+    fun shouldOpenAllowedWhenDisplayIdsMatch() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -81,7 +84,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_allowedWhenEitherDisplayMissing() {
+    fun shouldOpenAllowedWhenEitherDisplayMissing() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -93,7 +96,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenCoPilot() {
+    fun shouldOpenBlockedWhenCoPilot() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -105,7 +108,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenManualDismissActive() {
+    fun shouldOpenBlockedWhenManualDismissActive() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -117,7 +120,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_allowedWhenManualDismissExpired() {
+    fun shouldOpenAllowedWhenManualDismissExpired() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -129,7 +132,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenAlreadyTyping() {
+    fun shouldOpenBlockedWhenAlreadyTyping() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -141,11 +144,12 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenLowConfidence() {
+    fun shouldOpenBlockedWhenLowConfidence() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
-                    context = textContext(
+                    context =
+                    textContext(
                         receivedAtMillis = nowMillis,
                         confidence = 0.49,
                     ),
@@ -155,11 +159,12 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_allowedWhenConfidenceNull() {
+    fun shouldOpenAllowedWhenConfidenceNull() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
-                    context = textContext(
+                    context =
+                    textContext(
                         receivedAtMillis = nowMillis,
                         confidence = null,
                     ),
@@ -169,7 +174,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenNonTextFocus() {
+    fun shouldOpenBlockedWhenNonTextFocus() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(
@@ -180,7 +185,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldOpen_blockedWhenContextMissing() {
+    fun shouldOpenBlockedWhenContextMissing() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldOpen(
                 baseInput(context = null),
@@ -189,7 +194,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldClose_whenFocusLeavesText() {
+    fun shouldCloseWhenFocusLeavesText() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldClose(
                 baseInput(
@@ -201,12 +206,13 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldClose_whenContextStale() {
+    fun shouldCloseWhenContextStale() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldClose(
                 baseInput(
                     typingOpen = true,
-                    context = textContext(
+                    context =
+                    textContext(
                         receivedAtMillis = nowMillis - ScreenShareAutoTypeFollowPolicy.STALE_AFTER_MILLIS - 1,
                     ),
                 ),
@@ -215,7 +221,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldClose_whenContextMissing() {
+    fun shouldCloseWhenContextMissing() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldClose(
                 baseInput(
@@ -227,7 +233,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldClose_whenControlDisabled() {
+    fun shouldCloseWhenControlDisabled() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.shouldClose(
                 baseInput(
@@ -240,7 +246,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldClose_falseWhenTypingClosed() {
+    fun shouldCloseFalseWhenTypingClosed() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldClose(
                 baseInput(
@@ -252,7 +258,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun shouldClose_falseWhileFreshTextFocus() {
+    fun shouldCloseFalseWhileFreshTextFocus() {
         assertFalse(
             ScreenShareAutoTypeFollowPolicy.shouldClose(
                 baseInput(
@@ -264,7 +270,7 @@ class ScreenShareAutoTypeFollowPolicyTest {
     }
 
     @Test
-    fun hasActiveTextFocus_trueForFreshTextFocus() {
+    fun hasActiveTextFocusTrueForFreshTextFocus() {
         assertTrue(
             ScreenShareAutoTypeFollowPolicy.hasActiveTextFocus(
                 context = textContext(receivedAtMillis = nowMillis),
@@ -282,23 +288,18 @@ class ScreenShareAutoTypeFollowPolicyTest {
         context: ScreenShareSmartZoomContext? = null,
         selectedDisplayId: String? = "display-1",
         manualDismissUntilMillis: Long? = null,
-    ): ScreenShareAutoTypeFollowPolicy.Input =
-        ScreenShareAutoTypeFollowPolicy.Input(
-            autoKeyboardEnabled = autoKeyboardEnabled,
-            standardControlEnabled = standardControlEnabled,
-            controlMode = controlMode,
-            typingOpen = typingOpen,
-            context = context,
-            selectedDisplayId = selectedDisplayId,
-            manualDismissUntilMillis = manualDismissUntilMillis,
-            nowMillis = nowMillis,
-        )
+    ): ScreenShareAutoTypeFollowPolicy.Input = ScreenShareAutoTypeFollowPolicy.Input(
+        autoKeyboardEnabled = autoKeyboardEnabled,
+        standardControlEnabled = standardControlEnabled,
+        controlMode = controlMode,
+        typingOpen = typingOpen,
+        context = context,
+        selectedDisplayId = selectedDisplayId,
+        manualDismissUntilMillis = manualDismissUntilMillis,
+        nowMillis = nowMillis,
+    )
 
-    private fun textContext(
-        receivedAtMillis: Long,
-        displayId: String? = "display-1",
-        confidence: Double? = 0.95,
-    ): ScreenShareSmartZoomContext {
+    private fun textContext(receivedAtMillis: Long, displayId: String? = "display-1", confidence: Double? = 0.95): ScreenShareSmartZoomContext {
         val rect = HermesRealtimeRelayNormalizedRect(x = 0.4, y = 0.45, width = 0.2, height = 0.05)
         return ScreenShareSmartZoomContext(
             targetKind = HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT,
@@ -310,13 +311,12 @@ class ScreenShareAutoTypeFollowPolicyTest {
         )
     }
 
-    private fun cursorContext(receivedAtMillis: Long): ScreenShareSmartZoomContext =
-        ScreenShareSmartZoomContext(
-            targetKind = HermesRealtimeRelayFocusTargetKind.CURSOR,
-            displayId = "display-1",
-            normalizedRect = null,
-            normalizedPoint = null,
-            confidence = 0.95,
-            receivedAtMillis = receivedAtMillis,
-        )
+    private fun cursorContext(receivedAtMillis: Long): ScreenShareSmartZoomContext = ScreenShareSmartZoomContext(
+        targetKind = HermesRealtimeRelayFocusTargetKind.CURSOR,
+        displayId = "display-1",
+        normalizedRect = null,
+        normalizedPoint = null,
+        confidence = 0.95,
+        receivedAtMillis = receivedAtMillis,
+    )
 }

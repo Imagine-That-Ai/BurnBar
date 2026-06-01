@@ -8,6 +8,7 @@ package com.openburnbar.irohrelay
 object HermesRealtimeRelayProtocol {
     const val VERSION: Int = 1
     const val CAPABILITY: String = "realtime_relay"
+
     /** Required when binding a relay role on the legacy WSS path. */
     const val ROLE_HEADER_NAME: String = "X-OpenBurnBar-Relay-Role"
     const val HOST_ROLE_HEADER_VALUE: String = "host"
@@ -45,10 +46,16 @@ enum class IrohRelayRole(val raw: String) {
  */
 sealed class IrohRelayTransportError(message: String) : RuntimeException(message) {
     object EndpointNotReady : IrohRelayTransportError("Iroh endpoint is not ready.")
+
     data class NodeIdUnreachable(val nodeId: String) : IrohRelayTransportError("Iroh node is unreachable: $nodeId.")
+
     data class StreamRejected(val detail: String) : IrohRelayTransportError(detail)
+
     object ProtocolMismatch : IrohRelayTransportError("Iroh protocol version mismatch.")
+
     data class DecodeFailed(val detail: String) : IrohRelayTransportError("Iroh frame decode failed: $detail")
+
     object TimedOut : IrohRelayTransportError("Iroh connection timed out.")
+
     object Shutdown : IrohRelayTransportError("Iroh endpoint is shut down.")
 }

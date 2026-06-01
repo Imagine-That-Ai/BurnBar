@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Live wallpaper canvas uses literal geometry and animation timing constants.
+
 package com.openburnbar.wallpaper
 
 import android.content.SharedPreferences
@@ -9,7 +12,6 @@ import android.os.Looper
 import android.service.wallpaper.WallpaperService
 import android.view.MotionEvent
 import android.view.SurfaceHolder
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -19,6 +21,18 @@ import com.openburnbar.ui.components.SwarmPace
 import com.openburnbar.ui.components.SwarmSimulation
 import kotlin.math.max
 import kotlin.math.min
+
+private object BurnBarWallpaperConstants {
+    const val FRAME_INTERVAL_CINEMATIC_MS = 33L
+    const val FRAME_INTERVAL_ENERGETIC_MS = 16L
+    const val GLYPH_TEXT_SIZE_SP = 20f
+    const val MIN_PARTICLE_DRAW_RADIUS = 0.5f
+    const val DEFAULT_EMBER_COLOR_ARGB = 0xFFFF6B35.toInt()
+    const val MAX_PROVIDER_COLOR_WEIGHTS = 5
+    const val FULL_OPACITY_ALPHA = 255
+    const val RGB_COLOR_MASK = 0x00FFFFFF
+    const val ALPHA_CHANNEL_SHIFT_BITS = 24
+}
 
 /**
  * A live wallpaper that renders the BurnBar swarm simulation behind the home
@@ -37,11 +51,10 @@ import kotlin.math.min
 data class ProviderColorWeight(
     val provider: AgentProvider,
     val weight: Double,
-    val argb: Int
+    val argb: Int,
 )
 
 class BurnBarWallpaperService : WallpaperService() {
-
     override fun onCreateEngine(): Engine = SwarmEngine()
 
     companion object {
@@ -53,7 +66,6 @@ class BurnBarWallpaperService : WallpaperService() {
     }
 
     inner class SwarmEngine : Engine() {
-
         // Simulation
         private lateinit var simulation: SwarmSimulation
         private var providerWeights: List<ProviderColorWeight> = emptyList()
@@ -63,59 +75,64 @@ class BurnBarWallpaperService : WallpaperService() {
         private val globalPrefs by lazy {
             getSharedPreferences("global_visual_settings", android.content.Context.MODE_PRIVATE)
         }
-        private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "pace" || key == "shape" || key == BurnBarWallpaperGlyphSettings.key) {
-                updateSettings()
+        private val preferenceListener =
+            SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key == "pace" || key == "shape" || key == BurnBarWallpaperGlyphSettings.key) {
+                    updateSettings()
+                }
             }
-        }
-        private val globalPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "appThemePalette") {
-                updatePalette()
+        private val globalPreferenceListener =
+            SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key == "appThemePalette") {
+                    updatePalette()
+                }
             }
-        }
 
         // Render loop
         private val handler = Handler(Looper.getMainLooper())
         private var visible = false
-        private var frameIntervalMs = 33L // ~30fps
+        private var frameIntervalMs = BurnBarWallpaperConstants.FRAME_INTERVAL_CINEMATIC_MS
         private var lastFrameNanos = System.nanoTime()
 
         // Paint objects (reused per frame to avoid allocation)
-        private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-        }
-        private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 20f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-            style = Paint.Style.FILL
-        }
-        private val backgroundPaint = Paint().apply {
-            color = BACKGROUND_COLOR
-            style = Paint.Style.FILL
-        }
+        private val particlePaint =
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+            }
+        private val glyphPaint =
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = BurnBarWallpaperConstants.GLYPH_TEXT_SIZE_SP
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+                style = Paint.Style.FILL
+            }
+        private val backgroundPaint =
+            Paint().apply {
+                color = BACKGROUND_COLOR
+                style = Paint.Style.FILL
+            }
 
         // Canvas background
         private val vignetteCenter = Paint(Paint.ANTI_ALIAS_FLAG)
 
-
-
-        private val drawRunnable = object : Runnable {
-            override fun run() {
-                drawFrame()
-                if (visible) {
-                    handler.postDelayed(this, frameIntervalMs)
+        private val drawRunnable =
+            object : Runnable {
+                override fun run() {
+                    drawFrame()
+                    if (visible) {
+                        handler.postDelayed(this, frameIntervalMs)
+                    }
                 }
             }
-        }
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
-            simulation = SwarmSimulation(
-                particleCount = WALLPAPER_PARTICLE_COUNT,
-                pace = SwarmPace.CINEMATIC, // Default, updated via settings
-                context = applicationContext
-            )
+            simulation =
+                SwarmSimulation(
+                    particleCount = WALLPAPER_PARTICLE_COUNT,
+                    pace = SwarmPace.CINEMATIC, // Default, updated via settings
+                    context = applicationContext,
+                )
             wallpaperPrefs.registerOnSharedPreferenceChangeListener(preferenceListener)
             globalPrefs.registerOnSharedPreferenceChangeListener(globalPreferenceListener)
             // Bind snapshot store so the StateFlow hydrates from disk.
@@ -136,7 +153,12 @@ class BurnBarWallpaperService : WallpaperService() {
             simulation.setEnabledProviderGlyphs(providerGlyphs)
 
             // Adjust framerate based on pace to save battery if cinematic
-            frameIntervalMs = if (pacePref == "energetic") 16L else 33L
+            frameIntervalMs =
+                if (pacePref == "energetic") {
+                    BurnBarWallpaperConstants.FRAME_INTERVAL_ENERGETIC_MS
+                } else {
+                    BurnBarWallpaperConstants.FRAME_INTERVAL_CINEMATIC_MS
+                }
 
             simulation.setShapeMode(shapePref)
         }
@@ -159,12 +181,7 @@ class BurnBarWallpaperService : WallpaperService() {
             }
         }
 
-        override fun onSurfaceChanged(
-            holder: SurfaceHolder,
-            format: Int,
-            width: Int,
-            height: Int
-        ) {
+        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
             simulation.ensureBounds(Size(width.toFloat(), height.toFloat()))
         }
@@ -204,10 +221,11 @@ class BurnBarWallpaperService : WallpaperService() {
 
                 // Clear background
                 canvas.drawRect(
-                    0f, 0f,
+                    0f,
+                    0f,
                     canvas.width.toFloat(),
                     canvas.height.toFloat(),
-                    backgroundPaint
+                    backgroundPaint,
                 )
 
                 // Draw particles
@@ -221,7 +239,12 @@ class BurnBarWallpaperService : WallpaperService() {
                     } else {
                         val color = resolveColor(p)
                         particlePaint.color = color
-                        canvas.drawCircle(p.x.toFloat(), p.y.toFloat(), max(0.5f, p.size.toFloat()), particlePaint)
+                        canvas.drawCircle(
+                            p.x.toFloat(),
+                            p.y.toFloat(),
+                            max(BurnBarWallpaperConstants.MIN_PARTICLE_DRAW_RADIUS, p.size.toFloat()),
+                            particlePaint,
+                        )
                     }
                 }
             } catch (_: Exception) {
@@ -247,7 +270,7 @@ class BurnBarWallpaperService : WallpaperService() {
          */
         private fun resolveColor(p: SwarmSimulation.Particle): Int {
             if (p.role?.contains(":") == true) {
-                return simulation.colorFor(p, Color(0xFFFF6B35), isDark = true).toArgb()
+                return simulation.colorFor(p, Color(BurnBarWallpaperConstants.DEFAULT_EMBER_COLOR_ARGB), isDark = true).toArgb()
             }
 
             if (providerWeights.isNotEmpty()) {
@@ -263,12 +286,13 @@ class BurnBarWallpaperService : WallpaperService() {
             }
 
             // Fallback: use simulation's colorFor which correctly respects the selected palette!
-            return simulation.colorFor(p, Color(0xFFFF6B35), isDark = true).toArgb()
+            return simulation.colorFor(p, Color(BurnBarWallpaperConstants.DEFAULT_EMBER_COLOR_ARGB), isDark = true).toArgb()
         }
 
         private fun applyOpacity(argb: Int, opacity: Double): Int {
-            val alpha = (min(1.0, max(0.0, opacity)) * 255).toInt()
-            return (argb and 0x00FFFFFF) or (alpha shl 24)
+            val alpha = (min(1.0, max(0.0, opacity)) * BurnBarWallpaperConstants.FULL_OPACITY_ALPHA).toInt()
+            return argb and BurnBarWallpaperConstants.RGB_COLOR_MASK or
+                (alpha shl BurnBarWallpaperConstants.ALPHA_CHANNEL_SHIFT_BITS)
         }
 
         // MARK: - Provider Data
@@ -278,24 +302,25 @@ class BurnBarWallpaperService : WallpaperService() {
          * This is lightweight — just reads the current StateFlow value.
          */
         private fun refreshProviderColors() {
-            val snapshot = BurnBarWidgetSnapshotStore.snapshot.value
-                ?: return
+            val snapshot =
+                BurnBarWidgetSnapshotStore.snapshot.value
+                    ?: return
 
-            val providers = snapshot.topProviders.take(5)
-            val tokens = snapshot.topProviderTokens.take(5)
+            val providers = snapshot.topProviders.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
+            val tokens = snapshot.topProviderTokens.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
             val totalTokens = tokens.sum().coerceAtLeast(1)
 
-            providerWeights = providers.zip(tokens).mapNotNull { pair ->
-                val name = pair.first
-                val tokenCount = pair.second
-                val agent = AgentProvider.fromKey(name) ?: return@mapNotNull null
-                ProviderColorWeight(
-                    provider = agent,
-                    weight = tokenCount.toDouble() / totalTokens.toDouble(),
-                    argb = agent.brandColor.toInt()
-                )
-            }
+            providerWeights =
+                providers.zip(tokens).mapNotNull { pair ->
+                    val name = pair.first
+                    val tokenCount = pair.second
+                    val agent = AgentProvider.fromKey(name) ?: return@mapNotNull null
+                    ProviderColorWeight(
+                        provider = agent,
+                        weight = tokenCount.toDouble() / totalTokens.toDouble(),
+                        argb = agent.brandColor.toInt(),
+                    )
+                }
         }
-
     }
 }

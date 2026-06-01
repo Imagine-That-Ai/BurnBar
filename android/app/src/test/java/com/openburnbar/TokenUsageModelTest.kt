@@ -1,16 +1,18 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
-import com.openburnbar.data.models.TokenUsage
-import com.openburnbar.data.models.UsageDisplayMode
-import com.openburnbar.data.models.TimelineScope
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.TimelineScope
+import com.openburnbar.data.models.TokenUsage
+import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.models.displayRemainingPercent
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TokenUsageModelTest {
-
     @Test
     fun `TokenUsage default values`() {
         val usage = TokenUsage()
@@ -34,53 +36,56 @@ class TokenUsageModelTest {
 
     @Test
     fun `quota bucket usedPercent drives display remaining percent`() {
-        val bucket = QuotaBucket(
-            name = "claude-five-hour",
-            used = 0.0,
-            limit = 100.0,
-            remaining = 0.0,
-            window = "5h",
-            meta = mapOf("unit" to "percent", "usedPercent" to "62")
-        )
+        val bucket =
+            QuotaBucket(
+                name = "claude-five-hour",
+                used = 0.0,
+                limit = 100.0,
+                remaining = 0.0,
+                window = "5h",
+                meta = mapOf("unit" to "percent", "usedPercent" to "62"),
+            )
 
         assertEquals(38.0, bucket.displayRemainingPercent ?: -1.0, 0.001)
         assertEquals(
             38.0,
             ProviderQuotaSnapshot(provider = "claude-code", buckets = listOf(bucket)).percentageRemaining,
-            0.001
+            0.001,
         )
     }
 
     @Test
     fun `zero limit percent bucket uses percent denominator`() {
-        val bucket = QuotaBucket(
-            name = "codex-primary",
-            used = 37.0,
-            limit = 0.0,
-            remaining = 63.0,
-            window = "5h",
-            meta = mapOf("unit" to "percent")
-        )
+        val bucket =
+            QuotaBucket(
+                name = "codex-primary",
+                used = 37.0,
+                limit = 0.0,
+                remaining = 63.0,
+                window = "5h",
+                meta = mapOf("unit" to "percent"),
+            )
 
         assertEquals(63.0, bucket.displayRemainingPercent ?: -1.0, 0.001)
     }
 
     @Test
     fun `remaining only unknown limit does not render as exhausted`() {
-        val bucket = QuotaBucket(
-            name = "zai-balance",
-            used = 0.0,
-            limit = -1.0,
-            remaining = 23.0,
-            window = "account",
-            meta = mapOf("currency" to "CNY")
-        )
+        val bucket =
+            QuotaBucket(
+                name = "zai-balance",
+                used = 0.0,
+                limit = -1.0,
+                remaining = 23.0,
+                window = "account",
+                meta = mapOf("currency" to "CNY"),
+            )
 
         assertEquals(100.0, bucket.displayRemainingPercent ?: -1.0, 0.001)
         assertEquals(
             100.0,
             ProviderQuotaSnapshot(provider = "zai", buckets = listOf(bucket)).percentageRemaining,
-            0.001
+            0.001,
         )
     }
 
@@ -89,7 +94,7 @@ class TokenUsageModelTest {
         assertEquals(
             100.0,
             ProviderQuotaSnapshot(provider = "openai", buckets = emptyList()).percentageRemaining,
-            0.001
+            0.001,
         )
     }
 

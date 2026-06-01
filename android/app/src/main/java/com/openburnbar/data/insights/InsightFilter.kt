@@ -15,7 +15,7 @@ data class InsightFilter(
     val focuses: Set<String> = emptySet(),
     val useCases: Set<String> = emptySet(),
     val minCostUSD: Double? = null,
-    val maxCostUSD: Double? = null
+    val maxCostUSD: Double? = null,
 ) {
     /** Merge with a widget override: widget keys win when non-empty. */
     fun overlaidBy(widget: InsightFilter?): InsightFilter {
@@ -28,7 +28,7 @@ data class InsightFilter(
             focuses = widget.focuses.ifEmpty { focuses },
             useCases = widget.useCases.ifEmpty { useCases },
             minCostUSD = widget.minCostUSD ?: minCostUSD,
-            maxCostUSD = widget.maxCostUSD ?: maxCostUSD
+            maxCostUSD = widget.maxCostUSD ?: maxCostUSD,
         )
     }
 }

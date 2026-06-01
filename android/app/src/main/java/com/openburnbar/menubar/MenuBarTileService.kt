@@ -15,7 +15,6 @@ import androidx.annotation.RequiresApi
  */
 @RequiresApi(Build.VERSION_CODES.N)
 class MenuBarTileService : TileService() {
-
     override fun onStartListening() {
         super.onStartListening()
         val snap = MenuBarController.snapshot.value
@@ -34,15 +33,19 @@ class MenuBarTileService : TileService() {
     @SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
-        val intent = Intent(this, QuickGlanceActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            data = Uri.parse("burnbar://quickglance")
-        }
+        val intent =
+            Intent(this, QuickGlanceActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                data = Uri.parse("burnbar://quickglance")
+            }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val pi = PendingIntent.getActivity(
-                this, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val pi =
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
             startActivityAndCollapse(pi)
         } else {
             // Older API path uses the deprecated Intent overload; suppression

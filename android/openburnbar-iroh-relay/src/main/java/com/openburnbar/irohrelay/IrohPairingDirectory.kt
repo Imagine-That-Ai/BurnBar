@@ -8,21 +8,33 @@ import java.util.concurrent.ConcurrentHashMap
  */
 interface IrohPairingDirectory {
     /** Persists the signed pairing record. Idempotent. Android is verify-only and rarely publishes. */
-    suspend fun publish(record: IrohPairingRecord, uid: String)
+    suspend fun publish(
+        record: IrohPairingRecord,
+        uid: String,
+    )
+
     /** Fetches the pairing record advertised by the Mac for this user + connection. */
-    suspend fun fetch(uid: String, connectionId: String): IrohPairingRecord?
+    suspend fun fetch(
+        uid: String,
+        connectionId: String,
+    ): IrohPairingRecord?
+
     /** Removes the pairing record. */
-    suspend fun revoke(uid: String, connectionId: String)
+    suspend fun revoke(
+        uid: String,
+        connectionId: String,
+    )
 }
 
 class IrohPairingDirectoryException(message: String, cause: Throwable? = null) :
     RuntimeException(message, cause) {
     companion object {
-        fun recordNotFound(): IrohPairingDirectoryException =
-            IrohPairingDirectoryException("pairing record not found")
+        fun recordNotFound(): IrohPairingDirectoryException = IrohPairingDirectoryException("pairing record not found")
 
         fun unsupportedOnReader(): IrohPairingDirectoryException =
-            IrohPairingDirectoryException("publish/revoke not supported on reader directory")
+            IrohPairingDirectoryException(
+                "publish/revoke not supported on reader directory",
+            )
     }
 }
 
@@ -30,20 +42,31 @@ class IrohPairingDirectoryException(message: String, cause: Throwable? = null) :
 class InMemoryIrohPairingDirectory : IrohPairingDirectory {
     private val store = ConcurrentHashMap<String, IrohPairingRecord>()
 
-    override suspend fun publish(record: IrohPairingRecord, uid: String) {
+    override suspend fun publish(
+        record: IrohPairingRecord,
+        uid: String,
+    ) {
         store[key(uid, record.connectionId)] = record
     }
 
-    override suspend fun fetch(uid: String, connectionId: String): IrohPairingRecord? =
-        store[key(uid, connectionId)]
+    override suspend fun fetch(
+        uid: String,
+        connectionId: String,
+    ): IrohPairingRecord? = store[key(uid, connectionId)]
 
-    override suspend fun revoke(uid: String, connectionId: String) {
+    override suspend fun revoke(
+        uid: String,
+        connectionId: String,
+    ) {
         store.remove(key(uid, connectionId))
     }
 
     fun snapshot(): List<IrohPairingRecord> = store.values.toList()
 
-    private fun key(uid: String, connectionId: String): String = "${uid}::${connectionId}"
+    private fun key(
+        uid: String,
+        connectionId: String,
+    ): String = "$uid::$connectionId"
 }
 
 /**
@@ -63,8 +86,9 @@ class IrohPairingPublisher(private val directory: IrohPairingDirectory) {
         publicKey: ByteArray,
         nowMillis: Long = System.currentTimeMillis(),
     ): IrohDialTarget {
-        val record = directory.fetch(uid, connectionId)
-            ?: throw IrohPairingDirectoryException.recordNotFound()
+        val record =
+            directory.fetch(uid, connectionId)
+                ?: throw IrohPairingDirectoryException.recordNotFound()
         IrohPairingSignature.verify(record, publicKey = publicKey, nowMillis = nowMillis)
         return record.dialTarget()
     }

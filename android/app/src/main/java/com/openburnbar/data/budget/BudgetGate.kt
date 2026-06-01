@@ -1,14 +1,21 @@
 package com.openburnbar.data.budget
 
-import com.openburnbar.data.db.BudgetDao
+import com.openburnbar.data.db.BudgetDatabaseAccess
 import com.openburnbar.data.db.BudgetRuleEntity
-import com.openburnbar.data.models.*
-import java.util.*
+import com.openburnbar.data.models.BudgetBehavior
+import com.openburnbar.data.models.BudgetBillingMode
+import com.openburnbar.data.models.BudgetCredentialIdentity
+import com.openburnbar.data.models.BudgetGateDecision
+import com.openburnbar.data.models.BudgetRule
+import java.util.Calendar
+import java.util.Date
 import kotlin.math.max
 
+private const val VAL_3 = 3
+
 class BudgetGate(
-    private val dao: BudgetDao,
-    private val warningThreshold: Double = 0.8
+    private val dao: BudgetDatabaseAccess,
+    private val warningThreshold: Double = 0.8,
 ) {
     data class EvaluateResult(
         val decision: BudgetGateDecision.Kind,
@@ -17,15 +24,10 @@ class BudgetGate(
         val limit: Double = 0.0,
         val usedPercent: Double = 0.0,
         val fallback: BudgetCredentialIdentity? = null,
-        val resumeAt: Date? = null
+        val resumeAt: Date? = null,
     )
 
-    suspend fun evaluate(
-        credential: BudgetCredentialIdentity,
-        projectName: String? = null,
-        estimatedCost: Double,
-        reference: Date = Date()
-    ): EvaluateResult {
+    suspend fun evaluate(credential: BudgetCredentialIdentity, projectName: String? = null, estimatedCost: Double, reference: Date = Date()): EvaluateResult {
         if (credential.billingMode == BudgetBillingMode.SUBSCRIPTION) {
             return EvaluateResult(BudgetGateDecision.Kind.ALLOW)
         }
@@ -46,11 +48,12 @@ class BudgetGate(
         for (ruleEntity in activeRules) {
             val rule = ruleEntity.toModel()
             if (rule.isPausedAt(reference)) {
-                val paused = EvaluateResult(
-                    decision = BudgetGateDecision.Kind.PAUSED,
-                    rule = rule,
-                    resumeAt = rule.pausedUntil
-                )
+                val paused =
+                    EvaluateResult(
+                        decision = BudgetGateDecision.Kind.PAUSED,
+                        rule = rule,
+                        resumeAt = rule.pausedUntil,
+                    )
                 worst = if (priority(paused.decision) > priority(worst.decision)) paused else worst
                 continue
             }
@@ -73,27 +76,27 @@ class BudgetGate(
                     windowStart = windowStartMs,
                     reference = referenceMs,
                     providerID = rule.providerID ?: "",
-                    accountID = rule.accountID ?: ""
+                    accountID = rule.accountID ?: "",
                 )
             }
             "project" -> {
                 dao.getProjectSpend(
                     windowStart = windowStartMs,
                     reference = referenceMs,
-                    projectName = rule.projectName ?: ""
+                    projectName = rule.projectName ?: "",
                 )
             }
             "organization" -> {
                 dao.getOrganizationSpend(
                     windowStart = windowStartMs,
                     reference = referenceMs,
-                    identifier = rule.identifier ?: ""
+                    identifier = rule.identifier ?: "",
                 )
             }
             "global" -> {
                 dao.getGlobalSpend(
                     windowStart = windowStartMs,
-                    reference = referenceMs
+                    reference = referenceMs,
                 )
             }
             else -> 0.0
@@ -138,8 +141,9 @@ class BudgetGate(
         val projectedPercent = if (limit > 0) projected / limit else 0.0
         val usedPercent = if (limit > 0) used / limit else 0.0
 
-        val behavior = BudgetBehavior.values().firstOrNull { it.value == rule.behavior }
-            ?: BudgetBehavior.WARN_THEN_BLOCK
+        val behavior =
+            BudgetBehavior.values().firstOrNull { it.value == rule.behavior }
+                ?: BudgetBehavior.WARN_THEN_BLOCK
 
         return when (behavior) {
             BudgetBehavior.WARN_ONLY -> {
@@ -183,7 +187,7 @@ class BudgetGate(
             BudgetGateDecision.Kind.ALLOW -> 0
             BudgetGateDecision.Kind.PAUSED -> 1
             BudgetGateDecision.Kind.WARN -> 2
-            BudgetGateDecision.Kind.BLOCK -> 3
+            BudgetGateDecision.Kind.BLOCK -> VAL_3
         }
     }
 }

@@ -33,16 +33,13 @@ import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.IrohRelayStream
-import com.openburnbar.irohrelay.IrohRelayTransport
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import java.io.File
-import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 internal object IrohPairingSelection {
@@ -87,12 +84,11 @@ class BurnBarApplication : Application() {
         private const val DEVICE_ID_PREF_NAME = "burnbar.device"
         private const val DEVICE_ID_PREF_KEY = "stable_device_id"
         private const val MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS = 15_000L
+        private const val LOG_NODE_ID_PREFIX_LENGTH = 12
 
         @Volatile internal var mediaControlCoordinator: MediaControlStreamCoordinator? = null
-            private set
 
         @Volatile internal var fileTransferService: AndroidFileTransferService? = null
-            private set
 
         @Volatile var agentCapabilityGrantController:
             com.openburnbar.data.computeruse.AgentCapabilityGrantController? = null
@@ -100,12 +96,12 @@ class BurnBarApplication : Application() {
 
     private var pairingListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
-    private val controlTransportPool by lazy {
+    internal val controlTransportPool by lazy {
         RetainedIrohControlTransportPool { relayURL ->
             val keyStore = HermesRelayKeyStore(applicationContext)
             runCatching {
                 if (!OpenBurnBarIrohFfiBackend.isAvailable()) {
-                    throw IllegalStateException("Android iroh native backend is unavailable in this build.")
+                    error("Android iroh native backend is unavailable in this build.")
                 }
                 com.openburnbar.data.hermes.relay.HermesIrohRelayTransport.defaultTransport(
                     keyStore = keyStore,
@@ -117,10 +113,10 @@ class BurnBarApplication : Application() {
             }
         }
     }
-    @Volatile private var activeCoordinatorConnection: String? = null
-    @Volatile private var activeCoordinatorPublishedAtMillis: Long? = null
-    @Volatile private var activeCoordinatorTarget: IrohDialTarget? = null
-    private val mediaCoordinatorLock = Mutex()
+    @Volatile internal var activeCoordinatorConnection: String? = null
+    @Volatile internal var activeCoordinatorPublishedAtMillis: Long? = null
+    @Volatile internal var activeCoordinatorTarget: IrohDialTarget? = null
+    internal val mediaCoordinatorLock = Mutex()
 
     override fun onCreate() {
         super.onCreate()
@@ -223,7 +219,12 @@ class BurnBarApplication : Application() {
                     return@addSnapshotListener
                 }
                 applicationScope.launch {
-                    ensureMediaControlCoordinator(uid = uid, selection = selected)
+                    runCatching {
+                        ensureMediaControlCoordinator(uid = uid, selection = selected)
+                    }.onFailure { error ->
+                        Log.w("BurnBar", "Mercury pairing refresh failed: ${error.message}")
+                        stopMediaControlCoordinator()
+                    }
                 }
             }
     }
@@ -238,75 +239,14 @@ class BurnBarApplication : Application() {
         selection: IrohPairingSelection.Candidate,
         forceRestart: Boolean = false,
     ) {
-        mediaCoordinatorLock.withLock {
-            val connectionId = selection.connectionId
-            val existing = mediaControlCoordinator
-            val existingPhase = existing?.phase?.value
-            if (
-                MediaControlCoordinatorReusePolicy.shouldReuse(
-                    activeConnectionID = activeCoordinatorConnection,
-                    phase = existingPhase,
-                    selection = selection,
-                    forceRestart = forceRestart,
-                )
-            ) {
-                if (activeCoordinatorPublishedAtMillis != selection.publishedAtMillis) {
-                    activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
-                    runCatching {
-                        activeCoordinatorTarget = fetchVerifiedPairingTarget(
-                            uid = uid,
-                            connectionId = connectionId,
-                        )
-                    }.onFailure {
-                        Log.w("BurnBar", "Mercury pairing refresh target update failed: ${it.message}")
-                    }
-                }
-                Log.i("BurnBar", "Mercury coordinator reuse connectionID=$connectionId phase=${existingPhase?.label()}")
-                return
-            }
-
-            Log.i(
-                "BurnBar",
-                "Mercury coordinator rebuild connectionID=$connectionId forceRestart=$forceRestart previousPhase=${existingPhase?.label() ?: "none"}",
-            )
-            val target = fetchVerifiedPairingTarget(uid = uid, connectionId = connectionId)
-            existing?.stop()
-            controlTransportPool.shutdown()
-            val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
-                val dialTarget = activeCoordinatorTarget
-                    ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
-                dialControlStream(dialTarget)
-            }
-            val coordinator = MediaControlStreamCoordinator(
-                dialer = dialer,
-                receiver = fileTransferService,
-                controlAuthorityPeerNodeIdProvider = {
-                    runCatching {
-                        com.openburnbar.data.computeruse.PhoneControlSigningKeyStore(this@BurnBarApplication)
-                            .peerNodeId()
-                    }.getOrNull()
-                },
-            )
-            mediaControlCoordinator = coordinator
-            activeCoordinatorConnection = connectionId
-            activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
-            activeCoordinatorTarget = target
-            fileTransferService?.let { receiver ->
-                runCatching {
-                    coordinator.attachReceiver(receiver)
-                    receiver.attachControlStream(coordinator)
-                }.onFailure { Log.w("BurnBar", "attachControlStream failed: ${it.message}") }
-            }
-            runCatching { coordinator.start(uid = uid, connectionID = connectionId) }
-                .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
-        }
+        ensureMediaControlCoordinatorManaged(uid = uid, selection = selection, forceRestart = forceRestart)
     }
 
     suspend fun ensureMediaControlStream(connectionID: String, forceRestart: Boolean = false) {
         val normalizedConnectionID = connectionID.trim().takeIf { it.isNotBlank() }
             ?: throw IllegalArgumentException("Mercury requires a paired Mac connection id.")
         val uid = FirebaseAuth.getInstance().currentUser?.uid
-            ?: throw IllegalStateException("Mercury requires a signed-in Firebase user.")
+            ?: error("Mercury requires a signed-in Firebase user.")
         ensureMediaControlCoordinator(
             uid = uid,
             selection = IrohPairingSelection.Candidate(
@@ -333,13 +273,18 @@ class BurnBarApplication : Application() {
         if (uid != null && connectionId != null) {
             val publishedAtMillis = activeCoordinatorPublishedAtMillis ?: 0L
             applicationScope.launch {
-                ensureMediaControlCoordinator(
-                    uid = uid,
-                    selection = IrohPairingSelection.Candidate(
-                        connectionId = connectionId,
-                        publishedAtMillis = publishedAtMillis,
-                    ),
-                )
+                runCatching {
+                    ensureMediaControlCoordinator(
+                        uid = uid,
+                        selection = IrohPairingSelection.Candidate(
+                            connectionId = connectionId,
+                            publishedAtMillis = publishedAtMillis,
+                        ),
+                    )
+                }.onFailure { error ->
+                    Log.w("BurnBar", "Mercury coordinator receiver attach failed: ${error.message}")
+                    stopMediaControlCoordinator()
+                }
             }
         }
     }
@@ -356,7 +301,7 @@ class BurnBarApplication : Application() {
         activeCoordinatorTarget = null
     }
 
-    private suspend fun fetchVerifiedPairingTarget(uid: String, connectionId: String): IrohDialTarget {
+    internal suspend fun fetchVerifiedPairingTarget(uid: String, connectionId: String): IrohDialTarget {
         val publicKey = FirestoreIrohPairingPublicKeyProvider().fetchPublicKey(uid)
         return IrohPairingPublisher(FirestoreIrohPairingDirectory()).fetchAndVerify(
             uid = uid,
@@ -372,10 +317,10 @@ class BurnBarApplication : Application() {
      * the in-process loopback transport so the wiring still completes
      * for tests and CI screenshots.
      */
-    private suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
+    internal suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
         Log.i(
             "BurnBar",
-            "Mercury control dial target node=${target.nodeId.take(12)} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
+            "Mercury control dial target node=${target.nodeId.take(LOG_NODE_ID_PREFIX_LENGTH)} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
         )
         return controlTransportPool.dial(target, timeoutMillis = MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS)
     }
@@ -389,35 +334,6 @@ class BurnBarApplication : Application() {
                 Log.w("BurnBar", "FCM token registration failed: ${it.message}")
             }
         }
-    }
-
-    /**
-     * Derive a stable device id from `Settings.Secure.ANDROID_ID` SHA-256
-     * hashed and base16-encoded. Persist in SharedPreferences so the id
-     * survives the user clearing ANDROID_ID across factory resets that
-     * preserve app data (the value persists at the same path the iOS
-     * APNs branch writes to: `users/{uid}/devices/{deviceId}`).
-     */
-    @Suppress("HardwareIds")
-    private fun resolveStableDeviceId(): String {
-        val prefs = getSharedPreferences(DEVICE_ID_PREF_NAME, Context.MODE_PRIVATE)
-        prefs.getString(DEVICE_ID_PREF_KEY, null)?.let { return it }
-        val androidId = runCatching {
-            android.provider.Settings.Secure.getString(
-                contentResolver,
-                android.provider.Settings.Secure.ANDROID_ID,
-            )
-        }.getOrNull().orEmpty().ifBlank { "android-${System.currentTimeMillis()}" }
-        val digest = MessageDigest.getInstance("SHA-256").digest(androidId.toByteArray(Charsets.UTF_8))
-        val hex = buildString(digest.size * 2) {
-            for (b in digest) {
-                val v = b.toInt() and 0xff
-                if (v < 0x10) append('0')
-                append(Integer.toHexString(v))
-            }
-        }
-        prefs.edit().putString(DEVICE_ID_PREF_KEY, hex).apply()
-        return hex
     }
 
     /**
@@ -501,15 +417,6 @@ private fun MediaControlStreamCoordinator.Phase.isActiveOrConnecting(): Boolean 
     this is MediaControlStreamCoordinator.Phase.Dialing ||
         this is MediaControlStreamCoordinator.Phase.Live ||
         this is MediaControlStreamCoordinator.Phase.Reconnecting
-
-private fun MediaControlStreamCoordinator.Phase.label(): String = when (this) {
-    MediaControlStreamCoordinator.Phase.Idle -> "idle"
-    MediaControlStreamCoordinator.Phase.Dialing -> "dialing"
-    MediaControlStreamCoordinator.Phase.Live -> "live"
-    is MediaControlStreamCoordinator.Phase.Reconnecting -> "reconnecting"
-    MediaControlStreamCoordinator.Phase.Stopped -> "stopped"
-    is MediaControlStreamCoordinator.Phase.Failed -> "failed"
-}
 
 internal object MediaControlCoordinatorReusePolicy {
     fun shouldReuse(

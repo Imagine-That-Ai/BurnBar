@@ -7,27 +7,31 @@ import org.junit.Test
 class HermesRealtimeRelayControlFrameTest {
     @Test
     fun codecRoundTripsControlInputIntentFrame() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.CONTROL_INPUT_INTENT,
-            uid = "uid-1",
-            connectionId = "conn-1",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "control.input",
-                inputIntent = HermesRealtimeRelayInputIntent(
-                    kind = HermesRealtimeRelayInputIntentKind.POINTER_CLICK,
-                    displayId = "display-1",
-                    mouseButton = 1,
-                    clientIntentId = "intent-1",
-                    authority = HermesRealtimeRelayAuthorityEnvelope(
-                        peerNodeId = "android-phone-1",
-                        counter = 42,
-                        timestamp = 721_692_800.123,
-                        intentHashBlake3 = "f".repeat(64),
-                        signatureEd25519 = "signature",
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_INPUT_INTENT,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "control.input",
+                        inputIntent =
+                            HermesRealtimeRelayInputIntent(
+                                kind = HermesRealtimeRelayInputIntentKind.POINTER_CLICK,
+                                displayId = "display-1",
+                                mouseButton = 1,
+                                clientIntentId = "intent-1",
+                                authority =
+                                    HermesRealtimeRelayAuthorityEnvelope(
+                                        peerNodeId = "android-phone-1",
+                                        counter = 42,
+                                        timestamp = 721_692_800.123,
+                                        intentHashBlake3 = "f".repeat(64),
+                                        signatureEd25519 = "signature",
+                                    ),
+                            ),
                     ),
-                ),
-            ),
-        )
+            )
 
         val codec = IrohRelayFrameCodec()
         val decoded = codec.decode(codec.encode(frame)).frame
@@ -45,19 +49,22 @@ class HermesRealtimeRelayControlFrameTest {
 
     @Test
     fun codecRoundTripsControlDeniedFrame() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.CONTROL_DENIED,
-            uid = "uid-1",
-            connectionId = "conn-1",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "control.input",
-                sessionId = "session-1",
-                denied = HermesRealtimeRelayControlDenied(
-                    reason = HermesRealtimeRelayControlDenied.Reason.UNKNOWN,
-                    detail = "accessibility_revoked",
-                ),
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_DENIED,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "control.input",
+                        sessionId = "session-1",
+                        denied =
+                            HermesRealtimeRelayControlDenied(
+                                reason = HermesRealtimeRelayControlDenied.Reason.UNKNOWN,
+                                detail = "accessibility_revoked",
+                            ),
+                    ),
+            )
 
         val codec = IrohRelayFrameCodec()
         val decoded = codec.decode(codec.encode(frame)).frame
@@ -71,87 +78,98 @@ class HermesRealtimeRelayControlFrameTest {
 
     @Test
     fun codecRoundTripsRemoteUnlockCredentialAndResultFrames() {
-        val authority = HermesRealtimeRelayAuthorityEnvelope(
-            peerNodeId = "android-phone-1",
-            counter = 43,
-            timestamp = 721_692_800.123,
-            intentHashBlake3 = "a".repeat(64),
-            signatureEd25519 = "signature",
-        )
-        val credentialFrame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL,
-            uid = "uid-unlock",
-            connectionId = "conn-unlock",
-            requestId = "credential-1",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "remote_unlock",
-                sessionId = "unlock-session-1",
-                remoteUnlockCredential = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
-                    requestId = "credential-1",
-                    sessionId = "unlock-session-1",
-                    clientIntentId = "client-credential-1",
-                    credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD,
-                    recipientKeyId = "mac-remote-unlock-key",
-                    algorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
-                    ciphertextBase64 = "Y2lwaGVydGV4dA==",
-                    aadBase64 = "YWFk",
-                    redactedByteCount = 16,
-                    requestedAt = "2026-03-22T10:26:42.000Z",
-                    expiresAt = "2026-03-22T10:27:12.000Z",
-                    authority = authority,
-                ),
-            ),
-        )
-        val stateFrame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE,
-            uid = "uid-unlock",
-            connectionId = "conn-unlock",
-            requestId = "unlock-session-1",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "remote_unlock",
-                sessionId = "unlock-session-1",
-                remoteUnlockState = HermesRealtimeRelayRemoteUnlockState(
-                    sessionId = "unlock-session-1",
-                    lockState = HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
-                    backend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
-                    capabilities = HermesRealtimeRelayRemoteUnlockCapabilities(
-                        enabled = true,
-                        certificationStatus = HermesRealtimeRelayRemoteUnlockCertificationStatus.CERTIFIED,
-                        certifiedAt = "2026-03-22T10:26:40.000Z",
-                        certifiedOSBuild = "23G93",
-                        activeBackend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
-                        supportedBackends = listOf(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK),
-                        supportedLockStates = listOf(HermesRealtimeRelayMacLockState.LOGIN_WINDOW),
-                        allowsCredentialPaste = true,
-                        allowsSavedCredentialUnlock = true,
-                        credentialRecipientKeyId = "mac-remote-unlock-key",
-                        credentialRecipientPublicKeyBase64 = "cHVibGljLWtleQ==",
-                        credentialEnvelopeAlgorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
+        val authority =
+            HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId = "android-phone-1",
+                counter = 43,
+                timestamp = 721_692_800.123,
+                intentHashBlake3 = "a".repeat(64),
+                signatureEd25519 = "signature",
+            )
+        val credentialFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_CREDENTIAL,
+                uid = "uid-unlock",
+                connectionId = "conn-unlock",
+                requestId = "credential-1",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "remote_unlock",
+                        sessionId = "unlock-session-1",
+                        remoteUnlockCredential =
+                            HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+                                requestId = "credential-1",
+                                sessionId = "unlock-session-1",
+                                clientIntentId = "client-credential-1",
+                                credentialKind = HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind.SAVED_PASSWORD,
+                                recipientKeyId = "mac-remote-unlock-key",
+                                algorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
+                                ciphertextBase64 = "Y2lwaGVydGV4dA==",
+                                aadBase64 = "YWFk",
+                                redactedByteCount = 16,
+                                requestedAt = "2026-03-22T10:26:42.000Z",
+                                expiresAt = "2026-03-22T10:27:12.000Z",
+                                authority = authority,
+                            ),
                     ),
-                    controlOwnerViewerId = "viewer-1",
-                    observedAt = "2026-03-22T10:26:41.000Z",
-                ),
-            ),
-        )
-        val resultFrame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT,
-            uid = "uid-unlock",
-            connectionId = "conn-unlock",
-            requestId = "credential-1",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "remote_unlock",
-                sessionId = "unlock-session-1",
-                remoteUnlockResult = HermesRealtimeRelayRemoteUnlockResult(
-                    requestId = "credential-1",
-                    sessionId = "unlock-session-1",
-                    status = HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED,
-                    lockState = HermesRealtimeRelayMacLockState.UNLOCKED,
-                    backend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
-                    detail = "unlocked",
-                    completedAt = "2026-03-22T10:26:50.000Z",
-                ),
-            ),
-        )
+            )
+        val stateFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_STATE,
+                uid = "uid-unlock",
+                connectionId = "conn-unlock",
+                requestId = "unlock-session-1",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "remote_unlock",
+                        sessionId = "unlock-session-1",
+                        remoteUnlockState =
+                            HermesRealtimeRelayRemoteUnlockState(
+                                sessionId = "unlock-session-1",
+                                lockState = HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
+                                backend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+                                capabilities =
+                                    HermesRealtimeRelayRemoteUnlockCapabilities(
+                                        enabled = true,
+                                        certificationStatus = HermesRealtimeRelayRemoteUnlockCertificationStatus.CERTIFIED,
+                                        certifiedAt = "2026-03-22T10:26:40.000Z",
+                                        certifiedOSBuild = "23G93",
+                                        activeBackend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+                                        supportedBackends = listOf(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK),
+                                        supportedLockStates = listOf(HermesRealtimeRelayMacLockState.LOGIN_WINDOW),
+                                        allowsCredentialPaste = true,
+                                        allowsSavedCredentialUnlock = true,
+                                        credentialRecipientKeyId = "mac-remote-unlock-key",
+                                        credentialRecipientPublicKeyBase64 = "cHVibGljLWtleQ==",
+                                        credentialEnvelopeAlgorithm = "HPKE-X25519-SHA256-CHACHAPOLY",
+                                    ),
+                                controlOwnerViewerId = "viewer-1",
+                                observedAt = "2026-03-22T10:26:41.000Z",
+                            ),
+                    ),
+            )
+        val resultFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT,
+                uid = "uid-unlock",
+                connectionId = "conn-unlock",
+                requestId = "credential-1",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "remote_unlock",
+                        sessionId = "unlock-session-1",
+                        remoteUnlockResult =
+                            HermesRealtimeRelayRemoteUnlockResult(
+                                requestId = "credential-1",
+                                sessionId = "unlock-session-1",
+                                status = HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED,
+                                lockState = HermesRealtimeRelayMacLockState.UNLOCKED,
+                                backend = HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+                                detail = "unlocked",
+                                completedAt = "2026-03-22T10:26:50.000Z",
+                            ),
+                    ),
+            )
 
         val codec = IrohRelayFrameCodec()
         val decodedCredential = codec.decode(codec.encode(credentialFrame)).frame
@@ -178,46 +196,55 @@ class HermesRealtimeRelayControlFrameTest {
         assertEquals(true, decodedState.control?.remoteUnlockState?.capabilities?.allowsSavedCredentialUnlock)
         assertEquals(HermesRealtimeRelayFrameType.REMOTE_UNLOCK_RESULT, decodedResult.type)
         assertEquals(HermesRealtimeRelayRemoteUnlockResult.Status.UNLOCKED, decodedResult.control?.remoteUnlockResult?.status)
-        assertEquals(HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK, decodedResult.control?.remoteUnlockResult?.backend)
+        assertEquals(
+            HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK,
+            decodedResult.control?.remoteUnlockResult?.backend,
+        )
     }
 
     @Test
     fun codecRoundTripsControlApprovalRequestAndResponseFrames() {
-        val requestFrame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,
-            uid = "uid-approval",
-            connectionId = "conn-approval",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "control.approval",
-                sessionId = "session-1",
-                approvalRequest = HermesRealtimeRelayApprovalRequest(
-                    approvalId = "approval-1",
-                    runId = "run-1",
-                    sessionId = "session-1",
-                    toolKind = "computer_use.mac_input.scroll",
-                    title = "Scroll the active window",
-                    message = "Scroll the active window",
-                    actionSummary = "Scroll the active window",
-                    requestedAt = 801_000_000.0,
-                    trustMode = "manual",
-                ),
-            ),
-        )
-        val responseFrame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_RESPONSE,
-            uid = "uid-approval",
-            connectionId = "conn-approval",
-            control = HermesRealtimeRelayControlPayload(
-                streamClass = "control.approval",
-                sessionId = "session-1",
-                approvalResponse = HermesRealtimeRelayApprovalResponse(
-                    approvalId = "approval-1",
-                    decision = HermesRealtimeRelayApprovalResponse.Decision.APPROVE,
-                    respondedBy = "phone",
-                    respondedAt = 801_000_001.0,
-                ),
-            ),
-        )
+        val requestFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,
+                uid = "uid-approval",
+                connectionId = "conn-approval",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "control.approval",
+                        sessionId = "session-1",
+                        approvalRequest =
+                            HermesRealtimeRelayApprovalRequest(
+                                approvalId = "approval-1",
+                                runId = "run-1",
+                                sessionId = "session-1",
+                                toolKind = "computer_use.mac_input.scroll",
+                                title = "Scroll the active window",
+                                message = "Scroll the active window",
+                                actionSummary = "Scroll the active window",
+                                requestedAt = 801_000_000.0,
+                                trustMode = "manual",
+                            ),
+                    ),
+            )
+        val responseFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_RESPONSE,
+                uid = "uid-approval",
+                connectionId = "conn-approval",
+                control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = "control.approval",
+                        sessionId = "session-1",
+                        approvalResponse =
+                            HermesRealtimeRelayApprovalResponse(
+                                approvalId = "approval-1",
+                                decision = HermesRealtimeRelayApprovalResponse.Decision.APPROVE,
+                                respondedBy = "phone",
+                                respondedAt = 801_000_001.0,
+                            ),
+                    ),
+            )
 
         val codec = IrohRelayFrameCodec()
         val decodedRequest = codec.decode(codec.encode(requestFrame)).frame
@@ -234,7 +261,8 @@ class HermesRealtimeRelayControlFrameTest {
 
     @Test
     fun codecDecodesLegacyFocusContextWithoutSmartZoomFields() {
-        val legacyJson = """
+        val legacyJson =
+            """
             {
               "type": "media.stream.frame",
               "uid": "uid-legacy",
@@ -249,11 +277,12 @@ class HermesRealtimeRelayControlFrameTest {
                 }
               }
             }
-        """.trimIndent()
-        val frame = HermesRealtimeRelayJson.decodeFromString(
-            HermesRealtimeRelayFrame.serializer(),
-            legacyJson,
-        )
+            """.trimIndent()
+        val frame =
+            HermesRealtimeRelayJson.decodeFromString(
+                HermesRealtimeRelayFrame.serializer(),
+                legacyJson,
+            )
         val focus = frame.media?.focusContext
         assertNotNull(focus)
         assertEquals("OldMac", focus?.appName)
@@ -272,25 +301,32 @@ class HermesRealtimeRelayControlFrameTest {
     @Test
     fun codecRoundTripsSmartZoomFocusContext() {
         val codec = IrohRelayFrameCodec()
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
-            uid = "uid-smart",
-            connectionId = "conn-smart",
-            media = HermesRealtimeRelayMediaPayload(
-                streamClass = "media.stream.screen.video.v1",
-                focusContext = HermesRealtimeRelayFocusContext(
-                    appName = "Terminal",
-                    bundleId = "com.apple.terminal",
-                    targetKind = HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT,
-                    displayId = "display-1",
-                    normalizedRect = HermesRealtimeRelayNormalizedRect(
-                        x = 0.4, y = 0.45, width = 0.2, height = 0.05
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
+                uid = "uid-smart",
+                connectionId = "conn-smart",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        streamClass = "media.stream.screen.video.v1",
+                        focusContext =
+                            HermesRealtimeRelayFocusContext(
+                                appName = "Terminal",
+                                bundleId = "com.apple.terminal",
+                                targetKind = HermesRealtimeRelayFocusTargetKind.FOCUSED_ELEMENT,
+                                displayId = "display-1",
+                                normalizedRect =
+                                    HermesRealtimeRelayNormalizedRect(
+                                        x = 0.4,
+                                        y = 0.45,
+                                        width = 0.2,
+                                        height = 0.05,
+                                    ),
+                                confidence = 0.95,
+                                updatedAt = 778_000_000.123,
+                            ),
                     ),
-                    confidence = 0.95,
-                    updatedAt = 778_000_000.123,
-                ),
-            ),
-        )
+            )
         val decoded = codec.decode(codec.encode(frame)).frame
         val focus = decoded.media?.focusContext
         assertNotNull(focus)
@@ -305,20 +341,23 @@ class HermesRealtimeRelayControlFrameTest {
 
     @Test
     fun codecRoundTripsMirrorStopFrame() {
-        val frame = HermesRealtimeRelayFrame(
-            type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP,
-            uid = "uid-1",
-            connectionId = "conn-1",
-            requestId = "req-stop-1",
-            media = HermesRealtimeRelayMediaPayload(
-                mirrorStop = HermesRealtimeRelayMirrorStop(
-                    requestId = "req-stop-1",
-                    sessionId = "session-1",
-                    stoppedAt = 801_000_002.0,
-                    reason = "viewer_closed",
-                ),
-            ),
-        )
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_MIRROR_STOP,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                requestId = "req-stop-1",
+                media =
+                    HermesRealtimeRelayMediaPayload(
+                        mirrorStop =
+                            HermesRealtimeRelayMirrorStop(
+                                requestId = "req-stop-1",
+                                sessionId = "session-1",
+                                stoppedAt = 801_000_002.0,
+                                reason = "viewer_closed",
+                            ),
+                    ),
+            )
 
         val codec = IrohRelayFrameCodec()
         val decoded = codec.decode(codec.encode(frame)).frame

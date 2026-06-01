@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.components
 
 import android.content.Context
@@ -16,17 +19,17 @@ import androidx.compose.ui.platform.LocalContext
  */
 
 object HapticBus {
-
     fun perform(context: Context, type: HapticType) {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)
-                ?.defaultVibrator
-                ?: return
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                ?: return
-        }
+        val vibrator =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)
+                    ?.defaultVibrator
+                    ?: return
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                    ?: return
+            }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             when (type) {
@@ -39,38 +42,47 @@ object HapticBus {
                 HapticType.SELECTION -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
                 HapticType.TAB_CHANGE -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
                 // Custom 4-tap warning waveform — matches the iOS warning notification's pulsed feel.
-                HapticType.WARNING -> vibrator.vibrate(
-                    VibrationEffect.createWaveform(
-                        longArrayOf(0L, 50L, 100L, 50L),
-                        intArrayOf(0, 200, 0, 100),
-                        -1
+                HapticType.WARNING ->
+                    vibrator.vibrate(
+                        VibrationEffect.createWaveform(
+                            longArrayOf(0L, 50L, 100L, 50L),
+                            intArrayOf(0, 200, 0, 100),
+                            -1,
+                        ),
                     )
-                )
             }
         } else {
             @Suppress("DEPRECATION")
-            val millis = when (type) {
-                HapticType.LIGHT -> 10L
-                HapticType.MEDIUM -> 20L
-                HapticType.HEAVY -> 30L
-                HapticType.SUCCESS -> 20L
-                HapticType.ERROR -> 40L
-                HapticType.SELECTION -> 5L
-                HapticType.TAB_CHANGE -> 15L
-                HapticType.WARNING -> 35L
-            }
+            val millis =
+                when (type) {
+                    HapticType.LIGHT -> 10L
+                    HapticType.MEDIUM -> 20L
+                    HapticType.HEAVY -> 30L
+                    HapticType.SUCCESS -> 20L
+                    HapticType.ERROR -> 40L
+                    HapticType.SELECTION -> 5L
+                    HapticType.TAB_CHANGE -> 15L
+                    HapticType.WARNING -> 35L
+                }
             vibrator.vibrate(millis)
         }
     }
 
     // Convenience methods
     fun light(context: Context) = perform(context, HapticType.LIGHT)
+
     fun medium(context: Context) = perform(context, HapticType.MEDIUM)
+
     fun heavy(context: Context) = perform(context, HapticType.HEAVY)
+
     fun success(context: Context) = perform(context, HapticType.SUCCESS)
+
     fun warning(context: Context) = perform(context, HapticType.WARNING)
+
     fun error(context: Context) = perform(context, HapticType.ERROR)
+
     fun selection(context: Context) = perform(context, HapticType.SELECTION)
+
     fun tabChange(context: Context) = perform(context, HapticType.TAB_CHANGE)
 }
 
@@ -82,7 +94,7 @@ enum class HapticType {
     WARNING,
     ERROR,
     SELECTION,
-    TAB_CHANGE
+    TAB_CHANGE,
 }
 
 @Composable
@@ -93,11 +105,18 @@ fun rememberHapticBus(): HapticBusHandle {
 
 class HapticBusHandle(private val context: Context) {
     fun light() = HapticBus.light(context)
+
     fun medium() = HapticBus.medium(context)
+
     fun heavy() = HapticBus.heavy(context)
+
     fun success() = HapticBus.success(context)
+
     fun warning() = HapticBus.warning(context)
+
     fun error() = HapticBus.error(context)
+
     fun selection() = HapticBus.selection(context)
+
     fun tabChange() = HapticBus.tabChange(context)
 }

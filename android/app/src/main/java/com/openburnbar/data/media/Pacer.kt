@@ -6,6 +6,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+private const val BITS_PER_BYTE = 8
+private const val MAX_PACE_WAIT_NANOS = 50_000_000L
+private const val NANOS_PER_MILLIS = 1_000_000L
+private const val NANOS_PER_SECOND = 1_000_000_000.0
+
 /**
  * Outbound media pacer. 1:1 port of the iOS `Pacer` (the master plan
  * § E.7 calls for one). Smooths per-GOP send bursts into a target
@@ -30,11 +35,11 @@ class Pacer(
     private var burstBytes: Double = (initialBurstBitsPerSecond / 8).toDouble()
 
     suspend fun setTargetBitsPerSecond(bps: Int) {
-        mutex.withLock { targetBytesPerSecond = (bps / 8).toDouble() }
+        mutex.withLock { targetBytesPerSecond = (bps / BITS_PER_BYTE).toDouble() }
     }
 
     suspend fun setBurstBitsPerSecond(bps: Int) {
-        mutex.withLock { burstBytes = (bps / 8).toDouble() }
+        mutex.withLock { burstBytes = (bps / BITS_PER_BYTE).toDouble() }
     }
 
     /**
@@ -44,21 +49,25 @@ class Pacer(
     suspend fun pace(byteCount: Int) {
         val needed = byteCount.toDouble()
         while (true) {
-            val waitNanos: Long = mutex.withLock {
-                val now = System.nanoTime()
-                val deltaSeconds = (now - lastRefillNanos).coerceAtLeast(0) / 1_000_000_000.0
-                lastRefillNanos = now
-                availableBytes = (availableBytes + deltaSeconds * targetBytesPerSecond).coerceAtMost(burstBytes)
-                if (availableBytes >= needed) {
-                    availableBytes -= needed
-                    return@withLock 0L
+            val waitNanos: Long =
+                mutex.withLock {
+                    val now = System.nanoTime()
+                    val deltaSeconds = (now - lastRefillNanos).coerceAtLeast(0) / NANOS_PER_SECOND
+                    lastRefillNanos = now
+                    availableBytes = (availableBytes + deltaSeconds * targetBytesPerSecond).coerceAtMost(burstBytes)
+                    if (availableBytes >= needed) {
+                        availableBytes -= needed
+                        return@withLock 0L
+                    }
+                    val deficit = needed - availableBytes
+                    if (targetBytesPerSecond <= 0.0) {
+                        Long.MAX_VALUE
+                    } else {
+                        (deficit / targetBytesPerSecond * NANOS_PER_SECOND).toLong().coerceAtMost(MAX_PACE_WAIT_NANOS)
+                    }
                 }
-                val deficit = needed - availableBytes
-                if (targetBytesPerSecond <= 0.0) Long.MAX_VALUE
-                else (deficit / targetBytesPerSecond * 1_000_000_000.0).toLong().coerceAtMost(50_000_000L)
-            }
             if (waitNanos <= 0L) return
-            withContext(Dispatchers.Default) { delay(waitNanos / 1_000_000L) }
+            withContext(Dispatchers.Default) { delay(waitNanos / NANOS_PER_MILLIS) }
         }
     }
 }

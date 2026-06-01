@@ -2,6 +2,7 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.RollupSummary
@@ -14,11 +15,11 @@ data class ProviderDashboard(
     val providerSummaries: List<RollupSummary> = emptyList(),
     val quotaSnapshots: List<ProviderQuotaSnapshot> = emptyList(),
     val totalCost: Double = 0.0,
-    val totalTokens: Long = 0
+    val totalTokens: Long = 0,
 )
 
 class ProviderDashboardStore(
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val repo: FirestoreRepository = FirestoreRepository(),
 ) : ViewModel() {
     private val _dashboard = MutableStateFlow(ProviderDashboard())
     val dashboard: StateFlow<ProviderDashboard> = _dashboard.asStateFlow()
@@ -36,13 +37,14 @@ class ProviderDashboardStore(
             try {
                 val rollups = repo.fetchRollups()
                 val quotas = repo.fetchQuotaSnapshots()
-                _dashboard.value = ProviderDashboard(
-                    providerSummaries = rollups.providerSummaries,
-                    quotaSnapshots = quotas,
-                    totalCost = rollups.allTime,
-                    totalTokens = rollups.totals["tokens"]?.toLong() ?: 0L
-                )
-            } catch (e: Exception) {
+                _dashboard.value =
+                    ProviderDashboard(
+                        providerSummaries = rollups.providerSummaries,
+                        quotaSnapshots = quotas,
+                        totalCost = rollups.allTime,
+                        totalTokens = rollups.totals["tokens"]?.toLong() ?: 0L,
+                    )
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
