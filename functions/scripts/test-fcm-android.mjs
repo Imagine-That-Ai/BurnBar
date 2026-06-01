@@ -70,18 +70,18 @@ const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voi
 }
 
 // ---------------------------------------------------------------------------
-// resolveFanOut — Android-only when no APNs token is provided
+// resolveFanOut — reads tokens from paired device doc only (no client APNs/FCM)
 // ---------------------------------------------------------------------------
 {
   const firestore = makeFakeFirestore({
     [`users/u1/devices/device-A`]: {
+      platform: "android",
       fcm_token: "fcm-token-A",
-      updated_at_millis: 1_000,
     },
   });
   const fanOut = await resolveFanOut({
     uid: "u1",
-    androidDeviceId: "device-A",
+    pairedDeviceId: "device-A",
     firestore,
   });
   assert.equal(fanOut.apnsToken, undefined);
@@ -89,62 +89,60 @@ const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voi
   assert.equal(fanOut.androidDeviceId, "device-A");
 }
 
-// ---------------------------------------------------------------------------
-// resolveFanOut — fresher Android token wins over older APNs
-// ---------------------------------------------------------------------------
 {
   const firestore = makeFakeFirestore({
-    [`users/u1/devices/device-A`]: {
-      fcm_token: "fcm-token-A",
-      updated_at_millis: 2_000,
+    [`users/u1/devices/device-ios`]: {
+      platform: "ios",
+      voipDeviceToken: "apns-hex",
     },
   });
   const fanOut = await resolveFanOut({
     uid: "u1",
-    apnsToken: "apns-hex",
-    apnsTokenUpdatedAtMillis: 1_500,
-    androidDeviceId: "device-A",
-    firestore,
-  });
-  assert.equal(fanOut.apnsToken, undefined);
-  assert.equal(fanOut.fcmToken, "fcm-token-A");
-}
-
-// ---------------------------------------------------------------------------
-// resolveFanOut — older Android token loses to fresher APNs
-// ---------------------------------------------------------------------------
-{
-  const firestore = makeFakeFirestore({
-    [`users/u1/devices/device-A`]: {
-      fcm_token: "fcm-token-A",
-      updated_at_millis: 1_000,
-    },
-  });
-  const fanOut = await resolveFanOut({
-    uid: "u1",
-    apnsToken: "apns-hex",
-    apnsTokenUpdatedAtMillis: 5_000,
-    androidDeviceId: "device-A",
+    pairedDeviceId: "device-ios",
     firestore,
   });
   assert.equal(fanOut.apnsToken, "apns-hex");
   assert.equal(fanOut.fcmToken, undefined);
-  assert.equal(fanOut.androidDeviceId, undefined);
 }
 
-// ---------------------------------------------------------------------------
-// resolveFanOut — missing device doc drops the Android branch entirely
-// ---------------------------------------------------------------------------
+{
+  const firestore = makeFakeFirestore({
+    [`users/u1/devices/device-A`]: {
+      platform: "ios",
+      fcm_token: "fcm-token-A",
+      voipDeviceToken: "apns-hex",
+    },
+  });
+  const fanOut = await resolveFanOut({
+    uid: "u1",
+    pairedDeviceId: "device-A",
+    firestore,
+  });
+  assert.equal(fanOut.apnsToken, "apns-hex");
+  assert.equal(fanOut.fcmToken, undefined);
+}
+
 {
   const firestore = makeFakeFirestore({});
   const fanOut = await resolveFanOut({
     uid: "u1",
-    apnsToken: "apns-hex",
-    androidDeviceId: "device-Missing",
+    pairedDeviceId: "device-Missing",
     firestore,
   });
-  assert.equal(fanOut.apnsToken, "apns-hex");
+  assert.equal(fanOut.apnsToken, undefined);
   assert.equal(fanOut.fcmToken, undefined);
+}
+
+{
+  const firestore = makeFakeFirestore({
+    [`users/u1/devices/device-A`]: { fcm_token: "fcm-only" },
+  });
+  const fanOut = await resolveFanOut({
+    uid: "u1",
+    pairedDeviceId: "",
+    firestore,
+  });
+  assert.deepEqual(fanOut, {});
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,9 @@ import OpenBurnBarCore
 /// dedicated control stream. The transport never inspects frame contents —
 /// it just moves length-prefixed JSON between endpoints.
 public protocol IrohRelayStream: Sendable {
+    /// Remote peer NodeId when known (inbound accept). Used for Mac peer binding.
+    var remotePeerNodeId: String? { get }
+
     /// Send a single frame. Length-prefixed JSON; the protocol encoder is
     /// responsible for the byte layout.
     func send(_ frame: HermesRealtimeRelayFrame) async throws
@@ -15,6 +18,10 @@ public protocol IrohRelayStream: Sendable {
 
     /// Cleanly tear the stream down. Idempotent.
     func close() async
+}
+
+public extension IrohRelayStream {
+    var remotePeerNodeId: String? { nil }
 }
 
 /// Identity of an iroh endpoint as seen by the publish/discover layer.

@@ -299,7 +299,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             auditChainHeadHashHex: logger.headHashHex
         )
 
-        phoneReceiver = PhoneControlReceiver(
+        let phoneReceiverInstance = PhoneControlReceiver(
             sessionId: sessionId,
             validator: phoneValidator,
             displayBoundsProvider: displayBoundsProvider,
@@ -318,6 +318,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 try await self.latestReplySender?(frame)
             }
         )
+        phoneReceiverInstance.requiredAttestationDigestProvider = {
+            await MacAppCheckAttestationReader.currentRequiredAttestationDigest()
+        }
+        phoneReceiver = phoneReceiverInstance
 
         agentContextReceiver = AgentContextTargetReceiver(
             sessionId: sessionId,
@@ -915,9 +919,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             guard let wireRequest = frame.control?.agentGrantRequest else { return }
             let receipt: AgentCapabilityGrantReceipt
             do {
+                let requiredAttestation = await MacAppCheckAttestationReader.currentRequiredAttestationDigest()
                 _ = try phoneValidator.validate(
                     envelope: wireRequest.authority,
                     grantRequest: wireRequest,
+                    requiredAttestationHashBlake3: requiredAttestation,
                     now: Date()
                 )
                 let request = try AgentCapabilityGrantRequest(wire: wireRequest)

@@ -69,6 +69,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var readyUID: String?
     private var readyConnectionID: String?
     private var publishedIdentity: IrohEndpointIdentity?
+    private var inboundPeerPolicy = IrohInboundPeerPolicy(allowedPeerNodeIds: [])
     private let pairingPublishInterval: TimeInterval
 
     init(
@@ -177,6 +178,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
 
             readyUID = uid
             readyConnectionID = connectionID
+            inboundPeerPolicy = await FirestoreIrohInboundPeerAllowlist.load(uid: uid, connectionId: connectionID)
             acceptLoopHealthy = true
             heartbeatHealthy = true
 
@@ -187,6 +189,12 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: UInt64(pairingPublishInterval * 1_000_000_000))
                     await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
+                    if let self {
+                        self.inboundPeerPolicy = await FirestoreIrohInboundPeerAllowlist.load(
+                            uid: uid,
+                            connectionId: connectionID
+                        )
+                    }
                 }
             }
 
@@ -252,6 +260,21 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         while !Task.isCancelled {
             do {
                 let stream = try await transport.accept(timeout: 30)
+                if !inboundPeerPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
+                    await auditLogger.record(
+                        event: .pairingRejected,
+                        uid: uid,
+                        connectionId: connectionID,
+                        transport: .irohDirect,
+                        rttMillis: nil,
+                        detail: [
+                            "reason": "inbound_peer_not_allowlisted",
+                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown",
+                        ]
+                    )
+                    await stream.close()
+                    continue
+                }
                 consecutiveAcceptFailures = 0
                 let handler = IrohRelayRequestHandler(
                     relayKeyStore: relayKeyStore,

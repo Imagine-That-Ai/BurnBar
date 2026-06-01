@@ -31,6 +31,22 @@ public enum AgentDesktopCapability: String, Codable, CaseIterable, Hashable, Sen
     public static var boundedCases: Set<AgentDesktopCapability> {
         Set(allCases).subtracting([.shellUnrestricted])
     }
+
+    public static func requiresLocalAuthentication(
+        capabilities: Set<AgentDesktopCapability>,
+        trustMode: ComputerUseTrustMode
+    ) -> Bool {
+        if trustMode == .trusted { return true }
+        let privileged: Set<AgentDesktopCapability> = [
+            .desktopBrowser,
+            .desktopSystemInput,
+            .desktopScreenshot,
+            .accessibilityInspect,
+            .desktopFileExport,
+            .shellUnrestricted
+        ]
+        return !capabilities.isDisjoint(with: privileged)
+    }
 }
 
 public enum AgentCapabilityGrantStatus: String, Codable, CaseIterable, Hashable, Sendable {

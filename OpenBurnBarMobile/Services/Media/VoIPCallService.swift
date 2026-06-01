@@ -1,3 +1,6 @@
+import FirebaseAuth
+import FirebaseCore
+@preconcurrency import FirebaseFirestore
 import Foundation
 #if canImport(PushKit)
 @preconcurrency import PushKit
@@ -82,7 +85,35 @@ final class VoIPCallService: NSObject {
 extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
     func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         guard type == .voIP else { return }
-        voipDeviceTokenHex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
+        let tokenHex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
+        voipDeviceTokenHex = tokenHex
+        Task { await persistVoipDeviceToken(tokenHex) }
+    }
+
+    private func persistVoipDeviceToken(_ tokenHex: String) async {
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid,
+              !tokenHex.isEmpty else { return }
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        do {
+            try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("devices").document(deviceId)
+                .setData(
+                    [
+                        "deviceId": deviceId,
+                        "platform": "ios",
+                        "voipDeviceToken": tokenHex,
+                        "updated_at_millis": nowMillis,
+                    ],
+                    merge: true
+                )
+        } catch {
+            #if DEBUG
+            print("VoIPCallService voip token persist failed: \(error.localizedDescription)")
+            #endif
+        }
     }
 
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping @Sendable () -> Void) {

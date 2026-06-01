@@ -1,0 +1,19 @@
+[package]
+name = "burnbar-remote-network"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+burnbar-remote-core.workspace = true
+burnbar-remote-observability.workspace = true
+burnbar-remote-protocol.workspace = true
+burnbar-remote-security.workspace = true
+bytes.workspace = true
+iroh.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
