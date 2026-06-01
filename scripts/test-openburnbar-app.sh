@@ -18,6 +18,8 @@
 #   OPENBURNBAR_ENABLE_COVERAGE=YES   Capture xcresult at canonical path.
 #   OPENBURNBAR_APP_TEST_ATTEMPTS=N   Override max attempts (default 4).
 #   OPENBURNBAR_APP_TEST_FILTER=...   Pass a custom -only-testing target.
+#                                      `AgentLensTests/...` is accepted as a
+#                                      stable alias for `OpenBurnBarTests/...`.
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
 #                                      Override runnable derived-data root.
 #
@@ -55,8 +57,30 @@ maximum_test_execution_allowance="${OPENBURNBAR_APP_TEST_MAX_ALLOWANCE:-1200}"
 max_test_attempts="${OPENBURNBAR_APP_TEST_ATTEMPTS:-4}"
 
 # Test filter. Default to the active app test bundle. Callers can override
-# (e.g. for targeted snapshot re-records: -only-testing:OpenBurnBarTests/SomeClass)
-test_filter="${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}"
+# (e.g. for targeted snapshot re-records: -only-testing:OpenBurnBarTests/SomeClass).
+# The source folder is AgentLensTests, but the XCTest bundle is OpenBurnBarTests.
+# Normalize the folder-name alias so repeated manual/agent invocations do not
+# fail with "AgentLensTests isn't a member of the specified test plan or scheme."
+normalize_app_test_filter() {
+    local candidate="$1"
+    case "$candidate" in
+        AgentLensTests)
+            printf '%s\n' "OpenBurnBarTests"
+            ;;
+        AgentLensTests/*)
+            printf '%s\n' "OpenBurnBarTests/${candidate#AgentLensTests/}"
+            ;;
+        *)
+            printf '%s\n' "$candidate"
+            ;;
+    esac
+}
+
+raw_test_filter="${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}"
+test_filter="$(normalize_app_test_filter "$raw_test_filter")"
+if [[ "$test_filter" != "$raw_test_filter" ]]; then
+    echo ">>> Normalized OPENBURNBAR_APP_TEST_FILTER from '$raw_test_filter' to '$test_filter'."
+fi
 
 mkdir -p "$cache_dir"
 mkdir -p "$artifact_root"

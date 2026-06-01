@@ -87,11 +87,11 @@ final class iOSFileTransferService: ObservableObject {
 
     private let service: MediaFileTransferService?
     private let settingsProvider: @MainActor () -> Bool
-    /// Long-lived media control stream owner. Set via
-    /// `attachControlStream(_:)` once iOS auth + Hermes connection
-    /// reach an authenticated state. Optional so tests can drive the
-    /// receive path without spinning up an iroh dialer.
-    private var controlCoordinator: MediaControlStreamCoordinator?
+    /// Long-lived media control stream owners, keyed by Hermes connection.
+    /// Set via `attachControlStream(_:connectionID:)` once iOS auth +
+    /// Hermes connection reach an authenticated state. Optional so tests
+    /// can drive the receive path without spinning up an iroh dialer.
+    private var controlCoordinatorsByConnectionID: [String: MediaControlStreamCoordinator] = [:]
 
     @Published private(set) var lastError: Failure?
     @Published private(set) var inFlightCount: Int = 0
@@ -110,15 +110,21 @@ final class iOSFileTransferService: ObservableObject {
         self.settingsProvider = settingsProvider
     }
 
-    func attachControlStream(_ coordinator: MediaControlStreamCoordinator) {
-        self.controlCoordinator = coordinator
+    func attachControlStream(_ coordinator: MediaControlStreamCoordinator, connectionID: String) {
+        controlCoordinatorsByConnectionID[connectionID] = coordinator
     }
 
-    func detachControlStream() async {
-        if let coordinator = controlCoordinator {
+    func detachControlStream(connectionID: String? = nil) async {
+        if let connectionID {
+            guard let coordinator = controlCoordinatorsByConnectionID.removeValue(forKey: connectionID) else { return }
+            await coordinator.stop()
+            return
+        }
+        let coordinators = Array(controlCoordinatorsByConnectionID.values)
+        controlCoordinatorsByConnectionID.removeAll()
+        for coordinator in coordinators {
             await coordinator.stop()
         }
-        controlCoordinator = nil
     }
 
     func bootstrapBlobEndpoint() async throws -> IrohEndpointIdentity {
@@ -251,7 +257,7 @@ final class iOSFileTransferService: ObservableObject {
         do {
             if let advertiseSender {
                 try await advertiseSender(frame)
-            } else if let controlCoordinator {
+            } else if let controlCoordinator = controlCoordinatorsByConnectionID[connectionID] {
                 try await controlCoordinator.send(frame: frame)
             } else {
                 lastError = .dispatchUnavailable

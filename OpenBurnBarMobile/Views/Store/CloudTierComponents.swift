@@ -232,7 +232,12 @@ struct CloudTierCard: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-            CloudBadge(size: .custom(46))
+            Image(isFlagship ? "CloudTierCrestPro" : "CloudTierCrest")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .shadow(color: ProTheme.Membership.foilLeaf.opacity(0.35), radius: 6, y: 2)
             VStack(alignment: .leading, spacing: 3) {
                 Text(plan.title.replacingOccurrences(of: "BurnBar ", with: ""))
                     .font(ProTheme.Typography.titleSerif)
@@ -389,10 +394,14 @@ struct CloudTopUpChip: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-                HStack {
-                    Image(systemName: glyph)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(isDisabled ? ProTheme.Membership.engravingMuted : ProTheme.Membership.foilLeaf)
+                HStack(alignment: .top) {
+                    Image(artName)
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: 46, height: 46)
+                        .opacity(isDisabled ? 0.5 : 1.0)
+                        .saturation(isDisabled ? 0.0 : 1.0)
                     Spacer(minLength: 0)
                     if isDisabled {
                         Image(systemName: "lock.fill")
@@ -436,7 +445,7 @@ struct CloudTopUpChip: View {
         .accessibilityLabel("\(catalogProduct.title), \(catalogProduct.cadence), \(priceText). \(catalogProduct.disclosure)")
     }
 
-    private var glyph: String {
-        catalogProduct.topUpKind?.contains("floo") == true ? "shippingbox.fill" : "cursorarrow.rays"
+    private var artName: String {
+        catalogProduct.topUpKind?.contains("floo") == true ? "CloudChipFloo" : "CloudChipAgent"
     }
 }

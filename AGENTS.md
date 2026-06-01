@@ -23,7 +23,7 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 ## Working in this repo
 
 - **Search the codebase** before adding new types, parsers, or UI; extend what exists unless the task explicitly requires greenfield work.
-- **Tests:** add or update tests in the active `AgentLensTests` / `OpenBurnBarDaemon` test targets for behavior changes; long-lived stale suites belong under `AgentLensTests/Quarantine/` and are not compiled by default — see [`AgentLensTests/README.md`](AgentLensTests/README.md).
+- **Tests:** add or update tests in the active `AgentLensTests` source tree / `OpenBurnBarDaemon` test targets for behavior changes. The macOS app XCTest bundle is named `OpenBurnBarTests`, even though its sources live under `AgentLensTests/`; raw `xcodebuild` filters must use `-only-testing:OpenBurnBarTests/...`. Prefer `./scripts/test-openburnbar-app.sh` for app tests; it also normalizes the common `AgentLensTests/...` alias. Long-lived stale suites belong under `AgentLensTests/Quarantine/` and are not compiled by default — see [`AgentLensTests/README.md`](AgentLensTests/README.md).
 - **Docs:** user-facing or architectural changes belong in `docs/` and, when appropriate, [`CHANGELOG.md`](CHANGELOG.md) — follow existing doc voice and cross-links in [`README.md`](README.md).
 - **Architecture ADRs:** cross-cutting decisions live in [`docs/ARCHITECTURE/`](docs/ARCHITECTURE/README.md) (naming, actor isolation, errors, schema, sync).
 - **Ops SLOs:** [`docs/runbooks/slos.md`](docs/runbooks/slos.md) is the operator runbook for latency/availability/error budgets.

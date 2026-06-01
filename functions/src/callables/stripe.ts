@@ -45,13 +45,6 @@ type StripeCheckoutTier = "cloud" | "cloud_pro";
 type StripeCheckoutCadence = "monthly" | "annual";
 type StripeTopUpKind = "agent_control_actions_100" | "floo_relay_50gb";
 
-const GOOGLE_PLAY_CLOUD_PRO_PRODUCT_ALIASES = [
-  "com.openburnbar.proMax.v2.monthly",
-  "com.openburnbar.proMax.annual",
-  "com.openburnbar.promax.v2.monthly",
-  "com.openburnbar.promax.annual",
-];
-
 function optionalChoice<T extends string>(raw: unknown, allowed: readonly T[], fieldName: string): T | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   if (typeof raw !== "string" || !allowed.includes(raw as T)) {
@@ -126,7 +119,6 @@ function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: 
     cfg.googlePlayCloudProAnnualProductID,
     cfg.burnBarProMaxProductID,
     cfg.burnBarProMaxAnnualProductID,
-    ...GOOGLE_PLAY_CLOUD_PRO_PRODUCT_ALIASES,
   ]);
   if (cloudProductIDs.has(productID)) {
     return { entitlementID: BURNBAR_PRO_ENTITLEMENT_ID, canonicalProductID: productID };

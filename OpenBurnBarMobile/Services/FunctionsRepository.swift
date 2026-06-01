@@ -1052,25 +1052,6 @@ final class FunctionsRepository: HermesGatewayRepository {
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
 
-    func enqueueHermesGatewayModelSwitch(
-        modelId: String,
-        destinationId: String = "burnbar:home",
-        threadId: String = "burnbar-ios-e2e",
-        senderDisplayName: String = "OpenBurnBar iPhone"
-    ) async throws -> HermesGatewayQueuedEvent {
-        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
-        let result = try await callable.call([
-            "destinationId": destinationId,
-            "threadId": threadId,
-            "senderId": "burnbar-ios",
-            "senderDisplayName": senderDisplayName,
-            "eventKind": "model_switch",
-            "modelId": modelId,
-            "text": "/model \(modelId)"
-        ])
-        return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
-    }
-
     // MARK: Pi Agent host pairing
 
     func createPiAgentPairing(
