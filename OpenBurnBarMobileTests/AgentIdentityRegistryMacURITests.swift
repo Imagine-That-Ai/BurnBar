@@ -412,8 +412,8 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             )
         }
 
-        try await waitUntil { dialCount >= 2 }
         try await ensureTask.value
+        XCTAssertGreaterThanOrEqual(dialCount, 2, "half-stale control stream should redial before returning")
         try await waitUntilHeartbeatCount(secondStream, count: 1)
 
         let firstCloseCount = await firstStream.closeCount
