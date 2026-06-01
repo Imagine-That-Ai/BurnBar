@@ -186,6 +186,7 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     var computerUseBrowserEnabled: Bool { get set }
     var computerUseSystemEnabled: Bool { get set }
     var computerUsePhoneControlEnabled: Bool { get set }
+    var computerUsePhoneControlAttestationRequired: Bool { get set }
     var computerUseTrustedScopesEnabled: Bool { get set }
     var computerUseAuditExportEnabled: Bool { get set }
     var computerUseKillSwitch: Bool { get set }

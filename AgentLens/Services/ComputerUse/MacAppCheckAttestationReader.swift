@@ -18,5 +18,10 @@ enum MacAppCheckAttestationReader {
             return nil
         }
     }
+
+    static func attestationRequirement(strictMode: Bool) async -> PhoneControlAttestationRequirement {
+        let digest = await currentRequiredAttestationDigest()
+        return PhoneControlAttestationPolicy.requirement(strictMode: strictMode, macBoundDigest: digest)
+    }
 }
 #endif

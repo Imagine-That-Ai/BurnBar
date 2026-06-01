@@ -24,6 +24,8 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         case staleTimestamp(skewSeconds: Double)
         case expiredAuthority
         case attestationMismatch(expected: String?, observed: String?)
+        case missingAttestation
+        case macAttestationUnbound
         case intentHashMismatch(expected: String, observed: String)
         case peerRevoked(peerNodeId: String)
         case escrowDeviceRevoked(deviceId: String)
@@ -88,11 +90,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         }
     }
 
-    /// When `requiredAttestationHashBlake3` is non-nil, the envelope must carry the same digest.
     private func validateAuthorityEnvelope(
         _ envelope: HermesRealtimeRelayAuthorityEnvelope,
         now: Date,
-        requiredAttestationHashBlake3: String? = nil
+        attestation: PhoneControlAttestationRequirement = .none
     ) throws {
         if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
             throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
@@ -104,14 +105,28 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         guard envelope.timestamp.addingTimeInterval(authorityMaxLifetime) >= now else {
             throw ValidationError.expiredAuthority
         }
-        if let required = requiredAttestationHashBlake3 {
-            guard envelope.attestationHashBlake3 == required else {
-                throw ValidationError.attestationMismatch(
-                    expected: required,
-                    observed: envelope.attestationHashBlake3
-                )
+        switch attestation {
+        case .none:
+            break
+        case .rejectUnboundHost:
+            throw ValidationError.macAttestationUnbound
+        case .required(let digest):
+            guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
+                throw ValidationError.missingAttestation
+            }
+            guard observed == digest else {
+                throw ValidationError.attestationMismatch(expected: digest, observed: observed)
             }
         }
+    }
+
+    private static func attestationRequirement(
+        fromLegacy requiredAttestationHashBlake3: String?
+    ) -> PhoneControlAttestationRequirement {
+        guard let digest = requiredAttestationHashBlake3, !digest.isEmpty else {
+            return .none
+        }
+        return .required(digest: digest)
     }
 
     /// Validate `envelope` against `intent`. On success the counter
@@ -122,15 +137,14 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         intent: HermesRealtimeRelayInputIntent,
         requiredAttestationHashBlake3: String? = nil,
+        attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
-        try validateAuthorityEnvelope(
-            envelope,
-            now: now,
-            requiredAttestationHashBlake3: requiredAttestationHashBlake3
-        )
+        let attestationRequirement = attestation
+            ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
+        try validateAuthorityEnvelope(envelope, now: now, attestation: attestationRequirement)
 
         // 2. Counter replay protection.
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
@@ -176,16 +190,15 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         grantRequest: HermesRealtimeRelayAgentGrantRequest,
         requiredAttestationHashBlake3: String? = nil,
+        attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
         let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
         guard let pubKey else { throw ValidationError.missingPeerPubKey }
 
-        try validateAuthorityEnvelope(
-            envelope,
-            now: now,
-            requiredAttestationHashBlake3: requiredAttestationHashBlake3
-        )
+        let attestationRequirement = attestation
+            ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
+        try validateAuthorityEnvelope(envelope, now: now, attestation: attestationRequirement)
         if queue.sync(execute: { revokedEscrowDeviceIds.contains(grantRequest.sourceDeviceId) }) {
             throw ValidationError.escrowDeviceRevoked(deviceId: grantRequest.sourceDeviceId)
         }
@@ -405,7 +418,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
     var relayControlDeniedReason: HermesRealtimeRelayControlDenied.Reason {
         switch self {
         case .signatureFailed, .missingPeerPubKey, .intentHashMismatch,
-             .attestationMismatch, .peerRevoked, .escrowDeviceRevoked:
+             .attestationMismatch, .missingAttestation, .macAttestationUnbound,
+             .peerRevoked, .escrowDeviceRevoked:
             return .signatureFailure
         case .counterReplay:
             return .counterReplay
@@ -423,7 +437,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
         case .expiredAuthority:
             return .expired
         case .missingPeerPubKey, .signatureFailed, .intentHashMismatch,
-             .attestationMismatch, .peerRevoked, .escrowDeviceRevoked:
+             .attestationMismatch, .missingAttestation, .macAttestationUnbound,
+             .peerRevoked, .escrowDeviceRevoked:
             return .signatureFailure
         }
     }
@@ -440,10 +455,27 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return "expired_authority"
         case .attestationMismatch:
             return "attestation_mismatch"
+        case .missingAttestation:
+            return "attestation_required"
+        case .macAttestationUnbound:
+            return "mac_attestation_unbound"
         case .peerRevoked:
             return "peer_revoked"
         case .escrowDeviceRevoked:
             return "escrow_device_revoked"
+        }
+    }
+
+    var relayControlDeniedDetail: String? {
+        switch self {
+        case .attestationMismatch:
+            return "attestation_mismatch"
+        case .missingAttestation:
+            return "attestation_required"
+        case .macAttestationUnbound:
+            return "mac_attestation_unbound"
+        default:
+            return auditDetailToken
         }
     }
 }

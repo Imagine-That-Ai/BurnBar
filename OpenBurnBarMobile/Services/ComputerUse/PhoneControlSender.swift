@@ -19,6 +19,7 @@ public final class PhoneControlSender: @unchecked Sendable {
         case streamClosed
         case signingFailed(String)
         case wireEncodeFailed
+        case attestationRequired
     }
 
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
@@ -62,6 +63,7 @@ public final class PhoneControlSender: @unchecked Sendable {
     }
 
     private func sendInputIntent(_ rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await ensureAttestationIfRequired()
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -124,6 +126,7 @@ public final class PhoneControlSender: @unchecked Sendable {
     }
 
     private func sendAgentGrant(_ request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await ensureAttestationIfRequired()
         guard let key = signingKeyProvider()?.privateKey else {
             throw SendError.signingFailed("no signing key")
         }
@@ -497,6 +500,21 @@ public final class PhoneControlSender: @unchecked Sendable {
         return authority
     }
 
+
+    private func ensureAttestationIfRequired() async throws {
+        guard MobileComputerUseRemoteConfig.phoneControlAttestationRequired() else { return }
+        if await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope() != nil {
+            return
+        }
+        do {
+            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
+        } catch {
+            throw SendError.attestationRequired
+        }
+        if await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope() == nil {
+            throw SendError.attestationRequired
+        }
+    }
 
     private func nextCounter() -> UInt64 {
         Self.nextCounter(peerNodeId: peerNodeId, userDefaults: userDefaults)
