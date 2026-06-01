@@ -8,6 +8,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
+import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   REMOTE_MCP_TOKEN_HMAC_SECRET,
@@ -43,6 +44,7 @@ export const issueRemoteMcpGrant = onCall(
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before connecting OpenBurnBar MCP.");
       enforceHighRiskComputerUseCallable(request, uid);
+      await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
       await assertActiveBurnBarProEntitlement(uid);
       const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
       if (!tokenSecret) {
@@ -114,6 +116,7 @@ export const searchStreams = onCall(
       throw new HttpsError("unauthenticated", "Sign in before searching streams.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
 
     const query = boundedTrimmedString(request.data.query, "query", 200, true) ?? "";
     const limitRaw = typeof request.data.limit === "number" ? request.data.limit : 25;
