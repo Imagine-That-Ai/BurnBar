@@ -140,6 +140,13 @@ struct SettingsHubView: View {
                 }
 
                 Section {
+                    NavigationLink(value: SettingsPageRoute.cloud) {
+                        SettingsLabel(icon: "bag.fill", color: MobileTheme.ember, title: "Store & Top-ups")
+                    }
+                    .settingsAnchor(SettingsAnchor.cloudRow)
+                } header: { groupHeader("Store") }
+
+                Section {
                     NavigationLink(value: SettingsPageRoute.theme) {
                         SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Theme")
                     }
