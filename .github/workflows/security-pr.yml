@@ -33,11 +33,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install gitleaks
+        run: go install github.com/gitleaks/gitleaks/v8@v8.28.0
+
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        run: |
+          "$HOME/go/bin/gitleaks" detect --source . --redact --verbose
 
   dependency-review:
     name: Dependency Review (CVE check)
@@ -112,7 +113,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Run OSV-Scanner
-        uses: google/osv-scanner-action@v2
+        uses: google/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=functions/package-lock.json

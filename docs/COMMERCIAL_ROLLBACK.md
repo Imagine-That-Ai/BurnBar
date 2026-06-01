@@ -163,9 +163,13 @@ For Stripe checkout or entitlement failures:
 5. Verify a paid proof through the capture helper:
 
 ```bash
-npm --prefix functions run prove:hosted-quota -- --channel stripe \
+npm --prefix functions run prove:paid-tier -- --tier cloud --channel stripe --uid "$UID" \
   | scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input -
 ```
+
+Use `prove:hosted-quota` only for grandfathered legacy Hosted Quota Sync users.
+New BurnBar Cloud and BurnBar Cloud Pro launch proof must use
+`prove:paid-tier`.
 
 ## Apple And Google Play Controls
 

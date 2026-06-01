@@ -7,13 +7,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
 import { checkBillingAlerts, checkOpsAlerts } from "./lib/ops-alerts-gate.mjs";
+import { validateLaunchEvidenceBundle } from "./validate-launch-evidence-bundle.mjs";
 
 export { evaluateFirebaseAppCheckEnforcement };
 
@@ -22,6 +23,9 @@ const PROJECT = process.env.OPENBURNBAR_FIREBASE_PROJECT || "burnbar";
 const REGION = process.env.OPENBURNBAR_GCP_REGION || "us-central1";
 const REQUIRED_IOS_STATE = "PENDING_DEVELOPER_RELEASE";
 const LIVE_IOS_STATE = "READY_FOR_SALE";
+const LAUNCH_EVIDENCE_MANIFEST =
+  process.env.OPENBURNBAR_LAUNCH_EVIDENCE_MANIFEST ||
+  "launch-evidence/final-launch-evidence.json";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
 export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
@@ -1009,7 +1013,58 @@ function checkFirebaseFunctionsInventory() {
   };
 }
 
-function verdict(checks) {
+function checkLaunchEvidence() {
+  if (!existsSync(LAUNCH_EVIDENCE_MANIFEST)) {
+    return {
+      ok: true,
+      skipped: true,
+      path: LAUNCH_EVIDENCE_MANIFEST,
+      reason: "Launch evidence manifest is not present yet.",
+      stages: {
+        paidProof: { ok: false, skipped: true },
+        publicRelease: { ok: false, skipped: true },
+        done: { ok: false, skipped: true },
+      },
+    };
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(LAUNCH_EVIDENCE_MANIFEST, "utf8"));
+  } catch (error) {
+    return {
+      ok: false,
+      path: LAUNCH_EVIDENCE_MANIFEST,
+      error: error.message,
+    };
+  }
+
+  const paidProof = validateLaunchEvidenceBundle(manifest, {
+    manifestPath: LAUNCH_EVIDENCE_MANIFEST,
+    stage: "paid-proof",
+  });
+  const publicRelease = validateLaunchEvidenceBundle(manifest, {
+    manifestPath: LAUNCH_EVIDENCE_MANIFEST,
+    stage: "public-release",
+  });
+  const done = validateLaunchEvidenceBundle(manifest, {
+    manifestPath: LAUNCH_EVIDENCE_MANIFEST,
+    stage: "done",
+    requireDoneStamp: true,
+  });
+
+  return {
+    ok: paidProof.ok,
+    path: LAUNCH_EVIDENCE_MANIFEST,
+    stages: {
+      paidProof,
+      publicRelease,
+      done,
+    },
+  };
+}
+
+export function verdict(checks) {
   const failures = Object.entries(checks)
     .filter(([, value]) => value?.ok === false)
     .map(([name]) => name);
@@ -1028,9 +1083,28 @@ function verdict(checks) {
     };
   }
   if (appStore.state === LIVE_IOS_STATE) {
+    const launchEvidence = checks.launchEvidence?.stages || {};
+    if (launchEvidence.done?.ok === true) {
+      return {
+        status: "LAUNCH_DONE",
+        reason: "Final launch evidence bundle and LAUNCH_DONE.md are complete.",
+      };
+    }
+    if (launchEvidence.publicRelease?.ok === true) {
+      return {
+        status: "READY_FOR_PUBLIC_RELEASE",
+        reason: "Canary evidence passed; publish public launch and final proof bundle.",
+      };
+    }
+    if (launchEvidence.paidProof?.ok === true) {
+      return {
+        status: "READY_FOR_CANARY",
+        reason: "Live paid proofs and cross-channel matrix are captured; start the controlled canary.",
+      };
+    }
     return {
       status: "READY_FOR_LIVE_PAID_PROOF",
-      reason: "Run prove:hosted-quota against a real paid user before declaring launch complete.",
+      reason: "Run prove:paid-tier for Apple, Stripe, and Google Play Cloud/Cloud Pro users before canary.",
     };
   }
   return { status: "NO_GO", reason: `unhandled App Store state ${appStore.state}` };
@@ -1057,6 +1131,7 @@ async function main() {
     opsAlerts: checkOpsAlerts(),
     billingAlerts: checkBillingAlerts(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
+    launchEvidence: checkLaunchEvidence(),
   };
   const result = {
     generatedAt: new Date().toISOString(),
