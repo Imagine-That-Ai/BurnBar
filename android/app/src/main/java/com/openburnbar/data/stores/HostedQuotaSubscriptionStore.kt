@@ -2,6 +2,7 @@ package com.openburnbar.data.stores
 
 import android.app.Activity
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.billingclient.api.AcknowledgePurchaseParams
@@ -56,6 +57,8 @@ class HostedQuotaSubscriptionStore(
     initialBillingClient: BillingClient? = null,
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
+        private const val LOG_TAG = "BurnBarBilling"
+
         const val PRODUCT_ID = "com.openburnbar.pro.monthly"
         const val CLOUD_ANNUAL_PRODUCT_ID = "com.openburnbar.pro.annual"
         const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.promax.v2.monthly"
@@ -392,10 +395,14 @@ class HostedQuotaSubscriptionStore(
 
     private suspend fun restorePurchasesInternal() {
         val client = requireBillingClient()
-        handlePurchases(
-            HostedQuotaBillingSupport.queryPurchases(client, BillingClient.ProductType.SUBS) +
-                HostedQuotaBillingSupport.queryPurchases(client, BillingClient.ProductType.INAPP),
+        val subscriptionPurchases = HostedQuotaBillingSupport.queryPurchases(client, BillingClient.ProductType.SUBS)
+        val topUpPurchases = HostedQuotaBillingSupport.queryPurchases(client, BillingClient.ProductType.INAPP)
+        Log.i(
+            LOG_TAG,
+            "restorePurchases queried subscriptions=${subscriptionPurchases.size} topUps=${topUpPurchases.size} " +
+                "products=${purchaseProductSummary(subscriptionPurchases + topUpPurchases)}",
         )
+        handlePurchases(subscriptionPurchases + topUpPurchases)
         // No local Play purchase doesn't necessarily mean inactive — the
         // user may be a Cloud Member via the iOS subscription. The Firestore
         // entitlement listener is the canonical source; only clear local
@@ -418,23 +425,120 @@ class HostedQuotaSubscriptionStore(
                 )
         }
 
-        val purchase =
-            purchases.firstOrNull {
-                it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.any { productID -> productID in SUBSCRIPTION_PRODUCT_IDS }
-            } ?: return
-        val productID = purchase.products.first { it in SUBSCRIPTION_PRODUCT_IDS }
-        val response =
-            functions.verifyGooglePlayBurnBarProSubscription(
-                purchaseToken = purchase.purchaseToken,
-                productID = productID,
-            )
-        if (!purchase.isAcknowledged) {
-            acknowledge(purchase)
+        var lastInactiveSubscription: VerifiedSubscription? = null
+        var lastVerificationError: Throwable? = null
+        val subscriptionCandidates = subscriptionPurchaseCandidates(purchases)
+        Log.i(
+            LOG_TAG,
+            "handlePurchases eligibleSubscriptions=${subscriptionCandidates.map { it.productID }}",
+        )
+        for (candidate in subscriptionCandidates) {
+            try {
+                Log.i(LOG_TAG, "verifySubscription productID=${candidate.productID}")
+                val response =
+                    functions.verifyGooglePlayBurnBarProSubscription(
+                        purchaseToken = candidate.purchase.purchaseToken,
+                        productID = candidate.productID,
+                    )
+                Log.i(
+                    LOG_TAG,
+                    "verifiedSubscription productID=${candidate.productID} active=${response["active"]} " +
+                        "expiresAt=${response["expiresAt"] ?: response["expireAt"]}",
+                )
+                val verified =
+                    VerifiedSubscription(
+                        purchase = candidate.purchase,
+                        productID = candidate.productID,
+                        response = response,
+                    )
+                if (isVerifiedSubscriptionActive(response)) {
+                    if (!candidate.purchase.isAcknowledged) {
+                        acknowledge(candidate.purchase)
+                    }
+                    applyVerifiedSubscription(verified)
+                    return
+                }
+                lastInactiveSubscription = verified
+            } catch (error: FirebaseFunctionsException) {
+                Log.w(LOG_TAG, "verifySubscription failed productID=${candidate.productID}: ${error.localizedMessage}")
+                lastVerificationError = error
+            } catch (error: IllegalStateException) {
+                Log.w(LOG_TAG, "verifySubscription failed productID=${candidate.productID}: ${error.localizedMessage}")
+                lastVerificationError = error
+            }
         }
+        if (lastInactiveSubscription != null) {
+            applyVerifiedSubscription(lastInactiveSubscription)
+            return
+        }
+        lastVerificationError?.let { throw it }
+    }
+
+    private data class SubscriptionPurchaseCandidate(
+        val purchase: Purchase,
+        val productID: String,
+    )
+
+    private data class VerifiedSubscription(
+        val purchase: Purchase,
+        val productID: String,
+        val response: Map<String, Any>,
+    )
+
+    private fun subscriptionPurchaseCandidates(purchases: List<Purchase>): List<SubscriptionPurchaseCandidate> {
+        return purchases
+            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            .flatMap { purchase ->
+                purchase.products
+                    .filter { productID -> productID in SUBSCRIPTION_PRODUCT_IDS }
+                    .map { productID ->
+                        SubscriptionPurchaseCandidate(
+                            purchase = purchase,
+                            productID = productID,
+                        )
+                    }
+            }
+            .distinctBy { "${it.purchase.purchaseToken}:${it.productID}" }
+            .sortedWith(
+                compareBy<SubscriptionPurchaseCandidate> { subscriptionProductPriority(it.productID) }
+                    .thenByDescending { it.purchase.purchaseTime },
+            )
+    }
+
+    private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {
+        return purchases.map { purchase ->
+            val state =
+                when (purchase.purchaseState) {
+                    Purchase.PurchaseState.PURCHASED -> "purchased"
+                    Purchase.PurchaseState.PENDING -> "pending"
+                    Purchase.PurchaseState.UNSPECIFIED_STATE -> "unspecified"
+                    else -> "state-${purchase.purchaseState}"
+                }
+            "${purchase.products.joinToString("+")}:$state:ack=${purchase.isAcknowledged}"
+        }
+    }
+
+    private fun subscriptionProductPriority(productID: String): Int {
+        return when (STORE_PRODUCT_BY_ID[productID]?.role) {
+            HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> 0
+            HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> 1
+            else -> 2
+        }
+    }
+
+    private fun isVerifiedSubscriptionActive(response: Map<String, Any>): Boolean {
+        val expiresAtMs =
+            parseTimestampMs(response["expiresAt"])
+                ?: parseTimestampMs(response["expireAt"])
+        val active = response["active"] as? Boolean ?: false
+        return active && expiresAtMs != null && expiresAtMs > System.currentTimeMillis()
+    }
+
+    private fun applyVerifiedSubscription(verified: VerifiedSubscription) {
         applyVerifiedSubscription(
-            productID = productID,
-            purchaseTime = purchase.purchaseTime,
-            response = response,
+            productID = verified.productID,
+            purchaseTime = verified.purchase.purchaseTime,
+            response = verified.response,
         )
     }
 

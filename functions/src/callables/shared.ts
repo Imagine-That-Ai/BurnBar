@@ -674,6 +674,14 @@ export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promi
   throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
 }
 
+const BURNBAR_CLOUD_PRO_PRODUCT_ALIASES = new Set([
+  "com.openburnbar.proMax.v2.monthly",
+  "com.openburnbar.proMax.annual",
+  "com.openburnbar.promax.v2.monthly",
+  "com.openburnbar.promax.annual",
+  "com.openburnbar.proMax.bundle.monthly",
+]);
+
 export function isActiveHostedQuotaEntitlement(raw: Record<string, unknown> | undefined): boolean {
   if (!raw || raw.active !== true) return false;
   if (raw.productID !== getConfig().hostedQuotaProductID) return false;
@@ -694,7 +702,8 @@ export function isActivePremiumEntitlement(raw: Record<string, unknown> | undefi
     productID !== getConfig().googlePlayCloudMonthlyProductID &&
     productID !== getConfig().googlePlayCloudAnnualProductID &&
     productID !== getConfig().googlePlayCloudProMonthlyProductID &&
-    productID !== getConfig().googlePlayCloudProAnnualProductID
+    productID !== getConfig().googlePlayCloudProAnnualProductID &&
+    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
   ) {
     return false;
   }
@@ -711,7 +720,7 @@ export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> 
     productID !== cfg.burnBarProMaxAnnualProductID &&
     productID !== cfg.googlePlayCloudProMonthlyProductID &&
     productID !== cfg.googlePlayCloudProAnnualProductID &&
-    productID !== "com.openburnbar.proMax.bundle.monthly"
+    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
   ) {
     return false;
   }
