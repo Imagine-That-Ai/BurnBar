@@ -33,7 +33,11 @@ const {
 } = Astro.props;
 ---
 
-<div class={`frows frows--${accent} frows--${variant} ${className}`} role="list" aria-label={ariaLabel}>
+<div
+  class={`frows frows--${accent} frows--${variant} ${className}`}
+  role="list"
+  aria-label={ariaLabel}
+>
   {
     items.map((item, i) => (
       <article
