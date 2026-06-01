@@ -1551,6 +1551,8 @@ private struct CloudStoreMemberCard: View {
             }
             .buttonStyle(.aurora(.secondary, fullWidth: true))
             .disabled(store.isLoading)
+            .accessibilityIdentifier("cloudStore.member.restore")
+            .accessibilityLabel("Restore purchases")
             .settingsAnchor(SettingsAnchor.cloudRestore)
         }
     }
