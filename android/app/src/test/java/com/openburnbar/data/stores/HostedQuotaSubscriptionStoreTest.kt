@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -70,10 +71,13 @@ class HostedQuotaSubscriptionStoreTest {
     fun `store product IDs match GTM master plan`() {
         assertEquals("com.openburnbar.pro.monthly", HostedQuotaSubscriptionStore.PRODUCT_ID)
         assertEquals("com.openburnbar.pro.annual", HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID)
-        assertEquals("com.openburnbar.proMax.v2.monthly", HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
-        assertEquals("com.openburnbar.proMax.annual", HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID)
-        assertEquals("com.openburnbar.agentControl.actions100", HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
+        assertEquals("com.openburnbar.promax.v2.monthly", HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        assertEquals("com.openburnbar.promax.annual", HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID)
+        assertEquals("com.openburnbar.agentcontrol.actions100", HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
         assertEquals("com.openburnbar.floo.relay50gb", HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID)
+        HostedQuotaSubscriptionStore.STORE_PRODUCTS.forEach { product ->
+            assertEquals(product.id.lowercase(), product.id)
+        }
 
         assertEquals(
             setOf(
@@ -247,6 +251,51 @@ class HostedQuotaSubscriptionStoreTest {
         assertEquals(HostedQuotaSubscriptionStore.PRODUCT_ID, store.activeProductID.value)
         assertEquals(VAL_123456789_L, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
+    }
+
+    @Test
+    fun `restorePurchases treats expired Google Play verifier response as inactive`() = runTest {
+        // Arrange
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+
+        val mockPurchase = mockk<Purchase>()
+        every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { mockPurchase.purchaseToken } returns "expired-purchase-token"
+        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.isAcknowledged } returns true
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(mockPurchase))
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "expired-purchase-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2020-01-01T00:00:00Z",
+            )
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        // Act
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        // Assert
+        assertNull(store.error.value)
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertEquals(VAL_123456789_L, store.purchaseDate.value)
+        assertEquals(java.time.Instant.parse("2020-01-01T00:00:00Z").toEpochMilli(), store.expirationDate.value)
     }
 
     @Test

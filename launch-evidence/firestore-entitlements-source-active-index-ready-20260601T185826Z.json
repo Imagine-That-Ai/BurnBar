@@ -1,0 +1,194 @@
+{
+  "generatedAt": "2026-06-01T18:58:26Z",
+  "project": "burnbar",
+  "compositeIndexes": [
+  {
+    "density": "SPARSE_ALL",
+    "fields": [
+      {
+        "fieldPath": "id",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "active",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING"
+      }
+    ],
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgJj7z4EK",
+    "queryScope": "COLLECTION_GROUP",
+    "state": "READY"
+  },
+  {
+    "density": "SPARSE_ALL",
+    "fields": [
+      {
+        "fieldPath": "id",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "originalTransactionID",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING"
+      }
+    ],
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgNi47oMK",
+    "queryScope": "COLLECTION_GROUP",
+    "state": "READY"
+  },
+  {
+    "density": "SPARSE_ALL",
+    "fields": [
+      {
+        "fieldPath": "source",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "active",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING"
+      }
+    ],
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgNir3pgK",
+    "queryScope": "COLLECTION_GROUP",
+    "state": "READY"
+  }
+]
+,
+  "fieldOverrides": [
+  {
+    "indexConfig": {
+      "ancestorField": "projects/burnbar/databases/(default)/collectionGroups/__default__/fields/*",
+      "indexes": [
+        {
+          "fields": [
+            {
+              "fieldPath": "active",
+              "order": "ASCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "active",
+              "order": "DESCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "active",
+              "order": "ASCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION_GROUP",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "active",
+              "order": "DESCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION_GROUP",
+          "state": "READY"
+        }
+      ]
+    },
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/fields/active"
+  },
+  {
+    "indexConfig": {
+      "ancestorField": "projects/burnbar/databases/(default)/collectionGroups/__default__/fields/*",
+      "indexes": [
+        {
+          "fields": [
+            {
+              "fieldPath": "id",
+              "order": "ASCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "id",
+              "order": "DESCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "id",
+              "order": "ASCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION_GROUP",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "id",
+              "order": "DESCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION_GROUP",
+          "state": "READY"
+        }
+      ]
+    },
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/fields/id"
+  },
+  {
+    "indexConfig": {
+      "ancestorField": "projects/burnbar/databases/(default)/collectionGroups/__default__/fields/*",
+      "indexes": [
+        {
+          "fields": [
+            {
+              "fieldPath": "source",
+              "order": "ASCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION_GROUP",
+          "state": "READY"
+        },
+        {
+          "fields": [
+            {
+              "fieldPath": "source",
+              "order": "DESCENDING"
+            }
+          ],
+          "queryScope": "COLLECTION_GROUP",
+          "state": "READY"
+        }
+      ]
+    },
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/fields/source"
+  }
+]
+
+}

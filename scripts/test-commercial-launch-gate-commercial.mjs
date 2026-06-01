@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   COMMERCIAL_PRODUCTS,
+  GOOGLE_PLAY_PRODUCTS,
   evaluateAppStoreProductReadiness,
   evaluateEnvRequirements,
   evaluateRemoteConfigDefaults,
@@ -14,7 +15,10 @@ import {
   verdict,
 } from "./commercial-launch-gate.mjs";
 
-const launchGateSource = readFileSync(new URL("./commercial-launch-gate.mjs", import.meta.url), "utf8");
+const launchGateSource = readFileSync(
+  new URL("./commercial-launch-gate.mjs", import.meta.url),
+  "utf8",
+);
 assert.match(launchGateSource, /verifyCloudProTopUp/);
 assert.match(launchGateSource, /verifyGooglePlayCloudProTopUp/);
 assert.match(launchGateSource, /READY_FOR_CANARY/);
@@ -22,6 +26,19 @@ assert.match(launchGateSource, /READY_FOR_PUBLIC_RELEASE/);
 assert.match(launchGateSource, /LAUNCH_DONE/);
 assert.match(launchGateSource, /prove:paid-tier/);
 assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
+
+assert.equal(
+  GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
+  "com.openburnbar.promax.v2.monthly",
+);
+assert.equal(
+  GOOGLE_PLAY_PRODUCTS.agentControlActions100,
+  "com.openburnbar.agentcontrol.actions100",
+);
+assert.notEqual(
+  GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
+  COMMERCIAL_PRODUCTS.cloudProMonthly,
+);
 
 function passingChecks(overrides = {}) {
   return {
@@ -102,7 +119,10 @@ function passingChecks(overrides = {}) {
     ).status,
     "LAUNCH_DONE",
   );
-  assert.equal(verdict(passingChecks({ billingAlerts: { ok: false } })).status, "NO_GO");
+  assert.equal(
+    verdict(passingChecks({ billingAlerts: { ok: false } })).status,
+    "NO_GO",
+  );
 }
 
 {
@@ -205,7 +225,8 @@ function passingChecks(overrides = {}) {
   const evaluated = evaluateEnvRequirements(
     env,
     {
-      STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+      STRIPE_BURNBAR_PRO_PRICE_ID:
+        "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
       BURNBAR_PRO_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
     },
     ["STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID"],
@@ -221,7 +242,8 @@ function passingChecks(overrides = {}) {
   const evaluated = evaluateEnvRequirements(
     env,
     {
-      STRIPE_BURNBAR_PRO_PRICE_ID: "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+      STRIPE_BURNBAR_PRO_PRICE_ID:
+        "alias:STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
     },
     [],
   );

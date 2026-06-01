@@ -1,5 +1,7 @@
 package com.openburnbar.data.stores
 
+import android.content.Context
+import android.provider.Settings
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,6 +9,7 @@ import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.util.Date
@@ -27,7 +30,9 @@ data class DeviceRecord(
     val isCurrentDevice: Boolean = false,
 )
 
-class DevicesStore : ViewModel() {
+class DevicesStore(
+    private val appContext: Context = BurnBarApplication.appContext,
+) : ViewModel() {
     private val db: FirebaseFirestore = Firebase.firestore
     private val securityClient = ComputerUseSecurityCallableClient()
     private val escrowRegistry = AndroidEscrowDeviceRegistry()
@@ -80,10 +85,7 @@ class DevicesStore : ViewModel() {
                         .get().await()
 
                 val currentDeviceId =
-                    android.provider.Settings.Secure.getString(
-                        android.app.Application().contentResolver,
-                        android.provider.Settings.Secure.ANDROID_ID,
-                    )
+                    currentAndroidDeviceID(appContext)
 
                 _devices.value =
                     snapshot.documents.mapNotNull { doc ->
@@ -177,5 +179,15 @@ class DevicesStore : ViewModel() {
             bucket.maxByOrNull { it.lastSeen ?: Date(0) }
                 ?: bucket.first()
         }.sortedByDescending { it.lastSeen ?: Date(0) }
+    }
+
+    companion object {
+        internal fun currentAndroidDeviceID(context: Context): String? =
+            runCatching {
+                Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ANDROID_ID,
+                )
+            }.getOrNull()
     }
 }

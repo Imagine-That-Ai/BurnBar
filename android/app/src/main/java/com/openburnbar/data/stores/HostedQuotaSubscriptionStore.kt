@@ -58,9 +58,9 @@ class HostedQuotaSubscriptionStore(
     companion object {
         const val PRODUCT_ID = "com.openburnbar.pro.monthly"
         const val CLOUD_ANNUAL_PRODUCT_ID = "com.openburnbar.pro.annual"
-        const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.proMax.v2.monthly"
-        const val CLOUD_PRO_ANNUAL_PRODUCT_ID = "com.openburnbar.proMax.annual"
-        const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentControl.actions100"
+        const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.promax.v2.monthly"
+        const val CLOUD_PRO_ANNUAL_PRODUCT_ID = "com.openburnbar.promax.annual"
+        const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentcontrol.actions100"
         const val FLOO_RELAY_TOP_UP_PRODUCT_ID = "com.openburnbar.floo.relay50gb"
 
         val STORE_PRODUCTS =
@@ -431,11 +431,24 @@ class HostedQuotaSubscriptionStore(
         if (!purchase.isAcknowledged) {
             acknowledge(purchase)
         }
-        _isActive.value = response["active"] as? Boolean ?: true
-        _activeProductID.value = productID
-        _purchaseDate.value = purchase.purchaseTime
-        val expiresAt = response["expiresAt"] as? String
-        _expirationDate.value = expiresAt?.let { java.time.Instant.parse(it).toEpochMilli() }
+        applyVerifiedSubscription(
+            productID = productID,
+            purchaseTime = purchase.purchaseTime,
+            response = response,
+        )
+    }
+
+    private fun applyVerifiedSubscription(productID: String, purchaseTime: Long, response: Map<String, Any>) {
+        val expiresAtMs =
+            parseTimestampMs(response["expiresAt"])
+                ?: parseTimestampMs(response["expireAt"])
+        val active = response["active"] as? Boolean ?: false
+        val notExpired = expiresAtMs != null && expiresAtMs > System.currentTimeMillis()
+
+        _isActive.value = active && notExpired
+        _activeProductID.value = productID.takeIf { _isActive.value }
+        _purchaseDate.value = purchaseTime
+        _expirationDate.value = expiresAtMs
     }
 
     private suspend fun acknowledge(purchase: Purchase) {
