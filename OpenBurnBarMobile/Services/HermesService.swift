@@ -721,6 +721,10 @@ final class HermesService {
         }.first
     }
 
+    var isRemoteRelayEnabled: Bool {
+        selectedConnection.mode == .relayLink
+    }
+
     func preferredRelayConnection(refreshIfMissing: Bool = false) async -> HermesConnectionRecord? {
         if refreshIfMissing, relayConnections.isEmpty {
             await refreshConnections(refreshSelectedConnection: false)
@@ -938,6 +942,21 @@ final class HermesService {
             return false
         }
         return selectConnection(relay, refresh: refresh)
+    }
+
+    @discardableResult
+    func setRemoteRelayEnabled(_ enabled: Bool, refresh: Bool = true) -> Bool {
+        if enabled {
+            if isRemoteRelayEnabled, Self.canAttemptRelayConnection(selectedConnection) {
+                return true
+            }
+            return connectToSuggestedRelay(refresh: refresh)
+        }
+
+        guard isRemoteRelayEnabled else {
+            return true
+        }
+        return selectConnection(.localDefault, refresh: refresh)
     }
 
     func createPairingCode(displayName: String? = nil) async throws -> HermesPairingSessionRecord {

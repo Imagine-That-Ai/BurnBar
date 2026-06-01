@@ -1,0 +1,618 @@
+"""BurnBar Cloud platform adapter for Hermes Agent.
+
+The adapter uses the BurnBar Hermes Gateway API:
+
+    https://api.burnbar.ai/v1/hermes-gateway
+
+It intentionally depends only on ``httpx``, already present in Hermes core.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import mimetypes
+import os
+import secrets
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+try:
+    import httpx
+
+    HTTPX_AVAILABLE = True
+except ImportError:  # pragma: no cover - Hermes installs httpx in core.
+    HTTPX_AVAILABLE = False
+    httpx = None  # type: ignore[assignment]
+
+from gateway.config import Platform, PlatformConfig
+from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_API_BASE_URL = "https://api.burnbar.ai/v1/hermes-gateway"
+DEFAULT_HOME_CHANNEL = "burnbar:home"
+MAX_MESSAGE_LENGTH = 64000
+CURSOR_FILE = Path(os.getenv("HERMES_BURNBAR_CURSOR_FILE", "~/.hermes/cache/burnbar_cursor.json")).expanduser()
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _api_base(config: PlatformConfig | None = None) -> str:
+    extra = getattr(config, "extra", {}) or {}
+    return (extra.get("api_base_url") or os.getenv("BURNBAR_API_BASE_URL") or DEFAULT_API_BASE_URL).rstrip("/")
+
+
+def _access_token(config: PlatformConfig | None = None) -> str:
+    extra = getattr(config, "extra", {}) or {}
+    return (extra.get("access_token") or os.getenv("BURNBAR_ACCESS_TOKEN") or "").strip()
+
+
+def _home_channel(config: PlatformConfig | None = None) -> str:
+    extra = getattr(config, "extra", {}) or {}
+    return (extra.get("home_channel") or os.getenv("BURNBAR_HOME_CHANNEL") or DEFAULT_HOME_CHANNEL).strip()
+
+
+def check_requirements() -> bool:
+    return HTTPX_AVAILABLE and bool(_access_token())
+
+
+def validate_config(config: PlatformConfig) -> bool:
+    return bool(_access_token(config))
+
+
+def is_connected(config: PlatformConfig) -> bool:
+    return bool(_access_token(config))
+
+
+def _home_channel_payload(config: PlatformConfig | None = None) -> dict:
+    home = _home_channel(config)
+    return {"chat_id": home, "name": os.getenv("BURNBAR_HOME_CHANNEL_NAME") or "BurnBar Home"}
+
+
+def _env_enablement() -> Optional[dict]:
+    token = _access_token()
+    if not token:
+        return None
+    return {
+        "api_base_url": _api_base(),
+        "access_token": token,
+        "home_channel": _home_channel_payload(),
+    }
+
+
+def _headers(token: str) -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "hermes-agent-burnbar-platform/1.0",
+    }
+
+
+def _read_cursor() -> int:
+    try:
+        data = json.loads(CURSOR_FILE.read_text())
+        value = int(data.get("cursor", 0))
+        return value if value > 0 else 0
+    except Exception:
+        return 0
+
+
+def _write_cursor(cursor: int) -> None:
+    CURSOR_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CURSOR_FILE.write_text(json.dumps({"cursor": cursor}))
+
+
+def _guess_content_type(path: Path) -> str:
+    return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+
+
+async def _init_attachment(
+    client: "httpx.AsyncClient",
+    *,
+    api_base: str,
+    token: str,
+    destination_id: str,
+    file_path: Path,
+    content_type: str,
+) -> tuple[str, str]:
+    byte_count = file_path.stat().st_size
+    if byte_count < 1:
+        raise ValueError(f"{file_path} is empty")
+    if byte_count > MAX_ATTACHMENT_BYTES:
+        raise ValueError(f"{file_path} exceeds BurnBar's {MAX_ATTACHMENT_BYTES} byte attachment limit")
+
+    response = await client.post(
+        f"{api_base}/attachments/init",
+        headers=_headers(token),
+        json={
+            "destinationId": destination_id,
+            "fileName": file_path.name,
+            "contentType": content_type,
+            "byteCount": byte_count,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    attachment = payload.get("attachment") or {}
+    attachment_id = attachment.get("id")
+    upload_url = payload.get("uploadURL")
+    if not attachment_id or not upload_url:
+        raise RuntimeError("BurnBar attachment init response was missing attachment.id or uploadURL")
+    return str(attachment_id), str(upload_url)
+
+
+async def _upload_attachment(
+    client: "httpx.AsyncClient",
+    *,
+    upload_url: str,
+    file_path: Path,
+    content_type: str,
+) -> None:
+    data = file_path.read_bytes()
+    response = await client.put(upload_url, content=data, headers={"Content-Type": content_type})
+    response.raise_for_status()
+
+
+async def _create_attachments(
+    client: "httpx.AsyncClient",
+    *,
+    api_base: str,
+    token: str,
+    destination_id: str,
+    media_files: list | None,
+) -> list[str]:
+    attachment_ids: list[str] = []
+    for item in media_files or []:
+        raw_path = item[0] if isinstance(item, (tuple, list)) else item
+        file_path = Path(str(raw_path)).expanduser()
+        if not file_path.is_file():
+            raise FileNotFoundError(f"Attachment not found: {file_path}")
+        content_type = _guess_content_type(file_path)
+        attachment_id, upload_url = await _init_attachment(
+            client,
+            api_base=api_base,
+            token=token,
+            destination_id=destination_id,
+            file_path=file_path,
+            content_type=content_type,
+        )
+        await _upload_attachment(client, upload_url=upload_url, file_path=file_path, content_type=content_type)
+        attachment_ids.append(attachment_id)
+    return attachment_ids
+
+
+async def _post_message(
+    client: "httpx.AsyncClient",
+    *,
+    api_base: str,
+    token: str,
+    destination_id: str,
+    text: str,
+    thread_id: str | None = None,
+    reply_to: str | None = None,
+    attachment_ids: list[str] | None = None,
+) -> dict:
+    response = await client.post(
+        f"{api_base}/messages",
+        headers=_headers(token),
+        json={
+            "destinationId": destination_id,
+            "threadId": thread_id,
+            "replyToEventId": reply_to,
+            "text": text[:MAX_MESSAGE_LENGTH],
+            "attachmentIds": attachment_ids or [],
+        },
+    )
+    response.raise_for_status()
+    return response.json().get("message", {})
+
+
+class BurnBarAdapter(BasePlatformAdapter):
+    """BurnBar Cloud adapter backed by the BurnBar Hermes Gateway API."""
+
+    MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH
+
+    def __init__(self, config: PlatformConfig):
+        super().__init__(config=config, platform=Platform("burnbar"))
+        self._api_base = _api_base(config)
+        self._token = _access_token(config)
+        self._home_channel = _home_channel(config)
+        self._client: Optional["httpx.AsyncClient"] = None
+        self._poll_task: Optional[asyncio.Task] = None
+        self._cursor = _read_cursor()
+
+    async def connect(self) -> bool:
+        if not HTTPX_AVAILABLE:
+            logger.warning("[%s] httpx is unavailable", self.name)
+            return False
+        if not self._token:
+            logger.warning("[%s] BURNBAR_ACCESS_TOKEN is not configured", self.name)
+            return False
+        self._client = httpx.AsyncClient(timeout=30)
+        try:
+            response = await self._client.get(f"{self._api_base}/destinations", headers=_headers(self._token))
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("[%s] BurnBar connection check failed: %s", self.name, exc)
+            await self.disconnect()
+            return False
+        self._poll_task = asyncio.create_task(self._poll_loop())
+        self._mark_connected()
+        logger.info("[%s] Connected to BurnBar Cloud", self.name)
+        return True
+
+    async def disconnect(self) -> None:
+        if self._poll_task:
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+        self._poll_task = None
+        if self._client:
+            await self._client.aclose()
+        self._client = None
+        self._mark_disconnected()
+
+    async def _poll_loop(self) -> None:
+        backoff = 1.0
+        while self._running:
+            try:
+                await self._poll_once()
+                backoff = 1.0
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("[%s] BurnBar event poll failed: %s", self.name, exc)
+                await asyncio.sleep(backoff)
+                backoff = min(30.0, backoff * 2)
+
+    async def _poll_once(self) -> None:
+        assert self._client is not None
+        response = await self._client.get(
+            f"{self._api_base}/events",
+            headers=_headers(self._token),
+            params={"cursor": str(self._cursor), "limit": "50"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        for raw in payload.get("events", []):
+            await self._handle_burnbar_event(raw)
+        next_cursor = int(payload.get("nextCursor") or self._cursor)
+        if next_cursor > self._cursor:
+            self._cursor = next_cursor
+            _write_cursor(self._cursor)
+
+    async def _handle_burnbar_event(self, raw: dict) -> None:
+        text = str(raw.get("text") or "").strip()
+        if not text:
+            return
+        destination_id = str(raw.get("destinationId") or self._home_channel)
+        sender_id = str(raw.get("senderId") or "burnbar-user")
+        source = self.build_source(
+            chat_id=destination_id,
+            chat_name=destination_id,
+            chat_type="dm",
+            user_id=sender_id,
+            user_name=raw.get("senderDisplayName") or sender_id,
+            thread_id=raw.get("threadId"),
+            message_id=raw.get("id"),
+        )
+        event = MessageEvent(
+            text=text,
+            message_type=MessageType.TEXT,
+            source=source,
+            raw_message=raw,
+            message_id=raw.get("id"),
+        )
+        await self.handle_message(event)
+
+    async def send(
+        self,
+        chat_id: str,
+        content: str,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=30)
+        destination_id = chat_id or self._home_channel
+        try:
+            message = await _post_message(
+                self._client,
+                api_base=self._api_base,
+                token=self._token,
+                destination_id=destination_id,
+                text=content,
+                thread_id=(metadata or {}).get("thread_id"),
+                reply_to=reply_to,
+            )
+            return SendResult(success=True, message_id=message.get("id"))
+        except Exception as exc:
+            logger.warning("[%s] BurnBar send failed: %s", self.name, exc)
+            return SendResult(success=False, error=str(exc))
+
+    async def _send_local_file(
+        self,
+        chat_id: str,
+        file_path: str,
+        *,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=30)
+        destination_id = chat_id or self._home_channel
+        try:
+            attachment_ids = await _create_attachments(
+                self._client,
+                api_base=self._api_base,
+                token=self._token,
+                destination_id=destination_id,
+                media_files=[file_path],
+            )
+            message = await _post_message(
+                self._client,
+                api_base=self._api_base,
+                token=self._token,
+                destination_id=destination_id,
+                text=caption or "",
+                thread_id=(metadata or {}).get("thread_id"),
+                reply_to=reply_to,
+                attachment_ids=attachment_ids,
+            )
+            return SendResult(success=True, message_id=message.get("id"))
+        except Exception as exc:
+            logger.warning("[%s] BurnBar attachment send failed: %s", self.name, exc)
+            return SendResult(success=False, error=str(exc))
+
+    async def send_document(
+        self,
+        chat_id: str,
+        file_path: str,
+        caption: Optional[str] = None,
+        file_name: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SendResult:
+        return await self._send_local_file(chat_id, file_path, caption=caption, reply_to=reply_to, metadata=metadata)
+
+    async def send_image_file(
+        self,
+        chat_id: str,
+        image_path: str,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SendResult:
+        return await self._send_local_file(chat_id, image_path, caption=caption, reply_to=reply_to, metadata=metadata)
+
+    async def send_voice(
+        self,
+        chat_id: str,
+        audio_path: str,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SendResult:
+        return await self._send_local_file(chat_id, audio_path, caption=caption, reply_to=reply_to, metadata=metadata)
+
+    async def send_video(
+        self,
+        chat_id: str,
+        video_path: str,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SendResult:
+        return await self._send_local_file(chat_id, video_path, caption=caption, reply_to=reply_to, metadata=metadata)
+
+    async def send_typing(self, chat_id: str, metadata=None) -> None:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=15)
+        try:
+            await self._client.post(
+                f"{self._api_base}/typing",
+                headers=_headers(self._token),
+                json={"destinationId": chat_id or self._home_channel, "threadId": (metadata or {}).get("thread_id")},
+            )
+        except Exception:
+            logger.debug("[%s] BurnBar typing failed", self.name, exc_info=True)
+
+    async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
+        return {"chat_id": chat_id, "name": chat_id or "BurnBar Home", "type": "dm"}
+
+
+async def _standalone_send(
+    pconfig,
+    chat_id,
+    message,
+    *,
+    thread_id=None,
+    media_files=None,
+    force_document=False,
+) -> dict:
+    if not HTTPX_AVAILABLE:
+        return {"error": "httpx is not available"}
+    token = _access_token(pconfig)
+    if not token:
+        return {"error": "BURNBAR_ACCESS_TOKEN is not configured"}
+    destination_id = chat_id or _home_channel(pconfig)
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            attachment_ids = await _create_attachments(
+                client,
+                api_base=_api_base(pconfig),
+                token=token,
+                destination_id=destination_id,
+                media_files=media_files,
+            )
+            posted = await _post_message(
+                client,
+                api_base=_api_base(pconfig),
+                token=token,
+                destination_id=destination_id,
+                thread_id=thread_id,
+                text=message,
+                attachment_ids=attachment_ids,
+            )
+        except Exception as exc:
+            return {"error": f"BurnBar standalone send failed: {exc}"}
+        return {
+            "success": True,
+            "platform": "burnbar",
+            "chat_id": destination_id,
+            "message_id": posted.get("id"),
+            "attachment_ids": attachment_ids,
+        }
+
+
+def _apply_yaml_config(yaml_cfg: dict, platform_cfg: dict) -> Optional[dict]:
+    """Translate BurnBar's config.yaml keys into PlatformConfig.extra.
+
+    Environment variables still win; this hook only lets users configure
+    BurnBar in structured YAML without core Hermes knowing BurnBar-specific
+    field names.
+    """
+    extra = dict(platform_cfg.get("extra") or {})
+    for yaml_key, env_key, extra_key in (
+        ("api_base_url", "BURNBAR_API_BASE_URL", "api_base_url"),
+        ("access_token", "BURNBAR_ACCESS_TOKEN", "access_token"),
+        ("home_channel", "BURNBAR_HOME_CHANNEL", "home_channel"),
+    ):
+        value = yaml_cfg.get(yaml_key)
+        if value is None:
+            continue
+        value = str(value).strip()
+        if not value:
+            continue
+        extra[extra_key] = value
+        os.environ.setdefault(env_key, value)
+    return extra or None
+
+
+def _poll_device_authorization(api_base: str, device_code: str, device_secret: str, interval: int) -> dict:
+    with httpx.Client(timeout=30) as client:
+        while True:
+            poll = client.post(
+                f"{api_base}/device/poll",
+                json={"deviceCode": device_code, "deviceSecret": device_secret},
+            )
+            poll.raise_for_status()
+            status = poll.json()
+            if status.get("status") == "approved":
+                return status
+            if status.get("status") in {"denied", "expired"}:
+                raise RuntimeError(f"BurnBar link {status['status']}")
+            time.sleep(interval)
+
+
+def interactive_setup() -> None:
+    """Device-code setup helper for ``hermes gateway setup``."""
+    from hermes_cli.setup import (
+        get_env_value,
+        print_header,
+        print_info,
+        print_success,
+        print_warning,
+        prompt,
+        prompt_yes_no,
+        save_env_value,
+    )
+
+    print_header("BurnBar Cloud")
+    existing_token = get_env_value("BURNBAR_ACCESS_TOKEN")
+    if existing_token:
+        print_info("BurnBar Cloud is already configured.")
+        if not prompt_yes_no("Reconfigure BurnBar Cloud?", False):
+            return
+
+    api_base = (
+        prompt(
+            "BurnBar Hermes Gateway API base URL",
+            default=get_env_value("BURNBAR_API_BASE_URL") or DEFAULT_API_BASE_URL,
+        ).strip()
+        or DEFAULT_API_BASE_URL
+    ).rstrip("/")
+
+    device_secret = secrets.token_urlsafe(32)
+    payload = {
+        "clientName": "Hermes Agent",
+        "deviceSecretHash": _sha256(device_secret),
+        "scopes": ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"],
+    }
+    try:
+        with httpx.Client(timeout=30) as client:
+            start = client.post(f"{api_base}/device/start", json=payload)
+            start.raise_for_status()
+            body = start.json()
+    except Exception as exc:
+        print_warning(f"Could not start BurnBar device authorization: {exc}")
+        return
+
+    print()
+    print_info("Open BurnBar, sign in with Cloud or Cloud Pro, and approve this code:")
+    print_info(f"  {body['userCode']}")
+    print_info(f"  {body['verificationUriComplete']}")
+    print_info("Waiting for approval...")
+
+    try:
+        approved = _poll_device_authorization(
+            api_base,
+            body["deviceCode"],
+            device_secret,
+            int(body.get("interval", 3)),
+        )
+    except Exception as exc:
+        print_warning(f"BurnBar authorization failed: {exc}")
+        return
+
+    save_env_value("BURNBAR_API_BASE_URL", api_base)
+    save_env_value("BURNBAR_ACCESS_TOKEN", approved["accessToken"])
+    save_env_value("BURNBAR_HOME_CHANNEL", approved.get("homeDestinationId") or DEFAULT_HOME_CHANNEL)
+    if not get_env_value("BURNBAR_ALLOWED_USERS") and not get_env_value("BURNBAR_ALLOW_ALL_USERS"):
+        save_env_value("BURNBAR_ALLOW_ALL_USERS", "true")
+    print_success("BurnBar Cloud configuration saved to ~/.hermes/.env")
+    print_info("Restart the gateway for changes to take effect: hermes gateway restart")
+
+
+def register(ctx) -> None:
+    ctx.register_platform(
+        name="burnbar",
+        label="BurnBar Cloud",
+        adapter_factory=lambda cfg: BurnBarAdapter(cfg),
+        check_fn=check_requirements,
+        validate_config=validate_config,
+        is_connected=is_connected,
+        required_env=["BURNBAR_ACCESS_TOKEN"],
+        install_hint="Configure from BurnBar Cloud with `hermes gateway setup`.",
+        setup_fn=interactive_setup,
+        env_enablement_fn=_env_enablement,
+        apply_yaml_config_fn=_apply_yaml_config,
+        allowed_users_env="BURNBAR_ALLOWED_USERS",
+        allow_all_env="BURNBAR_ALLOW_ALL_USERS",
+        cron_deliver_env_var="BURNBAR_HOME_CHANNEL",
+        standalone_sender_fn=_standalone_send,
+        max_message_length=MAX_MESSAGE_LENGTH,
+        emoji="🔥",
+        platform_hint=(
+            "You are speaking through BurnBar Cloud. Keep replies concise, "
+            "mobile-friendly, and explicit about completed actions. Use plain "
+            "Markdown that renders cleanly in compact app chat surfaces."
+        ),
+        allow_update_command=True,
+    )

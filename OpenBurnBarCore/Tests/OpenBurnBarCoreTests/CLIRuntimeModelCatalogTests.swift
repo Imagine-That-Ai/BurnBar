@@ -145,6 +145,37 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows.first?.displayName, "Grok Build · xAI · via OpenBurnBar · Reasoning: CLI default")
     }
 
+    func test_ollamaTagsParserSeparatesLocalAndCloudModels() {
+        let json = Data("""
+        {
+          "models": [
+            {"name": "qwen2.5:3b", "model": "qwen2.5:3b", "details": {"parameter_size": "3.1B"}},
+            {"name": "llama3.2:latest", "model": "llama3.2:latest", "details": {"parameter_size": "3.2B"}},
+            {"name": "gpt-oss:120b-cloud", "model": "gpt-oss:120b-cloud", "details": {}},
+            {"name": "qwen2.5:3b", "model": "qwen2.5:3b", "details": {"parameter_size": "3.1B"}}
+          ]
+        }
+        """.utf8)
+
+        let rows = CLIRuntimeModelCatalog.parseOllamaTags(json)
+
+        // Duplicate qwen2.5:3b is collapsed; three distinct models remain.
+        XCTAssertEqual(rows.map(\.modelID), ["qwen2.5:3b", "llama3.2:latest", "gpt-oss:120b-cloud"])
+        XCTAssertEqual(rows[0].source, .ollamaLocalCatalog)
+        XCTAssertEqual(rows[0].providerID, "ollama-local")
+        XCTAssertEqual(rows[0].displayName, "qwen2.5:3b (3.1B) · Ollama (Local) · via OpenBurnBar · Reasoning: CLI default")
+        XCTAssertEqual(rows[1].source, .ollamaLocalCatalog)
+        XCTAssertEqual(rows[2].source, .ollamaCloudCatalog)
+        XCTAssertEqual(rows[2].providerID, "ollama")
+        XCTAssertEqual(rows[2].providerName, "Ollama Cloud")
+        XCTAssertEqual(rows[2].displayName, "gpt-oss:120b-cloud · Ollama Cloud · via OpenBurnBar · Reasoning: CLI default")
+    }
+
+    func test_ollamaTagsParserReturnsEmptyForInvalidPayload() {
+        XCTAssertTrue(CLIRuntimeModelCatalog.parseOllamaTags(Data("not json".utf8)).isEmpty)
+        XCTAssertTrue(CLIRuntimeModelCatalog.parseOllamaTags(Data(#"{"models": []}"#.utf8)).isEmpty)
+    }
+
     func test_claudeCodeModelCatalogOptionsEnumerateBundledAnthropicModels() {
         let rows = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
 

@@ -40,9 +40,18 @@ final class MissionFABResurrectionController {
         didSet {
             guard isDismissed != oldValue else { return }
             persist()
-            if !isDismissed { dismissedAt = nil }
+            if !isDismissed {
+                dismissedAt = nil
+                showRestoreDot = false
+            }
         }
     }
+
+    /// Whether the edge restore-dot should be shown. Only `true` when the
+    /// orb was dismissed via a flick gesture — NOT when dismissed via the
+    /// Settings toggle. This prevents the dot from leaking across tabs
+    /// when the user has explicitly turned the orb off in Settings.
+    private(set) var showRestoreDot: Bool = false
 
     /// ISO-stamped moment the user dismissed the orb. Lets the restore
     /// dot show "Hidden 12m ago" tooltips in a future polish pass.
@@ -107,12 +116,13 @@ final class MissionFABResurrectionController {
 
     // MARK: - User-facing actions
 
-    /// Flick / long-press dismiss path. Stamps the dismissed-at time so
-    /// the restore-dot tooltip can read it in a future polish pass.
+    /// Flick / long-press dismiss path. Stamps the dismissed-at time and
+    /// enables the edge restore-dot so the user can find the orb again.
     func dismiss() {
         guard !isDismissed else { return }
         isDismissed = true
         dismissedAt = Date()
+        showRestoreDot = true
         wasAutoResurrected = false
         autoResurrectReason = nil
     }
@@ -133,13 +143,26 @@ final class MissionFABResurrectionController {
         restore(reason: .longPressTab, isAuto: false)
     }
 
-    /// Toggle convenience used by the Settings switch.
+    /// Toggle convenience used by the Settings switch. When hiding via
+    /// Settings we explicitly suppress the restore dot — the user made a
+    /// deliberate settings decision, not a transient flick.
     func setDismissed(_ dismissed: Bool) {
         if dismissed {
-            dismiss()
+            dismissFromSettings()
         } else {
             restoreFromSettings()
         }
+    }
+
+    /// Settings-panel hide path. Hides the orb without showing the
+    /// restore dot — the Settings toggle is the recovery path here.
+    func dismissFromSettings() {
+        guard !isDismissed else { return }
+        isDismissed = true
+        dismissedAt = Date()
+        showRestoreDot = false
+        wasAutoResurrected = false
+        autoResurrectReason = nil
     }
 
     // MARK: - Auto-resurrect from snapshot

@@ -30,7 +30,11 @@ describeIf(!SKIP)('Website Build Integration', () => {
 
   it('no placeholder text leaked to production', () => {
     const html = readFileSync(join(DIST_DIR, 'index.html'), 'utf-8');
-    const badStrings = ['TODO', 'FIXME', 'lorem ipsum', 'placeholder'];
+    // Sentinels for genuinely-leaked authoring junk. Note: a bare "placeholder"
+    // token is deliberately excluded — it legitimately appears in CSS class
+    // names (e.g. ProviderTable's `.pcell__logo--placeholder`) and in valid
+    // `<input placeholder="…">` attributes, so it produces false positives.
+    const badStrings = ['TODO', 'FIXME', 'lorem ipsum', 'your text here'];
     for (const bad of badStrings) {
       expect(html.toLowerCase()).not.toContain(bad.toLowerCase());
     }

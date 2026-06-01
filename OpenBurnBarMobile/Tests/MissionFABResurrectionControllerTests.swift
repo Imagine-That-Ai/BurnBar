@@ -46,6 +46,7 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
         XCTAssertTrue(c.isDismissed)
         XCTAssertNotNil(c.dismissedAt)
         XCTAssertFalse(c.wasAutoResurrected)
+        XCTAssertTrue(c.showRestoreDot, "Flick dismiss must show the edge restore-dot")
     }
 
     func testRestoreFromDotClearsDismissed() {
@@ -77,9 +78,25 @@ final class MissionFABResurrectionControllerTests: XCTestCase {
         let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
         c.setDismissed(true)
         XCTAssertTrue(c.isDismissed)
+        XCTAssertFalse(c.showRestoreDot, "Settings-toggle dismiss must not show the restore dot")
         c.setDismissed(false)
         XCTAssertFalse(c.isDismissed)
         XCTAssertEqual(c.autoResurrectReason, .settingsToggle)
+    }
+
+    func testSettingsDismissDoesNotShowRestoreDot() {
+        let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
+        c.dismissFromSettings()
+        XCTAssertTrue(c.isDismissed)
+        XCTAssertFalse(c.showRestoreDot, "The dot must be suppressed when the user turned off the orb in Settings")
+    }
+
+    func testRestoreFromDotClearsShowRestoreDot() {
+        let c = MissionFABResurrectionController.offline(initiallyDismissed: false)
+        c.dismiss() // flick path — sets showRestoreDot = true
+        XCTAssertTrue(c.showRestoreDot)
+        c.restoreFromDot()
+        XCTAssertFalse(c.showRestoreDot, "Restoring from the dot must clear showRestoreDot")
     }
 
     func testRestoreOnAlreadyVisibleIsNoOp() {

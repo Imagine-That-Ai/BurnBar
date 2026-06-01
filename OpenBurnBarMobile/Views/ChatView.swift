@@ -297,30 +297,43 @@ struct HermesChatBubble: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                HStack(alignment: .top, spacing: 4) {
-                    Text("☿")
-                        .font(MobileTheme.Typography.mono)
-                        .foregroundStyle(MobileTheme.hermesAureate)
-                        .frame(width: 14, alignment: .trailing)
-                    Text(cliTranscriptText)
-                        .font(MobileTheme.Typography.monoSmall)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    if !message.text.isEmpty {
+                        HStack(alignment: .top, spacing: 4) {
+                            Text("☿")
+                                .font(MobileTheme.Typography.mono)
+                                .foregroundStyle(MobileTheme.hermesAureate)
+                                .frame(width: 14, alignment: .trailing)
+                            Text(message.text)
+                                .font(MobileTheme.Typography.monoSmall)
+                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    if !message.toolCalls.isEmpty {
+                        UnifiedToolCallAccordion(calls: unifiedToolCalls, accent: .hermes)
+                            .padding(.leading, 18)
+                    }
                 }
             }
         }
         .padding(.vertical, 1)
     }
 
-    private var cliTranscriptText: String {
-        let pieces = message.toolCalls.map { tc in
-            "⟨\((tc.name))\(tc.detail != nil ? ": \((tc.detail!))" : "")⟩"
+    /// Maps this turn's Hermes tool calls into the shared accordion model.
+    private var unifiedToolCalls: [UnifiedToolCallDisplay] {
+        let lastID = message.toolCalls.last?.id
+        return message.toolCalls.map { tc in
+            UnifiedToolCallDisplay(
+                id: tc.id,
+                name: tc.name,
+                statusRaw: tc.status,
+                detail: tc.detail,
+                arguments: tc.arguments,
+                isRunning: message.isStreaming && tc.id == lastID
+            )
         }
-        if pieces.isEmpty {
-            return message.text
-        }
-        return ([message.text] + pieces).filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     // MARK: - Agent View (existing bubble rendering)

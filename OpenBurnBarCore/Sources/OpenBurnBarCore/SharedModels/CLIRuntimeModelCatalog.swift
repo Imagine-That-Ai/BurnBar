@@ -155,6 +155,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
     case cursorAgentProfile
     case codexModelCatalog
     case grokModelCatalog
+    case ollamaLocalCatalog
+    case ollamaCloudCatalog
 
     public var displayLabel: String {
         switch self {
@@ -182,6 +184,10 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Codex live catalog"
         case .grokModelCatalog:
             return "Grok live catalog"
+        case .ollamaLocalCatalog:
+            return "Ollama local catalog"
+        case .ollamaCloudCatalog:
+            return "Ollama Cloud catalog"
         }
     }
 
@@ -211,6 +217,10 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Discovered from this Mac's Codex CLI model catalog."
         case .grokModelCatalog:
             return "Discovered from this Mac's Grok Build CLI model catalog."
+        case .ollamaLocalCatalog:
+            return "Discovered from this Mac's local Ollama server."
+        case .ollamaCloudCatalog:
+            return "Discovered from Ollama Cloud through this Mac's Ollama server."
         }
     }
 
@@ -537,6 +547,55 @@ public enum CLIRuntimeModelCatalog {
                 "xAI via Grok Build CLI",
                 tier: inferredTier(modelID: modelID, displayName: display),
                 source: .grokModelCatalog
+            ))
+        }
+        return rows
+    }
+
+    /// Parses Ollama's `GET /api/tags` JSON into runtime model options.
+    ///
+    /// Each entry's `name` (e.g. `qwen2.5:3b`, `gpt-oss:120b-cloud`) becomes a
+    /// model option. Names suffixed `:cloud`/`-cloud` are Ollama Cloud models
+    /// served through the local daemon; everything else is a locally-pulled
+    /// model. The two are tagged with distinct providers/sources so the picker
+    /// and gateway can route local traffic to `localhost:11434` and cloud
+    /// traffic to Ollama Cloud.
+    public static func parseOllamaTags(_ data: Data) -> [CLIRuntimeModelOption] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = object["models"] as? [[String: Any]] else {
+            return []
+        }
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        for model in models {
+            let rawName = ((model["name"] as? String)
+                ?? (model["model"] as? String)
+                ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawName.isEmpty, seen.insert(rawName.lowercased()).inserted else { continue }
+
+            let lowered = rawName.lowercased()
+            let isCloud = lowered.hasSuffix(":cloud") || lowered.hasSuffix("-cloud")
+            let parameterSize = ((model["details"] as? [String: Any])?["parameter_size"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nonEmpty
+            let displayBase = parameterSize.map { "\(rawName) (\($0))" } ?? rawName
+
+            let providerID = isCloud ? "ollama" : "ollama-local"
+            let providerLabel = isCloud ? "Ollama Cloud" : "Ollama (Local)"
+            let runtimeProviderName = isCloud ? "Ollama Cloud" : "Ollama (Local) via localhost"
+            rows.append(option(
+                rawName,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: displayBase,
+                    providerName: providerLabel,
+                    providerID: providerID,
+                    reasoningLevel: "CLI default"
+                ),
+                providerID,
+                runtimeProviderName,
+                tier: inferredTier(modelID: rawName, displayName: rawName),
+                source: isCloud ? .ollamaCloudCatalog : .ollamaLocalCatalog
             ))
         }
         return rows

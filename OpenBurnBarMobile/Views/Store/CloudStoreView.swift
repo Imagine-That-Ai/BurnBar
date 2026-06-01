@@ -63,7 +63,7 @@ struct CloudStoreView: View {
 
     var body: some View {
         ZStack {
-            VisibilityAwareEmberSurfaceBackground()
+            Color(.systemGroupedBackground).ignoresSafeArea()
                 .ignoresSafeArea()
 
             ScrollView {

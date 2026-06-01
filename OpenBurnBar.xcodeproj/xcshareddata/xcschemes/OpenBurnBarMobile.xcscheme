@@ -64,9 +64,6 @@
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
-      <StoreKitConfigurationFileReference
-         identifier = "../../OpenBurnBarMobileTests/Resources/OpenBurnBarPaidTiers.storekit">
-      </StoreKitConfigurationFileReference>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

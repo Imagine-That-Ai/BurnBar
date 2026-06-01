@@ -55,6 +55,22 @@
       }
     },
     {
+      "id": "hermes-gateway",
+      "typespec": "typespec/domains/hermes-gateway.tsp",
+      "firestoreCollections": [
+        "users/{uid}/hermes_gateway_clients/{clientId}",
+        "users/{uid}/hermes_gateway_destinations/{destinationId}",
+        "users/{uid}/hermes_gateway_events/{eventId}",
+        "users/{uid}/hermes_gateway_messages/{messageId}",
+        "users/{uid}/hermes_gateway_attachments/{attachmentId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/hermes-gateway.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels.kt"
+      }
+    },
+    {
       "id": "iroh-pairing",
       "typespec": "typespec/domains/iroh-pairing.tsp",
       "firestoreCollections": [

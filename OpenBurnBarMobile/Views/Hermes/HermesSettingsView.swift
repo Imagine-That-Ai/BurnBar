@@ -1,4 +1,8 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
+@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 
 // MARK: - Hermes Settings View
@@ -21,25 +25,31 @@ struct HermesSettingsView: View {
     @State private var showDeleteConfirm: HermesConnectionRecord? = nil
     @State private var showModelDetail: HermesRuntimeModelOption? = nil
     @State private var showModelPicker = false
+    @State private var gatewayStore = HermesGatewaySettingsStore()
+    @State private var gatewayPairingCode = ""
+    @State private var gatewayTestMessage = "Hello Hermes from OpenBurnBar iPhone."
+    @State private var showGatewaySignIn = false
+    @State private var gatewaySuccessClient: HermesGatewayClientRecord?
+    @State private var copiedGatewayCommand: HermesGatewayWizardCommand?
+    @State private var showGatewayAdditionalPairing = false
 
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
     @State private var showPretextPlayground = false
 
+    @Environment(\.cloudSubscriptionStore) private var cloudSubscriptionStore
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack {
-            AuroraBackdrop(density: .subtle)
-
-            ScrollView {
-                VStack(spacing: MobileTheme.Spacing.xl) {
+        ScrollView {
+            VStack(spacing: MobileTheme.Spacing.xl) {
                     headerCard
                         .settingsAnchor(SettingsAnchor.hermesRow)
 
                     connectionsSection
                         .settingsAnchor(SettingsAnchor.hermesConnections)
+                    burnBarCloudGatewaySection
+                        .settingsAnchor(SettingsAnchor.hermesCloudGateway)
                     modelsSection
                         .settingsAnchor(SettingsAnchor.hermesModels)
                     displaySection
@@ -52,7 +62,7 @@ struct HermesSettingsView: View {
                 .padding(.horizontal, MobileTheme.Spacing.lg)
                 .padding(.top, MobileTheme.Spacing.lg)
             }
-        }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Hermes")
         .sheet(isPresented: $showAddDirectSheet) { addDirectSheet }
         .sheet(isPresented: $showModelPicker) {
@@ -65,6 +75,22 @@ struct HermesSettingsView: View {
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()
         }
+        .sheet(isPresented: $showGatewaySignIn) {
+            SignInScene(authStore: authStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $gatewaySuccessClient) { client in
+            HermesGatewayConnectionSuccessSplash(
+                client: client,
+                onDone: { gatewaySuccessClient = nil },
+                onSendTest: {
+                    gatewaySuccessClient = nil
+                    HapticBus.send()
+                    Task { await sendGatewayTestMessage() }
+                }
+            )
+        }
         .alert("Delete connection?", isPresented: deleteBinding) {
             Button("Cancel", role: .cancel) { showDeleteConfirm = nil }
             Button("Delete", role: .destructive) {
@@ -76,26 +102,53 @@ struct HermesSettingsView: View {
         } message: {
             Text(showDeleteConfirm?.displayName ?? "")
         }
+        .task(id: authStore.currentIdentity?.uid) {
+            gatewayStore.startGatewayListening(uid: authStore.currentIdentity?.uid)
+            await gatewayStore.refresh(isSignedIn: authStore.state.isSignedIn)
+        }
+        .onChange(of: authStore.state.isSignedIn) { _, isSignedIn in
+            gatewayStore.startGatewayListening(uid: isSignedIn ? authStore.currentIdentity?.uid : nil)
+            Task { await gatewayStore.refresh(isSignedIn: isSignedIn) }
+        }
+        .onDisappear {
+            gatewayStore.stopGatewayListening()
+        }
+        .onChange(of: gatewayPairingCode) { _, newValue in
+            let formatted = HermesGatewayPairingCodeFormatter.displayString(for: newValue)
+            if formatted != newValue {
+                gatewayPairingCode = formatted
+            }
+        }
     }
 
     // MARK: - Header
 
     private var headerCard: some View {
-        AuroraGlassCard(variant: .hero, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             HStack(spacing: MobileTheme.Spacing.lg) {
                 ZStack {
                     Circle()
                         .fill(MobileTheme.mercuryGradient.opacity(0.25))
                         .frame(width: 52, height: 52)
-                    HermesLiveGlyph(size: 30, isLive: false)
+                    Image("HermesLogo")
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFill()
+                        .frame(width: 52, height: 52)
+                        .scaleEffect(1.16)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.75)
+                        )
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Hermes")
-                        .font(MobileTheme.Typography.title)
+                        .font(.title3)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                     Text("Messenger AI configuration")
-                        .font(MobileTheme.Typography.caption)
+                        .font(.caption)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
 
@@ -107,9 +160,13 @@ struct HermesSettingsView: View {
     // MARK: - 1. Connections
 
     private var connectionsSection: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
                 sectionTitle("Connections", icon: "antenna.radiowaves.left.and.right", color: MobileTheme.hermesAureate)
+
+                if !gatewayStore.activeClients.isEmpty {
+                    gatewayConnectionRow
+                }
 
                 ForEach(service.connections) { connection in
                     connectionRow(connection)
@@ -122,7 +179,7 @@ struct HermesSettingsView: View {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 16, weight: .semibold))
                         Text("Add direct Hermes URL")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                     }
                     .foregroundStyle(MobileTheme.mercuryGradient)
                 }
@@ -130,6 +187,53 @@ struct HermesSettingsView: View {
                 .padding(.top, 4)
             }
         }
+    }
+
+    private var gatewayConnectionRow: some View {
+        let onlineCount = gatewayStore.onlineClients.count
+        let activeCount = gatewayStore.activeClients.count
+        let isOnline = onlineCount > 0
+
+        return HStack(spacing: MobileTheme.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(isOnline ? MobileTheme.success : MobileTheme.warning)
+                    .frame(width: 10, height: 10)
+                if isOnline {
+                    Circle()
+                        .stroke(MobileTheme.success.opacity(0.5), lineWidth: 2)
+                        .frame(width: 16, height: 16)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("BurnBar Cloud Gateway")
+                    .font(.body)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text(gatewayConnectionSubtitle(activeCount: activeCount, onlineCount: onlineCount))
+                    .font(.caption2)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Image(systemName: isOnline ? "checkmark.seal.fill" : "link.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(isOnline ? MobileTheme.success : MobileTheme.warning)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("BurnBar Cloud Gateway. \(gatewayConnectionSubtitle(activeCount: activeCount, onlineCount: onlineCount))")
+    }
+
+    private func gatewayConnectionSubtitle(activeCount: Int, onlineCount: Int) -> String {
+        if onlineCount > 0 {
+            let noun = onlineCount == 1 ? "client" : "clients"
+            return "Official Hermes gateway · \(onlineCount) \(noun) online · works through BurnBar Cloud"
+        }
+        let noun = activeCount == 1 ? "client" : "clients"
+        return "Official Hermes gateway · \(activeCount) paired \(noun) · waiting for gateway check-in"
     }
 
     private func connectionRow(_ connection: HermesConnectionRecord) -> some View {
@@ -155,10 +259,10 @@ struct HermesSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(connection.displayName)
-                        .font(MobileTheme.Typography.body)
+                        .font(.body)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                     Text(connectionSubtitle(connection))
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
 
@@ -212,10 +316,749 @@ struct HermesSettingsView: View {
         }
     }
 
+    // MARK: - 2. BurnBar Cloud Gateway
+
+    private var burnBarCloudGatewaySection: some View {
+        NativeSettingsCard {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+                HStack(alignment: .center, spacing: MobileTheme.Spacing.md) {
+                    sectionTitle("BurnBar Cloud Gateway", icon: "paperplane.circle.fill", color: MobileTheme.ember)
+                    Spacer()
+                    Button {
+                        HapticBus.refreshStarted()
+                        Task { await gatewayStore.refresh(isSignedIn: authStore.state.isSignedIn) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(MobileTheme.ember)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(MobileTheme.Colors.surfaceElevated.opacity(0.82)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(gatewayStore.isLoading || !authStore.state.isSignedIn)
+                    .accessibilityLabel("Refresh Hermes Gateway clients")
+                }
+
+                gatewayEntitlementStrip
+
+                if let noticeText = gatewayStore.noticeText {
+                    gatewayNotice(
+                        noticeText,
+                        icon: gatewayStore.noticeIcon,
+                        color: gatewayNoticeColor(gatewayStore.noticeStyle)
+                    )
+                }
+
+                if !authStore.state.isSignedIn {
+                    gatewayNotice(
+                        "Sign in to connect Hermes.",
+                        icon: "person.crop.circle.badge.exclamationmark",
+                        color: MobileTheme.warning
+                    )
+                    Button {
+                        HapticBus.primaryAction()
+                        showGatewaySignIn = true
+                    } label: {
+                        Label("Sign in", systemImage: "person.crop.circle.fill")
+                            .font(.body)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(MobileTheme.ember)
+                } else {
+                    gatewayPrimaryStatusPanel
+                    if shouldShowGatewayPairingControls {
+                        gatewayPairingControls
+                    } else {
+                        gatewayPairingRevealButton
+                    }
+                    gatewayClientList
+                    gatewayTestControls
+                }
+            }
+        }
+    }
+
+    private var gatewayEntitlementStrip: some View {
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            Image(systemName: gatewayEntitlementIcon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(gatewayEntitlementColor)
+            Text(gatewayEntitlementText)
+                .font(.caption)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+            Spacer(minLength: MobileTheme.Spacing.sm)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(gatewayEntitlementColor.opacity(0.10))
+        )
+    }
+
+    @ViewBuilder
+    private var gatewayPrimaryStatusPanel: some View {
+        if let reply = gatewayStore.latestReply {
+            gatewayReplyHero(reply)
+        } else if let pending = gatewayStore.pendingTestEvent {
+            gatewayPendingHero(pending)
+        } else if gatewayStore.activeClients.isEmpty {
+            gatewaySetupWizard
+        } else if gatewayStore.onlineClients.isEmpty {
+            gatewayOperationalStatusCard(
+                icon: "link.circle.fill",
+                title: "Paired, but Hermes is not online",
+                detail: "BurnBar approved this gateway, but no client has checked in recently. Restart the Hermes Gateway on your computer so it loads the BurnBar token and starts receiving queued messages.",
+                color: MobileTheme.warning,
+                command: .restart
+            )
+        } else {
+            gatewayOperationalStatusCard(
+                icon: "bolt.horizontal.circle.fill",
+                title: "Hermes is online and ready",
+                detail: "\(gatewayOnlineClientCountText) live. Send a test below; the reply will appear here and as a local notification.",
+                color: MobileTheme.success
+            )
+        }
+    }
+
+    private func gatewayOperationalStatusCard(
+        icon: String,
+        title: String,
+        detail: String,
+        color: Color,
+        command: HermesGatewayWizardCommand? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.14))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(color)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if let command {
+                gatewayCommandRow(command)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(color.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(color.opacity(0.24), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func gatewayReplyHero(_ reply: HermesGatewayMessageRecord) -> some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(MobileTheme.success.opacity(0.16))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: "checkmark.message.fill")
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(MobileTheme.success)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Hermes replied")
+                        .font(.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text("End-to-end test complete through BurnBar Cloud")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.success)
+                }
+
+                Spacer(minLength: 0)
+
+                if let relativeDate = gatewayRelativeDateText(reply.createdAt, relativeTo: gatewayStore.statusNow) {
+                    Text(relativeDate)
+                        .font(.caption2)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .lineLimit(1)
+                }
+            }
+
+            Text(reply.text ?? "Hermes sent a reply through BurnBar Cloud.")
+                .font(.body)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                        .fill(MobileTheme.Colors.surfaceElevated.opacity(0.82))
+                )
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(MobileTheme.success.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(MobileTheme.success.opacity(0.30), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func gatewayPendingHero(_ pending: HermesGatewayQueuedEvent) -> some View {
+        let isGatewayOnline = !gatewayStore.onlineClients.isEmpty
+        let color = isGatewayOnline ? MobileTheme.hermesAureate : MobileTheme.warning
+
+        return VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.14))
+                        .frame(width: 46, height: 46)
+                    if isGatewayOnline {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(color)
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(color)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isGatewayOnline ? "Sent to Hermes" : "Queued, waiting for gateway")
+                        .font(.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text(
+                        isGatewayOnline
+                            ? "Event #\(pending.sequence) is waiting for a reply. Keep this screen open; the answer will appear here."
+                            : "Event #\(pending.sequence) is stored in BurnBar Cloud. Restart the Hermes Gateway on your computer to pick it up."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if !isGatewayOnline {
+                gatewayCommandRow(.restart)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(color.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(color.opacity(0.26), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var gatewaySetupWizard: some View {
+        let hasTypedCode = canonicalGatewayPairingCode != nil
+        let hasPairedClient = !gatewayStore.activeClients.isEmpty
+        let hasOnlineClient = !gatewayStore.onlineClients.isEmpty
+
+        return VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Get the pairing code from Hermes")
+                        .font(.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text("The code is created in the Hermes terminal, then approved here while Hermes is waiting.")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: MobileTheme.Spacing.sm)
+
+                HStack(spacing: 4) {
+                    Image(systemName: gatewayWizardStatusIcon)
+                    Text(gatewayWizardStatusLabel)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(gatewayWizardStatusColor)
+                .padding(.vertical, 7)
+                .padding(.horizontal, 9)
+                .background(
+                    Capsule()
+                        .fill(gatewayWizardStatusColor.opacity(0.12))
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(gatewayWizardStatusLabel)
+            }
+
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                gatewayWizardStep(
+                    number: 1,
+                    icon: "terminal.fill",
+                    title: "Run Hermes setup",
+                    detail: "On the computer where Hermes is installed, run:",
+                    command: .setup,
+                    state: hasTypedCode || hasPairedClient ? .complete : .current
+                )
+
+                gatewayWizardStep(
+                    number: 2,
+                    icon: "paperplane.circle.fill",
+                    title: "Choose BurnBar Cloud",
+                    detail: "Hermes will print an 8-character code like AB12-CD34 and a BurnBar approval link.",
+                    state: hasTypedCode || hasPairedClient ? .complete : .upcoming
+                )
+
+                gatewayWizardStep(
+                    number: 3,
+                    icon: "iphone",
+                    title: "Paste the code below",
+                    detail: "Leave the Hermes terminal open. It is waiting for this approval.",
+                    state: hasPairedClient ? .complete : (hasTypedCode ? .current : .upcoming)
+                )
+
+                gatewayWizardStep(
+                    number: 4,
+                    icon: "bolt.horizontal.circle.fill",
+                    title: "Start the gateway",
+                    detail: "After the code connects, keep this terminal process online. If you installed the background service, use start or restart instead.",
+                    command: .run,
+                    state: hasOnlineClient ? .complete : (hasPairedClient ? .current : .upcoming)
+                )
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            MobileTheme.hermesAureate.opacity(0.13),
+                            MobileTheme.ember.opacity(0.08),
+                            MobileTheme.Colors.surfaceElevated.opacity(0.92)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(MobileTheme.hermesAureate.opacity(0.22), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func gatewayWizardStep(
+        number: Int,
+        icon: String,
+        title: String,
+        detail: String,
+        command: HermesGatewayWizardCommand? = nil,
+        state: HermesGatewayWizardStepState
+    ) -> some View {
+        HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(gatewayWizardStepColor(state).opacity(state == .upcoming ? 0.08 : 0.16))
+                    .frame(width: 30, height: 30)
+                if state == .complete {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(gatewayWizardStepColor(state))
+                } else {
+                    Text("\(number)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(gatewayWizardStepColor(state))
+                }
+            }
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: MobileTheme.Spacing.xs) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(gatewayWizardStepColor(state))
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                }
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let command {
+                    gatewayCommandRow(command)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func gatewayCommandRow(_ command: HermesGatewayWizardCommand) -> some View {
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            Text(command.text)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.78)
+
+            Spacer(minLength: MobileTheme.Spacing.xs)
+
+            Button {
+                copyGatewayCommand(command)
+            } label: {
+                Image(systemName: copiedGatewayCommand == command ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(copiedGatewayCommand == command ? MobileTheme.success : MobileTheme.hermesAureate)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        Circle()
+                            .fill(MobileTheme.Colors.surfaceElevated.opacity(0.82))
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Copy \(command.accessibilityName)")
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 9)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated.opacity(0.84))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(MobileTheme.Colors.border.opacity(0.72), lineWidth: 0.5)
+        )
+    }
+
+    private var gatewayWizardStatusLabel: String {
+        if !gatewayStore.onlineClients.isEmpty { return "Ready" }
+        if !gatewayStore.activeClients.isEmpty { return "Paired" }
+        if canonicalGatewayPairingCode != nil { return "Code ready" }
+        return "Start here"
+    }
+
+    private var gatewayWizardStatusIcon: String {
+        if !gatewayStore.onlineClients.isEmpty { return "checkmark.seal.fill" }
+        if !gatewayStore.activeClients.isEmpty { return "link.circle.fill" }
+        if canonicalGatewayPairingCode != nil { return "keyboard.fill" }
+        return "sparkles"
+    }
+
+    private var gatewayWizardStatusColor: Color {
+        if !gatewayStore.onlineClients.isEmpty { return MobileTheme.success }
+        if !gatewayStore.activeClients.isEmpty { return MobileTheme.amber }
+        if canonicalGatewayPairingCode != nil { return MobileTheme.hermesAureate }
+        return MobileTheme.ember
+    }
+
+    private func gatewayWizardStepColor(_ state: HermesGatewayWizardStepState) -> Color {
+        switch state {
+        case .complete: return MobileTheme.success
+        case .current: return MobileTheme.ember
+        case .upcoming: return MobileTheme.Colors.textMuted
+        }
+    }
+
+    private var gatewayPairingControls: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            label(gatewayStore.activeClients.isEmpty ? "Pairing Code" : "Pair Another Hermes")
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                TextField("AB12-CD34", text: $gatewayPairingCode)
+                    .font(.system(.body, design: .monospaced))
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+                    .submitLabel(.done)
+                    .onSubmit { Task { await approveGatewayCode() } }
+                    .padding(MobileTheme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                            .fill(MobileTheme.Colors.surfaceElevated)
+                            .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+                    )
+
+                PasteButton(payloadType: String.self) { strings in
+                    if let pasted = strings.first {
+                        gatewayPairingCode = HermesGatewayPairingCodeFormatter.displayString(for: pasted)
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .tint(MobileTheme.hermesAureate)
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Paste pairing code")
+            }
+
+            Button {
+                HapticBus.primaryAction()
+                Task { await approveGatewayCode() }
+            } label: {
+                HStack(spacing: MobileTheme.Spacing.sm) {
+                    if gatewayStore.isApproving {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "checkmark.seal.fill")
+                    }
+                    Text(gatewayStore.isApproving ? "Connecting" : "Connect Hermes")
+                }
+                .font(.body)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(MobileTheme.ember)
+            .disabled(gatewayStore.isApproving || canonicalGatewayPairingCode == nil)
+
+            if showGatewayAdditionalPairing && !gatewayStore.activeClients.isEmpty {
+                Button {
+                    HapticBus.primaryAction()
+                    gatewayPairingCode = ""
+                    showGatewayAdditionalPairing = false
+                } label: {
+                    Label("Cancel", systemImage: "xmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+        }
+    }
+
+    private var gatewayPairingRevealButton: some View {
+        Button {
+            HapticBus.primaryAction()
+            showGatewayAdditionalPairing = true
+        } label: {
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 15, weight: .bold))
+                Text("Connect another Hermes")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+            }
+            .foregroundStyle(MobileTheme.hermesAureate)
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var gatewayClientList: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack {
+                label("Connected Clients")
+                Spacer()
+                if gatewayStore.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("\(gatewayStore.activeClients.count)")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+            }
+
+            if gatewayStore.clients.isEmpty && !gatewayStore.isLoading {
+                gatewayNotice("No Hermes clients yet.", icon: "tray", color: MobileTheme.Colors.textMuted)
+            } else {
+                ForEach(gatewayStore.clients) { client in
+                    gatewayClientRow(client)
+                }
+                gatewayReadinessNotice
+            }
+        }
+    }
+
+    private var gatewayTestControls: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            label("Test Message")
+            TextField("Message to Hermes", text: $gatewayTestMessage, axis: .vertical)
+                .font(.body)
+                .lineLimit(2...4)
+                .padding(MobileTheme.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                        .fill(MobileTheme.Colors.surfaceElevated)
+                        .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+                )
+
+            Button {
+                HapticBus.send()
+                Task { await sendGatewayTestMessage() }
+            } label: {
+                HStack(spacing: MobileTheme.Spacing.sm) {
+                    if gatewayStore.isSendingTest {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                    }
+                    Text(gatewayStore.testButtonTitle)
+                }
+                .font(.body)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(MobileTheme.hermesAureate)
+            .disabled(
+                gatewayStore.isSendingTest ||
+                gatewayStore.activeClients.isEmpty ||
+                gatewayTestMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+
+            if gatewayStore.pendingTestEvent == nil, gatewayStore.latestReply == nil {
+                gatewayNotice(
+                    "Replies appear at the top of this card and as a local notification.",
+                    icon: "bell.badge.fill",
+                    color: MobileTheme.Colors.textMuted
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var gatewayReadinessNotice: some View {
+        if gatewayStore.onlineClients.isEmpty {
+            gatewayNotice(
+                "No Hermes gateway client is online right now. Open Hermes, OpenBurnBar, or another paired gateway client so it can pick up queued messages.",
+                icon: "desktopcomputer",
+                color: MobileTheme.warning
+            )
+        } else {
+            gatewayNotice(
+                "\(gatewayStore.onlineClients.count) Hermes gateway client online. Test messages should get picked up immediately.",
+                icon: "bolt.horizontal.circle.fill",
+                color: MobileTheme.success
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var gatewayDeliveryStatusCard: some View {
+        if let reply = gatewayStore.latestReply {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                HStack(spacing: MobileTheme.Spacing.sm) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(MobileTheme.success)
+                    Text("Hermes replied")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Spacer()
+                    Text(gatewayRelativeDateText(reply.createdAt) ?? "now")
+                        .font(.caption2)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                Text(reply.text ?? "Hermes sent a reply.")
+                    .font(.body)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                    .fill(MobileTheme.success.opacity(0.10))
+                    .stroke(MobileTheme.success.opacity(0.28), lineWidth: 0.75)
+            )
+        } else if let pending = gatewayStore.pendingTestEvent {
+            gatewayNotice(
+                gatewayStore.onlineClients.isEmpty
+                    ? "Event #\(pending.sequence) is queued in BurnBar Cloud. Hermes has not picked it up because no gateway client is online."
+                    : "Event #\(pending.sequence) is queued. Waiting for Hermes to reply; you will see a banner/notification here when it does.",
+                icon: gatewayStore.onlineClients.isEmpty ? "exclamationmark.triangle.fill" : "clock.arrow.circlepath",
+                color: gatewayStore.onlineClients.isEmpty ? MobileTheme.warning : MobileTheme.hermesAureate
+            )
+        }
+    }
+
+    private func gatewayClientRow(_ client: HermesGatewayClientRecord) -> some View {
+        HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(gatewayClientColor(client).opacity(0.18))
+                    .frame(width: 34, height: 34)
+                Image(systemName: gatewayClientIcon(client))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(gatewayClientColor(client))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(client.displayName)
+                    .font(.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(gatewayClientSubtitle(client))
+                    .font(.caption2)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: MobileTheme.Spacing.sm)
+
+            Button {
+                HapticBus.destructive()
+                Task { await gatewayStore.revoke(client) }
+            } label: {
+                if gatewayStore.isRevoking(client) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 32, height: 32)
+                } else {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .frame(width: 32, height: 32)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(!client.isActive || gatewayStore.isRevoking(client))
+            .accessibilityLabel("Revoke \(client.displayName)")
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated.opacity(0.74))
+        )
+    }
+
     // MARK: - 2. Models
 
     private var modelsSection: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
                 HStack {
                     sectionTitle("Models", icon: "cpu", color: MobileTheme.whimsy)
@@ -224,7 +1067,7 @@ struct HermesSettingsView: View {
                         showModelPicker = true
                     } label: {
                         Label("Switch", systemImage: "arrow.left.arrow.right")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .fontWeight(.semibold)
                     }
                     .buttonStyle(.plain)
@@ -245,7 +1088,7 @@ struct HermesSettingsView: View {
                             .font(.system(size: 14))
                             .foregroundStyle(MobileTheme.amber)
                         Text("No models discovered yet.")
-                            .font(MobileTheme.Typography.caption)
+                            .font(.caption)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
                     .padding(.vertical, 4)
@@ -253,7 +1096,7 @@ struct HermesSettingsView: View {
                     if !service.favoriteModelOptions.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Favorites")
-                                .font(MobileTheme.Typography.caption)
+                                .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(MobileTheme.Colors.textMuted)
                                 .textCase(.uppercase)
@@ -272,7 +1115,7 @@ struct HermesSettingsView: View {
                         if let options = grouped[provider] {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(provider)
-                                    .font(MobileTheme.Typography.caption)
+                                    .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(MobileTheme.Colors.textMuted)
                                     .textCase(.uppercase)
@@ -290,10 +1133,10 @@ struct HermesSettingsView: View {
                             .font(.system(size: 13))
                             .foregroundStyle(MobileTheme.amber)
                         Text("Favorite models are pinned in the chat selector. Default:")
-                            .font(MobileTheme.Typography.caption)
+                            .font(.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                         Text(service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
-                            .font(MobileTheme.Typography.caption)
+                            .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundStyle(MobileTheme.whimsy)
                         Spacer()
@@ -317,15 +1160,15 @@ struct HermesSettingsView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.displayName)
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                         Text(option.modelID)
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .lineLimit(1)
                         if let detail = option.liveCatalogDetailText {
                             Text(detail)
-                                .font(MobileTheme.Typography.tiny)
+                                .font(.caption2)
                                 .foregroundStyle(option.isRouteEligible ? MobileTheme.Colors.textSecondary : MobileTheme.error)
                                 .lineLimit(1)
                         }
@@ -368,17 +1211,17 @@ struct HermesSettingsView: View {
     // MARK: - Display
 
     private var displaySection: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                 sectionTitle("Display", icon: "speedometer", color: MobileTheme.hermesAureate)
 
                 Toggle(isOn: $showMessageTPS) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Show tokens/sec")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                         Text("Adds a small generation-speed footer below assistant messages. Provider-reported counts are exact; missing usage is marked “est.”")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -391,10 +1234,10 @@ struct HermesSettingsView: View {
                 Toggle(isOn: $usePretextRendering) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Rich text rendering")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                         Text("Hermes assistant messages render `@mentions` and `code spans` as inline chips, with line breaking by Pretext. Streaming and error states stay plain.")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -409,10 +1252,10 @@ struct HermesSettingsView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Live background swarms")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                         Text("Customize which glyphs appear, where the swarm renders, and battery/Wi-Fi conditions.")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -426,7 +1269,7 @@ struct HermesSettingsView: View {
                         Image(systemName: "textformat.size")
                             .font(.system(size: 14, weight: .semibold))
                         Text("Open text layout playground")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                     }
                     .foregroundStyle(MobileTheme.mercuryGradient)
                 }
@@ -439,14 +1282,14 @@ struct HermesSettingsView: View {
     // MARK: - 3. Gateway
 
     private var gatewaySection: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
                 sectionTitle("Gateway", icon: "network", color: MobileTheme.ember)
 
                 VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Base URL")
                     TextField("http://localhost:8642", text: urlBinding)
-                        .font(MobileTheme.Typography.body)
+                        .font(.body)
                         .padding(MobileTheme.Spacing.sm)
                         .background(
                             RoundedRectangle(cornerRadius: MobileTheme.Radius.sm)
@@ -463,7 +1306,7 @@ struct HermesSettingsView: View {
                     label("Bearer Token")
                     HStack {
                         SecureField("API_SERVER_KEY from ~/.hermes/.env", text: tokenBinding)
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                         Button {
                             showTokenEditor = true
                         } label: {
@@ -485,7 +1328,7 @@ struct HermesSettingsView: View {
 	                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Model Override")
                     TextField("Leave empty for auto (e.g. gpt-5.5)", text: modelBinding)
-                        .font(MobileTheme.Typography.body)
+                        .font(.body)
                         .padding(MobileTheme.Spacing.sm)
                         .background(
                             RoundedRectangle(cornerRadius: MobileTheme.Radius.sm)
@@ -502,16 +1345,16 @@ struct HermesSettingsView: View {
     // MARK: - 3. Security
 
     private var securitySection: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
                 sectionTitle("Security", icon: "lock.shield", color: MobileTheme.whimsy)
 
                 Toggle(isOn: relayBinding) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Remote Relay")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                         Text("Allow iPhone/iPad to chat with this Mac over encrypted Firestore relay")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
                 }
@@ -522,7 +1365,7 @@ struct HermesSettingsView: View {
                     VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
                         label("Relay Public Key")
                         Text(key)
-                            .font(MobileTheme.Typography.monoSmall)
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .lineLimit(2)
                             .truncationMode(.middle)
@@ -542,7 +1385,7 @@ struct HermesSettingsView: View {
     // MARK: - 4. Status
 
     private var statusSection: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+        NativeSettingsCard {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
                 sectionTitle("Status", icon: "gauge.with.dots.needle.67percent", color: MobileTheme.amber)
 
@@ -550,7 +1393,7 @@ struct HermesSettingsView: View {
                     HStack {
                         MiningPickLoader(.inline)
                         Text("Probing runtime…")
-                            .font(MobileTheme.Typography.caption)
+                            .font(.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                     }
                 } else if let error = service.runtimeErrorText {
@@ -558,7 +1401,7 @@ struct HermesSettingsView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(MobileTheme.warning)
                         Text(error)
-                            .font(MobileTheme.Typography.caption)
+                            .font(.caption)
                             .foregroundStyle(MobileTheme.warning)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -624,7 +1467,7 @@ struct HermesSettingsView: View {
     private func sectionTitle(_ title: String, icon: String, color: Color) -> some View {
         Label {
             Text(title)
-                .font(MobileTheme.Typography.headline)
+                .font(.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
         } icon: {
             ZStack {
@@ -640,7 +1483,7 @@ struct HermesSettingsView: View {
 
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(MobileTheme.Typography.caption)
+            .font(.caption)
             .fontWeight(.semibold)
             .foregroundStyle(MobileTheme.Colors.textSecondary)
             .textCase(.uppercase)
@@ -650,11 +1493,11 @@ struct HermesSettingsView: View {
     private func infoRow(_ label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .font(MobileTheme.Typography.caption)
+                .font(.caption)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Spacer()
             Text(value)
-                .font(MobileTheme.Typography.caption)
+                .font(.caption)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .multilineTextAlignment(.trailing)
         }
@@ -663,11 +1506,11 @@ struct HermesSettingsView: View {
     private func infoRow(_ label: String, value: Date, style: Text.DateStyle) -> some View {
         HStack {
             Text(label)
-                .font(MobileTheme.Typography.caption)
+                .font(.caption)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Spacer()
             Text(value, style: style)
-                .font(MobileTheme.Typography.caption)
+                .font(.caption)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
         }
     }
@@ -701,8 +1544,18 @@ struct HermesSettingsView: View {
 
     private var relayBinding: Binding<Bool> {
         Binding(
-            get: { false },
-            set: { _ in }
+            get: { service.isRemoteRelayEnabled },
+            set: { isEnabled in
+                if service.setRemoteRelayEnabled(isEnabled) {
+                    return
+                }
+
+                guard isEnabled else { return }
+                Task { @MainActor in
+                    await service.refreshConnections(refreshSelectedConnection: false)
+                    _ = service.setRemoteRelayEnabled(true)
+                }
+            }
         )
     }
 
@@ -713,6 +1566,115 @@ struct HermesSettingsView: View {
         )
     }
 
+    private var canonicalGatewayPairingCode: String? {
+        HermesGatewayPairingCodeFormatter.canonicalCode(from: gatewayPairingCode)
+    }
+
+    private var shouldShowGatewayPairingControls: Bool {
+        gatewayStore.activeClients.isEmpty || showGatewayAdditionalPairing || !gatewayPairingCode.isEmpty
+    }
+
+    private var gatewayOnlineClientCountText: String {
+        let count = gatewayStore.onlineClients.count
+        return count == 1 ? "1 gateway client is" : "\(count) gateway clients are"
+    }
+
+    private var gatewayApprovalDisplayName: String {
+        let identityName = authStore.currentIdentity?.displayName
+            ?? authStore.currentIdentity?.email
+            ?? "OpenBurnBar"
+        return "\(identityName)'s iPhone"
+    }
+
+    private var gatewayEntitlementText: String {
+        guard authStore.state.isSignedIn else { return "Sign-in required" }
+        guard let store = cloudSubscriptionStore else { return "Cloud checked on approval" }
+        return store.isActive ? "BurnBar Cloud active" : "BurnBar Cloud or Cloud Pro required"
+    }
+
+    private var gatewayEntitlementIcon: String {
+        guard authStore.state.isSignedIn else { return "person.crop.circle.badge.exclamationmark" }
+        guard let store = cloudSubscriptionStore else { return "cloud" }
+        return store.isActive ? "checkmark.seal.fill" : "cloud.badge.exclamationmark"
+    }
+
+    private var gatewayEntitlementColor: Color {
+        guard authStore.state.isSignedIn else { return MobileTheme.warning }
+        guard let store = cloudSubscriptionStore else { return MobileTheme.hermesAureate }
+        return store.isActive ? MobileTheme.success : MobileTheme.amber
+    }
+
+    private func gatewayNoticeColor(_ style: HermesGatewayNoticeStyle) -> Color {
+        switch style {
+        case .info: return MobileTheme.hermesAureate
+        case .success: return MobileTheme.success
+        case .warning: return MobileTheme.warning
+        case .error: return MobileTheme.error
+        }
+    }
+
+    private func gatewayClientColor(_ client: HermesGatewayClientRecord) -> Color {
+        guard client.isActive else { return MobileTheme.Colors.textMuted }
+        return gatewayStore.isOnline(client) ? MobileTheme.success : Color(hex: "8080ff")
+    }
+
+    private func gatewayClientIcon(_ client: HermesGatewayClientRecord) -> String {
+        guard client.isActive else { return "xmark.circle.fill" }
+        return gatewayStore.isOnline(client) ? "bolt.horizontal.circle.fill" : "moon.zzz.fill"
+    }
+
+    private func gatewayClientSubtitle(_ client: HermesGatewayClientRecord) -> String {
+        var parts = [
+            gatewayStore.isOnline(client) ? "Online now" : "Not online",
+            client.homeDestinationId,
+            client.tokenPreview
+        ].filter { !$0.isEmpty }
+        if let dateText = gatewayRelativeDateText(
+            client.lastSeenAt ?? client.updatedAt,
+            relativeTo: gatewayStore.statusNow
+        ) {
+            parts.append(dateText)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func gatewayRelativeDateText(_ raw: String?, relativeTo referenceDate: Date = Date()) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let date = Self.gatewayDate(from: raw) {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .short
+            return formatter.localizedString(for: date, relativeTo: referenceDate)
+        }
+        return raw
+    }
+
+    private static func gatewayDate(from raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+
+    private func gatewayNotice(_ text: String, icon: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(color)
+                .frame(width: 18)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(color.opacity(0.10))
+        )
+    }
+
     // MARK: - Actions
 
     private func revoke(_ connection: HermesConnectionRecord) async {
@@ -720,6 +1682,748 @@ struct HermesSettingsView: View {
             try await service.revokeConnection(connection)
         } catch {
             // Error surfaced via service.runtimeErrorText
+        }
+    }
+
+    private func approveGatewayCode() async {
+        guard let code = canonicalGatewayPairingCode else {
+            gatewayStore.setNotice("Enter the 8-character Hermes code.", style: .warning)
+            HapticBus.threshold()
+            return
+        }
+        if let client = await gatewayStore.approve(userCode: code, displayName: gatewayApprovalDisplayName) {
+            gatewayPairingCode = ""
+            showGatewayAdditionalPairing = false
+            gatewaySuccessClient = client
+            HapticBus.milestone()
+        } else {
+            HapticBus.threshold()
+        }
+    }
+
+    private func sendGatewayTestMessage() async {
+        let text = gatewayTestMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            gatewayStore.setNotice("Type a message first.", style: .warning)
+            HapticBus.threshold()
+            return
+        }
+        let didSend = await gatewayStore.sendTest(text: text, senderDisplayName: gatewayApprovalDisplayName)
+        if !didSend {
+            HapticBus.threshold()
+        }
+    }
+
+    private func copyGatewayCommand(_ command: HermesGatewayWizardCommand) {
+        copiedGatewayCommand = command
+        HapticBus.primaryAction()
+        #if canImport(UIKit)
+        UIPasteboard.general.string = command.text
+        #endif
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            if copiedGatewayCommand == command {
+                copiedGatewayCommand = nil
+            }
+        }
+    }
+}
+
+
+/// A native inset-grouped-style card. Replaces `AuroraGlassCard` on the Hermes
+/// settings surface so it reads like Apple's stock Settings — grouped cards on
+/// `systemGroupedBackground` — instead of the Aurora glass treatment used
+/// elsewhere in the app.
+private struct NativeSettingsCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(
+                Color(.secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+    }
+}
+
+enum HermesGatewayPairingCodeFormatter {
+    static func displayString(for raw: String) -> String {
+        let compact = compactCode(raw)
+        guard compact.count > 4 else { return compact }
+        let split = compact.index(compact.startIndex, offsetBy: 4)
+        return "\(compact[..<split])-\(compact[split...])"
+    }
+
+    static func canonicalCode(from raw: String) -> String? {
+        let compact = compactCode(raw)
+        guard compact.count == 8 else { return nil }
+        return displayString(for: compact)
+    }
+
+    private static func compactCode(_ raw: String) -> String {
+        String(raw.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(8))
+    }
+}
+
+private enum HermesGatewayWizardCommand: Hashable {
+    case setup
+    case run
+    case restart
+
+    var text: String {
+        switch self {
+        case .setup:
+            return "hermes gateway setup"
+        case .run:
+            return "hermes gateway run"
+        case .restart:
+            return "hermes gateway restart"
+        }
+    }
+
+    var accessibilityName: String {
+        switch self {
+        case .setup:
+            return "Hermes gateway setup command"
+        case .run:
+            return "Hermes gateway run command"
+        case .restart:
+            return "Hermes gateway restart command"
+        }
+    }
+}
+
+private enum HermesGatewayWizardStepState {
+    case complete
+    case current
+    case upcoming
+}
+
+enum HermesGatewayNoticeStyle {
+    case info
+    case success
+    case warning
+    case error
+}
+
+@Observable
+@MainActor
+final class HermesGatewaySettingsStore {
+    private let repository: FunctionsRepository
+
+    private(set) var clients: [HermesGatewayClientRecord] = []
+    private(set) var isLoading = false
+    private(set) var isApproving = false
+    private(set) var isSendingTest = false
+    private(set) var revokingClientId: String?
+    private(set) var noticeText: String?
+    private(set) var noticeStyle: HermesGatewayNoticeStyle = .info
+    private(set) var pendingTestEvent: HermesGatewayQueuedEvent?
+    private(set) var latestReply: HermesGatewayMessageRecord?
+    private(set) var statusNow = Date()
+
+    @ObservationIgnored private var clientListener: ListenerRegistration?
+    @ObservationIgnored private var messageListener: ListenerRegistration?
+    @ObservationIgnored private var statusClockTask: Task<Void, Never>?
+    @ObservationIgnored private var listenedUID: String?
+    @ObservationIgnored private var lastNotifiedMessageID: String?
+    @ObservationIgnored private var pendingEventSentAt: Date?
+    @ObservationIgnored private var messageListenerStartedAt: Date?
+    @ObservationIgnored private let gatewayThreadID = HermesGatewayMessageResolver.defaultThreadID
+
+    init(repository: FunctionsRepository = .shared) {
+        self.repository = repository
+    }
+
+    var activeClients: [HermesGatewayClientRecord] {
+        clients.filter(\.isActive)
+    }
+
+    var onlineClients: [HermesGatewayClientRecord] {
+        activeClients.filter { $0.isOnline(relativeTo: statusNow) }
+    }
+
+    var testButtonTitle: String {
+        if isSendingTest { return "Queueing" }
+        return onlineClients.isEmpty ? "Queue test" : "Send and wait for reply"
+    }
+
+    var noticeIcon: String {
+        switch noticeStyle {
+        case .info: return "info.circle.fill"
+        case .success: return "checkmark.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .error: return "xmark.octagon.fill"
+        }
+    }
+
+    func startGatewayListening(uid: String?) {
+        guard let uid, !uid.isEmpty else {
+            stopGatewayListening()
+            latestReply = nil
+            pendingTestEvent = nil
+            return
+        }
+        guard listenedUID != uid else {
+            startStatusClockIfNeeded()
+            return
+        }
+        stopGatewayListening()
+        listenedUID = uid
+        messageListenerStartedAt = Date()
+        startStatusClockIfNeeded()
+        clientListener = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("hermes_gateway_clients")
+            .order(by: "updatedAt", descending: true)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    self?.handleClientsSnapshot(snapshot: snapshot, error: error)
+                }
+            }
+        messageListener = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("hermes_gateway_messages")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 20)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    self?.handleMessagesSnapshot(snapshot: snapshot, error: error)
+                }
+            }
+    }
+
+    func stopGatewayListening() {
+        clientListener?.remove()
+        clientListener = nil
+        messageListener?.remove()
+        messageListener = nil
+        statusClockTask?.cancel()
+        statusClockTask = nil
+        listenedUID = nil
+        messageListenerStartedAt = nil
+    }
+
+    func refresh(isSignedIn: Bool) async {
+        guard isSignedIn else {
+            clients = []
+            noticeText = nil
+            pendingTestEvent = nil
+            latestReply = nil
+            return
+        }
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            clients = try await repository.listHermesGatewayClients()
+            noticeText = nil
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+        }
+    }
+
+    @discardableResult
+    func approve(userCode: String, displayName: String) async -> HermesGatewayClientRecord? {
+        guard !isApproving else { return nil }
+        isApproving = true
+        defer { isApproving = false }
+
+        do {
+            let client = try await repository.approveHermesGatewayDeviceGrant(
+                userCode: userCode,
+                displayName: displayName
+            )
+            upsert(client)
+            setNotice(
+                "Hermes is paired. Now run `hermes gateway run`, or start/restart the installed gateway service, so Hermes is online to receive messages.",
+                style: .warning
+            )
+            return client
+        } catch {
+            if isConsumedPairingCodeError(error),
+               let existingClient = await refreshAfterConsumedPairingCode() {
+                setNotice("Hermes is already connected.", style: .success)
+                return existingClient
+            }
+            setNotice(error.localizedDescription, style: .error)
+            return nil
+        }
+    }
+
+    func revoke(_ client: HermesGatewayClientRecord) async {
+        guard client.isActive, revokingClientId == nil else { return }
+        revokingClientId = client.id
+        defer { revokingClientId = nil }
+
+        do {
+            try await repository.revokeHermesGatewayClient(clientId: client.id)
+            clients = clients.filter { $0.id != client.id }
+            setNotice("Hermes client revoked.", style: .success)
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+        }
+    }
+
+    @discardableResult
+    func sendTest(text: String, senderDisplayName: String) async -> Bool {
+        guard !activeClients.isEmpty else {
+            setNotice("Connect Hermes first.", style: .warning)
+            return false
+        }
+        guard !isSendingTest else { return false }
+        isSendingTest = true
+        defer { isSendingTest = false }
+
+        do {
+            let event = try await repository.enqueueHermesGatewayEvent(
+                text: text,
+                senderDisplayName: senderDisplayName
+            )
+            pendingTestEvent = event
+            pendingEventSentAt = Date()
+            statusNow = Date()
+            latestReply = nil
+            let message = onlineClients.isEmpty
+                ? "Event #\(event.sequence) is queued in BurnBar Cloud. No Hermes gateway client is online yet, so open Hermes, OpenBurnBar, or another paired gateway client."
+                : "Event #\(event.sequence) is queued. Waiting for Hermes to reply."
+            setNotice(message, style: onlineClients.isEmpty ? .warning : .info)
+            return true
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+            return false
+        }
+    }
+
+    private func handleClientsSnapshot(snapshot: QuerySnapshot?, error: Error?) {
+        if let error {
+            setNotice("Could not watch Hermes gateway clients: \(error.localizedDescription)", style: .error)
+            return
+        }
+        clients = snapshot?.documents.compactMap { document in
+            HermesGatewayClientRecord(documentID: document.documentID, data: document.data())
+        } ?? []
+        statusNow = Date()
+    }
+
+    private func handleMessagesSnapshot(snapshot: QuerySnapshot?, error: Error?) {
+        if let error {
+            setNotice("Could not watch Hermes replies: \(error.localizedDescription)", style: .error)
+            return
+        }
+        let messages = snapshot?.documents.compactMap { document in
+            HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
+        } ?? []
+
+        if let pendingTestEvent {
+            guard let reply = HermesGatewayMessageResolver.newestReply(
+                for: pendingTestEvent,
+                in: messages,
+                threadID: gatewayThreadID,
+                pendingEventSentAt: pendingEventSentAt
+            ) else { return }
+            latestReply = reply
+            self.pendingTestEvent = nil
+            pendingEventSentAt = nil
+            setNotice("Hermes replied. The gateway is working end to end.", style: .success)
+            HapticBus.milestone()
+            presentReplyNotification(reply)
+            return
+        }
+
+        guard let reply = HermesGatewayMessageResolver.newestThreadReply(
+            in: messages,
+            threadID: gatewayThreadID
+        ) else { return }
+        let isNewReply = latestReply?.id != reply.id
+        latestReply = reply
+        if isNewReply,
+           HermesGatewayMessageResolver.wasCreatedWhileListening(
+                reply,
+                listenerStartedAt: messageListenerStartedAt
+           ) {
+            setNotice("Hermes replied. The gateway is working end to end.", style: .success)
+            HapticBus.milestone()
+            presentReplyNotification(reply)
+        }
+    }
+
+    private func presentReplyNotification(_ reply: HermesGatewayMessageRecord) {
+        guard lastNotifiedMessageID != reply.id else { return }
+        lastNotifiedMessageID = reply.id
+        AgentReplyNotificationService.shared.presentLocalReply(
+            id: reply.id,
+            title: "Hermes replied",
+            preview: reply.text ?? "Hermes sent a reply through BurnBar Cloud.",
+            runtime: AssistantRuntimeID.hermes.rawValue,
+            threadID: reply.threadId ?? gatewayThreadID
+        )
+    }
+
+    func isRevoking(_ client: HermesGatewayClientRecord) -> Bool {
+        revokingClientId == client.id
+    }
+
+    func isOnline(_ client: HermesGatewayClientRecord) -> Bool {
+        client.isOnline(relativeTo: statusNow)
+    }
+
+    func setNotice(_ text: String, style: HermesGatewayNoticeStyle) {
+        noticeText = text
+        noticeStyle = style
+    }
+
+    private func upsert(_ client: HermesGatewayClientRecord) {
+        clients.removeAll { $0.id == client.id }
+        clients.insert(client, at: 0)
+    }
+
+    private func isConsumedPairingCodeError(_ error: Error) -> Bool {
+        error.localizedDescription.localizedCaseInsensitiveContains("pairing code was not found")
+    }
+
+    private func refreshAfterConsumedPairingCode() async -> HermesGatewayClientRecord? {
+        do {
+            clients = try await repository.listHermesGatewayClients()
+            statusNow = Date()
+            return activeClients.first
+        } catch {
+            return nil
+        }
+    }
+
+    private func startStatusClockIfNeeded() {
+        guard statusClockTask == nil else { return }
+        statusNow = Date()
+        statusClockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard !Task.isCancelled else { return }
+                self?.statusNow = Date()
+            }
+        }
+    }
+
+}
+
+private struct HermesGatewayConnectionSuccessSplash: View {
+    let client: HermesGatewayClientRecord
+    let onDone: () -> Void
+    let onSendTest: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var cardIn = false
+    @State private var avatarsIn = false
+    @State private var connected = false
+    @State private var detailsIn = false
+    @State private var haloPulse = false
+    @State private var burst = false
+
+    var body: some View {
+        ZStack {
+            AuroraBackdrop(density: .full)
+                .ignoresSafeArea()
+
+            LinearGradient(
+                colors: [
+                    MobileTheme.ember.opacity(0.22),
+                    MobileTheme.hermesAureate.opacity(0.14),
+                    Color.black.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: MobileTheme.Spacing.xl) {
+                Spacer(minLength: 18)
+
+                VStack(spacing: MobileTheme.Spacing.xl) {
+                    logoHandshake
+
+                    VStack(spacing: MobileTheme.Spacing.sm) {
+                        Text("Hermes is connected")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .multilineTextAlignment(.center)
+
+                        Text("BurnBar Cloud can now send messages to Hermes and receive replies from your local gateway.")
+                            .font(.body)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .opacity(connected ? 1 : 0)
+                    .offset(y: connected ? 0 : 10)
+
+                    VStack(spacing: MobileTheme.Spacing.sm) {
+                        connectionPill(
+                            icon: "checkmark.seal.fill",
+                            label: client.displayName,
+                            value: "Active"
+                        )
+                        .opacity(detailsIn ? 1 : 0)
+                        .offset(y: detailsIn ? 0 : 14)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.04), value: detailsIn)
+
+                        connectionPill(
+                            icon: "key.horizontal.fill",
+                            label: "Token",
+                            value: client.tokenPreview
+                        )
+                        .opacity(detailsIn ? 1 : 0)
+                        .offset(y: detailsIn ? 0 : 14)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.12), value: detailsIn)
+                    }
+                }
+                .padding(.horizontal, MobileTheme.Spacing.xl)
+                .padding(.vertical, MobileTheme.Spacing.xxxl)
+                .background(cardBackground)
+                .scaleEffect(cardIn ? 1 : 0.94)
+                .opacity(cardIn ? 1 : 0)
+
+                VStack(spacing: MobileTheme.Spacing.md) {
+                    Button {
+                        HapticBus.primaryAction()
+                        onSendTest()
+                    } label: {
+                        Label("Send test message", systemImage: "paperplane.fill")
+                            .font(.body)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(MobileTheme.ember)
+
+                    Button {
+                        onDone()
+                    } label: {
+                        Text("Done")
+                            .font(.body)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(MobileTheme.hermesAureate)
+                }
+                .padding(.horizontal, MobileTheme.Spacing.xl)
+                .opacity(detailsIn ? 1 : 0)
+                .offset(y: detailsIn ? 0 : 16)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.2), value: detailsIn)
+
+                Spacer(minLength: 28)
+            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+        }
+        .onAppear { runIntro() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Hermes is connected to BurnBar Cloud")
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
+            .fill(MobileTheme.Colors.surface.opacity(0.82))
+            .overlay(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                MobileTheme.hermesAureate.opacity(0.56),
+                                MobileTheme.ember.opacity(0.34),
+                                Color.white.opacity(0.14)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: MobileTheme.ember.opacity(0.20), radius: 34, x: 0, y: 18)
+    }
+
+    // MARK: - Handshake
+
+    private var logoHandshake: some View {
+        HStack(spacing: 0) {
+            avatar(assetName: "HermesLogo", label: "Hermes", color: MobileTheme.hermesAureate, fillsCircle: true)
+                .offset(x: 10)
+                .zIndex(1)
+
+            connectorColumn
+                .zIndex(2)
+
+            avatar(assetName: "AppLogo", label: "BurnBar", color: MobileTheme.ember, fillsCircle: false)
+                .offset(x: -10)
+                .zIndex(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Hermes connected to BurnBar")
+    }
+
+    private var connectorColumn: some View {
+        VStack(spacing: MobileTheme.Spacing.sm) {
+            ZStack {
+                Capsule()
+                    .fill(MobileTheme.Colors.surfaceElevated.opacity(0.92))
+                    .frame(width: 84, height: 42)
+                    .overlay(Capsule().stroke(MobileTheme.Colors.border.opacity(0.8), lineWidth: 0.75))
+                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
+
+                if connected && !reduceMotion {
+                    burstRing(delay: 0)
+                    burstRing(delay: 0.12)
+                }
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 20, weight: .black))
+                    .foregroundStyle(MobileTheme.success)
+                    .scaleEffect(connected ? 1 : 0.2)
+                    .opacity(connected ? 1 : 0)
+            }
+            .scaleEffect(avatarsIn ? 1 : 0.6)
+            .opacity(avatarsIn ? 1 : 0)
+
+            // Phantom label keeps the badge vertically centered on the avatar
+            // circles (whose columns also carry a caption row below).
+            Text(" ")
+                .font(.caption)
+                .opacity(0)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func burstRing(delay: Double) -> some View {
+        Circle()
+            .stroke(MobileTheme.success.opacity(0.55), lineWidth: 2.5)
+            .frame(width: 40, height: 40)
+            .scaleEffect(burst ? 2.6 : 0.55)
+            .opacity(burst ? 0 : 0.85)
+            .animation(.easeOut(duration: 0.75).delay(delay), value: burst)
+    }
+
+    private func avatar(assetName: String, label: String, color: Color, fillsCircle: Bool) -> some View {
+        let size: CGFloat = 104
+        return VStack(spacing: MobileTheme.Spacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.30))
+                    .frame(width: size, height: size)
+                    .blur(radius: 20)
+                    .scaleEffect(haloPulse ? 1.12 : 0.94)
+                    .opacity(haloPulse ? 0.95 : 0.55)
+
+                Circle()
+                    .fill(MobileTheme.Colors.surfaceElevated)
+                    .frame(width: size, height: size)
+                    .shadow(color: color.opacity(0.28), radius: 16, x: 0, y: 9)
+
+                logoArtwork(assetName, fillsCircle: fillsCircle, size: size)
+
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [color.opacity(0.85), color.opacity(0.25)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                    .frame(width: size, height: size)
+            }
+            .scaleEffect(avatarsIn ? 1 : 0.6)
+            .opacity(avatarsIn ? 1 : 0)
+
+            Text(label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .opacity(connected ? 1 : 0)
+        }
+    }
+
+    @ViewBuilder
+    private func logoArtwork(_ name: String, fillsCircle: Bool, size: CGFloat) -> some View {
+        if fillsCircle {
+            // Portrait-style logo: fill the circle and crop the asset's baked
+            // square frame so it reads as an elegant avatar, not a boxed image.
+            Image(name)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .scaleEffect(1.2)
+                .clipShape(Circle())
+        } else {
+            Image(name)
+                .resizable()
+                .scaledToFit()
+                .padding(size * 0.22)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        }
+    }
+
+    private func connectionPill(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(MobileTheme.success)
+                .frame(width: 20)
+
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+
+            Spacer(minLength: MobileTheme.Spacing.sm)
+
+            Text(value)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.vertical, 9)
+        .padding(.horizontal, 11)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated.opacity(0.72))
+        )
+    }
+
+    // MARK: - Intro choreography
+
+    private func runIntro() {
+        Haptics.light()
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) {
+            cardIn = true
+        }
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.66).delay(0.12)) {
+            avatarsIn = true
+        }
+        if !reduceMotion {
+            withAnimation(.easeInOut(duration: 1.9).repeatForever(autoreverses: true)) {
+                haloPulse = true
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.58) {
+            HapticBus.milestone()
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.58)) {
+                connected = true
+            }
+            // Defer one runloop so the burst rings mount before they animate.
+            DispatchQueue.main.async {
+                withAnimation { burst = true }
+            }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                detailsIn = true
+            }
         }
     }
 }

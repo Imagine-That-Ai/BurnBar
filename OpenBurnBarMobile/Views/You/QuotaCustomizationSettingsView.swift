@@ -2,7 +2,6 @@ import SwiftUI
 import OpenBurnBarCore
 
 struct QuotaCustomizationSettingsView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @State private var settings = QuotaSettingsStore()
     @State private var store = QuotaStore()
     @State private var expandedProvider: AgentProvider?
@@ -17,192 +16,184 @@ struct QuotaCustomizationSettingsView: View {
     )
 
     var body: some View {
-        ZStack {
-            AuroraBackdrop(density: .subtle)
+        Form {
+            // MARK: Live Preview Section
+            Section {
+                VStack(spacing: MobileTheme.Spacing.md) {
+                    Text("Live Preview")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            Form {
-                // MARK: Live Preview Section
-                Section {
-                    VStack(spacing: MobileTheme.Spacing.md) {
-                        Text("Live Preview")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        UnifiedQuotaSignalView(
-                            bucket: previewBucket,
-                            provider: .openAI,
-                            compact: false,
-                            displayMode: settings.percentageDisplayMode.rawValue
-                        )
-                        .padding(.vertical, 4)
-                    }
-                    .padding(.vertical, 8)
-                } header: {
-                    Text("Interactive Preview")
+                    UnifiedQuotaSignalView(
+                        bucket: previewBucket,
+                        provider: .openAI,
+                        compact: false,
+                        displayMode: settings.percentageDisplayMode.rawValue
+                    )
+                    .padding(.vertical, 4)
                 }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+                .padding(.vertical, 8)
+            } header: {
+                Text("Interactive Preview")
+            }
 
-                // MARK: Display Mode Selector Section
-                Section {
-                    Picker("Format", selection: $settings.percentageDisplayMode) {
-                        ForEach(QuotaPercentageDisplayMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
+            // MARK: Display Mode Selector Section
+            Section {
+                Picker("Format", selection: $settings.percentageDisplayMode) {
+                    ForEach(QuotaPercentageDisplayMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } header: {
-                    Text("Percentage display mode")
                 }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } header: {
+                Text("Percentage display mode")
+            }
 
-                // MARK: Provider Order & Visibility Section
-                Section {
-                    let providers = settings.providerOrder
-                    ForEach(providers) { provider in
-                        let isVisible = settings.visibleProviders.contains(provider)
-                        let isExpanded = expandedProvider == provider
+            // MARK: Provider Order & Visibility Section
+            Section {
+                let providers = settings.providerOrder
+                ForEach(providers) { provider in
+                    let isVisible = settings.visibleProviders.contains(provider)
+                    let isExpanded = expandedProvider == provider
 
-                        VStack(alignment: .leading, spacing: 0) {
-                            HStack(spacing: MobileTheme.Spacing.md) {
-                                // Toggle visibility checkbox
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: MobileTheme.Spacing.md) {
+                            // Toggle visibility checkbox
+                            Button {
+                                toggleProviderVisibility(provider)
+                            } label: {
+                                Image(systemName: isVisible ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(isVisible ? MobileTheme.ember : .secondary)
+                            }
+                            .buttonStyle(.plain)
+
+                            // Provider Logo & Display Name
+                            UnifiedProviderLogoView(provider: provider, size: 24)
+
+                            Text(provider.rawValue)
+                                .font(.body)
+                                .foregroundStyle(isVisible ? .primary : .secondary)
+
+                            Spacer()
+
+                            // Accordion Expand Indicator (only if has buckets)
+                            let providerBuckets = buckets(for: provider)
+                            if !providerBuckets.isEmpty {
                                 Button {
-                                    toggleProviderVisibility(provider)
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        if isExpanded {
+                                            expandedProvider = nil
+                                        } else {
+                                            expandedProvider = provider
+                                        }
+                                    }
+                                    Haptics.light()
                                 } label: {
-                                    Image(systemName: isVisible ? "checkmark.circle.fill" : "circle")
-                                        .font(.title3)
-                                        .foregroundStyle(isVisible ? MobileTheme.ember : .secondary)
+                                    Image(systemName: "chevron.right")
+                                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
                                 }
                                 .buttonStyle(.plain)
-
-                                // Provider Logo & Display Name
-                                UnifiedProviderLogoView(provider: provider, size: 24)
-
-                                Text(provider.rawValue)
-                                    .font(MobileTheme.Typography.body)
-                                    .foregroundStyle(isVisible ? .primary : .secondary)
-
-                                Spacer()
-
-                                // Accordion Expand Indicator (only if has buckets)
-                                let providerBuckets = buckets(for: provider)
-                                if !providerBuckets.isEmpty {
-                                    Button {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            if isExpanded {
-                                                expandedProvider = nil
-                                            } else {
-                                                expandedProvider = provider
-                                            }
-                                        }
-                                        Haptics.light()
-                                    } label: {
-                                        Image(systemName: "chevron.right")
-                                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                                            .padding(.horizontal, 4)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-
-                                // Order Adjustment Buttons
-                                HStack(spacing: 8) {
-                                    let idx = providers.firstIndex(of: provider) ?? 0
-                                    Button {
-                                        moveUp(provider)
-                                    } label: {
-                                        Image(systemName: "arrow.up")
-                                            .font(.caption.weight(.bold))
-                                    }
-                                    .disabled(idx == 0)
-                                    .buttonStyle(.borderless)
-                                    .tint(idx == 0 ? .secondary.opacity(0.3) : MobileTheme.ember)
-
-                                    Button {
-                                        moveDown(provider)
-                                    } label: {
-                                        Image(systemName: "arrow.down")
-                                            .font(.caption.weight(.bold))
-                                    }
-                                    .disabled(idx == providers.count - 1)
-                                    .buttonStyle(.borderless)
-                                    .tint(idx == providers.count - 1 ? .secondary.opacity(0.3) : MobileTheme.ember)
-                                }
                             }
-                            .padding(.vertical, 8)
 
-                            // Expanded dynamic quota buckets section
-                            if isExpanded {
-                                dividerLine
-
-                                let sortedBucketsList = sortedBuckets(for: provider)
-                                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-                                    Text("Dynamic Buckets")
-                                        .font(MobileTheme.Typography.tiny.weight(.bold))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.top, 8)
-                                        .padding(.bottom, 4)
-
-                                    ForEach(sortedBucketsList, id: \.key) { bucket in
-                                        let bucketVisible = !isBucketHidden(bucket, for: provider)
-
-                                        HStack(spacing: MobileTheme.Spacing.md) {
-                                            Button {
-                                                toggleBucketVisibility(bucket, for: provider)
-                                            } label: {
-                                                Image(systemName: bucketVisible ? "checkmark.square.fill" : "square")
-                                                    .foregroundStyle(bucketVisible ? MobileTheme.ember : .secondary)
-                                            }
-                                            .buttonStyle(.plain)
-
-                                            Text(bucket.label)
-                                                .font(MobileTheme.Typography.caption)
-                                                .foregroundStyle(bucketVisible ? .primary : .secondary)
-
-                                            Spacer()
-
-                                            HStack(spacing: 12) {
-                                                let bucketIdx = sortedBucketsList.firstIndex(where: { $0.key == bucket.key }) ?? 0
-                                                Button {
-                                                    moveBucketUp(bucket, for: provider)
-                                                } label: {
-                                                    Image(systemName: "chevron.up")
-                                                        .font(.caption)
-                                                }
-                                                .disabled(bucketIdx == 0)
-                                                .buttonStyle(.plain)
-                                                .foregroundStyle(bucketIdx == 0 ? .secondary.opacity(0.3) : MobileTheme.ember)
-
-                                                Button {
-                                                    moveBucketDown(bucket, for: provider)
-                                                } label: {
-                                                    Image(systemName: "chevron.down")
-                                                        .font(.caption)
-                                                }
-                                                .disabled(bucketIdx == sortedBucketsList.count - 1)
-                                                .buttonStyle(.plain)
-                                                .foregroundStyle(bucketIdx == sortedBucketsList.count - 1 ? .secondary.opacity(0.3) : MobileTheme.ember)
-                                            }
-                                        }
-                                        .padding(.vertical, 4)
-                                        .padding(.leading, 8)
-                                    }
+                            // Order Adjustment Buttons
+                            HStack(spacing: 8) {
+                                let idx = providers.firstIndex(of: provider) ?? 0
+                                Button {
+                                    moveUp(provider)
+                                } label: {
+                                    Image(systemName: "arrow.up")
+                                        .font(.caption.weight(.bold))
                                 }
-                                .padding(.leading, 32)
-                                .padding(.bottom, 8)
+                                .disabled(idx == 0)
+                                .buttonStyle(.borderless)
+                                .tint(idx == 0 ? .secondary.opacity(0.3) : MobileTheme.ember)
+
+                                Button {
+                                    moveDown(provider)
+                                } label: {
+                                    Image(systemName: "arrow.down")
+                                        .font(.caption.weight(.bold))
+                                }
+                                .disabled(idx == providers.count - 1)
+                                .buttonStyle(.borderless)
+                                .tint(idx == providers.count - 1 ? .secondary.opacity(0.3) : MobileTheme.ember)
                             }
                         }
+                        .padding(.vertical, 8)
+
+                        // Expanded dynamic quota buckets section
+                        if isExpanded {
+                            dividerLine
+
+                            let sortedBucketsList = sortedBuckets(for: provider)
+                            VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                                Text("Dynamic Buckets")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 4)
+
+                                ForEach(sortedBucketsList, id: \.key) { bucket in
+                                    let bucketVisible = !isBucketHidden(bucket, for: provider)
+
+                                    HStack(spacing: MobileTheme.Spacing.md) {
+                                        Button {
+                                            toggleBucketVisibility(bucket, for: provider)
+                                        } label: {
+                                            Image(systemName: bucketVisible ? "checkmark.square.fill" : "square")
+                                                .foregroundStyle(bucketVisible ? MobileTheme.ember : .secondary)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Text(bucket.label)
+                                            .font(.subheadline)
+                                            .foregroundStyle(bucketVisible ? .primary : .secondary)
+
+                                        Spacer()
+
+                                        HStack(spacing: 12) {
+                                            let bucketIdx = sortedBucketsList.firstIndex(where: { $0.key == bucket.key }) ?? 0
+                                            Button {
+                                                moveBucketUp(bucket, for: provider)
+                                            } label: {
+                                                Image(systemName: "chevron.up")
+                                                    .font(.caption)
+                                            }
+                                            .disabled(bucketIdx == 0)
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(bucketIdx == 0 ? .secondary.opacity(0.3) : MobileTheme.ember)
+
+                                            Button {
+                                                moveBucketDown(bucket, for: provider)
+                                            } label: {
+                                                Image(systemName: "chevron.down")
+                                                    .font(.caption)
+                                            }
+                                            .disabled(bucketIdx == sortedBucketsList.count - 1)
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(bucketIdx == sortedBucketsList.count - 1 ? .secondary.opacity(0.3) : MobileTheme.ember)
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                    .padding(.leading, 8)
+                                }
+                            }
+                            .padding(.leading, 32)
+                            .padding(.bottom, 8)
+                        }
                     }
-                } header: {
-                    Text("Providers order & visibility")
-                } footer: {
-                    Text("Toggle checkboxes to show/hide. Use arrows to change priority order.")
                 }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
+            } header: {
+                Text("Providers order & visibility")
+            } footer: {
+                Text("Toggle checkboxes to show/hide. Use arrows to change priority order.")
             }
-            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Quota Customization")
         .navigationBarTitleDisplayMode(.inline)

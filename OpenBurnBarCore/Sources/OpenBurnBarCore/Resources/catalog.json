@@ -4857,6 +4857,20 @@
           }
         }
       ]
+    },
+    {
+      "id": "ollama-local",
+      "displayName": "Ollama (Local)",
+      "baseURL": "http://localhost:11434/v1",
+      "visibility": "public",
+      "logoKey": "OllamaLogo",
+      "local": true,
+      "formatFamily": "openai_compat",
+      "capabilities": [
+        "routing",
+        "accounting"
+      ],
+      "models": []
     }
   ]
 }

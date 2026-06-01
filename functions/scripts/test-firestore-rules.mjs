@@ -2239,6 +2239,152 @@ test("agent notification events are server-written and replies are queued by own
   );
 });
 
+test("Hermes Gateway state is server-owned and destinations are Cloud-gated", async () => {
+  const ownerDb = authedDb("hgw-owner");
+  const otherDb = authedDb("hgw-mallory");
+  const serverOwnedDocs = [
+    [
+      "users/hgw-owner/hermes_gateway_clients/client-1",
+      {
+        id: "client-1",
+        displayName: "Hermes",
+        status: "active",
+        tokenPreview: "obb_hgw_...abcd",
+        scopes: ["hermes.gateway.read"],
+        homeDestinationId: "burnbar:home",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        schemaVersion: 1,
+      },
+    ],
+    [
+      "users/hgw-owner/hermes_gateway_events/event-1",
+      {
+        id: "event-1",
+        sequence: 1,
+        kind: "message",
+        destinationId: "burnbar:home",
+        senderId: "burnbar-user",
+        text: "hello",
+        attachmentIds: [],
+        createdAt: "2026-06-01T00:00:00.000Z",
+        schemaVersion: 1,
+      },
+    ],
+    [
+      "users/hgw-owner/hermes_gateway_messages/message-1",
+      {
+        id: "message-1",
+        clientId: "client-1",
+        kind: "agent_message",
+        destinationId: "burnbar:home",
+        text: "reply",
+        attachmentIds: [],
+        createdAt: "2026-06-01T00:00:00.000Z",
+        schemaVersion: 1,
+      },
+    ],
+    [
+      "users/hgw-owner/hermes_gateway_typing/client-1",
+      {
+        id: "client-1",
+        clientId: "client-1",
+        kind: "typing",
+        destinationId: "burnbar:home",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        expiresAt: "2026-06-01T00:00:15.000Z",
+        schemaVersion: 1,
+      },
+    ],
+    [
+      "users/hgw-owner/hermes_gateway_attachments/attachment-1",
+      {
+        id: "attachment-1",
+        clientId: "client-1",
+        destinationId: "burnbar:home",
+        fileName: "image.png",
+        contentType: "image/png",
+        byteCount: 100,
+        storagePath: "users/hgw-owner/hermes_gateway_attachments/client-1/attachment-1/image.png",
+        status: "pending_upload",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        expiresAt: "2026-06-01T00:10:00.000Z",
+        schemaVersion: 1,
+      },
+    ],
+    [
+      "users/hgw-owner/hermes_gateway_state/cursors",
+      {
+        eventSequence: 1,
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        schemaVersion: 1,
+      },
+    ],
+  ];
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    for (const [path, payload] of serverOwnedDocs) {
+      await setDoc(doc(context.firestore(), path), payload);
+    }
+    await setDoc(doc(context.firestore(), "hermes_gateway_device_sessions/session-1"), {
+      deviceCode: "session-1",
+      userCode: "ABCD-2345",
+      status: "pending",
+    });
+    await setDoc(doc(context.firestore(), "hermes_gateway_token_index/" + "a".repeat(64)), {
+      uid: "hgw-owner",
+      clientId: "client-1",
+      status: "active",
+    });
+  });
+
+  for (const [path, payload] of serverOwnedDocs) {
+    await assertSucceeds(getDoc(doc(ownerDb, path)));
+    await assertFails(getDoc(doc(otherDb, path)));
+    await assertFails(setDoc(doc(ownerDb, path), payload));
+  }
+  await assertFails(getDoc(doc(ownerDb, "hermes_gateway_device_sessions/session-1")));
+  await assertFails(
+    setDoc(doc(ownerDb, "hermes_gateway_device_sessions/session-2"), {
+      deviceCode: "session-2",
+      userCode: "WXYZ-2345",
+      status: "pending",
+    })
+  );
+  await assertFails(getDoc(doc(ownerDb, "hermes_gateway_token_index/" + "a".repeat(64))));
+  await assertFails(
+    setDoc(doc(ownerDb, "hermes_gateway_token_index/" + "b".repeat(64)), {
+      uid: "hgw-owner",
+      clientId: "client-1",
+      status: "active",
+    })
+  );
+
+  const destinationPath = "users/hgw-owner/hermes_gateway_destinations/ops";
+  const destination = {
+    id: "burnbar:ops",
+    displayName: "Ops",
+    kind: "chat",
+    status: "active",
+    isDefault: false,
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    schemaVersion: 1,
+  };
+  await assertFails(setDoc(doc(ownerDb, destinationPath), destination));
+  await seedBurnBarProMaxEntitlement("hgw-owner");
+  await assertSucceeds(setDoc(doc(ownerDb, destinationPath), destination));
+  await assertSucceeds(getDoc(doc(ownerDb, destinationPath)));
+  await assertFails(getDoc(doc(otherDb, destinationPath)));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/hgw-owner/hermes_gateway_destinations/leaky"), {
+      ...destination,
+      id: "burnbar:leaky",
+      secret: "must-not-pass",
+    })
+  );
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });

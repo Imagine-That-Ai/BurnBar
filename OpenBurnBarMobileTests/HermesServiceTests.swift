@@ -458,6 +458,31 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(service.hasPendingRelaySuggestion)
     }
 
+    func testRemoteRelaySettingSelectsSuggestedRelayAndCanReturnToLocal() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, relayConnection()]
+
+        XCTAssertFalse(service.isRemoteRelayEnabled)
+
+        XCTAssertTrue(service.setRemoteRelayEnabled(true, refresh: false))
+        XCTAssertTrue(service.isRemoteRelayEnabled)
+        XCTAssertEqual(service.selectedConnection.id, "relay-mac")
+
+        XCTAssertTrue(service.setRemoteRelayEnabled(false, refresh: false))
+        XCTAssertFalse(service.isRemoteRelayEnabled)
+        XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
+    }
+
+    func testRemoteRelaySettingStaysLocalWhenNoUsableRelayExists() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault]
+
+        XCTAssertFalse(service.setRemoteRelayEnabled(true, refresh: false))
+        XCTAssertFalse(service.isRemoteRelayEnabled)
+        XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
+        XCTAssertTrue(service.lastError?.contains("No signed-in Mac Hermes relay") ?? false)
+    }
+
     func testPendingRelaySuggestionRequiresDifferentSelectedHost() {
         let service = HermesService(relayTransport: FakeHermesRelayTransport())
         let relay = relayConnection()

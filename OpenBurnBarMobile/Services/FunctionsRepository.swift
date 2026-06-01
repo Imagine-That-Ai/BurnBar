@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
 
@@ -83,6 +84,219 @@ struct ConversationQueryResponse: Decodable, Sendable {
     let sort: String?
     let direction: String?
     let aggregates: ConversationQueryAggregates?
+}
+
+struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let displayName: String
+    let status: String
+    let tokenPreview: String
+    let scopes: [String]
+    let homeDestinationId: String
+    let lastSeenAt: String?
+    let revokedAt: String?
+    let createdAt: String
+    let updatedAt: String
+    let schemaVersion: Int
+
+    var isActive: Bool { status == "active" }
+
+    init(
+        id: String,
+        displayName: String,
+        status: String,
+        tokenPreview: String,
+        scopes: [String],
+        homeDestinationId: String,
+        lastSeenAt: String?,
+        revokedAt: String?,
+        createdAt: String,
+        updatedAt: String,
+        schemaVersion: Int
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.status = status
+        self.tokenPreview = tokenPreview
+        self.scopes = scopes
+        self.homeDestinationId = homeDestinationId
+        self.lastSeenAt = lastSeenAt
+        self.revokedAt = revokedAt
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.schemaVersion = schemaVersion
+    }
+}
+
+extension HermesGatewayClientRecord {
+    init?(documentID: String, data: [String: Any]) {
+        guard
+            let id = Self.string(data["id"]) ?? documentID.nilIfEmpty,
+            let displayName = Self.string(data["displayName"]),
+            let status = Self.string(data["status"]),
+            let tokenPreview = Self.string(data["tokenPreview"]),
+            let homeDestinationId = Self.string(data["homeDestinationId"]),
+            let createdAt = Self.string(data["createdAt"]),
+            let updatedAt = Self.string(data["updatedAt"])
+        else { return nil }
+        self.init(
+            id: id,
+            displayName: displayName,
+            status: status,
+            tokenPreview: tokenPreview,
+            scopes: (data["scopes"] as? [Any])?.compactMap(Self.string) ?? [],
+            homeDestinationId: homeDestinationId,
+            lastSeenAt: Self.string(data["lastSeenAt"]),
+            revokedAt: Self.string(data["revokedAt"]),
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            schemaVersion: (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1
+        )
+    }
+
+    var lastSeenDate: Date? {
+        guard let lastSeenAt else { return nil }
+        return Self.gatewayDate(from: lastSeenAt)
+    }
+
+    func isOnline(relativeTo now: Date = Date(), staleAfter interval: TimeInterval = 90) -> Bool {
+        guard isActive, let lastSeenDate else { return false }
+        return now.timeIntervalSince(lastSeenDate) <= interval
+    }
+
+    private static func gatewayDate(from raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+
+    private static func string(_ raw: Any?) -> String? {
+        switch raw {
+        case let value as String where !value.isEmpty:
+            return value
+        case let value as NSString where value.length > 0:
+            return value as String
+        case let value as NSNumber:
+            return value.stringValue
+        default:
+            return nil
+        }
+    }
+}
+
+struct HermesGatewayQueuedEvent: Decodable, Hashable, Sendable {
+    let id: String
+    let sequence: Int
+}
+
+struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
+    let id: String
+    let clientId: String
+    let kind: String
+    let destinationId: String
+    let threadId: String?
+    let replyToEventId: String?
+    let text: String?
+    let attachmentIds: [String]
+    let createdAt: String
+    let schemaVersion: Int
+
+    init?(documentID: String, data: [String: Any]) {
+        guard
+            let id = Self.string(data["id"]) ?? documentID.nilIfEmpty,
+            let clientId = Self.string(data["clientId"]),
+            let kind = Self.string(data["kind"]),
+            let destinationId = Self.string(data["destinationId"]),
+            let createdAt = Self.string(data["createdAt"])
+        else { return nil }
+        self.id = id
+        self.clientId = clientId
+        self.kind = kind
+        self.destinationId = destinationId
+        self.threadId = Self.string(data["threadId"])
+        self.replyToEventId = Self.string(data["replyToEventId"])
+        self.text = Self.string(data["text"])
+        self.attachmentIds = (data["attachmentIds"] as? [Any])?.compactMap(Self.string) ?? []
+        self.createdAt = createdAt
+        self.schemaVersion = (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1
+    }
+
+    private static func string(_ raw: Any?) -> String? {
+        switch raw {
+        case let value as String where !value.isEmpty:
+            return value
+        case let value as NSString where value.length > 0:
+            return value as String
+        case let value as NSNumber:
+            return value.stringValue
+        default:
+            return nil
+        }
+    }
+}
+
+enum HermesGatewayMessageResolver {
+    static let defaultThreadID = "burnbar-ios-e2e"
+
+    static func newestReply(
+        for event: HermesGatewayQueuedEvent,
+        in messages: [HermesGatewayMessageRecord],
+        threadID: String = defaultThreadID,
+        pendingEventSentAt: Date? = nil
+    ) -> HermesGatewayMessageRecord? {
+        if let exactReply = messages.first(where: { $0.replyToEventId == event.id }) {
+            return exactReply
+        }
+
+        return messages.first { message in
+            guard message.threadId == threadID else { return false }
+            guard let pendingEventSentAt else { return true }
+            guard let createdAt = gatewayDate(from: message.createdAt) else { return false }
+            return createdAt >= pendingEventSentAt
+        }
+    }
+
+    static func newestThreadReply(
+        in messages: [HermesGatewayMessageRecord],
+        threadID: String = defaultThreadID
+    ) -> HermesGatewayMessageRecord? {
+        messages.first { message in
+            guard message.threadId == threadID else { return false }
+            return message.text?.isEmpty == false || !message.attachmentIds.isEmpty
+        }
+    }
+
+    static func wasCreatedWhileListening(
+        _ reply: HermesGatewayMessageRecord,
+        listenerStartedAt: Date?,
+        clockSkewGraceInterval: TimeInterval = 30
+    ) -> Bool {
+        guard let listenerStartedAt,
+              let createdAt = gatewayDate(from: reply.createdAt)
+        else { return false }
+        return createdAt >= listenerStartedAt.addingTimeInterval(-clockSkewGraceInterval)
+    }
+
+    private static func gatewayDate(from raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+private struct HermesGatewayApprovalResponse: Decodable, Sendable {
+    let client: HermesGatewayClientRecord
+    let homeDestinationId: String
+}
+
+private struct HermesGatewayClientsResponse: Decodable, Sendable {
+    let clients: [HermesGatewayClientRecord]
 }
 
 private struct FirebaseCallablePayload: @unchecked Sendable {
@@ -515,6 +729,60 @@ final class FunctionsRepository {
         _ = try await callable.call(["clientId": clientID])
     }
 
+    // MARK: Hermes Gateway platform adapter
+
+    func approveHermesGatewayDeviceGrant(
+        userCode: String,
+        displayName: String? = nil,
+        destinationId: String = "burnbar:home",
+        scopes: [String] = [
+            "hermes.gateway.read",
+            "hermes.gateway.write",
+            "hermes.gateway.manage"
+        ]
+    ) async throws -> HermesGatewayClientRecord {
+        let callable = functions.httpsCallable("approveHermesGatewayDeviceGrant")
+        var payload: [String: Any] = [
+            "userCode": userCode,
+            "destinationId": destinationId,
+            "scopes": scopes
+        ]
+        if let displayName, !displayName.isEmpty {
+            payload["displayName"] = displayName
+        }
+
+        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
+        return try Self.decodeHermesGatewayValue(HermesGatewayApprovalResponse.self, from: result.data).client
+    }
+
+    func listHermesGatewayClients(includeRevoked: Bool = false) async throws -> [HermesGatewayClientRecord] {
+        let callable = functions.httpsCallable("listHermesGatewayClients")
+        let result = try await callable.call(["includeRevoked": includeRevoked])
+        return try Self.decodeHermesGatewayValue(HermesGatewayClientsResponse.self, from: result.data).clients
+    }
+
+    func revokeHermesGatewayClient(clientId: String) async throws {
+        let callable = functions.httpsCallable("revokeHermesGatewayClient")
+        _ = try await callable.call(["clientId": clientId])
+    }
+
+    func enqueueHermesGatewayEvent(
+        text: String,
+        destinationId: String = "burnbar:home",
+        threadId: String = "burnbar-ios-e2e",
+        senderDisplayName: String = "OpenBurnBar iPhone"
+    ) async throws -> HermesGatewayQueuedEvent {
+        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
+        let result = try await callable.call([
+            "destinationId": destinationId,
+            "threadId": threadId,
+            "senderId": "burnbar-ios",
+            "senderDisplayName": senderDisplayName,
+            "text": text
+        ])
+        return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
+    }
+
     // MARK: Pi Agent host pairing
 
     func createPiAgentPairing(
@@ -626,6 +894,44 @@ final class FunctionsRepository {
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode(type, from: data)
     }
+
+    nonisolated private static func decodeHermesGatewayValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {
+        let sanitized = sanitizeHermesGatewayJSON(raw)
+        let data = try JSONSerialization.data(withJSONObject: sanitized)
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    nonisolated private static func sanitizeHermesGatewayJSON(_ value: Any) -> Any {
+        switch value {
+        case let ts as Timestamp:
+            return ISO8601DateFormatter().string(from: ts.dateValue())
+        case let date as Date:
+            return ISO8601DateFormatter().string(from: date)
+        case let dict as [String: Any]:
+            return dict.reduce(into: [String: Any]()) { result, entry in
+                result[entry.key] = sanitizeHermesGatewayJSON(entry.value)
+            }
+        case let dict as NSDictionary:
+            return dict.reduce(into: [String: Any]()) { result, entry in
+                guard let key = entry.key as? String else { return }
+                result[key] = sanitizeHermesGatewayJSON(entry.value)
+            }
+        case let arr as [Any]:
+            return arr.map { sanitizeHermesGatewayJSON($0) }
+        case let arr as NSArray:
+            return arr.map { sanitizeHermesGatewayJSON($0) }
+        case is NSNull:
+            return NSNull()
+        default:
+            return value
+        }
+    }
+
+    #if DEBUG
+    nonisolated static func decodeHermesGatewayApprovalClientForTesting(_ raw: Any) throws -> HermesGatewayClientRecord {
+        try decodeHermesGatewayValue(HermesGatewayApprovalResponse.self, from: raw).client
+    }
+    #endif
 
     private func encodedFunctionValue<T: Encodable>(_ value: T) throws -> Any {
         let encoder = JSONEncoder()

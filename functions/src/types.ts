@@ -13,4 +13,9 @@ export type {
   GeneratedProviderAccountDeviceLinkDoc,
   GeneratedModelBenchmarkSnapshotDoc,
   GeneratedModelBenchmarkSourceStatusDoc,
+  GeneratedHermesGatewayAttachmentManifestDoc,
+  GeneratedHermesGatewayClientDoc,
+  GeneratedHermesGatewayDestinationDoc,
+  GeneratedHermesGatewayEventDoc,
+  GeneratedHermesGatewayMessageDoc,
 } from "./types/generated/index.js";
