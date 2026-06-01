@@ -83,6 +83,11 @@ struct CloudStoreView: View {
                                 .padding(.horizontal, MobileTheme.Spacing.lg)
                                 .settingsAnchor(SettingsAnchor.cloudPlan)
                                 .staggeredEntrance(delay: 0.08)
+                        } else {
+                            CloudStorePlanTile(store: store, mode: .upgradeToPro)
+                                .padding(.horizontal, MobileTheme.Spacing.lg)
+                                .settingsAnchor(SettingsAnchor.cloudPlan)
+                                .staggeredEntrance(delay: 0.08)
                         }
                     } else {
                         CloudStorePlanTile(store: store)
@@ -257,12 +262,18 @@ private struct CloudStorePosterHero: View {
 // MARK: - Plan Tile (free state)
 
 private struct CloudStorePlanTile: View {
+    enum Mode {
+        case fullCatalog
+        case upgradeToPro
+    }
+
     @Bindable var store: HostedQuotaSubscriptionStore
+    var mode: Mode = .fullCatalog
 
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
             HStack(alignment: .firstTextBaseline) {
-                Text("PLANS")
+                Text(title)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.bold)
                     .tracking(2.4)
@@ -283,7 +294,7 @@ private struct CloudStorePlanTile: View {
             }
 
             VStack(spacing: MobileTheme.Spacing.sm) {
-                ForEach(OpenBurnBarProductCatalog.subscriptions) { plan in
+                ForEach(subscriptionPlans) { plan in
                     CloudStorePaidProductRow(
                         catalogProduct: plan,
                         priceText: store.displayPrice(for: plan),
@@ -326,7 +337,36 @@ private struct CloudStorePlanTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(MercuryFoilCardModifier())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("BurnBar Cloud and BurnBar Cloud Pro plans. Billed by Apple, cancel anytime.")
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var title: String {
+        switch mode {
+        case .fullCatalog:
+            return "PLANS"
+        case .upgradeToPro:
+            return "UPGRADE TO CLOUD PRO"
+        }
+    }
+
+    private var subscriptionPlans: [OpenBurnBarStoreProduct] {
+        switch mode {
+        case .fullCatalog:
+            return OpenBurnBarProductCatalog.subscriptions
+        case .upgradeToPro:
+            return OpenBurnBarProductCatalog.subscriptions.filter {
+                $0.entitlementID == "burnbar_pro_max"
+            }
+        }
+    }
+
+    private var accessibilityLabel: String {
+        switch mode {
+        case .fullCatalog:
+            return "BurnBar Cloud and BurnBar Cloud Pro plans. Billed by Apple, cancel anytime."
+        case .upgradeToPro:
+            return "Upgrade to BurnBar Cloud Pro. Billed by Apple, cancel anytime. Top-ups unlock after BurnBar Cloud Pro is active."
+        }
     }
 }
 
