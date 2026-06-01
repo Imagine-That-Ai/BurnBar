@@ -1,4 +1,4 @@
-export type GooglePlayBillingRecordKind = "purchase" | "topup";
+type GooglePlayBillingRecordKind = "purchase" | "topup";
 
 const GOOGLE_PLAY_BILLING_DOCS: Record<GooglePlayBillingRecordKind, string> = {
   purchase: "google_play_purchases",
