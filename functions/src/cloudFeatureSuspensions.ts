@@ -20,10 +20,10 @@ export const REQUIRED_SUSPENDED_USER_DENIED_SURFACES = [
   "hosted_agent_control",
 ] as const;
 
-export type RequiredSuspendedUserDeniedSurface = (typeof REQUIRED_SUSPENDED_USER_DENIED_SURFACES)[number];
-export type CloudFeatureSurface = RequiredSuspendedUserDeniedSurface | "burnbar_cloud" | "burnbar_cloud_pro";
+type RequiredSuspendedUserDeniedSurface = (typeof REQUIRED_SUSPENDED_USER_DENIED_SURFACES)[number];
+type CloudFeatureSurface = RequiredSuspendedUserDeniedSurface | "burnbar_cloud" | "burnbar_cloud_pro";
 
-export interface ActiveCloudFeatureSuspension {
+interface ActiveCloudFeatureSuspension {
   pathTemplate: typeof CLOUD_FEATURE_SUSPENSION_DOC_PATH_TEMPLATE;
   deniedSurfaces: CloudFeatureSurface[];
   userQuotaDailyRefreshLimit: number;
