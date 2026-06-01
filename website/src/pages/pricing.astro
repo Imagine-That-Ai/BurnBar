@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
+import HermesGatewayPromo from "@components/HermesGatewayPromo.astro";
 import { SITE } from "@data/site";
 
 const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
@@ -291,6 +292,8 @@ const headlineSave = Math.max(cloudSave, proSave);
       </div>
     </div>
   </section>
+
+  <HermesGatewayPromo compact={true} anchor="pricing-hgw-h" />
 
   <section class="paidcaveats">
     <div class="container container--narrow">

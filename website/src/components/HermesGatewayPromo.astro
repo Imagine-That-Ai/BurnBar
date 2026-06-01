@@ -1,0 +1,610 @@
+---
+import { SITE } from "@data/site";
+
+interface Props {
+  /** Drop the 3-step strip and tighten spacing — for dense pages like Pricing. */
+  compact?: boolean;
+  /** Unique id for the section heading (one instance per page). */
+  anchor?: string;
+}
+
+const { compact = false, anchor = "hgw-h" } = Astro.props;
+
+const gatewayDocsUrl = `${SITE.github}/blob/main/docs/HERMES_GATEWAY_PLATFORM.md`;
+
+// The platform picker mirrors what a Hermes operator sees in gateway setup:
+// BurnBar Cloud listed right alongside the messengers they already know.
+const otherPlatforms = [
+  { name: "Telegram", mark: "T" },
+  { name: "Signal", mark: "S" },
+  { name: "Slack", mark: "#" }
+];
+
+const steps = [
+  {
+    n: "1",
+    title: "Choose BurnBar in Hermes",
+    body: "In Hermes' platform setup, pick BurnBar Cloud — right next to Telegram, Signal, and Slack."
+  },
+  {
+    n: "2",
+    title: "Approve the code",
+    body: "Sign in to BurnBar and approve the short pairing code Hermes shows you. Takes seconds."
+  },
+  {
+    n: "3",
+    title: "Send & receive from BurnBar",
+    body: "Hermes receives your BurnBar messages and sends replies back through your Cloud account."
+  }
+];
+---
+
+<section class={`hgw${compact ? " hgw--compact" : ""}`} aria-labelledby={anchor}>
+  <div class="container container--wide hgw__inner">
+    <div class="hgw__copy">
+      <span class="eyebrow eyebrow--ember">Hermes Gateway · BurnBar Cloud</span>
+      <h2 id={anchor} class="hgw__h">Connect Hermes through BurnBar&nbsp;Cloud</h2>
+      <p class="lead hgw__lead">
+        Choose BurnBar in Hermes the same way you'd choose <strong>Telegram</strong> or
+        <strong>Signal</strong>. Approve a short code, and Hermes can receive your BurnBar messages
+        and send replies back through your Cloud account.
+      </p>
+
+      <span class="hgw__eligible">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="hgw__check">
+          <path
+            d="M20 6 9 17l-5-5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"></path>
+        </svg>
+        Included with BurnBar Cloud &amp; Cloud Pro
+      </span>
+
+      <div class="hgw__ctas">
+        <a class="btn btn--ember" href="/download">
+          Download BurnBar <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn--ghost" href="/hermes/connect">Connect Hermes</a>
+      </div>
+      <a class="hgw__doclink mono" href={gatewayDocsUrl} target="_blank" rel="noopener noreferrer">
+        Read the gateway docs <span aria-hidden="true">↗</span>
+      </a>
+    </div>
+
+    <div class="hgw__visual">
+      <div class="hgw__card glass-pane">
+        <!-- Handshake header: Hermes ⇄ BurnBar Cloud -->
+        <div class="hgw__shake">
+          <div class="hgw__party">
+            <span class="hgw__logo hgw__logo--hermes">
+              <img
+                src="/brand/providers/hermes.png"
+                alt="Hermes"
+                width="48"
+                height="48"
+                loading="lazy"
+                decoding="async"
+              />
+            </span>
+            <span class="hgw__partyname">Hermes</span>
+            <span class="hgw__partysub mono">messaging platform</span>
+          </div>
+
+          <div class="hgw__link" aria-hidden="true">
+            <span class="hgw__link-track"></span>
+            <span class="hgw__link-dot"></span>
+            <span class="hgw__link-glyph">⇄</span>
+          </div>
+
+          <div class="hgw__party">
+            <span class="hgw__logo hgw__logo--burnbar">
+              <img
+                src="/brand/logo-256.png"
+                srcset="/brand/logo-256.png 1x, /brand/logo-512.png 2x"
+                alt="BurnBar"
+                width="48"
+                height="48"
+                loading="lazy"
+                decoding="async"
+              />
+            </span>
+            <span class="hgw__partyname">BurnBar Cloud</span>
+            <span class="hgw__partysub mono">your account</span>
+          </div>
+        </div>
+
+        <hr class="hgw__rule" />
+
+        <!-- Platform picker mockup -->
+        <div class="hgw__picker" role="presentation">
+          <span class="hgw__pickerlabel mono">Add a platform in Hermes</span>
+          <ul class="hgw__list">
+            {
+              otherPlatforms.map((p) => (
+                <li class="hgw__row">
+                  <span class="hgw__mono" aria-hidden="true">
+                    {p.mark}
+                  </span>
+                  <span class="hgw__rowname">{p.name}</span>
+                  <span class="hgw__radio" aria-hidden="true" />
+                </li>
+              ))
+            }
+            <li class="hgw__row hgw__row--active">
+              <span class="hgw__logo hgw__logo--row" aria-hidden="true">
+                <img
+                  src="/brand/logo-256.png"
+                  srcset="/brand/logo-256.png 1x, /brand/logo-512.png 2x"
+                  alt=""
+                  width="22"
+                  height="22"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </span>
+              <span class="hgw__rowname">BurnBar Cloud</span>
+              <span class="hgw__approved mono">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="hgw__check hgw__check--sm">
+                  <path
+                    d="M20 6 9 17l-5-5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"></path>
+                </svg>
+                Approved
+              </span>
+            </li>
+          </ul>
+          <p class="hgw__pickernote">
+            BurnBar sits right alongside the messengers you already trust.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {
+    !compact && (
+      <div class="container container--wide hgw__steps">
+        {steps.map((s) => (
+          <article class="hgw__step">
+            <span class="hgw__stepn mono">{s.n}</span>
+            <h3 class="hgw__steptitle">{s.title}</h3>
+            <p class="hgw__stepbody">{s.body}</p>
+          </article>
+        ))}
+      </div>
+    )
+  }
+</section>
+
+<style>
+  .hgw {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  /* Soft ember wash behind the visual so the band reads as a premium feature */
+  .hgw::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(60% 80% at 82% 22%, rgba(250, 107, 6, 0.12), transparent 70%),
+      radial-gradient(50% 60% at 10% 90%, rgba(253, 196, 44, 0.06), transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .hgw__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    align-items: center;
+  }
+
+  /* ---------- copy column ---------- */
+  .hgw__copy {
+    display: grid;
+    gap: var(--s-4);
+    align-content: start;
+  }
+
+  .hgw__h {
+    margin: 0;
+    font-size: clamp(2rem, 4.4vw, 3.25rem);
+    line-height: 1.02;
+  }
+
+  .hgw__lead {
+    margin: 0;
+    max-width: 46ch;
+  }
+
+  .hgw__eligible {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-self: start;
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--core-fire) 42%, var(--ink-line));
+    background: var(--ember-wash);
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+  }
+
+  .hgw__check {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
+
+  .hgw__ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: var(--s-2);
+  }
+
+  .hgw__doclink {
+    justify-self: start;
+    font-size: 0.82rem;
+    color: var(--text-mute);
+    text-decoration: none;
+  }
+
+  .hgw__doclink:hover,
+  .hgw__doclink:focus-visible {
+    color: var(--ember-bright);
+  }
+
+  /* ---------- visual card ---------- */
+  .hgw__card {
+    padding: clamp(1.25rem, 3vw, 1.85rem);
+    border-radius: var(--r-md);
+  }
+
+  .hgw__shake {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .hgw__party {
+    display: grid;
+    justify-items: center;
+    gap: 0.3rem;
+    text-align: center;
+  }
+
+  .hgw__logo {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--ink-line-bright);
+    background: rgba(0, 0, 0, 0.35);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .hgw__logo img {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: block;
+  }
+
+  .hgw__logo--hermes {
+    border-color: color-mix(in oklab, var(--mercury-bright) 28%, var(--ink-line));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 0 26px rgba(255, 255, 255, 0.08);
+  }
+
+  .hgw__logo--burnbar {
+    border-color: color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 0 28px rgba(250, 107, 6, 0.22);
+  }
+
+  .hgw__partyname {
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+
+  .hgw__partysub {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* animated connector */
+  .hgw__link {
+    position: relative;
+    width: clamp(46px, 9vw, 86px);
+    height: 28px;
+    display: grid;
+    place-items: center;
+  }
+
+  .hgw__link-track {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    transform: translateY(-50%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--mercury-core) 30%,
+      var(--core-fire) 70%,
+      transparent
+    );
+    opacity: 0.55;
+  }
+
+  .hgw__link-dot {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--core-amber);
+    box-shadow: 0 0 8px var(--core-glow);
+    transform: translate(-50%, -50%);
+    animation: hgwTravel 2.6s var(--ease) infinite;
+  }
+
+  .hgw__link-glyph {
+    position: relative;
+    z-index: 1;
+    padding: 0 0.28rem;
+    color: var(--text-mute);
+    font-size: 0.95rem;
+    background: var(--glass-bg-elevated);
+  }
+
+  @keyframes hgwTravel {
+    0% {
+      left: 6%;
+      opacity: 0;
+    }
+    18% {
+      opacity: 1;
+    }
+    82% {
+      opacity: 1;
+    }
+    100% {
+      left: 94%;
+      opacity: 0;
+    }
+  }
+
+  .hgw__rule {
+    height: 1px;
+    border: 0;
+    margin: clamp(1rem, 3vw, 1.5rem) 0;
+    background: var(--ink-line);
+  }
+
+  /* ---------- picker ---------- */
+  .hgw__pickerlabel {
+    display: block;
+    margin-bottom: 0.7rem;
+    color: var(--text-dim);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-uppercase);
+  }
+
+  .hgw__list {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .hgw__row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--ink-line);
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .hgw__mono {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    border: 1px solid var(--ink-line);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-mute);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .hgw__rowname {
+    flex: 1;
+    color: var(--text-mute);
+    font-size: 0.9rem;
+  }
+
+  .hgw__radio {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink-line-bright);
+  }
+
+  .hgw__logo--row {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .hgw__logo--row img {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+  }
+
+  .hgw__row--active {
+    border-color: color-mix(in oklab, var(--core-fire) 55%, var(--ink-line));
+    background: linear-gradient(135deg, rgba(250, 107, 6, 0.16), rgba(238, 24, 3, 0.06));
+    box-shadow:
+      0 0 0 1px rgba(250, 107, 6, 0.12),
+      0 8px 26px -8px rgba(250, 107, 6, 0.4);
+  }
+
+  .hgw__row--active .hgw__rowname {
+    color: var(--text-bright);
+    font-weight: 600;
+  }
+
+  .hgw__approved {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+    color: var(--core-amber);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .hgw__check--sm {
+    width: 13px;
+    height: 13px;
+  }
+
+  .hgw__pickernote {
+    margin: 0.85rem 0 0;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  /* ---------- steps ---------- */
+  .hgw__steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: clamp(2rem, 4vw, 3rem);
+  }
+
+  .hgw__step {
+    position: relative;
+    padding: 1.25rem 1.35rem;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--ink-line);
+    background: rgba(255, 255, 255, 0.02);
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease);
+  }
+
+  .hgw__step:hover {
+    border-color: color-mix(in oklab, var(--core-fire) 35%, var(--ink-line));
+    transform: translateY(-2px);
+  }
+
+  .hgw__stepn {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin-bottom: 0.7rem;
+    border-radius: 50%;
+    border: 1px solid color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
+    color: var(--core-amber);
+    font-size: 0.82rem;
+    font-weight: 700;
+    background: var(--ember-wash);
+  }
+
+  .hgw__steptitle {
+    margin: 0 0 0.35rem;
+    color: var(--text-bright);
+    font-size: 1.02rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  .hgw__stepbody {
+    margin: 0;
+    color: var(--text-mute);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  /* ---------- compact variant ---------- */
+  .hgw--compact .hgw__inner {
+    gap: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 900px) {
+    .hgw__inner {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+
+    .hgw__steps {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 460px) {
+    .hgw__logo {
+      width: 54px;
+      height: 54px;
+    }
+
+    .hgw__logo img {
+      width: 40px;
+      height: 40px;
+    }
+
+    .hgw__ctas .btn {
+      flex: 1 1 auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hgw__link-dot {
+      animation: none;
+      display: none;
+    }
+  }
+</style>

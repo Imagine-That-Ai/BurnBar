@@ -113,6 +113,48 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         banner = nil
     }
 
+    func presentLocalReply(
+        id: String,
+        title: String,
+        preview: String,
+        runtime: String = AssistantRuntimeID.hermes.rawValue,
+        threadID: String,
+        deepLink: URL? = nil
+    ) {
+        let resolvedDeepLink = deepLink ?? URL(
+            string: "burnbar://assistants/\(runtime)?threadId=\(threadID)"
+        )
+        banner = AgentReplyNotificationBanner(
+            id: id,
+            title: title,
+            preview: preview,
+            runtime: runtime,
+            threadID: threadID,
+            deepLink: resolvedDeepLink
+        )
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = preview
+        content.sound = .default
+        content.categoryIdentifier = "AGENT_REPLY"
+        content.userInfo = [
+            "type": "agent_reply",
+            "event_id": id,
+            "runtime": runtime,
+            "thread_id": threadID,
+            "title": title,
+            "preview": preview,
+            "deep_link": resolvedDeepLink?.absoluteString ?? ""
+        ]
+        let request = UNNotificationRequest(
+            identifier: "burnbar.agent.local.\(id)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        )
+        UNUserNotificationCenter.current().add(request) { _ in }
+    }
+
     private func requestAuthorizationAndRegister(application: UIApplication) {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             guard granted else { return }
