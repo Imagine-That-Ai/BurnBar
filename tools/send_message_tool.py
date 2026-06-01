@@ -509,7 +509,10 @@ async def _send_via_adapter(
     except Exception:
         runner = None
 
-    if runner is not None:
+    # The generic live-adapter path only has a text-shaped contract here. If a
+    # plugin registered a standalone sender, let that platform-owned path handle
+    # native media instead of silently dropping attachments through send().
+    if runner is not None and not media_files:
         try:
             adapter = runner.adapters.get(platform)
         except Exception:
@@ -750,7 +753,18 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
         return last_result
 
     # --- Non-media platforms ---
-    if media_files and not message.strip():
+    plugin_media_sender_available = False
+    if media_files:
+        try:
+            from gateway.platform_registry import platform_registry
+            plugin_entry = platform_registry.get(platform.value)
+            plugin_media_sender_available = bool(
+                plugin_entry is not None and plugin_entry.standalone_sender_fn is not None
+            )
+        except Exception:
+            plugin_media_sender_available = False
+
+    if media_files and not message.strip() and not plugin_media_sender_available:
         return {
             "error": (
                 f"send_message MEDIA delivery is currently only supported for telegram, discord, matrix, weixin, signal, yuanbao and feishu; "
@@ -758,14 +772,15 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
             )
         }
     warning = None
-    if media_files:
+    if media_files and not plugin_media_sender_available:
         warning = (
             f"MEDIA attachments were omitted for {platform.value}; "
             "native send_message media delivery is currently only supported for telegram, discord, matrix, weixin, signal, yuanbao and feishu"
         )
 
     last_result = None
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
+        is_last = (i == len(chunks) - 1)
         if platform == Platform.SLACK:
             result = await _send_slack(pconfig.token, chat_id, chunk, thread_ts=thread_id)
         elif platform == Platform.WHATSAPP:
@@ -801,7 +816,7 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
                 chat_id,
                 chunk,
                 thread_id=thread_id,
-                media_files=media_files,
+                media_files=media_files if is_last else [],
                 force_document=force_document,
             )
 
