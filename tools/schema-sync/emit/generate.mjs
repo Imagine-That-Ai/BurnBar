@@ -332,6 +332,28 @@ data class FirestoreHermesRelayChunkDoc(
   },
   "hermes-gateway": {
     models: {
+      HermesGatewayModelOptionDoc: {
+        ts: `export interface HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}`,
+        swift: `public struct FirestoreHermesGatewayModelOptionDoc: Codable, Sendable, Equatable {
+    public var providerId: String
+    public var providerName: String
+    public var modelId: String
+    public var displayName: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayModelOptionDoc(
+    val providerId: String = "",
+    val providerName: String = "",
+    val modelId: String = "",
+    val displayName: String = "",
+)`,
+      },
       HermesGatewayClientDoc: {
         ts: `export interface HermesGatewayClientDoc {
   id: string;
@@ -343,6 +365,10 @@ data class FirestoreHermesRelayChunkDoc(
   scopes: string[];
   homeDestinationId: string;
   lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -358,6 +384,10 @@ data class FirestoreHermesRelayChunkDoc(
     public var scopes: [String]
     public var homeDestinationId: String
     public var lastSeenAt: String?
+    public var runtimeModelId: String?
+    public var runtimeProviderId: String?
+    public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
+    public var runtimeUpdatedAt: String?
     public var revokedAt: String?
     public var createdAt: String
     public var updatedAt: String
@@ -375,6 +405,10 @@ data class FirestoreHermesGatewayClientDoc(
     val scopes: List<String> = emptyList(),
     val homeDestinationId: String = "",
     val lastSeenAt: String? = null,
+    val runtimeModelId: String? = null,
+    val runtimeProviderId: String? = null,
+    val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
+    val runtimeUpdatedAt: String? = null,
     val revokedAt: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
@@ -425,6 +459,7 @@ data class FirestoreHermesGatewayDestinationDoc(
   senderId: string;
   senderDisplayName?: string;
   text: string;
+  modelId?: string;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -438,6 +473,7 @@ data class FirestoreHermesGatewayDestinationDoc(
     public var senderId: String
     public var senderDisplayName: String?
     public var text: String
+    public var modelId: String?
     public var attachmentIds: [String]
     public var createdAt: String
     public var schemaVersion: Int
@@ -453,6 +489,7 @@ data class FirestoreHermesGatewayEventDoc(
     val senderId: String = "",
     val senderDisplayName: String? = null,
     val text: String = "",
+    val modelId: String? = null,
     val attachmentIds: List<String> = emptyList(),
     val createdAt: String = "",
     val schemaVersion: Long = 0,

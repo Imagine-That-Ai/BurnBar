@@ -66,11 +66,20 @@ struct HermesSettingsView: View {
         .navigationTitle("Hermes")
         .sheet(isPresented: $showAddDirectSheet) { addDirectSheet }
         .sheet(isPresented: $showModelPicker) {
-            AssistantModelPickerSheet(
-                runtime: .hermes,
-                hermesService: service,
-                piService: PiService.shared
-            )
+            if shouldUseGatewayModelPicker {
+                HermesGatewayModelPickerSheet(
+                    service: service,
+                    gatewayStore: gatewayStore,
+                    senderDisplayName: authStore.currentIdentity?.displayName ?? "OpenBurnBar iPhone",
+                    threadId: service.selectedSessionID ?? HermesGatewayMessageResolver.defaultThreadID
+                )
+            } else {
+                AssistantModelPickerSheet(
+                    runtime: .hermes,
+                    hermesService: service,
+                    piService: PiService.shared
+                )
+            }
         }
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()
@@ -1064,7 +1073,7 @@ struct HermesSettingsView: View {
                     sectionTitle("Models", icon: "cpu", color: MobileTheme.whimsy)
                     Spacer()
                     Button {
-                        showModelPicker = true
+                        presentModelPicker()
                     } label: {
                         Label("Switch", systemImage: "arrow.left.arrow.right")
                             .font(.caption2)
@@ -1570,6 +1579,14 @@ struct HermesSettingsView: View {
         HermesGatewayPairingCodeFormatter.canonicalCode(from: gatewayPairingCode)
     }
 
+    private var shouldUseGatewayModelPicker: Bool {
+        !gatewayStore.activeClients.isEmpty && (!service.isReachable || service.modelOptions.isEmpty)
+    }
+
+    private func presentModelPicker() {
+        showModelPicker = true
+    }
+
     private var shouldShowGatewayPairingControls: Bool {
         gatewayStore.activeClients.isEmpty || showGatewayAdditionalPairing || !gatewayPairingCode.isEmpty
     }
@@ -1818,10 +1835,13 @@ final class HermesGatewaySettingsStore {
     private(set) var isLoading = false
     private(set) var isApproving = false
     private(set) var isSendingTest = false
+    private(set) var isSendingGatewayMessage = false
+    private(set) var isSwitchingModel = false
     private(set) var revokingClientId: String?
     private(set) var noticeText: String?
     private(set) var noticeStyle: HermesGatewayNoticeStyle = .info
     private(set) var pendingTestEvent: HermesGatewayQueuedEvent?
+    private(set) var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
     private(set) var latestReply: HermesGatewayMessageRecord?
     private(set) var statusNow = Date()
 
@@ -1844,6 +1864,56 @@ final class HermesGatewaySettingsStore {
 
     var onlineClients: [HermesGatewayClientRecord] {
         activeClients.filter { $0.isOnline(relativeTo: statusNow) }
+    }
+
+    var runtimeModelOptions: [HermesRuntimeModelOption] {
+        var seen = Set<String>()
+        var options: [HermesRuntimeModelOption] = []
+        let clientsByFreshness = (onlineClients + activeClients)
+            .reduce(into: [String: HermesGatewayClientRecord]()) { result, client in
+                result[client.id] = client
+            }
+            .values
+            .sorted { left, right in
+                (left.lastSeenAt ?? left.updatedAt) > (right.lastSeenAt ?? right.updatedAt)
+            }
+        for client in clientsByFreshness {
+            for option in client.runtimeModelOptions {
+                let key = option.modelId.lowercased()
+                guard !seen.contains(key) else { continue }
+                seen.insert(key)
+                options.append(option.hermesRuntimeOption)
+            }
+            if let modelId = nonEmpty(client.runtimeModelId) {
+                let key = modelId.lowercased()
+                if !seen.contains(key) {
+                    seen.insert(key)
+                    options.append(
+                        HermesRuntimeModelOption(
+                            providerID: nonEmpty(client.runtimeProviderId) ?? "hermes",
+                            providerName: nonEmpty(client.runtimeProviderId) ?? "Hermes",
+                            modelID: modelId,
+                            displayName: modelId,
+                            sourceKind: "burnbar-cloud-gateway",
+                            routeEligible: true
+                        )
+                    )
+                }
+            }
+        }
+        return options
+    }
+
+    var runtimeModelId: String? {
+        onlineClients.compactMap { nonEmpty($0.runtimeModelId) }.first
+            ?? activeClients.compactMap { nonEmpty($0.runtimeModelId) }.first
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 
     var testButtonTitle: String {
@@ -1966,6 +2036,73 @@ final class HermesGatewaySettingsStore {
             setNotice("Hermes client revoked.", style: .success)
         } catch {
             setNotice(error.localizedDescription, style: .error)
+        }
+    }
+
+    @discardableResult
+    func sendGatewayMessage(text: String, senderDisplayName: String, threadId: String) async -> HermesGatewayQueuedEvent? {
+        guard !activeClients.isEmpty else {
+            setNotice("Connect Hermes first.", style: .warning)
+            return nil
+        }
+        guard !isSendingGatewayMessage else { return nil }
+        isSendingGatewayMessage = true
+        defer { isSendingGatewayMessage = false }
+
+        do {
+            let event = try await repository.enqueueHermesGatewayEvent(
+                text: text,
+                threadId: threadId,
+                senderDisplayName: senderDisplayName
+            )
+            pendingTestEvent = event
+            pendingEventSentAt = Date()
+            statusNow = Date()
+            latestReply = nil
+            setNotice(
+                onlineClients.isEmpty
+                    ? "Message queued in BurnBar Cloud. Hermes will pick it up when the gateway checks in."
+                    : "Message sent through BurnBar Cloud. Waiting for Hermes to reply.",
+                style: onlineClients.isEmpty ? .warning : .info
+            )
+            return event
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+            return nil
+        }
+    }
+
+    @discardableResult
+    func switchGatewayModel(modelId: String, senderDisplayName: String, threadId: String) async -> HermesGatewayQueuedEvent? {
+        let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            setNotice("Type a model id first.", style: .warning)
+            return nil
+        }
+        guard !activeClients.isEmpty else {
+            setNotice("Connect Hermes first.", style: .warning)
+            return nil
+        }
+        guard !isSwitchingModel else { return nil }
+        isSwitchingModel = true
+        defer { isSwitchingModel = false }
+
+        do {
+            let event = try await repository.enqueueHermesGatewayModelSwitch(
+                modelId: trimmed,
+                threadId: threadId,
+                senderDisplayName: senderDisplayName
+            )
+            pendingModelSwitchEvent = event
+            pendingTestEvent = event
+            pendingEventSentAt = Date()
+            statusNow = Date()
+            latestReply = nil
+            setNotice("Model switch queued for Hermes: \(trimmed).", style: onlineClients.isEmpty ? .warning : .info)
+            return event
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+            return nil
         }
     }
 

@@ -18,4 +18,5 @@ export type {
   HermesGatewayDestinationDoc as GeneratedHermesGatewayDestinationDoc,
   HermesGatewayEventDoc as GeneratedHermesGatewayEventDoc,
   HermesGatewayMessageDoc as GeneratedHermesGatewayMessageDoc,
+  HermesGatewayModelOptionDoc as GeneratedHermesGatewayModelOptionDoc,
 } from "./hermes-gateway.js";

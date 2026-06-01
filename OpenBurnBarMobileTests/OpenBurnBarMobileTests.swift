@@ -90,6 +90,20 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 ],
                 "homeDestinationId": "burnbar:home",
                 "lastSeenAt": "2026-06-01T08:08:04.968Z",
+                "runtimeModelId": "minimax-m2.7-highspeed",
+                "runtimeProviderId": "minimax",
+                "runtimeModelOptions": [
+                    [
+                        "providerId": "minimax",
+                        "providerName": "MiniMax",
+                        "modelId": "minimax-m2.7-highspeed",
+                        "displayName": "MiniMax M2.7 Highspeed"
+                    ],
+                    [
+                        "modelId": "claude-opus-4-5"
+                    ]
+                ],
+                "runtimeUpdatedAt": "2026-06-01T08:08:04.969Z",
                 "createdAt": "2026-06-01T08:00:00Z",
                 "updatedAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 1
@@ -100,6 +114,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(record?.displayName, "OpenBurnBar Gateway")
         XCTAssertEqual(record?.homeDestinationId, "burnbar:home")
         XCTAssertEqual(record?.scopes, ["hermes.gateway.read", "hermes.gateway.write"])
+        XCTAssertEqual(record?.runtimeModelId, "minimax-m2.7-highspeed")
+        XCTAssertEqual(record?.runtimeProviderId, "minimax")
+        XCTAssertEqual(record?.runtimeModelOptions.count, 2)
+        XCTAssertEqual(record?.runtimeModelOptions.first?.hermesRuntimeOption.modelID, "minimax-m2.7-highspeed")
+        XCTAssertEqual(record?.runtimeModelOptions.first?.hermesRuntimeOption.displayName, "MiniMax M2.7 Highspeed")
+        XCTAssertEqual(record?.runtimeModelOptions.last?.providerId, "hermes")
+        XCTAssertEqual(record?.runtimeUpdatedAt, "2026-06-01T08:08:04.969Z")
     }
 
     func testHermesGatewayMessageRecordParsesReplyPayload() {

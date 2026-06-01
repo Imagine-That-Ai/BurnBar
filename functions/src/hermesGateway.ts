@@ -21,8 +21,15 @@ export type HermesGatewayScope = (typeof HERMES_GATEWAY_SCOPES)[number];
 export type HermesGatewayClientStatus = "active" | "revoked";
 export type HermesGatewayDeviceSessionStatus = "pending" | "approved" | "denied" | "expired";
 export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
-export type HermesGatewayEventKind = "message";
+export type HermesGatewayEventKind = "message" | "model_switch";
 export type HermesGatewayMessageKind = "agent_message" | "typing";
+
+export interface HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}
 
 export interface HermesGatewayClientDoc {
   id: string;
@@ -34,6 +41,10 @@ export interface HermesGatewayClientDoc {
   scopes: HermesGatewayScope[];
   homeDestinationId: string;
   lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -60,6 +71,7 @@ export interface HermesGatewayEventDoc {
   senderId: string;
   senderDisplayName?: string;
   text: string;
+  modelId?: string;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -170,6 +182,13 @@ export function sanitizeHermesGatewayDestinationId(raw: unknown): string {
   return value;
 }
 
+export function sanitizeHermesGatewayModelId(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > 180 || /[\r\n]/.test(value)) return undefined;
+  return value;
+}
+
 export function destinationDocId(destinationId: string): string {
   if (destinationId === HERMES_GATEWAY_DEFAULT_DESTINATION_ID) return HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID;
   const safe = destinationId
@@ -215,7 +234,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
   if (
     typeof record.id !== "string" ||
     typeof record.sequence !== "number" ||
-    record.kind !== "message" ||
+    (record.kind !== "message" && record.kind !== "model_switch") ||
     typeof record.destinationId !== "string" ||
     typeof record.senderId !== "string" ||
     typeof record.text !== "string" ||
@@ -234,6 +253,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     senderId: record.senderId,
     senderDisplayName: typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,
     text: record.text,
+    modelId: typeof record.modelId === "string" ? record.modelId : undefined,
     attachmentIds: record.attachmentIds.filter((item): item is string => typeof item === "string"),
     createdAt: record.createdAt,
     schemaVersion: record.schemaVersion,
@@ -267,6 +287,31 @@ export function sanitizedGatewayDisplayName(raw: unknown, fallback: string): str
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim().slice(0, 80) : fallback;
 }
 
+export function sanitizeHermesGatewayModelOptions(raw: unknown): HermesGatewayModelOptionDoc[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const options: HermesGatewayModelOptionDoc[] = [];
+  for (const item of raw) {
+    const record = recordOrUndefined(item);
+    if (!record) continue;
+    const modelId = sanitizeHermesGatewayModelId(record.modelId);
+    if (!modelId || seen.has(modelId.toLowerCase())) continue;
+    const providerId = typeof record.providerId === "string" && record.providerId.trim()
+      ? record.providerId.trim().slice(0, 80)
+      : "hermes";
+    const providerName = typeof record.providerName === "string" && record.providerName.trim()
+      ? record.providerName.trim().slice(0, 120)
+      : providerId;
+    const displayName = typeof record.displayName === "string" && record.displayName.trim()
+      ? record.displayName.trim().slice(0, 180)
+      : modelId;
+    seen.add(modelId.toLowerCase());
+    options.push({ providerId, providerName, modelId, displayName });
+    if (options.length >= 100) break;
+  }
+  return options;
+}
+
 export function publicClientView(client: HermesGatewayClientDoc): Record<string, unknown> {
   return {
     id: client.id,
@@ -276,6 +321,10 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     scopes: client.scopes,
     homeDestinationId: client.homeDestinationId,
     lastSeenAt: client.lastSeenAt,
+    runtimeModelId: client.runtimeModelId,
+    runtimeProviderId: client.runtimeProviderId,
+    runtimeModelOptions: client.runtimeModelOptions,
+    runtimeUpdatedAt: client.runtimeUpdatedAt,
     revokedAt: client.revokedAt,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,

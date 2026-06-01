@@ -2,6 +2,13 @@
 // Domain: hermes-gateway
 // Regenerate: npm --prefix tools/schema-sync run emit
 
+export interface HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}
+
 export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -12,6 +19,10 @@ export interface HermesGatewayClientDoc {
   scopes: string[];
   homeDestinationId: string;
   lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +49,7 @@ export interface HermesGatewayEventDoc {
   senderId: string;
   senderDisplayName?: string;
   text: string;
+  modelId?: string;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;

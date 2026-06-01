@@ -35,6 +35,8 @@ import {
   randomHermesGatewayUserCode,
   safeEqualHex,
   sanitizeHermesGatewayDestinationId,
+  sanitizeHermesGatewayModelId,
+  sanitizeHermesGatewayModelOptions,
   sanitizeHermesGatewayScopes,
   sanitizedAttachmentIds,
   sanitizedGatewayDisplayName,
@@ -361,6 +363,35 @@ async function handleTyping(req: HttpRequest, res: HttpResponse): Promise<void> 
   sendJSON(res, 200, { success: true });
 }
 
+async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
+  const body = requestBody(req);
+  const runtimeModelId = sanitizeHermesGatewayModelId(body.currentModelId);
+  const runtimeProviderId = boundedTrimmedString(body.currentProviderId, "currentProviderId", 80, false);
+  const runtimeModelOptions = sanitizeHermesGatewayModelOptions(body.modelOptions);
+  const now = nowISO();
+  await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(
+    stripUndefinedObject({
+      runtimeModelId,
+      runtimeProviderId,
+      runtimeModelOptions,
+      runtimeUpdatedAt: now,
+      lastSeenAt: now,
+      updatedAt: now,
+      schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+    }),
+    { merge: true },
+  );
+  sendJSON(res, 200, {
+    success: true,
+    runtimeModelId,
+    runtimeProviderId,
+    modelOptionCount: runtimeModelOptions.length,
+    runtimeUpdatedAt: now,
+  });
+}
+
 async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
@@ -418,6 +449,7 @@ export const burnBarHermesGateway = onRequest(
       if (path === "/events") return await handleEvents(req, res);
       if (path === "/messages") return await handleMessageSend(req, res);
       if (path === "/typing") return await handleTyping(req, res);
+      if (path === "/runtime") return await handleRuntimeStatus(req, res);
       if (path === "/attachments/init") return await handleAttachmentInit(req, res);
       sendJSON(res, 404, { error: "not_found" });
     } catch (err) {
@@ -591,6 +623,8 @@ export const enqueueHermesGatewayEvent = onCall(
         senderId?: unknown;
         senderDisplayName?: unknown;
         text?: unknown;
+        eventKind?: unknown;
+        modelId?: unknown;
         attachmentIds?: unknown;
       }>,
     ) => {
@@ -598,7 +632,15 @@ export const enqueueHermesGatewayEvent = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before sending Hermes Gateway events.");
       enforceAuthAndAppCheck(request, uid);
       await assertActiveHermesGatewayEntitlement(uid);
-      const text = boundedTrimmedString(request.data.text, "text", HERMES_GATEWAY_MAX_EVENT_TEXT, true);
+      const eventKind = request.data.eventKind === "model_switch" ? "model_switch" : "message";
+      const requestedModelId = sanitizeHermesGatewayModelId(request.data.modelId);
+      const text =
+        eventKind === "model_switch"
+          ? `/model ${requestedModelId ?? ""}`.trim()
+          : boundedTrimmedString(request.data.text, "text", HERMES_GATEWAY_MAX_EVENT_TEXT, true);
+      if (eventKind === "model_switch" && !requestedModelId) {
+        throw new HttpsError("invalid-argument", "modelId is required for Hermes Gateway model switches.");
+      }
       const destinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
       const eventId = `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
@@ -613,19 +655,23 @@ export const enqueueHermesGatewayEvent = onCall(
           { eventSequence: sequence, updatedAt: now, schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION },
           { merge: true },
         );
-        tx.set(db.doc(`users/${uid}/hermes_gateway_events/${eventId}`), {
-          id: eventId,
-          sequence,
-          kind: "message",
-          destinationId,
-          threadId: boundedTrimmedString(request.data.threadId, "threadId", 160, false),
-          senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
-          senderDisplayName: boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
-          text,
-          attachmentIds: sanitizedAttachmentIds(request.data.attachmentIds),
-          createdAt: now,
-          schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
-        });
+        tx.set(
+          db.doc(`users/${uid}/hermes_gateway_events/${eventId}`),
+          stripUndefinedObject({
+            id: eventId,
+            sequence,
+            kind: eventKind,
+            destinationId,
+            threadId: boundedTrimmedString(request.data.threadId, "threadId", 160, false),
+            senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
+            senderDisplayName: boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
+            text,
+            modelId: requestedModelId,
+            attachmentIds: sanitizedAttachmentIds(request.data.attachmentIds),
+            createdAt: now,
+            schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+          }),
+        );
       });
       return { id: eventId, sequence };
     },

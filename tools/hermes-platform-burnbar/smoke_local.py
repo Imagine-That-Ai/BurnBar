@@ -36,19 +36,31 @@ class FakeBurnBarState:
         self.messages: list[dict[str, Any]] = []
         self.typing: list[dict[str, Any]] = []
         self.attachment_inits: list[dict[str, Any]] = []
+        self.runtime: list[dict[str, Any]] = []
         self.uploads: dict[str, bytes] = {}
         self.next_sequence = 1
 
-    def enqueue(self, text: str, destination_id: str = DEFAULT_HOME, sender_id: str = "sender_1") -> dict[str, Any]:
+    def enqueue(
+        self,
+        text: str,
+        destination_id: str = DEFAULT_HOME,
+        sender_id: str = "sender_1",
+        *,
+        kind: str = "message",
+        model_id: str | None = None,
+    ) -> dict[str, Any]:
         event = {
             "id": f"evt_{self.next_sequence}",
             "sequence": self.next_sequence,
+            "kind": kind,
             "destinationId": destination_id,
             "senderId": sender_id,
             "senderDisplayName": "Local Tester",
             "threadId": "thread_1",
             "text": text,
         }
+        if model_id:
+            event["modelId"] = model_id
         self.next_sequence += 1
         self.events.append(event)
         return event
@@ -90,6 +102,7 @@ def make_handler(state: FakeBurnBarState):
                         "messages": state.messages,
                         "typing": state.typing,
                         "attachmentInits": state.attachment_inits,
+                        "runtime": state.runtime,
                         "uploads": {key: len(value) for key, value in state.uploads.items()},
                     },
                 )
@@ -117,7 +130,11 @@ def make_handler(state: FakeBurnBarState):
             if self.path == "/__test/enqueue":
                 body = self._read_json()
                 text = str(body.get("text") or "hello from fake BurnBar")
-                event = state.enqueue(text=text)
+                event = state.enqueue(
+                    text=text,
+                    kind=str(body.get("kind") or "message"),
+                    model_id=body.get("modelId"),
+                )
                 self._json(200, {"event": event})
                 return
             if self.path == "/__test/reset":
@@ -134,6 +151,10 @@ def make_handler(state: FakeBurnBarState):
                 return
             if self.path == "/v1/hermes-gateway/typing":
                 state.typing.append(body)
+                self._json(200, {"success": True})
+                return
+            if self.path == "/v1/hermes-gateway/runtime":
+                state.runtime.append(body)
                 self._json(200, {"success": True})
                 return
             if self.path == "/v1/hermes-gateway/attachments/init":
@@ -200,6 +221,7 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
     server, thread, state = start_fake_server()
     base_url = f"http://127.0.0.1:{server.server_port}/v1/hermes-gateway"
     state.enqueue("hello hermes")
+    state.enqueue("/model minimax-m2.7-highspeed", kind="model_switch", model_id="minimax-m2.7-highspeed")
     cursor_dir = tempfile.TemporaryDirectory()
     module.CURSOR_FILE = Path(cursor_dir.name) / "burnbar_cursor.json"
 
@@ -224,6 +246,7 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
         await asyncio.sleep(1.2)
         assert received and received[0].text == "hello hermes"
         assert received[0].source.chat_id == DEFAULT_HOME
+        assert any(event.text == "/model minimax-m2.7-highspeed" for event in received)
 
         sent = await adapter.send(DEFAULT_HOME, "adapter reply", metadata={"thread_id": "thread_1"})
         assert sent.success and sent.message_id == "msg_1"
@@ -266,6 +289,7 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
         assert state.uploads["/upload/att_2"] == b"artifact body"
         assert state.uploads["/upload/att_3"] == b"artifact body"
         assert state.typing == [{"destinationId": DEFAULT_HOME, "threadId": "thread_1"}]
+        assert state.runtime, "adapter did not publish runtime model status"
 
         return {
             "ok": True,

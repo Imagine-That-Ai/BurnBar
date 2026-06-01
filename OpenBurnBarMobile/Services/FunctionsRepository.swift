@@ -94,12 +94,55 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     let scopes: [String]
     let homeDestinationId: String
     let lastSeenAt: String?
+    let runtimeModelId: String?
+    let runtimeProviderId: String?
+    let runtimeModelOptions: [HermesGatewayModelOptionRecord]
+    let runtimeUpdatedAt: String?
     let revokedAt: String?
     let createdAt: String
     let updatedAt: String
     let schemaVersion: Int
 
     var isActive: Bool { status == "active" }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case status
+        case tokenPreview
+        case scopes
+        case homeDestinationId
+        case lastSeenAt
+        case runtimeModelId
+        case runtimeProviderId
+        case runtimeModelOptions
+        case runtimeUpdatedAt
+        case revokedAt
+        case createdAt
+        case updatedAt
+        case schemaVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            displayName: try container.decode(String.self, forKey: .displayName),
+            status: try container.decode(String.self, forKey: .status),
+            tokenPreview: try container.decode(String.self, forKey: .tokenPreview),
+            scopes: try container.decodeIfPresent([String].self, forKey: .scopes) ?? [],
+            homeDestinationId: try container.decode(String.self, forKey: .homeDestinationId),
+            lastSeenAt: try container.decodeIfPresent(String.self, forKey: .lastSeenAt),
+            revokedAt: try container.decodeIfPresent(String.self, forKey: .revokedAt),
+            createdAt: try container.decode(String.self, forKey: .createdAt),
+            updatedAt: try container.decode(String.self, forKey: .updatedAt),
+            schemaVersion: try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1,
+            runtimeModelId: try container.decodeIfPresent(String.self, forKey: .runtimeModelId),
+            runtimeProviderId: try container.decodeIfPresent(String.self, forKey: .runtimeProviderId),
+            runtimeModelOptions: try container.decodeIfPresent([HermesGatewayModelOptionRecord].self, forKey: .runtimeModelOptions) ?? [],
+            runtimeUpdatedAt: try container.decodeIfPresent(String.self, forKey: .runtimeUpdatedAt)
+        )
+    }
 
     init(
         id: String,
@@ -112,7 +155,11 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         revokedAt: String?,
         createdAt: String,
         updatedAt: String,
-        schemaVersion: Int
+        schemaVersion: Int,
+        runtimeModelId: String? = nil,
+        runtimeProviderId: String? = nil,
+        runtimeModelOptions: [HermesGatewayModelOptionRecord] = [],
+        runtimeUpdatedAt: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -121,6 +168,10 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         self.scopes = scopes
         self.homeDestinationId = homeDestinationId
         self.lastSeenAt = lastSeenAt
+        self.runtimeModelId = runtimeModelId
+        self.runtimeProviderId = runtimeProviderId
+        self.runtimeModelOptions = runtimeModelOptions
+        self.runtimeUpdatedAt = runtimeUpdatedAt
         self.revokedAt = revokedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -150,7 +201,11 @@ extension HermesGatewayClientRecord {
             revokedAt: Self.string(data["revokedAt"]),
             createdAt: createdAt,
             updatedAt: updatedAt,
-            schemaVersion: (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1
+            schemaVersion: (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1,
+            runtimeModelId: Self.string(data["runtimeModelId"]),
+            runtimeProviderId: Self.string(data["runtimeProviderId"]),
+            runtimeModelOptions: Self.modelOptions(data["runtimeModelOptions"]),
+            runtimeUpdatedAt: Self.string(data["runtimeUpdatedAt"])
         )
     }
 
@@ -182,6 +237,86 @@ extension HermesGatewayClientRecord {
         default:
             return nil
         }
+    }
+
+    private static func modelOptions(_ raw: Any?) -> [HermesGatewayModelOptionRecord] {
+        (raw as? [Any])?.compactMap { item in
+            guard let data = item as? [String: Any] else { return nil }
+            return HermesGatewayModelOptionRecord(data: data)
+        } ?? []
+    }
+}
+
+struct HermesGatewayModelOptionRecord: Decodable, Hashable, Sendable {
+    let providerId: String
+    let providerName: String
+    let modelId: String
+    let displayName: String
+
+    private enum CodingKeys: String, CodingKey {
+        case providerId
+        case providerName
+        case modelId
+        case displayName
+    }
+
+    init(providerId: String, providerName: String, modelId: String, displayName: String) {
+        self.providerId = providerId
+        self.providerName = providerName
+        self.modelId = modelId
+        self.displayName = displayName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let modelId = try container.decode(String.self, forKey: .modelId)
+        let providerId = Self.nonEmpty(try container.decodeIfPresent(String.self, forKey: .providerId)) ?? "hermes"
+        self.init(
+            providerId: providerId,
+            providerName: Self.nonEmpty(try container.decodeIfPresent(String.self, forKey: .providerName)) ?? providerId,
+            modelId: modelId,
+            displayName: Self.nonEmpty(try container.decodeIfPresent(String.self, forKey: .displayName)) ?? modelId
+        )
+    }
+
+    init?(data: [String: Any]) {
+        guard let modelId = Self.string(data["modelId"]) else { return nil }
+        let providerId = Self.string(data["providerId"]) ?? "hermes"
+        self.init(
+            providerId: providerId,
+            providerName: Self.string(data["providerName"]) ?? providerId,
+            modelId: modelId,
+            displayName: Self.string(data["displayName"]) ?? modelId
+        )
+    }
+
+    var hermesRuntimeOption: HermesRuntimeModelOption {
+        HermesRuntimeModelOption(
+            providerID: providerId,
+            providerName: providerName,
+            modelID: modelId,
+            displayName: displayName,
+            sourceKind: "burnbar-cloud-gateway",
+            routeEligible: true
+        )
+    }
+
+    private static func string(_ raw: Any?) -> String? {
+        switch raw {
+        case let value as String where !value.isEmpty:
+            return value
+        case let value as NSString where value.length > 0:
+            return value as String
+        case let value as NSNumber:
+            return value.stringValue
+        default:
+            return nil
+        }
+    }
+
+    private static func nonEmpty(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
     }
 }
 
@@ -779,6 +914,25 @@ final class FunctionsRepository {
             "senderId": "burnbar-ios",
             "senderDisplayName": senderDisplayName,
             "text": text
+        ])
+        return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
+    }
+
+    func enqueueHermesGatewayModelSwitch(
+        modelId: String,
+        destinationId: String = "burnbar:home",
+        threadId: String = "burnbar-ios-e2e",
+        senderDisplayName: String = "OpenBurnBar iPhone"
+    ) async throws -> HermesGatewayQueuedEvent {
+        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
+        let result = try await callable.call([
+            "destinationId": destinationId,
+            "threadId": threadId,
+            "senderId": "burnbar-ios",
+            "senderDisplayName": senderDisplayName,
+            "eventKind": "model_switch",
+            "modelId": modelId,
+            "text": "/model \(modelId)"
         ])
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }

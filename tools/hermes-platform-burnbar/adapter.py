@@ -38,6 +38,8 @@ DEFAULT_HOME_CHANNEL = "burnbar:home"
 MAX_MESSAGE_LENGTH = 64000
 CURSOR_FILE = Path(os.getenv("HERMES_BURNBAR_CURSOR_FILE", "~/.hermes/cache/burnbar_cursor.json")).expanduser()
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+MAX_RUNTIME_MODELS = 100
+RUNTIME_STATUS_INTERVAL_SECONDS = 30.0
 
 
 def _sha256(value: str) -> str:
@@ -215,6 +217,60 @@ async def _post_message(
     return response.json().get("message", {})
 
 
+def _runtime_status_payload() -> dict:
+    """Build a compact current-model/catalog status payload for BurnBar.
+
+    The gateway adapter sits inside Hermes Agent, so it can reuse Hermes'
+    own curated model inventory instead of inventing a second catalog. If the
+    local checkout is older or inventory probing fails, the adapter still
+    works as a messaging platform; it just skips catalog publication.
+    """
+    try:
+        from hermes_cli.inventory import build_models_payload, load_picker_context
+
+        payload = build_models_payload(load_picker_context(), max_models=MAX_RUNTIME_MODELS)
+    except Exception:
+        logger.debug("[%s] Could not build Hermes model inventory", "burnbar", exc_info=True)
+        return {}
+
+    options: list[dict[str, str]] = []
+    for provider in payload.get("providers") or []:
+        if not isinstance(provider, dict):
+            continue
+        provider_id = str(provider.get("slug") or provider.get("provider") or "hermes").strip() or "hermes"
+        provider_name = str(provider.get("label") or provider.get("name") or provider_id).strip() or provider_id
+        for model in provider.get("models") or []:
+            if isinstance(model, dict):
+                model_id = str(model.get("id") or model.get("model") or model.get("name") or "").strip()
+                display_name = str(model.get("display_name") or model.get("displayName") or model_id).strip()
+            else:
+                model_id = str(model or "").strip()
+                display_name = model_id
+            if not model_id:
+                continue
+            options.append(
+                {
+                    "providerId": provider_id[:80],
+                    "providerName": provider_name[:120],
+                    "modelId": model_id[:180],
+                    "displayName": (display_name or model_id)[:180],
+                }
+            )
+            if len(options) >= MAX_RUNTIME_MODELS:
+                break
+        if len(options) >= MAX_RUNTIME_MODELS:
+            break
+
+    current_model = str(payload.get("model") or "").strip()
+    current_provider = str(payload.get("provider") or "").strip()
+    body: dict[str, object] = {"modelOptions": options}
+    if current_model:
+        body["currentModelId"] = current_model[:180]
+    if current_provider:
+        body["currentProviderId"] = current_provider[:80]
+    return body
+
+
 class BurnBarAdapter(BasePlatformAdapter):
     """BurnBar Cloud adapter backed by the BurnBar Hermes Gateway API."""
 
@@ -228,6 +284,7 @@ class BurnBarAdapter(BasePlatformAdapter):
         self._client: Optional["httpx.AsyncClient"] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._cursor = _read_cursor()
+        self._last_runtime_publish = 0.0
 
     async def connect(self) -> bool:
         if not HTTPX_AVAILABLE:
@@ -244,6 +301,7 @@ class BurnBarAdapter(BasePlatformAdapter):
             logger.warning("[%s] BurnBar connection check failed: %s", self.name, exc)
             await self.disconnect()
             return False
+        await self._publish_runtime_status(force=True)
         self._poll_task = asyncio.create_task(self._poll_loop())
         self._mark_connected()
         logger.info("[%s] Connected to BurnBar Cloud", self.name)
@@ -278,6 +336,7 @@ class BurnBarAdapter(BasePlatformAdapter):
 
     async def _poll_once(self) -> None:
         assert self._client is not None
+        await self._publish_runtime_status()
         response = await self._client.get(
             f"{self._api_base}/events",
             headers=_headers(self._token),
@@ -293,7 +352,11 @@ class BurnBarAdapter(BasePlatformAdapter):
             _write_cursor(self._cursor)
 
     async def _handle_burnbar_event(self, raw: dict) -> None:
-        text = str(raw.get("text") or "").strip()
+        if raw.get("kind") == "model_switch":
+            model_id = str(raw.get("modelId") or "").strip()
+            text = f"/model {model_id}".strip()
+        else:
+            text = str(raw.get("text") or "").strip()
         if not text:
             return
         destination_id = str(raw.get("destinationId") or self._home_channel)
@@ -315,6 +378,27 @@ class BurnBarAdapter(BasePlatformAdapter):
             message_id=raw.get("id"),
         )
         await self.handle_message(event)
+
+    async def _publish_runtime_status(self, *, force: bool = False) -> None:
+        if self._client is None:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_runtime_publish < RUNTIME_STATUS_INTERVAL_SECONDS:
+            return
+        body = _runtime_status_payload()
+        if not body:
+            self._last_runtime_publish = now
+            return
+        try:
+            response = await self._client.post(
+                f"{self._api_base}/runtime",
+                headers=_headers(self._token),
+                json=body,
+            )
+            response.raise_for_status()
+            self._last_runtime_publish = now
+        except Exception:
+            logger.debug("[%s] BurnBar runtime status publish failed", self.name, exc_info=True)
 
     async def send(
         self,

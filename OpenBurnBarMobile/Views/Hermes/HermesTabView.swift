@@ -214,7 +214,7 @@ private struct HermesMobileSetupWizardView: View {
                     }
                     Spacer()
                 }
-                Text("For iPhone and iPad, Hermes works by talking to your Mac's local runtime directly on LAN/VPN or through your private Remote Relay.")
+                Text("For iPhone and iPad, Hermes works through BurnBar Cloud Gateway, your Mac Remote Relay, or a direct LAN/VPN Hermes URL.")
                     .font(MobileTheme.Typography.body)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -285,6 +285,8 @@ struct HermesConversationListView: View {
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @State private var gatewayStore = HermesGatewaySettingsStore()
+    @State private var pendingGatewayPlaceholderID: String?
+    @State private var pendingGatewayEventID: String?
     @State private var libraryStore = HermesCloudLibraryStore()
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedLibrarySession: HermesLibrarySession?
@@ -302,7 +304,8 @@ struct HermesConversationListView: View {
     }
     private var activeProvider: AgentProvider {
         let option = service.selectedModelOption
-        return option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
+            ?? gatewayStore.runtimeModelOptions.first(where: { $0.modelID == service.selectedModelID })
+        return option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? gatewayStore.runtimeModelId ?? service.selectedConnection.advertisedModel ?? "hermes")
     }
 
     private var connectionStatusText: String {
@@ -328,6 +331,18 @@ struct HermesConversationListView: View {
 
     private var effectiveHermesReachable: Bool {
         service.isReachable || !gatewayStore.onlineClients.isEmpty
+    }
+
+    private var shouldUseGatewayModelPicker: Bool {
+        !gatewayStore.activeClients.isEmpty && (!service.isReachable || service.modelOptions.isEmpty)
+    }
+
+    private var shouldSendViaBurnBarGateway: Bool {
+        !service.isReachable && !gatewayStore.activeClients.isEmpty
+    }
+
+    private var gatewaySenderDisplayName: String {
+        authStore?.currentIdentity?.displayName?.nilIfBlank ?? "OpenBurnBar iPhone"
     }
 
     private var conversationListBackgroundVisibility: MobileBackgroundVisibility {
@@ -377,11 +392,20 @@ struct HermesConversationListView: View {
             HermesRuntimeSheet(service: service)
         }
         .sheet(isPresented: $showModelPicker) {
-            AssistantModelPickerSheet(
-                runtime: .hermes,
-                hermesService: service,
-                piService: PiService.shared
-            )
+            if shouldUseGatewayModelPicker {
+                HermesGatewayModelPickerSheet(
+                    service: service,
+                    gatewayStore: gatewayStore,
+                    senderDisplayName: authStore?.currentIdentity?.displayName ?? "OpenBurnBar iPhone",
+                    threadId: service.selectedSessionID ?? HermesGatewayMessageResolver.defaultThreadID
+                )
+            } else {
+                AssistantModelPickerSheet(
+                    runtime: .hermes,
+                    hermesService: service,
+                    piService: PiService.shared
+                )
+            }
         }
         .sheet(item: $selectedLibrarySession) { session in
             HermesLibraryTranscriptSheet(store: libraryStore, session: session)
@@ -429,8 +453,7 @@ struct HermesConversationListView: View {
             reconcileSetupWizardCompletion()
         }
         .task(id: authStore?.currentIdentity?.uid) {
-            gatewayStore.startGatewayListening(uid: authStore?.currentIdentity?.uid)
-            await gatewayStore.refresh(isSignedIn: authStore?.state.isSignedIn == true)
+            await refreshGatewayForCurrentAuthState()
         }
         // Pending-prompt consumer — picks up prompts stashed by the
         // "Ask Hermes" widget chip AppIntent or a `burnbar://hermes?prompt=…`
@@ -447,9 +470,10 @@ struct HermesConversationListView: View {
         .onDisappear {
             gatewayStore.stopGatewayListening()
         }
-        .onChange(of: authStore?.state.isSignedIn) { _, isSignedIn in
-            gatewayStore.startGatewayListening(uid: isSignedIn == true ? authStore?.currentIdentity?.uid : nil)
-            Task { await gatewayStore.refresh(isSignedIn: isSignedIn == true) }
+        .onChange(of: authStore?.state.isSignedIn) { _, _ in
+            Task { @MainActor in
+                await refreshGatewayForCurrentAuthState()
+            }
         }
         .onChange(of: service.isReachable) { _, _ in
             reconcileSetupWizardCompletion()
@@ -462,6 +486,9 @@ struct HermesConversationListView: View {
         }
         .onChange(of: gatewayStore.onlineClients.count) { _, _ in
             reconcileSetupWizardCompletion()
+        }
+        .onChange(of: gatewayStore.latestReply?.id) { _, _ in
+            applyPendingGatewayReplyIfNeeded()
         }
     }
 
@@ -494,6 +521,18 @@ struct HermesConversationListView: View {
         showSetupWizard = false
     }
 
+    private func presentModelPicker() {
+        showModelPicker = true
+    }
+
+    @MainActor
+    private func refreshGatewayForCurrentAuthState() async {
+        let uid = authStore?.currentIdentity?.uid
+        let signedInState = authStore?.state.isSignedIn
+        gatewayStore.startGatewayListening(uid: uid)
+        await gatewayStore.refresh(isSignedIn: signedInState == true)
+    }
+
     @MainActor
     private func consumePendingHermesPrompt() async {
         guard let pending = AssistantPendingPrompt.shared.consume(.hermes),
@@ -502,7 +541,44 @@ struct HermesConversationListView: View {
         // Small delay so the conversation list has settled before we
         // create a new session and start streaming.
         try? await Task.sleep(nanoseconds: 250_000_000)
-        service.sendMessage(pending)
+        if shouldSendViaBurnBarGateway {
+            sendViaBurnBarGateway(pending)
+        } else {
+            service.sendMessage(pending)
+        }
+    }
+
+    private func sendViaBurnBarGateway(_ text: String) {
+        let threadID = service.ensureBurnBarGatewayThreadID()
+        let placeholderID = service.beginBurnBarGatewayTurn(displayText: text, wireText: text)
+        pendingGatewayPlaceholderID = placeholderID
+        Task { @MainActor in
+            guard let event = await gatewayStore.sendGatewayMessage(
+                text: text,
+                senderDisplayName: gatewaySenderDisplayName,
+                threadId: threadID
+            ) else {
+                service.failBurnBarGatewayTurn(
+                    placeholderID: placeholderID,
+                    message: gatewayStore.noticeText ?? "Could not send through BurnBar Cloud Gateway."
+                )
+                pendingGatewayPlaceholderID = nil
+                pendingGatewayEventID = nil
+                return
+            }
+            pendingGatewayEventID = event.id
+        }
+    }
+
+    private func applyPendingGatewayReplyIfNeeded() {
+        guard let placeholderID = pendingGatewayPlaceholderID,
+              let reply = gatewayStore.latestReply else { return }
+        if let pendingGatewayEventID, reply.replyToEventId != pendingGatewayEventID {
+            return
+        }
+        service.finishBurnBarGatewayTurn(placeholderID: placeholderID, reply: reply)
+        pendingGatewayPlaceholderID = nil
+        pendingGatewayEventID = nil
     }
 
     // MARK: - Brand Header
@@ -512,7 +588,7 @@ struct HermesConversationListView: View {
         let snapshot = lens.snapshot(for: .hermes)
         return HStack(spacing: 12) {
             Button {
-                showModelPicker = true
+                presentModelPicker()
             } label: {
                 ZStack(alignment: .bottomTrailing) {
                     UnifiedProviderLogoView(provider: hermesAgentProvider(for: "hermes"), size: 34)
@@ -556,7 +632,7 @@ struct HermesConversationListView: View {
                         Label("Connections", systemImage: "network")
                     }
                     Button {
-                        showModelPicker = true
+                        presentModelPicker()
                     } label: {
                         Label("Switch model", systemImage: "cpu")
                     }
@@ -1212,6 +1288,8 @@ struct HermesChatView: View {
     @State private var permissionGrantThreadID: String?
     @State private var didAutoPresentSetupWizard = false
     @State private var gatewayStore = HermesGatewaySettingsStore()
+    @State private var pendingGatewayPlaceholderID: String?
+    @State private var pendingGatewayEventID: String?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
     @AppStorage("chatViewMode") private var chatViewMode: ChatViewMode = .agent
@@ -1401,11 +1479,20 @@ struct HermesChatView: View {
             HermesRuntimeSheet(service: service)
         }
         .sheet(isPresented: $showModelPicker) {
-            AssistantModelPickerSheet(
-                runtime: .hermes,
-                hermesService: service,
-                piService: PiService.shared
-            )
+            if shouldUseGatewayModelPicker {
+                HermesGatewayModelPickerSheet(
+                    service: service,
+                    gatewayStore: gatewayStore,
+                    senderDisplayName: gatewaySenderDisplayName,
+                    threadId: service.selectedSessionID ?? HermesGatewayMessageResolver.defaultThreadID
+                )
+            } else {
+                AssistantModelPickerSheet(
+                    runtime: .hermes,
+                    hermesService: service,
+                    piService: PiService.shared
+                )
+            }
         }
         .sheet(isPresented: permissionGrantSheetPresented) {
             if let threadID = permissionGrantThreadID {
@@ -1462,8 +1549,7 @@ struct HermesChatView: View {
             await consumePendingHermesPromptIfNeeded()
         }
         .task(id: authStore?.currentIdentity?.uid) {
-            gatewayStore.startGatewayListening(uid: authStore?.currentIdentity?.uid)
-            await gatewayStore.refresh(isSignedIn: authStore?.state.isSignedIn == true)
+            await refreshGatewayForCurrentAuthState()
         }
         .task {
             // Idempotent: refreshRuntime coalesces concurrent callers and loads
@@ -1499,9 +1585,10 @@ struct HermesChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             reloadTextExpansionSnippets()
         }
-        .onChange(of: authStore?.state.isSignedIn) { _, isSignedIn in
-            gatewayStore.startGatewayListening(uid: isSignedIn == true ? authStore?.currentIdentity?.uid : nil)
-            Task { await gatewayStore.refresh(isSignedIn: isSignedIn == true) }
+        .onChange(of: authStore?.state.isSignedIn) { _, _ in
+            Task { @MainActor in
+                await refreshGatewayForCurrentAuthState()
+            }
         }
         .onChange(of: service.isReachable) { _, _ in
             reconcileSetupWizardCompletion()
@@ -1514,6 +1601,9 @@ struct HermesChatView: View {
         }
         .onChange(of: gatewayStore.onlineClients.count) { _, _ in
             reconcileSetupWizardCompletion()
+        }
+        .onChange(of: gatewayStore.latestReply?.id) { _, _ in
+            applyPendingGatewayReplyIfNeeded()
         }
     }
 
@@ -1658,6 +1748,18 @@ struct HermesChatView: View {
         showSetupWizard = false
     }
 
+    private func presentModelPicker() {
+        showModelPicker = true
+    }
+
+    @MainActor
+    private func refreshGatewayForCurrentAuthState() async {
+        let uid = authStore?.currentIdentity?.uid
+        let signedInState = authStore?.state.isSignedIn
+        gatewayStore.startGatewayListening(uid: uid)
+        await gatewayStore.refresh(isSignedIn: signedInState == true)
+    }
+
     // MARK: - Route Binding
 
     private func applyRoute() async {
@@ -1693,7 +1795,16 @@ struct HermesChatView: View {
               !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
         try? await Task.sleep(nanoseconds: 250_000_000)
-        service.sendMessage(pending)
+        let commandBias = wikiCommandContext(for: pending)
+        let context = mergedContextPrompt(
+            dashboardContext: dashboardContextPrompt,
+            commandBias: commandBias
+        )
+        if shouldSendViaBurnBarGateway {
+            sendViaBurnBarGateway(pending, context: context)
+        } else {
+            service.sendMessage(pending, context: context)
+        }
     }
 
     private var navigationTitleText: String {
@@ -1707,7 +1818,8 @@ struct HermesChatView: View {
 
     private var activeProvider: AgentProvider {
         let option = service.selectedModelOption
-        return option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
+            ?? gatewayStore.runtimeModelOptions.first(where: { $0.modelID == service.selectedModelID })
+        return option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? gatewayStore.runtimeModelId ?? service.selectedConnection.advertisedModel ?? "hermes")
     }
 
     private var connectionStatusText: String {
@@ -1733,6 +1845,18 @@ struct HermesChatView: View {
 
     private var effectiveHermesReachable: Bool {
         service.isReachable || !gatewayStore.onlineClients.isEmpty
+    }
+
+    private var shouldUseGatewayModelPicker: Bool {
+        !gatewayStore.activeClients.isEmpty && (!service.isReachable || service.modelOptions.isEmpty)
+    }
+
+    private var shouldSendViaBurnBarGateway: Bool {
+        chatViewMode != .cli && !service.isReachable && !gatewayStore.activeClients.isEmpty
+    }
+
+    private var gatewaySenderDisplayName: String {
+        authStore?.currentIdentity?.displayName?.nilIfBlank ?? "OpenBurnBar iPhone"
     }
 
     @ViewBuilder
@@ -1776,7 +1900,7 @@ struct HermesChatView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Button {
-                    showModelPicker = true
+                    presentModelPicker()
                 } label: {
                     modelSelectorChip
                 }
@@ -1813,8 +1937,10 @@ struct HermesChatView: View {
 
     private var modelSelectorChip: some View {
         let option = service.selectedModelOption
-        let label = option?.displayName ?? service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Choose model"
-        let provider = option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
+            ?? gatewayStore.runtimeModelOptions.first(where: { $0.modelID == service.selectedModelID })
+        let fallbackModel = service.selectedModelID ?? gatewayStore.runtimeModelId ?? service.selectedConnection.advertisedModel
+        let label = option?.displayName ?? fallbackModel ?? "Choose model"
+        let provider = option?.agentProvider ?? hermesAgentProvider(for: fallbackModel ?? "hermes")
         return HStack(spacing: 6) {
             UnifiedProviderLogoView(provider: provider, size: 18, useFallbackColor: true)
             VStack(alignment: .leading, spacing: 1) {
@@ -2085,6 +2211,14 @@ struct HermesChatView: View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = pendingAttachments
         guard (!trimmed.isEmpty || !attachments.isEmpty), !service.isStreaming else { return }
+        if shouldSendViaBurnBarGateway, !attachments.isEmpty {
+            HapticBus.threshold()
+            service.failBurnBarGatewayTurn(
+                placeholderID: nil,
+                message: "BurnBar Cloud Gateway chat currently supports text messages from iPhone. Remove the attachment or switch to a direct Hermes host/Remote Relay for this turn."
+            )
+            return
+        }
         HapticBus.send()
         input = ""
         pendingAttachments = []
@@ -2094,11 +2228,60 @@ struct HermesChatView: View {
             dashboardContext: dashboardContextPrompt,
             commandBias: commandBias
         )
-        if chatViewMode == .cli {
+        if shouldSendViaBurnBarGateway {
+            sendViaBurnBarGateway(trimmed, context: context)
+        } else if chatViewMode == .cli {
             service.sendVisibleCLIMessage(trimmed, context: context, attachments: attachments)
         } else {
             service.sendMessage(trimmed, context: context, attachments: attachments)
         }
+    }
+
+    private func sendViaBurnBarGateway(_ text: String, context: String?) {
+        let wireText = gatewayWireText(userText: text, context: context)
+        let threadID = service.ensureBurnBarGatewayThreadID()
+        let placeholderID = service.beginBurnBarGatewayTurn(displayText: text, wireText: wireText)
+        pendingGatewayPlaceholderID = placeholderID
+        Task { @MainActor in
+            guard let event = await gatewayStore.sendGatewayMessage(
+                text: wireText,
+                senderDisplayName: gatewaySenderDisplayName,
+                threadId: threadID
+            ) else {
+                service.failBurnBarGatewayTurn(
+                    placeholderID: placeholderID,
+                    message: gatewayStore.noticeText ?? "Could not send through BurnBar Cloud Gateway."
+                )
+                pendingGatewayPlaceholderID = nil
+                pendingGatewayEventID = nil
+                return
+            }
+            pendingGatewayEventID = event.id
+        }
+    }
+
+    private func gatewayWireText(userText: String, context: String?) -> String {
+        guard let context = context?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !context.isEmpty else {
+            return userText
+        }
+        return """
+        \(context)
+
+        User message:
+        \(userText)
+        """
+    }
+
+    private func applyPendingGatewayReplyIfNeeded() {
+        guard let placeholderID = pendingGatewayPlaceholderID,
+              let reply = gatewayStore.latestReply else { return }
+        if let pendingGatewayEventID, reply.replyToEventId != pendingGatewayEventID {
+            return
+        }
+        service.finishBurnBarGatewayTurn(placeholderID: placeholderID, reply: reply)
+        pendingGatewayPlaceholderID = nil
+        pendingGatewayEventID = nil
     }
 
     private var textExpansionThreadID: String? {
@@ -2694,6 +2877,168 @@ private struct HermesConnectionSheet: View {
 }
 
 // MARK: - Hermes Runtime Sheet
+
+struct HermesGatewayModelPickerSheet: View {
+    @Bindable var service: HermesService
+    @Bindable var gatewayStore: HermesGatewaySettingsStore
+    let senderDisplayName: String
+    let threadId: String
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var customModelID = ""
+
+    private var options: [HermesRuntimeModelOption] {
+        gatewayStore.runtimeModelOptions
+    }
+
+    private var currentModelText: String {
+        service.selectedModelID
+            ?? gatewayStore.runtimeModelId
+            ?? "Hermes default"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AuroraBackdrop(density: .subtle)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        statusCard
+                        customModelCard
+                        modelListCard
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Gateway Model")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var statusCard: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+            HStack(spacing: 12) {
+                Image(systemName: gatewayStore.onlineClients.isEmpty ? "link.circle" : "checkmark.seal.fill")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(gatewayStore.onlineClients.isEmpty ? MobileTheme.warning : MobileTheme.success)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle()
+                            .fill((gatewayStore.onlineClients.isEmpty ? MobileTheme.warning : MobileTheme.success).opacity(0.12))
+                    )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(currentModelText)
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.bold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .lineLimit(2)
+                    Text("Switches are sent to Hermes through BurnBar Cloud and apply before the next queued message in this conversation.")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var customModelCard: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Exact model id", systemImage: "terminal")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                TextField("minimax-m2.7-highspeed", text: $customModelID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 11)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(MobileTheme.Colors.surfaceElevated.opacity(0.7))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(MobileTheme.Colors.border.opacity(0.5), lineWidth: 0.7)
+                    )
+                    .onSubmit {
+                        Task { await switchModel(customModelID) }
+                    }
+
+                Button {
+                    Task { await switchModel(customModelID) }
+                } label: {
+                    Label(gatewayStore.isSwitchingModel ? "Switching" : "Switch Gateway Model", systemImage: "arrow.left.arrow.right.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.aurora(.hermes, fullWidth: true))
+                .disabled(gatewayStore.isSwitchingModel || customModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modelListCard: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Published by Gateway", systemImage: "cpu")
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    Spacer()
+                    Text("\(options.count)")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+
+                if options.isEmpty {
+                    Text("Hermes has not published a model catalog yet. Restart the gateway after this update, or type an exact model id above.")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(options) { option in
+                        HermesModelPickerRow(
+                            option: option,
+                            isSelected: service.selectedModelID == option.modelID || gatewayStore.runtimeModelId == option.modelID,
+                            isFavorite: service.isFavoriteModel(option)
+                        ) {
+                            Task { await switchModel(option.modelID) }
+                        } onToggleFavorite: {
+                            service.toggleFavoriteModel(option)
+                            HapticBus.toggle()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func switchModel(_ modelID: String) async {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let event = await gatewayStore.switchGatewayModel(
+            modelId: trimmed,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId
+        )
+        guard event != nil else {
+            HapticBus.threshold()
+            return
+        }
+        service.selectGatewayModelID(trimmed)
+        HapticBus.primaryAction()
+        dismiss()
+    }
+}
 
 private struct HermesRuntimeSheet: View {
     @Bindable var service: HermesService
