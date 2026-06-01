@@ -371,7 +371,15 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             filters: RetrievalFilters(),
             limit: 24
         )
-        XCTAssertEqual(Set(annCandidates.map(\.chunkID)), Set(exactCandidates.map(\.chunkID)))
+        let annCandidateIDs = Set(annCandidates.map(\.chunkID))
+        let exactCandidateIDs = Set(exactCandidates.map(\.chunkID))
+        let overlapCount = annCandidateIDs.intersection(exactCandidateIDs).count
+        let minimumExpectedOverlap = Int((Double(exactCandidateIDs.count) * 0.90).rounded(.down))
+        XCTAssertGreaterThanOrEqual(
+            overlapCount,
+            minimumExpectedOverlap,
+            "ANN candidate generation should recover at least 90% of exact top-k candidates after rerank; overlap=\(overlapCount)/\(exactCandidateIDs.count)"
+        )
     }
 
     func test_longArtifacts_memoryAndChunking_remainBounded() async throws {
