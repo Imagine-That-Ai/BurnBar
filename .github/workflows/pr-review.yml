@@ -50,10 +50,12 @@ jobs:
           LINES_ADDED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$1} END {print sum}')
           LINES_REMOVED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$2} END {print sum}')
 
-          echo "stats=$STATS" >> "$GITHUB_OUTPUT"
-          echo "files=$FILES" >> "$GITHUB_OUTPUT"
-          echo "added=$LINES_ADDED" >> "$GITHUB_OUTPUT"
-          echo "removed=$LINES_REMOVED" >> "$GITHUB_OUTPUT"
+          {
+            echo "stats=$STATS"
+            echo "files=$FILES"
+            echo "added=$LINES_ADDED"
+            echo "removed=$LINES_REMOVED"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run security-focused diff analysis
         id: security_scan
@@ -70,13 +72,13 @@ jobs:
           fi
 
           # Check for TODO/FIXME without issue references
-          NEW_TODOS=$(git diff "$BASE...$HEAD" | grep '^+' | grep -cE 'TODO|FIXME' || echo 0)
+          NEW_TODOS=$(git diff "$BASE...$HEAD" | grep -cE '^\+.*(TODO|FIXME)' || true)
           if [[ "$NEW_TODOS" -gt 0 ]]; then
             ISSUES="${ISSUES}\n- ${NEW_TODOS} new TODO/FIXME comment(s) added without issue references"
           fi
 
           # Check for force unwraps in Swift
-          NEW_FORCE=$(git diff "$BASE...$HEAD" | grep '^+' | grep -cE '!\.' || echo 0)
+          NEW_FORCE=$(git diff "$BASE...$HEAD" | grep -cE '^\+.*!\.' || true)
           if [[ "$NEW_FORCE" -gt 5 ]]; then
             ISSUES="${ISSUES}\n- ${NEW_FORCE} force-unwrap operator(s) added (consider using guard/if let)"
           fi
@@ -110,11 +112,14 @@ jobs:
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           # Check if any source files changed without corresponding tests
-          SRC_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -E '\.(swift|kt|ts)$' | grep -v -E '(test|spec|Test|Spec)' | wc -l | tr -d ' ')
-          TEST_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -E '(test|spec|Test|Spec)\.(swift|kt|ts)$' | wc -l | tr -d ' ')
+          SRC_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -cE '\.(swift|kt|ts)$' || true)
+          TEST_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -cE '(test|spec|Test|Spec)\.(swift|kt|ts)$' || true)
+          SRC_CHANGED=$((SRC_CHANGED - TEST_CHANGED))
 
-          echo "src_changed=$SRC_CHANGED" >> "$GITHUB_OUTPUT"
-          echo "test_changed=$TEST_CHANGED" >> "$GITHUB_OUTPUT"
+          {
+            echo "src_changed=$SRC_CHANGED"
+            echo "test_changed=$TEST_CHANGED"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Post review comment
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7

@@ -61,13 +61,15 @@ jobs:
       - name: Post summary
         if: always()
         run: |
-          echo "### Sentry -> GitHub Issue Sync" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Projects monitored:" >> "$GITHUB_STEP_SUMMARY"
-          echo "- openburnbar-macos (macOS/iOS app)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- openburnbar-functions (Cloud Functions)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- openburnbar-extension (VS Code extension)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- openburnbar-android (Android app)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- burnbar-website (landing site)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Lookback: ${{ inputs.lookback_hours || '4' }} hours" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Sentry -> GitHub Issue Sync"
+            echo ""
+            echo "Projects monitored:"
+            echo "- openburnbar-macos (macOS/iOS app)"
+            echo "- openburnbar-functions (Cloud Functions)"
+            echo "- openburnbar-extension (VS Code extension)"
+            echo "- openburnbar-android (Android app)"
+            echo "- burnbar-website (landing site)"
+            echo ""
+            echo "Lookback: ${{ inputs.lookback_hours || '4' }} hours"
+          } >> "$GITHUB_STEP_SUMMARY"
