@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 const DEFAULT_VSCODE_TEST_VERSION = "1.95.0";
+const DEFAULT_VSCODE_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 function resolveVSCodeVersion() {
   const requested = process.env.VSCODE_TEST_VERSION?.trim();
@@ -13,6 +14,20 @@ function resolveVSCodeVersion() {
   }
 
   return requested.startsWith("v") ? requested.slice(1) : requested;
+}
+
+function resolveVSCodeDownloadTimeout() {
+  const requested = process.env.VSCODE_TEST_DOWNLOAD_TIMEOUT_MS?.trim();
+  if (!requested) {
+    return DEFAULT_VSCODE_DOWNLOAD_TIMEOUT_MS;
+  }
+
+  const timeout = Number.parseInt(requested, 10);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new Error(`Invalid VSCODE_TEST_DOWNLOAD_TIMEOUT_MS: ${requested}`);
+  }
+
+  return timeout;
 }
 
 async function main() {
@@ -35,7 +50,10 @@ async function main() {
   try {
     // Always pass an explicit version to avoid flaky "stable releases" API lookups in CI.
     const vscodeVersion = resolveVSCodeVersion();
-    const downloadedExecutablePath = await downloadAndUnzipVSCode(vscodeVersion);
+    const downloadedExecutablePath = await downloadAndUnzipVSCode({
+      version: vscodeVersion,
+      timeout: resolveVSCodeDownloadTimeout()
+    });
     const vscodeExecutablePath = process.platform === "darwin"
       ? resolve(downloadedExecutablePath, "..", "..", "Resources", "app", "bin", "code")
       : downloadedExecutablePath;
