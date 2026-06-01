@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -106,6 +107,7 @@ internal data class CloudStoreScreenActions(
     val onRevoke: (RemoteMcpClientRecord) -> Unit,
 )
 
+internal const val CLOUD_STORE_LIST_TAG = "cloud-store.list"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -188,6 +190,7 @@ internal fun CloudStoreLazyContent(
         modifier =
         Modifier
             .fillMaxSize()
+            .testTag(CLOUD_STORE_LIST_TAG)
             .padding(innerPadding),
         contentPadding =
         PaddingValues(
@@ -218,14 +221,12 @@ internal fun LazyListScope.cloudStoreLazyListItems(
             CloudPlanGlassCard(priceText = state.priceText)
         }
     }
-    item {
-        CloudPaidTierCard(
-            isActive = state.isActive,
-            prices = state.productDetailsByID,
-            isLoading = state.isLoading,
-            onPurchase = onPurchase,
-        )
-    }
+    cloudPaidTierLazyItems(
+        isActive = state.isActive,
+        prices = state.productDetailsByID,
+        isLoading = state.isLoading,
+        onPurchase = onPurchase,
+    )
     item { CloudCapabilityLineup(isActive = state.isActive) }
     item {
         CloudRemoteMcpCard(
@@ -606,4 +607,3 @@ internal fun membershipStatusLine(expirationMs: Long?, purchaseMs: Long?): Strin
         else -> "Renews monthly"
     }
 }
-

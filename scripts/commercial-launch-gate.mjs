@@ -26,7 +26,8 @@ const LIVE_IOS_STATE = "READY_FOR_SALE";
 const LAUNCH_EVIDENCE_MANIFEST =
   process.env.OPENBURNBAR_LAUNCH_EVIDENCE_MANIFEST ||
   "launch-evidence/final-launch-evidence.json";
-const LEGACY_HOSTED_QUOTA_PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
+const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
+  "com.openburnbar.hostedQuotaSync.cloud.monthly";
 export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   cloudMonthly: "com.openburnbar.pro.monthly",
@@ -35,6 +36,14 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyAppleCloudProBundleMonthly: "com.openburnbar.proMax.bundle.monthly",
   cloudProAnnual: "com.openburnbar.proMax.annual",
   agentControlActions100: "com.openburnbar.agentControl.actions100",
+  flooRelay50GB: "com.openburnbar.floo.relay50gb",
+});
+export const GOOGLE_PLAY_PRODUCTS = Object.freeze({
+  cloudMonthly: "com.openburnbar.pro.monthly",
+  cloudAnnual: "com.openburnbar.pro.annual",
+  cloudProMonthly: "com.openburnbar.promax.v2.monthly",
+  cloudProAnnual: "com.openburnbar.promax.annual",
+  agentControlActions100: "com.openburnbar.agentcontrol.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
 });
 const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
@@ -60,7 +69,8 @@ const APP_STORE_PRODUCT_READY_STATES = new Set([
 ]);
 const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
 const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
-  process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME || "hermes-realtime-relay-redis-prod-secure";
+  process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME ||
+  "hermes-realtime-relay-redis-prod-secure";
 const REQUIRED_CODEQL_CHECKS = [
   "Analyze (swift)",
   "Analyze (javascript-typescript)",
@@ -146,14 +156,17 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
   BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
   BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
-  AGENT_CONTROL_100_ACTIONS_PRODUCT_ID: COMMERCIAL_PRODUCTS.agentControlActions100,
+  AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
+    COMMERCIAL_PRODUCTS.agentControlActions100,
   FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
-  GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudMonthly,
-  GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
-  GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
-  GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
-  GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID: COMMERCIAL_PRODUCTS.agentControlActions100,
-  GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
+  GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudMonthly,
+  GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudAnnual,
+  GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID:
+    GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
+  GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudProAnnual,
+  GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
+    GOOGLE_PLAY_PRODUCTS.agentControlActions100,
+  GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.flooRelay50GB,
 };
 const REQUIRED_COMMERCIAL_ENV_PRESENT = [
   "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
@@ -203,10 +216,17 @@ function firstJSON(text) {
   return JSON.parse(source.slice(start));
 }
 
-export function evaluateRequiredProductIDs(observedProductIDs, requiredProductIDs) {
-  const observed = [...new Set((observedProductIDs || []).filter(Boolean))].sort();
+export function evaluateRequiredProductIDs(
+  observedProductIDs,
+  requiredProductIDs,
+) {
+  const observed = [
+    ...new Set((observedProductIDs || []).filter(Boolean)),
+  ].sort();
   const observedSet = new Set(observed);
-  const missing = requiredProductIDs.filter((productID) => !observedSet.has(productID));
+  const missing = requiredProductIDs.filter(
+    (productID) => !observedSet.has(productID),
+  );
   return {
     ok: missing.length === 0,
     required: requiredProductIDs,
@@ -221,10 +241,14 @@ function appStoreProductIDsFromStatus(status) {
     if (typeof value === "string" && value.trim()) ids.push(value.trim());
   };
   push(status.subscription?.productId);
-  for (const item of status.subscriptions || []) push(item?.productId || item?.productID);
-  for (const item of status.inAppPurchases || []) push(item?.productId || item?.productID);
-  for (const item of status.products || []) push(item?.productId || item?.productID);
-  for (const item of status.commercialProducts || []) push(item?.productId || item?.productID);
+  for (const item of status.subscriptions || [])
+    push(item?.productId || item?.productID);
+  for (const item of status.inAppPurchases || [])
+    push(item?.productId || item?.productID);
+  for (const item of status.products || [])
+    push(item?.productId || item?.productID);
+  for (const item of status.commercialProducts || [])
+    push(item?.productId || item?.productID);
   return ids;
 }
 
@@ -238,7 +262,8 @@ export function evaluateAppStoreProductReadiness(status, requiredProductIDs) {
   const byProductID = new Map();
   for (const product of products) {
     const productId = product?.productId || product?.productID;
-    if (typeof productId === "string" && productId.trim()) byProductID.set(productId.trim(), product);
+    if (typeof productId === "string" && productId.trim())
+      byProductID.set(productId.trim(), product);
   }
   const checks = requiredProductIDs.map((productId) => {
     const product = byProductID.get(productId);
@@ -258,7 +283,11 @@ export function evaluateAppStoreProductReadiness(status, requiredProductIDs) {
   };
 }
 
-export function evaluateEnvRequirements(env, requiredValues, requiredPresent = []) {
+export function evaluateEnvRequirements(
+  env,
+  requiredValues,
+  requiredPresent = [],
+) {
   const valueChecks = Object.entries(requiredValues).map(([name, expected]) => {
     const actual = env[name] ?? null;
     if (typeof expected === "string" && expected.startsWith("alias:")) {
@@ -280,7 +309,9 @@ export function evaluateEnvRequirements(env, requiredValues, requiredPresent = [
     present: typeof env[name] === "string" && env[name].trim().length > 0,
   }));
   return {
-    ok: valueChecks.every((check) => check.ok) && presenceChecks.every((check) => check.ok),
+    ok:
+      valueChecks.every((check) => check.ok) &&
+      presenceChecks.every((check) => check.ok),
     valueChecks,
     presenceChecks,
   };
@@ -322,7 +353,9 @@ function secretEnv() {
       PROJECT,
     ]);
     if (!result.ok) {
-      throw new Error(`failed to read Firebase secret ${key}: ${result.stderr || result.stdout}`);
+      throw new Error(
+        `failed to read Firebase secret ${key}: ${result.stderr || result.stdout}`,
+      );
     }
     env[key] = result.stdout.trim();
   }
@@ -368,13 +401,15 @@ function checkAppStore() {
   const observedProductIDs = appStoreProductIDsFromStatus(status);
   const productCoverage = evaluateRequiredProductIDs(
     observedProductIDs,
-    REQUIRED_COMMERCIAL_PRODUCT_IDS
+    REQUIRED_COMMERCIAL_PRODUCT_IDS,
   );
   const productReadiness = evaluateAppStoreProductReadiness(
     status,
-    REQUIRED_COMMERCIAL_PRODUCT_IDS
+    REQUIRED_COMMERCIAL_PRODUCT_IDS,
   );
-  const legacyGrandfatherPresent = observedProductIDs.includes(LEGACY_HOSTED_QUOTA_PRODUCT_ID);
+  const legacyGrandfatherPresent = observedProductIDs.includes(
+    LEGACY_HOSTED_QUOTA_PRODUCT_ID,
+  );
   return {
     ok:
       manualRelease &&
@@ -382,8 +417,12 @@ function checkAppStore() {
       productCoverage.ok &&
       productReadiness.ok &&
       legacyGrandfatherPresent &&
-      ["WAITING_FOR_REVIEW", REQUIRED_IOS_STATE, LIVE_IOS_STATE].includes(state) &&
-      ["WAITING_FOR_REVIEW", "APPROVED", "READY_FOR_SALE"].includes(subscriptionState),
+      ["WAITING_FOR_REVIEW", REQUIRED_IOS_STATE, LIVE_IOS_STATE].includes(
+        state,
+      ) &&
+      ["WAITING_FOR_REVIEW", "APPROVED", "READY_FOR_SALE"].includes(
+        subscriptionState,
+      ),
     state,
     subscriptionState,
     manualRelease,
@@ -399,15 +438,19 @@ function checkAppStore() {
 function appStoreNotificationProof(environment) {
   const result = run(
     "node",
-    ["tools/app-store-connect/asc-api.js", "test-server-notifications", environment],
+    [
+      "tools/app-store-connect/asc-api.js",
+      "test-server-notifications",
+      environment,
+    ],
     {
       env: secretEnv(),
       timeout: 90_000,
-    }
+    },
   );
   const payload = result.stdout ? firstJSON(result.stdout) : null;
   const proof = payload?.results?.find(
-    (item) => item.environment?.toLowerCase() === environment.toLowerCase()
+    (item) => item.environment?.toLowerCase() === environment.toLowerCase(),
   );
   return {
     ok: result.ok && proof?.delivered === true,
@@ -417,7 +460,9 @@ function appStoreNotificationProof(environment) {
     delivered: proof?.delivered ?? false,
     firstSendAttemptResult: proof?.firstSendAttemptResult ?? null,
     sendAttempts: proof?.sendAttempts ?? [],
-    error: proof?.error || (result.ok ? undefined : result.stderr || result.stdout || result.error),
+    error:
+      proof?.error ||
+      (result.ok ? undefined : result.stderr || result.stdout || result.error),
   };
 }
 
@@ -429,7 +474,8 @@ function checkAppStoreServerNotifications(appStore) {
     : {
         ok: true,
         skipped: true,
-        reason: "Production notification proof is required after App Store release.",
+        reason:
+          "Production notification proof is required after App Store release.",
       };
   return {
     ok: sandbox.ok && production.ok,
@@ -458,7 +504,8 @@ function checkFirebaseAppCheckEnforcement() {
   if (!projectNumber.ok) {
     return {
       ok: false,
-      error: projectNumber.stderr || projectNumber.stdout || projectNumber.error,
+      error:
+        projectNumber.stderr || projectNumber.stdout || projectNumber.error,
     };
   }
 
@@ -468,23 +515,27 @@ function checkFirebaseAppCheckEnforcement() {
   }
 
   const serviceName = `projects/${projectNumber.stdout.trim()}/services/firestore.googleapis.com`;
-  const result = run("curl", [
-    "-fsS",
-    "--connect-timeout",
-    "15",
-    "--max-time",
-    "45",
-    "--retry",
-    "2",
-    "--retry-delay",
-    "2",
-    "--retry-all-errors",
-    "-H",
-    `Authorization: Bearer ${token.stdout.trim()}`,
-    "-H",
-    `x-goog-user-project: ${PROJECT}`,
-    `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
-  ], { timeout: 180_000 });
+  const result = run(
+    "curl",
+    [
+      "-fsS",
+      "--connect-timeout",
+      "15",
+      "--max-time",
+      "45",
+      "--retry",
+      "2",
+      "--retry-delay",
+      "2",
+      "--retry-all-errors",
+      "-H",
+      `Authorization: Bearer ${token.stdout.trim()}`,
+      "-H",
+      `x-goog-user-project: ${PROJECT}`,
+      `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
+    ],
+    { timeout: 180_000 },
+  );
   if (!result.ok) {
     return {
       ok: false,
@@ -516,11 +567,15 @@ function checkProtection() {
       protection.enforce_admins?.enabled === true &&
       protection.allow_force_pushes?.enabled === false &&
       protection.allow_deletions?.enabled === false &&
-      protection.required_pull_request_reviews?.required_approving_review_count === 1 &&
-      ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) => checks.includes(check)),
+      protection.required_pull_request_reviews
+        ?.required_approving_review_count === 1 &&
+      ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) =>
+        checks.includes(check),
+      ),
     requiredChecks: checks,
     reviewCount:
-      protection.required_pull_request_reviews?.required_approving_review_count ?? 0,
+      protection.required_pull_request_reviews
+        ?.required_approving_review_count ?? 0,
     adminsEnforced: protection.enforce_admins?.enabled === true,
     forcePushesAllowed: protection.allow_force_pushes?.enabled === true,
     deletionsAllowed: protection.allow_deletions?.enabled === true,
@@ -528,12 +583,11 @@ function checkProtection() {
 }
 
 function ghJSON(path, options = {}) {
-  const result = run("gh", [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    path,
-  ], options);
+  const result = run(
+    "gh",
+    ["api", "-H", "Accept: application/vnd.github+json", path],
+    options,
+  );
   if (!result.ok) {
     return { ok: false, error: result.stderr || result.stdout || result.error };
   }
@@ -549,12 +603,18 @@ function checkGitHubSecuritySettings() {
     REQUIRED_GITHUB_SECURITY_SETTINGS.map((name) => [
       name,
       settings[name]?.status === "enabled",
-    ])
+    ]),
   );
 
-  const codeScanningAlerts = ghJSON(`/repos/${REPO}/code-scanning/alerts?state=open&per_page=100`);
-  const secretScanningAlerts = ghJSON(`/repos/${REPO}/secret-scanning/alerts?state=open&per_page=100`);
-  const dependabotAlerts = ghJSON(`/repos/${REPO}/dependabot/alerts?state=open&per_page=100`);
+  const codeScanningAlerts = ghJSON(
+    `/repos/${REPO}/code-scanning/alerts?state=open&per_page=100`,
+  );
+  const secretScanningAlerts = ghJSON(
+    `/repos/${REPO}/secret-scanning/alerts?state=open&per_page=100`,
+  );
+  const dependabotAlerts = ghJSON(
+    `/repos/${REPO}/dependabot/alerts?state=open&per_page=100`,
+  );
 
   return {
     ok:
@@ -567,13 +627,21 @@ function checkGitHubSecuritySettings() {
       dependabotAlerts.value.length === 0,
     requiredSettings,
     openAlerts: {
-      codeScanning: codeScanningAlerts.ok ? codeScanningAlerts.value.length : null,
-      secretScanning: secretScanningAlerts.ok ? secretScanningAlerts.value.length : null,
+      codeScanning: codeScanningAlerts.ok
+        ? codeScanningAlerts.value.length
+        : null,
+      secretScanning: secretScanningAlerts.ok
+        ? secretScanningAlerts.value.length
+        : null,
       dependabot: dependabotAlerts.ok ? dependabotAlerts.value.length : null,
     },
     errors: {
-      codeScanning: codeScanningAlerts.ok ? undefined : codeScanningAlerts.error,
-      secretScanning: secretScanningAlerts.ok ? undefined : secretScanningAlerts.error,
+      codeScanning: codeScanningAlerts.ok
+        ? undefined
+        : codeScanningAlerts.error,
+      secretScanning: secretScanningAlerts.ok
+        ? undefined
+        : secretScanningAlerts.error,
       dependabot: dependabotAlerts.ok ? undefined : dependabotAlerts.error,
     },
   };
@@ -582,7 +650,10 @@ function checkGitHubSecuritySettings() {
 function checkLatestMergedPrGate() {
   const originMain = run("git", ["rev-parse", "origin/main"]);
   if (!originMain.ok) {
-    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+    return {
+      ok: false,
+      error: originMain.stderr || originMain.stdout || originMain.error,
+    };
   }
   const mainSha = originMain.stdout.trim();
   const pulls = run("gh", [
@@ -596,7 +667,12 @@ function checkLatestMergedPrGate() {
   if (!merged?.head?.sha) return { ok: false, error: "no merged PR found" };
 
   if (mainSha && merged.head.sha !== mainSha) {
-    const ancestor = run("git", ["merge-base", "--is-ancestor", merged.head.sha, mainSha]);
+    const ancestor = run("git", [
+      "merge-base",
+      "--is-ancestor",
+      merged.head.sha,
+      mainSha,
+    ]);
     if (ancestor.ok) {
       return {
         ok: true,
@@ -629,12 +705,15 @@ function checkLatestMergedPrGate() {
     "Accept: application/vnd.github+json",
     `/repos/${REPO}/commits/${merged.head.sha}/check-runs`,
   ]);
-  if (!runs.ok) return { ok: false, pr: merged.number, error: runs.stderr || runs.stdout };
+  if (!runs.ok)
+    return { ok: false, pr: merged.number, error: runs.stderr || runs.stdout };
   const checkRuns = JSON.parse(runs.stdout).check_runs || [];
   const required = checkRuns.find((check) => check.name === "openburnbar-pr");
   const functional = checkRuns.find((check) => check.name === "functional-qa");
   return {
-    ok: required?.conclusion === "success" && functional?.conclusion === "success",
+    ok:
+      required?.conclusion === "success" &&
+      functional?.conclusion === "success",
     pr: merged.number,
     headSha: merged.head.sha,
     openburnbarPr: required ? pickCheck(required) : null,
@@ -645,7 +724,10 @@ function checkLatestMergedPrGate() {
 function checkMainRequiredGate() {
   const originMain = run("git", ["rev-parse", "origin/main"]);
   if (!originMain.ok) {
-    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+    return {
+      ok: false,
+      error: originMain.stderr || originMain.stdout || originMain.error,
+    };
   }
   const sha = originMain.stdout.trim();
   const runs = run("gh", [
@@ -667,7 +749,10 @@ function checkMainRequiredGate() {
 function checkMainCodeQL() {
   const originMain = run("git", ["rev-parse", "origin/main"]);
   if (!originMain.ok) {
-    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+    return {
+      ok: false,
+      error: originMain.stderr || originMain.stdout || originMain.error,
+    };
   }
   const sha = originMain.stdout.trim();
   const runs = run("gh", [
@@ -684,11 +769,15 @@ function checkMainCodeQL() {
     const check = byName.get(name);
     return {
       name,
-      ...(check ? pickCheck(check) : { status: "missing", conclusion: null, completedAt: null }),
+      ...(check
+        ? pickCheck(check)
+        : { status: "missing", conclusion: null, completedAt: null }),
     };
   });
   return {
-    ok: checks.every((check) => check.status === "completed" && check.conclusion === "success"),
+    ok: checks.every(
+      (check) => check.status === "completed" && check.conclusion === "success",
+    ),
     sha,
     checks,
   };
@@ -716,17 +805,21 @@ function checkCloudRun() {
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
   const services = JSON.parse(result.stdout);
   const required = ["openburnbar-quota-runner"];
-  const byName = new Map(services.map((service) => [service.metadata?.name, service]));
+  const byName = new Map(
+    services.map((service) => [service.metadata?.name, service]),
+  );
   const serviceStates = required.map((name) => {
     const service = byName.get(name);
     const ready = (service?.status?.conditions || []).some(
-      (condition) => condition.type === "Ready" && condition.status === "True"
+      (condition) => condition.type === "Ready" && condition.status === "True",
     );
     return { name, ready, url: service?.status?.url || null };
   });
-  const retiredRelay = byName.get(RETIRED_HERMES_REALTIME_RELAY_SERVICE) || null;
+  const retiredRelay =
+    byName.get(RETIRED_HERMES_REALTIME_RELAY_SERVICE) || null;
   return {
-    ok: serviceStates.every((service) => service.ready) && retiredRelay === null,
+    ok:
+      serviceStates.every((service) => service.ready) && retiredRelay === null,
     services: serviceStates,
     retiredServices: [
       {
@@ -750,9 +843,12 @@ function checkRunnerReadyz() {
     REGION,
     "--format=value(status.url)",
   ]);
-  if (!describe.ok) return { ok: false, error: describe.stderr || describe.stdout };
+  if (!describe.ok)
+    return { ok: false, error: describe.stderr || describe.stdout };
   const url = describe.stdout.trim();
-  const curl = run("curl", ["-fsS", "-m", "10", `${url}/readyz`], { timeout: 15_000 });
+  const curl = run("curl", ["-fsS", "-m", "10", `${url}/readyz`], {
+    timeout: 15_000,
+  });
   return {
     ok: curl.ok,
     url,
@@ -775,7 +871,8 @@ function checkRedis() {
   ]);
   if (!result.ok) {
     const error = result.stderr || result.stdout || result.error || "";
-    const notFound = error.includes("NOT_FOUND") || error.includes("was not found");
+    const notFound =
+      error.includes("NOT_FOUND") || error.includes("was not found");
     return {
       ok: notFound,
       name: RETIRED_HERMES_REALTIME_REDIS_INSTANCE,
@@ -797,7 +894,8 @@ function checkRedis() {
     transitEncryptionMode: redis?.transitEncryptionMode || null,
     redisHost: redis?.host || null,
     retired: true,
-    error: "Retired Hermes realtime Redis exists; delete it before declaring the commercial launch gate clean.",
+    error:
+      "Retired Hermes realtime Redis exists; delete it before declaring the commercial launch gate clean.",
   };
 }
 
@@ -823,7 +921,9 @@ function checkFunctionHostedQuotaRuntime(fn) {
 
   const details = JSON.parse(result.stdout);
   const env = details.serviceConfig?.environmentVariables || {};
-  const secretEnvVarNames = (details.serviceConfig?.secretEnvironmentVariables || [])
+  const secretEnvVarNames = (
+    details.serviceConfig?.secretEnvironmentVariables || []
+  )
     .map((entry) => entry.key)
     .sort();
   let runnerURL;
@@ -833,18 +933,22 @@ function checkFunctionHostedQuotaRuntime(fn) {
     runnerURL = undefined;
   }
 
-  const envChecks = Object.entries(REQUIRED_HOSTED_QUOTA_ENV).map(([name, expected]) => ({
-    name,
-    ok: env[name] === expected,
-    actual: env[name] ?? null,
-    expected,
-  }));
+  const envChecks = Object.entries(REQUIRED_HOSTED_QUOTA_ENV).map(
+    ([name, expected]) => ({
+      name,
+      ok: env[name] === expected,
+      actual: env[name] ?? null,
+      expected,
+    }),
+  );
   const runnerURLCheck = {
     ok: runnerURL?.protocol === "https:",
     host: runnerURL?.host || null,
   };
   const runnerTokenCheck = {
-    ok: !fn.requiresRunnerToken || secretEnvVarNames.includes("HOSTED_QUOTA_RUNNER_TOKEN"),
+    ok:
+      !fn.requiresRunnerToken ||
+      secretEnvVarNames.includes("HOSTED_QUOTA_RUNNER_TOKEN"),
     required: fn.requiresRunnerToken,
     present: secretEnvVarNames.includes("HOSTED_QUOTA_RUNNER_TOKEN"),
   };
@@ -863,7 +967,9 @@ function checkFunctionHostedQuotaRuntime(fn) {
 }
 
 function checkHostedQuotaRuntime() {
-  const functions = REQUIRED_HOSTED_QUOTA_FUNCTIONS.map(checkFunctionHostedQuotaRuntime);
+  const functions = REQUIRED_HOSTED_QUOTA_FUNCTIONS.map(
+    checkFunctionHostedQuotaRuntime,
+  );
   const runner = run("gcloud", [
     "run",
     "services",
@@ -930,18 +1036,32 @@ function deployedFunctionEnvironment(functionName) {
 }
 
 function checkCommercialBillingRuntime() {
-  const checkout = deployedFunctionEnvironment("createStripeBurnBarProCheckoutSession");
-  const googlePlay = deployedFunctionEnvironment("verifyGooglePlayBurnBarProSubscription");
-  const googlePlayTopUp = deployedFunctionEnvironment("verifyGooglePlayCloudProTopUp");
+  const checkout = deployedFunctionEnvironment(
+    "createStripeBurnBarProCheckoutSession",
+  );
+  const googlePlay = deployedFunctionEnvironment(
+    "verifyGooglePlayBurnBarProSubscription",
+  );
+  const googlePlayTopUp = deployedFunctionEnvironment(
+    "verifyGooglePlayCloudProTopUp",
+  );
   const appStoreTopUp = deployedFunctionEnvironment("verifyCloudProTopUp");
   const webhook = deployedFunctionEnvironment("stripeBurnBarProWebhook");
 
-  const envSources = [checkout, googlePlay, googlePlayTopUp, appStoreTopUp].filter((source) => source.ok);
-  const mergedEnv = Object.assign({}, ...envSources.map((source) => source.env));
+  const envSources = [
+    checkout,
+    googlePlay,
+    googlePlayTopUp,
+    appStoreTopUp,
+  ].filter((source) => source.ok);
+  const mergedEnv = Object.assign(
+    {},
+    ...envSources.map((source) => source.env),
+  );
   const envRequirements = evaluateEnvRequirements(
     mergedEnv,
     REQUIRED_COMMERCIAL_ENV_VALUES,
-    REQUIRED_COMMERCIAL_ENV_PRESENT
+    REQUIRED_COMMERCIAL_ENV_PRESENT,
   );
 
   const stripeSecretNames = new Set([
@@ -965,7 +1085,13 @@ function checkCommercialBillingRuntime() {
       webhook.ok &&
       envRequirements.ok &&
       stripeSecrets.ok,
-    functions: { checkout, googlePlay, googlePlayTopUp, appStoreTopUp, webhook },
+    functions: {
+      checkout,
+      googlePlay,
+      googlePlayTopUp,
+      appStoreTopUp,
+      webhook,
+    },
     envRequirements,
     stripeSecrets,
   };
@@ -974,19 +1100,23 @@ function checkCommercialBillingRuntime() {
 function checkRemoteConfigCaps() {
   const tempDir = mkdtempSync(join(tmpdir(), "openburnbar-remote-config-"));
   const tempFile = join(tempDir, "remote-config.json");
-  const result = run("firebase", [
-    "remoteconfig:get",
-    "--project",
-    PROJECT,
-    "--output",
-    tempFile,
-  ], { timeout: 60_000 });
+  const result = run(
+    "firebase",
+    ["remoteconfig:get", "--project", PROJECT, "--output", tempFile],
+    { timeout: 60_000 },
+  );
   try {
     if (!result.ok) {
-      return { ok: false, error: result.stderr || result.stdout || result.error };
+      return {
+        ok: false,
+        error: result.stderr || result.stdout || result.error,
+      };
     }
     const template = JSON.parse(readFileSync(tempFile, "utf8"));
-    return evaluateRemoteConfigDefaults(template, REQUIRED_REMOTE_CONFIG_DEFAULTS);
+    return evaluateRemoteConfigDefaults(
+      template,
+      REQUIRED_REMOTE_CONFIG_DEFAULTS,
+    );
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
@@ -1004,7 +1134,9 @@ function checkFirebaseFunctionsInventory() {
   const ids = (payload.result || []).map((fn) => fn.id).sort();
   const idSet = new Set(ids);
   const missing = REQUIRED_FIREBASE_FUNCTIONS.filter((id) => !idSet.has(id));
-  const forbiddenPresent = FORBIDDEN_FIREBASE_FUNCTIONS.filter((id) => idSet.has(id));
+  const forbiddenPresent = FORBIDDEN_FIREBASE_FUNCTIONS.filter((id) =>
+    idSet.has(id),
+  );
   return {
     ok: missing.length === 0 && forbiddenPresent.length === 0,
     count: ids.length,
@@ -1073,12 +1205,16 @@ export function verdict(checks) {
   }
   const appStore = checks.appStore;
   if (appStore.state === "WAITING_FOR_REVIEW") {
-    return { status: "WAITING_ON_APPLE", reason: "Apple review is still pending." };
+    return {
+      status: "WAITING_ON_APPLE",
+      reason: "Apple review is still pending.",
+    };
   }
   if (appStore.state === REQUIRED_IOS_STATE) {
     return {
       status: "READY_FOR_MANUAL_RELEASE",
-      reason: "Run release-approved-ios with the exact confirmation token, then run live paid proof.",
+      reason:
+        "Run release-approved-ios with the exact confirmation token, then run live paid proof.",
       confirmation: `${appStore.versionString}:${appStore.versionId}`,
     };
   }
@@ -1093,21 +1229,27 @@ export function verdict(checks) {
     if (launchEvidence.publicRelease?.ok === true) {
       return {
         status: "READY_FOR_PUBLIC_RELEASE",
-        reason: "Canary evidence passed; publish public launch and final proof bundle.",
+        reason:
+          "Canary evidence passed; publish public launch and final proof bundle.",
       };
     }
     if (launchEvidence.paidProof?.ok === true) {
       return {
         status: "READY_FOR_CANARY",
-        reason: "Live paid proofs and cross-channel matrix are captured; start the controlled canary.",
+        reason:
+          "Live paid proofs and cross-channel matrix are captured; start the controlled canary.",
       };
     }
     return {
       status: "READY_FOR_LIVE_PAID_PROOF",
-      reason: "Run prove:paid-tier for Apple, Stripe, and Google Play Cloud/Cloud Pro users before canary.",
+      reason:
+        "Run prove:paid-tier for Apple, Stripe, and Google Play Cloud/Cloud Pro users before canary.",
     };
   }
-  return { status: "NO_GO", reason: `unhandled App Store state ${appStore.state}` };
+  return {
+    status: "NO_GO",
+    reason: `unhandled App Store state ${appStore.state}`,
+  };
 }
 
 async function main() {

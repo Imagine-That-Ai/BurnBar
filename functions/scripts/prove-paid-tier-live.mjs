@@ -27,9 +27,13 @@ export const PRODUCTS = Object.freeze({
   "cloud-pro": {
     entitlementID: "burnbar_pro_max",
     products: {
-      apple: ["com.openburnbar.proMax.v2.monthly", "com.openburnbar.proMax.annual", "com.openburnbar.proMax.bundle.monthly"],
+      apple: [
+        "com.openburnbar.proMax.v2.monthly",
+        "com.openburnbar.proMax.annual",
+        "com.openburnbar.proMax.bundle.monthly",
+      ],
       stripe: ["com.openburnbar.proMax.v2.monthly", "com.openburnbar.proMax.annual"],
-      google_play: ["com.openburnbar.proMax.v2.monthly", "com.openburnbar.proMax.annual"],
+      google_play: ["com.openburnbar.promax.v2.monthly", "com.openburnbar.promax.annual"],
     },
     requiredFeatures: [
       "hostedQuota",
@@ -91,10 +95,7 @@ export function parseArgs(argv) {
     tier: process.env.OPENBURNBAR_PROOF_TIER || "cloud",
     channel: process.env.OPENBURNBAR_PROOF_CHANNEL || "apple",
     project:
-      process.env.FIREBASE_PROJECT ||
-      process.env.GCLOUD_PROJECT ||
-      process.env.GOOGLE_CLOUD_PROJECT ||
-      "burnbar",
+      process.env.FIREBASE_PROJECT || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "burnbar",
     productID: process.env.OPENBURNBAR_PROOF_PRODUCT_ID || "",
     externalSubscriptionID: process.env.OPENBURNBAR_PROOF_EXTERNAL_SUBSCRIPTION_ID || "",
     purchaseTokenHash: process.env.OPENBURNBAR_PROOF_PURCHASE_TOKEN_HASH || "",

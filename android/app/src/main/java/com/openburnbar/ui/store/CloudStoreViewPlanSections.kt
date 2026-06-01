@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,6 +42,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -126,29 +128,196 @@ internal fun CloudPlanPriceRow(priceText: String) {
 
 @Composable
 internal fun CloudPaidTierCard(isActive: Boolean, prices: Map<String, HostedQuotaProductDetails>, isLoading: Boolean, onPurchase: (String) -> Unit) {
-    val products = HostedQuotaSubscriptionStore.STORE_PRODUCTS
-    val cloud = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION }
-    val cloudPro = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION }
-    val topUps = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP }
-    val hasPlayPrices = prices.isNotEmpty()
+    CloudPaidTierColumn(
+        sections = cloudPaidTierSections(),
+        prices = prices,
+        isActive = isActive,
+        isLoading = isLoading,
+        onPurchase = onPurchase,
+    )
+}
 
+internal fun LazyListScope.cloudPaidTierLazyItems(
+    isActive: Boolean,
+    prices: Map<String, HostedQuotaProductDetails>,
+    isLoading: Boolean,
+    onPurchase: (String) -> Unit,
+) {
+    val sections = cloudPaidTierSections()
+    item { CloudPaidTierHeaderCard(hasPlayPrices = prices.isNotEmpty()) }
+    if (sections.cloud.isNotEmpty()) {
+        item {
+            CloudTierPlanCard(
+                presentation =
+                TierPlanPresentation(
+                    label = "Cloud",
+                    title = "BurnBar Cloud",
+                    summary = "Quota sync, encrypted history, search, and memory across every device.",
+                    icon = Icons.Filled.Cloud,
+                    accent = CloudStorePal.ember,
+                    featureChips = listOf("Quota sync", "History", "Memory"),
+                ),
+                products = sections.cloud,
+                prices = prices,
+                enabled = !isLoading,
+                onPurchase = onPurchase,
+            )
+        }
+    }
+    if (sections.cloudPro.isNotEmpty()) {
+        item {
+            CloudTierPlanCard(
+                presentation =
+                TierPlanPresentation(
+                    label = "Cloud Pro",
+                    title = "BurnBar Cloud Pro",
+                    summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
+                    icon = Icons.Filled.AutoAwesome,
+                    accent = CloudStorePal.whimsy,
+                    featureChips = listOf("Floo", "Agent Control", "Relay"),
+                    featured = true,
+                ),
+                products = sections.cloudPro,
+                prices = prices,
+                enabled = !isLoading,
+                onPurchase = onPurchase,
+            )
+        }
+    }
+    if (isActive && sections.topUps.isNotEmpty()) {
+        item {
+            CloudTopUpPlanCard(
+                products = sections.topUps,
+                prices = prices,
+                enabled = !isLoading,
+                onPurchase = onPurchase,
+            )
+        }
+    }
+}
+
+internal fun cloudStorePurchaseTag(productID: String): String = "cloud-store.purchase.$productID"
+
+private data class CloudPaidTierSections(
+    val cloud: List<HostedQuotaStoreProduct>,
+    val cloudPro: List<HostedQuotaStoreProduct>,
+    val topUps: List<HostedQuotaStoreProduct>,
+)
+
+private fun cloudPaidTierSections(): CloudPaidTierSections {
+    val products = HostedQuotaSubscriptionStore.STORE_PRODUCTS
+    return CloudPaidTierSections(
+        cloud = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION },
+        cloudPro = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION },
+        topUps = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP },
+    )
+}
+
+@Composable
+private fun CloudPaidTierColumn(
+    sections: CloudPaidTierSections,
+    prices: Map<String, HostedQuotaProductDetails>,
+    isActive: Boolean,
+    isLoading: Boolean,
+    onPurchase: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CloudPaidTierHeaderCard(hasPlayPrices = prices.isNotEmpty())
+        CloudTierPlanCard(
+            presentation =
+            TierPlanPresentation(
+                label = "Cloud",
+                title = "BurnBar Cloud",
+                summary = "Quota sync, encrypted history, search, and memory across every device.",
+                icon = Icons.Filled.Cloud,
+                accent = CloudStorePal.ember,
+                featureChips = listOf("Quota sync", "History", "Memory"),
+            ),
+            products = sections.cloud,
+            prices = prices,
+            enabled = !isLoading,
+            onPurchase = onPurchase,
+        )
+        CloudTierPlanCard(
+            presentation =
+            TierPlanPresentation(
+                label = "Cloud Pro",
+                title = "BurnBar Cloud Pro",
+                summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
+                icon = Icons.Filled.AutoAwesome,
+                accent = CloudStorePal.whimsy,
+                featureChips = listOf("Floo", "Agent Control", "Relay"),
+                featured = true,
+            ),
+            products = sections.cloudPro,
+            prices = prices,
+            enabled = !isLoading,
+            onPurchase = onPurchase,
+        )
+        if (isActive) {
+            CloudTopUpPlanCard(
+                products = sections.topUps,
+                prices = prices,
+                enabled = !isLoading,
+                onPurchase = onPurchase,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudPaidTierHeaderCard(hasPlayPrices: Boolean) {
     AuroraGlassCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PlanCardHeader(hasPlayPrices)
-            CloudPaidTierPlans(
-                args =
-                CloudPaidTierPlansArgs(
-                    cloud = cloud,
-                    cloudPro = cloudPro,
-                    topUps = topUps,
-                    prices = prices,
-                    isActive = isActive,
-                    isLoading = isLoading,
-                    onPurchase = onPurchase,
-                ),
+            PlanCardHeader(hasPlayPrices = hasPlayPrices)
+            Text(
+                "Choose the Cloud plan or prepaid Cloud Pro capacity that fits this device.",
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = CloudStorePal.textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudTierPlanCard(
+    presentation: TierPlanPresentation,
+    products: List<HostedQuotaStoreProduct>,
+    prices: Map<String, HostedQuotaProductDetails>,
+    enabled: Boolean,
+    onPurchase: (String) -> Unit,
+) {
+    TierPlanCard(
+        presentation = presentation,
+        commerce =
+        TierPlanCommerce(
+            products = products,
+            prices = prices,
+            enabled = enabled,
+            onPurchase = onPurchase,
+        ),
+    )
+}
+
+@Composable
+private fun CloudTopUpPlanCard(
+    products: List<HostedQuotaStoreProduct>,
+    prices: Map<String, HostedQuotaProductDetails>,
+    enabled: Boolean,
+    onPurchase: (String) -> Unit,
+) {
+    if (products.isEmpty()) return
+    AuroraGlassCard(cornerRadius = 18) {
+        Box(modifier = Modifier.padding(16.dp)) {
+            TopUpPlanRail(
+                products = products,
+                prices = prices,
+                enabled = enabled,
+                onPurchase = onPurchase,
             )
         }
     }
@@ -353,7 +522,7 @@ internal fun TierPlanCardBody(
                     price = prices[option.product.id]?.formattedPrice ?: option.product.fallbackPrice,
                     accent = accent,
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag(cloudStorePurchaseTag(option.product.id)),
                     onClick = { onPurchase(option.product.id) },
                 )
             }
@@ -512,6 +681,7 @@ internal fun TopUpPlanRail(
                 icon = if (agentControl) Icons.Filled.Bolt else Icons.Filled.Wifi,
                 price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
                 enabled = enabled,
+                purchaseTestTag = cloudStorePurchaseTag(product.id),
                 onClick = { onPurchase(product.id) },
             )
         }
@@ -519,12 +689,21 @@ internal fun TopUpPlanRail(
 }
 
 @Composable
-internal fun TopUpPurchaseRow(title: String, detail: String, icon: ImageVector, price: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun TopUpPurchaseRow(
+    title: String,
+    detail: String,
+    icon: ImageVector,
+    price: String,
+    enabled: Boolean,
+    purchaseTestTag: String? = null,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier =
         Modifier
             .fillMaxWidth()
+            .then(if (purchaseTestTag == null) Modifier else Modifier.testTag(purchaseTestTag))
             .clip(shape)
             .background(CloudStorePal.amberDark.copy(alpha = 0.08f), shape)
             .border(0.7.dp, CloudStorePal.amberDark.copy(alpha = 0.22f), shape)

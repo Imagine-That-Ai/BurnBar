@@ -4,11 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  assertPaidTierEntitlement,
-  parseArgs,
-  selfTest,
-} from "./prove-paid-tier-live.mjs";
+import { assertPaidTierEntitlement, parseArgs, selfTest } from "./prove-paid-tier-live.mjs";
 
 const future = new Date(Date.now() + 86_400_000).toISOString();
 const past = new Date(Date.now() - 86_400_000).toISOString();
@@ -16,10 +12,7 @@ const past = new Date(Date.now() - 86_400_000).toISOString();
 assert.equal(selfTest().ok, true);
 assert.deepEqual(parseArgs(["--self-test"]).selfTest, true);
 assert.equal(parseArgs(["--uid", "u1", "--tier", "cloud-pro", "--channel", "stripe"]).requireAllowanceLedger, true);
-assert.equal(
-  parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple"]).requireAllowanceLedger,
-  false,
-);
+assert.equal(parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple"]).requireAllowanceLedger, false);
 
 {
   const proof = assertPaidTierEntitlement(
@@ -70,6 +63,29 @@ assert.equal(
     },
   );
   assert.equal(proof.externalSubscriptionIDHash.length, 64);
+}
+
+{
+  const proof = assertPaidTierEntitlement(
+    {
+      id: "burnbar_pro_max",
+      active: true,
+      productID: "com.openburnbar.promax.v2.monthly",
+      source: "google_play_verified",
+      environment: "Production",
+      expiresAt: future,
+      features: {
+        hostedQuota: true,
+        hostedLLM: true,
+        encryptedSessionLogBackup: true,
+        cloudConversationSearch: true,
+        floo: true,
+        agentControl: true,
+      },
+    },
+    { tier: "cloud-pro", channel: "google_play", environment: "Production", allowSandbox: false },
+  );
+  assert.equal(proof.productID, "com.openburnbar.promax.v2.monthly");
 }
 
 assert.throws(
