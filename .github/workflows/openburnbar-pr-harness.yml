@@ -458,7 +458,7 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git fetch origin "${{ github.base_ref }}" --depth=1
-            CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+            CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}" HEAD)"
           else
             CHANGED="$(git diff --name-only HEAD~1 HEAD || true)"
           fi
