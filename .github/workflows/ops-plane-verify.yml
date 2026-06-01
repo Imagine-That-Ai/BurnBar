@@ -20,7 +20,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect-secrets:
+    runs-on: ubuntu-latest
+    outputs:
+      has-gcp-sa-key: ${{ steps.detect.outputs.has-gcp-sa-key }}
+    steps:
+      - name: Detect required secrets
+        id: detect
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          if [[ -n "${GCP_SA_KEY}" ]]; then
+            echo "has-gcp-sa-key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-gcp-sa-key=false" >> "$GITHUB_OUTPUT"
+          fi
+
   verify:
+    needs: detect-secrets
+    if: needs.detect-secrets.outputs.has-gcp-sa-key == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -79,3 +97,10 @@ jobs:
           name: ops-plane-verify-${{ github.run_id }}
           path: verify-ops-plane-summary.json
           if-no-files-found: ignore
+
+  skipped-no-gcp-key:
+    needs: detect-secrets
+    if: needs.detect-secrets.outputs.has-gcp-sa-key == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::GCP_SA_KEY not set — ops plane verify skipped"
