@@ -1,6 +1,13 @@
 /** Hermes Gateway platform adapter Firestore contracts. */
 namespace OpenBurnBar.Firestore.HermesGateway;
 
+model HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}
+
 model HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -11,6 +18,10 @@ model HermesGatewayClientDoc {
   scopes: string[];
   homeDestinationId: string;
   lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -37,6 +48,7 @@ model HermesGatewayEventDoc {
   senderId: string;
   senderDisplayName?: string;
   text: string;
+  modelId?: string;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: int32;

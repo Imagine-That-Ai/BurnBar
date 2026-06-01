@@ -3,6 +3,13 @@
 
 import Foundation
 
+public struct FirestoreHermesGatewayModelOptionDoc: Codable, Sendable, Equatable {
+    public var providerId: String
+    public var providerName: String
+    public var modelId: String
+    public var displayName: String
+}
+
 public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var id: String
     public var uid: String
@@ -13,6 +20,10 @@ public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var scopes: [String]
     public var homeDestinationId: String
     public var lastSeenAt: String?
+    public var runtimeModelId: String?
+    public var runtimeProviderId: String?
+    public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
+    public var runtimeUpdatedAt: String?
     public var revokedAt: String?
     public var createdAt: String
     public var updatedAt: String
@@ -39,6 +50,7 @@ public struct FirestoreHermesGatewayEventDoc: Codable, Sendable, Equatable {
     public var senderId: String
     public var senderDisplayName: String?
     public var text: String
+    public var modelId: String?
     public var attachmentIds: [String]
     public var createdAt: String
     public var schemaVersion: Int

@@ -16,6 +16,8 @@ import {
   randomHermesGatewayUserCode,
   safeEqualHex,
   sanitizeHermesGatewayDestinationId,
+  sanitizeHermesGatewayModelId,
+  sanitizeHermesGatewayModelOptions,
   sanitizeHermesGatewayScopes,
   sanitizedAttachmentIds,
   serializeHermesGatewayEvent,
@@ -53,6 +55,39 @@ assert.deepEqual(sanitizeHermesGatewayScopes([]), [
 assert.equal(sanitizeHermesGatewayDestinationId(undefined), HERMES_GATEWAY_DEFAULT_DESTINATION_ID);
 assert.equal(sanitizeHermesGatewayDestinationId("burnbar:ops"), "burnbar:ops");
 assert.equal(sanitizeHermesGatewayDestinationId("bad/path"), HERMES_GATEWAY_DEFAULT_DESTINATION_ID);
+assert.equal(sanitizeHermesGatewayModelId(" minimax-m2.7-highspeed "), "minimax-m2.7-highspeed");
+assert.equal(sanitizeHermesGatewayModelId("bad\nmodel"), undefined);
+assert.deepEqual(
+  sanitizeHermesGatewayModelOptions([
+    {
+      providerId: "minimax",
+      providerName: "MiniMax",
+      modelId: "minimax-m2.7-highspeed",
+      displayName: "MiniMax M2.7 Highspeed",
+    },
+    {
+      providerId: "dupe",
+      modelId: "MINIMAX-M2.7-HIGHSPEED",
+    },
+    {
+      modelId: "claude-opus-4-5",
+    },
+  ]),
+  [
+    {
+      providerId: "minimax",
+      providerName: "MiniMax",
+      modelId: "minimax-m2.7-highspeed",
+      displayName: "MiniMax M2.7 Highspeed",
+    },
+    {
+      providerId: "hermes",
+      providerName: "hermes",
+      modelId: "claude-opus-4-5",
+      displayName: "claude-opus-4-5",
+    },
+  ],
+);
 assert.equal(destinationDocId("burnbar:ops"), "burnbar-ops");
 assert.equal(parseHermesGatewayCursor("42"), 42);
 assert.equal(parseHermesGatewayCursor("-1"), 0);
@@ -72,6 +107,20 @@ const event = serializeHermesGatewayEvent({
   schemaVersion: 1,
 });
 assert.equal(event?.attachmentIds.length, 1);
+const modelSwitchEvent = serializeHermesGatewayEvent({
+  id: "evt_model",
+  sequence: 2,
+  kind: "model_switch",
+  destinationId: "burnbar:home",
+  senderId: "u",
+  text: "/model minimax-m2.7-highspeed",
+  modelId: "minimax-m2.7-highspeed",
+  attachmentIds: [],
+  createdAt: "2026-06-01T00:00:00.000Z",
+  schemaVersion: 1,
+});
+assert.equal(modelSwitchEvent?.kind, "model_switch");
+assert.equal(modelSwitchEvent?.modelId, "minimax-m2.7-highspeed");
 assert.match(makeHermesGatewaySSE([event], 1), /event: cursor/);
 
 assert.equal(

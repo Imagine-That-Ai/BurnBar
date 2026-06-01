@@ -582,6 +582,13 @@ export type HermesGatewayScope = "hermes.gateway.read" | "hermes.gateway.write" 
 export type HermesGatewayClientStatus = "active" | "revoked";
 export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
 
+export interface HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}
+
 export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -592,6 +599,10 @@ export interface HermesGatewayClientDoc {
   scopes: HermesGatewayScope[];
   homeDestinationId: string;
   lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -612,12 +623,13 @@ export interface HermesGatewayDestinationDoc {
 export interface HermesGatewayEventDoc {
   id: string;
   sequence: number;
-  kind: "message";
+  kind: "message" | "model_switch";
   destinationId: string;
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
   text: string;
+  modelId?: string;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;

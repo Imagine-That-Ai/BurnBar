@@ -14,6 +14,9 @@ BurnBar the same way it would through Telegram, Signal, Slack, or LINE.
    scoped bearer token.
 5. Hermes reads BurnBar messages from `/events` and posts responses to
    `/messages`.
+6. Hermes publishes its current model and gateway-visible model catalog to
+   `/runtime`, so OpenBurnBar can switch models even when the phone is not on
+   the same LAN as the Mac.
 
 ## Where the Pairing Code Comes From
 
@@ -50,6 +53,13 @@ requires at least one paired gateway client to be online: official Hermes,
 OpenBurnBar, or another compatible BurnBar Gateway client. BurnBar Cloud stores
 queued events durably, and any active client can pick them up from `/events`.
 
+Gateway model switching uses the same queue as normal messages. OpenBurnBar
+creates an `enqueueHermesGatewayEvent` event with `eventKind: "model_switch"`
+and `modelId`; Hermes consumes it as `/model <modelId>`, applies the switch,
+and replies through `/messages`. If the gateway has published
+`runtimeModelOptions`, the iPhone shows those models in the picker. If not, the
+user can still enter an exact Hermes model ID.
+
 The mobile settings UI intentionally separates these states:
 
 - **Paired**: BurnBar has issued a scoped token for a gateway client.
@@ -72,6 +82,7 @@ Base path: `https://api.burnbar.ai/v1/hermes-gateway`
 | `GET /events?cursor=0`   | Bearer `hermes.gateway.read`  | Read inbound BurnBar events as JSON or one-shot SSE |
 | `POST /messages`         | Bearer `hermes.gateway.write` | Deliver a Hermes reply into BurnBar                 |
 | `POST /typing`           | Bearer `hermes.gateway.write` | Publish transient typing state                      |
+| `POST /runtime`          | Bearer `hermes.gateway.write` | Publish current model and selectable model catalog  |
 | `POST /attachments/init` | Bearer `hermes.gateway.write` | Mint a signed upload URL for file/image delivery    |
 
 ## BurnBar Callables
@@ -81,7 +92,7 @@ Base path: `https://api.burnbar.ai/v1/hermes-gateway`
 | `approveHermesGatewayDeviceGrant` | Approve a pending device-code session after Firebase sign-in |
 | `listHermesGatewayClients`        | Show connected Hermes gateway clients                        |
 | `revokeHermesGatewayClient`       | Revoke a client and delete its token-index entry             |
-| `enqueueHermesGatewayEvent`       | Queue a BurnBar-originated message for Hermes                |
+| `enqueueHermesGatewayEvent`       | Queue a BurnBar-originated message or model switch for Hermes |
 
 ## Firestore Ownership
 

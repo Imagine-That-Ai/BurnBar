@@ -9,6 +9,15 @@ import com.google.firebase.firestore.PropertyName
 
 @Keep
 @IgnoreExtraProperties
+data class FirestoreHermesGatewayModelOptionDoc(
+    val providerId: String = "",
+    val providerName: String = "",
+    val modelId: String = "",
+    val displayName: String = "",
+)
+
+@Keep
+@IgnoreExtraProperties
 data class FirestoreHermesGatewayClientDoc(
     val id: String = "",
     val uid: String = "",
@@ -19,6 +28,10 @@ data class FirestoreHermesGatewayClientDoc(
     val scopes: List<String> = emptyList(),
     val homeDestinationId: String = "",
     val lastSeenAt: String? = null,
+    val runtimeModelId: String? = null,
+    val runtimeProviderId: String? = null,
+    val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
+    val runtimeUpdatedAt: String? = null,
     val revokedAt: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
@@ -49,6 +62,7 @@ data class FirestoreHermesGatewayEventDoc(
     val senderId: String = "",
     val senderDisplayName: String? = null,
     val text: String = "",
+    val modelId: String? = null,
     val attachmentIds: List<String> = emptyList(),
     val createdAt: String = "",
     val schemaVersion: Long = 0,

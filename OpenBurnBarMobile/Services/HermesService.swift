@@ -1318,6 +1318,17 @@ final class HermesService {
         defaults.removeObject(forKey: selectedModelDefaultsKey)
     }
 
+    func selectGatewayModelID(_ modelID: String) {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(trimmed)
+        selectedModelID = canonical
+        selectedModelWasExplicit = true
+        defaults.set(canonical, forKey: selectedModelDefaultsKey)
+        runtimeErrorText = nil
+        lastError = nil
+    }
+
     private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
         guard let stored = stored?.nilIfBlank else { return nil }
         let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
@@ -1503,6 +1514,95 @@ final class HermesService {
             }
             persistCurrentThread()
         }
+    }
+
+    func ensureBurnBarGatewayThreadID() -> String {
+        if selectedSessionID == nil {
+            selectedSessionID = UUID().uuidString
+        }
+        return selectedSessionID ?? UUID().uuidString
+    }
+
+    func beginBurnBarGatewayTurn(displayText: String, wireText: String) -> String {
+        let trimmedDisplay = displayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedWire = wireText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if selectedSessionID == nil {
+            selectedSessionID = UUID().uuidString
+        }
+        let now = Date()
+        let userMessage = HermesChatMessage(
+            role: .user,
+            text: trimmedDisplay.isEmpty ? trimmedWire : trimmedDisplay,
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now
+        )
+        let placeholder = HermesChatMessage(
+            role: .assistant,
+            text: "Sent through BurnBar Cloud Gateway. Waiting for Hermes...",
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now.addingTimeInterval(0.001),
+            isStreaming: true,
+            responseStartedAt: now
+        )
+        messages.append(userMessage)
+        messages.append(placeholder)
+        isStreaming = true
+        lastError = nil
+        persistCurrentThread()
+        return placeholder.id
+    }
+
+    func finishBurnBarGatewayTurn(placeholderID: String, reply: HermesGatewayMessageRecord) {
+        let text = reply.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalText = text.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes replied without text."
+        if let index = messages.firstIndex(where: { $0.id == placeholderID }) {
+            messages[index].text = finalText
+            messages[index].isStreaming = false
+            messages[index].isError = false
+            messages[index].responseModelID = activeRequestedModelID
+            messages[index].modelName = activeModelName
+            messages[index].responseCompletedAt = Date()
+            messages[index].finalizeResponseMetrics()
+        } else {
+            messages.append(HermesChatMessage(
+                role: .assistant,
+                text: finalText,
+                requestedModelID: activeRequestedModelID,
+                responseModelID: activeRequestedModelID,
+                modelName: activeModelName,
+                responseStartedAt: Date(),
+                responseCompletedAt: Date()
+            ))
+        }
+        isStreaming = false
+        lastError = nil
+        persistCurrentThread()
+    }
+
+    func failBurnBarGatewayTurn(placeholderID: String?, message: String) {
+        let now = Date()
+        let errorMessage = HermesChatMessage(
+            role: .assistant,
+            text: message,
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            timestamp: now,
+            isStreaming: false,
+            isError: true,
+            responseStartedAt: now,
+            responseCompletedAt: now
+        )
+        if let placeholderID,
+           let index = messages.firstIndex(where: { $0.id == placeholderID }) {
+            messages[index] = errorMessage
+        } else {
+            messages.append(errorMessage)
+        }
+        isStreaming = false
+        lastError = message
+        persistCurrentThread()
     }
 
     func sendVisibleCLIMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
