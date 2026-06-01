@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import OpenBurnBarCore
 
 // MARK: - Account Settings
@@ -18,11 +19,29 @@ struct AccountSettingsView: View {
     @State private var showDeleteAccountConfirmation = false
     @State private var accountDeletionError: String?
 
+    // Avatar
+    @State private var isUploadingPhoto = false
+    @State private var avatarUploadError: String?
+    private let avatarService = ProfileAvatarService()
+
     var body: some View {
         Form {
+            // Profile hero — avatar + name + email
             Section {
                 profileRow
                     .settingsAnchor(SettingsAnchor.accountRow)
+            }
+
+            // Change Photo — only when signed in
+            if authStore.currentIdentity != nil {
+                Section {
+                    changePhotoRow
+                } footer: {
+                    if let err = avatarUploadError {
+                        Text(err)
+                            .foregroundStyle(.red)
+                    }
+                }
             }
 
             Section {
@@ -97,15 +116,16 @@ struct AccountSettingsView: View {
         }
     }
 
-    // MARK: - Profile
+    // MARK: - Profile row
 
     @ViewBuilder
     private var profileRow: some View {
         HStack(spacing: 14) {
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-                .symbolRenderingMode(.hierarchical)
+            UserAvatarView(
+                photoURL: authStore.currentIdentity?.photoURL,
+                displayName: authStore.currentIdentity?.displayName ?? authStore.currentIdentity?.email,
+                size: 56
+            )
             VStack(alignment: .leading, spacing: 2) {
                 if let identity = authStore.currentIdentity {
                     Text(identity.displayName ?? identity.email ?? "OpenBurnBar account")
@@ -131,6 +151,43 @@ struct AccountSettingsView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Change Photo row
+
+    @ViewBuilder
+    private var changePhotoRow: some View {
+        HStack {
+            UserAvatarView(
+                photoURL: authStore.currentIdentity?.photoURL,
+                displayName: authStore.currentIdentity?.displayName ?? authStore.currentIdentity?.email,
+                size: 44,
+                isEditable: true,
+                onPickImage: { image in
+                    Task { await uploadPhoto(image) }
+                }
+            )
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isUploadingPhoto ? "Uploading…" : "Change Photo")
+                    .font(.body)
+                    .foregroundStyle(isUploadingPhoto ? Color.secondary : Color.accentColor)
+                Text("Tap the camera icon on your avatar")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            if isUploadingPhoto {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Change profile photo")
+        .accessibilityHint("Tap the camera badge on the avatar to pick a new photo from your library.")
     }
 
     // MARK: - Cloud row
@@ -213,6 +270,19 @@ struct AccountSettingsView: View {
         await authStore.deleteAccount()
         if let error = authStore.lastError {
             accountDeletionError = error.label
+        }
+    }
+
+    private func uploadPhoto(_ image: UIImage) async {
+        avatarUploadError = nil
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
+        do {
+            let url = try await avatarService.upload(image)
+            // Force the AuthStore to refresh its identity so the new photoURL propagates to all views.
+            await authStore.refreshIdentity(photoURL: url)
+        } catch {
+            avatarUploadError = error.localizedDescription
         }
     }
 }

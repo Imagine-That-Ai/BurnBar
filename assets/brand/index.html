@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBurnBar Handcrafted SVG Collection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090A0F;
+      --bg-card: #12131C;
+      --text: #F1F5F9;
+      --text-muted: #94A3B8;
+      --border: #222533;
+      --primary: #F59E0B;
+    }
+
+    .light-theme {
+      --bg: #FAF9F6;
+      --bg-card: #FFFFFF;
+      --text: #1E293B;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+      --primary: #D97706;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      transition: all 0.25s ease;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    .wrapper {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #FFF 30%, var(--primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .light-theme h1 {
+      background: linear-gradient(135deg, #1E293B 30%, var(--primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .theme-btn {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 20px;
+      border-radius: 99px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .theme-btn:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    .section {
+      margin-bottom: 48px;
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 24px;
+      border-left: 4px solid var(--primary);
+      padding-left: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 24px;
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    }
+
+    .card:hover {
+      border-color: var(--primary);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .art-frame {
+      height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      width: 100%;
+    }
+
+    .art-frame img {
+      max-height: 140px;
+      max-width: 140px;
+      width: auto;
+      height: auto;
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <header>
+      <div>
+        <h1>OpenBurnBar Original Artwork</h1>
+        <p style="font-size: 14px; color: var(--text-muted); margin-top: 4px;">Handcrafted premium SVG vectors</p>
+      </div>
+      <button class="theme-btn" onclick="document.body.classList.toggle('light-theme')">
+        🌓 Toggle Field
+      </button>
+    </header>
+
+    <!-- A. Brand / Hero -->
+    <div class="section">
+      <h2 class="section-title">A. Brand / Hero Medallion</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="art-frame"><img src="svg/1_openburnbar_cloud_medallion_dark.svg" alt="Dark Medallion"></div>
+          <h3 class="card-title">Cloud Medallion (Dark)</h3>
+          <p class="card-desc">Obsidian coin medallion with platinum-to-gold foil ring, specular highlight, and 3-ember amber flame.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/1b_openburnbar_cloud_medallion_light.svg" alt="Light Medallion"></div>
+          <h3 class="card-title">Cloud Medallion (Light)</h3>
+          <p class="card-desc">Cream coin medallion with brushed gold ring and deep crimson flame relief.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- B. Tier Crests -->
+    <div class="section">
+      <h2 class="section-title">B. Subscription Tier Crests</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="art-frame"><img src="svg/2_burnbar_cloud_crest.svg" alt="Cloud Crest"></div>
+          <h3 class="card-title">Cloud Crest</h3>
+          <p class="card-desc">Slim heraldic shield with mercury foil edge, focal flame, and 1 base engraved pip.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/3_burnbar_cloud_pro_crest.svg" alt="Cloud Pro Crest"></div>
+          <h3 class="card-title">Cloud Pro Crest</h3>
+          <p class="card-desc">Ornate flagship gold shield backed by cinematic rays, flanked by laurel leaves, and crowned.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- C. Capabilities -->
+    <div class="section">
+      <h2 class="section-title">C. Platform Capabilities (Duotone, 2px Stroke)</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="art-frame"><img src="svg/4_hosted_quota_refresh.svg" alt="Hosted Quota Refresh"></div>
+          <h3 class="card-title">Hosted Quota Refresh</h3>
+          <p class="card-desc">Phone frame emitting circular refresh loop lifting into cloud, capped by lightning spark.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/5_cross_device_resume.svg" alt="Cross-Device Resume"></div>
+          <h3 class="card-title">Cross-Device Resume</h3>
+          <p class="card-desc">Nested device frames linked by single flowing thread with traveling state node.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/6_search_every_session.svg" alt="Search Every Session"></div>
+          <h3 class="card-title">Search Every Session</h3>
+          <p class="card-desc">Magnifier focused over transcript lines, highlighted with ember underline.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/7_remote_relay.svg" alt="Remote Relay"></div>
+          <h3 class="card-title">Remote Relay</h3>
+          <p class="card-desc">Phone + laptop endpoints joined by central relay tower with concentric signal arcs.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/8_remote_mcp.svg" alt="Remote MCP"></div>
+          <h3 class="card-title">Remote MCP</h3>
+          <p class="card-desc">Triangular node constellation plugging into hosted port; one node carries key badge.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- D. À-la-carte Top-ups -->
+    <div class="section">
+      <h2 class="section-title">D. À-La-Carte Top-Ups</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="art-frame"><img src="svg/9_agent_control_actions.svg" alt="Agent Control Actions"></div>
+          <h3 class="card-title">Agent Control Actions (+100)</h3>
+          <p class="card-desc">Golden beveled hexagonal action credit coin with engraved cursor and minting spark.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/10_floo_relay_data.svg" alt="Floo Relay Data"></div>
+          <h3 class="card-title">Floo Relay Data (+50 GB)</h3>
+          <p class="card-desc">Swirling green floo portal ring with data bytes and engraved metal GB microchip.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- E. Security & Trust Badges -->
+    <div class="section">
+      <h2 class="section-title">E. Security & Trust Seals</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="art-frame"><img src="svg/11_apple_verified.svg" alt="Apple Verified"></div>
+          <h3 class="card-title">Apple-Verified Seal</h3>
+          <p class="card-desc">Coral wax security seal rosette with bold checkmark and silver certificate ribbons.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/12_uid_bound.svg" alt="UID Bound"></div>
+          <h3 class="card-title">UID-Bound Shield</h3>
+          <p class="card-desc">Obsidian shield containing keyhole fused with concentric fingerprint ridges.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/13_cancel_anytime.svg" alt="Cancel Anytime"></div>
+          <h3 class="card-title">Cancel Anytime Badge</h3>
+          <p class="card-desc">Open padlock with soft green tone and integrated circular undo arrow.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- F. Member Badge Styles -->
+    <div class="section">
+      <h2 class="section-title">F. Member Badge Styles</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="art-frame"><img src="svg/14_silver_shield.svg" alt="Silver Shield"></div>
+          <h3 class="card-title">Silver Shield Badge</h3>
+          <p class="card-desc">Pewter heraldic shield base surrounded by heavy, beveled mercury-foil border.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/15_wax_seal.svg" alt="Wax Seal"></div>
+          <h3 class="card-title">Wax Seal Badge</h3>
+          <p class="card-desc">Irregular coral wax disc carrying a pressed silver-metallic high-relief flame.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/16_brass_signet.svg" alt="Brass Signet"></div>
+          <h3 class="card-title">Brass Signet Badge</h3>
+          <p class="card-desc">Engraved brass coin with double outer rings and a high-relief cloud-flame signet.</p>
+        </div>
+        <div class="card">
+          <div class="art-frame"><img src="svg/17_sun_disc.svg" alt="Sun Disc"></div>
+          <h3 class="card-title">Sun Disc Badge</h3>
+          <p class="card-desc">Obsidian sunburst medallion with cinematic golden rays radiating from amber core.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
