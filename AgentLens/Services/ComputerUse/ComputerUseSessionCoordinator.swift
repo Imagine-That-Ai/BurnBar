@@ -323,7 +323,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             }
         )
         phoneReceiverInstance.attestationRequirementProvider = {
-            let strict = SettingsManager.shared.computerUsePhoneControlAttestationRequired
+            let strict = await MainActor.run {
+                SettingsManager.shared.computerUsePhoneControlAttestationRequired
+            }
             return await MacAppCheckAttestationReader.attestationRequirement(strictMode: strict)
         }
         phoneReceiver = phoneReceiverInstance

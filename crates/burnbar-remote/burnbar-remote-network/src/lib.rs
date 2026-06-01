@@ -170,7 +170,9 @@ impl IrohTransportManager {
             .bind()
             .await
             .map_err(|err| TransportError::Endpoint(err.to_string()))?;
-        endpoint.online().await;
+        if !matches!(config.relay, RelayConfig::Disabled) {
+            endpoint.online().await;
+        }
         info!(endpoint_id = %endpoint.id(), "burnbar remote iroh endpoint online");
         Ok(Self {
             endpoint,
@@ -397,7 +399,13 @@ impl IrohTransportManager {
                 },
                 &scratch,
             )
-            .await
+            .await?;
+        channel
+            .send
+            .finish()
+            .map_err(|err| TransportError::Stream(err.to_string()))?;
+        let _ = tokio::time::timeout(Duration::from_millis(250), channel.send.stopped()).await;
+        Ok(())
     }
 }
 
@@ -898,7 +906,10 @@ mod tests {
                 now: TimestampMicros(1),
             },
         );
-        let (server_conn, client_conn) = tokio::join!(accept, connect);
+        let (server_conn, client_conn) =
+            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(accept, connect) })
+                .await
+                .expect("loopback session handshake timed out");
         let server_conn = server_conn.unwrap();
         let client_conn = client_conn.unwrap();
         assert_eq!(
@@ -906,10 +917,14 @@ mod tests {
             DeviceId::new("client-device")
         );
 
-        let (server_channel, client_channel) = tokio::join!(
-            server_conn.accept_stream(),
-            client_conn.open_stream(StreamClass::Telemetry)
-        );
+        let (server_channel, client_channel) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(
+                server_conn.accept_stream(),
+                client_conn.open_stream(StreamClass::Telemetry)
+            )
+        })
+        .await
+        .expect("loopback stream open timed out");
         let mut server_channel = server_channel.unwrap();
         let mut client_channel = client_channel.unwrap();
         HeartbeatDriver::new()
@@ -972,7 +987,10 @@ mod tests {
                 now: TimestampMicros(1),
             },
         );
-        let (server_result, client_result) = tokio::join!(accept, connect);
+        let (server_result, client_result) =
+            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(accept, connect) })
+                .await
+                .expect("loopback denial handshake timed out");
         match server_result {
             Err(TransportError::Authorization(
                 burnbar_remote_security::AuthorizationError::UnknownPeer,
