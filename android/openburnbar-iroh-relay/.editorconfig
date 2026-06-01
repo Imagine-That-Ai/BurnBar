@@ -1,0 +1,7 @@
+root = true
+
+# UniFFI-generated Rust bindings — naming follows foreign ABI, not Kotlin style
+[src/main/java/uniffi/**]
+ktlint_standard_function-naming = disabled
+ktlint_standard_property-naming = disabled
+ktlint_standard_no-wildcard-imports = disabled

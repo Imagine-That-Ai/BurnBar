@@ -16,7 +16,7 @@ data class InsightTokenUsage(
     val cacheReadTokens: Int = 0,
     val estimatedCostUSD: Double = 0.0,
     val startedAt: String = "",
-    val completedAt: String = ""
+    val completedAt: String = "",
 ) {
     val totalTokens: Int get() = inputTokens + outputTokens + reasoningTokens + cacheCreationTokens + cacheReadTokens
 }

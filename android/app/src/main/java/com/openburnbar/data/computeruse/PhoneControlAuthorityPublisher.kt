@@ -3,8 +3,8 @@ package com.openburnbar.data.computeruse
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.openburnbar.irohrelay.HermesRealtimeRelayProtocol
 import java.security.KeyStore
@@ -39,17 +39,15 @@ data class PhoneControlAuthorityDoc(
 }
 
 object PhoneControlAuthorityDocumentFactory {
+    private const val VAL_24 = 24
+    private const val VAL_256 = 256
+    private const val VAL_32 = 32
     fun peerNodeId(publicKey: ByteArray): String {
-        require(publicKey.size == 32) { "Ed25519 public key must be 32 bytes" }
-        return "android-phone-${sha256Hex(publicKey).take(24)}"
+        require(publicKey.size == VAL_32) { "Ed25519 public key must be 32 bytes" }
+        return "android-phone-${sha256Hex(publicKey).take(VAL_24)}"
     }
 
-    fun document(
-        connectionId: String,
-        deviceId: String,
-        publicKey: ByteArray,
-        publishedAtMillis: Long,
-    ): PhoneControlAuthorityDoc {
+    fun document(connectionId: String, deviceId: String, publicKey: ByteArray, publishedAtMillis: Long): PhoneControlAuthorityDoc {
         val peerNodeId = peerNodeId(publicKey)
         return PhoneControlAuthorityDoc(
             id = peerNodeId,
@@ -61,10 +59,9 @@ object PhoneControlAuthorityDocumentFactory {
         )
     }
 
-    private fun sha256Hex(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString("") { "%02x".format(it) }
+    private fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString("") { "%02x".format(it) }
 }
 
 class PhoneControlAuthorityPublisher(
@@ -78,11 +75,7 @@ class PhoneControlAuthorityPublisher(
             .await()
     }
 
-    suspend fun publishAgentGrantAuthority(
-        uid: String,
-        sourceDeviceId: String,
-        authority: PhoneControlAuthorityDoc,
-    ) {
+    suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
         firestore.collection("users").document(uid)
             .collection("agent_grant_authorities").document(sourceDeviceId)
             .set(
@@ -118,28 +111,31 @@ class PhoneControlSigningKeyStore(context: Context) {
     }
 
     private fun loadFromStore(): ByteArray? {
-        val wrappedB64 = prefs.getString(KEY_WRAPPED_SEED, null) ?: return null
-        val ivB64 = prefs.getString(KEY_WRAP_IV, null) ?: return null
-        val wrapped = runCatching { Base64.getDecoder().decode(wrappedB64) }.getOrNull() ?: return null
-        val iv = runCatching { Base64.getDecoder().decode(ivB64) }.getOrNull() ?: return null
-        val key = runCatching { wrappingKey() }.getOrNull() ?: return null
+        val wrappedB64 = prefs.getString(KEY_WRAPPED_SEED, null)
+        val ivB64 = prefs.getString(KEY_WRAP_IV, null)
+        val wrapped = wrappedB64?.let { runCatching { Base64.getDecoder().decode(it) }.getOrNull() }
+        val iv = ivB64?.let { runCatching { Base64.getDecoder().decode(it) }.getOrNull() }
+        val key = runCatching { wrappingKey() }.getOrNull()
+        if (wrapped == null || iv == null || key == null) return null
         return try {
-            val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
-            }
+            val cipher =
+                Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                    init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+                }
             val plain = cipher.doFinal(wrapped)
-            if (plain.size == 32) plain else null
+            plain.takeIf { it.size == VAL_32 }
         } catch (_: Throwable) {
             null
         }
     }
 
     private fun saveToStore(seed: ByteArray) {
-        require(seed.size == 32) { "Ed25519 private key seed must be 32 bytes" }
+        require(seed.size == VAL_32) { "Ed25519 private key seed must be 32 bytes" }
         val key = wrappingKey()
-        val cipher = Cipher.getInstance(AES_GCM_TRANSFORM).apply {
-            init(Cipher.ENCRYPT_MODE, key)
-        }
+        val cipher =
+            Cipher.getInstance(AES_GCM_TRANSFORM).apply {
+                init(Cipher.ENCRYPT_MODE, key)
+            }
         val iv = cipher.iv
         require(iv.size == GCM_IV_BYTES) { "Unexpected AES-GCM IV length ${iv.size}" }
         val wrapped = cipher.doFinal(seed)
@@ -152,19 +148,21 @@ class PhoneControlSigningKeyStore(context: Context) {
     private fun wrappingKey(): SecretKey {
         val store = keystore()
         store.getEntry(KEY_ALIAS, null)?.let { entry ->
-            val secretEntry = entry as? KeyStore.SecretKeyEntry
-                ?: error("Keystore entry $KEY_ALIAS is not a secret key")
+            val secretEntry =
+                entry as? KeyStore.SecretKeyEntry
+                    ?: error("Keystore entry $KEY_ALIAS is not a secret key")
             return secretEntry.secretKey
         }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
+        val spec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(VAL_256)
+                .build()
         generator.init(spec)
         return generator.generateKey()
     }
@@ -172,6 +170,8 @@ class PhoneControlSigningKeyStore(context: Context) {
     private fun keystore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
     companion object {
+        private const val VAL_32 = 32
+        private const val VAL_256 = 256
         private const val PREFS_NAME = "computer_use_phone_control_keys"
         private const val KEY_WRAPPED_SEED = "wrapped_ed25519_seed_v1"
         private const val KEY_WRAP_IV = "wrap_iv_v1"

@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.hermes
 
 import org.junit.Assert.assertEquals
@@ -18,7 +21,6 @@ import org.junit.Test
  * 7. `empty` — finish reason missing / unknown.
  */
 class HermesChatMessageOutcomeTest {
-
     @Test
     fun normal_outcome_label_and_retry_semantics() {
         assertEquals(null, HermesChatMessageOutcome.NORMAL.label)
@@ -28,11 +30,12 @@ class HermesChatMessageOutcomeTest {
 
     @Test
     fun refusal_string_promotes_to_refusal_outcome() {
-        val rescue = HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = "  I can't help with that.  ",
-            reasoning = "thinking-only",
-            finishReason = "length",
-        )
+        val rescue =
+            HermesChatMessageOutcome.emptyResponseFallback(
+                refusal = "  I can't help with that.  ",
+                reasoning = "thinking-only",
+                finishReason = "length",
+            )
         assertEquals(HermesChatMessageOutcome.REFUSAL, rescue.outcome)
         assertEquals("I can't help with that.", rescue.text)
         assertFalse(rescue.isError)
@@ -41,11 +44,12 @@ class HermesChatMessageOutcomeTest {
 
     @Test
     fun reasoning_only_promotes_to_reasoning_fallback() {
-        val rescue = HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = "",
-            reasoning = "  Step 1: …  ",
-            finishReason = "length",
-        )
+        val rescue =
+            HermesChatMessageOutcome.emptyResponseFallback(
+                refusal = "",
+                reasoning = "  Step 1: …  ",
+                finishReason = "length",
+            )
         assertEquals(HermesChatMessageOutcome.REASONING_FALLBACK, rescue.outcome)
         assertEquals("Step 1: …", rescue.text)
         assertFalse(rescue.isError)
@@ -54,11 +58,12 @@ class HermesChatMessageOutcomeTest {
 
     @Test
     fun length_finish_reason_promotes_to_length_cap() {
-        val rescue = HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = "",
-            reasoning = "",
-            finishReason = "length",
-        )
+        val rescue =
+            HermesChatMessageOutcome.emptyResponseFallback(
+                refusal = "",
+                reasoning = "",
+                finishReason = "length",
+            )
         assertEquals(HermesChatMessageOutcome.LENGTH_CAP, rescue.outcome)
         assertTrue(rescue.isError)
         assertTrue(rescue.outcome.supportsRetry)
@@ -67,11 +72,12 @@ class HermesChatMessageOutcomeTest {
 
     @Test
     fun content_filter_promotes_to_content_filter() {
-        val rescue = HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = "",
-            reasoning = "",
-            finishReason = "content_filter",
-        )
+        val rescue =
+            HermesChatMessageOutcome.emptyResponseFallback(
+                refusal = "",
+                reasoning = "",
+                finishReason = "content_filter",
+            )
         assertEquals(HermesChatMessageOutcome.CONTENT_FILTER, rescue.outcome)
         assertTrue(rescue.isError)
         assertTrue(rescue.outcome.supportsRetry)
@@ -80,11 +86,12 @@ class HermesChatMessageOutcomeTest {
 
     @Test
     fun tool_calls_promotes_to_tool_call_no_follow_up() {
-        val rescue = HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = "",
-            reasoning = "",
-            finishReason = "tool_calls",
-        )
+        val rescue =
+            HermesChatMessageOutcome.emptyResponseFallback(
+                refusal = "",
+                reasoning = "",
+                finishReason = "tool_calls",
+            )
         assertEquals(HermesChatMessageOutcome.TOOL_CALL_NO_FOLLOW_UP, rescue.outcome)
         assertTrue(rescue.isError)
         assertTrue(rescue.outcome.supportsRetry)
@@ -92,11 +99,12 @@ class HermesChatMessageOutcomeTest {
 
     @Test
     fun unknown_finish_reason_promotes_to_empty() {
-        val rescue = HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = "",
-            reasoning = "",
-            finishReason = null,
-        )
+        val rescue =
+            HermesChatMessageOutcome.emptyResponseFallback(
+                refusal = "",
+                reasoning = "",
+                finishReason = null,
+            )
         assertEquals(HermesChatMessageOutcome.EMPTY, rescue.outcome)
         assertTrue(rescue.isError)
         assertTrue(rescue.outcome.supportsRetry)

@@ -8,10 +8,10 @@ import android.content.SharedPreferences
  * first time the user opens the assistant tab after install.
  */
 class HermesOnboardingState(context: Context) {
-
-    private val prefs: SharedPreferences = context
-        .applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences =
+        context
+            .applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun shouldAutoPresentSetupWizard(): Boolean {
         if (prefs.getBoolean(KEY_SHOWN, false)) return false

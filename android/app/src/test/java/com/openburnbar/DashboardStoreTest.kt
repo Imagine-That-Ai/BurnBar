@@ -1,16 +1,26 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.data.stores.DashboardStore
-import io.mockk.*
+import io.mockk.Runs
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
-import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardStoreTest {
@@ -57,10 +67,11 @@ class DashboardStoreTest {
     @Test
     fun `refresh rebuilds stale rollups`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
-        val stale = UsageRollups(
-            today = 1.0,
-            computedAt = Instant.now().minusSeconds(16 * 60).toString()
-        )
+        val stale =
+            UsageRollups(
+                today = 1.0,
+                computedAt = Instant.now().minusSeconds(16 * 60).toString(),
+            )
         val rebuilt = UsageRollups(today = 14.0, computedAt = Instant.now().toString())
         coEvery { mockRepo.fetchRollups() } returnsMany listOf(stale, rebuilt)
         coEvery { mockRepo.rebuildUsageRollups() } just Runs
@@ -73,5 +84,4 @@ class DashboardStoreTest {
         assertNull(store.error.value)
         coVerify(exactly = 1) { mockRepo.rebuildUsageRollups() }
     }
-
 }

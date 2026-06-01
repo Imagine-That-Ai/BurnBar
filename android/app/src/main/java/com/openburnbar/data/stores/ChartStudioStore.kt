@@ -3,14 +3,14 @@ package com.openburnbar.data.stores
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import java.io.File
+import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.io.File
-import java.util.Date
 
 @Serializable
 data class ChartStudioCanvas(
@@ -19,7 +19,7 @@ data class ChartStudioCanvas(
     val title: String = "",
     val summary: String = "",
     val createdAt: Long = Date().time,
-    val renderingJSON: String = "{}"
+    val renderingJSON: String = "{}",
 )
 
 class ChartStudioStore(context: Context) : ViewModel() {
@@ -61,7 +61,7 @@ class ChartStudioStore(context: Context) : ViewModel() {
                 val decoded = json.decodeFromString<List<ChartStudioCanvas>>(text)
                 _canvases.value = decoded
             }
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             Log.e("BurnBar", "ChartStudioStore load failed", e)
         }
     }
@@ -70,7 +70,7 @@ class ChartStudioStore(context: Context) : ViewModel() {
         try {
             val text = json.encodeToString(_canvases.value)
             storageFile.writeText(text)
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             Log.e("BurnBar", "ChartStudioStore save failed", e)
         }
     }

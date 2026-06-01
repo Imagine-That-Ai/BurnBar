@@ -30,7 +30,6 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ScreenShareViewerDockTest {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
@@ -40,48 +39,55 @@ class ScreenShareViewerDockTest {
             MaterialTheme {
                 var openGroup by remember { mutableStateOf<MirrorControlGroup?>(null) }
                 Box(
-                    modifier = Modifier
+                    modifier =
+                    Modifier
                         .fillMaxSize()
                         .background(Color.Black),
                 ) {
                     ScreenMirrorToolsDock(
-                        collapsed = false,
-                        openGroup = openGroup,
-                        fit = ScreenMirrorFit.FIT,
-                        controlMode = ScreenMirrorControlMode.VIEW,
-                        typingOpen = false,
-                        statsVisible = false,
-                        phaseLabel = "Live",
-                        trayScale = 1f,
-                        stats = VideoReceivePipeline.Stats(widthPx = 1920, heightPx = 1080),
-                        availableDisplays = emptyList(),
-                        activeDisplayId = null,
-                        onSelectDisplay = {},
-                        onTrayScaleChange = {},
-                        onToggleCollapsed = {},
-                        onSelectGroup = { openGroup = it },
-                        onToggleStats = {},
-                        onCycleFit = {},
-                        onCycleControlMode = {},
-                        smartZoomMode = SmartZoomMode.SMART,
-                        smartZoomAutoFollowing = false,
-                        onSelectSmartZoomMode = {},
-                        onSelectControlMode = {},
-                        autoKeyboardOnTextFocus = false,
-                        onAutoKeyboardOnTextFocusChange = {},
-                        onToggleTyping = {},
-                        onScrollUp = {},
-                        onScrollDown = {},
-                        onEscape = {},
-                        onCommandTab = {},
-                        onPasteClipboardToMac = {},
-                        onGrabClipboardFromMac = {},
-                        onPanic = {},
-                        controlStatus = null,
-                        onTrustControlDevice = {},
-                        onReconnect = {},
-                        onEnterPictureInPicture = {},
-                        onClose = {},
+                        state =
+                        MirrorDockUiState(
+                            collapsed = false,
+                            openGroup = openGroup,
+                            fit = ScreenMirrorFit.FIT,
+                            controlMode = ScreenMirrorControlMode.VIEW,
+                            typingOpen = false,
+                            statsVisible = false,
+                            phaseLabel = "Live",
+                            trayScale = 1f,
+                            stats = VideoReceivePipeline.Stats(widthPx = 1920, heightPx = 1080),
+                            availableDisplays = emptyList(),
+                            activeDisplayId = null,
+                            smartZoomMode = SmartZoomMode.SMART,
+                            smartZoomAutoFollowing = false,
+                            autoKeyboardOnTextFocus = false,
+                            controlStatus = null,
+                        ),
+                        actions =
+                        MirrorDockActions(
+                            onSelectDisplay = {},
+                            onTrayScaleChange = {},
+                            onToggleCollapsed = {},
+                            onSelectGroup = { openGroup = it },
+                            onToggleStats = {},
+                            onCycleFit = {},
+                            onCycleControlMode = {},
+                            onSelectSmartZoomMode = {},
+                            onSelectControlMode = {},
+                            onAutoKeyboardOnTextFocusChange = {},
+                            onToggleTyping = {},
+                            onScrollUp = {},
+                            onScrollDown = {},
+                            onEscape = {},
+                            onCommandTab = {},
+                            onPasteClipboardToMac = {},
+                            onGrabClipboardFromMac = {},
+                            onPanic = {},
+                            onTrustControlDevice = {},
+                            onReconnect = {},
+                            onEnterPictureInPicture = {},
+                            onClose = {},
+                        ),
                     )
                 }
             }

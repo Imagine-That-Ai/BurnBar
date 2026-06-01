@@ -1,7 +1,10 @@
-package com.openburnbar.data.insights
+package com.openburnbar.data.insights.services
 
-import kotlinx.serialization.Serializable
+import com.openburnbar.data.insights.InsightCapabilityTier
+import com.openburnbar.data.insights.InsightInvestigateEvent
+import com.openburnbar.data.insights.InsightInvestigateRequest
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
 
 /**
  * Interface for LLM-backed canvas authoring. Each adapter implements
@@ -13,6 +16,7 @@ interface InsightModelGateway {
     val capabilities: InsightModelCapabilities
 
     suspend fun availableModels(): List<InsightCatalogModel>
+
     fun investigate(request: InsightInvestigateRequest): Flow<InsightInvestigateEvent>
 }
 
@@ -26,20 +30,22 @@ data class InsightModelCapabilities(
     val supportsJSONObject: Boolean = true,
     val supportsThinking: Boolean = false,
     val supportsToolUse: Boolean = false,
-    val supportsStreaming: Boolean = true
+    val supportsStreaming: Boolean = true,
 ) {
     /** The best supported tier given the requested tier. */
     fun bestTier(requested: InsightCapabilityTier): InsightCapabilityTier {
         return when (requested) {
-            InsightCapabilityTier.STRICT_JSON_SCHEMA -> when {
-                supportsStrictJSONSchema -> InsightCapabilityTier.STRICT_JSON_SCHEMA
-                supportsJSONObject -> InsightCapabilityTier.JSON_OBJECT
-                else -> InsightCapabilityTier.NARRATIVE_ONLY
-            }
-            InsightCapabilityTier.JSON_OBJECT -> when {
-                supportsJSONObject -> InsightCapabilityTier.JSON_OBJECT
-                else -> InsightCapabilityTier.NARRATIVE_ONLY
-            }
+            InsightCapabilityTier.STRICT_JSON_SCHEMA ->
+                when {
+                    supportsStrictJSONSchema -> InsightCapabilityTier.STRICT_JSON_SCHEMA
+                    supportsJSONObject -> InsightCapabilityTier.JSON_OBJECT
+                    else -> InsightCapabilityTier.NARRATIVE_ONLY
+                }
+            InsightCapabilityTier.JSON_OBJECT ->
+                when {
+                    supportsJSONObject -> InsightCapabilityTier.JSON_OBJECT
+                    else -> InsightCapabilityTier.NARRATIVE_ONLY
+                }
             InsightCapabilityTier.NARRATIVE_ONLY -> InsightCapabilityTier.NARRATIVE_ONLY
         }
     }
@@ -50,5 +56,5 @@ data class InsightCatalogModel(
     val id: String,
     val displayName: String,
     val providerKey: String,
-    val capabilities: InsightModelCapabilities
+    val capabilities: InsightModelCapabilities,
 )

@@ -1,5 +1,10 @@
 package com.openburnbar.data.media
 
+private const val VAL_3 = 3
+private const val VAL_4 = 4
+private const val VAL_5 = 5
+private const val VAL_8 = 8
+
 /**
  * 1:1 Kotlin port of `MediaStreamClass` (Swift
  * `OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaStreamClass.swift`).
@@ -14,20 +19,21 @@ value class MediaStreamClass(val raw: String) {
     enum class Feature { FILE_TRANSFER, SCREEN_SHARE, VIDEO_CALL, COMPUTER_USE }
 
     val feature: Feature?
-        get() = when (raw) {
-            BLOB_ADVERTISE.raw, BLOB_FETCH.raw, BLOB.raw -> Feature.FILE_TRANSFER
-            SCREEN_VIDEO.raw -> Feature.SCREEN_SHARE
-            VIDEO_OUT.raw, VIDEO_IN.raw, AUDIO_OUT.raw, AUDIO_IN.raw -> Feature.VIDEO_CALL
-            CONTROL_SURFACE_FRAME.raw, CONTROL_ACTION_LOG.raw, CONTROL_INPUT.raw, CONTROL_APPROVAL.raw -> Feature.COMPUTER_USE
-            else -> null
-        }
+        get() =
+            when (raw) {
+                BLOB_ADVERTISE.raw, BLOB_FETCH.raw, BLOB.raw -> Feature.FILE_TRANSFER
+                SCREEN_VIDEO.raw -> Feature.SCREEN_SHARE
+                VIDEO_OUT.raw, VIDEO_IN.raw, AUDIO_OUT.raw, AUDIO_IN.raw -> Feature.VIDEO_CALL
+                CONTROL_SURFACE_FRAME.raw, CONTROL_ACTION_LOG.raw, CONTROL_INPUT.raw, CONTROL_APPROVAL.raw -> Feature.COMPUTER_USE
+                else -> null
+            }
 
     fun isAvailable(asOfPhase: Int): Boolean = when (raw) {
         BLOB_ADVERTISE.raw, BLOB_FETCH.raw, BLOB.raw -> asOfPhase >= 1
-        SCREEN_VIDEO.raw, CONTROL.raw, CLASSIFY.raw -> asOfPhase >= 3
-        AUDIO_OUT.raw, AUDIO_IN.raw -> asOfPhase >= 4
-        VIDEO_OUT.raw, VIDEO_IN.raw -> asOfPhase >= 5
-        CONTROL_SURFACE_FRAME.raw, CONTROL_ACTION_LOG.raw, CONTROL_INPUT.raw, CONTROL_APPROVAL.raw -> asOfPhase >= 8
+        SCREEN_VIDEO.raw, CONTROL.raw, CLASSIFY.raw -> asOfPhase >= VAL_3
+        AUDIO_OUT.raw, AUDIO_IN.raw -> asOfPhase >= VAL_4
+        VIDEO_OUT.raw, VIDEO_IN.raw -> asOfPhase >= VAL_5
+        CONTROL_SURFACE_FRAME.raw, CONTROL_ACTION_LOG.raw, CONTROL_INPUT.raw, CONTROL_APPROVAL.raw -> asOfPhase >= VAL_8
         else -> false
     }
 

@@ -7,11 +7,11 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Android-side save router for inbound Mercury attachments. 1:1 port of
@@ -37,18 +37,13 @@ class AttachmentSaver(
 ) {
     sealed class SaveResult {
         data class Succeeded(val uri: Uri) : SaveResult()
+
         data class Failed(val message: String) : SaveResult()
     }
 
-    suspend fun resolvedPreference(
-        peerDeviceId: String,
-    ): MediaPartnerSavePreferenceStore.SavePreference =
-        preferences.preference(peerDeviceId)
+    suspend fun resolvedPreference(peerDeviceId: String): MediaPartnerSavePreferenceStore.SavePreference = preferences.preference(peerDeviceId)
 
-    suspend fun rememberChoice(
-        preference: MediaPartnerSavePreferenceStore.SavePreference,
-        peerDeviceId: String,
-    ) {
+    suspend fun rememberChoice(preference: MediaPartnerSavePreferenceStore.SavePreference, peerDeviceId: String) {
         preferences.setPreference(preference, peerDeviceId)
     }
 
@@ -56,29 +51,28 @@ class AttachmentSaver(
      * Save an image asset into `MediaStore.Images.Media` (Photos
      * equivalent). On API 28 and below, falls back to scoped Downloads.
      */
-    suspend fun saveToPhotos(
-        sourceFile: File,
-        displayName: String,
-        mime: String,
-    ): SaveResult = withContext(Dispatchers.IO) {
+    suspend fun saveToPhotos(sourceFile: File, displayName: String, mime: String): SaveResult = withContext(Dispatchers.IO) {
         try {
             val resolver = context.contentResolver
-            val collection: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            }
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
-                put(MediaStore.Images.Media.MIME_TYPE, mime)
+            val collection: Uri =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/OpenBurnBar")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                 }
-            }
-            val uri = resolver.insert(collection, values) ?: return@withContext SaveResult.Failed(
-                "MediaStore insert returned null"
-            )
+            val values =
+                ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+                    put(MediaStore.Images.Media.MIME_TYPE, mime)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/OpenBurnBar")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                }
+            val uri =
+                resolver.insert(collection, values) ?: return@withContext SaveResult.Failed(
+                    "MediaStore insert returned null",
+                )
             resolver.openOutputStream(uri).use { out ->
                 if (out == null) return@withContext SaveResult.Failed("Output stream unavailable")
                 FileInputStream(sourceFile).use { input -> input.copyTo(out) }
@@ -101,10 +95,7 @@ class AttachmentSaver(
      * Save an arbitrary attachment via a destination URI obtained from
      * `ACTION_CREATE_DOCUMENT` (handed in by the caller activity).
      */
-    suspend fun saveToFiles(
-        sourceFile: File,
-        destinationUri: Uri,
-    ): SaveResult = withContext(Dispatchers.IO) {
+    suspend fun saveToFiles(sourceFile: File, destinationUri: Uri): SaveResult = withContext(Dispatchers.IO) {
         try {
             val resolver = context.contentResolver
             resolver.openOutputStream(destinationUri).use { out ->
@@ -121,17 +112,14 @@ class AttachmentSaver(
      * Save into a previously-granted tree URI (persisted partner-level
      * Files preference). Creates a new document inside the tree.
      */
-    suspend fun saveToTree(
-        sourceFile: File,
-        treeUri: Uri,
-        displayName: String,
-        mime: String,
-    ): SaveResult = withContext(Dispatchers.IO) {
+    suspend fun saveToTree(sourceFile: File, treeUri: Uri, displayName: String, mime: String): SaveResult = withContext(Dispatchers.IO) {
         try {
-            val tree = DocumentFile.fromTreeUri(context, treeUri)
-                ?: return@withContext SaveResult.Failed("Cannot resolve tree URI")
-            val document = tree.createFile(mime, displayName)
-                ?: return@withContext SaveResult.Failed("Cannot create file inside tree")
+            val tree =
+                DocumentFile.fromTreeUri(context, treeUri)
+                    ?: return@withContext SaveResult.Failed("Cannot resolve tree URI")
+            val document =
+                tree.createFile(mime, displayName)
+                    ?: return@withContext SaveResult.Failed("Cannot create file inside tree")
             context.contentResolver.openOutputStream(document.uri).use { out ->
                 if (out == null) return@withContext SaveResult.Failed("Output stream unavailable")
                 FileInputStream(sourceFile).use { input -> input.copyTo(out) }
@@ -155,7 +143,7 @@ class AttachmentSaver(
 
         @Suppress("unused")
         fun externalPicturesRoot(): File = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_PICTURES
+            Environment.DIRECTORY_PICTURES,
         )
     }
 }

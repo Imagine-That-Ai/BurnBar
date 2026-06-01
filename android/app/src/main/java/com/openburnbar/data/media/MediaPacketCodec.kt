@@ -3,6 +3,8 @@ package com.openburnbar.data.media
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+private const val VAL_4 = 4
+
 /**
  * Length-prefixed binary codec for Mercury media frames. 1:1 port of
  * `MediaPacketCodec.swift`. Same outer layout as `IrohRelayFrameCodec`
@@ -18,26 +20,31 @@ class MediaPacketCodec(
 ) {
     sealed class CodecError(message: String) : RuntimeException(message) {
         object EnvelopeTooShort : CodecError("envelope too short")
+
         data class PayloadTooLarge(val actual: Int, val max: Int) :
             CodecError("payload too large: $actual > $max")
+
         object HeaderTruncated : CodecError("header truncated")
+
         data class UnknownKind(val raw: Byte) : CodecError("unknown frame kind: $raw")
+
         object CursorTruncated : CodecError("cursor metadata truncated")
     }
 
     data class Decoded(val frame: MediaFrame, val consumed: Int)
 
     fun encode(frame: MediaFrame): ByteArray {
-        val cursorByteCount = if (frame.flags.contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
-            MediaFrame.CURSOR_METADATA_BYTE_COUNT
-        } else {
-            0
-        }
+        val cursorByteCount =
+            if (frame.flags.contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
+                MediaFrame.CURSOR_METADATA_BYTE_COUNT
+            } else {
+                0
+            }
         val totalPayloadCount = MediaFrame.HEADER_BYTE_COUNT + cursorByteCount + frame.payload.size
         if (totalPayloadCount > maxPayloadBytes) {
             throw CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
         }
-        val buffer = ByteBuffer.allocate(4 + totalPayloadCount).order(ByteOrder.BIG_ENDIAN)
+        val buffer = ByteBuffer.allocate(VAL_4 + totalPayloadCount).order(ByteOrder.BIG_ENDIAN)
         buffer.putInt(totalPayloadCount)
         buffer.put(frame.kind.rawValue)
         buffer.put(frame.flags.rawValue)
@@ -54,19 +61,8 @@ class MediaPacketCodec(
     }
 
     fun decode(envelope: ByteArray): Decoded {
-        val lengthPrefixBytes = 4
-        if (envelope.size < lengthPrefixBytes + MediaFrame.HEADER_BYTE_COUNT) {
-            throw CodecError.EnvelopeTooShort
-        }
-        val buffer = ByteBuffer.wrap(envelope).order(ByteOrder.BIG_ENDIAN)
-        val totalPayloadCount = buffer.int
-        if (totalPayloadCount > maxPayloadBytes) {
-            throw CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
-        }
-        val totalEnvelopeBytes = lengthPrefixBytes + totalPayloadCount
-        if (envelope.size < totalEnvelopeBytes) {
-            throw CodecError.HeaderTruncated
-        }
+        val header = decodeEnvelopeHeader(envelope)
+        val buffer = header.buffer
         val kindByte = buffer.get()
         val kind = MediaFrame.Kind.fromRaw(kindByte) ?: throw CodecError.UnknownKind(kindByte)
         val flagsByte = buffer.get()
@@ -74,24 +70,26 @@ class MediaPacketCodec(
         val frameIndex = buffer.int.toUInt()
         val pts = buffer.long.toULong()
 
-        var payloadStart = lengthPrefixBytes + MediaFrame.HEADER_BYTE_COUNT
-        val cursor = if (MediaFrame.Flags(flagsByte).contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
-            val cursorEnd = payloadStart + MediaFrame.CURSOR_METADATA_BYTE_COUNT
-            if (cursorEnd > lengthPrefixBytes + totalPayloadCount) {
-                throw CodecError.CursorTruncated
+        var payloadStart = buffer.position()
+        val cursor =
+            if (MediaFrame.Flags(flagsByte).contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
+                val cursorEnd = payloadStart + MediaFrame.CURSOR_METADATA_BYTE_COUNT
+                if (cursorEnd > VAL_4 + header.totalPayloadCount) {
+                    throw CodecError.CursorTruncated
+                }
+                val x = buffer.short
+                val y = buffer.short
+                payloadStart = cursorEnd
+                MediaFrame.CursorMetadata(x, y)
+            } else {
+                null
             }
-            val x = buffer.short
-            val y = buffer.short
-            payloadStart = cursorEnd
-            MediaFrame.CursorMetadata(x, y)
-        } else {
-            null
-        }
-        val payloadEnd = lengthPrefixBytes + totalPayloadCount
+        val payloadEnd = VAL_4 + header.totalPayloadCount
         val payload = envelope.copyOfRange(payloadStart, payloadEnd)
 
         return Decoded(
-            frame = MediaFrame(
+            frame =
+            MediaFrame(
                 kind = kind,
                 flags = MediaFrame.Flags(flagsByte),
                 gopID = gopID,
@@ -100,7 +98,35 @@ class MediaPacketCodec(
                 cursor = cursor,
                 payload = payload,
             ),
-            consumed = totalEnvelopeBytes,
+            consumed = header.totalEnvelopeBytes,
+        )
+    }
+
+    private data class PacketEnvelopeHeader(
+        val buffer: ByteBuffer,
+        val totalEnvelopeBytes: Int,
+        val totalPayloadCount: Int,
+    )
+
+    private fun decodeEnvelopeHeader(envelope: ByteArray): PacketEnvelopeHeader {
+        val lengthPrefixBytes = VAL_4
+        if (envelope.size < lengthPrefixBytes + MediaFrame.HEADER_BYTE_COUNT) {
+            throw CodecError.EnvelopeTooShort
+        }
+        val buffer = ByteBuffer.wrap(envelope).order(ByteOrder.BIG_ENDIAN)
+        val totalPayloadCount = buffer.int
+        val envelopeBoundsError: CodecError? =
+            when {
+                totalPayloadCount > maxPayloadBytes ->
+                    CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
+                envelope.size < lengthPrefixBytes + totalPayloadCount -> CodecError.HeaderTruncated
+                else -> null
+            }
+        if (envelopeBoundsError != null) throw envelopeBoundsError
+        return PacketEnvelopeHeader(
+            buffer = buffer,
+            totalEnvelopeBytes = lengthPrefixBytes + totalPayloadCount,
+            totalPayloadCount = totalPayloadCount,
         )
     }
 

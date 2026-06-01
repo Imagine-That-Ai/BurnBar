@@ -1,9 +1,11 @@
 package com.openburnbar.data.media
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+private const val VAL_4 = 4
 
 @JvmInline
 value class MediaFrameV2Kind(val rawValue: Byte) {
@@ -64,10 +66,11 @@ data class MediaFrameV2Metadata(
     fun encode(): ByteArray = json.encodeToString(MediaFrameV2Metadata.serializer(), this).encodeToByteArray()
 
     companion object {
-        private val json = Json {
-            ignoreUnknownKeys = true
-            encodeDefaults = false
-        }
+        private val json =
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = false
+            }
 
         fun decode(bytes: ByteArray): MediaFrameV2Metadata {
             if (bytes.isEmpty()) return MediaFrameV2Metadata()
@@ -81,10 +84,15 @@ class MediaFrameV2Codec(
 ) {
     sealed class CodecError(message: String) : RuntimeException(message) {
         object NotNegotiated : CodecError("MediaFrame v2 was not negotiated")
+
         object EnvelopeTooShort : CodecError("envelope too short")
+
         object InvalidMagic : CodecError("invalid MediaFrame v2 magic")
+
         data class UnsupportedVersion(val version: Byte) : CodecError("unsupported MediaFrame v2 version: $version")
+
         data class PayloadTooLarge(val actual: Int, val max: Int) : CodecError("payload too large: $actual > $max")
+
         object HeaderTruncated : CodecError("header truncated")
     }
 
@@ -98,7 +106,7 @@ class MediaFrameV2Codec(
         if (totalPayloadCount > maxPayloadBytes) {
             throw CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
         }
-        return ByteBuffer.allocate(4 + totalPayloadCount)
+        return ByteBuffer.allocate(VAL_4 + totalPayloadCount)
             .order(ByteOrder.BIG_ENDIAN)
             .putInt(totalPayloadCount)
             .put(MAGIC)
@@ -116,25 +124,9 @@ class MediaFrameV2Codec(
     }
 
     fun decode(envelope: ByteArray): Decoded {
-        val lengthPrefixBytes = 4
-        if (envelope.size < lengthPrefixBytes + FIXED_HEADER_BYTE_COUNT) {
-            throw CodecError.EnvelopeTooShort
-        }
-        val buffer = ByteBuffer.wrap(envelope).order(ByteOrder.BIG_ENDIAN)
-        val totalPayloadCount = buffer.int
-        if (totalPayloadCount > maxPayloadBytes) {
-            throw CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
-        }
-        val totalEnvelopeBytes = lengthPrefixBytes + totalPayloadCount
-        if (envelope.size < totalEnvelopeBytes) {
-            throw CodecError.HeaderTruncated
-        }
-
-        val magic = ByteArray(MAGIC.size)
-        buffer.get(magic)
-        if (!magic.contentEquals(MAGIC)) throw CodecError.InvalidMagic
-        val version = buffer.get()
-        if (version != VERSION) throw CodecError.UnsupportedVersion(version)
+        val header = decodeEnvelopeHeader(envelope)
+        val buffer = header.buffer
+        validateMagicAndVersion(buffer)
 
         val kind = MediaFrameV2Kind(buffer.get())
         val flags = buffer.short.toUShort()
@@ -143,15 +135,14 @@ class MediaFrameV2Codec(
         val pts = buffer.long.toULong()
         val metadataLength = buffer.int
         val payloadLength = buffer.int
-        if (metadataLength < 0 || payloadLength < 0 || buffer.position() + metadataLength + payloadLength > totalEnvelopeBytes) {
-            throw CodecError.HeaderTruncated
-        }
+        validatePayloadBounds(metadataLength, payloadLength, buffer, header.totalEnvelopeBytes)
         val metadata = ByteArray(metadataLength)
         buffer.get(metadata)
         val payload = ByteArray(payloadLength)
         buffer.get(payload)
         return Decoded(
-            frame = MediaFrameV2(
+            frame =
+            MediaFrameV2(
                 kind = kind,
                 flags = flags,
                 gopID = gopID,
@@ -160,8 +151,53 @@ class MediaFrameV2Codec(
                 metadata = metadata,
                 payload = payload,
             ),
-            consumed = totalEnvelopeBytes,
+            consumed = header.totalEnvelopeBytes,
         )
+    }
+
+    private data class EnvelopeHeader(
+        val buffer: ByteBuffer,
+        val totalEnvelopeBytes: Int,
+    )
+
+    private fun decodeEnvelopeHeader(envelope: ByteArray): EnvelopeHeader {
+        val lengthPrefixBytes = VAL_4
+        if (envelope.size < lengthPrefixBytes + FIXED_HEADER_BYTE_COUNT) {
+            throw CodecError.EnvelopeTooShort
+        }
+        val buffer = ByteBuffer.wrap(envelope).order(ByteOrder.BIG_ENDIAN)
+        val totalPayloadCount = buffer.int
+        val envelopeBoundsError: CodecError? =
+            when {
+                totalPayloadCount > maxPayloadBytes ->
+                    CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
+                envelope.size < lengthPrefixBytes + totalPayloadCount -> CodecError.HeaderTruncated
+                else -> null
+            }
+        if (envelopeBoundsError != null) throw envelopeBoundsError
+        return EnvelopeHeader(buffer = buffer, totalEnvelopeBytes = lengthPrefixBytes + totalPayloadCount)
+    }
+
+    private fun validateMagicAndVersion(buffer: ByteBuffer) {
+        val magic = ByteArray(MAGIC.size)
+        buffer.get(magic)
+        if (!magic.contentEquals(MAGIC)) throw CodecError.InvalidMagic
+        val version = buffer.get()
+        if (version != VERSION) throw CodecError.UnsupportedVersion(version)
+    }
+
+    private fun validatePayloadBounds(
+        metadataLength: Int,
+        payloadLength: Int,
+        buffer: ByteBuffer,
+        totalEnvelopeBytes: Int,
+    ) {
+        val payloadEnd = buffer.position() + metadataLength + payloadLength
+        val hasInvalidPayloadBounds =
+            metadataLength < 0 || payloadLength < 0 || payloadEnd > totalEnvelopeBytes
+        if (hasInvalidPayloadBounds) {
+            throw CodecError.HeaderTruncated
+        }
     }
 
     companion object {
@@ -171,7 +207,7 @@ class MediaFrameV2Codec(
         const val DEFAULT_MAX_PAYLOAD_BYTES: Int = 2 * 1024 * 1024
 
         fun isEncodedEnvelope(envelope: ByteArray): Boolean {
-            val headerStart = 4
+            val headerStart = VAL_4
             if (envelope.size < headerStart + MAGIC.size) return false
             return MAGIC.indices.all { index -> envelope[headerStart + index] == MAGIC[index] }
         }

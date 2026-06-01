@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// UI unit-test fixture literals (sizes, millis, colors); extraction adds noise without reuse.
+
 package com.openburnbar.ui.components
 
 import androidx.compose.ui.geometry.Size
@@ -7,28 +10,29 @@ import org.junit.Test
 
 class SwarmSimulationTest {
     @Test
-    fun `grok shape assigns xai provider roles`() {
+    fun grokShapeAssignsXaiProviderRoles() {
         val simulation = SwarmSimulation(particleCount = 180, pace = SwarmPace.CINEMATIC)
 
         simulation.ensureBounds(Size(1200f, 800f))
         simulation.setShapeMode("grok")
 
         assertTrue(
-            simulation.particles.any { it.role?.endsWith(":${AgentProvider.XAI.key}") == true }
+            simulation.particles.any { it.role?.endsWith(":${AgentProvider.XAI.key}") == true },
         )
     }
 
     @Test
-    fun `provider logo swarm assigns several providers at once`() {
+    fun providerLogoSwarmAssignsSeveralProvidersAtOnce() {
         val simulation = SwarmSimulation(particleCount = 300, pace = SwarmPace.CINEMATIC)
 
         simulation.ensureBounds(Size(1400f, 900f))
         simulation.setShapeMode("providers")
 
-        val providers = simulation.particles
-            .mapNotNull { it.role?.substringAfter(':', missingDelimiterValue = "") }
-            .filter { it.isNotBlank() }
-            .toSet()
+        val providers =
+            simulation.particles
+                .mapNotNull { it.role?.substringAfter(':', missingDelimiterValue = "") }
+                .filter { it.isNotBlank() }
+                .toSet()
 
         assertTrue(simulation.providerLogoShowcaseKeys.containsAll(AgentProvider.entries.map { it.key }))
         assertTrue(providers.contains(AgentProvider.CLAUDE_CODE.key))
@@ -36,20 +40,22 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `provider logo swarm obeys enabled provider glyph filter`() {
-        val simulation = SwarmSimulation(
-            particleCount = 300,
-            pace = SwarmPace.CINEMATIC,
-            enabledProviderGlyphs = setOf(AgentProvider.CODEX, AgentProvider.OPEN_CLAW)
-        )
+    fun providerLogoSwarmObeysEnabledProviderGlyphFilter() {
+        val simulation =
+            SwarmSimulation(
+                particleCount = 300,
+                pace = SwarmPace.CINEMATIC,
+                enabledProviderGlyphs = setOf(AgentProvider.CODEX, AgentProvider.OPEN_CLAW),
+            )
 
         simulation.ensureBounds(Size(1400f, 900f))
         simulation.setShapeMode("providers")
 
-        val providers = simulation.particles
-            .mapNotNull { it.role?.substringAfter(':', missingDelimiterValue = "") }
-            .filter { it.isNotBlank() }
-            .toSet()
+        val providers =
+            simulation.particles
+                .mapNotNull { it.role?.substringAfter(':', missingDelimiterValue = "") }
+                .filter { it.isNotBlank() }
+                .toSet()
 
         assertTrue(simulation.enabledProviderLogoKeys == setOf(AgentProvider.CODEX.key, AgentProvider.OPEN_CLAW.key))
         assertTrue(providers.contains(AgentProvider.CODEX.key))
@@ -58,12 +64,13 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `provider logo swarm hides provider roles when all glyphs are disabled`() {
-        val simulation = SwarmSimulation(
-            particleCount = 180,
-            pace = SwarmPace.CINEMATIC,
-            enabledProviderGlyphs = emptySet()
-        )
+    fun providerLogoSwarmHidesProviderRolesWhenAllGlyphsAreDisabled() {
+        val simulation =
+            SwarmSimulation(
+                particleCount = 180,
+                pace = SwarmPace.CINEMATIC,
+                enabledProviderGlyphs = emptySet(),
+            )
 
         simulation.ensureBounds(Size(1400f, 900f))
         simulation.setShapeMode("providers")
@@ -73,15 +80,16 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `provider logo cycles wait for settled admire hold`() {
+    fun providerLogoCyclesWaitForSettledAdmireHold() {
         var nowNanos = 1_000_000_000L
         val providers = AgentProvider.swarmGlyphProviders.take(12).toSet()
-        val simulation = SwarmSimulation(
-            particleCount = 360,
-            pace = SwarmPace.CINEMATIC,
-            enabledProviderGlyphs = providers,
-            clockNanos = { nowNanos }
-        )
+        val simulation =
+            SwarmSimulation(
+                particleCount = 360,
+                pace = SwarmPace.CINEMATIC,
+                enabledProviderGlyphs = providers,
+                clockNanos = { nowNanos },
+            )
 
         simulation.ensureBounds(Size(1400f, 900f))
         simulation.setShapeMode("providers")
@@ -115,7 +123,7 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `provider logo mappings use real visual assets for inspected agents`() {
+    fun providerLogoMappingsUseRealVisualAssetsForInspectedAgents() {
         assertTrue(ProviderLogo.drawableFor(AgentProvider.OPEN_CLAW) == com.openburnbar.R.drawable.open_claw_logo)
         assertTrue(ProviderLogo.drawableFor(AgentProvider.HERMES) == com.openburnbar.R.drawable.hermes_logo)
         assertTrue(ProviderLogo.drawableFor(AgentProvider.CODEX) == com.openburnbar.R.drawable.codex_logo)
@@ -123,18 +131,20 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `switching color palette changes resolved colors`() {
+    fun switchingColorPaletteChangesResolvedColors() {
         val simulation = SwarmSimulation(particleCount = 180, pace = SwarmPace.CINEMATIC)
-        val particle = SwarmSimulation.Particle(
-            x = 100.0, y = 100.0,
-            vx = 0.0, vy = 0.0,
-            size = 3.0,
-            isGlyph = false,
-            glyph = "",
-            colorIndex = 0.5, // falls into 'amber' range (0.35 to 0.62)
-            baseOpacity = 1.0,
-            opacity = 1.0
-        )
+        val particle =
+            SwarmSimulation.Particle(
+                x = 100.0, y = 100.0,
+                vx = 0.0, vy = 0.0,
+                size = 3.0,
+                isGlyph = false,
+                glyph = "",
+                // falls into 'amber' range (0.35 to 0.62)
+                colorIndex = 0.5,
+                baseOpacity = 1.0,
+                opacity = 1.0,
+            )
 
         // Default / System palette (amber is 0xFFFFA800)
         simulation.paletteName = "System"
@@ -152,14 +162,13 @@ class SwarmSimulationTest {
         org.junit.Assert.assertEquals(androidx.compose.ui.graphics.Color(0xFFFF4500), crimsonColor)
     }
 
-    private fun providerKeysInFormation(simulation: SwarmSimulation): Set<String> =
-        simulation.particles
-            .mapNotNull { it.role?.substringAfter(':', missingDelimiterValue = "") }
-            .filter { it.isNotBlank() }
-            .toSet()
+    private fun providerKeysInFormation(simulation: SwarmSimulation): Set<String> = simulation.particles
+        .mapNotNull { it.role?.substringAfter(':', missingDelimiterValue = "") }
+        .filter { it.isNotBlank() }
+        .toSet()
 
     @Test
-    fun `instantlySettle snaps all targeted particles directly to target`() {
+    fun instantlysettleSnapsAllTargetedParticlesDirectlyToTarget() {
         val simulation = SwarmSimulation(particleCount = 180, pace = SwarmPace.CINEMATIC)
         simulation.ensureBounds(Size(1200f, 800f))
         simulation.setShapeMode("grok")
@@ -181,7 +190,7 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `forceCycleShape support cycling backwards`() {
+    fun forcecycleshapeSupportCyclingBackwards() {
         val simulation = SwarmSimulation(particleCount = 180, pace = SwarmPace.CINEMATIC)
         simulation.ensureBounds(Size(1200f, 800f))
 
@@ -192,7 +201,7 @@ class SwarmSimulationTest {
     }
 
     @Test
-    fun `isRewinding enabled repels targeted particles from targets`() {
+    fun isrewindingEnabledRepelsTargetedParticlesFromTargets() {
         val simulation = SwarmSimulation(particleCount = 300, pace = SwarmPace.CINEMATIC)
         simulation.ensureBounds(Size(1200f, 800f))
         simulation.setShapeMode("providers")

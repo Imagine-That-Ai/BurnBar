@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.insights
 
 import com.openburnbar.data.insights.InsightAnalysisResult
@@ -15,7 +18,7 @@ import com.openburnbar.data.models.AgentProvider
  */
 data class AgentInsightsScope(
     val provider: AgentProvider? = null,
-    val window: InsightTimeWindow = InsightTimeWindow.Last7d
+    val window: InsightTimeWindow = InsightTimeWindow.Last7d,
 ) {
     val isAggregate: Boolean get() = provider == null
 
@@ -24,8 +27,8 @@ data class AgentInsightsScope(
 
     companion object {
         val Aggregate = AgentInsightsScope()
-        fun agent(provider: AgentProvider, window: InsightTimeWindow = InsightTimeWindow.Last7d) =
-            AgentInsightsScope(provider, window)
+
+        fun agent(provider: AgentProvider, window: InsightTimeWindow = InsightTimeWindow.Last7d) = AgentInsightsScope(provider, window)
 
         fun fromRouteSlug(slug: String, window: InsightTimeWindow = InsightTimeWindow.Last7d): AgentInsightsScope? {
             val normalized = slug.lowercase()
@@ -49,7 +52,7 @@ data class AgentInsightsBundle(
     val kpis: AgentInsightsKPIStrip,
     val brief: InsightAnalysisResult? = null,
     val canvases: List<InsightCanvas> = emptyList(),
-    val missions: List<InsightMissionCandidate> = emptyList()
+    val missions: List<InsightMissionCandidate> = emptyList(),
 ) {
     val isEmpty: Boolean get() = kpis.sessions.raw == 0.0 && canvases.isEmpty() && brief == null
 }
@@ -59,13 +62,13 @@ data class AgentInsightsHeader(
     val title: String,
     val subtitle: String?,
     val status: Status,
-    val modelLineup: List<String> = emptyList()
+    val modelLineup: List<String> = emptyList(),
 ) {
     enum class Status(val displayLabel: String) {
         ACTIVE("Active"),
         IDLE("Idle"),
         DORMANT("Dormant"),
-        UNCONFIGURED("Not connected")
+        UNCONFIGURED("Not connected"),
     }
 }
 
@@ -73,7 +76,7 @@ data class AgentInsightsKPIStrip(
     val spend: KPI,
     val tokens: KPI,
     val sessions: KPI,
-    val anomaly: KPI
+    val anomaly: KPI,
 ) {
     val ordered: List<KPI> get() = listOf(spend, tokens, sessions, anomaly)
 
@@ -82,7 +85,7 @@ data class AgentInsightsKPIStrip(
         val label: String,
         val valueText: String,
         val raw: Double,
-        val symbol: String
+        val symbol: String,
     )
 }
 
@@ -92,19 +95,14 @@ data class AgentInsightsKPIStrip(
  * `AgentInsightsBundleAssembler.assemble` in Swift.
  */
 object AgentInsightsBundleAssembler {
-
-    fun assemble(
-        scope: AgentInsightsScope,
-        digest: InsightDigest?,
-        analysis: InsightAnalysisResult?,
-        canvases: List<InsightCanvas>
-    ): AgentInsightsBundle {
+    fun assemble(scope: AgentInsightsScope, digest: InsightDigest?, analysis: InsightAnalysisResult?, canvases: List<InsightCanvas>): AgentInsightsBundle {
         val providerSnapshot = providerSnapshot(scope, digest)
         val header = makeHeader(scope, providerSnapshot)
         val kpis = makeKPIs(scope, digest, providerSnapshot, analysis)
         val scopedCanvases = filterCanvases(canvases, scope)
-        val rankedMissions = (analysis?.missionCandidates ?: emptyList())
-            .sortedByDescending { priorityRank(it.priority) }
+        val rankedMissions =
+            (analysis?.missionCandidates ?: emptyList())
+                .sortedByDescending { priorityRank(it.priority) }
 
         return AgentInsightsBundle(
             scope = scope,
@@ -112,37 +110,32 @@ object AgentInsightsBundleAssembler {
             kpis = kpis,
             brief = analysis,
             canvases = scopedCanvases,
-            missions = rankedMissions
+            missions = rankedMissions,
         )
     }
 
-    private fun providerSnapshot(
-        scope: AgentInsightsScope,
-        digest: InsightDigest?
-    ): InsightDigest.ProviderSnapshot? {
+    private fun providerSnapshot(scope: AgentInsightsScope, digest: InsightDigest?): InsightDigest.ProviderSnapshot? {
         val provider = scope.provider ?: return null
         return digest?.providers?.firstOrNull { it.id.equals(provider.key, ignoreCase = true) || it.displayName.equals(provider.displayName, ignoreCase = true) }
     }
 
-    private fun makeHeader(
-        scope: AgentInsightsScope,
-        snapshot: InsightDigest.ProviderSnapshot?
-    ): AgentInsightsHeader {
+    private fun makeHeader(scope: AgentInsightsScope, snapshot: InsightDigest.ProviderSnapshot?): AgentInsightsHeader {
         if (scope.provider == null) {
             return AgentInsightsHeader(
                 provider = null,
                 title = "All agents",
                 subtitle = "Combined view across every provider",
                 status = AgentInsightsHeader.Status.ACTIVE,
-                modelLineup = emptyList()
+                modelLineup = emptyList(),
             )
         }
         val provider = scope.provider
-        val status = if (snapshot == null || (snapshot.sessionCount == 0 && snapshot.totalTokens == 0L)) {
-            AgentInsightsHeader.Status.UNCONFIGURED
-        } else {
-            AgentInsightsHeader.Status.ACTIVE
-        }
+        val status =
+            if (snapshot == null || snapshot.sessionCount == 0 && snapshot.totalTokens == 0L) {
+                AgentInsightsHeader.Status.UNCONFIGURED
+            } else {
+                AgentInsightsHeader.Status.ACTIVE
+            }
         val lineup = snapshot?.topModels?.take(3) ?: emptyList()
         val subtitle = lineup.firstOrNull()?.let { "Top model: $it" } ?: status.displayLabel
         return AgentInsightsHeader(
@@ -150,7 +143,7 @@ object AgentInsightsBundleAssembler {
             title = provider.displayName,
             subtitle = subtitle,
             status = status,
-            modelLineup = lineup
+            modelLineup = lineup,
         )
     }
 
@@ -158,24 +151,25 @@ object AgentInsightsBundleAssembler {
         scope: AgentInsightsScope,
         digest: InsightDigest?,
         snapshot: InsightDigest.ProviderSnapshot?,
-        analysis: InsightAnalysisResult?
+        analysis: InsightAnalysisResult?,
     ): AgentInsightsKPIStrip {
         val spend = if (scope.isAggregate) digest?.totals?.costUSD ?: 0.0 else snapshot?.costUSD ?: 0.0
         val tokens = if (scope.isAggregate) digest?.totals?.totalTokens ?: 0L else snapshot?.totalTokens ?: 0L
         val sessions = if (scope.isAggregate) digest?.totals?.sessionCount ?: 0 else snapshot?.sessionCount ?: 0
-        val anomalyScore = (analysis?.anomalies?.maxByOrNull { it.score }?.score) ?: 0.0
+        val anomalyScore = analysis?.anomalies?.maxByOrNull { it.score }?.score ?: 0.0
 
         return AgentInsightsKPIStrip(
             spend = AgentInsightsKPIStrip.KPI("spend", "Spend", formatUSD(spend), spend, "attach_money"),
             tokens = AgentInsightsKPIStrip.KPI("tokens", "Tokens", formatCompact(tokens.toDouble()), tokens.toDouble(), "sum"),
             sessions = AgentInsightsKPIStrip.KPI("sessions", "Sessions", formatCompact(sessions.toDouble()), sessions.toDouble(), "groups"),
-            anomaly = AgentInsightsKPIStrip.KPI(
+            anomaly =
+            AgentInsightsKPIStrip.KPI(
                 "anomaly",
                 "Anomaly",
                 if (anomalyScore <= 0.0) "None" else "${(anomalyScore.coerceIn(0.0, 1.0) * 100).toInt()} / 100",
                 anomalyScore,
-                "warning"
-            )
+                "warning",
+            ),
         )
     }
 
@@ -190,12 +184,13 @@ object AgentInsightsBundleAssembler {
         }
     }
 
-    private val canvasOrdering: Comparator<InsightCanvas> = Comparator { a, b ->
-        when {
-            a.sortIndex != b.sortIndex -> a.sortIndex.compareTo(b.sortIndex)
-            else -> b.updatedAt.compareTo(a.updatedAt)
+    private val canvasOrdering: Comparator<InsightCanvas> =
+        Comparator { a, b ->
+            when {
+                a.sortIndex != b.sortIndex -> a.sortIndex.compareTo(b.sortIndex)
+                else -> b.updatedAt.compareTo(a.updatedAt)
+            }
         }
-    }
 
     private fun priorityRank(priority: InsightMissionCandidate.Priority): Int = when (priority) {
         InsightMissionCandidate.Priority.CRITICAL -> 4

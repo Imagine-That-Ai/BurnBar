@@ -1,16 +1,16 @@
 package com.openburnbar.data.missions
 
+import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.Query
+import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
-import java.time.Instant
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 // MARK: - Rollback Service (Android parity, Hermes Square §6.10)
 //
@@ -33,22 +33,26 @@ data class RollbackSnapshot(
 
 sealed class RollbackScope {
     object FullSession : RollbackScope()
+
     data class LastN(val count: Int) : RollbackScope()
+
     data class SingleFile(val path: String) : RollbackScope()
 
     val token: String
-        get() = when (this) {
-            FullSession -> "full_session"
-            is LastN -> "last_${count}"
-            is SingleFile -> "file"
-        }
+        get() =
+            when (this) {
+                FullSession -> "full_session"
+                is LastN -> "last_$count"
+                is SingleFile -> "file"
+            }
 
     val asJson: String
-        get() = when (this) {
-            FullSession -> "{\"kind\":\"fullSession\"}"
-            is LastN -> "{\"kind\":\"lastN\",\"count\":${count}}"
-            is SingleFile -> "{\"kind\":\"singleFile\",\"path\":${com.openburnbar.data.missions.jsonString(path)}}"
-        }
+        get() =
+            when (this) {
+                FullSession -> "{\"kind\":\"fullSession\"}"
+                is LastN -> "{\"kind\":\"lastN\",\"count\":$count}"
+                is SingleFile -> "{\"kind\":\"singleFile\",\"path\":${com.openburnbar.data.missions.jsonString(path)}}"
+            }
 }
 
 data class RollbackRequest(
@@ -62,10 +66,15 @@ data class RollbackRequest(
     val errorMessage: String?,
 ) {
     enum class Status(val token: String) {
-        PENDING("pending"), IN_FLIGHT("in_flight"), COMPLETED("completed"), FAILED("failed"), CANCELLED("cancelled");
+        PENDING("pending"),
+        IN_FLIGHT("in_flight"),
+        COMPLETED("completed"),
+        FAILED("failed"),
+        CANCELLED("cancelled"),
+        ;
+
         companion object {
-            fun fromToken(token: String?): Status =
-                values().firstOrNull { it.token == token } ?: PENDING
+            fun fromToken(token: String?): Status = values().firstOrNull { it.token == token } ?: PENDING
         }
     }
 }
@@ -89,20 +98,23 @@ class RollbackService private constructor(
     fun startObservingSession(sessionID: String) {
         if (snapshotRegistrations.containsKey(sessionID)) return
         val uid = auth.currentUser?.uid ?: return
-        val ref = firestore.collection("users").document(uid)
-            .collection("cli_sessions").document(sessionID)
-            .collection("snapshots")
-            .orderBy("sequence")
-        val reg = ref.addSnapshotListener { snap, error ->
-            if (error != null) {
-                _inlineError.value = error.localizedMessage
-                return@addSnapshotListener
+        val ref =
+            firestore.collection("users").document(uid)
+                .collection("cli_sessions").document(sessionID)
+                .collection("snapshots")
+                .orderBy("sequence")
+        val reg =
+            ref.addSnapshotListener { snap, error ->
+                if (error != null) {
+                    _inlineError.value = error.localizedMessage
+                    return@addSnapshotListener
+                }
+                val parsed =
+                    snap?.documents.orEmpty().mapNotNull { doc ->
+                        doc.data?.toRollbackSnapshotOrNull(documentID = doc.id, sessionID = sessionID)
+                    }
+                _snapshotsBySession.value = _snapshotsBySession.value + (sessionID to parsed)
             }
-            val parsed = snap?.documents.orEmpty().mapNotNull { doc ->
-                doc.data?.toRollbackSnapshotOrNull(documentID = doc.id, sessionID = sessionID)
-            }
-            _snapshotsBySession.value = _snapshotsBySession.value + (sessionID to parsed)
-        }
         snapshotRegistrations[sessionID] = reg
     }
 
@@ -114,63 +126,70 @@ class RollbackService private constructor(
     fun startObservingRequests() {
         if (requestsRegistration != null) return
         val uid = auth.currentUser?.uid ?: return
-        val ref = firestore.collection("users").document(uid)
-            .collection("rollback_requests")
-            .whereIn("status", listOf("pending", "in_flight"))
-        requestsRegistration = ref.addSnapshotListener { snap, error ->
-            if (error != null) {
-                _inlineError.value = error.localizedMessage
-                return@addSnapshotListener
+        val ref =
+            firestore.collection("users").document(uid)
+                .collection("rollback_requests")
+                .whereIn("status", listOf("pending", "in_flight"))
+        requestsRegistration =
+            ref.addSnapshotListener { snap, error ->
+                if (error != null) {
+                    _inlineError.value = error.localizedMessage
+                    return@addSnapshotListener
+                }
+                val parsed =
+                    snap?.documents.orEmpty().mapNotNull { doc ->
+                        doc.data?.toRollbackRequestOrNull(documentID = doc.id)
+                    }
+                _pendingRequests.value = parsed
             }
-            val parsed = snap?.documents.orEmpty().mapNotNull { doc ->
-                doc.data?.toRollbackRequestOrNull(documentID = doc.id)
-            }
-            _pendingRequests.value = parsed
-        }
     }
 
     fun stopAll() {
         snapshotRegistrations.values.forEach { it.remove() }
         snapshotRegistrations.clear()
-        requestsRegistration?.remove(); requestsRegistration = null
+        requestsRegistration?.remove()
+        requestsRegistration = null
         _snapshotsBySession.value = emptyMap()
         _pendingRequests.value = emptyList()
     }
 
     suspend fun submit(sessionID: String, scope: RollbackScope, requestedBy: String): RollbackRequest? {
-        val uid = auth.currentUser?.uid ?: run {
-            _inlineError.value = "Sign in to submit rollback requests."
-            return null
-        }
+        val uid =
+            auth.currentUser?.uid ?: run {
+                _inlineError.value = "Sign in to submit rollback requests."
+                return null
+            }
         val id = UUID.randomUUID().toString()
         val now = Instant.now()
-        val request = RollbackRequest(
-            id = id,
-            sessionID = sessionID,
-            scope = scope,
-            requestedAtEpoch = now.toEpochMilli(),
-            requestedBy = requestedBy,
-            status = RollbackRequest.Status.PENDING,
-            resolvedAtEpoch = null,
-            errorMessage = null,
-        )
-        val payload = mapOf<String, Any>(
-            "id" to id,
-            "sessionID" to sessionID,
-            "scopeJSON" to scope.asJson,
-            "requestedAt" to now.toString(),
-            "requestedBy" to requestedBy,
-            "status" to "pending",
-            "schemaVersion" to 1,
-            "source" to "android-hermes-square",
-        )
+        val request =
+            RollbackRequest(
+                id = id,
+                sessionID = sessionID,
+                scope = scope,
+                requestedAtEpoch = now.toEpochMilli(),
+                requestedBy = requestedBy,
+                status = RollbackRequest.Status.PENDING,
+                resolvedAtEpoch = null,
+                errorMessage = null,
+            )
+        val payload =
+            mapOf<String, Any>(
+                "id" to id,
+                "sessionID" to sessionID,
+                "scopeJSON" to scope.asJson,
+                "requestedAt" to now.toString(),
+                "requestedBy" to requestedBy,
+                "status" to "pending",
+                "schemaVersion" to 1,
+                "source" to "android-hermes-square",
+            )
         return try {
             firestore.collection("users").document(uid)
                 .collection("rollback_requests").document(id)
                 .set(payload)
                 .await()
             request
-        } catch (e: Exception) {
+        } catch (e: FirebaseException) {
             _inlineError.value = e.localizedMessage ?: "Rollback request failed."
             null
         }
@@ -179,30 +198,29 @@ class RollbackService private constructor(
     companion object {
         @Volatile private var instance: RollbackService? = null
 
-        fun shared(): RollbackService =
-            instance ?: synchronized(this) {
-                instance ?: RollbackService().also { instance = it }
-            }
+        fun shared(): RollbackService = instance ?: synchronized(this) {
+            instance ?: RollbackService().also { instance = it }
+        }
     }
 }
 
 private fun Map<String, Any?>.toRollbackSnapshotOrNull(documentID: String, sessionID: String): RollbackSnapshot? {
-    val sequence = (this["sequence"] as? Number)?.toInt() ?: return null
-    val takenAtIso = this["takenAt"] as? String ?: return null
-    val takenAtEpoch = runCatching { Instant.parse(takenAtIso).toEpochMilli() }.getOrNull() ?: return null
-    val actionLabel = this["actionLabel"] as? String ?: return null
+    val sequence = (this["sequence"] as? Number)?.toInt()
+    val takenAtIso = this["takenAt"] as? String
+    val takenAtEpoch = takenAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+    val actionLabel = this["actionLabel"] as? String
+    if (sequence == null || takenAtEpoch == null || actionLabel == null) return null
     val touched = (this["touchedFiles"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-    val macPath = this["macSnapshotPath"] as? String
     val restoredAtIso = this["restoredAt"] as? String
     val restoredAtEpoch = restoredAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
     return RollbackSnapshot(
-        id = (this["id"] as? String) ?: documentID,
+        id = this["id"] as? String ?: documentID,
         sessionID = sessionID,
         sequence = sequence,
         takenAtEpoch = takenAtEpoch,
         actionLabel = actionLabel,
         touchedFiles = touched,
-        macSnapshotPath = macPath,
+        macSnapshotPath = this["macSnapshotPath"] as? String,
         restoredAtEpoch = restoredAtEpoch,
     )
 }
@@ -213,13 +231,15 @@ private fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String): Rollb
     val scope = parseScope(scopeJSON)
     val statusRaw = this["status"] as? String
     val status = RollbackRequest.Status.fromToken(statusRaw)
-    val requestedAt = (this["requestedAt"] as? String)?.let {
-        runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
-    } ?: System.currentTimeMillis()
-    val resolvedAt = (this["resolvedAt"] as? String)?.let {
-        runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
-    }
-    val requestedBy = (this["requestedBy"] as? String) ?: "unknown"
+    val requestedAt =
+        (this["requestedAt"] as? String)?.let {
+            runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+        } ?: System.currentTimeMillis()
+    val resolvedAt =
+        (this["resolvedAt"] as? String)?.let {
+            runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+        }
+    val requestedBy = this["requestedBy"] as? String ?: "unknown"
     val errorMessage = this["errorMessage"] as? String
     return RollbackRequest(
         id = documentID,

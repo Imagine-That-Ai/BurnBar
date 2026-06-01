@@ -11,5 +11,5 @@ data class InsightModelTag(
     val modelID: String,
     val displayName: String,
     val egressTier: InsightEgressTier = InsightEgressTier.LOCAL_ONLY,
-    val stampedAt: String = ""
+    val stampedAt: String = "",
 )

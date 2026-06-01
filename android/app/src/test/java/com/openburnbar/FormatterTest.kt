@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import com.openburnbar.util.Formatting
@@ -5,7 +8,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class FormatterTest {
-
     @Test
     fun `formatCurrency formats dollars correctly`() {
         val result = Formatting.formatCurrency(12.50)

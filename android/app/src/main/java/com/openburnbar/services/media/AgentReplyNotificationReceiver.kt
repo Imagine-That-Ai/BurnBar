@@ -24,11 +24,12 @@ class AgentReplyNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_REPLY) return
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID)?.trim().orEmpty()
-        val reply = RemoteInput.getResultsFromIntent(intent)
-            ?.getCharSequence(KEY_TEXT_REPLY)
-            ?.toString()
-            ?.trim()
-            .orEmpty()
+        val reply =
+            RemoteInput.getResultsFromIntent(intent)
+                ?.getCharSequence(KEY_TEXT_REPLY)
+                ?.toString()
+                ?.trim()
+                .orEmpty()
         if (eventId.isEmpty() || reply.isEmpty()) return
 
         val pending = goAsync()
@@ -43,7 +44,7 @@ class AgentReplyNotificationReceiver : BroadcastReceiver() {
                             "replyText" to reply,
                             "deviceId" to stableDeviceId,
                             "clientReplyId" to "${eventId}_${stableDeviceId}_${System.currentTimeMillis()}",
-                        )
+                        ),
                     )
                     .await()
                 NotificationManagerCompat.from(context).cancel(eventId.hashCode())

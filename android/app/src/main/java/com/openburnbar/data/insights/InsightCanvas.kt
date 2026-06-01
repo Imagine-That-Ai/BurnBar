@@ -1,8 +1,7 @@
 package com.openburnbar.data.insights
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import java.util.UUID
+import kotlinx.serialization.Serializable
 
 /**
  * A persistent dashboard composed of insight widgets.
@@ -24,13 +23,16 @@ data class InsightCanvas(
     val updatedAt: String = "",
     val lastRefreshedAt: String? = null,
     val origin: Origin = Origin.UserCreated,
-    val sortIndex: Int = 0
+    val sortIndex: Int = 0,
 ) {
     @Serializable
     sealed class Origin {
         @Serializable data object UserCreated : Origin()
+
         @Serializable data class Template(val id: String) : Origin()
+
         @Serializable data class Composed(val prompt: String) : Origin()
+
         @Serializable data class Imported(val filename: String) : Origin()
     }
 
@@ -47,7 +49,7 @@ data class InsightCanvas(
         return copy(
             widgets = widgets.filter { it.id != widgetID },
             layout = layout.remove(widgetID),
-            updatedAt = nowISO()
+            updatedAt = nowISO(),
         )
     }
 

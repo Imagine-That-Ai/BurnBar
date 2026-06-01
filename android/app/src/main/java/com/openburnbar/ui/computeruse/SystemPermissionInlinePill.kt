@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.computeruse
 
 import androidx.compose.foundation.background
@@ -42,12 +45,10 @@ private val MercuryBrush = Brush.linearGradient(listOf(MercuryStart, MercuryEnd)
  * sheet.
  */
 @Composable
-fun SystemPermissionInlinePill(
-    item: SystemPermissionItem,
-    onTap: () -> Unit,
-) {
+fun SystemPermissionInlinePill(item: SystemPermissionItem, onTap: () -> Unit) {
     Row(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
             .border(1.dp, MercuryBrush, RoundedCornerShape(14.dp))
@@ -83,7 +84,8 @@ private fun trailing(status: SystemPermissionStatus) {
 private fun headline(item: SystemPermissionItem): String = when (item.status) {
     SystemPermissionStatus.NEEDS_ACCESS,
     SystemPermissionStatus.TIMEOUT,
-    SystemPermissionStatus.UNKNOWN -> "Grant ${displayTitle(item.kind)} on your Mac"
+    SystemPermissionStatus.UNKNOWN,
+    -> "Grant ${displayTitle(item.kind)} on your Mac"
 
     SystemPermissionStatus.REQUESTING -> "Granting ${displayTitle(item.kind)}…"
     SystemPermissionStatus.GRANTED -> "${displayTitle(item.kind)} is on"
@@ -93,11 +95,13 @@ private fun headline(item: SystemPermissionItem): String = when (item.status) {
 private fun subtitle(item: SystemPermissionItem): String = when (item.status) {
     SystemPermissionStatus.NEEDS_ACCESS,
     SystemPermissionStatus.TIMEOUT,
-    SystemPermissionStatus.UNKNOWN -> "Tap to send a one-tap request to your Mac."
+    SystemPermissionStatus.UNKNOWN,
+    -> "Tap to send a one-tap request to your Mac."
 
     SystemPermissionStatus.REQUESTING -> "Watching for the system prompt…"
-    SystemPermissionStatus.GRANTED -> item.originatingToolName?.let { "Auto-retrying $it…" }
-        ?: "Auto-retrying the blocked tool…"
+    SystemPermissionStatus.GRANTED ->
+        item.originatingToolName?.let { "Auto-retrying $it…" }
+            ?: "Auto-retrying the blocked tool…"
 
     SystemPermissionStatus.DENIED -> "Tap to retry or open System Settings."
 }

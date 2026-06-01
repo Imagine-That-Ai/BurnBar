@@ -17,31 +17,22 @@ package com.openburnbar.ui.settings
 data class SettingsItem(
     /** Stable typed-string id (e.g. `"cloud.sync"`). */
     val id: String,
-
     /** Logical section the row belongs to (used for breadcrumb display). */
     val section: SettingsSection,
-
     /** Destination route the search router can navigate to. */
     val pageRoute: SettingsPageRoute,
-
     /** Anchor id used by destination screens to scroll the row into view. */
     val anchorId: String,
-
     /** Optional focus target for text fields. */
     val focusId: String? = null,
-
     /** Primary user-facing label. */
     val title: String,
-
     /** Optional descriptive line. */
     val subtitle: String? = null,
-
     /** Synonyms / alternates the user might type. */
     val keywords: List<String> = emptyList(),
-
     /** Long-form help indexed at the lowest weight. */
     val helpText: String? = null,
-
     /** Provider keys whose bundled logos should identify this setting row. */
     val logoProviderKeys: List<String> = emptyList(),
 )

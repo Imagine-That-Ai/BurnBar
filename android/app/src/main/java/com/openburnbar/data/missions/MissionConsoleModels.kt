@@ -54,7 +54,8 @@ data class ActiveMission(
         FAILED("Failed"),
         BLOCKED("Blocked"),
         CANCELLED("Cancelled"),
-        MAC_OFFLINE("Mac offline");
+        MAC_OFFLINE("Mac offline"),
+        ;
 
         val isLive: Boolean
             get() = this in setOf(QUEUED, STARTING, RUNNING, TOOLING, STREAMING, AWAITING_APPROVAL, COMPLETING)
@@ -103,21 +104,23 @@ data class MissionGroup(
     val updatedAtEpoch: Long,
 ) {
     enum class MergeAction {
-        KEEP_ALL, SYNTHESIZE,
+        KEEP_ALL,
+        SYNTHESIZE,
     }
 }
 
 internal fun CLIAgentMissionSnapshot.toActiveMission(): ActiveMission {
-    val phase = when (displayStatus.lowercase()) {
-        "completed" -> ActiveMission.Phase.COMPLETED
-        "failed", "agent_launch_failed", "unauthorized" -> ActiveMission.Phase.FAILED
-        "canceled", "cancelled" -> ActiveMission.Phase.CANCELLED
-        "mac_offline" -> ActiveMission.Phase.MAC_OFFLINE
-        "pending", "queued" -> ActiveMission.Phase.QUEUED
-        "waiting_for_approval" -> ActiveMission.Phase.AWAITING_APPROVAL
-        "running" -> if (activeToolName != null) ActiveMission.Phase.TOOLING else ActiveMission.Phase.RUNNING
-        else -> if (events.lastOrNull()?.kind == "llm_response") ActiveMission.Phase.STREAMING else ActiveMission.Phase.RUNNING
-    }
+    val phase =
+        when (displayStatus.lowercase()) {
+            "completed" -> ActiveMission.Phase.COMPLETED
+            "failed", "agent_launch_failed", "unauthorized" -> ActiveMission.Phase.FAILED
+            "canceled", "cancelled" -> ActiveMission.Phase.CANCELLED
+            "mac_offline" -> ActiveMission.Phase.MAC_OFFLINE
+            "pending", "queued" -> ActiveMission.Phase.QUEUED
+            "waiting_for_approval" -> ActiveMission.Phase.AWAITING_APPROVAL
+            "running" -> if (activeToolName != null) ActiveMission.Phase.TOOLING else ActiveMission.Phase.RUNNING
+            else -> if (events.lastOrNull()?.kind == "llm_response") ActiveMission.Phase.STREAMING else ActiveMission.Phase.RUNNING
+        }
     val runtime = runtimeIDGuess(selectedRuntime ?: requestedRuntime)
     return ActiveMission(
         id = id,
@@ -130,7 +133,8 @@ internal fun CLIAgentMissionSnapshot.toActiveMission(): ActiveMission {
         lastEventSnippet = events.lastOrNull()?.message,
         startedAt = createdAt,
         burnSoFarUSD = 0.0,
-        progressFraction = when (phase) {
+        progressFraction =
+        when (phase) {
             ActiveMission.Phase.QUEUED -> 0.05
             ActiveMission.Phase.STARTING -> 0.15
             ActiveMission.Phase.RUNNING, ActiveMission.Phase.TOOLING, ActiveMission.Phase.STREAMING -> 0.5

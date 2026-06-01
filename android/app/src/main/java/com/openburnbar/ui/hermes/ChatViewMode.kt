@@ -6,10 +6,10 @@ package com.openburnbar.ui.hermes
  */
 enum class ChatViewMode(val key: String, val displayLabel: String) {
     AGENT("agent", "Agent"),
-    CLI("cli", "CLI");
+    CLI("cli", "CLI"),
+    ;
 
     companion object {
-        fun fromKey(key: String?): ChatViewMode =
-            entries.firstOrNull { it.key == key } ?: AGENT
+        fun fromKey(key: String?): ChatViewMode = entries.firstOrNull { it.key == key } ?: AGENT
     }
 }

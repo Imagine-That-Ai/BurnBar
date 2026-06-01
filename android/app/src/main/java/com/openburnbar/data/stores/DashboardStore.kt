@@ -2,18 +2,22 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.UsageRollups
+import java.time.Duration
+import java.time.Instant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
-import java.time.Duration
-import java.time.Instant
+
+private const val SECONDS = 60
+private const val VAL_15 = 15
 
 class DashboardStore(
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val repo: FirestoreRepository = FirestoreRepository(),
 ) : ViewModel() {
     private val _rollups = MutableStateFlow<UsageRollups?>(null)
     val rollups = _rollups.asStateFlow()
@@ -33,7 +37,7 @@ class DashboardStore(
             try {
                 _rollups.value = fetchFreshRollups()
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -47,7 +51,7 @@ class DashboardStore(
             try {
                 _rollups.value = fetchFreshRollups()
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -71,7 +75,7 @@ class DashboardStore(
                 repo.rebuildUsageRollups()
                 _rollups.value = repo.fetchRollups()
                 _error.value = null
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
@@ -81,15 +85,16 @@ class DashboardStore(
 
     fun startListening() {
         listenJob?.cancel()
-        listenJob = viewModelScope.launch {
-            // See ActivityStore.startListening for the rationale —
-            // Firestore listener errors must NEVER reach
-            // Dispatchers.Main.immediate as unhandled exceptions, or
-            // the host activity crashes on PERMISSION_DENIED.
-            repo.listenToRollups()
-                .catch { e -> _error.value = e.message ?: e::class.simpleName }
-                .collect { rollups -> _rollups.value = rollups }
-        }
+        listenJob =
+            viewModelScope.launch {
+                // See ActivityStore.startListening for the rationale —
+                // Firestore listener errors must NEVER reach
+                // Dispatchers.Main.immediate as unhandled exceptions, or
+                // the host activity crashes on PERMISSION_DENIED.
+                repo.listenToRollups()
+                    .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                    .collect { rollups -> _rollups.value = rollups }
+            }
     }
 
     fun stopListening() {
@@ -99,7 +104,7 @@ class DashboardStore(
 
     private suspend fun maybeRebuild(): Boolean {
         val now = Instant.now()
-        if (Duration.between(lastRebuildAttempt, now).seconds < 60) return false
+        if (Duration.between(lastRebuildAttempt, now).seconds < SECONDS) return false
         lastRebuildAttempt = now
         return try {
             repo.rebuildUsageRollups()
@@ -113,7 +118,7 @@ class DashboardStore(
         val computedAt = rollups.computedAt ?: return false
         return try {
             val computedInstant = Instant.parse(computedAt)
-            Duration.between(computedInstant, Instant.now()).toMinutes() > 15
+            Duration.between(computedInstant, Instant.now()).toMinutes() > VAL_15
         } catch (_: Exception) {
             false
         }

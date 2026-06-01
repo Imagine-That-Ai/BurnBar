@@ -26,10 +26,11 @@ class AndroidEscrowDeviceRegistry(
         val existing = runCatching { deviceRef.get().await() }.getOrNull()
         val existingTrustState = existing?.getString("trustState")
         val trustState = if (existingTrustState == TRUSTED) TRUSTED else PENDING
-        val deviceName = listOf(Build.MANUFACTURER, Build.MODEL)
-            .filter { !it.isNullOrBlank() }
-            .joinToString(" ")
-            .ifBlank { "Android" }
+        val deviceName =
+            listOf(Build.MANUFACTURER, Build.MODEL)
+                .filter { !it.isNullOrBlank() }
+                .joinToString(" ")
+                .ifBlank { "Android" }
 
         runCatching {
             securityClient.registerEscrowDevice(

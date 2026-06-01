@@ -6,6 +6,8 @@ import com.openburnbar.irohrelay.IrohTransportAuditLogging
 import com.openburnbar.irohrelay.IrohTransportSelection
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 
+private const val VAL_256 = 256
+
 /**
  * Cascading relay that prefers iroh and can fall back to Firestore on
  * timeout / dial failure. Matches the Android relay contract:
@@ -36,11 +38,7 @@ class HermesCompositeRelayTransport(
         }
     }
 
-    override suspend fun sendStreaming(
-        payload: HermesRelayPayload,
-        timeoutMillis: Long,
-        onSseEvent: suspend (String) -> Unit,
-    ) {
+    override suspend fun sendStreaming(payload: HermesRelayPayload, timeoutMillis: Long, onSseEvent: suspend (String) -> Unit) {
         if (!featureFlag()) {
             return firestoreFallback.sendStreaming(payload, timeoutMillis, onSseEvent)
         }
@@ -67,8 +65,9 @@ class HermesCompositeRelayTransport(
             connectionId = payload.connectionID,
             transport = IrohTransportSelection.FIRESTORE,
             rttMillis = null,
-            detail = mapOf(
-                "reason" to (err.message ?: err.javaClass.simpleName).take(256),
+            detail =
+            mapOf(
+                "reason" to (err.message ?: err.javaClass.simpleName).take(VAL_256),
                 "target" to "firestore",
             ),
         )
@@ -97,11 +96,7 @@ class FirestoreRelayShim(
         )
     }
 
-    override suspend fun sendStreaming(
-        payload: HermesRelayPayload,
-        timeoutMillis: Long,
-        onSseEvent: suspend (String) -> Unit,
-    ) {
+    override suspend fun sendStreaming(payload: HermesRelayPayload, timeoutMillis: Long, onSseEvent: suspend (String) -> Unit) {
         val descriptor = descriptorProvider(payload.connectionID)
         client.sendStreaming(
             connection = descriptor,

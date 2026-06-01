@@ -24,16 +24,16 @@ import com.openburnbar.ui.media.MercuryIncomingSheet
  * `MediaSessionForegroundService` + `CallSessionCoordinator`.
  */
 class IncomingCallActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableLockScreenSemantics()
 
         val connectionId = intent.getStringExtra(EXTRA_CONNECTION_ID).orEmpty()
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME).orEmpty().ifEmpty { "OpenBurnBar" }
-        val callerInitial = intent.getStringExtra(EXTRA_CALLER_INITIAL).orEmpty().ifEmpty {
-            callerName.firstOrNull()?.toString() ?: "M"
-        }
+        val callerInitial =
+            intent.getStringExtra(EXTRA_CALLER_INITIAL).orEmpty().ifEmpty {
+                callerName.firstOrNull()?.toString() ?: "M"
+            }
 
         when (intent.action) {
             ACTION_ACCEPT -> {
@@ -82,18 +82,20 @@ class IncomingCallActivity : ComponentActivity() {
 
     private fun acceptCall(connectionId: String) {
         MediaSessionForegroundService.start(this)
-        val accept = Intent(ACTION_BROADCAST_ACCEPT).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_CONNECTION_ID, connectionId)
-        }
+        val accept =
+            Intent(ACTION_BROADCAST_ACCEPT).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_CONNECTION_ID, connectionId)
+            }
         sendBroadcast(accept)
     }
 
     private fun declineCall(connectionId: String) {
-        val decline = Intent(ACTION_BROADCAST_DECLINE).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_CONNECTION_ID, connectionId)
-        }
+        val decline =
+            Intent(ACTION_BROADCAST_DECLINE).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_CONNECTION_ID, connectionId)
+            }
         sendBroadcast(decline)
     }
 

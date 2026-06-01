@@ -3,13 +3,13 @@ package com.openburnbar.data.repos
 import android.content.Context
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
+import java.io.File
+import java.security.MessageDigest
+import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.io.File
-import java.security.MessageDigest
-import java.time.Instant
 
 /**
  * Content-addressed cache for [InsightAnalysisResult].
@@ -31,10 +31,11 @@ class InsightAnalysisCacheRepository(
     )
 
     private val cacheDir = File(context.filesDir, "Insights/analysis_cache").apply { mkdirs() }
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
     suspend fun lookup(key: String): CachedResult? = withContext(Dispatchers.IO) {
         val file = File(cacheDir, "$key.json")
@@ -70,24 +71,19 @@ class InsightAnalysisCacheRepository(
     companion object {
         private const val SCHEMA_VERSION = "v3-insight-mission-candidates"
 
-        fun key(
-            prompt: String,
-            digestContentHash: String,
-            modelID: String,
-            instruction: InsightAnalysisRequest.Instruction,
-        ): String {
+        fun key(prompt: String, digestContentHash: String, modelID: String, instruction: InsightAnalysisRequest.Instruction): String {
             val payload = "$SCHEMA_VERSION$prompt$digestContentHash$modelID${instruction.name}"
-            val digest = MessageDigest.getInstance("SHA-256")
-                .digest(payload.toByteArray(Charsets.UTF_8))
+            val digest =
+                MessageDigest.getInstance("SHA-256")
+                    .digest(payload.toByteArray(Charsets.UTF_8))
             return digest.joinToString("") { "%02x".format(it) }
         }
 
-        fun cachedNow(key: String, result: InsightAnalysisResult, costSaved: Double = 0.0): CachedResult =
-            CachedResult(
-                key = key,
-                result = result,
-                storedAt = Instant.now().toString(),
-                estimatedCostSavedUSD = costSaved,
-            )
+        fun cachedNow(key: String, result: InsightAnalysisResult, costSaved: Double = 0.0): CachedResult = CachedResult(
+            key = key,
+            result = result,
+            storedAt = Instant.now().toString(),
+            estimatedCostSavedUSD = costSaved,
+        )
     }
 }

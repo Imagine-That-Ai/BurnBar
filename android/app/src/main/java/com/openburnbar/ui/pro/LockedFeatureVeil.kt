@@ -1,3 +1,6 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.pro
 
 import androidx.compose.foundation.background
@@ -32,60 +35,64 @@ fun LockedFeatureVeil(
     onCta: () -> Unit,
     modifier: Modifier = Modifier,
     ctaLabel: String = "Open Cloud",
-    background: @Composable () -> Unit
+    background: @Composable () -> Unit,
 ) {
     val reduceMotion = LocalAuroraReduceMotion.current
 
     Box(
         modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxSize()
                 .blur(radius = 16.dp)
-                .alpha(0.7f)
+                .alpha(0.7f),
         ) {
             background()
         }
 
         // Obsidian veil
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxSize()
                 .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
+                    brush =
+                    Brush.verticalGradient(
+                        colors =
+                        listOf(
                             ProPalette.obsidian.copy(alpha = 0.55f),
-                            ProPalette.obsidian.copy(alpha = 0.82f)
-                        )
-                    )
-                )
+                            ProPalette.obsidian.copy(alpha = 0.82f),
+                        ),
+                    ),
+                ),
         )
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp),
-            modifier = Modifier.padding(horizontal = 28.dp)
+            modifier = Modifier.padding(horizontal = 28.dp),
         ) {
             MercuryCrest(size = MercuryCrestSize.Large, shimmer = !reduceMotion)
             Text(
                 text = headline,
                 style = ProTypography.titleSerif,
                 color = ProPalette.mercury,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
             )
             Text(
                 text = detail,
                 style = ProTypography.headlineSerif.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
                 color = ProPalette.mercury.copy(alpha = 0.72f),
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
             )
             FoilCTAButton(
                 title = ctaLabel,
                 onClick = onCta,
                 fillWidth = false,
-                modifier = Modifier.widthIn(min = 220.dp, max = 320.dp)
+                modifier = Modifier.widthIn(min = 220.dp, max = 320.dp),
             )
         }
     }

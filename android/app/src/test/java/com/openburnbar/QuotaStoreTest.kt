@@ -1,14 +1,22 @@
+@file:Suppress("FunctionNaming", "MagicNumber")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar
 
 import android.app.Application
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.stores.QuotaStore
-import io.mockk.*
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -27,9 +35,10 @@ class QuotaStoreTest {
     @Test
     fun `load fetches snapshots and accounts`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
-        val snapshots = listOf(
-            ProviderQuotaSnapshot(provider = "openai")
-        )
+        val snapshots =
+            listOf(
+                ProviderQuotaSnapshot(provider = "openai"),
+            )
         coEvery { mockRepo.fetchQuotaSnapshots() } returns snapshots
         coEvery { mockRepo.fetchProviderAccounts() } returns emptyList()
         every { mockRepo.listenToQuotaSnapshots() } returns flowOf(snapshots)
