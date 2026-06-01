@@ -141,14 +141,14 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "What is BurnBar Cloud?",
     answer:
-      "BurnBar Cloud is the first paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Product IDs are com.openburnbar.pro.monthly and com.openburnbar.pro.annual. Purchases are verified server-side before hosted features turn on."
+      "BurnBar Cloud is the first paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Monthly and annual plans are available on web, App Store, and Google Play. Purchases are verified server-side before hosted features turn on."
   },
   {
     id: "burnbar-cloud-pro",
     category: "billing",
     question: "What is BurnBar Cloud Pro?",
     answer:
-      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Product IDs are com.openburnbar.proMax.v2.monthly and com.openburnbar.proMax.annual. Cloud Pro uses the burnbar_pro_max entitlement."
+      "BurnBar Cloud Pro is the second paid tier. It includes everything in BurnBar Cloud, plus Floo phone-to-Mac workflows and Agent Control under your grant.\n\nIt costs $24.99/month or $249/year. Monthly and annual plans are available on web, App Store, and Google Play. Cloud Pro unlocks the Pro feature group after server-side purchase verification."
   },
   {
     id: "cloud-pro-allowance",
