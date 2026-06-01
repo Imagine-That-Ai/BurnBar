@@ -15,7 +15,11 @@ struct SettingsProfileHeader: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            avatar
+            UserAvatarView(
+                photoURL: authStore.currentIdentity?.photoURL,
+                displayName: authStore.currentIdentity?.displayName ?? authStore.currentIdentity?.email,
+                size: 60
+            )
             VStack(alignment: .leading, spacing: 3) {
                 Text(primaryLine)
                     .font(.title3.weight(.semibold))
@@ -31,26 +35,6 @@ struct SettingsProfileHeader: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Avatar
-
-    @ViewBuilder
-    private var avatar: some View {
-        if let monogram {
-            ZStack {
-                Circle().fill(Color(.systemGray2))
-                Text(monogram)
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 60, height: 60)
-        } else {
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 60))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     // MARK: - Derived text
 
     private var primaryLine: String {
@@ -58,14 +42,5 @@ struct SettingsProfileHeader: View {
             return identity.displayName ?? identity.email ?? "OpenBurnBar account"
         }
         return "Sign in for Cloud"
-    }
-
-    /// First letter of the display name / email, used as a monogram when the
-    /// account has no photo. `nil` when signed out (falls back to the SF Symbol).
-    private var monogram: String? {
-        guard let identity = authStore.currentIdentity else { return nil }
-        let source = identity.displayName ?? identity.email ?? ""
-        guard let first = source.first(where: { $0.isLetter || $0.isNumber }) else { return nil }
-        return String(first).uppercased()
     }
 }

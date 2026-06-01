@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Coral Wax / Security Seal Gradient -->
+    <linearGradient id="coral-wax" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDA4AF"/>
+      <stop offset="30%" stop-color="#F43F5E"/>
+      <stop offset="70%" stop-color="#E11D48"/>
+      <stop offset="100%" stop-color="#9F1239"/>
+    </linearGradient>
+
+    <linearGradient id="silver-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="50%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+
+    <!-- Bevel & Shadow -->
+    <filter id="seal-relief" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2.2" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="4.5" specularConstant="1.3" specularExponent="28" lighting-color="#FFF" result="specOut">
+        <feDistantLight azimuth="225" elevation="60"/>
+      </feSpecularLighting>
+      <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specChar"/>
+      <feComposite in="SourceGraphic" in2="specChar" operator="arithmetic" k1="0" k2="1" k3="0.8" k4="0" result="lit"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Tiny certificate ribbons hanging from bottom of seal -->
+  <g filter="url(#seal-relief)" opacity="0.95">
+    <!-- Left ribbon tail -->
+    <path d="M 32,50 L 32,72 L 40,66 L 48,72 L 48,50 Z" fill="url(#silver-metal)"/>
+    <path d="M 32,50 L 32,72 L 40,66 L 48,72 L 48,50 Z" fill="url(#coral-wax)" opacity="0.15"/>
+  </g>
+
+  <!-- Scalloped Rosette Seal / Wax Seal Outer Body -->
+  <path d="M 40,6
+           C 44,6 46,10 49,12
+           C 52,10 56,8 59,11
+           C 62,11 62,16 64,18
+           C 68,18 70,21 70,25
+           C 70,29 74,31 73,35
+           C 75,38 73,42 72,45
+           C 72,49 70,51 68,54
+           C 67,58 64,60 60,60
+           C 57,62 55,66 51,66
+           C 47,67 45,64 42,65
+           C 38,65 35,67 31,65
+           C 28,64 26,60 23,60
+           C 19,60 17,57 16,53
+           C 16,49 12,47 13,43
+           C 11,40 12,36 14,33
+           C 13,29 16,26 18,24
+           C 19,20 22,18 26,18
+           C 29,16 31,12 35,12
+           C 37,10 38,6 40,6 Z"
+        fill="url(#coral-wax)" stroke="url(#silver-metal)" stroke-width="2.5" stroke-linejoin="round" filter="url(#seal-relief)"/>
+
+  <!-- Inner Press Circle -->
+  <circle cx="40" cy="36" r="21" stroke="url(#silver-metal)" stroke-width="1.5" fill="none" opacity="0.4"/>
+
+  <!-- Centered Bold Apple-Style Checkmark -->
+  <path d="M 28,36 L 36,44 L 52,28" stroke="url(#silver-metal)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#seal-relief)"/>
+</svg>
