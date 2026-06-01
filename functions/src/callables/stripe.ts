@@ -34,6 +34,7 @@ import { google } from "googleapis";
 import Stripe from "stripe";
 import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
 import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
+import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
@@ -313,7 +314,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
         activeOverride: active,
       });
 
-      await db.doc(`users/${uid}/billing/google_play_purchases/${tokenHash}`).set(
+      await db.doc(googlePlayBillingRecordPath(uid, "purchase", tokenHash)).set(
         stripUndefinedObject({
           uid,
           productID: entitlementTarget.canonicalProductID,
@@ -411,7 +412,7 @@ export const verifyGooglePlayCloudProTopUp = onCall(
         consumed = true;
       }
 
-      await db.doc(`users/${uid}/billing/google_play_topups/${tokenHash}`).set(
+      await db.doc(googlePlayBillingRecordPath(uid, "topup", tokenHash)).set(
         stripUndefinedObject({
           uid,
           productID,
