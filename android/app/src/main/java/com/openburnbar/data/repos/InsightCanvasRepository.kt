@@ -8,7 +8,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.openburnbar.data.insights.InsightCanvas
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
@@ -20,21 +19,29 @@ import kotlinx.serialization.json.Json
  * The 200-canvas LRU cap from iOS applies identically.
  */
 class InsightCanvasRepository(private val context: Context) {
-
     private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "insight_canvases")
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
-    private val CANVASES_KEY = stringPreferencesKey("canvases_json")
+    private val canvasesKey = stringPreferencesKey("canvases_json")
 
-    val canvases: Flow<List<InsightCanvas>> = context.dataStore.data.map { prefs ->
-        val raw = prefs[CANVASES_KEY] ?: "[]"
-        try { json.decodeFromString<List<InsightCanvas>>(raw) } catch (_: Exception) { emptyList() }
-    }
+    val canvases: Flow<List<InsightCanvas>> =
+        context.dataStore.data.map { prefs ->
+            val raw = prefs[canvasesKey] ?: "[]"
+            try {
+                json.decodeFromString<List<InsightCanvas>>(raw)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
 
     suspend fun save(list: List<InsightCanvas>) {
         val capped = if (list.size > MAX_CANVASES) list.take(MAX_CANVASES) else list
         val encoded = json.encodeToString(kotlinx.serialization.serializer<List<InsightCanvas>>(), capped)
-        context.dataStore.edit { prefs -> prefs[CANVASES_KEY] = encoded }
+        context.dataStore.edit { prefs -> prefs[canvasesKey] = encoded }
     }
 
     suspend fun add(canvas: InsightCanvas) {

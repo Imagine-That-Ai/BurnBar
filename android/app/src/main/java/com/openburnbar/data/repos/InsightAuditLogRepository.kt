@@ -1,14 +1,14 @@
 package com.openburnbar.data.repos
 
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.map
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 
 /**
  * Append-only audit log for Insights investigations.
@@ -16,7 +16,6 @@ import java.util.Locale
  * Identical schema to the Swift side.
  */
 class InsightAuditLogRepository(private val context: Context) {
-
     private val logDir = File(context.filesDir, "Insights").apply { mkdirs() }
     private val logFile = File(logDir, "audit.jsonl")
     private val _entries = MutableStateFlow<List<AuditEntry>>(emptyList())
@@ -35,12 +34,17 @@ class InsightAuditLogRepository(private val context: Context) {
     }
 
     suspend fun reload() {
-        _entries.value = with(Dispatchers.IO) {
-            if (!logFile.exists()) return@with emptyList()
-            logFile.readLines().filter { it.isNotBlank() }.mapNotNull { line ->
-                try { AuditEntry.fromJsonLine(line) } catch (_: Exception) { null }
+        _entries.value =
+            with(Dispatchers.IO) {
+                if (!logFile.exists()) return@with emptyList()
+                logFile.readLines().filter { it.isNotBlank() }.mapNotNull { line ->
+                    try {
+                        AuditEntry.fromJsonLine(line)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
             }
-        }
     }
 
     data class AuditEntry(
@@ -54,9 +58,14 @@ class InsightAuditLogRepository(private val context: Context) {
         val estimatedCostUSD: Double,
         val status: String,
         val widgetCount: Int = 0,
-        val canvasID: String = ""
+        val canvasID: String = "",
     ) {
-        fun toJsonLine(): String = """{"timestamp":"$timestamp","modelProvider":"$modelProvider","modelID":"$modelID","egressTier":"$egressTier","promptHash":"$promptHash","digestHash":"$digestHash","egressBytes":$egressBytes,"estimatedCostUSD":$estimatedCostUSD,"status":"$status","widgetCount":$widgetCount,"canvasID":"$canvasID"}"""
+        fun toJsonLine(): String =
+            """{"timestamp":"$timestamp","modelProvider":"$modelProvider","modelID":"$modelID",""" +
+                """"egressTier":"$egressTier","promptHash":"$promptHash",""" +
+                """"digestHash":"$digestHash","egressBytes":$egressBytes,""" +
+                """"estimatedCostUSD":$estimatedCostUSD,"status":"$status",""" +
+                """"widgetCount":$widgetCount,"canvasID":"$canvasID"}"""
 
         companion object {
             fun fromJsonLine(line: String): AuditEntry {
@@ -72,7 +81,7 @@ class InsightAuditLogRepository(private val context: Context) {
                     estimatedCostUSD = map.optDouble("estimatedCostUSD"),
                     status = map.optString("status"),
                     widgetCount = map.optInt("widgetCount"),
-                    canvasID = map.optString("canvasID")
+                    canvasID = map.optString("canvasID"),
                 )
             }
         }

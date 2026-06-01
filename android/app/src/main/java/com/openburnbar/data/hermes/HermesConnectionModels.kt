@@ -1,13 +1,18 @@
 package com.openburnbar.data.hermes
 
-import com.openburnbar.data.models.AgentProvider
-
 enum class HermesConnectionMode {
-    LOCAL, DIRECT_URL, RELAY_LINK
+    LOCAL,
+    DIRECT_URL,
+    RELAY_LINK,
 }
 
 enum class HermesConnectionStatus {
-    ONLINE, OFFLINE, PENDING, UNAUTHORIZED, REVOKED, DEGRADED
+    ONLINE,
+    OFFLINE,
+    PENDING,
+    UNAUTHORIZED,
+    REVOKED,
+    DEGRADED,
 }
 
 data class HermesConnectionRecord(
@@ -24,15 +29,16 @@ data class HermesConnectionRecord(
     val realtimeRelayURL: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val lastSeenAt: Long? = null
+    val lastSeenAt: Long? = null,
 ) {
     companion object {
-        val localDefault = HermesConnectionRecord(
-            id = "local-default",
-            displayName = "Local Hermes",
-            mode = HermesConnectionMode.LOCAL,
-            endpointURL = "http://127.0.0.1:8642"
-        )
+        val localDefault =
+            HermesConnectionRecord(
+                id = "local-default",
+                displayName = "Local Hermes",
+                mode = HermesConnectionMode.LOCAL,
+                endpointURL = "http://127.0.0.1:8642",
+            )
     }
 }
 
@@ -41,7 +47,8 @@ data class HermesRuntimeModelOption(
     val providerName: String,
     val modelID: String,
     val displayName: String,
-    val modelCapabilities: ModelIOCapabilities? = null
+    val sourceKind: String? = null,
+    val modelCapabilities: ModelIOCapabilities? = null,
 )
 
 data class ModelIOCapabilities(
@@ -54,14 +61,15 @@ data class ModelIOCapabilities(
     val acceptedInputMimeTypes: List<String> = emptyList(),
     val imageMaxBytes: Int? = null,
     val audioMaxBytes: Int? = null,
-    val videoMaxBytes: Int? = null
+    val videoMaxBytes: Int? = null,
 ) {
     val supportsImageInput: Boolean
         get() = inputModalities.any { it.equals("image", ignoreCase = true) }
 
     fun acceptsInputMimeType(mimeType: String?): Boolean {
-        val normalized = mimeType?.substringBefore(";")?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-            ?: return false
+        val normalized =
+            mimeType?.substringBefore(";")?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                ?: return false
         if (acceptedInputMimeTypes.isEmpty()) {
             return normalized.startsWith("image/") && supportsImageInput
         }
@@ -80,7 +88,7 @@ data class HermesRuntimeProfile(
     val name: String,
     val model: String? = null,
     val provider: String? = null,
-    val skillCount: Int = 0
+    val skillCount: Int = 0,
 )
 
 data class HermesRuntimeJob(
@@ -92,7 +100,7 @@ data class HermesRuntimeJob(
     val enabled: Boolean = true,
     val lastRunAt: Long? = null,
     val nextRunAt: Long? = null,
-    val lastError: String? = null
+    val lastError: String? = null,
 )
 
 data class HermesSessionSummary(
@@ -108,9 +116,16 @@ data class HermesSessionSummary(
     val messageCount: Int = 0,
     val toolCallCount: Int = 0,
     val inputTokens: Int = 0,
-    val outputTokens: Int = 0
+    val outputTokens: Int = 0,
 )
 
 enum class HermesRelayOperation {
-    CHAT_COMPLETIONS, CLI_AGENT_CHAT, CLI_AGENT_MODEL_CATALOG, MODELS, SESSIONS, PROFILES, JOBS, SESSION_DETAIL
+    CHAT_COMPLETIONS,
+    CLI_AGENT_CHAT,
+    CLI_AGENT_MODEL_CATALOG,
+    MODELS,
+    SESSIONS,
+    PROFILES,
+    JOBS,
+    SESSION_DETAIL,
 }

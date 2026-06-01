@@ -6,9 +6,8 @@ import com.google.crypto.tink.signature.Ed25519Parameters
 import com.google.crypto.tink.signature.Ed25519PublicKey
 import com.google.crypto.tink.signature.SignatureConfig
 import com.google.crypto.tink.util.Bytes
-import java.util.Base64
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.util.Base64
 
 /**
  * Pairing record published by the Mac host to
@@ -35,8 +34,7 @@ data class IrohPairingRecord(
     /** Base64 (Standard, no wrap) of the 64-byte Ed25519 signature. */
     val signature: String,
 ) {
-    fun dialTarget(): IrohDialTarget =
-        IrohDialTarget(nodeId = nodeId, relayURL = relayURL, directAddresses = directAddresses)
+    fun dialTarget(): IrohDialTarget = IrohDialTarget(nodeId = nodeId, relayURL = relayURL, directAddresses = directAddresses)
 
     companion object {
         internal fun normalizedRelayURL(relayURL: String?): String? {
@@ -55,9 +53,13 @@ data class IrohPairingRecord(
 
 sealed class IrohPairingError(message: String) : RuntimeException(message) {
     object InvalidPublicKey : IrohPairingError("invalid public key")
+
     object InvalidSignature : IrohPairingError("invalid signature")
+
     object Expired : IrohPairingError("pairing record expired")
+
     data class UnsupportedProtocolVersion(val version: Int) : IrohPairingError("unsupported protocol version: $version")
+
     object Malformed : IrohPairingError("malformed pairing record")
 }
 
@@ -86,8 +88,8 @@ object IrohPairingSignature {
         val normalizedAddresses =
             IrohPairingRecord.normalizedDirectAddresses(directAddresses).joinToString(",")
         val payload =
-            "openburnbar.iroh.pairing.v${protocolVersion}|" +
-                "${uid}|${connectionId}|${nodeId}|${normalizedRelay}|${normalizedAddresses}|${publishedAtMillis}"
+            "openburnbar.iroh.pairing.v$protocolVersion|" +
+                "$uid|$connectionId|$nodeId|$normalizedRelay|$normalizedAddresses|$publishedAtMillis"
         return payload.toByteArray(Charsets.UTF_8)
     }
 
@@ -104,22 +106,24 @@ object IrohPairingSignature {
         if (record.protocolVersion != IrohRelayProtocol.FRAME_PROTOCOL_VERSION) {
             throw IrohPairingError.UnsupportedProtocolVersion(record.protocolVersion)
         }
-        val signatureBytes = try {
-            Base64.getDecoder().decode(record.signature)
-        } catch (_: IllegalArgumentException) {
-            throw IrohPairingError.Malformed
-        }
+        val signatureBytes =
+            try {
+                Base64.getDecoder().decode(record.signature)
+            } catch (_: IllegalArgumentException) {
+                throw IrohPairingError.Malformed
+            }
         if (publicKey.size != 32) throw IrohPairingError.InvalidPublicKey
 
-        val payload = canonicalPayload(
-            uid = record.uid,
-            connectionId = record.connectionId,
-            nodeId = record.nodeId,
-            relayURL = record.relayURL,
-            directAddresses = record.directAddresses,
-            publishedAtMillis = record.publishedAtMillis,
-            protocolVersion = record.protocolVersion,
-        )
+        val payload =
+            canonicalPayload(
+                uid = record.uid,
+                connectionId = record.connectionId,
+                nodeId = record.nodeId,
+                relayURL = record.relayURL,
+                directAddresses = record.directAddresses,
+                publishedAtMillis = record.publishedAtMillis,
+                protocolVersion = record.protocolVersion,
+            )
 
         if (!Ed25519Verifier.verify(publicKey, signatureBytes, payload)) {
             throw IrohPairingError.InvalidSignature
@@ -135,20 +139,27 @@ object IrohPairingSignature {
  * intentionally — Android is verify-only (the Mac signs).
  */
 internal object Ed25519Verifier {
-    fun verify(publicKeyRaw: ByteArray, signature: ByteArray, payload: ByteArray): Boolean {
+    fun verify(
+        publicKeyRaw: ByteArray,
+        signature: ByteArray,
+        payload: ByteArray,
+    ): Boolean {
         val variant = Ed25519Parameters.Variant.NO_PREFIX
-        val pubKey = Ed25519PublicKey.create(
-            variant,
-            Bytes.copyFrom(publicKeyRaw),
-            /* idRequirement = */ null,
-        )
-        val handle = KeysetHandle.newBuilder()
-            .addEntry(
-                KeysetHandle.importKey(pubKey)
-                    .withRandomId()
-                    .makePrimary()
+        val pubKey =
+            Ed25519PublicKey.create(
+                variant,
+                Bytes.copyFrom(publicKeyRaw),
+                // idRequirement =
+                null,
             )
-            .build()
+        val handle =
+            KeysetHandle.newBuilder()
+                .addEntry(
+                    KeysetHandle.importKey(pubKey)
+                        .withRandomId()
+                        .makePrimary(),
+                )
+                .build()
         val verifier = handle.getPrimitive(PublicKeyVerify::class.java)
         return try {
             verifier.verify(signature, payload)

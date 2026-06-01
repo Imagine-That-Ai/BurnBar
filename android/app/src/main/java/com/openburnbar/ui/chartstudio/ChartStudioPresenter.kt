@@ -4,7 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.datastore.preferences.core.edit
@@ -32,13 +33,12 @@ import kotlinx.coroutines.launch
  * a Compose `collectAsState` helper.
  */
 object ChartStudioPresenter {
-
     enum class Mode { Hidden, Fullscreen, Minimized }
 
     /** Snapshot captured at present-time so the surface stays consistent. */
     data class Snapshot(
         val digest: TrendDataDigest,
-        val openedAtMs: Long = System.currentTimeMillis()
+        val openedAtMs: Long = System.currentTimeMillis(),
     )
 
     private val _mode = MutableStateFlow(Mode.Hidden)
@@ -91,9 +91,10 @@ object ChartStudioPresenter {
         if (prefsBound) return
         prefsBound = true
         scope.launch {
-            val saved = context.dataStore.data
-                .map { Offset(it[FAB_X] ?: 0f, it[FAB_Y] ?: 0f) }
-                .first()
+            val saved =
+                context.dataStore.data
+                    .map { Offset(it[FAB_X] ?: 0f, it[FAB_Y] ?: 0f) }
+                    .first()
             _fabOffset.value = saved
         }
     }
@@ -106,13 +107,11 @@ object ChartStudioPresenter {
 
 /** Compose helper — collects presenter mode as `State<Mode>`. */
 @Composable
-fun rememberChartStudioMode(): State<ChartStudioPresenter.Mode> =
-    ChartStudioPresenter.mode.collectAsState()
+fun rememberChartStudioMode(): State<ChartStudioPresenter.Mode> = ChartStudioPresenter.mode.collectAsState()
 
 /** Compose helper — collects the captured snapshot. */
 @Composable
-fun rememberChartStudioSnapshot(): State<ChartStudioPresenter.Snapshot?> =
-    ChartStudioPresenter.snapshot.collectAsState()
+fun rememberChartStudioSnapshot(): State<ChartStudioPresenter.Snapshot?> = ChartStudioPresenter.snapshot.collectAsState()
 
 /** Hydrate the FAB offset once per process. Call this once near the root. */
 @Composable

@@ -12,10 +12,9 @@ object MercuryAutoKeyboardPreference {
     const val PREFS_NAME = "mercury_media"
     const val ENABLED_KEY = "mercury.autoKeyboardOnTextFocus"
 
-    fun isEnabled(context: Context): Boolean =
-        context.applicationContext
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(ENABLED_KEY, false)
+    fun isEnabled(context: Context): Boolean = context.applicationContext
+        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getBoolean(ENABLED_KEY, false)
 
     fun setEnabled(context: Context, enabled: Boolean) {
         context.applicationContext

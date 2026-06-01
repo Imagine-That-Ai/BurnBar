@@ -2,24 +2,28 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.math.max
 
+private const val VAL_0_8 = 0.8
+private const val VAL_1_2 = 1.2
+private const val VAL_30_0 = 30.0
+private const val VAL_7_0 = 7.0
 data class VelocityForecast(
     val dailyBurnRate: Double = 0.0,
     val projectedMonthEnd: Double = 0.0,
     val daysUntilBudgetExhausted: Int? = null,
-    val trendDirection: TrendDirection = TrendDirection.FLAT
+    val trendDirection: TrendDirection = TrendDirection.FLAT,
 )
 
 enum class TrendDirection { UP, DOWN, FLAT }
 
 class VelocityForecastStore(
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val repo: FirestoreRepository = FirestoreRepository(),
 ) : ViewModel() {
     private val _forecast = MutableStateFlow(VelocityForecast())
     val forecast: StateFlow<VelocityForecast> = _forecast.asStateFlow()
@@ -40,26 +44,31 @@ class VelocityForecastStore(
                 val sevenDays = rollups.sevenDays
                 val thirtyDays = rollups.thirtyDays
 
-                val dailyRate = if (sevenDays > 0) sevenDays / 7.0 else today
-                val projectedMonthEnd = dailyRate * 30.0
+                val dailyRate = if (sevenDays > 0) sevenDays / VAL_7_0 else today
+                val projectedMonthEnd = dailyRate * VAL_30_0
 
-                val daysLeft = if (dailyRate > 0 && dailyBudget > 0) {
-                    (dailyBudget / dailyRate).toInt()
-                } else null
+                val daysLeft =
+                    if (dailyRate > 0 && dailyBudget > 0) {
+                        (dailyBudget / dailyRate).toInt()
+                    } else {
+                        null
+                    }
 
-                val trend = when {
-                    today > dailyRate * 1.2 -> TrendDirection.UP
-                    today < dailyRate * 0.8 -> TrendDirection.DOWN
-                    else -> TrendDirection.FLAT
-                }
+                val trend =
+                    when {
+                        today > dailyRate * VAL_1_2 -> TrendDirection.UP
+                        today < dailyRate * VAL_0_8 -> TrendDirection.DOWN
+                        else -> TrendDirection.FLAT
+                    }
 
-                _forecast.value = VelocityForecast(
-                    dailyBurnRate = dailyRate,
-                    projectedMonthEnd = projectedMonthEnd,
-                    daysUntilBudgetExhausted = daysLeft,
-                    trendDirection = trend
-                )
-            } catch (e: Exception) {
+                _forecast.value =
+                    VelocityForecast(
+                        dailyBurnRate = dailyRate,
+                        projectedMonthEnd = projectedMonthEnd,
+                        daysUntilBudgetExhausted = daysLeft,
+                        trendDirection = trend,
+                    )
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -33,8 +32,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 
 /**
  * Roster landing for the per-agent Insights surface on Android.
@@ -44,33 +43,30 @@ import com.openburnbar.data.models.AgentProvider
  * Tapping a row pushes the scoped Insights detail.
  */
 @Composable
-fun AgentInsightsRosterScreen(
-    onSelectProvider: (AgentProvider) -> Unit,
-    onSelectAggregate: () -> Unit,
-    contentPadding: PaddingValues = PaddingValues()
-) {
+fun AgentInsightsRosterScreen(onSelectProvider: (AgentProvider) -> Unit, onSelectAggregate: () -> Unit, contentPadding: PaddingValues = PaddingValues()) {
     val useWebsiteBackground by rememberWebsiteBackground()
     val groups = remember()
 
     LazyColumn(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxSize()
             .background(if (useWebsiteBackground) Color.Transparent else MaterialTheme.colorScheme.background),
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "Insights",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 16.dp),
             )
             Text(
                 "Pick an agent to see its scoped KPIs, brief, missions, and saved canvases.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
 
@@ -89,44 +85,46 @@ private fun AggregateRow(onTap: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier
+        modifier =
+        Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
-            .clickable(onClick = onTap)
+            .clickable(onClick = onTap),
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier
+                modifier =
+                Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Filled.Layers,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
             Spacer(modifier = Modifier.size(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "All agents",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Text(
                     "Combined view across every provider",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -139,23 +137,24 @@ private fun RosterGroup(group: RosterGroupSpec, onSelect: (AgentProvider) -> Uni
             group.label.uppercase(),
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(vertical = 8.dp),
         )
         Surface(
             color = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column {
                 group.providers.forEachIndexed { idx, provider ->
                     AgentRow(provider = provider, onTap = { onSelect(provider) })
                     if (idx < group.providers.lastIndex) {
                         Box(
-                            modifier = Modifier
+                            modifier =
+                            Modifier
                                 .fillMaxWidth()
                                 .padding(start = 60.dp)
                                 .height(0.5.dp)
-                                .background(MaterialTheme.colorScheme.outlineVariant)
+                                .background(MaterialTheme.colorScheme.outlineVariant),
                         )
                     }
                 }
@@ -167,11 +166,12 @@ private fun RosterGroup(group: RosterGroupSpec, onSelect: (AgentProvider) -> Uni
 @Composable
 private fun AgentRow(provider: AgentProvider, onTap: () -> Unit) {
     Row(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .clickable(onClick = onTap)
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         com.openburnbar.ui.components.ProviderLogo(
             provider = provider,
@@ -181,32 +181,41 @@ private fun AgentRow(provider: AgentProvider, onTap: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 provider.displayName,
-                style = MaterialTheme.typography.bodyLarge
+                style = MaterialTheme.typography.bodyLarge,
             )
             Text(
                 provider.key,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 private data class RosterGroupSpec(val label: String, val providers: List<AgentProvider>)
 
-private val mobileConnectableKeys = setOf(
-    "claude-code", "codex", "opencode", "factory", "cursor", "minimax", "zai", "openai"
-)
+private val mobileConnectableKeys =
+    setOf(
+        "claude-code",
+        "codex",
+        "opencode",
+        "factory",
+        "cursor",
+        "minimax",
+        "zai",
+        "openai",
+    )
 
-private val quotaSignalKeys = setOf(
-    "codex", "opencode", "claude-code", "openai", "copilot", "minimax", "zai",
-    "factory", "cursor", "warp", "ollama", "kimi"
-)
+private val quotaSignalKeys =
+    setOf(
+        "codex", "opencode", "claude-code", "openai", "copilot", "minimax", "zai",
+        "factory", "cursor", "warp", "ollama", "kimi",
+    )
 
 private val localKeys = setOf("ollama", "hermes", "pi-agent")
 

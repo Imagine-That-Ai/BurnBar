@@ -1,19 +1,50 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,19 +52,26 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.openburnbar.ui.theme.*
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.graphics.graphicsLayer
-import com.openburnbar.ui.settings.rememberWebsiteBackground
+import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
 import com.openburnbar.ui.settings.rememberProviderGlyphs
 import com.openburnbar.ui.settings.rememberThemePalette
-import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
-
+import com.openburnbar.ui.settings.rememberWebsiteBackground
+import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.theme.AuroraGradients
+import com.openburnbar.ui.theme.AuroraMotion
+import com.openburnbar.ui.theme.AuroraRadius
+import com.openburnbar.ui.theme.AuroraShadowSpec
+import com.openburnbar.ui.theme.AuroraShadows
+import com.openburnbar.ui.theme.AuroraSpacing
+import com.openburnbar.ui.theme.AuroraTypography
+import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 
 // ── Glass Card ──
 // 3-layer glass per the parity plan: tier-appropriate blur, brand sheen,
@@ -47,61 +85,21 @@ fun AuroraGlassCard(
     interactive: Boolean = false,
     onClick: (() -> Unit)? = null,
     shadow: AuroraShadowSpec = AuroraShadows.small,
-    content: @Composable ColumnScope.() -> Unit
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val targetScale = if (pressed && interactive) 0.98f else 1f
-    val scale by animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = AuroraMotion.cardPressSpec(),
-        label = "aurora-glass-card-scale"
-    )
-
-    val clickModifier = if (onClick != null) {
-        Modifier.pointerInput(onClick) {
-            detectTapGestures(
-                onPress = {
-                    pressed = true
-                    val released = tryAwaitRelease()
-                    pressed = false
-                    if (released) onClick()
-                },
-                onTap = { /* handled in onPress */ }
-            )
-        }
-    } else Modifier
-
-    Card(
-        shape = RoundedCornerShape(cornerRadius.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.07f)
+    val (scale, clickModifier) = rememberAuroraGlassCardInteraction(interactive = interactive, onClick = onClick)
+    AuroraGlassCardSurface(
+        state =
+        AuroraGlassCardSurfaceState(
+            modifier = modifier,
+            cornerRadius = cornerRadius,
+            contentPadding = contentPadding,
+            scale = scale,
+            clickModifier = clickModifier,
+            shadow = shadow,
         ),
-        modifier = modifier
-            .graphicsLayer(scaleX = scale, scaleY = scale)
-            .shadow(
-                elevation = shadow.elevation,
-                shape = RoundedCornerShape(cornerRadius.dp),
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = shadow.spotAlpha),
-                spotColor = Color.Black.copy(alpha = shadow.spotAlpha)
-            )
-            .then(clickModifier)
-            .border(
-                width = 0.75.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.16f),
-                        Color.White.copy(alpha = 0.04f)
-                    )
-                ),
-                shape = RoundedCornerShape(cornerRadius.dp)
-            )
-    ) {
-        Column(
-            modifier = Modifier.padding(contentPadding),
-            content = content
-        )
-    }
+        content = content,
+    )
 }
 
 // ── Aurora Backdrop ──
@@ -119,11 +117,7 @@ fun AuroraGlassCard(
 enum class AuroraDensity { FULL, SUBTLE, MINIMAL }
 
 @Composable
-fun AuroraBackdrop(
-    isDark: Boolean = isSystemInDarkTheme(),
-    density: AuroraDensity = AuroraDensity.FULL,
-    modifier: Modifier = Modifier
-) {
+fun AuroraBackdrop(isDark: Boolean = isSystemInDarkTheme(), density: AuroraDensity = AuroraDensity.FULL, modifier: Modifier = Modifier) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val useWebsiteBackground by rememberWebsiteBackground()
 
@@ -131,92 +125,38 @@ fun AuroraBackdrop(
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(if (reduceMotion) 1 else 18000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "aurora-phase"
+        label = "aurora-phase",
     )
     val ribbonPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(if (reduceMotion) 1 else 12000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "ribbon-phase"
+        label = "ribbon-phase",
     )
 
     Box(modifier = modifier.fillMaxSize()) {
         if (useWebsiteBackground) {
             WebsiteBackground(accentColor = AuroraColors.ember)
         } else {
-            // 1. Base gradient
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = if (isDark) {
-                                listOf(
-                                    AuroraColors.darkBackground,
-                                    AuroraColors.darkBackground,
-                                    AuroraColors.darkSurface
-                                )
-                            } else {
-                                listOf(
-                                    AuroraColors.lightBackground,
-                                    AuroraColors.lightBackground,
-                                    AuroraColors.lightSurface
-                                )
-                            }
-                        )
-                    )
+            AuroraBackdropGradientLayer(isDark = isDark)
+            AuroraBackdropAnimatedLayers(
+                isDark = isDark,
+                density = density,
+                reduceMotion = reduceMotion,
+                phase = phase,
+                ribbonPhase = ribbonPhase,
             )
-
-            if (density != AuroraDensity.MINIMAL) {
-                // 2. Orb layer
-                OrbLayer(
-                    isDark = isDark,
-                    phase = if (reduceMotion) 0f else phase,
-                    opacity = if (density == AuroraDensity.SUBTLE) 0.55f else 1f,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // 3. Aurora ribbon
-                RibbonLayer(
-                    isDark = isDark,
-                    ribbonPhase = if (reduceMotion) 0f else ribbonPhase,
-                    opacity = if (density == AuroraDensity.SUBTLE) 0.35f else 0.55f,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .align(Alignment.TopCenter)
-                )
-
-                // 4. Ember particles (full only)
-                if (density == AuroraDensity.FULL && !reduceMotion) {
-                    ParticleLayer(modifier = Modifier.fillMaxSize())
-                }
-            }
         }
-
-        // 5. Vignette
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            if (isDark) Color.Black.copy(alpha = 0.32f)
-                            else Color(0xFF1C2014).copy(alpha = 0.10f)
-                        ),
-                        center = Offset(0.5f, 0.5f),
-                        radius = 0.8f
-                    )
-                )
-        )
+        AuroraBackdropVignette(isDark = isDark)
     }
 }
 
@@ -226,10 +166,7 @@ fun AuroraBackdrop(
  * "</>", concentric quota rings, and a router failover S-curve.
  */
 @Composable
-fun WebsiteBackground(
-    accentColor: Color = AuroraColors.ember,
-    modifier: Modifier = Modifier
-) {
+fun WebsiteBackground(accentColor: Color = AuroraColors.ember, modifier: Modifier = Modifier) {
     val themePalette by rememberThemePalette()
     val providerGlyphs by rememberProviderGlyphs()
     val excludeBrandShapes by rememberExcludeBrandShapesFromSwarm()
@@ -240,96 +177,79 @@ fun WebsiteBackground(
         pace = SwarmPace.ENERGETIC,
         enabledProviderGlyphs = providerGlyphs,
         paletteName = themePalette,
-        excludeBrandShapes = excludeBrandShapes
+        excludeBrandShapes = excludeBrandShapes,
     )
 }
 
 @Composable
-private fun OrbLayer(
-    isDark: Boolean,
-    phase: Float,
-    opacity: Float,
-    modifier: Modifier = Modifier
-) {
+internal fun OrbLayer(isDark: Boolean, phase: Float, opacity: Float, modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
         // Ember orb
         Orb(
             color = if (isDark) AuroraColors.emberDark else AuroraColors.ember,
             baseAlpha = if (isDark) 0.55f else 0.20f,
             size = 460.dp,
-            offsetA = Offset(-100f, -200f),
-            offsetB = Offset(-60f, -176f),
-            phase = phase,
-            opacity = opacity
+            motion = OrbMotion(Offset(-100f, -200f), Offset(-60f, -176f), phase, opacity),
         )
         // Amber orb
         Orb(
             color = if (isDark) AuroraColors.amberDark else AuroraColors.amber,
             baseAlpha = if (isDark) 0.45f else 0.16f,
             size = 420.dp,
-            offsetA = Offset(120f, 240f),
-            offsetB = Offset(92f, 210f),
-            phase = phase,
-            opacity = opacity
+            motion = OrbMotion(Offset(120f, 240f), Offset(92f, 210f), phase, opacity),
         )
         // Blaze orb
         Orb(
             color = if (isDark) AuroraColors.blaze else AuroraColors.blaze,
             baseAlpha = if (isDark) 0.30f else 0.12f,
             size = 380.dp,
-            offsetA = Offset(-60f, 140f),
-            offsetB = Offset(-42f, 118f),
-            phase = phase,
-            opacity = opacity
+            motion = OrbMotion(Offset(-60f, 140f), Offset(-42f, 118f), phase, opacity),
         )
     }
 }
 
+private data class OrbMotion(
+    val offsetA: Offset,
+    val offsetB: Offset,
+    val phase: Float,
+    val opacity: Float,
+)
+
 @Composable
-private fun Orb(
-    color: Color,
-    baseAlpha: Float,
-    size: androidx.compose.ui.unit.Dp,
-    offsetA: Offset,
-    offsetB: Offset,
-    phase: Float,
-    opacity: Float
-) {
-    val interpolatedX = offsetA.x + (offsetB.x - offsetA.x) * phase
-    val interpolatedY = offsetA.y + (offsetB.y - offsetA.y) * phase
+private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.Dp, motion: OrbMotion) {
+    val interpolatedX = motion.offsetA.x + (motion.offsetB.x - motion.offsetA.x) * motion.phase
+    val interpolatedY = motion.offsetA.y + (motion.offsetB.y - motion.offsetA.y) * motion.phase
+    val opacity = motion.opacity
     val displaySize = size * 1.4f // larger for softness
 
     Box(
-        modifier = Modifier
+        modifier =
+        Modifier
             .size(displaySize)
             .offset {
                 androidx.compose.ui.unit.IntOffset(
                     interpolatedX.toInt(),
-                    interpolatedY.toInt()
+                    interpolatedY.toInt(),
                 )
             }
             .background(
                 Brush.radialGradient(
-                    colors = listOf(
+                    colors =
+                    listOf(
                         color.copy(alpha = baseAlpha * opacity),
-                        color.copy(alpha = (baseAlpha * 0.5f) * opacity),
-                        Color.Transparent
+                        color.copy(alpha = baseAlpha * 0.5f * opacity),
+                        Color.Transparent,
                     ),
                     center = Offset(0.5f, 0.5f),
-                    radius = 0.5f
+                    radius = 0.5f,
                 ),
-                shape = CircleShape
-            )
+                shape = CircleShape,
+            ),
     )
 }
 
 @Composable
-private fun RibbonLayer(
-    isDark: Boolean,
-    ribbonPhase: Float,
-    opacity: Float,
-    modifier: Modifier = Modifier
-) {
+internal fun RibbonLayer(isDark: Boolean, ribbonPhase: Float, opacity: Float, modifier: Modifier = Modifier) {
     val ember = if (isDark) AuroraColors.emberDark else AuroraColors.ember
     val amber = if (isDark) AuroraColors.amberDark else AuroraColors.amber
     val mercury = if (isDark) AuroraColors.hermesMercuryDark else AuroraColors.hermesMercury
@@ -343,38 +263,42 @@ private fun RibbonLayer(
         for (i in 0..segments) {
             val x = i.toFloat() / segments * size.width
             val progress = i.toFloat() / segments
-            val y = size.height * 0.35f + kotlin.math.sin(
-                progress * frequency + ribbonPhase
-            ) * amplitude
+            val y =
+                size.height * 0.35f + kotlin.math.sin(
+                    progress * frequency + ribbonPhase,
+                ) * amplitude
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         for (i in segments downTo 0) {
             val x = i.toFloat() / segments * size.width
             val progress = i.toFloat() / segments
-            val y = size.height * 0.35f + kotlin.math.sin(
-                progress * frequency + ribbonPhase
-            ) * amplitude + 38f
+            val y =
+                size.height * 0.35f + kotlin.math.sin(
+                    progress * frequency + ribbonPhase,
+                ) * amplitude + 38f
             path.lineTo(x, y)
         }
         path.close()
 
         drawPath(
             path = path,
-            brush = Brush.linearGradient(
-                colors = listOf(
+            brush =
+            Brush.linearGradient(
+                colors =
+                listOf(
                     ember.copy(alpha = if (isDark) 0.45f else 0.20f * opacity),
                     amber.copy(alpha = if (isDark) 0.30f else 0.14f * opacity),
-                    mercury.copy(alpha = if (isDark) 0.18f else 0.08f * opacity)
+                    mercury.copy(alpha = if (isDark) 0.18f else 0.08f * opacity),
                 ),
                 start = Offset(0f, 0f),
-                end = Offset(size.width, size.height)
-            )
+                end = Offset(size.width, size.height),
+            ),
         )
     }
 }
 
 @Composable
-private fun ParticleLayer(modifier: Modifier = Modifier) {
+internal fun ParticleLayer(modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
         for (index in 0 until 8) {
             AuroraParticle(index = index)
@@ -388,55 +312,57 @@ private fun AuroraParticle(index: Int) {
     val rise by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 28f + index * 6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
+        animationSpec =
+        infiniteRepeatable(
+            animation =
+            tween(
                 durationMillis = 5000 + index * 700,
-                easing = EaseInOut
+                easing = EaseInOut,
             ),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "particle-rise-$index"
+        label = "particle-rise-$index",
     )
 
     val palette = listOf(AuroraColors.ember, AuroraColors.amber, AuroraColors.blaze, Color.White)
     val particleColor = palette[index % palette.size]
-    val size = (3f + (index % 4) * 1.4f).dp
+    val size = (3f + index % 4 * 1.4f).dp
     val startX = (-130 + index * 38).dp
-    val startY = (220 + (index % 3) * 36).dp
+    val startY = (220 + index % 3 * 36).dp
     val alpha = 0.5f
 
     Box(
-        modifier = Modifier
+        modifier =
+        Modifier
             .size(size)
             .offset(x = startX, y = startY - rise.dp)
             .background(
-                particleColor.copy(alpha = alpha * (0.4f + (index % 3) * 0.18f)),
-                shape = CircleShape
-            )
+                particleColor.copy(alpha = alpha * (0.4f + index % 3 * 0.18f)),
+                shape = CircleShape,
+            ),
     )
 }
 
 // ── Live Breathing Dot ──
 @Composable
-fun BreathingDot(
-    color: Color = AuroraColors.ember,
-    size: Int = 10,
-    modifier: Modifier = Modifier
-) {
+fun BreathingDot(color: Color = AuroraColors.ember, size: Int = 10, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition()
     val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f, targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(1200, easing = EaseInOut),
-            repeatMode = RepeatMode.Reverse
-        )
+            repeatMode = RepeatMode.Reverse,
+        ),
     )
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .size(size.dp)
             .clip(CircleShape)
-            .background(color.copy(alpha = alpha))
+            .background(color.copy(alpha = alpha)),
     )
 }
 
@@ -449,16 +375,13 @@ fun BreathingDot(
 // `.spring(response: 0.4, dampingFraction: 0.85)` + 12pt Y offset. Respects
 // the reduce-motion composition local.
 @Composable
-fun StaggeredEntrance(
-    delay: Int = 0,
-    reduceMotion: Boolean = LocalAuroraReduceMotion.current,
-    content: @Composable () -> Unit
-) {
+fun StaggeredEntrance(delay: Int = 0, reduceMotion: Boolean = LocalAuroraReduceMotion.current, content: @Composable () -> Unit) {
     var visible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (reduceMotion) visible = true
-        else {
+        if (reduceMotion) {
+            visible = true
+        } else {
             kotlinx.coroutines.delay(delay.toLong())
             visible = true
         }
@@ -467,20 +390,21 @@ fun StaggeredEntrance(
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = AuroraMotion.gentleSpec(),
-        label = "stagger-alpha"
+        label = "stagger-alpha",
     )
     val offsetY by animateDpAsState(
         targetValue = if (visible) 0.dp else 12.dp,
         animationSpec = AuroraMotion.gentleSpec(),
-        label = "stagger-offset"
+        label = "stagger-offset",
     )
 
     Box(
-        modifier = Modifier
+        modifier =
+        Modifier
             .graphicsLayer {
                 this.alpha = alpha
                 translationY = offsetY.value
-            }
+            },
     ) {
         content()
     }
@@ -490,35 +414,35 @@ fun StaggeredEntrance(
 // Mirrors iOS `.chartEntrance()` modifier: scale 0.92 → 1.0, alpha 0 → 1,
 // 16dp Y offset, all via a single spring with response ≈ 0.55.
 @Composable
-fun Modifier.chartEntrance(
-    delay: Int = 0,
-    reduceMotion: Boolean = LocalAuroraReduceMotion.current
-): Modifier {
+fun Modifier.chartEntrance(delay: Int = 0, reduceMotion: Boolean = LocalAuroraReduceMotion.current): Modifier {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (reduceMotion) visible = true
-        else {
+        if (reduceMotion) {
+            visible = true
+        } else {
             kotlinx.coroutines.delay(delay.toLong())
             visible = true
         }
     }
-    val spec = androidx.compose.animation.core.spring<Float>(
-        stiffness = 320f, dampingRatio = 0.75f
-    )
+    val spec =
+        androidx.compose.animation.core.spring<Float>(
+            stiffness = 320f,
+            dampingRatio = 0.75f,
+        )
     val scale by animateFloatAsState(
         targetValue = if (visible) 1f else 0.92f,
         animationSpec = spec,
-        label = "chart-entrance-scale"
+        label = "chart-entrance-scale",
     )
     val a by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = spec,
-        label = "chart-entrance-alpha"
+        label = "chart-entrance-alpha",
     )
     val ty by animateDpAsState(
         targetValue = if (visible) 0.dp else 16.dp,
         animationSpec = androidx.compose.animation.core.spring(stiffness = 320f, dampingRatio = 0.75f),
-        label = "chart-entrance-y"
+        label = "chart-entrance-y",
     )
     return this.graphicsLayer {
         scaleX = scale
@@ -532,26 +456,28 @@ fun Modifier.chartEntrance(
 // Scale 1.0 ↔ 1.4, alpha 1.0 ↔ 0.55, 1.4s easeInOut, reversing forever.
 // Matches iOS BreathingPulseModifier.
 @Composable
-fun Modifier.breathingPulse(
-    reduceMotion: Boolean = LocalAuroraReduceMotion.current
-): Modifier {
+fun Modifier.breathingPulse(reduceMotion: Boolean = LocalAuroraReduceMotion.current): Modifier {
     if (reduceMotion) return this
     val transition = rememberInfiniteTransition(label = "breathing-pulse")
     val scale by transition.animateFloat(
-        initialValue = 1f, targetValue = 1.4f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 1f,
+        targetValue = 1.4f,
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(1400, easing = EaseInOut),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "breathing-scale"
+        label = "breathing-scale",
     )
     val a by transition.animateFloat(
-        initialValue = 1f, targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 1f,
+        targetValue = 0.55f,
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(1400, easing = EaseInOut),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "breathing-alpha"
+        label = "breathing-alpha",
     )
     return this.graphicsLayer {
         scaleX = scale
@@ -562,35 +488,40 @@ fun Modifier.breathingPulse(
 
 // ── Chip Selector ──
 @Composable
-fun <T> ChipSelector(
-    items: List<T>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    labelProvider: (T) -> String = { it.toString() },
-    modifier: Modifier = Modifier
-) {
+fun <T> ChipSelector(items: List<T>, selected: T, onSelect: (T) -> Unit, labelProvider: (T) -> String = { it.toString() }, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
     ) {
         items.forEach { item ->
             val isSelected = item == selected
             Surface(
                 onClick = { onSelect(item) },
                 shape = RoundedCornerShape(AuroraRadius.full.dp),
-                color = if (isSelected) AuroraColors.ember.copy(alpha = 0.15f)
-                        else MaterialTheme.colorScheme.surface,
-                border = if (isSelected)
+                color =
+                if (isSelected) {
+                    AuroraColors.ember.copy(alpha = 0.15f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                border =
+                if (isSelected) {
                     androidx.compose.foundation.BorderStroke(1.dp, AuroraColors.ember)
-                else null
+                } else {
+                    null
+                },
             ) {
                 Text(
                     text = labelProvider(item),
                     modifier = Modifier.padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
                     fontSize = AuroraTypography.caption.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) AuroraColors.ember
-                            else MaterialTheme.colorScheme.onSurface
+                    color =
+                    if (isSelected) {
+                        AuroraColors.ember
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                 )
             }
         }
@@ -599,72 +530,68 @@ fun <T> ChipSelector(
 
 // ── Loading Shimmer ──
 @Composable
-fun ShimmerCard(
-    height: Int = 120,
-    modifier: Modifier = Modifier
-) {
+fun ShimmerCard(height: Int = 120, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition()
     val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
+            repeatMode = RepeatMode.Restart,
+        ),
     )
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxWidth()
             .height(height.dp)
             .clip(RoundedCornerShape(AuroraRadius.lg.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(
+                    colors =
+                    listOf(
                         MaterialTheme.colorScheme.surface,
                         MaterialTheme.colorScheme.surfaceVariant,
-                        MaterialTheme.colorScheme.surface
+                        MaterialTheme.colorScheme.surface,
                     ),
                     start = Offset(shimmerOffset * 2000f - 1000f, 0f),
-                    end = Offset(shimmerOffset * 2000f + 1000f, 0f)
-                )
-            )
+                    end = Offset(shimmerOffset * 2000f + 1000f, 0f),
+                ),
+            ),
     )
 }
 
 // ── Empty State ──
 @Composable
-fun EmptyStateView(
-    icon: ImageVector = Icons.Default.Info,
-    title: String,
-    message: String,
-    onRetry: (() -> Unit)? = null,
-    retryLabel: String = "Retry"
-) {
+fun EmptyStateView(icon: ImageVector = Icons.Default.Info, title: String, message: String, onRetry: (() -> Unit)? = null, retryLabel: String = "Retry") {
     Column(
-        modifier = Modifier
+        modifier =
+        Modifier
             .fillMaxWidth()
             .padding(AuroraSpacing.xxxl.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(48.dp),
-            tint = AuroraColors.whimsy.copy(alpha = 0.5f)
+            tint = AuroraColors.whimsy.copy(alpha = 0.5f),
         )
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
         Text(
             text = title,
             fontSize = AuroraTypography.title.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
         Text(
             text = message,
             fontSize = AuroraTypography.body.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
         )
         if (onRetry != null) {
             Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
@@ -677,35 +604,26 @@ fun EmptyStateView(
 
 // ── Error State ──
 @Composable
-fun ErrorStateView(
-    icon: ImageVector = Icons.Default.Info,
-    title: String,
-    message: String,
-    onRetry: () -> Unit,
-    retryLabel: String = "Retry"
-) {
+fun ErrorStateView(icon: ImageVector = Icons.Default.Info, title: String, message: String, onRetry: () -> Unit, retryLabel: String = "Retry") {
     EmptyStateView(icon = icon, title = title, message = message, onRetry = onRetry, retryLabel = retryLabel)
 }
 
 // ── Section Header ──
 @Composable
-fun SectionHeader(
-    title: String,
-    modifier: Modifier = Modifier,
-    action: (@Composable () -> Unit)? = null
-) {
+fun SectionHeader(title: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
     Row(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxWidth()
             .padding(horizontal = AuroraSpacing.lg.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
             fontSize = AuroraTypography.headline.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
         action?.invoke()
     }
@@ -713,32 +631,33 @@ fun SectionHeader(
 
 // ── Mercury Shimmer Overlay (Hermes) ──
 @Composable
-fun MercuryShimmerOverlay(
-    modifier: Modifier = Modifier,
-    cornerRadius: Int = AuroraRadius.lg
-) {
+fun MercuryShimmerOverlay(modifier: Modifier = Modifier, cornerRadius: Int = AuroraRadius.lg) {
     val infiniteTransition = rememberInfiniteTransition()
     val shimmer by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+        infiniteRepeatable(
             animation = tween(AuroraMotion.mercuryShimmerDuration.toInt(), easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
+            repeatMode = RepeatMode.Restart,
+        ),
     )
 
     Box(
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(cornerRadius.dp))
             .border(
                 1.dp,
                 Brush.linearGradient(
-                    colors = AuroraGradients.mercuryFoil.map {
-                        it.copy(alpha = (0.3f + (shimmer * 0.3f)).coerceIn(0f, 1f))
+                    colors =
+                    AuroraGradients.mercuryFoil.map {
+                        it.copy(alpha = (0.3f + shimmer * 0.3f).coerceIn(0f, 1f))
                     },
                     start = Offset(shimmer * 500f, 0f),
-                    end = Offset(shimmer * 500f + 500f, 500f)
+                    end = Offset(shimmer * 500f + 500f, 500f),
                 ),
-                RoundedCornerShape(cornerRadius.dp)
-            )
+                RoundedCornerShape(cornerRadius.dp),
+            ),
     )
 }

@@ -24,50 +24,53 @@ enum class LLMModelBrand(val emblemColor: Long) {
     AMAZON(0xFFFF9900),
     ALIBABA(0xFFFF6A00),
     OLLAMA(0xFF8B8589),
-    UNKNOWN(0xFF8B8589);
+    UNKNOWN(0xFF8B8589),
+    ;
 
     /** Drawable resource ID for the bundled logo, or 0 if no logo is bundled. */
     val logoRes: Int
-        get() = when (this) {
-            ANTHROPIC  -> R.drawable.logo_anthropic
-            OPEN_AI    -> R.drawable.logo_open_ai
-            GOOGLE     -> R.drawable.logo_google
-            DEEP_SEEK  -> R.drawable.logo_deep_seek
-            KIMI       -> R.drawable.logo_kimi
-            MINI_MAX   -> R.drawable.logo_mini_max
-            META       -> R.drawable.logo_meta
-            MISTRAL    -> R.drawable.logo_mistral
-            QWEN       -> R.drawable.logo_qwen
-            X_AI       -> R.drawable.logo_grok
-            COHERE     -> R.drawable.logo_cohere
-            PERPLEXITY -> R.drawable.logo_perplexity
-            APPLE      -> R.drawable.logo_apple
-            AMAZON     -> R.drawable.logo_amazon
-            ALIBABA    -> R.drawable.logo_alibaba
-            OLLAMA     -> R.drawable.logo_ollama
-            UNKNOWN    -> 0
-        }
+        get() =
+            when (this) {
+                ANTHROPIC -> R.drawable.logo_anthropic
+                OPEN_AI -> R.drawable.logo_open_ai
+                GOOGLE -> R.drawable.logo_google
+                DEEP_SEEK -> R.drawable.logo_deep_seek
+                KIMI -> R.drawable.logo_kimi
+                MINI_MAX -> R.drawable.logo_mini_max
+                META -> R.drawable.logo_meta
+                MISTRAL -> R.drawable.logo_mistral
+                QWEN -> R.drawable.logo_qwen
+                X_AI -> R.drawable.logo_grok
+                COHERE -> R.drawable.logo_cohere
+                PERPLEXITY -> R.drawable.logo_perplexity
+                APPLE -> R.drawable.logo_apple
+                AMAZON -> R.drawable.logo_amazon
+                ALIBABA -> R.drawable.logo_alibaba
+                OLLAMA -> R.drawable.logo_ollama
+                UNKNOWN -> 0
+            }
 
     val displayName: String
-        get() = when (this) {
-            ANTHROPIC  -> "Anthropic"
-            OPEN_AI    -> "OpenAI"
-            GOOGLE     -> "Google"
-            DEEP_SEEK  -> "DeepSeek"
-            KIMI       -> "Kimi"
-            MINI_MAX   -> "MiniMax"
-            META       -> "Meta"
-            MISTRAL    -> "Mistral"
-            QWEN       -> "Qwen"
-            X_AI       -> "xAI"
-            COHERE     -> "Cohere"
-            PERPLEXITY -> "Perplexity"
-            APPLE      -> "Apple"
-            AMAZON     -> "Amazon"
-            ALIBABA    -> "Alibaba"
-            OLLAMA     -> "Ollama"
-            UNKNOWN    -> "Unknown"
-        }
+        get() =
+            when (this) {
+                ANTHROPIC -> "Anthropic"
+                OPEN_AI -> "OpenAI"
+                GOOGLE -> "Google"
+                DEEP_SEEK -> "DeepSeek"
+                KIMI -> "Kimi"
+                MINI_MAX -> "MiniMax"
+                META -> "Meta"
+                MISTRAL -> "Mistral"
+                QWEN -> "Qwen"
+                X_AI -> "xAI"
+                COHERE -> "Cohere"
+                PERPLEXITY -> "Perplexity"
+                APPLE -> "Apple"
+                AMAZON -> "Amazon"
+                ALIBABA -> "Alibaba"
+                OLLAMA -> "Ollama"
+                UNKNOWN -> "Unknown"
+            }
 
     companion object {
         /** Best-effort vendor detection from model id strings. Mirrors iOS infer logic. */
@@ -102,33 +105,34 @@ enum class LLMModelBrand(val emblemColor: Long) {
  * bundled logo exists. Mirrors `AgentLens/Views/Components/ProviderLogoView.swift`.
  */
 val AgentProvider.logoRes: Int
-    get() = when (this) {
-        AgentProvider.FACTORY     -> R.drawable.logo_factory
-        AgentProvider.CLAUDE_CODE -> R.drawable.logo_claude_code
-        AgentProvider.COPILOT     -> R.drawable.logo_copilot
-        AgentProvider.AIDER       -> R.drawable.logo_aider
-        AgentProvider.CURSOR      -> R.drawable.logo_cursor
-        AgentProvider.OPEN_AI     -> R.drawable.logo_open_ai
-        AgentProvider.DEEP_SEEK   -> R.drawable.logo_deep_seek
-        AgentProvider.CODEX       -> R.drawable.logo_codex
-        AgentProvider.ZAI         -> R.drawable.logo_zai
-        AgentProvider.MINIMAX     -> R.drawable.logo_mini_max
-        AgentProvider.KIMI        -> R.drawable.logo_kimi
-        AgentProvider.CLINE       -> R.drawable.logo_cline
-        AgentProvider.KILO_CODE   -> R.drawable.logo_kilo_code
-        AgentProvider.ROO_CODE    -> R.drawable.logo_roo_code
-        AgentProvider.FORGE_DEV   -> R.drawable.logo_forge
-        AgentProvider.AUGMENT     -> R.drawable.logo_augment
-        AgentProvider.HERMES      -> R.drawable.logo_hermes
-        AgentProvider.PI_AGENT    -> R.drawable.pi_agent_logo
-        AgentProvider.GEMINI_CLI  -> R.drawable.logo_gemini_cli
-        AgentProvider.GOOSE       -> R.drawable.logo_goose
-        AgentProvider.OPEN_CLAW   -> R.drawable.logo_openclaw
-        AgentProvider.OPENCODE    -> R.drawable.logo_open_code
-        AgentProvider.OLLAMA      -> R.drawable.logo_ollama
-        AgentProvider.WINDSURF    -> R.drawable.logo_windsurf
-        AgentProvider.WARP        -> R.drawable.logo_warp
-        AgentProvider.XAI         -> R.drawable.logo_grok
-        AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
-        AgentProvider.MIMO        -> R.drawable.mimo_logo
-    }
+    get() =
+        when (this) {
+            AgentProvider.FACTORY -> R.drawable.logo_factory
+            AgentProvider.CLAUDE_CODE -> R.drawable.logo_claude_code
+            AgentProvider.COPILOT -> R.drawable.logo_copilot
+            AgentProvider.AIDER -> R.drawable.logo_aider
+            AgentProvider.CURSOR -> R.drawable.logo_cursor
+            AgentProvider.OPEN_AI -> R.drawable.logo_open_ai
+            AgentProvider.DEEP_SEEK -> R.drawable.logo_deep_seek
+            AgentProvider.CODEX -> R.drawable.logo_codex
+            AgentProvider.ZAI -> R.drawable.logo_zai
+            AgentProvider.MINIMAX -> R.drawable.logo_mini_max
+            AgentProvider.KIMI -> R.drawable.logo_kimi
+            AgentProvider.CLINE -> R.drawable.logo_cline
+            AgentProvider.KILO_CODE -> R.drawable.logo_kilo_code
+            AgentProvider.ROO_CODE -> R.drawable.logo_roo_code
+            AgentProvider.FORGE_DEV -> R.drawable.logo_forge
+            AgentProvider.AUGMENT -> R.drawable.logo_augment
+            AgentProvider.HERMES -> R.drawable.logo_hermes
+            AgentProvider.PI_AGENT -> R.drawable.pi_agent_logo
+            AgentProvider.GEMINI_CLI -> R.drawable.logo_gemini_cli
+            AgentProvider.GOOSE -> R.drawable.logo_goose
+            AgentProvider.OPEN_CLAW -> R.drawable.logo_openclaw
+            AgentProvider.OPENCODE -> R.drawable.logo_open_code
+            AgentProvider.OLLAMA -> R.drawable.logo_ollama
+            AgentProvider.WINDSURF -> R.drawable.logo_windsurf
+            AgentProvider.WARP -> R.drawable.logo_warp
+            AgentProvider.XAI -> R.drawable.logo_grok
+            AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
+            AgentProvider.MIMO -> R.drawable.mimo_logo
+        }

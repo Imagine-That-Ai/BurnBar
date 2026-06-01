@@ -27,11 +27,12 @@ class ComputerUseSecurityCallableClient(
         keyVersion: Int? = null,
     ) {
         requireAuthenticatedUser()
-        val payload = linkedMapOf<String, Any>(
-            "deviceId" to deviceId,
-            "deviceName" to deviceName,
-            "platform" to platform,
-        )
+        val payload =
+            linkedMapOf<String, Any>(
+                "deviceId" to deviceId,
+                "deviceName" to deviceName,
+                "platform" to platform,
+            )
         appVersion?.takeIf { it.isNotBlank() }?.let { payload["appVersion"] = it }
         publicKeyFingerprint?.takeIf { it.isNotBlank() }?.let { payload["publicKeyFingerprint"] = it }
         keyVersion?.let { payload["keyVersion"] = it }
@@ -41,23 +42,26 @@ class ComputerUseSecurityCallableClient(
 
     suspend fun approveEscrowDeviceTrust(deviceId: String) {
         requireAuthenticatedUser()
-        val result = functions.getHttpsCallable("approveEscrowDeviceTrust")
-            .call(mapOf("deviceId" to deviceId))
-            .await()
+        val result =
+            functions.getHttpsCallable("approveEscrowDeviceTrust")
+                .call(mapOf("deviceId" to deviceId))
+                .await()
         requireOk(result.getData(), "Escrow device trust approval failed.")
     }
 
     suspend fun revokeEscrowDeviceTrust(deviceId: String) {
         requireAuthenticatedUser()
-        val result = functions.getHttpsCallable("revokeEscrowDeviceTrust")
-            .call(mapOf("deviceId" to deviceId))
-            .await()
+        val result =
+            functions.getHttpsCallable("revokeEscrowDeviceTrust")
+                .call(mapOf("deviceId" to deviceId))
+                .await()
         requireOk(result.getData(), "Escrow device trust revocation failed.")
     }
 
     private suspend fun refreshAuthClaimsAfterBind() {
-        val user = FirebaseAuth.getInstance().currentUser
-            ?: throw IllegalStateException("Sign in before performing this Computer Use security action.")
+        val user =
+            FirebaseAuth.getInstance().currentUser
+                ?: error("Sign in before performing this Computer Use security action.")
         user.getIdToken(true).await()
     }
 

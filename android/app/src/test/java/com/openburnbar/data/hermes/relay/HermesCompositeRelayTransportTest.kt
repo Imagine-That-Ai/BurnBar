@@ -1,3 +1,6 @@
+@file:Suppress("FunctionNaming")
+// detekt: JUnit backtick BDD test names intentionally contain spaces.
+
 package com.openburnbar.data.hermes.relay
 
 import com.openburnbar.irohrelay.IrohRelayTransportError
@@ -9,15 +12,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-class HermesCompositeRelayTransportTest {
+private const val VAL_600000_L = 600_000L
 
-    private val payload = HermesRelayPayload(
-        operation = "chatCompletions",
-        method = "POST",
-        path = "/v1/chat/completions",
-        connectionID = "conn-1",
-        relayPublicKey = "Q",
-    )
+class HermesCompositeRelayTransportTest {
+    private val payload =
+        HermesRelayPayload(
+            operation = "chatCompletions",
+            method = "POST",
+            path = "/v1/chat/completions",
+            connectionID = "conn-1",
+            relayPublicKey = "Q",
+        )
 
     @Test
     fun unary_prefers_iroh_when_flag_is_on() = runTest {
@@ -26,11 +31,12 @@ class HermesCompositeRelayTransportTest {
         coEvery { iroh.sendUnary(payload, any()) } returns "iroh-result"
         coEvery { firestore.sendUnary(payload, any()) } returns "firestore-result"
 
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-            featureFlag = { true },
-        )
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+                featureFlag = { true },
+            )
 
         assertEquals("iroh-result", composite.sendUnary(payload, 100))
         coVerify(exactly = 0) { firestore.sendUnary(any(), any()) }
@@ -42,11 +48,12 @@ class HermesCompositeRelayTransportTest {
         val firestore = mockk<HermesRelayTransporting>()
         coEvery { firestore.sendUnary(payload, any()) } returns "firestore-fallback"
 
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-            featureFlag = { false },
-        )
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+                featureFlag = { false },
+            )
 
         assertEquals("firestore-fallback", composite.sendUnary(payload, 100))
         coVerify(exactly = 0) { iroh.sendUnary(any(), any()) }
@@ -60,10 +67,11 @@ class HermesCompositeRelayTransportTest {
         coEvery { iroh.sendUnary(payload, any()) } throws IrohRelayTransportError.TimedOut
         coEvery { firestore.sendUnary(payload, any()) } returns "fallback-after-timeout"
 
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-        )
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
         assertEquals("fallback-after-timeout", composite.sendUnary(payload, 100))
         coVerify(exactly = 1) { iroh.sendUnary(any(), any()) }
         coVerify(exactly = 1) { firestore.sendUnary(payload, 100) }
@@ -75,10 +83,11 @@ class HermesCompositeRelayTransportTest {
         val firestore = mockk<HermesRelayTransporting>()
         coEvery { iroh.sendUnary(payload, any()) } throws HermesRelayException("decode bug")
 
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-        )
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
         assertThrows(HermesRelayException::class.java) {
             kotlinx.coroutines.runBlocking { composite.sendUnary(payload, 100) }
         }
@@ -91,17 +100,20 @@ class HermesCompositeRelayTransportTest {
         val firestore = mockk<HermesRelayTransporting>()
         coEvery { iroh.sendStreaming(payload, any(), any()) } throws IrohRelayTransportError.StreamRejected("flow")
 
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-        )
-        val err = assertThrows(HermesRelayException::class.java) {
-            kotlinx.coroutines.runBlocking {
-                composite.sendStreaming(payload, 100) {}
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
+        val err =
+            assertThrows(HermesRelayException::class.java) {
+                kotlinx.coroutines.runBlocking {
+                    composite.sendStreaming(payload, 100) {}
+                }
             }
-        }
         assertEquals(
-            "Iroh direct Hermes relay failed before the selected Mac harness completed: flow. No Firestore fallback was attempted, so the selected model is not silently rerouted.",
+            "Iroh direct Hermes relay failed before the selected Mac harness completed: flow. " +
+                "No Firestore fallback was attempted, so the selected model is not silently rerouted.",
             err.message,
         )
         coVerify(exactly = 0) { firestore.sendStreaming(any(), any(), any()) }
@@ -109,10 +121,11 @@ class HermesCompositeRelayTransportTest {
 
     @Test
     fun streaming_cli_agent_chat_falls_back_to_firestore_after_iroh_transport_error() = runTest {
-        val cliPayload = payload.copy(
-            operation = HermesRelayOperationName.CLI_AGENT_CHAT,
-            path = "/v1/cli-agent/chat",
-        )
+        val cliPayload =
+            payload.copy(
+                operation = HermesRelayOperationName.CLI_AGENT_CHAT,
+                path = "/v1/cli-agent/chat",
+            )
         val iroh = mockk<HermesRelayTransporting>()
         val firestore = mockk<HermesRelayTransporting>()
         coEvery { iroh.sendStreaming(cliPayload, any(), any()) } throws IrohRelayTransportError.TimedOut
@@ -121,16 +134,17 @@ class HermesCompositeRelayTransportTest {
             kotlinx.coroutines.runBlocking { cb("""{"kind":"completed","text":"via-firestore"}""") }
         }
 
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-        )
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
         val received = mutableListOf<String>()
-        composite.sendStreaming(cliPayload, 600_000L) { received.add(it) }
+        composite.sendStreaming(cliPayload, VAL_600000_L) { received.add(it) }
 
         assertEquals(listOf("""{"kind":"completed","text":"via-firestore"}"""), received)
-        coVerify(exactly = 1) { iroh.sendStreaming(cliPayload, 600_000L, any()) }
-        coVerify(exactly = 1) { firestore.sendStreaming(cliPayload, 600_000L, any()) }
+        coVerify(exactly = 1) { iroh.sendStreaming(cliPayload, VAL_600000_L, any()) }
+        coVerify(exactly = 1) { firestore.sendStreaming(cliPayload, VAL_600000_L, any()) }
     }
 
     @Test
@@ -141,11 +155,12 @@ class HermesCompositeRelayTransportTest {
             val cb = thirdArg<suspend (String) -> Unit>()
             kotlinx.coroutines.runBlocking { cb("force-fallback") }
         }
-        val composite = HermesCompositeRelayTransport(
-            iroh = iroh,
-            firestoreFallback = firestore,
-            featureFlag = { false },
-        )
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+                featureFlag = { false },
+            )
         val received = mutableListOf<String>()
         composite.sendStreaming(payload, 100) { received.add(it) }
         assertEquals(listOf("force-fallback"), received)

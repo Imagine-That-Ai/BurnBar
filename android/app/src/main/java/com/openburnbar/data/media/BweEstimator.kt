@@ -4,6 +4,8 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
+private const val MILLIS = 0.5
+
 /**
  * Receiver-driven bandwidth-estimation ceiling for Mercury video streams.
  * Trimmed Kotlin port of the iOS `BitrateController` + plan § E.7
@@ -64,7 +66,7 @@ class BweEstimator(
     }
 
     @Suppress("unused")
-    fun gccDecayConstant(rttMillis: Int): Double = (1.0 - 0.5).pow(rttMillis.toDouble() / 1000.0)
+    fun gccDecayConstant(rttMillis: Int): Double = (1.0 - MILLIS).pow(rttMillis.toDouble() / 1000.0)
 
     companion object {
         val SCREEN_SHARE_STEPS = listOf(1_000_000, 2_000_000, 4_000_000, 8_000_000)

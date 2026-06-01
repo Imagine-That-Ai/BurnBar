@@ -26,28 +26,31 @@ enum class VerdictWindow {
     thisMonth,
     lastMonth,
     quarter,
-    year;
+    year,
+    ;
 
-    val displayLabel: String get() = when (this) {
-        today -> "Today"
-        yesterday -> "Yesterday"
-        thisWeek -> "This week"
-        lastWeek -> "Last week"
-        thisMonth -> "This month"
-        lastMonth -> "Last month"
-        quarter -> "This quarter"
-        year -> "This year"
-    }
+    val displayLabel: String get() =
+        when (this) {
+            today -> "Today"
+            yesterday -> "Yesterday"
+            thisWeek -> "This week"
+            lastWeek -> "Last week"
+            thisMonth -> "This month"
+            lastMonth -> "Last month"
+            quarter -> "This quarter"
+            year -> "This year"
+        }
 
     /** Cache TTL in milliseconds — mirrors the Swift `cacheTTL`. */
-    val cacheTTLMillis: Long get() = when (this) {
-        today -> 2L * 60 * 60 * 1000
-        yesterday -> 12L * 60 * 60 * 1000
-        thisWeek, lastWeek -> 24L * 60 * 60 * 1000
-        thisMonth, lastMonth -> 7L * 24 * 60 * 60 * 1000
-        quarter -> 14L * 24 * 60 * 60 * 1000
-        year -> 30L * 24 * 60 * 60 * 1000
-    }
+    val cacheTTLMillis: Long get() =
+        when (this) {
+            today -> 2L * 60 * 60 * 1000
+            yesterday -> 12L * 60 * 60 * 1000
+            thisWeek, lastWeek -> 24L * 60 * 60 * 1000
+            thisMonth, lastMonth -> 7L * 24 * 60 * 60 * 1000
+            quarter -> 14L * 24 * 60 * 60 * 1000
+            year -> 30L * 24 * 60 * 60 * 1000
+        }
 }
 
 /** Dominant accent identity of a verdict. */
@@ -59,7 +62,8 @@ enum class ProviderTint {
     mercury,
     prism,
     ember_alt,
-    neutral;
+    neutral,
+    ;
 
     companion object {
         fun forProviderKey(key: String?): ProviderTint = when (key?.lowercase()) {
@@ -80,7 +84,7 @@ data class VerdictDelta(
     val value: Double,
     val unit: Unit,
     val baseline: String,
-    val direction: Direction = Direction.neutral
+    val direction: Direction = Direction.neutral,
 ) {
     @Serializable
     enum class Unit { usd, tokens, sessions, pct, days, ms, ratio, count }
@@ -88,18 +92,27 @@ data class VerdictDelta(
     @Serializable
     enum class Direction { higherIsBetter, lowerIsBetter, neutral }
 
-    val isFavorable: Boolean get() = when (direction) {
-        Direction.higherIsBetter -> value > 0
-        Direction.lowerIsBetter -> value < 0
-        Direction.neutral -> false
-    }
+    val isFavorable: Boolean get() =
+        when (direction) {
+            Direction.higherIsBetter -> value > 0
+            Direction.lowerIsBetter -> value < 0
+            Direction.neutral -> false
+        }
 }
 
 /** The shape of a single verdict bullet. */
 @Serializable
 enum class VerdictBulletType {
-    reflective_fact, comparison, pattern, anomaly,
-    recommendation, discovery, forecast, achievement, risk, story
+    reflective_fact,
+    comparison,
+    pattern,
+    anomaly,
+    recommendation,
+    discovery,
+    forecast,
+    achievement,
+    risk,
+    story,
 }
 
 /** A one-tap follow-through. */
@@ -107,7 +120,7 @@ enum class VerdictBulletType {
 data class VerdictAcceptAction(
     val label: String,
     val intent: Intent,
-    val payload: Map<String, String>? = null
+    val payload: Map<String, String>? = null,
 ) {
     @Serializable
     enum class Intent {
@@ -118,7 +131,7 @@ data class VerdictAcceptAction(
         openExternal,
         createMission,
         investigate,
-        snooze
+        snooze,
     }
 }
 
@@ -132,7 +145,7 @@ data class VerdictRing(
     val unit: VerdictDelta.Unit,
     val valueLabel: String,
     val delta: VerdictDelta? = null,
-    val tint: ProviderTint = ProviderTint.neutral
+    val tint: ProviderTint = ProviderTint.neutral,
 ) {
     @Serializable
     enum class Identity { spend, cache, sessions }
@@ -161,7 +174,7 @@ data class VerdictNumber(
     val delta: VerdictDelta? = null,
     val sparkline: List<Double>? = null,
     val drillIntent: VerdictAcceptAction.Intent? = null,
-    val drillPayload: Map<String, String>? = null
+    val drillPayload: Map<String, String>? = null,
 )
 
 /** One opinionated claim in the verdict. */
@@ -173,7 +186,7 @@ data class VerdictBullet(
     val citations: List<InsightCitation>,
     val delta: VerdictDelta? = null,
     val acceptAction: VerdictAcceptAction? = null,
-    val confidence: InsightConfidence = InsightConfidence.MEDIUM
+    val confidence: InsightConfidence = InsightConfidence.MEDIUM,
 )
 
 /** A discrete anomaly surfaced on the verdict hero. */
@@ -186,7 +199,7 @@ data class VerdictAnomaly(
     val zScore: Double,
     val affectedSessionIDs: List<String> = emptyList(),
     val citations: List<InsightCitation> = emptyList(),
-    val acceptAction: VerdictAcceptAction? = null
+    val acceptAction: VerdictAcceptAction? = null,
 )
 
 /** The single surfaced recommendation. */
@@ -198,7 +211,7 @@ data class VerdictRecommendation(
     val expectedImpact: String,
     val acceptAction: VerdictAcceptAction,
     val citations: List<InsightCitation>,
-    val confidence: InsightConfidence = InsightConfidence.MEDIUM
+    val confidence: InsightConfidence = InsightConfidence.MEDIUM,
 )
 
 /** Vercel-style horizontal flame strip of one session. */
@@ -213,7 +226,7 @@ data class VerdictTraceStrip(
     val summary: String,
     val costUSD: Double,
     val didTimeout: Boolean = false,
-    val tint: ProviderTint = ProviderTint.neutral
+    val tint: ProviderTint = ProviderTint.neutral,
 )
 
 @Serializable
@@ -224,7 +237,7 @@ data class TraceLane(
     val startOffsetSeconds: Double,
     val durationSeconds: Double,
     val costUSD: Double? = null,
-    val tint: ProviderTint = ProviderTint.neutral
+    val tint: ProviderTint = ProviderTint.neutral,
 ) {
     @Serializable
     enum class Kind { model, tool, cache, prompt, response, retry }
@@ -235,7 +248,7 @@ data class TraceTick(
     val id: String,
     val offsetSeconds: Double,
     val costUSD: Double,
-    val label: String? = null
+    val label: String? = null,
 )
 
 /**
@@ -261,12 +274,13 @@ data class InsightVerdict(
     val confidence: InsightConfidence = InsightConfidence.MEDIUM,
     val followUps: List<String> = emptyList(),
     val isRuleBased: Boolean = false,
-    val contentHash: String = ""
+    val contentHash: String = "",
 ) {
     val isRenderable: Boolean
-        get() = rings.size == REQUIRED_RING_COUNT
-            && headline.isNotEmpty()
-            && (bullets.isEmpty() || bullets.all { it.citations.isNotEmpty() })
+        get() =
+            rings.size == REQUIRED_RING_COUNT &&
+                headline.isNotEmpty() &&
+                (bullets.isEmpty() || bullets.all { it.citations.isNotEmpty() })
 
     companion object {
         const val CURRENT_SCHEMA_VERSION: Int = 1

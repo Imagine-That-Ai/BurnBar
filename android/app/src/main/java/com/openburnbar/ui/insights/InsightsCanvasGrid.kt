@@ -1,10 +1,13 @@
+@file:Suppress("MagicNumber")
+// Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
+
 package com.openburnbar.ui.insights
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,9 +32,9 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightCitation
+import com.openburnbar.data.insights.InsightLayout
 import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.data.insights.InsightWidget
-import com.openburnbar.data.insights.InsightLayout
 import com.openburnbar.data.insights.InsightWidgetData
 import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.ui.insights.renderers.InsightWidgetRenderer
@@ -46,6 +49,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
  * Phones use 2 columns; tablets use 6 in split mode, 12 when full-width.
  * The projection algorithm reflows widgets proportionally.
  */
+@Suppress("UnusedParameter")
 @Composable
 fun InsightsCanvasGrid(
     canvas: InsightCanvas,
@@ -54,17 +58,19 @@ fun InsightsCanvasGrid(
     onMove: (String, Int, Int) -> Unit,
     onConfigure: (String) -> Unit,
     onCitationTap: (InsightCitation) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val targetColumns = when {
-            maxWidth < 600.dp -> 1
-            maxWidth < 840.dp -> 2
-            else -> 6
-        }
-        val projectedLayout = remember(canvas.layout, targetColumns) {
-            canvas.layout.projectedTo(targetColumns)
-        }
+        val targetColumns =
+            when {
+                maxWidth < 600.dp -> 1
+                maxWidth < 840.dp -> 2
+                else -> 6
+            }
+        val projectedLayout =
+            remember(canvas.layout, targetColumns) {
+                canvas.layout.projectedTo(targetColumns)
+            }
         val isPhone = targetColumns == 1
 
         if (isPhone) {
@@ -72,76 +78,92 @@ fun InsightsCanvasGrid(
                 canvas = canvas,
                 selectedWidgetId = selectedWidgetId,
                 onSelect = onSelect,
-                onCitationTap = onCitationTap
+                onCitationTap = onCitationTap,
             )
             return@BoxWithConstraints
         }
 
-        Layout(
-            content = {
-                canvas.widgets.forEach { widget ->
-                    androidx.compose.runtime.key(widget.id) {
-                        WidgetCard(
-                            widget = widget,
-                            theme = canvas.theme,
-                            isSelected = widget.id == selectedWidgetId,
-                            onSelect = { onSelect(widget.id) },
-                            onCitationTap = onCitationTap
-                        )
-                    }
+        InsightsCanvasTabletLayout(
+            canvas = canvas,
+            projectedLayout = projectedLayout,
+            selectedWidgetId = selectedWidgetId,
+            onSelect = onSelect,
+            onCitationTap = onCitationTap,
+        )
+    }
+}
+
+@Composable
+private fun InsightsCanvasTabletLayout(
+    canvas: InsightCanvas,
+    projectedLayout: InsightLayout,
+    selectedWidgetId: String?,
+    onSelect: (String) -> Unit,
+    onCitationTap: (InsightCitation) -> Unit,
+) {
+    Layout(
+        content = {
+            canvas.widgets.forEach { widget ->
+                androidx.compose.runtime.key(widget.id) {
+                    WidgetCard(
+                        widget = widget,
+                        theme = canvas.theme,
+                        isSelected = widget.id == selectedWidgetId,
+                        onSelect = { onSelect(widget.id) },
+                        onCitationTap = onCitationTap,
+                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { measurables, constraints ->
-            val columnCount = projectedLayout.columnCount.coerceAtLeast(1)
-            val gap = (if (isPhone) 10.dp else projectedLayout.gap.dp).roundToPx()
-            val rowHeightPx = (if (isPhone) 74.dp else projectedLayout.rowHeight.dp).roundToPx()
-            val columnWidth = (constraints.maxWidth - (columnCount - 1).coerceAtLeast(0) * gap) / columnCount
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) { measurables, constraints ->
+        val columnCount = projectedLayout.columnCount.coerceAtLeast(1)
+        val gap = projectedLayout.gap.dp.roundToPx()
+        val rowHeightPx = projectedLayout.rowHeight.dp.roundToPx()
+        val columnWidth = (constraints.maxWidth - (columnCount - 1).coerceAtLeast(0) * gap) / columnCount
+        val widgetIds = canvas.widgets.map { it.id }
+        val placements = projectedLayout.placements
 
-            val widgetIds = canvas.widgets.map { it.id }
-            val placements = projectedLayout.placements
-
-            val placeables = measurables.mapIndexed { idx, measurable ->
+        val placeables =
+            measurables.mapIndexed { idx, measurable ->
                 val widgetId = widgetIds.getOrElse(idx) { "" }
-                val placement = placements[widgetId] ?: InsightLayout.CellPlacement(
-                    column = 0, row = idx, colSpan = 1, rowSpan = 1
-                )
-                val width = (placement.colSpan * columnWidth + (placement.colSpan - 1).coerceAtLeast(0) * gap)
-                    .coerceAtLeast(1)
-                val height = (placement.rowSpan * rowHeightPx + (placement.rowSpan - 1).coerceAtLeast(0) * gap)
-                    .coerceAtLeast(1)
+                val placement =
+                    placements[widgetId] ?: InsightLayout.CellPlacement(
+                        column = 0, row = idx, colSpan = 1, rowSpan = 1,
+                    )
+                val width =
+                    (placement.colSpan * columnWidth + (placement.colSpan - 1).coerceAtLeast(0) * gap)
+                        .coerceAtLeast(1)
+                val height =
+                    (placement.rowSpan * rowHeightPx + (placement.rowSpan - 1).coerceAtLeast(0) * gap)
+                        .coerceAtLeast(1)
                 Triple(widgetId, measurable.measure(Constraints.fixed(width, height)), placement)
             }
 
-            val totalRow = placements.values.maxOfOrNull { it.row + it.rowSpan } ?: 0
-            val height = (totalRow * rowHeightPx + (totalRow - 1).coerceAtLeast(0) * gap)
+        val totalRow = placements.values.maxOfOrNull { it.row + it.rowSpan } ?: 0
+        val height =
+            (totalRow * rowHeightPx + (totalRow - 1).coerceAtLeast(0) * gap)
                 .coerceAtLeast(rowHeightPx)
 
-            layout(constraints.maxWidth, height) {
-                placeables.forEach { (_, placeable, placement) ->
-                    val x = placement.column * (columnWidth + gap)
-                    val y = placement.row * (rowHeightPx + gap)
-                    placeable.placeRelative(x, y)
-                }
+        layout(constraints.maxWidth, height) {
+            placeables.forEach { (_, placeable, placement) ->
+                val x = placement.column * (columnWidth + gap)
+                val y = placement.row * (rowHeightPx + gap)
+                placeable.placeRelative(x, y)
             }
         }
     }
 }
 
 @Composable
-private fun PhoneInsightsDeck(
-    canvas: InsightCanvas,
-    selectedWidgetId: String?,
-    onSelect: (String) -> Unit,
-    onCitationTap: (InsightCitation) -> Unit
-) {
+private fun PhoneInsightsDeck(canvas: InsightCanvas, selectedWidgetId: String?, onSelect: (String) -> Unit, onCitationTap: (InsightCitation) -> Unit) {
     val kpiWidgets = canvas.widgets.filter { it.kind == InsightWidgetKind.KPI_TILE }
     val heroKpis = kpiWidgets.take(3)
     val supportingWidgets = canvas.widgets.filterNot { heroKpis.any { hero -> hero.id == it.id } }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (heroKpis.isNotEmpty()) {
             SnapshotCard(canvas = canvas, kpis = heroKpis)
@@ -153,7 +175,7 @@ private fun PhoneInsightsDeck(
                     theme = canvas.theme,
                     isSelected = widget.id == selectedWidgetId,
                     onSelect = { onSelect(widget.id) },
-                    onCitationTap = onCitationTap
+                    onCitationTap = onCitationTap,
                 )
             }
         }
@@ -172,65 +194,72 @@ private fun SnapshotCard(canvas: InsightCanvas, kpis: List<InsightWidget>) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f))
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f)),
     ) {
         Column(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.linearGradient(
                         listOf(
                             accent.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0f)
-                        )
-                    )
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+                        ),
+                    ),
                 )
-                .padding(18.dp)
+                .padding(18.dp),
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = canvas.title.ifBlank { "Today" },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = primary.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = "Fresh",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = InsightsColors.freshnessFresh,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
+            SnapshotCardHeader(canvas = canvas, primary = primary)
             Spacer(modifier = Modifier.height(10.dp))
-
             Text(
                 text = primaryData?.let { formatValue(it.value, it.valueFormat) } ?: primary.title,
                 style = MaterialTheme.typography.displayMedium,
                 color = accent,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
+            SnapshotCardSecondaryMetrics(secondary = secondary)
+        }
+    }
+}
 
-            if (secondary.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    secondary.forEach { widget ->
-                        SnapshotMetric(widget = widget, modifier = Modifier.weight(1f))
-                    }
-                }
-            }
+@Composable
+private fun SnapshotCardHeader(canvas: InsightCanvas, primary: InsightWidget) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = canvas.title.ifBlank { "Today" },
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = primary.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = "Fresh",
+            style = MaterialTheme.typography.labelLarge,
+            color = InsightsColors.freshnessFresh,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun SnapshotCardSecondaryMetrics(secondary: List<InsightWidget>) {
+    if (secondary.isEmpty()) return
+    Spacer(modifier = Modifier.height(14.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        secondary.forEach { widget ->
+            SnapshotMetric(widget = widget, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -239,17 +268,18 @@ private fun SnapshotCard(canvas: InsightCanvas, kpis: List<InsightWidget>) {
 private fun SnapshotMetric(widget: InsightWidget, modifier: Modifier = Modifier) {
     val data = widget.data as? InsightWidgetData.KPI
     Column(
-        modifier = modifier
+        modifier =
+        modifier
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.42f))
-            .padding(horizontal = 10.dp, vertical = 9.dp)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
     ) {
         Text(
             text = widget.title,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = data?.let { formatValue(it.value, it.valueFormat) } ?: "--",
@@ -257,25 +287,20 @@ private fun SnapshotMetric(widget: InsightWidget, modifier: Modifier = Modifier)
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
-private fun WidgetCard(
-    widget: InsightWidget,
-    theme: InsightTheme,
-    isSelected: Boolean,
-    onSelect: () -> Unit,
-    onCitationTap: (InsightCitation) -> Unit
-) {
+private fun WidgetCard(widget: InsightWidget, theme: InsightTheme, isSelected: Boolean, onSelect: () -> Unit, onCitationTap: (InsightCitation) -> Unit) {
     val surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = if (isSelected) 0.98f else 0.90f)
-    val borderColor = if (isSelected) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-    } else {
-        MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-    }
+    val borderColor =
+        if (isSelected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+        }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -283,13 +308,13 @@ private fun WidgetCard(
         elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 0.dp),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, borderColor),
-        onClick = onSelect
+        onClick = onSelect,
     ) {
         Box(modifier = Modifier.padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)) {
             InsightWidgetRenderer(
                 widget = widget,
                 onCitationTap = onCitationTap,
-                theme = theme
+                theme = theme,
             )
         }
     }

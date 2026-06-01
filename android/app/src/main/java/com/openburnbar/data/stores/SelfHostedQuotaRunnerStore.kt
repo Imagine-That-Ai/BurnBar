@@ -9,19 +9,20 @@ import kotlinx.coroutines.flow.asStateFlow
 data class SelfHostedConfig(
     val endpointUrl: String = "",
     val apiKey: String = "",
-    val isEnabled: Boolean = false
+    val isEnabled: Boolean = false,
 )
 
 class SelfHostedQuotaRunnerStore(context: Context) : ViewModel() {
     private val prefs = context.applicationContext.getSharedPreferences("selfHostedRunner", Context.MODE_PRIVATE)
 
-    private val _config = MutableStateFlow(
-        SelfHostedConfig(
-            endpointUrl = prefs.getString("endpointUrl", "") ?: "",
-            apiKey = prefs.getString("apiKey", "") ?: "",
-            isEnabled = prefs.getBoolean("isEnabled", false)
+    private val _config =
+        MutableStateFlow(
+            SelfHostedConfig(
+                endpointUrl = prefs.getString("endpointUrl", "") ?: "",
+                apiKey = prefs.getString("apiKey", "") ?: "",
+                isEnabled = prefs.getBoolean("isEnabled", false),
+            ),
         )
-    )
     val config: StateFlow<SelfHostedConfig> = _config.asStateFlow()
 
     fun updateEndpoint(url: String) {

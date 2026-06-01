@@ -3,11 +3,25 @@ package com.openburnbar.ui.insights
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,36 +38,37 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
 @Composable
-fun BifurcatedInsightsScreen(
-    onSelectProvider: (AgentProvider) -> Unit,
-    onSelectAggregate: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun BifurcatedInsightsScreen(onSelectProvider: (AgentProvider) -> Unit, onSelectAggregate: () -> Unit, modifier: Modifier = Modifier) {
     val isDark = isSystemInDarkTheme()
     var selectedTab by rememberSaveable { mutableStateOf("Budgeting") }
 
     Column(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxSize()
             .background(
-                if (isDark) AuroraColors.darkBackground
-                else AuroraColors.lightBackground
-            )
+                if (isDark) {
+                    AuroraColors.darkBackground
+                } else {
+                    AuroraColors.lightBackground
+                },
+            ),
     ) {
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
 
         // HEADER & TITLE
         Row(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "Budget & Insights",
                 style = AuroraType.displayLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             )
         }
 
@@ -62,26 +77,27 @@ fun BifurcatedInsightsScreen(
             options = listOf("Budgeting", "Insights"),
             selectedOption = selectedTab,
             onOptionSelected = { selectedTab = it },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
 
         Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
 
         // VIEW PORT CONTAINER
         Box(
-            modifier = Modifier
+            modifier =
+            Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(1f),
         ) {
             if (selectedTab == "Budgeting") {
                 BudgetCenterView(
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                    contentPadding = PaddingValues(bottom = 16.dp),
                 )
             } else {
                 AgentInsightsRosterScreen(
                     onSelectProvider = onSelectProvider,
                     onSelectAggregate = onSelectAggregate,
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                    contentPadding = PaddingValues(bottom = 16.dp),
                 )
             }
         }
@@ -89,36 +105,37 @@ fun BifurcatedInsightsScreen(
 }
 
 @Composable
-private fun AuroraSegmentedControl(
-    options: List<String>,
-    selectedOption: String,
-    onOptionSelected: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun AuroraSegmentedControl(options: List<String>, selectedOption: String, onOptionSelected: (String) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
 
     Row(
-        modifier = modifier
+        modifier =
+        modifier
             .fillMaxWidth()
             .height(44.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         options.forEach { option ->
             val isSelected = option == selectedOption
-            val bgColors = if (isSelected) {
-                if (isDark) listOf(AuroraColors.ember.copy(alpha = 0.25f), AuroraColors.amber.copy(alpha = 0.15f))
-                else listOf(AuroraColors.ember.copy(alpha = 0.15f), AuroraColors.amber.copy(alpha = 0.08f))
-            } else {
-                listOf(Color.Transparent, Color.Transparent)
-            }
+            val bgColors =
+                if (isSelected) {
+                    if (isDark) {
+                        listOf(AuroraColors.ember.copy(alpha = 0.25f), AuroraColors.amber.copy(alpha = 0.15f))
+                    } else {
+                        listOf(AuroraColors.ember.copy(alpha = 0.15f), AuroraColors.amber.copy(alpha = 0.08f))
+                    }
+                } else {
+                    listOf(Color.Transparent, Color.Transparent)
+                }
 
             Box(
-                modifier = Modifier
+                modifier =
+                Modifier
                     .weight(1f)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(18.dp))
@@ -129,13 +146,13 @@ private fun AuroraSegmentedControl(
                             HapticBus.tabChange(context)
                         }
                     },
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = option,
                     fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

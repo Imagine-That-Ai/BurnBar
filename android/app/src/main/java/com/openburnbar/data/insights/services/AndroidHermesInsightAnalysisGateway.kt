@@ -2,10 +2,11 @@ package com.openburnbar.data.insights.services
 
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
-import com.openburnbar.data.insights.InsightBriefingAnswer
 import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTokenUsage
+import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -18,12 +19,12 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import okio.BufferedSource
 import org.json.JSONArray
 import org.json.JSONObject
-import java.time.Instant
-import java.util.concurrent.TimeUnit
+
+private const val VAL_0_2 = 0.2
+private const val VAL_0_3 = 0.3
+private const val VAL_15 = 15
 
 /**
  * Token + cost report produced by a Hermes Insights turn. Mirrors the
@@ -58,7 +59,9 @@ data class HermesInsightTokenUsage(
  */
 sealed interface HermesInsightChunk {
     data class Delta(val text: String) : HermesInsightChunk
+
     data class Usage(val usage: HermesInsightTokenUsage) : HermesInsightChunk
+
     data class Completed(val fullAnswer: String) : HermesInsightChunk
 }
 
@@ -87,44 +90,44 @@ class AndroidHermesInsightAnalysisGateway(
     private val path: String = "/v1/chat/completions",
     private val maxTokens: Int = 1400,
 ) : InsightAnalysisModelGateway {
-
     override val providerKey: String = "hermes"
     override val displayName: String = "Hermes"
-    override val models: List<InsightModelTag> = listOf(
-        InsightModelTag(
-            providerKey = providerKey,
-            modelID = "hermes-default",
-            displayName = "Hermes",
-            egressTier = InsightEgressTier.USER_RELAY,
-            stampedAt = Instant.now().toString(),
+    override val models: List<InsightModelTag> =
+        listOf(
+            InsightModelTag(
+                providerKey = providerKey,
+                modelID = "hermes-default",
+                displayName = "Hermes",
+                egressTier = InsightEgressTier.USER_RELAY,
+                stampedAt = Instant.now().toString(),
+            ),
         )
-    )
 
-    override suspend fun analyze(request: InsightAnalysisRequest): InsightAnalysisResult =
-        withContext(Dispatchers.IO) {
-            val baseURL = requireBaseURL(request)
-            val startedAt = Instant.now().toString()
-            val body = buildRequestBody(request, streaming = false)
-            val httpRequest = buildHttpRequest(baseURL, body)
-            client.newCall(httpRequest).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("Hermes Insights returned HTTP ${response.code}")
-                }
-                val raw = response.body?.string().orEmpty()
-                val root = JSONObject(raw)
-                val content = root.optJSONArray("choices")
+    override suspend fun analyze(request: InsightAnalysisRequest): InsightAnalysisResult = withContext(Dispatchers.IO) {
+        val baseURL = requireBaseURL(request)
+        val startedAt = Instant.now().toString()
+        val body = buildRequestBody(request, streaming = false)
+        val httpRequest = buildHttpRequest(baseURL, body)
+        client.newCall(httpRequest).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Hermes Insights returned HTTP ${response.code}")
+            }
+            val raw = response.body?.string().orEmpty()
+            val root = JSONObject(raw)
+            val content =
+                root.optJSONArray("choices")
                     ?.optJSONObject(0)
                     ?.optJSONObject("message")
                     ?.optString("content")
                     ?: root.optString("content", raw)
-                val usage = parseUsage(root.optJSONObject("usage"))
-                InsightAnalysisResultJsonDecoder.decode(
-                    content,
-                    request,
-                    asInsightTokenUsage(request, usage, startedAt)
-                )
-            }
+            val usage = parseUsage(root.optJSONObject("usage"))
+            InsightAnalysisResultJsonDecoder.decode(
+                content,
+                request,
+                asInsightTokenUsage(request, usage, startedAt),
+            )
         }
+    }
 
     /**
      * Streaming variant. Yields [HermesInsightChunk.Delta] fragments
@@ -134,54 +137,57 @@ class AndroidHermesInsightAnalysisGateway(
      * The flow is cancellation-aware: dropping the subscriber cancels
      * the underlying OkHttp call so the upstream model stops generating.
      */
-    fun stream(request: InsightAnalysisRequest): Flow<HermesInsightChunk> =
-        callbackFlow {
-            val baseURL = requireBaseURL(request)
-            val body = buildRequestBody(request, streaming = true)
-            val httpRequest = buildHttpRequest(baseURL, body, streaming = true)
-            val call = client.newCall(httpRequest)
-            try {
-                val response = call.execute()
-                if (!response.isSuccessful) {
-                    response.close()
-                    close(IllegalStateException("Hermes Insights returned HTTP ${response.code}"))
-                    return@callbackFlow
-                }
-                val source = response.body?.source()
+    fun stream(request: InsightAnalysisRequest): Flow<HermesInsightChunk> = callbackFlow {
+        val baseURL = requireBaseURL(request)
+        val body = buildRequestBody(request, streaming = true)
+        val httpRequest = buildHttpRequest(baseURL, body, streaming = true)
+        val call = client.newCall(httpRequest)
+        try {
+            val response = call.execute()
+            if (!response.isSuccessful) {
+                response.close()
+                close(IllegalStateException("Hermes Insights returned HTTP ${response.code}"))
+                return@callbackFlow
+            }
+            val source =
+                response.body?.source()
                     ?: run {
                         response.close()
                         close(IllegalStateException("Hermes Insights returned an empty stream body."))
                         return@callbackFlow
                     }
-                var assembled = StringBuilder()
-                var terminalUsage: HermesInsightTokenUsage? = null
-                try {
-                    while (isActive && !source.exhausted()) {
-                        val line = source.readUtf8Line() ?: continue
-                        if (!line.startsWith("data: ")) continue
+            var assembled = StringBuilder()
+            var terminalUsage: HermesInsightTokenUsage? = null
+            try {
+                while (isActive && !source.exhausted()) {
+                    val line = source.readUtf8Line()
+                    if (line != null && line.startsWith("data: ")) {
                         val payload = line.removePrefix("data: ")
                         if (payload == "[DONE]") break
-                        val json = runCatching { JSONObject(payload) }.getOrNull() ?: continue
-                        deltaText(json)?.takeIf { it.isNotEmpty() }?.let { delta ->
-                            assembled.append(delta)
-                            trySend(HermesInsightChunk.Delta(delta))
-                        }
-                        json.optJSONObject("usage")?.let { usageJson ->
-                            terminalUsage = parseUsage(usageJson)
+                        val json = runCatching { JSONObject(payload) }.getOrNull()
+                        if (json != null) {
+                            deltaText(json)?.takeIf { it.isNotEmpty() }?.let { delta ->
+                                assembled.append(delta)
+                                trySend(HermesInsightChunk.Delta(delta))
+                            }
+                            json.optJSONObject("usage")?.let { usageJson ->
+                                terminalUsage = parseUsage(usageJson)
+                            }
                         }
                     }
-                } finally {
-                    response.close()
                 }
-                terminalUsage?.let { trySend(HermesInsightChunk.Usage(it)) }
-                trySend(HermesInsightChunk.Completed(assembled.toString()))
-                close()
-            } catch (t: Throwable) {
-                call.cancel()
-                close(t)
+            } finally {
+                response.close()
             }
-            awaitClose { call.cancel() }
-        }.flowOn(Dispatchers.IO)
+            terminalUsage?.let { trySend(HermesInsightChunk.Usage(it)) }
+            trySend(HermesInsightChunk.Completed(assembled.toString()))
+            close()
+        } catch (t: BurnBarProSubscriptionRequiredException) {
+            call.cancel()
+            close(t)
+        }
+        awaitClose { call.cancel() }
+    }.flowOn(Dispatchers.IO)
 
     // MARK: - Helpers
 
@@ -197,10 +203,11 @@ class AndroidHermesInsightAnalysisGateway(
     }
 
     private fun buildHttpRequest(baseURL: String, body: String, streaming: Boolean = false): Request {
-        val builder = Request.Builder()
-            .url(baseURL + "/" + path.trimStart('/'))
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .addHeader("Content-Type", "application/json")
+        val builder =
+            Request.Builder()
+                .url(baseURL + "/" + path.trimStart('/'))
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .addHeader("Content-Type", "application/json")
         if (streaming) {
             builder.addHeader("Accept", "text/event-stream")
         }
@@ -212,31 +219,35 @@ class AndroidHermesInsightAnalysisGateway(
     }
 
     private fun buildRequestBody(request: InsightAnalysisRequest, streaming: Boolean): String {
-        val body = JSONObject().apply {
-            put("model", request.selectedModel.modelID)
-            put(
-                "temperature",
-                if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) 0.3 else 0.2
-            )
-            put("max_tokens", maxTokens)
-            put("stream", streaming)
-            if (streaming) {
-                put("stream_options", JSONObject().put("include_usage", true))
+        val body =
+            JSONObject().apply {
+                put("model", request.selectedModel.modelID)
+                put(
+                    "temperature",
+                    if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) VAL_0_3 else VAL_0_2,
+                )
+                put("max_tokens", maxTokens)
+                put("stream", streaming)
+                if (streaming) {
+                    put("stream_options", JSONObject().put("include_usage", true))
+                }
+                put("response_format", JSONObject().put("type", "json_object"))
+                put(
+                    "messages",
+                    JSONArray().apply {
+                        put(
+                            JSONObject()
+                                .put("role", "system")
+                                .put("content", analysisSystemPrompt(request)),
+                        )
+                        put(
+                            JSONObject()
+                                .put("role", "user")
+                                .put("content", Json.encodeToString(InsightAnalysisRequest.serializer(), request)),
+                        )
+                    },
+                )
             }
-            put("response_format", JSONObject().put("type", "json_object"))
-            put("messages", JSONArray().apply {
-                put(
-                    JSONObject()
-                        .put("role", "system")
-                        .put("content", analysisSystemPrompt(request))
-                )
-                put(
-                    JSONObject()
-                        .put("role", "user")
-                        .put("content", Json.encodeToString(InsightAnalysisRequest.serializer(), request))
-                )
-            })
-        }
         return body.toString()
     }
 
@@ -244,14 +255,16 @@ class AndroidHermesInsightAnalysisGateway(
         if (usageJson == null) return HermesInsightTokenUsage()
         var input = usageJson.optInt("prompt_tokens", usageJson.optInt("input_tokens", 0))
         val output = usageJson.optInt("completion_tokens", usageJson.optInt("output_tokens", 0))
-        val reasoning = usageJson.optInt(
-            "reasoning_tokens",
-            usageJson.optJSONObject("completion_tokens_details")?.optInt("reasoning_tokens", 0) ?: 0
-        )
+        val reasoning =
+            usageJson.optInt(
+                "reasoning_tokens",
+                usageJson.optJSONObject("completion_tokens_details")?.optInt("reasoning_tokens", 0) ?: 0,
+            )
         val exclusiveCacheRead = usageJson.optInt("cache_read_input_tokens", 0)
-        val inclusiveCacheRead = usageJson.optJSONObject("prompt_tokens_details")?.optInt("cached_tokens", 0)
-            ?: usageJson.optJSONObject("input_tokens_details")?.optInt("cached_tokens", 0)
-            ?: usageJson.optInt("input_cached_tokens", usageJson.optInt("cached_input_tokens", 0))
+        val inclusiveCacheRead =
+            usageJson.optJSONObject("prompt_tokens_details")?.optInt("cached_tokens", 0)
+                ?: usageJson.optJSONObject("input_tokens_details")?.optInt("cached_tokens", 0)
+                ?: usageJson.optInt("input_cached_tokens", usageJson.optInt("cached_input_tokens", 0))
         val cacheRead = if (exclusiveCacheRead > 0) exclusiveCacheRead else inclusiveCacheRead
         if (inclusiveCacheRead > 0 && exclusiveCacheRead == 0) {
             input = (input - inclusiveCacheRead).coerceAtLeast(0)
@@ -268,11 +281,7 @@ class AndroidHermesInsightAnalysisGateway(
         )
     }
 
-    private fun asInsightTokenUsage(
-        request: InsightAnalysisRequest,
-        usage: HermesInsightTokenUsage,
-        startedAt: String,
-    ): InsightTokenUsage = InsightTokenUsage(
+    private fun asInsightTokenUsage(request: InsightAnalysisRequest, usage: HermesInsightTokenUsage, startedAt: String): InsightTokenUsage = InsightTokenUsage(
         providerKey = providerKey,
         modelID = request.selectedModel.modelID,
         inputTokens = usage.inputTokens,
@@ -286,34 +295,24 @@ class AndroidHermesInsightAnalysisGateway(
     )
 
     private fun deltaText(json: JSONObject): String? {
-        // OpenAI streaming shape: choices[0].delta.content
-        json.optJSONArray("choices")
-            ?.optJSONObject(0)
-            ?.optJSONObject("delta")
-            ?.optString("content")
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { return it }
-        // Permissive fallbacks for relays that emit differently.
-        json.optString("content").takeIf { it.isNotEmpty() }?.let { return it }
-        json.optString("delta").takeIf { it.isNotEmpty() }?.let { return it }
-        json.optString("text").takeIf { it.isNotEmpty() }?.let { return it }
-        return null
-    }
-
-    @Suppress("UNUSED_PARAMETER")
-    private fun BufferedSource.readSSEPayload(line: String): String? {
-        // Reserved for future multi-line SSE event handling (data: chunks
-        // split across lines). The current relay implementations emit
-        // single-line payloads so the streaming loop reads them directly.
-        return null
+        val fromChoices =
+            json.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("delta")
+                ?.optString("content")
+                ?.takeIf { it.isNotEmpty() }
+        return fromChoices
+            ?: json.optString("content").takeIf { it.isNotEmpty() }
+            ?: json.optString("delta").takeIf { it.isNotEmpty() }
+            ?: json.optString("text").takeIf { it.isNotEmpty() }
     }
 
     companion object {
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(VAL_15.toLong(), TimeUnit.SECONDS)
             // No read timeout on streams — SSE chunks may be silent for
             // long stretches when the upstream model is reasoning.
-            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .readTimeout(0L, TimeUnit.MILLISECONDS)
             .build()
     }
 }

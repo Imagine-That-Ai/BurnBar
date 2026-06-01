@@ -2,6 +2,7 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ProjectsStore(
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val repo: FirestoreRepository = FirestoreRepository(),
 ) : ViewModel() {
     private val _projects = MutableStateFlow<List<ProjectSummary>>(emptyList())
     val projects: StateFlow<List<ProjectSummary>> = _projects.asStateFlow()
@@ -27,7 +28,7 @@ class ProjectsStore(
             _error.value = null
             try {
                 _projects.value = repo.fetchProjects()
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false

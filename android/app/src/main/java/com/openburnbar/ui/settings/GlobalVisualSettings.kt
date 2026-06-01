@@ -2,10 +2,11 @@ package com.openburnbar.ui.settings
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.theme.UIMode
@@ -22,7 +23,6 @@ object GlobalVisualSettings {
     private const val KEY_SWARM_SPARKLES = "enableSwarmSparkles"
     private const val KEY_PROVIDER_GLYPHS = "providerGlyphs"
     private const val KEY_EXCLUDE_BRAND_SHAPES = "excludeBrandShapesFromSwarm"
-    private const val KEY_UI_MODE = "appUiMode"
 
     private var loaded = false
 
@@ -36,7 +36,6 @@ object GlobalVisualSettings {
     private val _enableSwarmSparkles = mutableStateOf(true)
     private val _providerGlyphs = mutableStateOf(AgentProvider.swarmGlyphProviders.toSet())
     private val _excludeBrandShapesFromSwarm = mutableStateOf(false)
-    private val _uiMode = mutableStateOf(UIMode.STANDARD)
 
     private fun ensureLoaded() {
         if (!loaded) {
@@ -46,125 +45,122 @@ object GlobalVisualSettings {
                 _useWebsiteBackground.value = prefs.getBoolean(KEY_WEBSITE_BACKGROUND, false)
                 _enableSwarmSparkles.value = prefs.getBoolean(KEY_SWARM_SPARKLES, true)
                 _excludeBrandShapesFromSwarm.value = prefs.getBoolean(KEY_EXCLUDE_BRAND_SHAPES, false)
-                _themePalette.value = prefs.getString(KEY_THEME_PALETTE, "System") ?: "System"
-                _uiMode.value = UIMode.fromKey(prefs.getString(KEY_UI_MODE, "standard") ?: "standard")
+                GlobalVisualSettingsPalette.loadFromPrefs(prefs)
+                GlobalVisualSettingsUIMode.loadFromPrefs(prefs)
                 _providerGlyphs.value = decodeProviderGlyphs(prefs.getString(KEY_PROVIDER_GLYPHS, null))
-                _primaryTabs.value = prefs.getString(KEY_PRIMARY_TABS, defaultPrimaryTabs) ?: defaultPrimaryTabs
-                _secondaryTabs.value = prefs.getString(KEY_SECONDARY_TABS, defaultSecondaryTabs) ?: defaultSecondaryTabs
+                GlobalVisualSettingsTabs.loadFromPrefs(prefs)
                 loaded = true
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 // If lateinit appContext is not initialized yet, swallow and retry on next access
             }
         }
     }
 
     /** Exposes read-only access to Premium SOTA UX setting. */
-    val usePremiumSOTAUX: State<Boolean> get() { ensureLoaded(); return _usePremiumSOTAUX }
+    val usePremiumSOTAUX: State<Boolean> get() {
+        ensureLoaded()
+        return _usePremiumSOTAUX
+    }
 
     /** Exposes read-only access to Website Background setting. */
-    val useWebsiteBackground: State<Boolean> get() { ensureLoaded(); return _useWebsiteBackground }
+    val useWebsiteBackground: State<Boolean> get() {
+        ensureLoaded()
+        return _useWebsiteBackground
+    }
 
     /** Exposes read-only access to Swarm Sparkles setting. */
-    val enableSwarmSparkles: State<Boolean> get() { ensureLoaded(); return _enableSwarmSparkles }
+    val enableSwarmSparkles: State<Boolean> get() {
+        ensureLoaded()
+        return _enableSwarmSparkles
+    }
 
     /** Exposes read-only access to Exclude Brand Shapes setting. */
-    val excludeBrandShapesFromSwarm: State<Boolean> get() { ensureLoaded(); return _excludeBrandShapesFromSwarm }
-
-    /** Exposes read-only access to UI Mode setting. */
-    val uiMode: State<UIMode> get() { ensureLoaded(); return _uiMode }
-
-    fun setUIMode(value: UIMode) {
+    val excludeBrandShapesFromSwarm: State<Boolean> get() {
         ensureLoaded()
-        _uiMode.value = value
-        try { prefs.edit().putString(KEY_UI_MODE, value.key).apply() } catch (e: Throwable) {}
+        return _excludeBrandShapesFromSwarm
     }
 
     /** Exposes app-wide provider glyph filters for live swarm backgrounds. */
-    val providerGlyphs: State<Set<AgentProvider>> get() { ensureLoaded(); return _providerGlyphs }
-
-    // Color Palette
-    private val KEY_THEME_PALETTE = "appThemePalette"
-    private val _themePalette = mutableStateOf("System")
-    val themePalette: State<String> get() { ensureLoaded(); return _themePalette }
-
-    fun setThemePalette(value: String) {
+    val providerGlyphs: State<Set<AgentProvider>> get() {
         ensureLoaded()
-        _themePalette.value = value
-        try { prefs.edit().putString(KEY_THEME_PALETTE, value).apply() } catch (e: Throwable) {}
+        return _providerGlyphs
     }
 
     fun setProviderGlyphs(value: Set<AgentProvider>) {
         ensureLoaded()
         val normalized = AgentProvider.swarmGlyphProviders.filter { value.contains(it) }.toSet()
         _providerGlyphs.value = normalized
-        try { prefs.edit().putString(KEY_PROVIDER_GLYPHS, encodeProviderGlyphs(normalized)).apply() } catch (e: Throwable) {}
-    }
-
-    // Tabs
-    private val KEY_PRIMARY_TABS = "primaryTabs"
-    private val KEY_SECONDARY_TABS = "secondaryTabs"
-    private val defaultPrimaryTabs = "pulse,burn,insights,streams,agents"
-    private val defaultSecondaryTabs = "you,providers,devices,settings"
-
-    private val _primaryTabs = mutableStateOf(defaultPrimaryTabs)
-    private val _secondaryTabs = mutableStateOf(defaultSecondaryTabs)
-
-    val primaryTabs: State<String> get() { ensureLoaded(); return _primaryTabs }
-    val secondaryTabs: State<String> get() { ensureLoaded(); return _secondaryTabs }
-
-    fun setPrimaryTabs(value: String) {
-        ensureLoaded()
-        _primaryTabs.value = value
-        try { prefs.edit().putString(KEY_PRIMARY_TABS, value).apply() } catch (e: Throwable) {}
-    }
-
-    fun setSecondaryTabs(value: String) {
-        ensureLoaded()
-        _secondaryTabs.value = value
-        try { prefs.edit().putString(KEY_SECONDARY_TABS, value).apply() } catch (e: Throwable) {}
+        try {
+            prefs.edit().putString(KEY_PROVIDER_GLYPHS, encodeProviderGlyphs(normalized)).apply()
+        } catch (_: Throwable) {
+        }
     }
 
     /** Sets the Premium SOTA UX value and persists it. */
     fun setPremiumSOTAUX(value: Boolean) {
         ensureLoaded()
         _usePremiumSOTAUX.value = value
-        try { prefs.edit().putBoolean(KEY_PREMIUM_SOTA_UX, value).apply() } catch (e: Throwable) {}
+        try {
+            prefs.edit().putBoolean(KEY_PREMIUM_SOTA_UX, value).apply()
+        } catch (_: Throwable) {
+        }
     }
 
     /** Sets the Website Background value and persists it. */
     fun setWebsiteBackground(value: Boolean) {
         ensureLoaded()
         _useWebsiteBackground.value = value
-        try { prefs.edit().putBoolean(KEY_WEBSITE_BACKGROUND, value).apply() } catch (e: Throwable) {}
+        try {
+            prefs.edit().putBoolean(KEY_WEBSITE_BACKGROUND, value).apply()
+        } catch (_: Throwable) {
+        }
     }
 
     /** Sets the Swarm Sparkles value and persists it. */
     fun setSwarmSparkles(value: Boolean) {
         ensureLoaded()
         _enableSwarmSparkles.value = value
-        try { prefs.edit().putBoolean(KEY_SWARM_SPARKLES, value).apply() } catch (e: Throwable) {}
+        try {
+            prefs.edit().putBoolean(KEY_SWARM_SPARKLES, value).apply()
+        } catch (_: Throwable) {
+        }
     }
 
     /** Sets the Exclude Brand Shapes value and persists it. */
     fun setExcludeBrandShapesFromSwarm(value: Boolean) {
         ensureLoaded()
         _excludeBrandShapesFromSwarm.value = value
-        try { prefs.edit().putBoolean(KEY_EXCLUDE_BRAND_SHAPES, value).apply() } catch (e: Throwable) {}
+        try {
+            prefs.edit().putBoolean(KEY_EXCLUDE_BRAND_SHAPES, value).apply()
+        } catch (_: Throwable) {
+        }
     }
 
-    private fun encodeProviderGlyphs(providers: Set<AgentProvider>): String =
-        AgentProvider.swarmGlyphProviders
-            .filter { providers.contains(it) }
-            .joinToString(",") { it.key }
+    private fun encodeProviderGlyphs(providers: Set<AgentProvider>): String = AgentProvider.swarmGlyphProviders
+        .filter { providers.contains(it) }
+        .joinToString(",") { it.key }
 
     private fun decodeProviderGlyphs(raw: String?): Set<AgentProvider> {
         if (raw == null) return AgentProvider.swarmGlyphProviders.toSet()
         if (raw.isBlank()) return emptySet()
-        val selected = raw.split(',')
-            .mapNotNull { AgentProvider.fromKey(it.trim()) }
-            .toSet()
+        val selected =
+            raw.split(',')
+                .mapNotNull { AgentProvider.fromKey(it.trim()) }
+                .toSet()
         return AgentProvider.swarmGlyphProviders.filter { selected.contains(it) }.toSet()
     }
+
+    val primaryTabs: State<String>
+        get() {
+            ensureLoaded()
+            return GlobalVisualSettingsTabs.primaryTabs
+        }
+
+    val secondaryTabs: State<String>
+        get() {
+            ensureLoaded()
+            return GlobalVisualSettingsTabs.secondaryTabs
+        }
 }
 
 /** Composable shorthand helper to observe global Premium SOTA UX setting. */
@@ -184,21 +180,31 @@ fun rememberSwarmSparkles(): State<Boolean> = remember { GlobalVisualSettings.en
 fun rememberExcludeBrandShapesFromSwarm(): State<Boolean> = remember { GlobalVisualSettings.excludeBrandShapesFromSwarm }
 
 @Composable
-fun rememberThemePalette(): State<String> = remember { GlobalVisualSettings.themePalette }
+fun rememberThemePalette(): State<String> = remember { GlobalVisualSettingsPalette.themePalette }
 
 @Composable
-fun rememberUIMode(): State<UIMode> = remember { GlobalVisualSettings.uiMode }
+fun rememberUIMode(): State<UIMode> = remember { GlobalVisualSettingsUIMode.uiMode }
 
 @Composable
 fun rememberProviderGlyphs(): State<Set<AgentProvider>> = remember { GlobalVisualSettings.providerGlyphs }
 
 enum class AppThemePalette(val displayName: String) {
-    System("System"), AuroraTeal("Aurora"), Crimson("Crimson"),
-    CyberpunkViolet("Cyberpunk"), ForestMoss("Moss"), SolarFlare("Solar")
+    System("System"),
+    AuroraTeal("Aurora"),
+    Crimson("Crimson"),
+    CyberpunkViolet("Cyberpunk"),
+    ForestMoss("Moss"),
+    SolarFlare("Solar"),
 }
 
 enum class AppDestination(val id: String, val label: String) {
-    Pulse("pulse", "Pulse"), Burn("burn", "Burn"), Insights("insights", "Insights"),
-    Streams("streams", "Streams"), Agents("agents", "Agents"), You("you", "You"),
-    Settings("settings", "Settings"), Devices("devices", "Devices"), Providers("providers", "Providers")
+    Pulse("pulse", "Pulse"),
+    Burn("burn", "Burn"),
+    Insights("insights", "Insights"),
+    Streams("streams", "Streams"),
+    Agents("agents", "Agents"),
+    You("you", "You"),
+    Settings("settings", "Settings"),
+    Devices("devices", "Devices"),
+    Providers("providers", "Providers"),
 }

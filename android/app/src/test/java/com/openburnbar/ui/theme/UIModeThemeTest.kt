@@ -1,14 +1,18 @@
+@file:Suppress("MagicNumber")
+// UI unit-test fixture literals (sizes, millis, colors); extraction adds noise without reuse.
+
 package com.openburnbar.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UIModeThemeTest {
-
     @Test
-    fun `UIMode fromKey matches correctly`() {
+    fun uimodeFromKeyMatchesCorrectly() {
         assertEquals(UIMode.STANDARD, UIMode.fromKey("standard"))
         assertEquals(UIMode.COOKING, UIMode.fromKey("cooking"))
         // Fallback for null or unknown keys
@@ -17,7 +21,7 @@ class UIModeThemeTest {
     }
 
     @Test
-    fun `UIModeTheme properties for Standard mode light`() {
+    fun uimodethemePropertiesForStandardModeLight() {
         val theme = UIModeTheme(UIMode.STANDARD, isDark = false)
         assertEquals(UIMode.STANDARD, theme.mode)
         assertFalse(theme.isDark)
@@ -29,7 +33,7 @@ class UIModeThemeTest {
     }
 
     @Test
-    fun `UIModeTheme properties for Standard mode dark`() {
+    fun uimodethemePropertiesForStandardModeDark() {
         val theme = UIModeTheme(UIMode.STANDARD, isDark = true)
         assertEquals(UIMode.STANDARD, theme.mode)
         assertTrue(theme.isDark)
@@ -40,7 +44,7 @@ class UIModeThemeTest {
     }
 
     @Test
-    fun `UIModeTheme properties for Cooking mode light`() {
+    fun uimodethemePropertiesForCookingModeLight() {
         val theme = UIModeTheme(UIMode.COOKING, isDark = false)
         assertEquals(UIMode.COOKING, theme.mode)
         assertFalse(theme.isDark)
@@ -65,7 +69,7 @@ class UIModeThemeTest {
     }
 
     @Test
-    fun `UIModeTheme properties for Cooking mode dark`() {
+    fun uimodethemePropertiesForCookingModeDark() {
         val theme = UIModeTheme(UIMode.COOKING, isDark = true)
         assertEquals(UIMode.COOKING, theme.mode)
         assertTrue(theme.isDark)

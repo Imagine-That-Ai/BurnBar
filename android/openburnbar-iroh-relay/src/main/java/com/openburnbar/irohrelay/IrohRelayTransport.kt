@@ -8,8 +8,10 @@ package com.openburnbar.irohrelay
  */
 interface IrohRelayStream {
     suspend fun send(frame: HermesRealtimeRelayFrame)
+
     /** Returns `null` on a clean stream close. */
     suspend fun receive(): HermesRealtimeRelayFrame?
+
     suspend fun close()
 }
 
@@ -67,7 +69,10 @@ interface IrohRelayTransport {
     suspend fun start(): IrohEndpointIdentity
 
     /** Dial a remote endpoint and open one bidirectional stream. */
-    suspend fun connect(target: IrohDialTarget, timeoutMillis: Long): IrohRelayStream
+    suspend fun connect(
+        target: IrohDialTarget,
+        timeoutMillis: Long,
+    ): IrohRelayStream
 
     /** Wait for the next inbound bidirectional stream. */
     suspend fun accept(timeoutMillis: Long): IrohRelayStream

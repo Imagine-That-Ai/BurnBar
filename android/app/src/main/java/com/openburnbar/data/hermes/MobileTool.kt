@@ -10,7 +10,7 @@ enum class MobileToolCategoryGroup(val displayLabel: String) {
     CODE("Code"),
     FILE("File"),
     WEB("Web"),
-    SYSTEM("System")
+    SYSTEM("System"),
 }
 
 /**
@@ -33,5 +33,5 @@ data class MobileTool(
     val description: String,
     /** Symbolic icon hint — UI maps to `Icons.Filled.*`. */
     val icon: String,
-    val categoryGroup: MobileToolCategoryGroup
+    val categoryGroup: MobileToolCategoryGroup,
 )
