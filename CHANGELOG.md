@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — macOS 1.0.1 beta
+
+- Cut a new Developer ID direct-download beta for macOS with unique `1.0.1`
+  website artifacts, notarized DMG/ZIP provenance, checksums, and SBOM.
+- Added the BurnBar Cloud profile avatar upload path for mobile account
+  settings, including Firebase Storage rules and refreshed avatar rendering.
+- Replaced Cloud badge PDF assets with source SVG vectors shared by the Mac,
+  mobile, and website brand surfaces.
+
 ### Changed — Unified tool-call accordion (all chat surfaces)
 
 - Replaced five separate tool-call strip implementations (Hermes, Pi, CLI agents, ChatView compact mode, AgentLens dashboard, and the Hermes menu-bar popover) with a single `UnifiedToolCallAccordion` component in `OpenBurnBarCore`.

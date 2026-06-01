@@ -113,4 +113,17 @@ final class AuthStore {
     }
 
     func clearError() { lastError = nil }
+
+    /// Patch the in-memory identity with a newly uploaded photoURL so views
+    /// refresh immediately without waiting for the next Firebase observer event.
+    func refreshIdentity(photoURL: URL) async {
+        guard let identity = currentIdentity else { return }
+        let patched = MobileAuthIdentity(
+            uid: identity.uid,
+            email: identity.email,
+            displayName: identity.displayName,
+            photoURL: photoURL
+        )
+        state = .signedIn(identity: patched)
+    }
 }

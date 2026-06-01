@@ -23,9 +23,9 @@ struct YouView: View {
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
                     IdentityHero(
-                        displayName: account.user?.displayName ?? account.user?.email ?? "Guest",
-                        email: account.user?.email,
-                        photoURL: account.user?.photoURL,
+                        displayName: authStore.currentIdentity?.displayName ?? authStore.currentIdentity?.email ?? account.user?.displayName ?? account.user?.email ?? "Guest",
+                        email: authStore.currentIdentity?.email ?? account.user?.email,
+                        photoURL: authStore.currentIdentity?.photoURL ?? account.user?.photoURL,
                         syncHealth: syncStore.health,
                         syncStatusLabel: syncStore.statusLabel(),
                         connectionsCount: connectedProviderCount
