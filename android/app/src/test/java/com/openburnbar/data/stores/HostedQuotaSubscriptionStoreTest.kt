@@ -70,10 +70,13 @@ class HostedQuotaSubscriptionStoreTest {
     fun `store product IDs match GTM master plan`() {
         assertEquals("com.openburnbar.pro.monthly", HostedQuotaSubscriptionStore.PRODUCT_ID)
         assertEquals("com.openburnbar.pro.annual", HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID)
-        assertEquals("com.openburnbar.proMax.v2.monthly", HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
-        assertEquals("com.openburnbar.proMax.annual", HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID)
-        assertEquals("com.openburnbar.agentControl.actions100", HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
+        assertEquals("com.openburnbar.promax.v2.monthly", HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        assertEquals("com.openburnbar.promax.annual", HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID)
+        assertEquals("com.openburnbar.agentcontrol.actions100", HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
         assertEquals("com.openburnbar.floo.relay50gb", HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID)
+        HostedQuotaSubscriptionStore.STORE_PRODUCTS.forEach { product ->
+            assertEquals(product.id.lowercase(), product.id)
+        }
 
         assertEquals(
             setOf(

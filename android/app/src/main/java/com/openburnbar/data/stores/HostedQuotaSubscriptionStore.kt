@@ -58,9 +58,9 @@ class HostedQuotaSubscriptionStore(
     companion object {
         const val PRODUCT_ID = "com.openburnbar.pro.monthly"
         const val CLOUD_ANNUAL_PRODUCT_ID = "com.openburnbar.pro.annual"
-        const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.proMax.v2.monthly"
-        const val CLOUD_PRO_ANNUAL_PRODUCT_ID = "com.openburnbar.proMax.annual"
-        const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentControl.actions100"
+        const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.promax.v2.monthly"
+        const val CLOUD_PRO_ANNUAL_PRODUCT_ID = "com.openburnbar.promax.annual"
+        const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentcontrol.actions100"
         const val FLOO_RELAY_TOP_UP_PRODUCT_ID = "com.openburnbar.floo.relay50gb"
 
         val STORE_PRODUCTS =
