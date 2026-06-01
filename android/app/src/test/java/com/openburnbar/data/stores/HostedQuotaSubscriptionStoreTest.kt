@@ -4,6 +4,7 @@
 package com.openburnbar.data.stores
 
 import android.app.Activity
+import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.ProductDetails
@@ -246,5 +247,54 @@ class HostedQuotaSubscriptionStoreTest {
         assertEquals(HostedQuotaSubscriptionStore.PRODUCT_ID, store.activeProductID.value)
         assertEquals(VAL_123456789_L, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
+    }
+
+    @Test
+    fun `restorePurchases acknowledges unacknowledged Google Play purchase`() = runTest {
+        // Arrange
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        every { mockResult.debugMessage } returns ""
+
+        val mockPurchase = mockk<Purchase>()
+        every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { mockPurchase.purchaseToken } returns "pending-ack-token"
+        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.isAcknowledged } returns false
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(mockPurchase))
+        }
+
+        val acknowledgeListenerSlot = slot<AcknowledgePurchaseResponseListener>()
+        every { mockBillingClient.acknowledgePurchase(any(), capture(acknowledgeListenerSlot)) } answers {
+            acknowledgeListenerSlot.captured.onAcknowledgePurchaseResponse(mockResult)
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "pending-ack-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2026-06-30T12:00:00Z",
+            )
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        // Act
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        // Assert
+        assertNull(store.error.value)
+        assertTrue(store.isActive.value)
+        verify { mockBillingClient.acknowledgePurchase(any(), any()) }
     }
 }
