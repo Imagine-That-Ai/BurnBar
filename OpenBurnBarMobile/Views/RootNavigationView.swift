@@ -253,7 +253,7 @@ struct RootNavigationView: View {
                     .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                     .lineLimit(1)
-                if let lastSync = syncHealthStore.lastPublishedAt {
+                if let lastSync = syncHealthStore.lastPublishedAt, syncHealthStore.health != .macNotSyncing {
                     Text("· \(lastSync, style: .relative)")
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.7))
@@ -433,6 +433,7 @@ struct RootNavigationView: View {
         switch syncHealthStore.health {
         case .healthy: return "Synced"
         case .syncing: return "Syncing…"
+        case .macNotSyncing: return syncHealthStore.macLastSeenText()
         case .offline: return "Offline"
         case .firebaseUnavailable: return "Firebase unavailable"
         case .appCheckBlocked: return "App Check blocked"
@@ -446,7 +447,7 @@ struct RootNavigationView: View {
         switch syncHealthStore.health {
         case .healthy: return MobileTheme.success
         case .syncing: return MobileTheme.amber
-        case .offline, .degraded(_): return MobileTheme.warning
+        case .macNotSyncing, .offline, .degraded(_): return MobileTheme.warning
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
         case .unknown: return MobileTheme.Colors.textMuted
         }

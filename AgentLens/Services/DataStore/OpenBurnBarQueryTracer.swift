@@ -84,10 +84,8 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
     ///
     /// - Parameter configuration: The GRDB configuration to mutate.
     public func configure(in configuration: inout Configuration) {
-        let existingPrepare = configuration.prepareDatabase
         let tracer = self
-        configuration.prepareDatabase = { db in
-            try existingPrepare?(db)
+        configuration.prepareDatabase { db in
             tracer.lock.withLock { tracer._isEnabled = true }
             db.trace(options: .statement) { event in
                 guard tracer.isEnabled else { return }

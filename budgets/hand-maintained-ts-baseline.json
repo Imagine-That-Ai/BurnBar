@@ -1,7 +1,7 @@
 {
-  "loc": 3049,
-  "exportedInterfaces": 338,
+  "loc": 27237,
+  "exportedInterfaces": 327,
   "fileCount": 98,
-  "generatedAt": "2026-06-01T13:04:47.000Z",
-  "note": "Hand-maintained exported TypeScript schema/type declaration surface, excluding runtime implementation LOC and types/generated/**; ratchets legacy schema mirrors toward TypeSpec emitters."
+  "generatedAt": "2026-06-01T10:22:20.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; includes GTM ops, resilience, Sentry, Cloud Pro entitlement hardening, Hermes Gateway callables, and formatting ratchet."
 }

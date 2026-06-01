@@ -575,6 +575,82 @@ export interface HermesRelayChunkDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: hermes_gateway_* platform adapter collections
+// ---------------------------------------------------------------------------
+
+export type HermesGatewayScope = "hermes.gateway.read" | "hermes.gateway.write" | "hermes.gateway.manage";
+export type HermesGatewayClientStatus = "active" | "revoked";
+export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
+
+export interface HermesGatewayClientDoc {
+  id: string;
+  uid: string;
+  displayName: string;
+  status: HermesGatewayClientStatus;
+  tokenHash: string;
+  tokenPreview: string;
+  scopes: HermesGatewayScope[];
+  homeDestinationId: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesGatewayDestinationDoc {
+  id: string;
+  displayName: string;
+  kind: HermesGatewayDestinationKind;
+  status: "active" | "archived";
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesGatewayEventDoc {
+  id: string;
+  sequence: number;
+  kind: "message";
+  destinationId: string;
+  threadId?: string;
+  senderId: string;
+  senderDisplayName?: string;
+  text: string;
+  attachmentIds: string[];
+  createdAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesGatewayMessageDoc {
+  id: string;
+  clientId: string;
+  kind: "agent_message" | "typing";
+  destinationId: string;
+  threadId?: string;
+  replyToEventId?: string;
+  text?: string;
+  attachmentIds: string[];
+  createdAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesGatewayAttachmentManifestDoc {
+  id: string;
+  clientId: string;
+  destinationId?: string;
+  fileName: string;
+  contentType: string;
+  byteCount: number;
+  storagePath: string;
+  status: "pending_upload" | "uploaded" | "failed";
+  createdAt: string;
+  expiresAt: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: pi_agent_connections / pi_agent_pairings
 // ---------------------------------------------------------------------------
 

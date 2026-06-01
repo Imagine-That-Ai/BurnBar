@@ -146,8 +146,6 @@ struct ProviderConnectionsView: View {
             } footer: {
                 if hasFirstClassAccounts {
                     Text("OpenBurnBar shows where each account is stored. Cloud accounts can refresh from any signed-in device. Mac Keychain accounts only refresh from your Mac.")
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
             }
 
@@ -167,13 +165,9 @@ struct ProviderConnectionsView: View {
                     .settingsAnchor(SettingsAnchor.providerAdd)
             } footer: {
                 Text("Accounts added here appear on signed-in Macs. Backend-refreshable providers update from cloud; local quota bridges refresh from the Mac.")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(VisibilityAwareEmberSurfaceBackground().ignoresSafeArea())
         .settingsAnchor(SettingsAnchor.providersRow)
     }
 

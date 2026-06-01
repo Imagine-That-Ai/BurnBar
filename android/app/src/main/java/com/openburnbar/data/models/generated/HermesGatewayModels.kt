@@ -58,6 +58,7 @@ data class FirestoreHermesGatewayEventDoc(
     val sequence: Long = 0,
     val kind: String = "",
     val destinationId: String = "",
+    val targetClientId: String? = null,
     val threadId: String? = null,
     val senderId: String = "",
     val senderDisplayName: String? = null,

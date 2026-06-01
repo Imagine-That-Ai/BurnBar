@@ -51,12 +51,33 @@ at runtime, supplementing the static `catalog.json` entries with real-time avail
 |---|---|---|---|
 | OpenAI-compatible | `GET /models` | `{baseURL}/models` | `Authorization: Bearer {key}` |
 | Ollama Cloud | `GET /search?c=cloud` | `https://ollama.com/search?c=cloud` | None |
+| Ollama Local | `GET /api/tags` | `http://localhost:11434/api/tags` | None (local, credential-less) |
 | Anthropic | `GET /v1/models` | `{baseURL}/models` | Console: `x-api-key`; OAuth: `Authorization: Bearer` |
 | Factory Droid | CLI discovery | `droid exec --help` | `FACTORY_API_KEY` env var |
 | Codex CLI picker | CLI discovery | `codex debug models` | Codex CLI local auth |
 | Grok CLI picker | CLI/cache discovery | `grok models` + `~/.grok/models_cache.json` | Grok CLI local auth |
 | Claude Code picker | Bundled provider catalog | Anthropic catalog rows | Claude Code local auth |
 | Antigravity CLI picker | Bundled provider catalog + custom profile row | Google/Gemini catalog rows + `~/.gemini/antigravity-cli/settings.json` custom model | Antigravity CLI local auth |
+
+### Local Ollama discovery details
+
+- The `ollama-local` provider (`local: true` in `catalog.json`, base URL `http://localhost:11434/v1`)
+  carries no static models: every model a user has `ollama pull`-ed is discovered live from
+  Ollama's canonical `GET http://localhost:11434/api/tags` endpoint, with no `Authorization` header.
+  Models suffixed `:cloud`/`-cloud` are filtered out and left to the dedicated Ollama Cloud provider.
+- Local providers auto-enable (no credential needed). `BurnBarLiveModelCatalog` advertises the
+  discovered models as `route_eligible` whenever the local server responds, and surfaces a
+  "start `ollama serve`" error — advertising nothing — when it is down.
+- Routing: `BurnBarProviderRouter` resolves a local model as a free, zero-priced passthrough
+  (`dynamicDiscoveredProviderModel`) and builds a credential-less route straight to
+  `localhost:11434`. To avoid shadowing real providers, a local provider claims only model names
+  that no non-local catalog vendor owns — so a request for `gpt-5.5`/`claude-opus-4-8` whose
+  vendor isn't configured fails cleanly instead of 404-ing against the local server.
+- Picker: advertised local models carry `provider: "ollama-local"`, which the chat model picker
+  groups under the existing `HermesModelID.ollama` family (`CLIStreamParsers.hermesFamily`
+  matches any provider/model containing `ollama`/`llama`/`qwen`/`mistral`).
+- Models ending `:cloud`/`-cloud` served by the local daemon are tagged as Ollama Cloud models;
+  everything else is local.
 
 ### Anthropic discovery details
 

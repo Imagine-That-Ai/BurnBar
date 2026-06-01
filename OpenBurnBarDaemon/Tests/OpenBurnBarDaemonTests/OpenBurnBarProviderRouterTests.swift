@@ -156,6 +156,49 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(cloudRoute.resolvedModelID, "deepseek-v4-flash")
     }
 
+    func testRouterRoutesLocalOllamaModelWithoutCredential() async throws {
+        let harness = try makeHarness(name: "ollama-local-route", allowDynamicModels: true)
+
+        // `ollama-local` is enabled by default and needs no API key. Any model
+        // the local server serves must route straight to localhost:11434.
+        let route = try await harness.router.route(
+            modelName: "qwen2.5:3b",
+            preferredProviderID: "ollama-local"
+        )
+        XCTAssertEqual(route.providerID, "ollama-local")
+        XCTAssertEqual(route.requestedModel, "qwen2.5:3b")
+        XCTAssertEqual(route.resolvedModelID, "qwen2.5:3b")
+        XCTAssertTrue("\(route.baseURL)".contains("11434"),
+                      "Local model must route to the local Ollama endpoint.")
+        XCTAssertTrue(route.apiKey.isEmpty, "Local routing carries no credential.")
+    }
+
+    func testRouterLocalProviderDoesNotShadowCatalogModels() async throws {
+        let harness = try makeHarness(name: "ollama-local-no-shadow", allowDynamicModels: true)
+
+        // Only `ollama-local` is enabled (credential-less, default-on). A request
+        // for a catalog model owned by a non-local vendor (openai's `gpt-5.5`)
+        // must NOT be captured by the local catch-all and routed to localhost —
+        // it should fail cleanly so the missing-credential path can surface.
+        do {
+            _ = try await harness.router.route(modelName: "gpt-5.5")
+            XCTFail("Local provider must not shadow the catalog model gpt-5.5")
+        } catch is BurnBarProviderRouterError {
+            // expected: no eligible route for an unconfigured catalog vendor
+        }
+
+        // A genuinely-local model (in no catalog) still routes to ollama-local.
+        let local = try await harness.router.route(modelName: "qwen2.5:3b")
+        XCTAssertEqual(local.providerID, "ollama-local")
+
+        // An Ollama-family catalog model (also installable locally) stays
+        // routable via ollama-local when the cloud provider isn't configured, so
+        // advertised local models remain callable — the guard blocks only
+        // foreign-vendor models, not Ollama's own.
+        let ollamaCatalogModel = try await harness.router.route(modelName: "gpt-oss:120b")
+        XCTAssertEqual(ollamaCatalogModel.providerID, "ollama-local")
+    }
+
     func testRouterExtractsOpenCodeGoKeyFromAuthJSON() async throws {
         let harness = try makeHarness(name: "opencode-auth-json")
         _ = try await harness.configStore.upsertProvider(

@@ -93,8 +93,8 @@ struct SwarmBackgroundSettingsView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             HStack(spacing: 10) {
                                 Text(selectionCountText)
-                                    .font(MobileTheme.Typography.tiny.weight(.semibold))
-                                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
                                 Spacer(minLength: 8)
                                 ProviderGlyphQuickActionButton(
                                     title: "All",
@@ -151,13 +151,9 @@ struct SwarmBackgroundSettingsView: View {
                     Button("Reset All") {
                         updatePrefs { $0.selectedGlyphs = AgentProvider.swarmGlyphProviders }
                     }
-                    .font(MobileTheme.Typography.body.weight(.semibold))
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
             }
         }
-        .background(MobileTheme.Colors.background)
-        .scrollContentBackground(.hidden)
     }
 
     private var providerGlyphSummary: String {

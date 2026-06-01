@@ -27,6 +27,7 @@ struct YouView: View {
                         email: account.user?.email,
                         photoURL: account.user?.photoURL,
                         syncHealth: syncStore.health,
+                        syncStatusLabel: syncStore.statusLabel(),
                         connectionsCount: connectedProviderCount
                     )
                     .staggeredEntrance(delay: 0.0)
@@ -151,10 +152,10 @@ struct YouView: View {
                             Text("Cloud sync")
                                 .font(MobileTheme.Typography.headline)
                                 .foregroundStyle(MobileTheme.Colors.textPrimary)
-                            Text(syncStore.health.label)
+                            Text(syncStore.statusLabel())
                                 .font(MobileTheme.Typography.tiny)
                                 .foregroundStyle(MobileTheme.Colors.textSecondary)
-                            if let lastSync = syncStore.lastPublishedAt {
+                            if let lastSync = syncStore.lastPublishedAt, syncStore.health != .macNotSyncing {
                                 Text("Last write \(lastSync, style: .relative) ago")
                                     .font(MobileTheme.Typography.tiny)
                                     .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -604,7 +605,7 @@ struct CloudSyncDetailsView: View {
                         .frame(width: 44, height: 44)
                         .background(Circle().fill(syncStore.health.tint.opacity(0.16)))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(syncStore.health.label)
+                        Text(syncStore.statusLabel())
                             .font(MobileTheme.Typography.headline)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                         Text(syncStore.health.detailText)
@@ -699,6 +700,7 @@ extension CloudSyncHealth {
         switch self {
         case .healthy: return "checkmark.icloud.fill"
         case .syncing: return "arrow.triangle.2.circlepath.icloud.fill"
+        case .macNotSyncing: return "desktopcomputer.trianglebadge.exclamationmark"
         case .offline: return "icloud.slash.fill"
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return "exclamationmark.icloud.fill"
         case .degraded: return "icloud.fill"
@@ -710,6 +712,7 @@ extension CloudSyncHealth {
         switch self {
         case .healthy: return MobileTheme.success
         case .syncing: return MobileTheme.amber
+        case .macNotSyncing: return MobileTheme.warning
         case .offline: return MobileTheme.warning
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
         case .degraded: return MobileTheme.warning
@@ -725,6 +728,8 @@ extension CloudSyncHealth {
             return "Your mobile app can read the latest synced usage data."
         case .syncing:
             return "Checking Firestore for the newest sync snapshot."
+        case .macNotSyncing:
+            return "OpenBurnBar on your Mac has not published recently. Open the Mac app to update cloud data."
         case .offline:
             return CloudErrorClassification.networkUnavailable.recoveryHint
         case .permissionDenied:

@@ -78,6 +78,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(providerIDs.contains("zai"), "Expected zai in defaults")
         XCTAssertTrue(providerIDs.contains("minimax"), "Expected minimax in defaults")
         XCTAssertTrue(providerIDs.contains("ollama"), "Expected ollama in defaults")
+        XCTAssertTrue(providerIDs.contains("ollama-local"), "Expected local Ollama in defaults")
         XCTAssertTrue(providerIDs.contains("anthropic"), "Expected anthropic in defaults")
         XCTAssertTrue(providerIDs.contains("openai"), "Expected openai in defaults")
         XCTAssertEqual(snapshot.routerMode, .providerFamilyFailover)

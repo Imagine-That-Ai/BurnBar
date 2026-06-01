@@ -158,16 +158,21 @@ final class ConnectionsViewModel {
     /// on Settings -> Agents -> CLIs.
     var proxyModels: [ProxyAdvertisedModel] = []
     var proxyModelCatalogState: ProxyModelCatalogState = .idle
+    var vibeProxyMigrationSnapshot: VibeProxyMigrationSnapshot?
+    var vibeProxyMigrationState: VibeProxyMigrationState = .idle
 
     private let wiringFactory: () -> RoutingClientWiring
     private let proxyCatalogFetcher: (RoutingClientGateway) async throws -> [ProxyAdvertisedModel]
+    private let vibeProxyMigrationService: VibeProxyMigrationService
 
     init(
         wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
-        proxyCatalogFetcher: @escaping (RoutingClientGateway) async throws -> [ProxyAdvertisedModel] = ConnectionsViewModel.fetchProxyModels
+        proxyCatalogFetcher: @escaping (RoutingClientGateway) async throws -> [ProxyAdvertisedModel] = ConnectionsViewModel.fetchProxyModels,
+        vibeProxyMigrationService: VibeProxyMigrationService = VibeProxyMigrationService()
     ) {
         self.wiringFactory = wiringFactory
         self.proxyCatalogFetcher = proxyCatalogFetcher
+        self.vibeProxyMigrationService = vibeProxyMigrationService
     }
 
     // MARK: - Wiring state
@@ -393,6 +398,118 @@ final class ConnectionsViewModel {
         ensureLocalGateway(settings: settings)
     }
 
+    // MARK: - VibeProxy migration
+
+    func scanVibeProxyMigration() {
+        guard !vibeProxyMigrationState.isBusy else { return }
+        vibeProxyMigrationState = .scanning
+        do {
+            let snapshot = try vibeProxyMigrationService.scan()
+            vibeProxyMigrationSnapshot = snapshot
+            vibeProxyMigrationState = .ready
+        } catch {
+            vibeProxyMigrationState = .error(message: error.localizedDescription)
+        }
+    }
+
+    func migrateFromVibeProxy(
+        settings: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager,
+        restartGateway: (() async -> Void)? = nil
+    ) async {
+        guard !vibeProxyMigrationState.isBusy else { return }
+        vibeProxyMigrationState = .importing
+
+        let snapshot: VibeProxyMigrationSnapshot
+        do {
+            snapshot = try vibeProxyMigrationSnapshot ?? vibeProxyMigrationService.scan()
+            vibeProxyMigrationSnapshot = snapshot
+        } catch {
+            vibeProxyMigrationState = .error(message: error.localizedDescription)
+            return
+        }
+
+        guard snapshot.foundAnything else {
+            vibeProxyMigrationState = .completed(message: "No VibeProxy credentials or CLI configs were found on this Mac.")
+            return
+        }
+
+        ensureLocalGateway(settings: settings)
+        if let restartGateway {
+            await restartGateway()
+        }
+
+        let importResult = await vibeProxyMigrationService.importCredentials(from: snapshot) { request in
+            try await daemonManager.addProviderCredentialSlotReturningID(
+                providerID: request.providerID,
+                label: request.label,
+                apiKey: request.apiKey,
+                isEnabled: true,
+                authMethodID: request.authMethodID
+            )
+        }
+
+        if importResult.importedCount > 0, let restartGateway {
+            await restartGateway()
+        }
+
+        await refreshProxyModelCatalog(settings: settings)
+        let gateway = makeGateway(from: settings)
+        let wiring = wiringFactory()
+        let advertisedModels = proxyModels.isEmpty
+            ? await wiring.advertisedModels(gateway: gateway)
+            : proxyModels
+                .filter { $0.advertised && $0.routeEligible }
+                .map(RoutingClientAdvertisedModel.init(proxyModel:))
+
+        var switchedTargets: [RoutingClientWiringTarget] = []
+        var targetFailures: [RoutingClientWiringTarget: String] = [:]
+
+        for target in snapshot.detectedTargets {
+            guard appStates[target]?.isBusy != true else { continue }
+            appStates[target] = .connecting
+            do {
+                _ = try wiring.migrateFromVibeProxy(
+                    target: target,
+                    gateway: gateway,
+                    advertisedModels: advertisedModels
+                )
+                settings.routedClientWiring.enroll(targetRawValue: target.rawValue)
+                switchedTargets.append(target)
+            } catch {
+                targetFailures[target] = error.localizedDescription
+                appStates[target] = .error(message: error.localizedDescription)
+                continue
+            }
+
+            let probe = await wiring.probe(
+                target: target,
+                gateway: gateway,
+                advertisedModels: advertisedModels
+            )
+            switch probe {
+            case .ok, .skipped:
+                appStates[target] = .connected
+            case .failed(let status, let message):
+                let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                let detail = trimmed.isEmpty
+                    ? "Local gateway test failed with HTTP \(status)."
+                    : "Local gateway returned HTTP \(status). \(trimmed)"
+                appStates[target] = .degraded(message: detail)
+            }
+        }
+
+        await refreshWiringState(settings: settings)
+        vibeProxyMigrationState = .completed(
+            message: Self.vibeProxyMigrationSummary(
+                snapshot: snapshot,
+                importResult: importResult,
+                switchedTargets: switchedTargets,
+                targetFailures: targetFailures
+            )
+        )
+    }
+
     private func refreshDroidModelSyncState(settings: SettingsManager) async {
         guard appStates[.droid]?.isBusy != true else { return }
         let gateway = makeGateway(from: settings)
@@ -476,6 +593,32 @@ final class ConnectionsViewModel {
             return description
         }
         return error.localizedDescription
+    }
+
+    private static func vibeProxyMigrationSummary(
+        snapshot: VibeProxyMigrationSnapshot,
+        importResult: VibeProxyMigrationImportResult,
+        switchedTargets: [RoutingClientWiringTarget],
+        targetFailures: [RoutingClientWiringTarget: String]
+    ) -> String {
+        var parts: [String] = []
+        if importResult.importedCount > 0 {
+            parts.append("Imported \(importResult.importedCount) credential\(importResult.importedCount == 1 ? "" : "s").")
+        }
+        if !switchedTargets.isEmpty {
+            let names = switchedTargets.map(\.displayName).joined(separator: ", ")
+            parts.append("Switched \(names) to OpenBurnBar.")
+        }
+        if !snapshot.reconnectRecords.isEmpty {
+            parts.append("\(snapshot.reconnectRecords.count) login\(snapshot.reconnectRecords.count == 1 ? "" : "s") need reconnect.")
+        }
+        if importResult.failedCount > 0 || !targetFailures.isEmpty {
+            parts.append("\(importResult.failedCount + targetFailures.count) item\(importResult.failedCount + targetFailures.count == 1 ? "" : "s") need attention.")
+        }
+        if parts.isEmpty {
+            return "VibeProxy scan finished. Nothing needed to be moved."
+        }
+        return parts.joined(separator: " ")
     }
 
     // MARK: - Helpers

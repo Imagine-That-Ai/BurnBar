@@ -157,6 +157,15 @@ async function assertActiveHermesGatewayEntitlement(uid: string): Promise<void> 
   throw new HttpsError("permission-denied", "BurnBar Cloud or BurnBar Cloud Pro is required for Hermes Gateway.");
 }
 
+async function assertActiveHermesGatewayClient(uid: string, targetClientId: string): Promise<void> {
+  const ref = db.doc(`users/${uid}/hermes_gateway_clients/${targetClientId}`);
+  const snap = await ref.get();
+  const client = snap.data();
+  if (!snap.exists || !isHermesGatewayClientDoc(client) || client.status !== "active" || client.id !== targetClientId) {
+    throw new HttpsError("failed-precondition", "Selected Hermes Gateway client is not active.");
+  }
+}
+
 async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope): Promise<ResolvedGatewayGrant> {
   const token = bearerTokenFromAuthorizationHeader(header(req, "authorization"));
   if (!token) throw httpError(401, "missing_bearer_token");
@@ -206,12 +215,8 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   if (providedSecretHash && !isSha256Hex(providedSecretHash)) {
     throw httpError(400, "invalid_device_secret_hash");
   }
-  let generatedSecret: string | undefined;
-  let deviceSecretHash = providedSecretHash;
-  if (!deviceSecretHash) {
-    generatedSecret = generateHermesGatewayDeviceSecret();
-    deviceSecretHash = hashHermesGatewayDeviceSecret(generatedSecret);
-  }
+  const generatedSecret = providedSecretHash ? undefined : generateHermesGatewayDeviceSecret();
+  const deviceSecretHash = providedSecretHash || hashHermesGatewayDeviceSecret(generatedSecret!);
   const deviceCode = generateHermesGatewayDeviceCode();
   const userCode = randomHermesGatewayUserCode();
   const now = Timestamp.now();
@@ -331,11 +336,12 @@ async function handleEvents(req: HttpRequest, res: HttpResponse): Promise<void> 
       .limit(limit);
   }
   const snap = await query.get();
-  const events = snap.docs.flatMap((doc) => {
+  const scannedEvents = snap.docs.flatMap((doc) => {
     const event = serializeHermesGatewayEvent(doc.data());
     return event ? [event] : [];
   });
-  const nextCursor = events.reduce((max, event) => Math.max(max, event.sequence), cursor);
+  const events = scannedEvents.filter((event) => !event.targetClientId || event.targetClientId === grant.client.id);
+  const nextCursor = scannedEvents.reduce((max, event) => Math.max(max, event.sequence), cursor);
   if (header(req, "accept")?.includes("text/event-stream") || req.query.stream === "true") {
     res.set("Content-Type", "text/event-stream; charset=utf-8");
     res.set("Cache-Control", "no-store");
@@ -661,6 +667,7 @@ export const enqueueHermesGatewayEvent = onCall(
         text?: unknown;
         eventKind?: unknown;
         modelId?: unknown;
+        targetClientId?: unknown;
         attachmentIds?: unknown;
       }>,
     ) => {
@@ -676,6 +683,12 @@ export const enqueueHermesGatewayEvent = onCall(
           : boundedTrimmedString(request.data.text, "text", HERMES_GATEWAY_MAX_EVENT_TEXT, true);
       if (eventKind === "model_switch" && !requestedModelId) {
         throw new HttpsError("invalid-argument", "modelId is required for Hermes Gateway model switches.");
+      }
+      const targetClientId = request.data.targetClientId
+        ? requiredIdentifier(request.data.targetClientId, "targetClientId")
+        : undefined;
+      if (targetClientId) {
+        await assertActiveHermesGatewayClient(uid, targetClientId);
       }
       const destinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
       const eventId = `evt_${randomBytes(12).toString("hex")}`;
@@ -698,6 +711,7 @@ export const enqueueHermesGatewayEvent = onCall(
             sequence,
             kind: eventKind,
             destinationId,
+            targetClientId,
             threadId: boundedTrimmedString(request.data.threadId, "threadId", 160, false),
             senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
             senderDisplayName: boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
@@ -709,7 +723,7 @@ export const enqueueHermesGatewayEvent = onCall(
           }),
         );
       });
-      return { id: eventId, sequence };
+      return stripUndefinedObject({ id: eventId, sequence, targetClientId });
     },
   ),
 );
