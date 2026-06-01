@@ -31,7 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -122,6 +122,7 @@ internal fun CloudStoreScaffold(state: CloudStoreScreenState, actions: CloudStor
                 innerPadding = innerPadding,
                 state = state,
                 onPurchase = actions.onPurchase,
+                onRestore = actions.onRestore,
                 onRevoke = actions.onRevoke,
             )
         }
@@ -182,6 +183,7 @@ internal fun CloudStoreLazyContent(
     innerPadding: PaddingValues,
     state: CloudStoreScreenState,
     onPurchase: (String) -> Unit,
+    onRestore: () -> Unit,
     onRevoke: (RemoteMcpClientRecord) -> Unit,
 ) {
     LazyColumn(
@@ -198,13 +200,19 @@ internal fun CloudStoreLazyContent(
         ),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        cloudStoreLazyListItems(state = state, onPurchase = onPurchase, onRevoke = onRevoke)
+        cloudStoreLazyListItems(
+            state = state,
+            onPurchase = onPurchase,
+            onRestore = onRestore,
+            onRevoke = onRevoke,
+        )
     }
 }
 
 internal fun LazyListScope.cloudStoreLazyListItems(
     state: CloudStoreScreenState,
     onPurchase: (String) -> Unit,
+    onRestore: () -> Unit,
     onRevoke: (RemoteMcpClientRecord) -> Unit,
 ) {
     item { CloudPosterHero(isActive = state.isActive) }
@@ -213,6 +221,7 @@ internal fun LazyListScope.cloudStoreLazyListItems(
             CloudAuroraMemberCard(
                 expirationDateMs = state.expirationDateMs,
                 purchaseDateMs = state.purchaseDateMs,
+                onRestore = onRestore,
             )
         } else {
             CloudPlanGlassCard(priceText = state.priceText)
@@ -347,7 +356,7 @@ internal fun CloudPosterHero(isActive: Boolean) {
 // ── Member card — aurora burst (matches You-tab) ──
 
 @Composable
-internal fun CloudAuroraMemberCard(expirationDateMs: Long?, purchaseDateMs: Long?) {
+internal fun CloudAuroraMemberCard(expirationDateMs: Long?, purchaseDateMs: Long?, onRestore: () -> Unit) {
     val shape = RoundedCornerShape(26.dp)
     var showBadgePicker by remember { mutableStateOf(false) }
 
@@ -399,6 +408,7 @@ internal fun CloudAuroraMemberCard(expirationDateMs: Long?, purchaseDateMs: Long
             CloudAuroraMemberCardContent(
                 expirationDateMs = expirationDateMs,
                 purchaseDateMs = purchaseDateMs,
+                onRestore = onRestore,
                 onShowBadgePicker = { showBadgePicker = true },
             )
         }
@@ -413,6 +423,7 @@ internal fun CloudAuroraMemberCard(expirationDateMs: Long?, purchaseDateMs: Long
 internal fun CloudAuroraMemberCardContent(
     expirationDateMs: Long?,
     purchaseDateMs: Long?,
+    onRestore: () -> Unit,
     onShowBadgePicker: () -> Unit,
 ) {
     Column(
@@ -437,7 +448,7 @@ internal fun CloudAuroraMemberCardContent(
         )
         Spacer(Modifier.height(2.dp))
         CloudMemberStatusPill(expirationDateMs = expirationDateMs, purchaseDateMs = purchaseDateMs)
-        CloudMemberActionRow(onShowBadgePicker = onShowBadgePicker)
+        CloudMemberActionRow(onRestore = onRestore, onShowBadgePicker = onShowBadgePicker)
     }
 }
 
@@ -511,17 +522,15 @@ internal fun CloudMemberStatusPill(expirationDateMs: Long?, purchaseDateMs: Long
 }
 
 @Composable
-internal fun CloudMemberActionRow(onShowBadgePicker: () -> Unit) {
+internal fun CloudMemberActionRow(onRestore: () -> Unit, onShowBadgePicker: () -> Unit) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
     ) {
         AuroraPrimaryButton(
-            text = "Manage",
-            icon = Icons.Filled.OpenInNew,
-            onClick = {
-                // Member-card manage tap — open Play subscription mgmt when deep link lands.
-            },
+            text = "Restore",
+            icon = Icons.Filled.Restore,
+            onClick = onRestore,
             modifier = Modifier.weight(1f),
         )
         AuroraSecondaryButton(
@@ -606,4 +615,3 @@ internal fun membershipStatusLine(expirationMs: Long?, purchaseMs: Long?): Strin
         else -> "Renews monthly"
     }
 }
-
