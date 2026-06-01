@@ -45,6 +45,16 @@
         ]
       },
       {
+        "source": "/hermes/connect",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+          { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-src https://*.google.com https://accounts.google.com https://appleid.apple.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com" },
+          { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
+        ]
+      },
+      {
         "source": "**/_assets/**",
         "headers": [
           { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
@@ -85,6 +95,7 @@
       { "source": "/changelog", "destination": "https://github.com/Imagine-That-Ai/BurnBar/blob/main/CHANGELOG.md", "type": 301 }
     ],
     "rewrites": [
+      { "source": "/v1/hermes-gateway/**", "function": { "functionId": "burnBarHermesGateway", "region": "us-central1" } },
       { "source": "/api/router-rundown/**", "function": { "functionId": "latestRouterRundown", "region": "us-central1" } },
       { "source": "/api/cli-link/start", "function": { "functionId": "startCliLink", "region": "us-central1" } },
       { "source": "/api/cli-link/poll", "function": { "functionId": "pollCliLink", "region": "us-central1" } },

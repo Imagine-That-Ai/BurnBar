@@ -7,6 +7,7 @@ import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
 import LockedModelRelay from "@components/LockedModelRelay.astro";
 import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
+import HermesGatewayPromo from "@components/HermesGatewayPromo.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY, PROVIDERS_ALL } from "@data/providers";
@@ -545,6 +546,11 @@ const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
       </div>
     </div>
   </section>
+
+  <!-- ────────────────────────────────────────────────
+       HERMES GATEWAY — connect Hermes through Cloud
+       ──────────────────────────────────────────────── -->
+  <HermesGatewayPromo />
 
   <!-- ────────────────────────────────────────────────
        PRIVACY / TRUST

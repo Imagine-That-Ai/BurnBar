@@ -34,9 +34,25 @@ describe("PII scrubbing in structured logging", () => {
     vi.restoreAllMocks();
   });
 
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  function parseConsolePayload(raw: unknown): Record<string, unknown> {
+    const parsed: unknown = JSON.parse(String(raw));
+    if (!isRecord(parsed)) {
+      throw new Error("Expected structured console payload");
+    }
+    return parsed;
+  }
+
+  function parseConsoleCall(call: readonly unknown[]): Record<string, unknown> {
+    return parseConsolePayload(call[0]);
+  }
+
   function captureLog(spy: typeof logSpy): Record<string, unknown> {
     expect(spy).toHaveBeenCalledOnce();
-    return JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;
+    return parseConsolePayload(spy.mock.calls[0]?.[0]);
   }
 
   // ── Email redaction ─────────────────────────────────────────────────────
@@ -359,9 +375,9 @@ describe("PII scrubbing in structured logging", () => {
       const result = await withCallableLogging("fn", {}, undefined, async () => "result-value");
       expect(result).toBe("result-value");
       expect(logSpy).toHaveBeenCalledTimes(2);
-      const [startLog, successLog] = logSpy.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
-      expect((startLog as Record<string, unknown>).event).toBe("callable_start");
-      expect((successLog as Record<string, unknown>).event).toBe("callable_success");
+      const [startLog, successLog] = logSpy.mock.calls.map(parseConsoleCall);
+      expect(startLog.event).toBe("callable_start");
+      expect(successLog.event).toBe("callable_success");
     });
 
     it("withCallableLogging logs start+error and re-throws on handler failure", async () => {
