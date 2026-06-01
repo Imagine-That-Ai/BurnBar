@@ -277,12 +277,14 @@ struct HermesConversationListView: View {
     let dashboardSnapshot: DashboardStore?
     let onSelectExistingThreadInSplit: ((String) -> Void)?
 
+    @Environment(\.mobileAuthStore) private var authStore
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
     @State private var showModelPicker = false
     @State private var permissionGrantThreadID: String?
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
+    @State private var gatewayStore = HermesGatewaySettingsStore()
     @State private var libraryStore = HermesCloudLibraryStore()
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedLibrarySession: HermesLibrarySession?
@@ -304,6 +306,17 @@ struct HermesConversationListView: View {
     }
 
     private var connectionStatusText: String {
+        if !gatewayStore.onlineClients.isEmpty {
+            let count = gatewayStore.onlineClients.count
+            let suffix = count == 1 ? "1 gateway live" : "\(count) gateways live"
+            if service.isReachable {
+                return "Hermes online · BurnBar Cloud · \(suffix)"
+            }
+            return "BurnBar Cloud online · \(suffix)"
+        }
+        if !gatewayStore.activeClients.isEmpty, !service.isReachable {
+            return "BurnBar Cloud paired · gateway waiting"
+        }
         if !service.isReachable,
            service.selectedConnection.id == HermesConnectionRecord.localDefault.id,
            let relay = service.suggestedRelayConnection {
@@ -311,6 +324,10 @@ struct HermesConversationListView: View {
         }
         let name = service.selectedConnection.displayName
         return service.isReachable ? "Hermes online · \(name)" : "Hermes offline · \(name)"
+    }
+
+    private var effectiveHermesReachable: Bool {
+        service.isReachable || !gatewayStore.onlineClients.isEmpty
     }
 
     private var conversationListBackgroundVisibility: MobileBackgroundVisibility {
@@ -354,7 +371,7 @@ struct HermesConversationListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showConnectionSheet) {
-            HermesConnectionSheet(service: service)
+            HermesConnectionSheet(service: service, gatewayStore: gatewayStore)
         }
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
@@ -411,6 +428,10 @@ struct HermesConversationListView: View {
             _ = await (reachability, library)
             reconcileSetupWizardCompletion()
         }
+        .task(id: authStore?.currentIdentity?.uid) {
+            gatewayStore.startGatewayListening(uid: authStore?.currentIdentity?.uid)
+            await gatewayStore.refresh(isSignedIn: authStore?.state.isSignedIn == true)
+        }
         // Pending-prompt consumer — picks up prompts stashed by the
         // "Ask Hermes" widget chip AppIntent or a `burnbar://hermes?prompt=…`
         // deep link. Non-empty values auto-send; an empty slot left over from
@@ -423,6 +444,13 @@ struct HermesConversationListView: View {
         .onAppear {
             presentSetupWizardIfNeeded()
         }
+        .onDisappear {
+            gatewayStore.stopGatewayListening()
+        }
+        .onChange(of: authStore?.state.isSignedIn) { _, isSignedIn in
+            gatewayStore.startGatewayListening(uid: isSignedIn == true ? authStore?.currentIdentity?.uid : nil)
+            Task { await gatewayStore.refresh(isSignedIn: isSignedIn == true) }
+        }
         .onChange(of: service.isReachable) { _, _ in
             reconcileSetupWizardCompletion()
         }
@@ -430,6 +458,9 @@ struct HermesConversationListView: View {
             reconcileSetupWizardCompletion()
         }
         .onChange(of: service.suggestedRelayConnection?.id) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
+        .onChange(of: gatewayStore.onlineClients.count) { _, _ in
             reconcileSetupWizardCompletion()
         }
     }
@@ -451,7 +482,7 @@ struct HermesConversationListView: View {
 
     private var hasUsableHermesSetup: Bool {
         HermesMobileSetupWizardGate.hasUsableSetup(
-            isReachable: service.isReachable,
+            isReachable: effectiveHermesReachable,
             selectedConnection: service.selectedConnection,
             suggestedRelayConnection: service.suggestedRelayConnection
         )
@@ -486,7 +517,7 @@ struct HermesConversationListView: View {
                 ZStack(alignment: .bottomTrailing) {
                     UnifiedProviderLogoView(provider: hermesAgentProvider(for: "hermes"), size: 34)
                     Circle()
-                        .fill(service.isReachable ? MobileTheme.success : MobileTheme.warning)
+                        .fill(effectiveHermesReachable ? MobileTheme.success : MobileTheme.warning)
                         .frame(width: 10, height: 10)
                         .overlay(Circle().stroke(MobileTheme.Colors.background, lineWidth: 1.5))
                 }
@@ -513,7 +544,7 @@ struct HermesConversationListView: View {
                     } label: {
                         Label(
                             connectionStatusText,
-                            systemImage: service.isReachable ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
+                            systemImage: effectiveHermesReachable ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
                         )
                     }
                 }
@@ -556,7 +587,7 @@ struct HermesConversationListView: View {
             } label: {
                 HermesDynamicStatusWidget(
                     provider: activeProvider,
-                    isReachable: service.isReachable,
+                    isReachable: effectiveHermesReachable,
                     isRefreshing: service.isLoadingRuntime
                 ) {
                     Task { await service.refreshRuntime() }
@@ -1171,6 +1202,7 @@ struct HermesChatView: View {
     let route: HermesChatRoute
     let presentation: HermesChatPresentation
 
+    @Environment(\.mobileAuthStore) private var authStore
     @State private var input: String = ""
     @State private var showClearConfirm = false
     @State private var showConnectionSheet = false
@@ -1179,6 +1211,7 @@ struct HermesChatView: View {
     @State private var showSetupWizard = false
     @State private var permissionGrantThreadID: String?
     @State private var didAutoPresentSetupWizard = false
+    @State private var gatewayStore = HermesGatewaySettingsStore()
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
     @AppStorage("chatViewMode") private var chatViewMode: ChatViewMode = .agent
@@ -1352,82 +1385,7 @@ struct HermesChatView: View {
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
-                    MobileChatViewModePicker(chatViewMode: $chatViewMode)
-                    Menu {
-                    Section {
-                        Button {
-                            showConnectionSheet = true
-                        } label: {
-                            Label(
-                                connectionStatusText,
-                                systemImage: service.isReachable ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
-                            )
-                        }
-                    }
-
-                    Section {
-                        Button {
-                            permissionGrantThreadID = service.ensureDesktopGrantThreadID()
-                        } label: {
-                            Label("Agent permissions", systemImage: "hand.raised")
-                        }
-                        Button {
-                            showConnectionSheet = true
-                        } label: {
-                            Label("Connections", systemImage: "network")
-                        }
-                        Button {
-                            showRuntimeSheet = true
-                        } label: {
-                            Label("Runtime", systemImage: "slider.horizontal.3")
-                        }
-                        Button {
-                            showSetupWizard = true
-                        } label: {
-                            Label("Setup Guide", systemImage: "list.number")
-                        }
-                    }
-
-                    Section {
-                        Toggle(isOn: $showMessageTPS) {
-                            Label("Show tokens/sec", systemImage: "speedometer")
-                        }
-                        Toggle(isOn: $usePretextRendering) {
-                            Label("Rich text (mentions · code)", systemImage: "text.alignleft")
-                        }
-                        Button {
-                            showPretextPlayground = true
-                        } label: {
-                            Label("Text Layout Playground", systemImage: "textformat.size")
-                        }
-                    }
-
-                    Section {
-                        Button(role: .destructive) {
-                            showClearConfirm = true
-                        } label: {
-                            Label("Clear chat", systemImage: "trash")
-                        }
-                        .disabled(service.messages.isEmpty)
-                        Button {
-                            Task { await service.refreshRuntime() }
-                        } label: {
-                            Label("Re-check connection", systemImage: "arrow.clockwise")
-                        }
-                    }
-                } label: {
-                    ProviderStatusGlobeView(provider: activeProvider, isReachable: service.isReachable)
-                }
-                }
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done", action: dismissKeyboard)
-            }
-        }
+        .toolbar { chatToolbar }
         .alert("Clear chat?", isPresented: $showClearConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Clear", role: .destructive) {
@@ -1437,7 +1395,7 @@ struct HermesChatView: View {
             Text("This starts a new chat. Previous Hermes chats stay in History.")
         }
         .sheet(isPresented: $showConnectionSheet) {
-            HermesConnectionSheet(service: service)
+            HermesConnectionSheet(service: service, gatewayStore: gatewayStore)
         }
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
@@ -1449,12 +1407,7 @@ struct HermesChatView: View {
                 piService: PiService.shared
             )
         }
-        .sheet(
-            isPresented: Binding(
-                get: { permissionGrantThreadID != nil },
-                set: { if !$0 { permissionGrantThreadID = nil } }
-            )
-        ) {
+        .sheet(isPresented: permissionGrantSheetPresented) {
             if let threadID = permissionGrantThreadID {
                 AgentPermissionGrantSheet(runtimeID: .hermes, threadID: threadID)
             }
@@ -1491,18 +1444,12 @@ struct HermesChatView: View {
             guard !newSelection.isEmpty else { return }
             handlePhotosPickerSelection(newSelection)
         }
-        .alert("Couldn't attach file", isPresented: Binding(
-            get: { attachmentImportError != nil },
-            set: { if !$0 { attachmentImportError = nil } }
-        )) {
+        .alert("Couldn't attach file", isPresented: attachmentImportErrorPresented) {
             Button("OK", role: .cancel) { attachmentImportError = nil }
         } message: {
             Text(attachmentImportError ?? "")
         }
-        .sheet(item: Binding(
-            get: { atomRouter.pending },
-            set: { atomRouter.pending = $0 }
-        )) { pending in
+        .sheet(item: pendingAtomSheetItem) { pending in
             HermesAtomDetailSheet(
                 atom: pending.atom,
                 label: pending.label,
@@ -1513,6 +1460,10 @@ struct HermesChatView: View {
         .task(id: route) { await applyRoute() }
         .task(id: AssistantPendingPrompt.shared.hermes) {
             await consumePendingHermesPromptIfNeeded()
+        }
+        .task(id: authStore?.currentIdentity?.uid) {
+            gatewayStore.startGatewayListening(uid: authStore?.currentIdentity?.uid)
+            await gatewayStore.refresh(isSignedIn: authStore?.state.isSignedIn == true)
         }
         .task {
             // Idempotent: refreshRuntime coalesces concurrent callers and loads
@@ -1539,6 +1490,7 @@ struct HermesChatView: View {
             // even if `atomRouter` doesn't deallocate immediately (the
             // chat list view stays in the navigation stack).
             service.setToolAtomNavigator(nil)
+            gatewayStore.stopGatewayListening()
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -1546,6 +1498,10 @@ struct HermesChatView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             reloadTextExpansionSnippets()
+        }
+        .onChange(of: authStore?.state.isSignedIn) { _, isSignedIn in
+            gatewayStore.startGatewayListening(uid: isSignedIn == true ? authStore?.currentIdentity?.uid : nil)
+            Task { await gatewayStore.refresh(isSignedIn: isSignedIn == true) }
         }
         .onChange(of: service.isReachable) { _, _ in
             reconcileSetupWizardCompletion()
@@ -1556,6 +1512,121 @@ struct HermesChatView: View {
         .onChange(of: service.suggestedRelayConnection?.id) { _, _ in
             reconcileSetupWizardCompletion()
         }
+        .onChange(of: gatewayStore.onlineClients.count) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var chatToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            HStack(spacing: 8) {
+                MobileChatViewModePicker(chatViewMode: $chatViewMode)
+                chatOptionsMenu
+            }
+        }
+
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done", action: dismissKeyboard)
+        }
+    }
+
+    private var chatOptionsMenu: some View {
+        Menu {
+            Section {
+                Button {
+                    showConnectionSheet = true
+                } label: {
+                    Label(
+                        connectionStatusText,
+                        systemImage: effectiveHermesReachable ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
+                    )
+                }
+            }
+
+            Section {
+                Button {
+                    permissionGrantThreadID = service.ensureDesktopGrantThreadID()
+                } label: {
+                    Label("Agent permissions", systemImage: "hand.raised")
+                }
+                Button {
+                    showConnectionSheet = true
+                } label: {
+                    Label("Connections", systemImage: "network")
+                }
+                Button {
+                    showRuntimeSheet = true
+                } label: {
+                    Label("Runtime", systemImage: "slider.horizontal.3")
+                }
+                Button {
+                    showSetupWizard = true
+                } label: {
+                    Label("Setup Guide", systemImage: "list.number")
+                }
+            }
+
+            Section {
+                Toggle(isOn: $showMessageTPS) {
+                    Label("Show tokens/sec", systemImage: "speedometer")
+                }
+                Toggle(isOn: $usePretextRendering) {
+                    Label("Rich text (mentions · code)", systemImage: "text.alignleft")
+                }
+                Button {
+                    showPretextPlayground = true
+                } label: {
+                    Label("Text Layout Playground", systemImage: "textformat.size")
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    showClearConfirm = true
+                } label: {
+                    Label("Clear chat", systemImage: "trash")
+                }
+                .disabled(service.messages.isEmpty)
+                Button {
+                    Task { await service.refreshRuntime() }
+                } label: {
+                    Label("Re-check connection", systemImage: "arrow.clockwise")
+                }
+            }
+        } label: {
+            ProviderStatusGlobeView(provider: activeProvider, isReachable: effectiveHermesReachable)
+        }
+    }
+
+    private var permissionGrantSheetPresented: Binding<Bool> {
+        Binding(
+            get: { permissionGrantThreadID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    permissionGrantThreadID = nil
+                }
+            }
+        )
+    }
+
+    private var attachmentImportErrorPresented: Binding<Bool> {
+        Binding(
+            get: { attachmentImportError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    attachmentImportError = nil
+                }
+            }
+        )
+    }
+
+    private var pendingAtomSheetItem: Binding<HermesAtomRouter.PendingAtom?> {
+        Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )
     }
 
     private func presentSetupWizardIfNeeded() {
@@ -1575,7 +1646,7 @@ struct HermesChatView: View {
 
     private var hasUsableHermesSetup: Bool {
         HermesMobileSetupWizardGate.hasUsableSetup(
-            isReachable: service.isReachable,
+            isReachable: effectiveHermesReachable,
             selectedConnection: service.selectedConnection,
             suggestedRelayConnection: service.suggestedRelayConnection
         )
@@ -1640,6 +1711,17 @@ struct HermesChatView: View {
     }
 
     private var connectionStatusText: String {
+        if !gatewayStore.onlineClients.isEmpty {
+            let count = gatewayStore.onlineClients.count
+            let suffix = count == 1 ? "1 gateway live" : "\(count) gateways live"
+            if service.isReachable {
+                return "Hermes online · BurnBar Cloud · \(suffix)"
+            }
+            return "BurnBar Cloud online · \(suffix)"
+        }
+        if !gatewayStore.activeClients.isEmpty, !service.isReachable {
+            return "BurnBar Cloud paired · gateway waiting"
+        }
         if !service.isReachable,
            service.selectedConnection.id == HermesConnectionRecord.localDefault.id,
            let relay = service.suggestedRelayConnection {
@@ -1647,6 +1729,10 @@ struct HermesChatView: View {
         }
         let name = service.selectedConnection.displayName
         return service.isReachable ? "Hermes online · \(name)" : "Hermes offline · \(name)"
+    }
+
+    private var effectiveHermesReachable: Bool {
+        service.isReachable || !gatewayStore.onlineClients.isEmpty
     }
 
     @ViewBuilder
@@ -2193,6 +2279,7 @@ struct HermesChatView: View {
 
 private struct HermesConnectionSheet: View {
     @Bindable var service: HermesService
+    let gatewayStore: HermesGatewaySettingsStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var displayName = ""
@@ -2287,6 +2374,10 @@ private struct HermesConnectionSheet: View {
                                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                                 }
                             }
+                        }
+
+                        if !gatewayStore.activeClients.isEmpty {
+                            burnBarGatewayConnectionCard
                         }
 
                         // 3. Active Hosts Section
@@ -2494,6 +2585,77 @@ private struct HermesConnectionSheet: View {
             }
             .task { await service.refreshConnections() }
         }
+    }
+
+    private var burnBarGatewayConnectionCard: some View {
+        let onlineCount = gatewayStore.onlineClients.count
+        let activeCount = gatewayStore.activeClients.count
+        let isOnline = onlineCount > 0
+
+        return AuroraGlassCard(variant: isOnline ? .success : .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill((isOnline ? MobileTheme.success : MobileTheme.warning).opacity(0.16))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: isOnline ? "checkmark.seal.fill" : "link.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(isOnline ? MobileTheme.success : MobileTheme.warning)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("BurnBar Cloud Gateway")
+                            .font(MobileTheme.Typography.body)
+                            .fontWeight(.bold)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text(gatewayConnectionSheetSubtitle(activeCount: activeCount, onlineCount: onlineCount))
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text(isOnline ? "Online" : "Paired")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.bold)
+                        .foregroundStyle(isOnline ? MobileTheme.success : MobileTheme.warning)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill((isOnline ? MobileTheme.success : MobileTheme.warning).opacity(0.12)))
+                }
+
+                if let client = gatewayStore.onlineClients.first ?? gatewayStore.activeClients.first {
+                    HStack(spacing: 8) {
+                        Image(systemName: "iphone")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                        Text(client.displayName)
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(client.homeDestinationId)
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .lineLimit(1)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("BurnBar Cloud Gateway. \(gatewayConnectionSheetSubtitle(activeCount: activeCount, onlineCount: onlineCount))")
+    }
+
+    private func gatewayConnectionSheetSubtitle(activeCount: Int, onlineCount: Int) -> String {
+        if onlineCount > 0 {
+            let noun = onlineCount == 1 ? "gateway client is" : "gateway clients are"
+            return "\(onlineCount) \(noun) live. This is the official Hermes messaging gateway through BurnBar Cloud."
+        }
+        let noun = activeCount == 1 ? "gateway client is" : "gateway clients are"
+        return "\(activeCount) \(noun) paired, but no gateway has checked in recently. Restart Hermes Gateway on the computer."
     }
 
     private func addDirectConnection() async {
@@ -3165,7 +3327,7 @@ struct HermesMessageBubble: View {
             }
 
             if !message.toolCalls.isEmpty {
-                toolCallsStrip
+                UnifiedToolCallAccordion(calls: unifiedToolCalls, accent: .hermes)
             }
 
             systemPermissionPillIfNeeded
@@ -3197,70 +3359,23 @@ struct HermesMessageBubble: View {
         .padding(.top, 4)
     }
 
-    // MARK: - Tool Calls Strip
+    // MARK: - Tool Calls
 
-    /// Horizontally scrollable tool strip, most recent on the left.
-    private var toolCallsStrip: some View {
-        let reversedCalls = Array(message.toolCalls.reversed())
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(reversedCalls) { tool in
-                    toolCallPill(tool)
-                }
-            }
+    /// Maps this turn's Hermes tool calls into the shared display model. The
+    /// most recent call (last in the array) becomes the collapsed row; the
+    /// live call pulses while the turn is still streaming.
+    private var unifiedToolCalls: [UnifiedToolCallDisplay] {
+        let lastID = message.toolCalls.last?.id
+        return message.toolCalls.map { tc in
+            UnifiedToolCallDisplay(
+                id: tc.id,
+                name: tc.name,
+                statusRaw: tc.status,
+                detail: tc.detail,
+                arguments: tc.arguments,
+                isRunning: message.isStreaming && tc.id == lastID
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func toolCallPill(_ tool: HermesToolCall) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: toolCallIcon(for: tool.name))
-                    .font(.system(size: 13, weight: .bold))
-                Text(tool.name)
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                Spacer(minLength: 8)
-                Text(tool.status)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            if let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !detail.isEmpty {
-                Text(detail)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .truncationMode(.middle)
-                    .accessibilityLabel("Tool detail: \(detail)")
-            }
-        }
-        .foregroundStyle(MobileTheme.hermesAureate)
-        .frame(maxWidth: 240, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(MobileTheme.Colors.surface.opacity(0.75))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AuroraDesign.Gradients.mercuryFoil, lineWidth: 0.75)
-        )
-    }
-
-    private func toolCallIcon(for name: String) -> String {
-        let n = name.lowercased()
-        if n.contains("read") || n.contains("file") || n.contains("write") { return "doc.text" }
-        if n.contains("bash") || n.contains("exec") || n.contains("run") || n.contains("terminal") { return "terminal" }
-        if n.contains("search") || n.contains("grep") || n.contains("glob") || n.contains("find") { return "magnifyingglass" }
-        if n.contains("web") || n.contains("browser") || n.contains("fetch") || n.contains("http") { return "globe" }
-        if n.contains("edit") || n.contains("patch") || n.contains("replace") { return "pencil.and.outline" }
-        if n.contains("memory") || n.contains("skill") || n.contains("learn") { return "brain" }
-        if n.contains("image") || n.contains("vision") || n.contains("screenshot") { return "photo" }
-        return "wrench.and.screwdriver.fill"
     }
 
     /// Honest "via Hermes" header. Renders one of three states:

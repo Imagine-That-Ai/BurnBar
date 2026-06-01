@@ -759,6 +759,31 @@ public struct BurnBarProviderRouter: Sendable {
                         endpointProfileID: resolvedEndpoint.endpointProfileID
                     )
                 )
+            } else if configuration.provider.local {
+                // Local, credential-less providers (e.g. a local Ollama daemon)
+                // route straight to the machine with an empty key; the local
+                // server ignores the Authorization header.
+                let resolvedEndpoint = ProviderRouteEndpointResolver.resolve(
+                    providerID: configuration.provider.id,
+                    apiKey: "",
+                    defaultBaseURL: configuration.settings.baseURL,
+                    slot: ProviderRouteEndpointResolver.SlotContext()
+                )
+                routes.append(
+                    BurnBarProviderRoute(
+                        providerID: configuration.provider.id,
+                        providerDisplayName: configuration.provider.displayName,
+                        baseURL: resolvedEndpoint.baseURL,
+                        requestedModel: modelName,
+                        resolvedModelID: resolvedModel.id,
+                        canonicalModelID: resolvedModel.canonicalModelID,
+                        apiKey: "",
+                        pricing: resolvedModel.pricing,
+                        modelCapabilityClassID: resolvedModel.capabilityClassID,
+                        formatFamily: formatFamily,
+                        endpointProfileID: resolvedEndpoint.endpointProfileID
+                    )
+                )
             }
         }
 
@@ -866,15 +891,44 @@ public struct BurnBarProviderRouter: Sendable {
     ) -> BurnBarCatalogModel? {
         guard allowDynamicOpenAICompatibleModels,
               [.openaiCompat, .anthropic].contains(configuration.provider.formatFamily),
-              configuration.provider.capabilities.contains(.routing),
-              let template = configuration.preferredModels.first ?? configuration.provider.models.first(where: { $0.visibility == .public }) else {
+              configuration.provider.capabilities.contains(.routing) else {
+            return nil
+        }
+
+        let template = configuration.preferredModels.first
+            ?? configuration.provider.models.first(where: { $0.visibility == .public })
+
+        // Local, credential-less providers (e.g. a local Ollama daemon) carry no
+        // static catalog rows, so any installed model the server serves must be
+        // routable as a free, zero-priced passthrough. Non-local providers still
+        // require a template to anchor pricing/capability metadata.
+        guard template != nil || configuration.provider.local else {
             return nil
         }
 
         let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let normalized = trimmed.lowercased()
+
+        // A credential-less local provider is always enabled and would otherwise
+        // resolve ANY model name, shadowing real providers: a request for a
+        // foreign catalog model whose vendor isn't configured (e.g. "gpt-5.5",
+        // "claude-opus-4-8") would route to localhost and 404 instead of
+        // surfacing a clean missing-credential error. Block only models a
+        // different-family vendor owns. Ollama-family catalog models (e.g.
+        // "gpt-oss:120b", "qwen3.6:27b-coding-nvfp4") stay routable locally,
+        // since the user may well have pulled them — keeping advertised local
+        // models callable.
+        if configuration.provider.local,
+           let vendor = configStore.catalogSupport.catalog.vendorForModel(named: trimmed),
+           !vendor.local,
+           vendor.id.caseInsensitiveCompare("ollama") != .orderedSame {
+            return nil
+        }
+
         let capabilityTemplate = configuration.provider.models.first(where: { $0.matches(modelName: normalized) }) ?? template
+        let pricing = capabilityTemplate?.pricing
+            ?? BurnBarModelPricing(inputPerMToken: 0, outputPerMToken: 0, cacheReadPerMToken: 0)
 
         return BurnBarCatalogModel(
             id: trimmed,
@@ -882,10 +936,10 @@ public struct BurnBarProviderRouter: Sendable {
             visibility: .hidden,
             aliases: [trimmed],
             matchers: [],
-            pricing: capabilityTemplate.pricing,
+            pricing: pricing,
             canonicalModelID: trimmed,
             capabilityClassID: trimmed,
-            capabilityClassRank: capabilityTemplate.capabilityClassRank
+            capabilityClassRank: capabilityTemplate?.capabilityClassRank
         )
     }
 

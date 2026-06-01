@@ -767,53 +767,63 @@ private struct HermesPopoverBubble: View {
 
     // MARK: - Popover Tool Group Strip
 
+    /// Pairs each `.toolUse` piece with its following `.toolResult` and renders
+    /// them through the shared `UnifiedToolCallAccordion`. The popover is always
+    /// a Hermes surface, so the accent is `.hermes`.
     @ViewBuilder
     private func popoverToolGroupStrip(_ pieces: [ChatTranscriptPiece]) -> some View {
-        let reversedPieces = Array(pieces.reversed())
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(reversedPieces) { piece in
-                    compactToolPill(piece)
+        UnifiedToolCallAccordion(
+            calls: unifiedToolCalls(from: pieces),
+            accent: .hermes
+        )
+    }
+
+    /// Same pairing algorithm as `ChatMessageView.unifiedToolCalls(from:)`.
+    private func unifiedToolCalls(from pieces: [ChatTranscriptPiece]) -> [UnifiedToolCallDisplay] {
+        let lastUnpairedToolUseID: String? = {
+            var id: String? = nil
+            var i = 0
+            while i < pieces.count {
+                if pieces[i].kind == .toolUse {
+                    let isPaired = (i + 1 < pieces.count && pieces[i + 1].kind == .toolResult)
+                    id = pieces[i].id
+                    if isPaired { i += 1 }
                 }
+                i += 1
             }
+            return id
+        }()
+
+        var calls: [UnifiedToolCallDisplay] = []
+        var index = 0
+        while index < pieces.count {
+            let piece = pieces[index]
+            switch piece.kind {
+            case .toolUse:
+                var resultText: String?
+                if index + 1 < pieces.count, pieces[index + 1].kind == .toolResult {
+                    let resultPiece = pieces[index + 1]
+                    resultText = (resultPiece.detail?.isEmpty == false) ? resultPiece.detail : resultPiece.value
+                    index += 1
+                }
+                calls.append(UnifiedToolCallDisplay(
+                    id: piece.id,
+                    name: piece.value,
+                    detail: piece.detail,
+                    result: resultText,
+                    isRunning: isStreaming && piece.id == lastUnpairedToolUseID
+                ))
+            case .toolResult, .text:
+                break
+            }
+            index += 1
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        return calls
     }
 
     // MARK: - Popover Transcript Grouping
 
     private var popoverGroupedTranscript: [TranscriptGroup] {
         TranscriptGroup.group(transcript)
-    }
-
-    @ViewBuilder
-    private func compactToolPill(_ piece: ChatTranscriptPiece) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: toolIcon(for: piece.value))
-                .font(.system(size: 9, weight: .semibold))
-            Text(piece.value)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-        }
-        .foregroundStyle(DesignSystem.Colors.mercuryGradient)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background {
-            Capsule(style: .continuous)
-                .fill(DesignSystem.Colors.hermesMercury.opacity(0.08))
-        }
-        .overlay {
-            Capsule(style: .continuous)
-                .strokeBorder(DesignSystem.Colors.hermesMercury.opacity(0.25), lineWidth: 0.5)
-        }
-    }
-
-    private func toolIcon(for name: String) -> String {
-        let n = name.lowercased()
-        if n.contains("read") || n.contains("file") || n.contains("write") { return "doc.text" }
-        if n.contains("bash") || n.contains("exec") || n.contains("run") { return "terminal" }
-        if n.contains("search") || n.contains("grep") || n.contains("glob") { return "magnifyingglass" }
-        if n.contains("web") || n.contains("browser") || n.contains("fetch") { return "globe" }
-        if n.contains("edit") || n.contains("patch") { return "pencil.and.outline" }
-        return "wrench.and.screwdriver"
     }
 }

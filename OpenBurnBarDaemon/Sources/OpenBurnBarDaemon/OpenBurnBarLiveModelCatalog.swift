@@ -212,7 +212,13 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     providerID: providerID,
                     rawSecret: configuration.apiKey
                 )
-                let hasCredential = hasUsableSecret(apiKey)
+                // Local, credential-less providers (e.g. a local Ollama daemon)
+                // route without an API key, so treat their credential as
+                // satisfied and their quota as unknown-but-eligible.
+                let hasCredential = configuration.provider.local ? true : hasUsableSecret(apiKey)
+                let quotaState: BurnBarLiveModelQuotaState = configuration.provider.local
+                    ? (providerEnabled ? .unknown : .disabled)
+                    : (providerEnabled ? (hasCredential ? .unknown : .missingCredential) : .disabled)
                 let account = BurnBarLiveModelAccountDescriptor(
                     providerID: providerID,
                     providerName: providerName,
@@ -220,7 +226,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     accountLabel: providerName,
                     enabled: providerEnabled,
                     hasCredential: hasCredential,
-                    quotaState: providerEnabled ? (hasCredential ? .unknown : .missingCredential) : .disabled
+                    quotaState: quotaState
                 )
                 contexts.append(AccountRefreshContext(
                     index: contexts.count,
@@ -611,6 +617,14 @@ public struct BurnBarLiveModelCatalog: Sendable {
         apiKey: String?,
         providerCanRoute: Bool
     ) async -> LiveRefreshResult? {
+        // Local, credential-less providers (e.g. a local Ollama daemon) discover
+        // models from the machine with no Authorization header. Bypass the
+        // credential/quota guard the cloud providers require.
+        if configuration.provider.local {
+            guard providerCanRoute, account.enabled else { return nil }
+            return await localProviderLiveModels(configuration: configuration, account: account)
+        }
+
         guard providerCanRoute,
               account.enabled,
               account.hasCredential,
@@ -717,6 +731,71 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 isAuthoritative: false,
                 blocksRouting: false
             )
+        }
+    }
+
+    /// Discovers models from a local, credential-less provider (a local Ollama
+    /// daemon) via `GET {baseURL}/models` with no Authorization header. Returns
+    /// an authoritative result when reachable, or a clear "start `ollama serve`"
+    /// error when the local server is down.
+    private func localProviderLiveModels(
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor
+    ) async -> LiveRefreshResult {
+        func failure(_ message: String) -> LiveRefreshResult {
+            LiveRefreshResult(
+                advertisedModels: [],
+                sourceKind: "daemon_provider_config",
+                refreshedAt: Date(),
+                error: message,
+                isAuthoritative: false,
+                blocksRouting: false
+            )
+        }
+
+        // Discover installed models from Ollama's canonical `/api/tags` endpoint
+        // (always present, richer than the `/v1/models` compat shim) by deriving
+        // the server root from the provider's `/v1` base URL.
+        guard let baseURL = URL(string: configuration.settings.baseURL),
+              var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return failure("\(configuration.provider.displayName) has an invalid local base URL.")
+        }
+        components.path = "/api/tags"
+        components.query = nil
+        guard let endpoint = components.url else {
+            return failure("\(configuration.provider.displayName) has an invalid local base URL.")
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = refreshTimeoutSeconds
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return failure("\(configuration.provider.displayName) returned an invalid response.")
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                return failure("\(configuration.provider.displayName) refresh failed with HTTP \(httpResponse.statusCode).")
+            }
+            // `parseOllamaTags` splits installed models into local vs `:cloud`
+            // entries. Advertise local-only here so Ollama Cloud models stay with
+            // the dedicated `ollama` provider (its own key/quota) and are not
+            // duplicated or routed to localhost.
+            let discovered = CLIRuntimeModelCatalog.parseOllamaTags(data)
+                .filter { $0.source == .ollamaLocalCatalog }
+                .map { DiscoveredModel(id: $0.modelID, displayName: $0.modelID) }
+            return LiveRefreshResult(
+                advertisedModels: discovered,
+                sourceKind: "local_ollama_models_endpoint",
+                refreshedAt: Date(),
+                error: nil,
+                isAuthoritative: true,
+                blocksRouting: false
+            )
+        } catch {
+            return failure("\(configuration.provider.displayName) is not reachable at \(endpoint.absoluteString). Start it with `ollama serve`.")
         }
     }
 

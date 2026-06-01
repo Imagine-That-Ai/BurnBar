@@ -11,6 +11,7 @@ struct IdentityHero: View {
     let email: String?
     let photoURL: URL?
     let syncHealth: CloudSyncHealth
+    let syncStatusLabel: String
     let connectionsCount: Int
 
     @State private var haloRotation: Double = 0
@@ -120,6 +121,9 @@ struct IdentityHero: View {
         case .syncing:
             statusText = "Syncing…"
             statusColor = MobileTheme.amber
+        case .macNotSyncing:
+            statusText = syncStatusLabel
+            statusColor = MobileTheme.warning
         case .offline:
             statusText = "Offline"
             statusColor = MobileTheme.warning
@@ -143,6 +147,8 @@ struct IdentityHero: View {
             Text(statusText)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
         .foregroundStyle(statusColor)
         .padding(.horizontal, 12)

@@ -206,6 +206,16 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
 5. Use **Probe** / **Probe pool** to send a one-token request through the
    gateway before trusting the client setup.
 
+To move an existing VibeProxy install, use the **Move from VibeProxy** card in
+the same Settings -> Agents -> CLIs screen. `Scan` reads VibeProxy's
+`~/.cli-proxy-api/*.json` credential metadata plus known CLI config files.
+`Import & Switch` imports portable API-key secrets into OpenBurnBar
+provider slots, removes VibeProxy-owned `localhost:8317` client entries, writes
+OpenBurnBar-owned config, restarts the local gateway when needed, and probes the
+rewired apps. OAuth/session-only VibeProxy records are left for guided
+reconnect because those local sessions cannot be safely copied as provider API
+keys.
+
 Cursor still needs the Cloudflare quick tunnel path because Cursor BYOK rejects
 local/private network URLs. Droid/Factory, Forge, Codex, Claude Code, and
 OpenCode use the local gateway URL directly.
@@ -213,7 +223,9 @@ OpenCode use the local gateway URL directly.
 ## Config Files Written
 
 OpenBurnBar preserves unrelated client config and writes a timestamped backup
-before replacing prior OpenBurnBar entries.
+before replacing prior OpenBurnBar entries. VibeProxy migration mode also strips
+VibeProxy-named provider blocks and local `127.0.0.1:8317` / `localhost:8317`
+provider entries from the clients it switches.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|

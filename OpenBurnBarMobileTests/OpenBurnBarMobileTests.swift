@@ -23,6 +23,204 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(AgentProvider.fromPersistedToken("unknown"))
     }
 
+    func testHermesGatewayPairingCodeFormatterNormalizesPastedCodes() {
+        XCTAssertEqual(HermesGatewayPairingCodeFormatter.displayString(for: "ab12 cd34"), "AB12-CD34")
+        XCTAssertEqual(HermesGatewayPairingCodeFormatter.displayString(for: "ab12-cd34-extra"), "AB12-CD34")
+        XCTAssertEqual(HermesGatewayPairingCodeFormatter.displayString(for: "ab1"), "AB1")
+        XCTAssertEqual(HermesGatewayPairingCodeFormatter.canonicalCode(from: "ab12cd34"), "AB12-CD34")
+        XCTAssertNil(HermesGatewayPairingCodeFormatter.canonicalCode(from: "short"))
+    }
+
+    func testHermesGatewayApprovalDecoderPreservesServerTimestampStrings() throws {
+        let createdAt = "2026-06-01T07:54:03.234Z"
+        let updatedAt = "2026-06-01T07:54:03.833Z"
+        let payload = NSDictionary(dictionary: [
+            "client": [
+                "id": "hgw_test",
+                "displayName": "Hermes Agent",
+                "status": "active",
+                "tokenPreview": "obb_hgw_...test",
+                "scopes": [
+                    "hermes.gateway.read",
+                    "hermes.gateway.write",
+                    "hermes.gateway.manage"
+                ],
+                "homeDestinationId": "burnbar:home",
+                "lastSeenAt": Timestamp(date: Date(timeIntervalSince1970: 1_800_000_000)),
+                "createdAt": createdAt,
+                "updatedAt": updatedAt,
+                "schemaVersion": 1
+            ],
+            "homeDestinationId": "burnbar:home"
+        ])
+
+        let client = try FunctionsRepository.decodeHermesGatewayApprovalClientForTesting(payload)
+
+        XCTAssertEqual(client.createdAt, createdAt)
+        XCTAssertEqual(client.updatedAt, updatedAt)
+        XCTAssertTrue(client.lastSeenAt?.hasPrefix("2027-01-15T08:00:00") == true)
+    }
+
+    func testHermesGatewayOnlineStatusRequiresRecentLastSeen() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let recent = ISO8601DateFormatter().string(from: now.addingTimeInterval(-30))
+        let stale = ISO8601DateFormatter().string(from: now.addingTimeInterval(-300))
+        let activeRecent = hermesGatewayClient(lastSeenAt: recent)
+        let activeStale = hermesGatewayClient(lastSeenAt: stale)
+        let neverSeen = hermesGatewayClient(lastSeenAt: nil)
+        let revoked = hermesGatewayClient(status: "revoked", lastSeenAt: recent)
+
+        XCTAssertTrue(activeRecent.isOnline(relativeTo: now))
+        XCTAssertFalse(activeStale.isOnline(relativeTo: now))
+        XCTAssertFalse(neverSeen.isOnline(relativeTo: now))
+        XCTAssertFalse(revoked.isOnline(relativeTo: now))
+    }
+
+    func testHermesGatewayClientRecordParsesFirestorePayload() {
+        let record = HermesGatewayClientRecord(
+            documentID: "hgw_doc",
+            data: [
+                "id": "hgw_live",
+                "displayName": "OpenBurnBar Gateway",
+                "status": "active",
+                "tokenPreview": "obb_hgw_...live",
+                "scopes": [
+                    "hermes.gateway.read",
+                    "hermes.gateway.write"
+                ],
+                "homeDestinationId": "burnbar:home",
+                "lastSeenAt": "2026-06-01T08:08:04.968Z",
+                "createdAt": "2026-06-01T08:00:00Z",
+                "updatedAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 1
+            ]
+        )
+
+        XCTAssertEqual(record?.id, "hgw_live")
+        XCTAssertEqual(record?.displayName, "OpenBurnBar Gateway")
+        XCTAssertEqual(record?.homeDestinationId, "burnbar:home")
+        XCTAssertEqual(record?.scopes, ["hermes.gateway.read", "hermes.gateway.write"])
+    }
+
+    func testHermesGatewayMessageRecordParsesReplyPayload() {
+        let record = HermesGatewayMessageRecord(
+            documentID: "msg_doc",
+            data: [
+                "id": "msg_123",
+                "clientId": "hgw_abc",
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "threadId": "burnbar-ios-e2e",
+                "replyToEventId": "evt_123",
+                "text": "Hermes received the test.",
+                "attachmentIds": ["att_1"],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 1
+            ]
+        )
+
+        XCTAssertEqual(record?.id, "msg_123")
+        XCTAssertEqual(record?.replyToEventId, "evt_123")
+        XCTAssertEqual(record?.text, "Hermes received the test.")
+    }
+
+    func testHermesGatewayMessageResolverShowsThreadReplyWithoutPendingEvent() {
+        let newest = hermesGatewayMessage(
+            id: "msg_newest",
+            threadId: HermesGatewayMessageResolver.defaultThreadID,
+            text: "Latest reply",
+            createdAt: "2026-06-01T10:51:43.304Z"
+        )
+        let older = hermesGatewayMessage(
+            id: "msg_older",
+            threadId: HermesGatewayMessageResolver.defaultThreadID,
+            text: "Older reply",
+            createdAt: "2026-06-01T10:50:00Z"
+        )
+        let otherThread = hermesGatewayMessage(
+            id: "msg_other",
+            threadId: "other-thread",
+            text: "Wrong thread",
+            createdAt: "2026-06-01T10:52:00Z"
+        )
+
+        let reply = HermesGatewayMessageResolver.newestThreadReply(
+            in: [otherThread, newest, older].compactMap(\.self)
+        )
+
+        XCTAssertEqual(reply?.id, "msg_newest")
+        XCTAssertEqual(reply?.text, "Latest reply")
+    }
+
+    func testHermesGatewayMessageResolverPrefersExactPendingEventReply() {
+        let event = HermesGatewayQueuedEvent(id: "evt_expected", sequence: 7)
+        let unrelatedThreadReply = hermesGatewayMessage(
+            id: "msg_unrelated",
+            threadId: HermesGatewayMessageResolver.defaultThreadID,
+            replyToEventId: "evt_other",
+            text: "Not this test",
+            createdAt: "2026-06-01T10:52:00Z"
+        )
+        let exactReply = hermesGatewayMessage(
+            id: "msg_exact",
+            threadId: HermesGatewayMessageResolver.defaultThreadID,
+            replyToEventId: event.id,
+            text: "This is the matching test reply.",
+            createdAt: "2026-06-01T10:51:43.304Z"
+        )
+
+        let reply = HermesGatewayMessageResolver.newestReply(
+            for: event,
+            in: [unrelatedThreadReply, exactReply].compactMap(\.self),
+            pendingEventSentAt: ISO8601DateFormatter().date(from: "2026-06-01T10:51:00Z")
+        )
+
+        XCTAssertEqual(reply?.id, "msg_exact")
+        XCTAssertEqual(reply?.replyToEventId, event.id)
+    }
+
+    private func hermesGatewayClient(status: String = "active", lastSeenAt: String?) -> HermesGatewayClientRecord {
+        HermesGatewayClientRecord(
+            id: "hgw_test_\(status)_\(lastSeenAt ?? "never")",
+            displayName: "Hermes Agent",
+            status: status,
+            tokenPreview: "obb_hgw_...test",
+            scopes: [
+                "hermes.gateway.read",
+                "hermes.gateway.write",
+                "hermes.gateway.manage"
+            ],
+            homeDestinationId: "burnbar:home",
+            lastSeenAt: lastSeenAt,
+            revokedAt: nil,
+            createdAt: "2026-06-01T08:00:00Z",
+            updatedAt: "2026-06-01T08:00:00Z",
+            schemaVersion: 1
+        )
+    }
+
+    private func hermesGatewayMessage(
+        id: String,
+        threadId: String?,
+        replyToEventId: String? = nil,
+        text: String?,
+        createdAt: String
+    ) -> HermesGatewayMessageRecord? {
+        var data: [String: Any] = [
+            "id": id,
+            "clientId": "hgw_abc",
+            "kind": "agent_message",
+            "destinationId": "burnbar:home",
+            "text": text as Any,
+            "attachmentIds": [],
+            "createdAt": createdAt,
+            "schemaVersion": 1
+        ]
+        data["threadId"] = threadId
+        data["replyToEventId"] = replyToEventId
+        return HermesGatewayMessageRecord(documentID: id, data: data)
+    }
+
     func testTokenUsageCodable() throws {
         let usage = TokenUsage(
             provider: .claudeCode,

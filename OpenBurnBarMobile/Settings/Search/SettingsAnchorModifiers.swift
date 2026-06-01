@@ -51,18 +51,16 @@ struct SettingsAnchorModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .id(anchor)
+            // Only paint a row background while this row is the active search
+            // highlight. When `nil`, the row keeps the native grouped fill
+            // (`secondarySystemGroupedBackground`) instead of being punched
+            // transparent — so anchored rows look identical to plain rows.
             .listRowBackground(highlightBackground)
+            .animation(.easeInOut(duration: 0.35), value: router?.highlightedAnchor)
     }
 
-    @ViewBuilder
-    private var highlightBackground: some View {
-        if router?.highlightedAnchor == anchor {
-            MobileTheme.amber.opacity(0.18)
-                .animation(.easeInOut(duration: 0.35),
-                           value: router?.highlightedAnchor)
-        } else {
-            Color.clear
-        }
+    private var highlightBackground: Color? {
+        router?.highlightedAnchor == anchor ? MobileTheme.amber.opacity(0.18) : nil
     }
 }
 

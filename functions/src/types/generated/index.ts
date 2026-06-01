@@ -12,3 +12,10 @@ export type {
   ModelBenchmarkSnapshotDoc as GeneratedModelBenchmarkSnapshotDoc,
   ModelBenchmarkSourceStatusDoc as GeneratedModelBenchmarkSourceStatusDoc,
 } from "./model-benchmarks.js";
+export type {
+  HermesGatewayAttachmentManifestDoc as GeneratedHermesGatewayAttachmentManifestDoc,
+  HermesGatewayClientDoc as GeneratedHermesGatewayClientDoc,
+  HermesGatewayDestinationDoc as GeneratedHermesGatewayDestinationDoc,
+  HermesGatewayEventDoc as GeneratedHermesGatewayEventDoc,
+  HermesGatewayMessageDoc as GeneratedHermesGatewayMessageDoc,
+} from "./hermes-gateway.js";

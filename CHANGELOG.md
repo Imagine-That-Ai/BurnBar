@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Unified tool-call accordion (all chat surfaces)
+
+- Replaced five separate tool-call strip implementations (Hermes, Pi, CLI agents, ChatView compact mode, AgentLens dashboard, and the Hermes menu-bar popover) with a single `UnifiedToolCallAccordion` component in `OpenBurnBarCore`.
+- The accordion stays **collapsed by default** and shows only the most recent call between messages; tapping reveals the full history with raw arguments and, where the runtime captures one, the call result. Running calls pulse their status dot; the accordion never auto-expands mid-stream.
+- Each surface retains its own accent — Hermes keeps its mercury gradient, Pi its whimsy, CLI agents their per-runtime brand colours.
+- Fixed a bug where the Mac transcript path used `.toolResult` IDs when computing the in-flight call for streaming pulse, causing live tool calls never to pulse correctly.
+- Grok's CLI accent updated from `#111111` (invisible in dark mode) to `#E0E0E0` (light warm gray — Grok monochrome brand).
+- 31 pure-logic unit tests added in `UnifiedToolCallAccordionTests` covering state classification, icon routing, expansion logic, accessibility hint selection, and streaming-pulse correctness.
+
+
+- Added a Settings -> Agents -> CLIs migration card that scans `~/.cli-proxy-api`, imports supported VibeProxy API-key secrets into OpenBurnBar provider slots, and rewrites detected Claude Code, Codex, OpenCode, Forge, Droid/Factory, and Grok Build configs to OpenBurnBar's local gateway.
+- Routed-client wiring now has a VibeProxy migration mode that strips VibeProxy-owned local `8317` provider entries while preserving unrelated user profiles/settings and writing the normal OpenBurnBar backup files.
+
+### Added — Local Ollama auto-discovery, advertising, and routing
+
+- Local Ollama models (`ollama pull`) now auto-list, catalogue, and advertise themselves: a new credential-less `ollama-local` provider (`http://localhost:11434`, `local: true`) discovers installed models live from Ollama's canonical `GET /api/tags` endpoint and advertises them as route-eligible through the gateway with zero configuration — local providers auto-enable and need no API key. `:cloud` models are left to the dedicated Ollama Cloud provider.
+- Advertised local models route credential-free straight to `localhost:11434` through the gateway `/v1/chat/completions`, resolved as free, zero-priced passthrough models by the provider router. A local provider claims only model names no non-local catalog vendor owns, so it never shadows real providers (e.g. an unconfigured `gpt-5.5` fails cleanly instead of routing to localhost).
+- The chat model picker groups discovered local models under the existing Ollama family (advertised `provider: "ollama-local"`); when the local server is down, nothing is advertised and a "start `ollama serve`" status is surfaced instead of a silent 404.
+- Added a shared `CLIRuntimeModelCatalog.parseOllamaTags` parser (with `ollamaLocalCatalog`/`ollamaCloudCatalog` sources) that separates locally-pulled models from `:cloud`/`-cloud` Ollama Cloud models served by the local daemon.
+
+### Added — BurnBar Cloud Hermes Gateway platform
+
+- Added a BurnBar Cloud Hermes Gateway HTTP surface with device-code linking, scoped bearer grants, destination discovery, event polling/SSE, message delivery, typing state, and signed attachment upload initiation.
+- Added Hermes Gateway management callables for approving, listing, revoking, and enqueueing BurnBar-originated gateway events.
+- Added Firestore rules, the `/hermes/connect` web approval flow, Firebase Hosting routing, tests, docs, and a contribution-ready upstream Hermes platform plugin under `tools/hermes-platform-burnbar/`.
+
 ### Added — Touchless live model discovery and routed-client sync
 
 - Codex and Grok model pickers now use the paired Mac's live CLI catalogs (`codex debug models`, `grok models`) when available, and Grok also merges `~/.grok/models_cache.json` so cached model releases show up even when the command output is sparse.

@@ -3,7 +3,7 @@ import XCTest
 import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
-@testable import AgentLens
+@testable import OpenBurnBar
 
 final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     private let phoneSigner = ComputerUsePhoneControlSigner()
@@ -14,7 +14,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
 
         var intent = HermesRealtimeRelayInputIntent(
-            kind: .click,
+            kind: .tap,
             displayId: nil,
             normalizedX: 0.5,
             normalizedY: 0.5,
@@ -64,7 +64,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         validator.revokePeer(nodeId: "peer-1")
 
         var intent = HermesRealtimeRelayInputIntent(
-            kind: .click,
+            kind: .tap,
             displayId: nil,
             normalizedX: 0.5,
             normalizedY: 0.5,

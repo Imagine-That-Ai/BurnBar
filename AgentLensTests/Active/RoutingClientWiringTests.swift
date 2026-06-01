@@ -246,6 +246,40 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(makeWiring().isWired(target: .codex))
     }
 
+    func test_migrateFromVibeProxy_codexReplacesVibeProxyBlocksAndKeepsUserProfiles() throws {
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        [profiles.work]
+        model = "gpt-5.4"
+
+        [model_providers.factory-vibeproxy]
+        base_url = "http://localhost:8317/v1"
+        wire_api = "responses"
+
+        [profiles.vibeproxy]
+        model_provider = "factory-vibeproxy"
+        model = "claude-sonnet"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        _ = try makeWiring().migrateFromVibeProxy(
+            target: .codex,
+            gateway: exampleGateway(token: "tok"),
+            advertisedModels: liveGatewayModels()
+        )
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("[profiles.work]"))
+        XCTAssertTrue(text.contains("model = \"gpt-5.4\""))
+        XCTAssertFalse(text.contains("factory-vibeproxy"))
+        XCTAssertFalse(text.contains("[profiles.vibeproxy]"))
+        XCTAssertTrue(text.contains("[model_providers.openburnbar]"))
+        XCTAssertTrue(text.contains("[profiles.openburnbar]"))
+    }
+
     func test_unwireCodex_stripsBlock_keepsUserContent() throws {
         let url = tempHome.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(
@@ -346,6 +380,37 @@ final class RoutingClientWiringTests: XCTestCase {
         """.write(to: url, atomically: true, encoding: .utf8)
 
         XCTAssertTrue(makeWiring().isWired(target: .forge))
+    }
+
+    func test_migrateFromVibeProxy_forgeReplacesProviderAndSessionPointer() throws {
+        let url = tempHome.appendingPathComponent("forge/.forge.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        [session]
+        provider_id = "vibeproxy"
+
+        [[providers]]
+        id = "vibeproxy"
+        api_key_var = "VIBEPROXY_API_KEY"
+        url = "http://127.0.0.1:8317/v1/chat/completions"
+        models = "http://127.0.0.1:8317/v1/models"
+        response_type = "OpenAI"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        _ = try makeWiring().migrateFromVibeProxy(
+            target: .forge,
+            gateway: exampleGateway(token: "tok")
+        )
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains(#"provider_id = "openburnbar""#))
+        XCTAssertFalse(text.contains(#"id = "vibeproxy""#))
+        XCTAssertFalse(text.contains("VIBEPROXY_API_KEY"))
+        XCTAssertTrue(text.contains(#"id = "openburnbar""#))
+        XCTAssertTrue(text.contains("OPENBURNBAR_GATEWAY_TOKEN"))
     }
 
     // MARK: - Grok Build (~/.grok/config.toml)

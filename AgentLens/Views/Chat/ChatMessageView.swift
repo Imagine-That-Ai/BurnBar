@@ -223,111 +223,82 @@ struct ChatMessageView: View {
 
     // MARK: - Tool Group Strip
 
-    /// Horizontally scrollable strip of tool cards, most recent on the left.
+    /// One accordion summarising this group's tool calls. Pairs each
+    /// `.toolUse` piece with the `.toolResult` that follows it so the
+    /// expanded rows can show the result alongside the invocation.
     @ViewBuilder
     private func toolGroupStrip(_ pieces: [ChatTranscriptPiece]) -> some View {
-        let reversedPieces = Array(pieces.reversed())
-        let lastToolID = transcript.last(where: { $0.kind == .toolUse || $0.kind == .toolResult })?.id
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                if isHermes {
-                    ForEach(reversedPieces) { piece in
-                        HermesToolCard(
-                            toolName: piece.value,
-                            detail: piece.detail,
-                            isRunning: isStreaming && piece.id == lastToolID
-                        )
-                    }
-                } else {
-                    ForEach(reversedPieces) { piece in
-                        toolUseSubBubble(piece)
-                    }
-                }
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-        .background {
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surface.opacity(0.25))
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(toolGroupStripBorder, lineWidth: 0.5)
+        UnifiedToolCallAccordion(
+            calls: unifiedToolCalls(from: pieces),
+            accent: isHermes ? .hermes : .macAssistant
         )
     }
 
-    private var toolGroupStripBorder: AnyShapeStyle {
-        if isHermes {
-            return AnyShapeStyle(DesignSystem.Colors.mercuryGradient.opacity(0.3))
-        } else {
-            return AnyShapeStyle(LinearGradient(
-                colors: [DesignSystem.Colors.coral.opacity(0.2), DesignSystem.Colors.purple.opacity(0.15)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
+    /// Folds a transcript tool group into the shared display model, pairing a
+    /// `.toolUse` with its following `.toolResult`. The final tool of a live
+    /// turn pulses via `isRunning`; orphaned results are silently dropped.
+    ///
+    /// - Note: `HermesPopoverBubble.unifiedToolCalls(from:)` in
+    ///   `HermesPopoverChatView.swift` mirrors this algorithm exactly. Keep
+    ///   both in sync — `ChatTranscriptPiece` lives in AgentLens (not Core)
+    ///   so the logic cannot be shared via `OpenBurnBarCore`.
+    private func unifiedToolCalls(from pieces: [ChatTranscriptPiece]) -> [UnifiedToolCallDisplay] {
+        // Track the last *unpaired* toolUse — that's the call still in flight
+        // during a live stream. Using toolResult would fire isRunning on the
+        // closing piece, which has already landed by definition.
+        let lastUnpairedToolUseID: String? = {
+            var id: String? = nil
+            var i = 0
+            while i < pieces.count {
+                if pieces[i].kind == .toolUse {
+                    // Paired if the very next piece is its result.
+                    let isPaired = (i + 1 < pieces.count && pieces[i + 1].kind == .toolResult)
+                    id = pieces[i].id  // always track
+                    if isPaired { i += 1 } // skip the result so it's consumed
+                }
+                i += 1
+            }
+            return id
+        }()
+
+        var calls: [UnifiedToolCallDisplay] = []
+        var index = 0
+        while index < pieces.count {
+            let piece = pieces[index]
+            switch piece.kind {
+            case .toolUse:
+                var resultText: String?
+                if index + 1 < pieces.count, pieces[index + 1].kind == .toolResult {
+                    let resultPiece = pieces[index + 1]
+                    resultText = (resultPiece.detail?.isEmpty == false) ? resultPiece.detail : resultPiece.value
+                    index += 1  // consume the paired result
+                }
+                calls.append(UnifiedToolCallDisplay(
+                    id: piece.id,
+                    name: piece.value,
+                    detail: piece.detail,
+                    result: resultText,
+                    isRunning: isStreaming && piece.id == lastUnpairedToolUseID
+                ))
+            case .toolResult:
+                // An unpaired result that survived after the pairing loop above
+                // means the transcript ordering is unexpected (result without a
+                // preceding toolUse in this group). Drop it silently to avoid
+                // a ghost "result" row — the information is not lost because the
+                // Mac transcript always emits toolUse before toolResult.
+                break
+            case .text:
+                break
+            }
+            index += 1
         }
+        return calls
     }
 
     // MARK: - Transcript Grouping
 
     private var groupedTranscript: [TranscriptGroup] {
         TranscriptGroup.group(transcript)
-    }
-
-    @ViewBuilder
-    private func toolUseSubBubble(_ piece: ChatTranscriptPiece) -> some View {
-        let shape = ChatBubbleStyle.toolShape()
-        VStack(alignment: .leading, spacing: 4) {
-            Text(piece.value)
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignSystem.Colors.primaryGradient)
-
-            if let detail = piece.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(DesignSystem.Typography.monoTiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .lineLimit(5)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: 280, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background {
-            ZStack {
-                shape
-                    .fill(.ultraThinMaterial)
-                shape
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                DesignSystem.Colors.coral.opacity(0.10),
-                                DesignSystem.Colors.purple.opacity(0.06),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-        }
-        .overlay(
-            shape
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            DesignSystem.Colors.coral.opacity(0.85),
-                            DesignSystem.Colors.purple.opacity(0.75)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: DesignSystem.Colors.purple.opacity(0.12), radius: 6, y: 2)
     }
 
     @ViewBuilder

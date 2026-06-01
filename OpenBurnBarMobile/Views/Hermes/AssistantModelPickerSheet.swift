@@ -600,6 +600,8 @@ struct AssistantModelPickerSheet: View {
              .cursorAgentProfile,
              .codexModelCatalog,
              .grokModelCatalog,
+             .ollamaLocalCatalog,
+             .ollamaCloudCatalog,
              .cliProfile:
             return MobileTheme.Colors.textSecondary
         case nil:

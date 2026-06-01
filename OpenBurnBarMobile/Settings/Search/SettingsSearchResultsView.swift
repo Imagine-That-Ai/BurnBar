@@ -44,12 +44,9 @@ struct SettingsSearchResultsView: View {
                 }
             } header: {
                 Text("\(results.count) result\(results.count == 1 ? "" : "s")")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
     }
 
     @ViewBuilder
@@ -62,22 +59,22 @@ struct SettingsSearchResultsView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .font(.body)
+                    .foregroundStyle(.primary)
                 if let subtitle = item.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
                 Text(breadcrumb(for: item))
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Spacer(minLength: MobileTheme.Spacing.sm)
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
         .padding(.vertical, MobileTheme.Spacing.xs)
@@ -87,15 +84,15 @@ struct SettingsSearchResultsView: View {
         VStack(spacing: MobileTheme.Spacing.md) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 36, weight: .light))
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .foregroundStyle(.secondary)
 
             VStack(spacing: MobileTheme.Spacing.xs) {
                 Text("No settings match \u{201C}\(router.query)\u{201D}")
-                    .font(MobileTheme.Typography.headline)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
                 Text("Try a broader term, or browse the list.")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
             Button("Browse all") {
@@ -117,6 +114,7 @@ struct SettingsSearchResultsView: View {
     private func pageDisplayName(_ route: SettingsPageRoute) -> String {
         switch route {
         case .hubRoot: return ""
+        case .account: return "Account"
         case .cloud: return "Cloud"
         case .providerConnections: return "Providers"
         case .hermes: return "Hermes"

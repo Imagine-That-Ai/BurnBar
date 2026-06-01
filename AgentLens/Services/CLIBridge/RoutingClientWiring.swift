@@ -329,6 +329,45 @@ struct RoutingClientWiring {
         }
     }
 
+    @discardableResult
+    func migrateFromVibeProxy(
+        target: RoutingClientWiringTarget,
+        gateway: RoutingClientGateway,
+        advertisedModels: [RoutingClientAdvertisedModel] = []
+    ) throws -> RoutingClientWiringChange {
+        try assertGatewayConfigured(gateway)
+        switch target {
+        case .claudeCode:
+            return try wireClaudeCode(gateway: gateway, migrateExistingVibeProxy: true)
+        case .codex:
+            return try wireCodex(
+                gateway: gateway,
+                advertisedModels: advertisedModels,
+                migrateExistingVibeProxy: true
+            )
+        case .opencode:
+            return try wireOpenCode(
+                gateway: gateway,
+                advertisedModels: advertisedModels,
+                migrateExistingVibeProxy: true
+            )
+        case .forge:
+            return try wireForge(gateway: gateway, migrateExistingVibeProxy: true)
+        case .droid:
+            return try wireDroid(gateway: gateway, advertisedModels: advertisedModels)
+        case .grok:
+            return try wireGrok(gateway: gateway, migrateExistingVibeProxy: true)
+        case .antigravity:
+            throw RoutingClientWiringError.gatewayMisconfigured(
+                detail: "Antigravity uses profile-scoped local login state. Reconnect it in OpenBurnBar after migration."
+            )
+        case .cursorAgent:
+            throw RoutingClientWiringError.gatewayMisconfigured(
+                detail: "Cursor Agent does not expose a file-based OpenAI-compatible routing config for OpenBurnBar to rewrite yet."
+            )
+        }
+    }
+
     func unwire(target: RoutingClientWiringTarget) throws {
         switch target {
         case .claudeCode:
@@ -825,11 +864,17 @@ struct RoutingClientWiring {
 
     // MARK: - Claude Code (~/.claude/settings.json)
 
-    private func wireClaudeCode(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+    private func wireClaudeCode(
+        gateway: RoutingClientGateway,
+        migrateExistingVibeProxy: Bool = false
+    ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .claudeCode)
         var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
 
         var env = (root["env"] as? [String: Any]) ?? [:]
+        if migrateExistingVibeProxy {
+            removeVibeProxyEnvironmentKeys(from: &env)
+        }
         env["ANTHROPIC_BASE_URL"] = gateway.baseURL
         env["ANTHROPIC_AUTH_TOKEN"] = gateway.effectiveClientToken
         // Used by `isWired(...)` for round-trip detection. Never read by
@@ -870,11 +915,18 @@ struct RoutingClientWiring {
 
     private func wireCodex(
         gateway: RoutingClientGateway,
-        advertisedModels: [RoutingClientAdvertisedModel]
+        advertisedModels: [RoutingClientAdvertisedModel],
+        migrateExistingVibeProxy: Bool = false
     ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .codex)
         let existing = readText(at: url) ?? ""
-        let stripped = stripSentinelBlock(in: existing)
+        var stripped = stripSentinelBlock(in: existing)
+        if migrateExistingVibeProxy {
+            stripped = stripVibeProxyTOMLSections(
+                in: stripped,
+                sectionPrefixes: ["model_providers.", "profiles."]
+            )
+        }
         let block = codexTOMLBlock(gateway: gateway, advertisedModels: advertisedModels)
         let separator = stripped.isEmpty || stripped.hasSuffix("\n") ? "" : "\n"
         let next = stripped + separator + block + "\n"
@@ -908,10 +960,16 @@ struct RoutingClientWiring {
 
     // MARK: - Grok Build (~/.grok/config.toml)
 
-    private func wireGrok(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+    private func wireGrok(
+        gateway: RoutingClientGateway,
+        migrateExistingVibeProxy: Bool = false
+    ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .grok)
         let existing = readText(at: url) ?? ""
-        let stripped = stripSentinelBlock(in: existing)
+        var stripped = stripSentinelBlock(in: existing)
+        if migrateExistingVibeProxy {
+            stripped = stripVibeProxyTOMLSections(in: stripped, sectionPrefixes: ["model."])
+        }
         let block = grokTOMLBlock(gateway: gateway)
         let separator = stripped.isEmpty || stripped.hasSuffix("\n") ? "" : "\n"
         let next = stripped + separator + block + "\n"
@@ -998,11 +1056,15 @@ struct RoutingClientWiring {
 
     private func wireOpenCode(
         gateway: RoutingClientGateway,
-        advertisedModels: [RoutingClientAdvertisedModel]
+        advertisedModels: [RoutingClientAdvertisedModel],
+        migrateExistingVibeProxy: Bool = false
     ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .opencode)
         var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
         var providers = (root["provider"] as? [String: Any]) ?? [:]
+        if migrateExistingVibeProxy {
+            removeVibeProxyOpenCodeProviders(from: &providers)
+        }
         let liveModels = try gatewayServedModelsOrThrow(advertisedModels)
         providers["openburnbar"] = [
             "npm": "@ai-sdk/openai-compatible",
@@ -1049,10 +1111,17 @@ struct RoutingClientWiring {
 
     // MARK: - Forge (~/forge/.forge.toml)
 
-    private func wireForge(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+    private func wireForge(
+        gateway: RoutingClientGateway,
+        migrateExistingVibeProxy: Bool = false
+    ) throws -> RoutingClientWiringChange {
         let url = configURL(for: .forge)
         let existing = readText(at: url) ?? ""
-        let stripped = stripSentinelBlock(in: existing)
+        var stripped = stripSentinelBlock(in: existing)
+        if migrateExistingVibeProxy {
+            stripped = stripVibeProxyArrayTOMLBlocks(in: stripped, arrayHeader: "[[providers]]")
+            stripped = replaceVibeProxyForgeSessionProvider(in: stripped)
+        }
         let block = forgeTOMLBlock(gateway: gateway)
         let separator = stripped.isEmpty || stripped.hasSuffix("\n") ? "" : "\n"
         let next = stripped + separator + block + "\n"
@@ -1576,6 +1645,154 @@ struct RoutingClientWiring {
             stripped.removeLast()
         }
         return stripped
+    }
+
+    private func removeVibeProxyEnvironmentKeys(from env: inout [String: Any]) {
+        for key in Array(env.keys) {
+            let normalizedKey = key.uppercased()
+            let value = (env[key] as? String)?.lowercased() ?? ""
+            if normalizedKey.contains("VIBEPROXY")
+                || normalizedKey.contains("CLI_PROXY")
+                || value.contains("vibeproxy")
+                || value.contains("cli-proxy-api") {
+                env.removeValue(forKey: key)
+            }
+        }
+    }
+
+    private func removeVibeProxyOpenCodeProviders(from providers: inout [String: Any]) {
+        for key in Array(providers.keys) {
+            guard isVibeProxyOpenCodeProvider(id: key, value: providers[key]) else { continue }
+            providers.removeValue(forKey: key)
+        }
+    }
+
+    private func isVibeProxyOpenCodeProvider(id: String, value: Any?) -> Bool {
+        let lowercasedID = id.lowercased()
+        if lowercasedID.contains("vibeproxy") || lowercasedID.contains("cli-proxy") {
+            return true
+        }
+        guard let dictionary = value as? [String: Any] else { return false }
+        let lowercased = lowercasedJSONText(dictionary)
+        return lowercased.contains("vibeproxy")
+            || lowercased.contains("cli-proxy-api")
+            || lowercased.contains("http://localhost:8317")
+            || lowercased.contains("http://127.0.0.1:8317")
+    }
+
+    private func stripVibeProxyTOMLSections(
+        in source: String,
+        sectionPrefixes: [String]
+    ) -> String {
+        var output: [String] = []
+        var block: [String] = []
+
+        func flush() {
+            guard !block.isEmpty else { return }
+            if !isVibeProxyTOMLSection(block, sectionPrefixes: sectionPrefixes) {
+                output.append(contentsOf: block)
+            }
+            block.removeAll(keepingCapacity: true)
+        }
+
+        for line in source.components(separatedBy: "\n") {
+            if isTOMLSectionHeader(line) {
+                flush()
+            }
+            block.append(line)
+        }
+        flush()
+
+        return output.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func stripVibeProxyArrayTOMLBlocks(
+        in source: String,
+        arrayHeader: String
+    ) -> String {
+        var output: [String] = []
+        var block: [String] = []
+        let normalizedArrayHeader = arrayHeader.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        func flush() {
+            guard !block.isEmpty else { return }
+            let text = block.joined(separator: "\n").lowercased()
+            let shouldRemove = block.first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) == normalizedArrayHeader
+                && (text.contains("vibeproxy")
+                    || text.contains("cli-proxy-api")
+                    || text.contains("http://localhost:8317")
+                    || text.contains("http://127.0.0.1:8317"))
+            if !shouldRemove {
+                output.append(contentsOf: block)
+            }
+            block.removeAll(keepingCapacity: true)
+        }
+
+        for line in source.components(separatedBy: "\n") {
+            if line.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedArrayHeader {
+                flush()
+            }
+            block.append(line)
+        }
+        flush()
+
+        return output.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func replaceVibeProxyForgeSessionProvider(in source: String) -> String {
+        source.replacingOccurrences(
+            of: #"provider_id\s*=\s*"[^"]*vibeproxy[^"]*""#,
+            with: #"provider_id = "openburnbar""#,
+            options: [.regularExpression, .caseInsensitive]
+        )
+    }
+
+    private func isVibeProxyTOMLSection(
+        _ block: [String],
+        sectionPrefixes: [String]
+    ) -> Bool {
+        guard let header = block.first else { return false }
+        let normalizedHeader = tomlSectionName(header)
+        guard sectionPrefixes.contains(where: { normalizedHeader.hasPrefix($0) }) else {
+            return false
+        }
+
+        let text = block.joined(separator: "\n").lowercased()
+        if text.contains("vibeproxy") || text.contains("cli-proxy-api") {
+            return true
+        }
+        if normalizedHeader.hasPrefix("model_providers.")
+            || normalizedHeader.hasPrefix("model.") {
+            return text.contains("base_url")
+                && (text.contains("http://localhost:8317")
+                    || text.contains("http://127.0.0.1:8317"))
+        }
+        return false
+    }
+
+    private func isTOMLSectionHeader(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("[")
+            && trimmed.hasSuffix("]")
+            && !trimmed.hasPrefix("[[")
+    }
+
+    private func tomlSectionName(_ line: String) -> String {
+        line.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            .lowercased()
+    }
+
+    private func lowercasedJSONText(_ value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return text.lowercased()
     }
 
     private func ensureParentDirectory(of url: URL) throws {

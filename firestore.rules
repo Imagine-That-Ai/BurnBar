@@ -181,13 +181,20 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_pro;
     }
 
+    function burnBarProMaxEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_pro_max;
+    }
+
     function activePremiumEntitlementData(entitlement) {
       return entitlement.active == true
         && entitlement.productID in [
           "com.openburnbar.hostedQuotaSync.cloud.monthly",
           "com.openburnbar.hostedQuotaSync.monthly",
           "com.openburnbar.pro.monthly",
-          "com.openburnbar.pro.annual"
+          "com.openburnbar.pro.annual",
+          "com.openburnbar.proMax.bundle.monthly",
+          "com.openburnbar.proMax.v2.monthly",
+          "com.openburnbar.proMax.annual"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -201,6 +208,10 @@ service cloud.firestore {
         || (
           exists(burnBarProEntitlementPath(userId))
           && activePremiumEntitlementData(get(burnBarProEntitlementPath(userId)).data)
+        )
+        || (
+          exists(burnBarProMaxEntitlementPath(userId))
+          && activePremiumEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -243,10 +254,6 @@ service cloud.firestore {
     // `plans/2026-05-16-computer-use-master-plan.md` § E.1.
     function hostedComputerUseEntitlementPath(userId) {
       return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_computer_use_sync;
-    }
-
-    function burnBarProMaxEntitlementPath(userId) {
-      return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_pro_max;
     }
 
     function activeComputerUseEntitlementData(entitlement) {
@@ -553,6 +560,29 @@ service cloud.firestore {
             && request.resource.data.ciphertext is string
           )
         );
+    }
+
+    function hermesGatewayDestinationWrite(userId, destinationId) {
+      return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "displayName",
+          "kind",
+          "status",
+          "isDefault",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id.size() <= 160
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.kind in ["home", "chat", "thread"]
+        && request.resource.data.status in ["active", "archived"]
+        && request.resource.data.isDefault is bool
+        && request.resource.data.schemaVersion is int;
     }
 
     function piRelayConnectionWrite(userId, connectionId) {
@@ -1586,6 +1616,42 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /users/{userId}/hermes_gateway_clients/{clientId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_gateway_destinations/{destinationId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if hermesGatewayDestinationWrite(userId, destinationId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/hermes_gateway_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_gateway_messages/{messageId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_gateway_typing/{clientId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_gateway_attachments/{attachmentId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_gateway_state/{stateId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
     // Iroh transport pairing public keys. The Mac writes one singleton
     // document per host role (today: `host`) containing the base64-encoded
     // 32-byte Ed25519 public half of the pairing key. iOS clients read this
@@ -2556,6 +2622,15 @@ service cloud.firestore {
 
     // --- CLI Link Sessions (Deny All - Server Only) ---
     match /cli_link_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // --- Hermes Gateway root indexes (Deny All - Server Only) ---
+    match /hermes_gateway_device_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /hermes_gateway_token_index/{tokenHash} {
       allow read, write: if false;
     }
   }

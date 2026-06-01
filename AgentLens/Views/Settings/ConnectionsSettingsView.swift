@@ -283,6 +283,23 @@ struct ConnectionsSettingsView: View {
                 Spacer()
             }
 
+            VibeProxyMigrationCard(
+                snapshot: viewModel.vibeProxyMigrationSnapshot,
+                state: viewModel.vibeProxyMigrationState,
+                onScan: {
+                    viewModel.scanVibeProxyMigration()
+                },
+                onMigrate: {
+                    Task {
+                        await viewModel.migrateFromVibeProxy(
+                            settings: settingsManager,
+                            daemonManager: daemonManager,
+                            restartGateway: restartLocalGateway
+                        )
+                    }
+                }
+            )
+
             ProxyModelCatalogPanel(
                 models: viewModel.proxyModels,
                 state: viewModel.proxyModelCatalogState,
@@ -1862,6 +1879,150 @@ private struct ConnectionQuotaWindowPills: View {
                 .overlay(Capsule().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
             }
         }
+    }
+}
+
+// MARK: - VibeProxy Migration
+
+private struct VibeProxyMigrationCard: View {
+    let snapshot: VibeProxyMigrationSnapshot?
+    let state: VibeProxyMigrationState
+    let onScan: () -> Void
+    let onMigrate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.blaze)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Move from VibeProxy")
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(summaryText)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                actionButtons
+            }
+
+            if let snapshot, snapshot.foundAnything {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    metricChip(
+                        "\(snapshot.importableRecords.count)",
+                        label: "secrets"
+                    )
+                    metricChip(
+                        "\(snapshot.detectedTargets.count)",
+                        label: "apps"
+                    )
+                    if !snapshot.reconnectRecords.isEmpty {
+                        metricChip(
+                            "\(snapshot.reconnectRecords.count)",
+                            label: "reconnect"
+                        )
+                    }
+                    if !snapshot.disabledRecords.isEmpty {
+                        metricChip(
+                            "\(snapshot.disabledRecords.count)",
+                            label: "disabled"
+                        )
+                    }
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.34))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+    }
+
+    private var summaryText: String {
+        switch state {
+        case .idle:
+            return "Import VibeProxy keys and switch detected CLI configs to OpenBurnBar's local gateway."
+        case .scanning:
+            return "Scanning ~/.cli-proxy-api and CLI config files."
+        case .ready:
+            guard let snapshot else { return "Scan complete." }
+            if !snapshot.foundAnything {
+                return "No VibeProxy credentials or app configs were found."
+            }
+            if !snapshot.importableRecords.isEmpty && !snapshot.detectedTargets.isEmpty {
+                return "Ready to import supported secrets and switch detected apps."
+            }
+            if !snapshot.importableRecords.isEmpty {
+                return "Ready to import supported API keys. No VibeProxy app configs need rewriting."
+            }
+            if !snapshot.detectedTargets.isEmpty {
+                return "Detected app configs can be switched. Subscription logins still need OpenBurnBar reconnect."
+            }
+            return "Only local subscription logins were found. Reconnect them in OpenBurnBar."
+        case .importing:
+            return "Importing credentials and rewriting detected app configs."
+        case .completed(let message):
+            return message
+        case .error(let message):
+            return message
+        }
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Button(action: onScan) {
+                Label("Scan", systemImage: "magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(state.isBusy)
+
+            Button(action: onMigrate) {
+                if state.isBusy {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Moving...")
+                    }
+                } else {
+                    Label("Import & Switch", systemImage: "arrow.right.circle.fill")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(state.isBusy || snapshot?.foundAnything == false)
+        }
+    }
+
+    private func metricChip(_ value: String, label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(value)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.68))
+        )
+        .overlay(
+            Capsule()
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
     }
 }
 

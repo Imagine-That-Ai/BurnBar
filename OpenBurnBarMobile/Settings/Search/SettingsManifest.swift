@@ -135,7 +135,7 @@ enum SettingsManifest {
         SettingsItem(
             id: "hub.cloud",
             section: .cloud,
-            pageRoute: .cloud,
+            pageRoute: .account,
             anchorID: SettingsAnchor.cloudRow,
             title: "OpenBurnBar Cloud",
             subtitle: "Quota, backups, Hermes — anywhere",
@@ -183,7 +183,7 @@ enum SettingsManifest {
         SettingsItem(
             id: "hub.account",
             section: .account,
-            pageRoute: .hubRoot,
+            pageRoute: .account,
             anchorID: SettingsAnchor.accountRow,
             title: "Signed in",
             subtitle: "Identity for OpenBurnBar Cloud",
@@ -192,7 +192,7 @@ enum SettingsManifest {
         SettingsItem(
             id: "hub.account.delete",
             section: .account,
-            pageRoute: .hubRoot,
+            pageRoute: .account,
             anchorID: SettingsAnchor.deleteAccount,
             title: "Delete account",
             subtitle: "Permanently remove your OpenBurnBar cloud data",
@@ -253,6 +253,16 @@ enum SettingsManifest {
             subtitle: "Connected Hermes endpoints and tokens",
             keywords: ["connection", "endpoint", "url", "token", "pi", "openclaw", "codex", "claude"],
             logoProviders: [.hermes, .piAgent, .openClaw, .claudeCode, .codex]
+        ),
+        SettingsItem(
+            id: "hermes.cloudGateway",
+            section: .hermesAI,
+            pageRoute: .hermes,
+            anchorID: SettingsAnchor.hermesCloudGateway,
+            title: "BurnBar Cloud Gateway",
+            subtitle: "Approve and test Hermes Gateway clients",
+            keywords: ["burnbar", "cloud", "gateway", "pairing", "device code", "delivery", "message"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.models",
@@ -415,6 +425,7 @@ enum SettingsManifest {
         SettingsAnchor.providerCLIAuth,
         SettingsAnchor.hermesRow,
         SettingsAnchor.hermesConnections,
+        SettingsAnchor.hermesCloudGateway,
         SettingsAnchor.hermesModels,
         SettingsAnchor.hermesDisplayTPS,
         SettingsAnchor.hermesPretext,

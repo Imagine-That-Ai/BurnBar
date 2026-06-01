@@ -1,7 +1,7 @@
 {
-  "loc": 26259,
+  "loc": 27237,
   "exportedInterfaces": 327,
-  "fileCount": 96,
-  "generatedAt": "2026-05-31T19:00:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; includes GTM ops, resilience, Sentry, Cloud Pro entitlement hardening, and formatting ratchet."
+  "fileCount": 98,
+  "generatedAt": "2026-06-01T10:22:20.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; includes GTM ops, resilience, Sentry, Cloud Pro entitlement hardening, Hermes Gateway callables, and formatting ratchet."
 }

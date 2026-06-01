@@ -25,44 +25,39 @@ struct iPadDevicesSettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
-                if let warning = appCheckMonitor.lastWarningMessage {
-                    settingsCard {
-                        HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
-                            Label(warning, systemImage: "exclamationmark.triangle.fill")
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(MobileTheme.Colors.warning)
-                            Spacer(minLength: 0)
-                            Button("Dismiss") { appCheckMonitor.clearWarning() }
-                                .font(MobileTheme.Typography.caption)
-                        }
+        Form {
+            if let warning = appCheckMonitor.lastWarningMessage {
+                Section {
+                    HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.warning)
+                        Spacer(minLength: 0)
+                        Button("Dismiss") { appCheckMonitor.clearWarning() }
+                            .font(.caption)
                     }
-                }
-
-                if let error = store.lastError {
-                    settingsCard {
-                        Label(error.label, systemImage: "exclamationmark.triangle.fill")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.error)
-                    }
-                }
-
-                if hermesService != nil {
-                    hermesRelaySection
-                }
-                smartHubSection
-                thisDeviceSection
-                otherDevicesSection
-
-                if !store.staleDuplicates.isEmpty {
-                    duplicatesSection
                 }
             }
-            .padding(.horizontal, MobileTheme.Spacing.lg)
-            .padding(.vertical, MobileTheme.Spacing.lg)
+
+            if let error = store.lastError {
+                Section {
+                    Label(error.label, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.error)
+                }
+            }
+
+            if hermesService != nil {
+                hermesRelaySection
+            }
+            smartHubSection
+            thisDeviceSection
+            otherDevicesSection
+
+            if !store.staleDuplicates.isEmpty {
+                duplicatesSection
+            }
         }
-        .background(Color(.systemGroupedBackground))
         .navigationTitle("Devices & Sync")
         .accessibilityIdentifier("devicesSync.screen")
         .refreshable { await refreshAll() }
@@ -96,34 +91,18 @@ struct iPadDevicesSettingsView: View {
         footer: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+        Section {
+            content()
+        } header: {
             Text(title)
-                .font(MobileTheme.Typography.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .textCase(.uppercase)
-
-            settingsCard(content: content)
-
+        } footer: {
             if let footer {
                 Text(footer)
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, MobileTheme.Spacing.sm)
             }
         }
     }
 
-    @ViewBuilder
-    private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(MobileTheme.Spacing.md)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
+
 
     // MARK: - Refresh
 
@@ -150,10 +129,10 @@ struct iPadDevicesSettingsView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(current.displayName)
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                         Text(current.id.prefix(8))
-                            .font(MobileTheme.Typography.monoSmall)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                     trustBadge(for: current.trustState)
@@ -172,7 +151,7 @@ struct iPadDevicesSettingsView: View {
                 }
             } else {
                 Text("Loading device info…")
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -183,16 +162,16 @@ struct iPadDevicesSettingsView: View {
         settingsSection("Other Devices") {
             if store.otherDevices.isEmpty {
                 Text("No other devices connected.")
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(.secondary)
             } else {
                 ForEach(store.otherDevices, id: \.id) { device in
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(device.displayName)
-                                .font(MobileTheme.Typography.body)
+                                .font(.body)
                             Text(device.id.prefix(8))
-                                .font(MobileTheme.Typography.monoSmall)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
                         trustBadge(for: device.trustState)
@@ -216,7 +195,7 @@ struct iPadDevicesSettingsView: View {
         NavigationStack {
             Form {
                 TextField("Device Name", text: $newName)
-                    .font(MobileTheme.Typography.body)
+                    .font(.body)
             }
             .navigationTitle("Rename Device")
             .navigationBarTitleDisplayMode(.inline)
@@ -245,7 +224,7 @@ struct iPadDevicesSettingsView: View {
                 .fill(trustColor(for: state))
                 .frame(width: 8, height: 8)
             Text(state.rawValue.capitalized)
-                .font(MobileTheme.Typography.caption)
+                .font(.caption)
                 .foregroundStyle(trustColor(for: state))
         }
     }
@@ -280,7 +259,7 @@ struct iPadDevicesSettingsView: View {
                     }
                     Text(isReprobingHermes ? "Re-checking…" : "Re-check now")
                 }
-                .font(MobileTheme.Typography.body)
+                .font(.body)
                 .foregroundStyle(MobileTheme.hermesAureate)
             }
             .disabled(isReprobingHermes)
@@ -315,15 +294,15 @@ struct iPadDevicesSettingsView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(relay.displayName)
-                    .font(MobileTheme.Typography.body)
+                    .font(.body)
                 if let model = relay.advertisedModel {
                     Text(model)
-                        .font(MobileTheme.Typography.monoSmall)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
                 }
                 Text(relayLastSeenLabel(relay.lastSeenAt))
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -332,7 +311,7 @@ struct iPadDevicesSettingsView: View {
                     .fill(relayStatusColor(relay.status))
                     .frame(width: 8, height: 8)
                 Text(relayStatusLabel(relay.status))
-                    .font(MobileTheme.Typography.caption)
+                    .font(.caption)
                     .foregroundStyle(relayStatusColor(relay.status))
             }
         }
@@ -341,13 +320,13 @@ struct iPadDevicesSettingsView: View {
     private var relayMissingCard: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text("No relay published")
-                    .font(MobileTheme.Typography.body)
+                    .font(.body)
                 Text("Hermes will fall back to local-only mode")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -395,14 +374,14 @@ struct iPadDevicesSettingsView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(device.displayName)
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                         Text(device.id.prefix(8))
-                            .font(MobileTheme.Typography.monoSmall)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
                         if let seen = device.lastSeen {
                             Text("Last seen \(seen.formatted(.relative(presentation: .numeric)))")
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     Spacer()
@@ -411,14 +390,14 @@ struct iPadDevicesSettingsView: View {
             }
             if duplicates.count > preview.count {
                 Text("\(duplicates.count - preview.count) more stale copies will be removed by cleanup.")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Button(role: .destructive) {
                 showCleanupConfirmation = true
             } label: {
                 Label("Clean up \(duplicates.count) duplicates", systemImage: "sparkles")
-                    .font(MobileTheme.Typography.body)
+                    .font(.body)
             }
         }
     }
@@ -469,7 +448,7 @@ struct iPadDevicesSettingsView: View {
 
             if case .failure(let message) = smartHub.castState {
                 Text(message)
-                    .font(MobileTheme.Typography.caption)
+                    .font(.caption)
                     .foregroundStyle(MobileTheme.Colors.error)
             }
         }
@@ -490,13 +469,13 @@ struct iPadDevicesSettingsView: View {
             } else {
                 HStack(spacing: MobileTheme.Spacing.md) {
                     Image(systemName: "wand.and.stars")
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Need a Nest Hub?")
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                         Text("Run guided setup, or use the Pixel Clock controls above.")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -504,7 +483,7 @@ struct iPadDevicesSettingsView: View {
                 showSmartHubWizard = true
             } label: {
                 Label("Set up Smart Display", systemImage: "wand.and.stars")
-                    .font(MobileTheme.Typography.body.bold())
+                    .font(.body.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .background(MobileTheme.whimsy, in: Capsule())
@@ -520,7 +499,7 @@ struct iPadDevicesSettingsView: View {
             showSmartHubWizard = true
         } label: {
             Text("Re-run setup wizard")
-                .font(MobileTheme.Typography.caption)
+                .font(.caption)
                 .foregroundStyle(MobileTheme.whimsy)
         }
         .buttonStyle(.plain)
