@@ -330,6 +330,256 @@ data class FirestoreHermesRelayChunkDoc(
       },
     },
   },
+  "hermes-gateway": {
+    models: {
+      HermesGatewayModelOptionDoc: {
+        ts: `export interface HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}`,
+        swift: `public struct FirestoreHermesGatewayModelOptionDoc: Codable, Sendable, Equatable {
+    public var providerId: String
+    public var providerName: String
+    public var modelId: String
+    public var displayName: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayModelOptionDoc(
+    val providerId: String = "",
+    val providerName: String = "",
+    val modelId: String = "",
+    val displayName: String = "",
+)`,
+      },
+      HermesGatewayClientDoc: {
+        ts: `export interface HermesGatewayClientDoc {
+  id: string;
+  uid: string;
+  displayName: string;
+  status: string;
+  tokenHash: string;
+  tokenPreview: string;
+  scopes: string[];
+  homeDestinationId: string;
+  lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
+  revokedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var uid: String
+    public var displayName: String
+    public var status: String
+    public var tokenHash: String
+    public var tokenPreview: String
+    public var scopes: [String]
+    public var homeDestinationId: String
+    public var lastSeenAt: String?
+    public var runtimeModelId: String?
+    public var runtimeProviderId: String?
+    public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
+    public var runtimeUpdatedAt: String?
+    public var revokedAt: String?
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayClientDoc(
+    val id: String = "",
+    val uid: String = "",
+    val displayName: String = "",
+    val status: String = "",
+    val tokenHash: String = "",
+    val tokenPreview: String = "",
+    val scopes: List<String> = emptyList(),
+    val homeDestinationId: String = "",
+    val lastSeenAt: String? = null,
+    val runtimeModelId: String? = null,
+    val runtimeProviderId: String? = null,
+    val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
+    val runtimeUpdatedAt: String? = null,
+    val revokedAt: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      HermesGatewayDestinationDoc: {
+        ts: `export interface HermesGatewayDestinationDoc {
+  id: string;
+  displayName: string;
+  kind: string;
+  status: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreHermesGatewayDestinationDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var displayName: String
+    public var kind: String
+    public var status: String
+    public var isDefault: Bool
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayDestinationDoc(
+    val id: String = "",
+    val displayName: String = "",
+    val kind: String = "",
+    val status: String = "",
+    val isDefault: Boolean = false,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      HermesGatewayEventDoc: {
+        ts: `export interface HermesGatewayEventDoc {
+  id: string;
+  sequence: number;
+  kind: string;
+  destinationId: string;
+  threadId?: string;
+  senderId: string;
+  senderDisplayName?: string;
+  text: string;
+  modelId?: string;
+  attachmentIds: string[];
+  createdAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreHermesGatewayEventDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var sequence: Int
+    public var kind: String
+    public var destinationId: String
+    public var threadId: String?
+    public var senderId: String
+    public var senderDisplayName: String?
+    public var text: String
+    public var modelId: String?
+    public var attachmentIds: [String]
+    public var createdAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayEventDoc(
+    val id: String = "",
+    val sequence: Long = 0,
+    val kind: String = "",
+    val destinationId: String = "",
+    val threadId: String? = null,
+    val senderId: String = "",
+    val senderDisplayName: String? = null,
+    val text: String = "",
+    val modelId: String? = null,
+    val attachmentIds: List<String> = emptyList(),
+    val createdAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      HermesGatewayMessageDoc: {
+        ts: `export interface HermesGatewayMessageDoc {
+  id: string;
+  clientId: string;
+  kind: string;
+  destinationId: string;
+  threadId?: string;
+  replyToEventId?: string;
+  text?: string;
+  attachmentIds: string[];
+  createdAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreHermesGatewayMessageDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var clientId: String
+    public var kind: String
+    public var destinationId: String
+    public var threadId: String?
+    public var replyToEventId: String?
+    public var text: String?
+    public var attachmentIds: [String]
+    public var createdAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayMessageDoc(
+    val id: String = "",
+    val clientId: String = "",
+    val kind: String = "",
+    val destinationId: String = "",
+    val threadId: String? = null,
+    val replyToEventId: String? = null,
+    val text: String? = null,
+    val attachmentIds: List<String> = emptyList(),
+    val createdAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      HermesGatewayAttachmentManifestDoc: {
+        ts: `export interface HermesGatewayAttachmentManifestDoc {
+  id: string;
+  clientId: string;
+  destinationId?: string;
+  fileName: string;
+  contentType: string;
+  byteCount: number;
+  storagePath: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreHermesGatewayAttachmentManifestDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var clientId: String
+    public var destinationId: String?
+    public var fileName: String
+    public var contentType: String
+    public var byteCount: Int
+    public var storagePath: String
+    public var status: String
+    public var createdAt: String
+    public var expiresAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayAttachmentManifestDoc(
+    val id: String = "",
+    val clientId: String = "",
+    val destinationId: String? = null,
+    val fileName: String = "",
+    val contentType: String = "",
+    val byteCount: Long = 0,
+    val storagePath: String = "",
+    val status: String = "",
+    val createdAt: String = "",
+    val expiresAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+    },
+  },
   "iroh-pairing": {
     models: {
       IrohPairingDoc: {

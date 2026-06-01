@@ -1,0 +1,417 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Connect Hermes"
+  description="Approve a Hermes Gateway connection for your BurnBar Cloud account."
+  noindex
+>
+  <section class="hermes-connect">
+    <div class="hermes-connect__shell">
+      <div class="hermes-connect__heading">
+        <span class="eyebrow eyebrow--ember">Hermes Gateway</span>
+        <h1>Connect Hermes to BurnBar</h1>
+        <p>Approve the code from Hermes and BurnBar will mint a revocable gateway token.</p>
+      </div>
+
+      <div class="connect-panel" aria-live="polite">
+        <div id="state-checking" class="connect-state">
+          <div class="spinner" aria-hidden="true"></div>
+          <p>Checking account...</p>
+        </div>
+
+        <div id="state-signed-out" class="connect-state hidden">
+          <div class="status-mark" aria-hidden="true">BB</div>
+          <h2>Sign in to approve Hermes</h2>
+          <p>Use the same BurnBar account that has BurnBar Cloud or Cloud Pro active.</p>
+          <div class="button-stack">
+            <button id="btn-google" class="btn btn--ember" type="button">
+              Sign in with Google
+            </button>
+            <button id="btn-apple" class="btn btn--secondary" type="button">
+              Sign in with Apple
+            </button>
+          </div>
+        </div>
+
+        <div id="state-confirm" class="connect-state hidden">
+          <div class="account-row">
+            <img id="user-avatar" src="" alt="" class="avatar hidden" />
+            <span id="user-email" class="mono">Signed in</span>
+          </div>
+          <h2>Confirm the Hermes code</h2>
+          <p>Enter the 8-character code shown by Hermes.</p>
+          <label class="code-label" for="code-input">Pairing code</label>
+          <input
+            id="code-input"
+            class="code-input"
+            type="text"
+            placeholder="ABCD-2345"
+            maxlength="9"
+            autocomplete="one-time-code"
+            inputmode="text"
+          />
+          <button id="btn-confirm" class="btn btn--ember" type="button">Approve Hermes</button>
+          <button id="btn-signout" class="btn-text" type="button">Use a different account</button>
+        </div>
+
+        <div id="state-approving" class="connect-state hidden">
+          <div class="spinner" aria-hidden="true"></div>
+          <h2>Approving Hermes...</h2>
+          <p>BurnBar is creating a scoped gateway credential.</p>
+        </div>
+
+        <div id="state-success" class="connect-state hidden">
+          <div class="status-mark status-mark--success" aria-hidden="true">OK</div>
+          <h2>Hermes is connected</h2>
+          <p>Return to Hermes. This connection can be revoked from BurnBar at any time.</p>
+        </div>
+
+        <div id="state-error" class="connect-state hidden">
+          <div class="status-mark status-mark--error" aria-hidden="true">!</div>
+          <h2>Connection failed</h2>
+          <p id="error-message">The Hermes code could not be approved.</p>
+          <button id="btn-retry" class="btn btn--secondary" type="button">Try again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .hermes-connect {
+    min-height: min(780px, calc(100vh - 72px));
+    display: grid;
+    place-items: center;
+    padding: clamp(2rem, 8vw, 6rem) var(--gutter);
+  }
+
+  .hermes-connect__shell {
+    width: min(100%, 540px);
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .hermes-connect__heading {
+    display: grid;
+    gap: 0.75rem;
+    text-align: center;
+  }
+
+  .hermes-connect__heading h1 {
+    margin: 0;
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 7vw, 4rem);
+    line-height: 0.98;
+    letter-spacing: 0;
+  }
+
+  .hermes-connect__heading p,
+  .connect-state p {
+    margin: 0;
+    color: var(--text-base);
+    line-height: 1.5;
+  }
+
+  .connect-panel {
+    min-height: 386px;
+    display: grid;
+    align-items: center;
+    padding: clamp(1.25rem, 5vw, 2rem);
+    border: 1px solid var(--ink-line-bright);
+    border-radius: var(--r-sm);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.035));
+    box-shadow:
+      0 22px 70px rgba(0, 0, 0, 0.34),
+      0 0 34px rgba(250, 107, 6, 0.08);
+    backdrop-filter: blur(28px) saturate(150%);
+  }
+
+  .connect-state {
+    display: grid;
+    justify-items: center;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .connect-state.hidden {
+    display: none;
+  }
+
+  .connect-state h2 {
+    margin: 0;
+    color: var(--text-bright);
+    font-size: 1.35rem;
+    letter-spacing: 0;
+  }
+
+  .status-mark {
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(250, 107, 6, 0.55);
+    border-radius: 50%;
+    color: var(--core-amber);
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    background: rgba(250, 107, 6, 0.1);
+  }
+
+  .status-mark--success {
+    color: var(--status-exact);
+    border-color: rgba(60, 214, 192, 0.55);
+    background: rgba(60, 214, 192, 0.1);
+  }
+
+  .status-mark--error {
+    color: var(--core-red);
+    border-color: rgba(238, 24, 3, 0.55);
+    background: rgba(238, 24, 3, 0.1);
+  }
+
+  .button-stack {
+    width: min(100%, 320px);
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .account-row {
+    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.045);
+  }
+
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+
+  .avatar.hidden {
+    display: none;
+  }
+
+  .mono {
+    max-width: min(320px, 70vw);
+    overflow: hidden;
+    color: var(--text-base);
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .code-label {
+    color: var(--text-mute);
+    font-size: 0.8rem;
+  }
+
+  .code-input {
+    width: min(100%, 260px);
+    min-height: 56px;
+    border: 1px solid var(--ink-line-bright);
+    border-radius: var(--r-sm);
+    background: rgba(0, 0, 0, 0.32);
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .code-input:focus {
+    border-color: var(--core-amber);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(253, 196, 44, 0.14);
+  }
+
+  .btn {
+    min-height: 48px;
+    border: 0;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    font: 700 0.95rem var(--font-body);
+    letter-spacing: 0;
+  }
+
+  .btn--ember {
+    color: #130703;
+    background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
+  }
+
+  .btn--secondary {
+    color: var(--text-bright);
+    border: 1px solid var(--ink-line-bright);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  .btn-text {
+    border: 0;
+    color: var(--text-mute);
+    background: transparent;
+    cursor: pointer;
+    font: 600 0.88rem var(--font-body);
+    letter-spacing: 0;
+  }
+
+  .spinner {
+    width: 34px;
+    height: 34px;
+    border: 2px solid rgba(255, 255, 255, 0.16);
+    border-top-color: var(--core-amber);
+    border-radius: 50%;
+    animation: spin 0.85s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>
+
+<script>
+  import { appleProvider, auth, functions, googleProvider } from "../../lib/firebaseClient";
+  import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+  import type { AuthProvider, User } from "firebase/auth";
+  import { httpsCallable } from "firebase/functions";
+
+  const states = {
+    checking: document.getElementById("state-checking"),
+    signedOut: document.getElementById("state-signed-out"),
+    confirm: document.getElementById("state-confirm"),
+    approving: document.getElementById("state-approving"),
+    success: document.getElementById("state-success"),
+    error: document.getElementById("state-error")
+  };
+
+  const btnGoogle = document.getElementById("btn-google");
+  const btnApple = document.getElementById("btn-apple");
+  const btnConfirm = document.getElementById("btn-confirm");
+  const btnSignout = document.getElementById("btn-signout");
+  const btnRetry = document.getElementById("btn-retry");
+  const codeInput = document.getElementById("code-input") as HTMLInputElement | null;
+  const userEmail = document.getElementById("user-email");
+  const userAvatar = document.getElementById("user-avatar") as HTMLImageElement | null;
+  const errorMessage = document.getElementById("error-message");
+
+  let currentUser: User | null = null;
+
+  function showState(activeState: keyof typeof states) {
+    for (const [key, el] of Object.entries(states)) {
+      if (!el) continue;
+      el.classList.toggle("hidden", key !== activeState);
+    }
+  }
+
+  function setError(message: string) {
+    if (errorMessage) errorMessage.textContent = message;
+    showState("error");
+  }
+
+  function queryCode() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("code") || "";
+  }
+
+  function normalizeCode(raw: string) {
+    const value = raw
+      .replace(/[^A-Za-z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 8);
+    return value.length > 4 ? `${value.slice(0, 4)}-${value.slice(4)}` : value;
+  }
+
+  function prefillCode() {
+    if (!codeInput) return;
+    const code = normalizeCode(queryCode() || codeInput.value);
+    if (code) codeInput.value = code;
+  }
+
+  async function signIn(provider: AuthProvider) {
+    try {
+      showState("checking");
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Sign-in failed.");
+    }
+  }
+
+  codeInput?.addEventListener("input", () => {
+    codeInput.value = normalizeCode(codeInput.value);
+  });
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    if (!user) {
+      showState("signedOut");
+      return;
+    }
+
+    if (userEmail) userEmail.textContent = user.email || user.displayName || "BurnBar account";
+    if (userAvatar && user.photoURL) {
+      userAvatar.src = user.photoURL;
+      userAvatar.classList.remove("hidden");
+    }
+    prefillCode();
+    showState("confirm");
+  });
+
+  btnGoogle?.addEventListener("click", () => signIn(googleProvider));
+  btnApple?.addEventListener("click", () => signIn(appleProvider));
+
+  btnSignout?.addEventListener("click", async () => {
+    showState("checking");
+    await signOut(auth);
+  });
+
+  btnRetry?.addEventListener("click", () => {
+    showState(currentUser ? "confirm" : "signedOut");
+  });
+
+  btnConfirm?.addEventListener("click", async () => {
+    const code = normalizeCode(codeInput?.value || "");
+    if (code.replace("-", "").length !== 8) {
+      setError("Enter the 8-character code shown by Hermes.");
+      return;
+    }
+
+    try {
+      showState("approving");
+      const approve = httpsCallable(functions, "approveHermesGatewayDeviceGrant");
+      await approve({ userCode: code, displayName: "Hermes Agent" });
+      showState("success");
+    } catch (error: unknown) {
+      const errorLike = error as { code?: unknown; message?: unknown };
+      const codeText = String(errorLike.code || "");
+      if (codeText.includes("permission-denied")) {
+        setError("BurnBar Cloud or Cloud Pro is required to connect Hermes.");
+      } else if (codeText.includes("not-found")) {
+        setError(
+          "That Hermes code was not found. Start setup in Hermes again and enter the new code."
+        );
+      } else if (codeText.includes("deadline-exceeded")) {
+        setError("That Hermes code expired. Start setup in Hermes again.");
+      } else {
+        setError(
+          typeof errorLike.message === "string"
+            ? errorLike.message
+            : "The Hermes connection could not be approved."
+        );
+      }
+    }
+  });
+</script>

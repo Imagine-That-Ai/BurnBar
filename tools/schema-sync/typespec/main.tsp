@@ -1,6 +1,7 @@
 import "./domains/usage-quota.tsp";
 import "./domains/provider-account.tsp";
 import "./domains/hermes-relay.tsp";
+import "./domains/hermes-gateway.tsp";
 import "./domains/iroh-pairing.tsp";
 import "./domains/pi-agent-relay.tsp";
 import "./domains/computer-use.tsp";

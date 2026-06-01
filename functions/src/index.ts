@@ -50,6 +50,14 @@ export {
 } from "./callables/hermes.js";
 
 export {
+  burnBarHermesGateway,
+  approveHermesGatewayDeviceGrant,
+  listHermesGatewayClients,
+  revokeHermesGatewayClient,
+  enqueueHermesGatewayEvent,
+} from "./callables/hermesGateway.js";
+
+export {
   createPiAgentPairing,
   completePiAgentPairing,
   listPiAgentConnections,

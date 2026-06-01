@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-01T04:42:49.805Z",
+  "generatedAt": "2026-06-01T14:59:42.211Z",
   "scanner": {
     "tsMode": "typescript-eslint-parser",
     "excluded": {
@@ -38,15 +38,15 @@
       ]
     }
   },
-  "total": 50,
+  "total": 45,
   "byLanguage": {
     "kotlin": 6,
-    "typescript": 44
+    "typescript": 39
   },
   "byKind": {
     "kotlin_force_unwrap": 6,
     "ts_non_null_assertion": 2,
-    "ts_type_assertion": 42
+    "ts_type_assertion": 37
   },
   "violations": [
     {
@@ -96,7 +96,7 @@
     },
     {
       "path": "android/app/src/test/java/com/openburnbar/data/stores/HostedQuotaSubscriptionStoreTest.kt",
-      "line": 154,
+      "line": 155,
       "column": 25,
       "language": "kotlin",
       "kind": "kotlin_force_unwrap",
@@ -186,25 +186,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 39,
-      "column": 12,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;",
-      "detail": "Record<string, unknown>"
-    },
-    {
-      "path": "functions/src/__tests__/logging.test.ts",
-      "line": 39,
-      "column": 23,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;",
-      "detail": "string"
-    },
-    {
-      "path": "functions/src/__tests__/logging.test.ts",
-      "line": 165,
+      "line": 181,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -213,7 +195,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 173,
+      "line": 189,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -222,7 +204,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 180,
+      "line": 196,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -231,7 +213,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 206,
+      "line": 222,
       "column": 23,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -240,7 +222,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 206,
+      "line": 222,
       "column": 34,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -249,7 +231,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 221,
+      "line": 237,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -258,7 +240,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 250,
+      "line": 266,
       "column": 23,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -267,7 +249,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 250,
+      "line": 266,
       "column": 34,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -276,7 +258,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 258,
+      "line": 274,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -285,7 +267,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 258,
+      "line": 274,
       "column": 29,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -294,7 +276,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 259,
+      "line": 275,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -303,7 +285,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 259,
+      "line": 275,
       "column": 29,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -312,7 +294,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 281,
+      "line": 297,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -321,34 +303,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 362,
-      "column": 78,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const [startLog, successLog] = logSpy.mock.calls.map((c) => JSON.parse(c[0] as string));",
-      "detail": "string"
-    },
-    {
-      "path": "functions/src/__tests__/logging.test.ts",
-      "line": 363,
-      "column": 15,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "expect((startLog as Record<string, unknown>).event).toBe(\"callable_start\");",
-      "detail": "Record<string, unknown>"
-    },
-    {
-      "path": "functions/src/__tests__/logging.test.ts",
-      "line": 364,
-      "column": 15,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "expect((successLog as Record<string, unknown>).event).toBe(\"callable_success\");",
-      "detail": "Record<string, unknown>"
-    },
-    {
-      "path": "functions/src/__tests__/logging.test.ts",
-      "line": 377,
+      "line": 393,
       "column": 22,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -357,7 +312,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 377,
+      "line": 393,
       "column": 33,
       "language": "typescript",
       "kind": "ts_type_assertion",
