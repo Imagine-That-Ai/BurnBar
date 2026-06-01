@@ -11,11 +11,99 @@ import {
   evaluateEnvRequirements,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
+  verdict,
 } from "./commercial-launch-gate.mjs";
 
 const launchGateSource = readFileSync(new URL("./commercial-launch-gate.mjs", import.meta.url), "utf8");
 assert.match(launchGateSource, /verifyCloudProTopUp/);
 assert.match(launchGateSource, /verifyGooglePlayCloudProTopUp/);
+assert.match(launchGateSource, /READY_FOR_CANARY/);
+assert.match(launchGateSource, /READY_FOR_PUBLIC_RELEASE/);
+assert.match(launchGateSource, /LAUNCH_DONE/);
+assert.match(launchGateSource, /prove:paid-tier/);
+assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
+
+function passingChecks(overrides = {}) {
+  return {
+    repo: { ok: true },
+    appStore: { ok: true, state: "READY_FOR_SALE" },
+    appStoreServerNotifications: { ok: true },
+    firebaseAppCheck: { ok: true },
+    branchProtection: { ok: true },
+    githubSecurity: { ok: true },
+    mainRequiredGate: { ok: true },
+    mainCodeQL: { ok: true },
+    latestMergedPrGate: { ok: true },
+    cloudRun: { ok: true },
+    runnerReadyz: { ok: true },
+    redis: { ok: true },
+    hostedQuotaRuntime: { ok: true },
+    commercialBillingRuntime: { ok: true },
+    remoteConfigCaps: { ok: true },
+    opsAlerts: { ok: true },
+    billingAlerts: { ok: true },
+    firebaseFunctionsInventory: { ok: true },
+    launchEvidence: {
+      ok: true,
+      stages: {
+        paidProof: { ok: false, skipped: true },
+        publicRelease: { ok: false, skipped: true },
+        done: { ok: false, skipped: true },
+      },
+    },
+    ...overrides,
+  };
+}
+
+{
+  assert.equal(verdict(passingChecks()).status, "READY_FOR_LIVE_PAID_PROOF");
+  assert.equal(
+    verdict(
+      passingChecks({
+        launchEvidence: {
+          ok: true,
+          stages: {
+            paidProof: { ok: true },
+            publicRelease: { ok: false },
+            done: { ok: false },
+          },
+        },
+      }),
+    ).status,
+    "READY_FOR_CANARY",
+  );
+  assert.equal(
+    verdict(
+      passingChecks({
+        launchEvidence: {
+          ok: true,
+          stages: {
+            paidProof: { ok: true },
+            publicRelease: { ok: true },
+            done: { ok: false },
+          },
+        },
+      }),
+    ).status,
+    "READY_FOR_PUBLIC_RELEASE",
+  );
+  assert.equal(
+    verdict(
+      passingChecks({
+        launchEvidence: {
+          ok: true,
+          stages: {
+            paidProof: { ok: true },
+            publicRelease: { ok: true },
+            done: { ok: true },
+          },
+        },
+      }),
+    ).status,
+    "LAUNCH_DONE",
+  );
+  assert.equal(verdict(passingChecks({ billingAlerts: { ok: false } })).status, "NO_GO");
+}
 
 {
   const coverage = evaluateRequiredProductIDs(
