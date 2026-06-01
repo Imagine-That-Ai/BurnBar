@@ -29,7 +29,11 @@ public enum CLIQuotaExhaustionClassifier {
         if normalized.contains("5-hour")
             || normalized.contains("5 hour")
             || normalized.contains("5h")
-            || normalized.contains("hour window") {
+            || normalized.contains("hour window")
+            || normalized.contains("usage limit")
+            || normalized.contains("out of limit")
+            || normalized.contains("you've reached your limit")
+            || normalized.contains("you have reached your limit") {
             return now.addingTimeInterval(5 * 60 * 60)
         }
         return nil
@@ -52,6 +56,8 @@ public enum CLIQuotaExhaustionClassifier {
             "insufficient quota",
             "credit balance is too low",
             "billing quota exceeded",
+            "out of limit",
+            "out of limits",
         ]
 
         let rateLimitPatterns = [

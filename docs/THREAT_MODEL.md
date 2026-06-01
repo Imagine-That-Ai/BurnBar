@@ -211,6 +211,12 @@ Cloud Functions write budget rollups and observability documents under top-level
 
 The `burnbarOperator` claim is minted only by trusted backend paths — never by client SDKs. Operator reads expose aggregate session rollups for on-call dashboards; they do not grant access to user chat content or provider credentials.
 
+## LLM / GenAI / Agent-Specific Security
+
+The dedicated review lives in [`docs/security/LLM_GENAI_AGENT_THREAT_MODEL.md`](security/LLM_GENAI_AGENT_THREAT_MODEL.md). It catalogs log parser ingestion, RAG prompt assembly, hosted insights, Computer Use feedback, MCP, model routing, tool grants, and budget/loop controls against OWASP LLM Top 10 2025 risks.
+
+The prompt-injection baseline is provenance-tagged untrusted-content wrapping for data that can originate in logs, transcripts, user messages, retrieved snippets, hosted insight prompts, browser extracts, or prior AI output. Content inside those wrappers is evidence/data only and must not override system instructions, trust mode, tool grants, or approval requirements.
+
 ## Mobile Escrow & Device Trust
 
 ### Encrypted Credential Transfer

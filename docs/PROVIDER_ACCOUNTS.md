@@ -188,6 +188,14 @@ raw API keys, bearer tokens, cookies, Secret Manager version names, and credenti
 handles. The app keeps a capped in-memory trail today; durable persistence can be
 added without changing the shared event shape.
 
+Codex in-app chat uses the same switcher profile identity as terminal launches.
+When a Codex stream fails with quota text before any assistant/tool output, the
+chat bridge marks that profile exhausted for the inferred reset window and
+retries the next enabled Codex profile in the same provider, subscription tier,
+and model capability class. Once any stream output has been emitted, OpenBurnBar
+does not replay the prompt on another account; it surfaces the original error so
+side effects are never duplicated.
+
 Legacy single-account installs still route through a synthesized `default`
 candidate when no first-class provider account exists. Provider totals remain
 separate from account routing health so a provider-level quota rollup cannot hide
