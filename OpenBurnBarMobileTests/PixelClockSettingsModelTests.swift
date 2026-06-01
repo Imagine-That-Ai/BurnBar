@@ -168,7 +168,7 @@ final class PixelClockSettingsModelTests: XCTestCase {
         let ops = InMemoryPixelClockOperations()
         let model = PixelClockSettingsModel(initialConfig: .disabled, operations: ops)
         model.updateHost("10.0.0.7")
-        try? await Task.sleep(nanoseconds: 400_000_000) // wait past debounce
+        await waitUntil(ops.lastConfig?.host == "10.0.0.7")
         XCTAssertEqual(ops.lastConfig?.host, "10.0.0.7")
     }
 }
