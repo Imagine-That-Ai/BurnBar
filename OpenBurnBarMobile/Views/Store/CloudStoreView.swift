@@ -414,11 +414,13 @@ private struct CloudStoreCapabilityCard: View {
                 ZStack {
                     Circle().fill(ProTheme.Membership.surfaceElevated)
                     Circle().stroke(ProTheme.Membership.foilEdge, lineWidth: 0.9)
-                    Image(systemName: capability.icon)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(ProTheme.Membership.foilLeaf)
+                    Image(capability.art)
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .padding(7)
                 }
-                .frame(width: 38, height: 38)
+                .frame(width: 48, height: 48)
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -649,8 +651,18 @@ private struct CloudStoreRemoteMCPCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("REMOTE MCP", systemImage: "point.3.connected.trianglepath.dotted")
+            HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                ZStack {
+                    Circle().fill(ProTheme.Membership.surfaceElevated)
+                    Circle().stroke(ProTheme.Membership.foilEdge, lineWidth: 0.9)
+                    Image("CloudCapRemoteMCP")
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .padding(6)
+                }
+                .frame(width: 40, height: 40)
+                Text("REMOTE MCP")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.bold)
                     .tracking(2.4)
@@ -991,10 +1003,10 @@ private struct CloudStoreComparisonCard: View {
 // MARK: - Trust
 
 private struct CloudStoreTrustCard: View {
-    private let bullets: [(String, String, String)] = [
-        ("checkmark.shield.fill", "Apple-verified", "Every transaction JWS is checked against Apple's root certificates server-side."),
-        ("server.rack",            "UID-bound",     "Each purchase is bound to your Firebase UID via a signed appAccountToken."),
-        ("hand.raised.fill",       "Cancel anytime","Managed by Apple in Settings → Apple ID. We never store payment details.")
+    private let bullets: [(art: String, title: String, detail: String)] = [
+        ("CloudSealApple",  "Apple-verified", "Every transaction JWS is checked against Apple's root certificates server-side."),
+        ("CloudSealUID",    "UID-bound",      "Each purchase is bound to your Firebase UID via a signed appAccountToken."),
+        ("CloudSealCancel", "Cancel anytime", "Managed by Apple in Settings → Apple ID. We never store payment details.")
     ]
 
     var body: some View {
@@ -1005,17 +1017,18 @@ private struct CloudStoreTrustCard: View {
                 .tracking(2.4)
                 .foregroundStyle(MobileTheme.ember)
 
-            ForEach(bullets, id: \.1) { item in
+            ForEach(bullets, id: \.title) { item in
                 HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-                    Image(systemName: item.0)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(MobileTheme.ember)
-                        .frame(width: 22)
+                    Image(item.art)
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: 40, height: 40)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.1)
+                        Text(item.title)
                             .font(MobileTheme.Typography.headline)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text(item.2)
+                        Text(item.detail)
                             .font(MobileTheme.Typography.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

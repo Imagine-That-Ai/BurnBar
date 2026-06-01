@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="floo_hex" x1="48" y1="40" x2="190" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3FE0D0"/>
+      <stop offset="0.55" stop-color="#2CCAC0"/>
+      <stop offset="1" stop-color="#1A9A8C"/>
+    </linearGradient>
+    <linearGradient id="floo_hex_edge" x1="48" y1="40" x2="190" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9CF4EA"/>
+      <stop offset="1" stop-color="#15807A"/>
+    </linearGradient>
+    <radialGradient id="floo_gloss" cx="0.4" cy="0.3" r="0.7">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="floo_silver" x1="78" y1="78" x2="150" y2="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#C8D6D2"/>
+    </linearGradient>
+  </defs>
+  <!-- hexagon chip -->
+  <path d="M112 24a32 32 0 0 1 32 0l60 35a32 32 0 0 1 16 28v70a32 32 0 0 1-16 28l-60 35a32 32 0 0 1-32 0l-60-35a32 32 0 0 1-16-28v-70a32 32 0 0 1 16-28z" fill="url(#floo_hex_edge)"/>
+  <path d="M114 40a26 26 0 0 1 28 0l52 30a26 26 0 0 1 13 23v60a26 26 0 0 1-13 23l-52 30a26 26 0 0 1-28 0l-52-30a26 26 0 0 1-13-23v-60a26 26 0 0 1 13-23z" fill="url(#floo_hex)"/>
+  <path d="M114 40a26 26 0 0 1 28 0l52 30a26 26 0 0 1 13 23v60a26 26 0 0 1-13 23l-52 30a26 26 0 0 1-28 0l-52-30a26 26 0 0 1-13-23v-60a26 26 0 0 1 13-23z" fill="url(#floo_gloss)"/>
+  <!-- floo portal ring -->
+  <ellipse cx="118" cy="116" rx="44" ry="48" fill="none" stroke="url(#floo_silver)" stroke-width="11"/>
+  <ellipse cx="118" cy="116" rx="22" ry="26" fill="#0E3F3A" opacity="0.55"/>
+  <!-- data stream through portal -->
+  <path d="M70 116h120" stroke="url(#floo_silver)" stroke-width="9" stroke-linecap="round" stroke-dasharray="3 16"/>
+  <circle cx="190" cy="116" r="9" fill="url(#floo_silver)"/>
+  <!-- +50GB spark -->
+  <g stroke="#F0C040" stroke-width="7" stroke-linecap="round">
+    <line x1="196" y1="54" x2="214" y2="40"/>
+    <line x1="192" y1="68" x2="206" y2="66"/>
+    <line x1="186" y1="44" x2="194" y2="30"/>
+  </g>
+</svg>

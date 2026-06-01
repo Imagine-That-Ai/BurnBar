@@ -45,6 +45,7 @@ export interface HermesGatewayEventDoc {
   sequence: number;
   kind: string;
   destinationId: string;
+  targetClientId?: string;
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;

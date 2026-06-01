@@ -39,6 +39,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(exe("openclaw"), "openclaude")
         XCTAssertEqual(exe("hermes"), "hermes")
         XCTAssertEqual(exe("pi"), "pi")
+        XCTAssertEqual(exe("ollama"), "zsh")
     }
 
     func test_interactiveInvocation_isCaseInsensitiveAndRejectsUnknownRuntimes() {
@@ -73,6 +74,25 @@ final class CLIBridgeTests: XCTestCase {
         )
         XCTAssertEqual(agy?.arguments, ["--add-dir", "/tmp/ws"])
         XCTAssertFalse(agy?.arguments.contains("--print") ?? true)
+
+        let ollama = InteractiveTerminalLauncher.interactiveInvocation(
+            runtimeId: "ollama", modelID: "qwen3.6:27b-coding-nvfp4", workingDirectory: nil
+        )
+        XCTAssertEqual(ollama?.executableName, "ollama")
+        XCTAssertEqual(ollama?.arguments, ["run", "qwen3.6:27b-coding-nvfp4"])
+        XCTAssertFalse(ollama?.arguments.contains("-p") ?? true)
+    }
+
+    func test_interactiveInvocation_ollamaFallsBackToFirstLocalModelWhenNoModelSelected() {
+        let ollama = InteractiveTerminalLauncher.interactiveInvocation(
+            runtimeId: "ollama", modelID: nil, workingDirectory: nil
+        )
+
+        XCTAssertEqual(ollama?.executableName, "zsh")
+        XCTAssertEqual(ollama?.arguments.first, "-lc")
+        XCTAssertTrue(ollama?.arguments.last?.contains("OPENBURNBAR_OLLAMA_MODEL") ?? false)
+        XCTAssertTrue(ollama?.arguments.last?.contains("ollama list") ?? false)
+        XCTAssertTrue(ollama?.arguments.last?.contains("exec ollama run \"$model\"") ?? false)
     }
 
     func test_resolvedTerminalWindowIDDetectsRetitledExistingTerminalWindow() {
@@ -985,6 +1005,154 @@ final class CLIBridgeTests: XCTestCase {
         await task.value
     }
 
+    func test_codexProfileStreamFailoverRetriesNextAccountOnStartupQuota() async throws {
+        let store = InMemorySwitcherProfileStoreAdapter()
+        let primary = makeCodexStreamProfile(
+            id: "codex-primary",
+            label: "Codex Primary",
+            configDirectory: "/tmp/openburnbar-codex-primary",
+            sortKey: 1
+        )
+        let reserve = makeCodexStreamProfile(
+            id: "codex-reserve",
+            label: "Codex Reserve",
+            configDirectory: "/tmp/openburnbar-codex-reserve",
+            sortKey: 2
+        )
+        store.addProfile(primary)
+        store.addProfile(reserve)
+        store.setActiveProfileID(primary.id, for: ProviderID.codex)
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? URL(fileURLWithPath: "/usr/bin/true") : nil
+        }
+        defer { CLILaunchAdapter.executableResolver = nil }
+
+        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let runner = CLIProfileStreamFailoverRunner(
+            runtime: CLIBridgeStreamRuntimeCoordinator(),
+            profileStore: store,
+            fallbackPlanner: SwitcherCLIFallbackPlanner { _ in nil },
+            streamLauncher: { attempt, _, _, _, continuation in
+                attempts.withLock { $0.append(attempt) }
+                if attempt.profileID == primary.id {
+                    continuation.finish(throwing: CLIBridgeError.quotaExhausted("5-hour limit reached"))
+                } else {
+                    continuation.yield(.text("reserve ok"))
+                    continuation.finish()
+                }
+            }
+        )
+
+        var events: [CLIChatStreamEvent] = []
+        let stream = runner.streamCodex(
+            requestedProfile: primary,
+            prompt: "test prompt",
+            model: "gpt-5.4",
+            workspaceDirectory: URL(fileURLWithPath: "/tmp/openburnbar-chat", isDirectory: true),
+            capabilityGrant: nil
+        )
+        for try await event in stream {
+            events.append(event)
+        }
+
+        XCTAssertEqual(events, [.text("reserve ok")])
+        let recordedAttempts = attempts.read()
+        XCTAssertEqual(recordedAttempts.map(\.profileID), [primary.id, reserve.id])
+        XCTAssertEqual(recordedAttempts[0].environmentOverrides["CODEX_HOME"], "/tmp/openburnbar-codex-primary")
+        XCTAssertEqual(recordedAttempts[1].environmentOverrides["CODEX_HOME"], "/tmp/openburnbar-codex-reserve")
+        XCTAssertEqual(store.fetchActiveProfileID(for: ProviderID.codex), reserve.id)
+
+        let updatedPrimary = try XCTUnwrap(store.fetchProfile(id: primary.id))
+        XCTAssertEqual(updatedPrimary.cliMetadata?.lastQuotaExhaustionDetail, "5-hour limit reached")
+        XCTAssertNotNil(updatedPrimary.cliMetadata?.exhaustedUntil)
+    }
+
+    func test_codexProfileStreamFailoverDoesNotReplayAfterPartialOutput() async throws {
+        let store = InMemorySwitcherProfileStoreAdapter()
+        let primary = makeCodexStreamProfile(
+            id: "codex-primary",
+            label: "Codex Primary",
+            configDirectory: "/tmp/openburnbar-codex-primary",
+            sortKey: 1
+        )
+        let reserve = makeCodexStreamProfile(
+            id: "codex-reserve",
+            label: "Codex Reserve",
+            configDirectory: "/tmp/openburnbar-codex-reserve",
+            sortKey: 2
+        )
+        store.addProfile(primary)
+        store.addProfile(reserve)
+        store.setActiveProfileID(primary.id, for: ProviderID.codex)
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? URL(fileURLWithPath: "/usr/bin/true") : nil
+        }
+        defer { CLILaunchAdapter.executableResolver = nil }
+
+        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let runner = CLIProfileStreamFailoverRunner(
+            runtime: CLIBridgeStreamRuntimeCoordinator(),
+            profileStore: store,
+            fallbackPlanner: SwitcherCLIFallbackPlanner { _ in nil },
+            streamLauncher: { attempt, _, _, _, continuation in
+                attempts.withLock { $0.append(attempt) }
+                if attempt.profileID == primary.id {
+                    continuation.yield(.text("partial"))
+                    continuation.finish(throwing: CLIBridgeError.quotaExhausted("5-hour limit reached"))
+                } else {
+                    continuation.yield(.text("should not replay"))
+                    continuation.finish()
+                }
+            }
+        )
+
+        var events: [CLIChatStreamEvent] = []
+        var quotaDetail: String?
+        do {
+            let stream = runner.streamCodex(
+                requestedProfile: primary,
+                prompt: "test prompt",
+                model: "gpt-5.4",
+                workspaceDirectory: nil,
+                capabilityGrant: nil
+            )
+            for try await event in stream {
+                events.append(event)
+            }
+        } catch CLIBridgeError.quotaExhausted(let detail) {
+            quotaDetail = detail
+        }
+
+        XCTAssertEqual(events, [.text("partial")])
+        XCTAssertEqual(quotaDetail, "5-hour limit reached")
+        XCTAssertEqual(attempts.read().map(\.profileID), [primary.id])
+        XCTAssertEqual(store.fetchActiveProfileID(for: ProviderID.codex), primary.id)
+        XCTAssertNil(store.fetchProfile(id: primary.id)?.cliMetadata?.lastQuotaExhaustionDetail)
+    }
+
+    func test_codexProfileSelectionFallsBackToConfiguredProfileWhenActivePointerIsMissing() throws {
+        let store = InMemorySwitcherProfileStoreAdapter()
+        let laterProfile = makeCodexStreamProfile(
+            id: "codex-later",
+            label: "Codex Later",
+            configDirectory: "/tmp/openburnbar-codex-later",
+            sortKey: 2
+        )
+        let firstProfile = makeCodexStreamProfile(
+            id: "codex-first",
+            label: "Codex First",
+            configDirectory: "/tmp/openburnbar-codex-first",
+            sortKey: 1
+        )
+        store.addProfile(laterProfile)
+        store.addProfile(firstProfile)
+
+        let selected = try XCTUnwrap(CLIBridge.activeCodexProfile(from: store))
+        XCTAssertEqual(selected.id, firstProfile.id)
+    }
+
     // MARK: - OpenAI-Compatible SSE Multi-Delta Tool Call Accumulation
 
     func test_openAICompatibleSSEParser_accumulatesMultiDeltaToolCall() {
@@ -1177,6 +1345,28 @@ final class CLIBridgeTests: XCTestCase {
             return nil
         }
         return arguments[index + 1]
+    }
+
+    private func makeCodexStreamProfile(
+        id: String,
+        label: String,
+        configDirectory: String,
+        sortKey: Int
+    ) -> SwitcherProfileRecord {
+        SwitcherProfileRecord(
+            id: id,
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: label,
+                configDirectory: configDirectory,
+                providerID: ProviderID.codex,
+                subscriptionTierID: "codex-pro",
+                modelCapabilityClassID: "codex:gpt-5.4"
+            ),
+            sortKey: sortKey,
+            createdAt: Date(timeIntervalSince1970: TimeInterval(sortKey))
+        )
     }
 
     private func jsonPayload(from result: AgentToolExecutionPayload) throws -> [String: Any] {

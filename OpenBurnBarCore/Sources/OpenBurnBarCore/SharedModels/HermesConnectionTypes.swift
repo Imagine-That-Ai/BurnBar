@@ -30,6 +30,8 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
     public var realtimeRelayStatus: String?
     public var realtimeRelayLastSeenAt: Date?
     public var realtimeRelayProtocolVersion: Int?
+    public var hostInstallationId: String?
+    public var replacedByConnectionId: String?
     public var capabilities: [String]
     public var lastSeenAt: Date?
     public var createdAt: Date
@@ -51,6 +53,8 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         realtimeRelayStatus: String? = nil,
         realtimeRelayLastSeenAt: Date? = nil,
         realtimeRelayProtocolVersion: Int? = nil,
+        hostInstallationId: String? = nil,
+        replacedByConnectionId: String? = nil,
         capabilities: [String] = [],
         lastSeenAt: Date? = nil,
         createdAt: Date = Date(),
@@ -71,6 +75,8 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         self.realtimeRelayStatus = realtimeRelayStatus
         self.realtimeRelayLastSeenAt = realtimeRelayLastSeenAt
         self.realtimeRelayProtocolVersion = realtimeRelayProtocolVersion
+        self.hostInstallationId = hostInstallationId
+        self.replacedByConnectionId = replacedByConnectionId
         self.capabilities = capabilities
         self.lastSeenAt = lastSeenAt
         self.createdAt = createdAt

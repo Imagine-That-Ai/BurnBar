@@ -390,7 +390,9 @@ final class CLIBridge: ObservableObject {
         userMessage: String,
         workspaceDirectory: URL? = nil,
         model: String = "",
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        profileStore: (any SwitcherProfileStoreAdapter)? = nil,
+        fallbackPlanner: (any CLIFallbackPlanning)? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task.detached { [weak self] in
@@ -398,11 +400,36 @@ final class CLIBridge: ObservableObject {
                     continuation.finish()
                     return
                 }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                if let profileStore,
+                   let fallbackPlanner,
+                   let requestedProfile = Self.activeCodexProfile(from: profileStore) {
+                    let stream = CLIProfileStreamFailoverRunner(
+                        runtime: self.streamRuntime,
+                        profileStore: profileStore,
+                        fallbackPlanner: fallbackPlanner
+                    ).streamCodex(
+                        requestedProfile: requestedProfile,
+                        prompt: fullPrompt,
+                        model: model,
+                        workspaceDirectory: workspaceDirectory,
+                        capabilityGrant: capabilityGrant
+                    )
+                    do {
+                        for try await event in stream {
+                            continuation.yield(event)
+                        }
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                    return
+                }
+
                 guard let executable = await self.resolveExecutable(named: "codex") else {
                     continuation.finish(throwing: CLIBridgeError.noCLI)
                     return
                 }
-                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
                 await CLIProcessStreamRunner(runtime: self.streamRuntime).runCodex(
                     executable: executable,
                     prompt: fullPrompt,
@@ -413,6 +440,30 @@ final class CLIBridge: ObservableObject {
                 )
             }
         }
+    }
+
+    nonisolated static func activeCodexProfile(
+        from profileStore: any SwitcherProfileStoreAdapter
+    ) -> SwitcherProfileRecord? {
+        let activeProfileIDs = [
+            profileStore.fetchActiveProfileID(for: ProviderID.codex),
+            profileStore.fetchActiveProfileID()
+        ].compactMap { $0 }
+
+        for profileID in activeProfileIDs {
+            guard let profile = profileStore.fetchProfile(id: profileID),
+                  isCodexProfile(profile) else {
+                continue
+            }
+            return profile
+        }
+
+        return profileStore.fetchAllProfiles()
+            .first { isCodexProfile($0) && !$0.isDisabled }
+    }
+
+    private nonisolated static func isCodexProfile(_ profile: SwitcherProfileRecord) -> Bool {
+        profile.targetKind == .cli && profile.cliType == .codex
     }
 
     /// Streams using Claude Code CLI only.

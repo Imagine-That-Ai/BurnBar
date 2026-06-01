@@ -323,6 +323,7 @@ struct HermesGatewayModelOptionRecord: Decodable, Hashable, Sendable {
 struct HermesGatewayQueuedEvent: Decodable, Hashable, Sendable {
     let id: String
     let sequence: Int
+    let targetClientId: String?
 }
 
 struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
@@ -378,14 +379,19 @@ enum HermesGatewayMessageResolver {
         for event: HermesGatewayQueuedEvent,
         in messages: [HermesGatewayMessageRecord],
         threadID: String = defaultThreadID,
+        targetClientId: String? = nil,
         pendingEventSentAt: Date? = nil
     ) -> HermesGatewayMessageRecord? {
-        if let exactReply = messages.first(where: { $0.replyToEventId == event.id }) {
+        let resolvedTargetClientId = nonEmpty(targetClientId) ?? nonEmpty(event.targetClientId)
+        if let exactReply = messages.first(where: {
+            $0.replyToEventId == event.id && matchesTarget($0, targetClientId: resolvedTargetClientId)
+        }) {
             return exactReply
         }
 
         return messages.first { message in
             guard message.threadId == threadID else { return false }
+            guard matchesTarget(message, targetClientId: resolvedTargetClientId) else { return false }
             guard let pendingEventSentAt else { return true }
             guard let createdAt = gatewayDate(from: message.createdAt) else { return false }
             return createdAt >= pendingEventSentAt
@@ -394,10 +400,12 @@ enum HermesGatewayMessageResolver {
 
     static func newestThreadReply(
         in messages: [HermesGatewayMessageRecord],
-        threadID: String = defaultThreadID
+        threadID: String = defaultThreadID,
+        targetClientId: String? = nil
     ) -> HermesGatewayMessageRecord? {
         messages.first { message in
             guard message.threadId == threadID else { return false }
+            guard matchesTarget(message, targetClientId: nonEmpty(targetClientId)) else { return false }
             return message.text?.isEmpty == false || !message.attachmentIds.isEmpty
         }
     }
@@ -418,6 +426,18 @@ enum HermesGatewayMessageResolver {
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = fractional.date(from: raw) { return date }
         return ISO8601DateFormatter().date(from: raw)
+    }
+
+    private static func matchesTarget(_ message: HermesGatewayMessageRecord, targetClientId: String?) -> Bool {
+        guard let targetClientId else { return true }
+        return message.clientId == targetClientId
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 }
 
@@ -454,10 +474,93 @@ private final class FirebaseCallableExecutor: @unchecked Sendable {
     }
 }
 
+// MARK: - Hermes Gateway Repository
+
+@MainActor
+protocol HermesGatewayRepository: AnyObject {
+    func approveHermesGatewayDeviceGrant(
+        userCode: String,
+        displayName: String?,
+        destinationId: String,
+        scopes: [String]
+    ) async throws -> HermesGatewayClientRecord
+
+    func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord]
+    func revokeHermesGatewayClient(clientId: String) async throws
+
+    func enqueueHermesGatewayEvent(
+        text: String,
+        destinationId: String,
+        threadId: String,
+        targetClientId: String?,
+        senderDisplayName: String
+    ) async throws -> HermesGatewayQueuedEvent
+
+    func enqueueHermesGatewayModelSwitch(
+        modelId: String,
+        destinationId: String,
+        threadId: String,
+        targetClientId: String?,
+        senderDisplayName: String
+    ) async throws -> HermesGatewayQueuedEvent
+}
+
+extension HermesGatewayRepository {
+    func approveHermesGatewayDeviceGrant(
+        userCode: String,
+        displayName: String? = nil
+    ) async throws -> HermesGatewayClientRecord {
+        try await approveHermesGatewayDeviceGrant(
+            userCode: userCode,
+            displayName: displayName,
+            destinationId: "burnbar:home",
+            scopes: [
+                "hermes.gateway.read",
+                "hermes.gateway.write",
+                "hermes.gateway.manage"
+            ]
+        )
+    }
+
+    func listHermesGatewayClients() async throws -> [HermesGatewayClientRecord] {
+        try await listHermesGatewayClients(includeRevoked: false)
+    }
+
+    func enqueueHermesGatewayEvent(
+        text: String,
+        threadId: String = "burnbar-ios-e2e",
+        targetClientId: String? = nil,
+        senderDisplayName: String = "OpenBurnBar iPhone"
+    ) async throws -> HermesGatewayQueuedEvent {
+        try await enqueueHermesGatewayEvent(
+            text: text,
+            destinationId: "burnbar:home",
+            threadId: threadId,
+            targetClientId: targetClientId,
+            senderDisplayName: senderDisplayName
+        )
+    }
+
+    func enqueueHermesGatewayModelSwitch(
+        modelId: String,
+        threadId: String = "burnbar-ios-e2e",
+        targetClientId: String? = nil,
+        senderDisplayName: String = "OpenBurnBar iPhone"
+    ) async throws -> HermesGatewayQueuedEvent {
+        try await enqueueHermesGatewayModelSwitch(
+            modelId: modelId,
+            destinationId: "burnbar:home",
+            threadId: threadId,
+            targetClientId: targetClientId,
+            senderDisplayName: senderDisplayName
+        )
+    }
+}
+
 // MARK: - Functions Repository
 
 @MainActor
-final class FunctionsRepository {
+final class FunctionsRepository: HermesGatewayRepository {
     static let shared = FunctionsRepository()
 
     private let functions = Functions.functions()
@@ -905,16 +1008,22 @@ final class FunctionsRepository {
         text: String,
         destinationId: String = "burnbar:home",
         threadId: String = "burnbar-ios-e2e",
+        targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
         let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
-        let result = try await callable.call([
+        var payload: [String: Any] = [
             "destinationId": destinationId,
             "threadId": threadId,
             "senderId": "burnbar-ios",
             "senderDisplayName": senderDisplayName,
             "text": text
-        ])
+        ]
+        if let targetClientId = targetClientId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !targetClientId.isEmpty {
+            payload["targetClientId"] = targetClientId
+        }
+        let result = try await callable.call(payload)
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
 
@@ -922,10 +1031,11 @@ final class FunctionsRepository {
         modelId: String,
         destinationId: String = "burnbar:home",
         threadId: String = "burnbar-ios-e2e",
+        targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
         let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
-        let result = try await callable.call([
+        var payload: [String: Any] = [
             "destinationId": destinationId,
             "threadId": threadId,
             "senderId": "burnbar-ios",
@@ -933,7 +1043,12 @@ final class FunctionsRepository {
             "eventKind": "model_switch",
             "modelId": modelId,
             "text": "/model \(modelId)"
-        ])
+        ]
+        if let targetClientId = targetClientId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !targetClientId.isEmpty {
+            payload["targetClientId"] = targetClientId
+        }
+        let result = try await callable.call(payload)
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
 

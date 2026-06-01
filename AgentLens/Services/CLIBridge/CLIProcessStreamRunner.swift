@@ -33,6 +33,7 @@ struct CLIProcessStreamRunner: Sendable {
         model: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        environmentOverrides: [String: String] = [:],
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = CodexExecJSONLParser()
@@ -40,7 +41,10 @@ struct CLIProcessStreamRunner: Sendable {
             invocation: CLIProcessInvocation(
                 executable: executable,
                 arguments: CLIArgumentBuilder.codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant),
-                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                environment: Self.mergedEnvironment(
+                    executablePath: executable,
+                    overrides: environmentOverrides
+                ),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .codex
             ),
@@ -310,6 +314,17 @@ struct CLIProcessStreamRunner: Sendable {
         case .cursorAgent:
             return .cursorAgent
         }
+    }
+
+    private static func mergedEnvironment(
+        executablePath: String,
+        overrides: [String: String]
+    ) -> [String: String] {
+        var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executablePath)
+        for (key, value) in overrides {
+            environment[key] = value
+        }
+        return environment
     }
 
     private static func drainPipe(

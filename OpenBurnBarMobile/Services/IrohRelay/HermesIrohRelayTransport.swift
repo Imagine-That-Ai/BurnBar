@@ -107,7 +107,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// and capabilities as soon as they arrive.
     var mediaPresenceHeartbeatHandler: ((HermesRealtimeRelayPresenceHeartbeat) async -> Void)? {
         didSet {
-            mediaControlCoordinator?.presenceHeartbeatHandler = mediaPresenceHeartbeatHandler
+            mediaControlCoordinators.values.forEach { coordinator in
+                coordinator.presenceHeartbeatHandler = mediaPresenceHeartbeatHandler
+            }
         }
     }
 
@@ -147,7 +149,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// triple to dial with. Once installed, the transport keeps the
     /// coordinator alive for the rest of the app's lifetime.
     private var mediaControlReceiver: iOSFileTransferService?
-    private var mediaControlCoordinator: MediaControlStreamCoordinator?
+    private var mediaControlCoordinators: [String: MediaControlStreamCoordinator] = [:]
+    private var lastMediaControlConnectionID: String?
     /// Outstanding bootstrap promise so concurrent callers reuse the same
     /// `transport.start()` invocation rather than racing to spin up two
     /// endpoints and leaking one of them.
@@ -216,17 +219,15 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// chat request has happened, so tapping "My Mac" is enough to bring
     /// Mercury online.
     func ensureMediaControlStream(connectionID: String) async throws {
-        if let existing = mediaControlCoordinator {
-            if existing.connectionID == connectionID {
-                switch existing.phase {
-                case .live, .dialing:
-                    return
-                case .idle, .stopped, .failed, .reconnecting:
-                    break
-                }
+        if let existing = mediaControlCoordinators[connectionID] {
+            switch existing.phase {
+            case .live, .dialing:
+                lastMediaControlConnectionID = connectionID
+                return
+            case .idle, .stopped, .failed, .reconnecting:
+                await existing.stop()
+                mediaControlCoordinators[connectionID] = nil
             }
-            await existing.stop()
-            mediaControlCoordinator = nil
         }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw HermesServiceError.relayUnavailable("Mercury requires a signed-in Firebase user.")
@@ -248,18 +249,26 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// observe the live/idle phase and by `MercuryLiveSheet` to push
     /// outbound mirror requests onto the same stream.
     var currentMediaControlCoordinator: MediaControlStreamCoordinator? {
-        mediaControlCoordinator
+        if let lastMediaControlConnectionID,
+           let coordinator = mediaControlCoordinators[lastMediaControlConnectionID] {
+            return coordinator
+        }
+        return mediaControlCoordinators.values.first
     }
 
     var currentMediaControlConnectionID: String? {
-        mediaControlCoordinator?.connectionID
+        currentMediaControlCoordinator?.connectionID
+    }
+
+    func mediaControlCoordinator(for connectionID: String) -> MediaControlStreamCoordinator? {
+        mediaControlCoordinators[connectionID]
     }
 
     /// Mercury Phase 8 — snapshot of the active control-stream phase, or
     /// `.idle` when no coordinator has been built yet. Cheap to poll;
     /// reflects the coordinator's `@Published phase` 1:1.
     var currentMediaControlPhase: MediaControlStreamCoordinator.Phase {
-        mediaControlCoordinator?.phase ?? .idle
+        currentMediaControlCoordinator?.phase ?? .idle
     }
 
     /// Boot-time entry point used by the coordinator dialer + tests.
@@ -760,8 +769,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         connectionID: String,
         pairingPublicKey: Data
     ) {
-        if let existing = mediaControlCoordinator {
+        if let existing = mediaControlCoordinators[connectionID] {
             existing.start(uid: uid, connectionID: connectionID)
+            lastMediaControlConnectionID = connectionID
             return
         }
         guard let receiver = mediaControlReceiver else {
@@ -796,8 +806,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         )
         coordinator.presenceHeartbeatHandler = mediaPresenceHeartbeatHandler
         coordinator.start(uid: uid, connectionID: connectionID)
-        receiver.attachControlStream(coordinator)
-        self.mediaControlCoordinator = coordinator
+        receiver.attachControlStream(coordinator, connectionID: connectionID)
+        mediaControlCoordinators[connectionID] = coordinator
+        lastMediaControlConnectionID = connectionID
     }
 
     private func transport(relayURL: String?) async throws -> any IrohRelayTransport {

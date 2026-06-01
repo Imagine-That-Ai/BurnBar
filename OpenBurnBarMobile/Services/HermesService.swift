@@ -831,17 +831,17 @@ final class HermesService {
 
     func refreshConnections(generation: Int? = nil, refreshSelectedConnection: Bool = true) async {
         do {
-            var remoteConnections = try await connectionRepository.listHermesConnections()
-            if remoteConnections.isEmpty {
-                remoteConnections = []
-            }
+            let listedConnections = try await connectionRepository.listHermesConnections()
+            let replacementIDs = Self.replacementConnectionIDs(in: listedConnections)
+            let remoteConnections = Self.coalescedConnectionRecords(listedConnections)
             guard generation == nil || generation == runtimeGeneration else { return }
             connections = [HermesConnectionRecord.localDefault] + remoteConnections
             #if DEBUG
             print("OpenBurnBarMobile Hermes E2E connections loaded total=\(connections.count) relayUsable=\(relayConnections.count) selected=\(selectedConnection.id) selectedMode=\(selectedConnection.mode.rawValue)")
             #endif
             let persistedID = defaults.string(forKey: selectedConnectionDefaultsKey)
-            let targetID = selectedConnection.id == HermesConnectionRecord.localDefault.id ? persistedID : selectedConnection.id
+            let rawTargetID = selectedConnection.id == HermesConnectionRecord.localDefault.id ? persistedID : selectedConnection.id
+            let targetID = rawTargetID.flatMap { replacementIDs[$0] ?? $0 }
             if let targetID,
                let current = connections.first(where: { $0.id == targetID }),
                current.mode == .relayLink {
@@ -877,6 +877,23 @@ final class HermesService {
             }
             runtimeErrorText = "Could not load Hermes connections: \(error.localizedDescription)"
         }
+    }
+
+    private static func replacementConnectionIDs(in records: [HermesConnectionRecord]) -> [String: String] {
+        let recordIDs = Set(records.map(\.id))
+        return records.reduce(into: [String: String]()) { result, record in
+            guard let replacementID = record.replacedByConnectionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !replacementID.isEmpty,
+                  recordIDs.contains(replacementID)
+            else { return }
+            result[record.id] = replacementID
+        }
+    }
+
+    private static func coalescedConnectionRecords(_ records: [HermesConnectionRecord]) -> [HermesConnectionRecord] {
+        let replacements = replacementConnectionIDs(in: records)
+        guard !replacements.isEmpty else { return records }
+        return records.filter { replacements[$0.id] == nil }
     }
 
     @discardableResult

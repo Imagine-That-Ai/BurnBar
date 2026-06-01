@@ -51,12 +51,17 @@ ID so message endpoints can authenticate without scanning user collections.
 OpenBurnBar desktop is not required for the hosted gateway to work. Delivery
 requires at least one paired gateway client to be online: official Hermes,
 OpenBurnBar, or another compatible BurnBar Gateway client. BurnBar Cloud stores
-queued events durably, and any active client can pick them up from `/events`.
+queued events durably. When multiple gateway clients are paired, OpenBurnBar
+iPhone/iPad keeps a selected target client and writes `targetClientId` on queued
+events. `/events` still delivers older broadcast events to every active client,
+but targeted events are returned only to the selected client, so a Mac mini and
+MacBook Pro can both stay connected without consuming each other's messages.
 
 Gateway model switching uses the same queue as normal messages. OpenBurnBar
 creates an `enqueueHermesGatewayEvent` event with `eventKind: "model_switch"`
-and `modelId`; Hermes consumes it as `/model <modelId>`, applies the switch,
-and replies through `/messages`. If the gateway has published
+and `modelId` for the selected `targetClientId`; Hermes consumes it as
+`/model <modelId>`, applies the switch, and replies through `/messages`. If the
+selected gateway has published
 `runtimeModelOptions`, the iPhone shows those models in the picker. If not, the
 user can still enter an exact Hermes model ID.
 

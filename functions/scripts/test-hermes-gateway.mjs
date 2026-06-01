@@ -100,6 +100,7 @@ const event = serializeHermesGatewayEvent({
   sequence: 1,
   kind: "message",
   destinationId: "burnbar:home",
+  targetClientId: "hgw_macbook",
   senderId: "u",
   text: "hello",
   attachmentIds: ["a", 1],
@@ -107,6 +108,7 @@ const event = serializeHermesGatewayEvent({
   schemaVersion: 1,
 });
 assert.equal(event?.attachmentIds.length, 1);
+assert.equal(event?.targetClientId, "hgw_macbook");
 const modelSwitchEvent = serializeHermesGatewayEvent({
   id: "evt_model",
   sequence: 2,
@@ -159,6 +161,9 @@ assert.match(source, /\/messages/);
 assert.match(source, /\/attachments\/init/);
 assert.match(source, /hermes_gateway_token_index/);
 assert.match(source, /assertActiveHermesGatewayEntitlement/);
+assert.match(source, /assertActiveHermesGatewayClient/);
+assert.match(source, /targetClientId/);
+assert.match(source, /event\.targetClientId === grant\.client\.id/);
 assert.match(source, /await assertActiveHermesGatewayEntitlement\(index\.uid\);/);
 assert.match(source, /getSignedUrl\(\{/);
 

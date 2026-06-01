@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="mcp_foil" x1="40" y1="40" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8E2D8"/>
+      <stop offset="0.5" stop-color="#C8BFB5"/>
+      <stop offset="1" stop-color="#A2ACBA"/>
+    </linearGradient>
+    <linearGradient id="mcp_ember" x1="100" y1="40" x2="170" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0C040"/>
+      <stop offset="1" stop-color="#E87060"/>
+    </linearGradient>
+  </defs>
+  <!-- central hosted endpoint port -->
+  <rect x="98" y="150" width="60" height="60" rx="14" fill="#15131C" stroke="url(#mcp_foil)" stroke-width="9"/>
+  <rect x="116" y="168" width="24" height="24" rx="5" fill="url(#mcp_ember)"/>
+  <!-- three connected nodes -->
+  <circle cx="64" cy="74" r="22" fill="#15131C" stroke="url(#mcp_foil)" stroke-width="9"/>
+  <circle cx="192" cy="74" r="22" fill="#15131C" stroke="url(#mcp_foil)" stroke-width="9"/>
+  <circle cx="128" cy="52" r="22" fill="#15131C" stroke="url(#mcp_foil)" stroke-width="9"/>
+  <!-- key on top node -->
+  <circle cx="128" cy="46" r="7" stroke="url(#mcp_ember)" stroke-width="6"/>
+  <line x1="128" y1="53" x2="128" y2="64" stroke="url(#mcp_ember)" stroke-width="6" stroke-linecap="round"/>
+  <line x1="128" y1="60" x2="134" y2="60" stroke="url(#mcp_ember)" stroke-width="6" stroke-linecap="round"/>
+  <!-- connecting lines forming the triangle into the port -->
+  <path d="M64 96l64 60M192 96l-64 60M128 74v82" stroke="url(#mcp_ember)" stroke-width="7" stroke-linecap="round" stroke-dasharray="2 14"/>
+</svg>

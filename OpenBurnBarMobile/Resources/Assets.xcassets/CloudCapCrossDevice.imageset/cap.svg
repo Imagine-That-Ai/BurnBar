@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="cd_foil" x1="40" y1="40" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8E2D8"/>
+      <stop offset="0.5" stop-color="#C8BFB5"/>
+      <stop offset="1" stop-color="#A2ACBA"/>
+    </linearGradient>
+    <linearGradient id="cd_ember" x1="120" y1="150" x2="210" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0C040"/>
+      <stop offset="1" stop-color="#E87060"/>
+    </linearGradient>
+  </defs>
+  <!-- laptop -->
+  <rect x="28" y="52" width="120" height="80" rx="12" stroke="url(#cd_foil)" stroke-width="9"/>
+  <path d="M22 138h132l-10 16H32z" stroke="url(#cd_foil)" stroke-width="9" stroke-linejoin="round"/>
+  <!-- tablet -->
+  <rect x="120" y="86" width="70" height="96" rx="13" fill="#15131C" stroke="url(#cd_foil)" stroke-width="9"/>
+  <!-- phone -->
+  <rect x="166" y="120" width="58" height="100" rx="14" fill="#15131C" stroke="url(#cd_ember)" stroke-width="9"/>
+  <line x1="182" y1="206" x2="208" y2="206" stroke="url(#cd_ember)" stroke-width="7" stroke-linecap="round"/>
+  <!-- flowing thread -->
+  <path d="M70 96C108 60 150 150 196 150" stroke="url(#cd_ember)" stroke-width="7" stroke-linecap="round" stroke-dasharray="2 16"/>
+  <circle cx="138" cy="104" r="12" fill="url(#cd_ember)"/>
+  <circle cx="138" cy="104" r="4" fill="#15131C"/>
+</svg>

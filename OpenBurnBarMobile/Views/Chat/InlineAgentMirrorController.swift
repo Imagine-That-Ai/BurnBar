@@ -189,7 +189,7 @@ final class InlineAgentMirrorController: ObservableObject {
             return
         }
 
-        guard let coordinator = transport.currentMediaControlCoordinator else {
+        guard let coordinator = transport.mediaControlCoordinator(for: relayTarget.connectionID) else {
             phase = .error("Mac mirror stream did not start. Try toggling CLI again.")
             return
         }

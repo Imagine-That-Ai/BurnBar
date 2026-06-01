@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="qr_foil" x1="40" y1="40" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8E2D8"/>
+      <stop offset="0.5" stop-color="#C8BFB5"/>
+      <stop offset="1" stop-color="#A2ACBA"/>
+    </linearGradient>
+    <linearGradient id="qr_ember" x1="90" y1="60" x2="180" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0C040"/>
+      <stop offset="1" stop-color="#E87060"/>
+    </linearGradient>
+  </defs>
+  <!-- phone -->
+  <rect x="86" y="120" width="84" height="116" rx="18" fill="#15131C" stroke="url(#qr_foil)" stroke-width="9"/>
+  <line x1="116" y1="222" x2="140" y2="222" stroke="url(#qr_foil)" stroke-width="7" stroke-linecap="round"/>
+  <!-- cloud lifting up -->
+  <path d="M70 92c0-16 13-28 29-28 12 0 23 8 27 19 2-1 5-1 7-1 14 0 25 11 25 25s-11 25-25 25H82c-14 0-25-10-25-22 0-9 5-16 13-20z" fill="#15131C" stroke="url(#qr_foil)" stroke-width="9" stroke-linejoin="round"/>
+  <!-- circular refresh arrow with ember spark -->
+  <path d="M104 96a26 26 0 1 1 6 28" stroke="url(#qr_ember)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M96 70l10 26 26-8" stroke="url(#qr_ember)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="150" cy="138" r="9" fill="url(#qr_ember)"/>
+</svg>
