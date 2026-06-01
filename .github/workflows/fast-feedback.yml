@@ -51,10 +51,12 @@ jobs:
       - name: Summarize
         if: always()
         run: |
-          echo "### Functions Fast Check" >> "$GITHUB_STEP_SUMMARY"
-          echo "- TypeScript: ✓" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ESLint: ✓" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Unit tests: ✓" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Functions Fast Check"
+            echo "- TypeScript: ✓"
+            echo "- ESLint: ✓"
+            echo "- Unit tests: ✓"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Extension: lint + typecheck + unit tests ─────────────────────────────
   extension-fast:
