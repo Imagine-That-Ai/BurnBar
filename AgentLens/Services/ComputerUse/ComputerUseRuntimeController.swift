@@ -343,7 +343,8 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
                 quotaUsage: ComputerUseQuotaUsage(dayKey: Self.todayKey()),
                 auditBaseDirectory: auditDirectory,
                 macAppVersion: version,
-                killSwitch: settingsManager.computerUseKillSwitch
+                killSwitch: settingsManager.computerUseKillSwitch,
+                phoneControlAttestationRequired: settingsManager.computerUsePhoneControlAttestationRequired
             ),
             scopeRulesProvider: { ComputerUseDenyRegistry.builtInRules },
             approvalPresenter: { request, screenshot in

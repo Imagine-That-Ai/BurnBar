@@ -52,6 +52,7 @@ const MANAGED_FLAGS = {
   computer_use_trust_modes_enabled: { minDwellHours: 24 },
   computer_use_system_enabled:      { minDwellHours: 72 },
   computer_use_phone_control_enabled: { minDwellHours: 72 },
+  computer_use_phone_control_attestation_required: { minDwellHours: 72 },
   hermes_iroh_default_enabled:      { minDwellHours: 48 },
   mercury_media_enabled:            { minDwellHours: 48 },
 };

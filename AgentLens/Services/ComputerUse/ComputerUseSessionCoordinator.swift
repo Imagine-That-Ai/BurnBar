@@ -32,6 +32,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         public var auditBaseDirectory: URL
         public var macAppVersion: String
         public var killSwitch: Bool
+        /// Remote Config `computer_use_phone_control_attestation_required`.
+        public var phoneControlAttestationRequired: Bool
 
         public init(
             userId: String,
@@ -41,7 +43,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             quotaUsage: ComputerUseQuotaUsage,
             auditBaseDirectory: URL,
             macAppVersion: String,
-            killSwitch: Bool = false
+            killSwitch: Bool = false,
+            phoneControlAttestationRequired: Bool = false
         ) {
             self.userId = userId
             self.macHostNodeId = macHostNodeId
@@ -51,6 +54,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             self.auditBaseDirectory = auditBaseDirectory
             self.macAppVersion = macAppVersion
             self.killSwitch = killSwitch
+            self.phoneControlAttestationRequired = phoneControlAttestationRequired
         }
     }
 
@@ -318,8 +322,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 try await self.latestReplySender?(frame)
             }
         )
-        phoneReceiverInstance.requiredAttestationDigestProvider = {
-            await MacAppCheckAttestationReader.currentRequiredAttestationDigest()
+        phoneReceiverInstance.attestationRequirementProvider = {
+            let strict = SettingsManager.shared.computerUsePhoneControlAttestationRequired
+            return await MacAppCheckAttestationReader.attestationRequirement(strictMode: strict)
         }
         phoneReceiver = phoneReceiverInstance
 
@@ -919,11 +924,13 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             guard let wireRequest = frame.control?.agentGrantRequest else { return }
             let receipt: AgentCapabilityGrantReceipt
             do {
-                let requiredAttestation = await MacAppCheckAttestationReader.currentRequiredAttestationDigest()
+                let attestation = await MacAppCheckAttestationReader.attestationRequirement(
+                    strictMode: SettingsManager.shared.computerUsePhoneControlAttestationRequired
+                )
                 _ = try phoneValidator.validate(
                     envelope: wireRequest.authority,
                     grantRequest: wireRequest,
-                    requiredAttestationHashBlake3: requiredAttestation,
+                    attestation: attestation,
                     now: Date()
                 )
                 let request = try AgentCapabilityGrantRequest(wire: wireRequest)

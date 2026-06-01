@@ -7,6 +7,7 @@ import {
   isAppCheckAttestationClaimFresh,
   readAppCheckAttestationClaim,
 } from "../appCheckAttestation.js";
+import { COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM } from "../computerUseRemoteConfig.js";
 
 describe("appCheckAttestation binding", () => {
   it("parses obb_app_check claim from auth token", () => {
@@ -24,6 +25,12 @@ describe("appCheckAttestation binding", () => {
   it("matches Swift golden digest vector", () => {
     expect(appCheckAttestationDigestHex("1:123:ios:abc", 1_700_000_000_000)).toBe(
       "fd33c159e0a5e24cdbb037c2d0be37e43dfde84c4adcfa711e59f1a039a4c1ce",
+    );
+  });
+
+  it("documents phone-control attestation Remote Config key", () => {
+    expect(COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM).toBe(
+      "computer_use_phone_control_attestation_required",
     );
   });
 

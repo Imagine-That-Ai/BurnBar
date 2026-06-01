@@ -1798,6 +1798,10 @@ struct MercuryLiveSheet: View {
         case .killSwitch:
             return "Mac control is temporarily disabled."
         case .signatureFailure, .counterReplay, .staleTimestamp:
+            if let detail = denied.detail,
+               detail == "attestation_required" || detail == "attestation_mismatch" || detail == "mac_attestation_unbound" {
+                return "App Check attestation is required on this Mac. Sign in on both devices, reopen the app, then try again."
+            }
             return "Mac rejected the control signature. Try the action again."
         case .agentUnavailable:
             return denied.detail ?? "The Mac agent is not available for that control action."
@@ -2356,12 +2360,29 @@ struct MercuryLiveSheet: View {
             Self.debugTrace("phone_control_send kind=\(kind.rawValue) connectionID=\(connectionID)")
             _ = try await phoneControlSender.send(intent: intent)
             phoneControlError = nil
+        } catch let error as PhoneControlSender.SendError where error == .attestationRequired {
+            phoneControlError = "App Check attestation is required. Reopen the app after signing in, then try again."
+            Self.debugTrace("phone_control_send_failed_attestation_required connectionID=\(connectionID)")
         } catch {
             self.phoneControlSender = nil
             self.phoneControlConnectionID = nil
-            phoneControlError = error.localizedDescription
+            if let denied = frameDetailForAttestationDenial(error) {
+                phoneControlError = denied
+            } else {
+                phoneControlError = error.localizedDescription
+            }
             Self.debugTrace("phone_control_send_failed kind=\(kind.rawValue) connectionID=\(connectionID) error=\(error.localizedDescription)")
         }
+    }
+
+    private func frameDetailForAttestationDenial(_ error: Error) -> String? {
+        let message = error.localizedDescription
+        if message.localizedCaseInsensitiveContains("attestation_required")
+            || message.localizedCaseInsensitiveContains("attestation_mismatch")
+            || message.localizedCaseInsensitiveContains("mac_attestation_unbound") {
+            return "App Check attestation is required on this Mac. Sign in on both devices and try again."
+        }
+        return nil
     }
 
     private func sendPhoneControlContextTarget(

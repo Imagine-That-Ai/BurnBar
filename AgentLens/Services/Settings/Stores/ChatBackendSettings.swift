@@ -91,6 +91,15 @@ final class ChatBackendSettings {
         didSet { persistence.set(computerUsePhoneControlEnabled, forKey: "computerUsePhoneControlEnabled") }
     }
 
+    var computerUsePhoneControlAttestationRequired: Bool = false {
+        didSet {
+            persistence.set(
+                computerUsePhoneControlAttestationRequired,
+                forKey: "computerUsePhoneControlAttestationRequired"
+            )
+        }
+    }
+
     var computerUseTrustedScopesEnabled: Bool = false {
         didSet { persistence.set(computerUseTrustedScopesEnabled, forKey: "computerUseTrustedScopesEnabled") }
     }
@@ -261,6 +270,9 @@ final class ChatBackendSettings {
         self.computerUseBrowserEnabled = persistence.bool(forKey: "computerUseBrowserEnabled")
         self.computerUseSystemEnabled = persistence.bool(forKey: "computerUseSystemEnabled")
         self.computerUsePhoneControlEnabled = persistence.bool(forKey: "computerUsePhoneControlEnabled")
+        self.computerUsePhoneControlAttestationRequired = persistence.bool(
+            forKey: "computerUsePhoneControlAttestationRequired"
+        )
         self.computerUseTrustedScopesEnabled = persistence.bool(forKey: "computerUseTrustedScopesEnabled")
         self.computerUseAuditExportEnabled = persistence.bool(forKey: "computerUseAuditExportEnabled")
         self.computerUseKillSwitch = persistence.bool(forKey: "computerUseKillSwitch")
