@@ -359,7 +359,7 @@ describe("PII scrubbing in structured logging", () => {
       const result = await withCallableLogging("fn", {}, undefined, async () => "result-value");
       expect(result).toBe("result-value");
       expect(logSpy).toHaveBeenCalledTimes(2);
-      const [startLog, successLog] = logSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
+      const [startLog, successLog] = logSpy.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
       expect((startLog as Record<string, unknown>).event).toBe("callable_start");
       expect((successLog as Record<string, unknown>).event).toBe("callable_success");
     });
