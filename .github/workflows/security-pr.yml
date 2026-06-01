@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install gitleaks
-        run: go install github.com/gitleaks/gitleaks/v8@v8.28.0
+        run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
 
       - name: Run gitleaks
         run: |
@@ -113,7 +113,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Run OSV-Scanner
-        uses: google/osv-scanner-action@v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=functions/package-lock.json
