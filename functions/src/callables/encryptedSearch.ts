@@ -86,15 +86,18 @@ export const beginEncryptedSessionBlobUpload = onCall(
 
       const storagePath = `users/${uid}/session_logs/${documentID}/bodies/${bodyHash}.json.aesgcm`;
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      const [uploadURL] = await getStorage().bucket().file(storagePath).getSignedUrl({
-        version: "v4",
-        action: "write",
-        expires: expiresAt,
-        contentType,
-        extensionHeaders: {
-          "content-length": String(encryptedByteCount),
-        },
-      });
+      const [uploadURL] = await getStorage()
+        .bucket()
+        .file(storagePath)
+        .getSignedUrl({
+          version: "v4",
+          action: "write",
+          expires: expiresAt,
+          contentType,
+          extensionHeaders: {
+            "content-length": String(encryptedByteCount),
+          },
+        });
 
       return {
         storagePath,

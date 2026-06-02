@@ -895,7 +895,9 @@ const DEFAULT_STRIPE_REDIRECT_ORIGINS = [
 
 function allowedStripeRedirectOrigins(): Set<string> {
   const configured = getConfig().stripeAllowedRedirectOrigins;
-  return new Set([...DEFAULT_STRIPE_REDIRECT_ORIGINS, ...configured].flatMap((origin) => normalizeAllowedOrigin(origin)));
+  return new Set(
+    [...DEFAULT_STRIPE_REDIRECT_ORIGINS, ...configured].flatMap((origin) => normalizeAllowedOrigin(origin)),
+  );
 }
 
 function normalizeAllowedOrigin(raw: string): string[] {

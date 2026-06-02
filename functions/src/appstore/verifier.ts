@@ -243,16 +243,9 @@ function stableErrorCode(status: VerificationStatus): string {
   }
 }
 
-function assertDecodedEnvironment(
-  where: string,
-  expected: AppStoreEnvironment,
-  actual: AppStoreEnvironment,
-): void {
+function assertDecodedEnvironment(where: string, expected: AppStoreEnvironment, actual: AppStoreEnvironment): void {
   if (actual !== expected) {
-    throw new JWSVerificationFailure(
-      VerificationStatus.INVALID_ENVIRONMENT,
-      `apple-jws-env_mismatch: ${where}`,
-    );
+    throw new JWSVerificationFailure(VerificationStatus.INVALID_ENVIRONMENT, `apple-jws-env_mismatch: ${where}`);
   }
 }
 

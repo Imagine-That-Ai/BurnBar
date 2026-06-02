@@ -64,10 +64,7 @@ function scrubString(value: string): string {
     result = result.replace(pattern, replacement);
   }
   result = result
-    .replace(
-      new RegExp(`([?&](?:${SECRET_QUERY_KEYS})=)[^&#\\s"'<>]+`, "gi"),
-      `$1${REDACTED}`,
-    )
+    .replace(new RegExp(`([?&](?:${SECRET_QUERY_KEYS})=)[^&#\\s"'<>]+`, "gi"), `$1${REDACTED}`)
     .replace(/\b(rediss?:\/\/)(?:[^@\s/]+@)/gi, `$1${REDACTED}@`)
     .replace(
       /\b(authorization|proxy-authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/gi,

@@ -183,10 +183,7 @@ export async function processFcmOutboundRef(
   }
 }
 
-export async function retryPendingFcmPushes(
-  firestore: Firestore = getFirestore(),
-  limit = 50,
-): Promise<number> {
+export async function retryPendingFcmPushes(firestore: Firestore = getFirestore(), limit = 50): Promise<number> {
   const refs = await collectRetryablePushRefs(firestore, "fcm_outbound", { limit });
   let processed = 0;
   for (const ref of refs) {

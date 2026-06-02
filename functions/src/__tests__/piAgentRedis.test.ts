@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  redactPiAgentConnectionDoc,
-  redactPiAgentRedisURL,
-  validatePiAgentRedisURLForStorage,
-} from "../piAgent.js";
+import { redactPiAgentConnectionDoc, redactPiAgentRedisURL, validatePiAgentRedisURLForStorage } from "../piAgent.js";
 import type { PiAgentConnectionDoc } from "../types.js";
 
 describe("Pi Agent Redis URL secret handling", () => {

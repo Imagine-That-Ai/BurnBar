@@ -297,10 +297,7 @@ export async function processVoIPOutboundRef(
   }
 }
 
-export async function retryPendingVoIPPushes(
-  firestore: Firestore = getFirestore(),
-  limit = 50,
-): Promise<number> {
+export async function retryPendingVoIPPushes(firestore: Firestore = getFirestore(), limit = 50): Promise<number> {
   const refs = await collectRetryablePushRefs(firestore, "voip_outbound", { limit });
   let processed = 0;
   for (const ref of refs) {

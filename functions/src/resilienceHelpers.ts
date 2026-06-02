@@ -4,7 +4,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { FieldValue, Timestamp, type DocumentData, type DocumentReference, type Firestore } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  Timestamp,
+  type DocumentData,
+  type DocumentReference,
+  type Firestore,
+} from "firebase-admin/firestore";
 
 import {
   externalApiPolicy,

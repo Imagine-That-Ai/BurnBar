@@ -71,9 +71,7 @@ function makeFakeFirestore(counts: { clients: number; grants: number; revokedEve
           return query;
         },
         async get() {
-          const startIndex = startAfterId
-            ? collectionDocs.findIndex((doc) => doc.id === startAfterId) + 1
-            : 0;
+          const startIndex = startAfterId ? collectionDocs.findIndex((doc) => doc.id === startAfterId) + 1 : 0;
           const pageDocs = collectionDocs.slice(startIndex, startIndex + pageSize);
           return {
             empty: pageDocs.length === 0,
