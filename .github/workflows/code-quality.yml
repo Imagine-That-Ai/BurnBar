@@ -42,7 +42,7 @@ jobs:
 
       - name: Upload jscpd report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: jscpd-duplication-report
           path: jscpd-report/
@@ -204,7 +204,7 @@ jobs:
 
       - name: Upload size reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: bundle-size-reports
           path: |
@@ -218,7 +218,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: "21"
           distribution: "temurin"
@@ -240,7 +240,7 @@ jobs:
 
       - name: Upload Android dependency health report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-dependency-health
           path: android-dep-health.txt

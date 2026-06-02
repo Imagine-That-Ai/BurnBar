@@ -293,6 +293,7 @@ struct PiChatThreadView: View {
     @State private var showConnectionSheet = false
     @State private var permissionGrantThreadID: String?
     @State private var atomRouter = HermesAtomRouter()
+    @FocusState private var inputFocused: Bool
 
     /// `.tool` messages exist purely as context for the upstream model
     /// — they're hidden from the visible chat list. The tool pill on
@@ -390,14 +391,18 @@ struct PiChatThreadView: View {
         }
         // Pending-prompt consumer — picks up prompts stashed by the
         // "Ask Pi" widget chip AppIntent or a `burnbar://pi?prompt=…`
-        // deep link. Non-empty values auto-send; empty slots simply leave
-        // the user on the composer.
+        // deep link. URL-origin values fill the composer for user review.
         .task(id: AssistantPendingPrompt.shared.pi) {
-            guard let pending = AssistantPendingPrompt.shared.consume(.pi),
-                  !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            guard let request = AssistantPendingPrompt.shared.consumeRequest(.pi),
+                  !request.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { return }
+            if request.requiresConfirmation {
+                input = request.prompt
+                inputFocused = true
+                return
+            }
             try? await Task.sleep(nanoseconds: 250_000_000)
-            service.send(prompt: pending)
+            service.send(prompt: request.prompt)
         }
     }
 
@@ -635,6 +640,7 @@ struct PiChatThreadView: View {
                 .textFieldStyle(.plain)
                 .font(MobileTheme.Typography.body)
                 .lineLimit(1...5)
+                .focused($inputFocused)
                 .padding(MobileTheme.Spacing.sm)
                 .background(
                     RoundedRectangle(cornerRadius: MobileTheme.Radius.md)

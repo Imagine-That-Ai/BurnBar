@@ -40,6 +40,7 @@ vi.mock('vscode', () => ({
     ],
     fs: {
       isWritableFileSystem: vi.fn(() => true),
+      stat: vi.fn(() => Promise.resolve({ size: 0 })),
       readFile: vi.fn(() => Promise.resolve(new Uint8Array()))
     },
     findFiles: vi.fn(() => Promise.resolve([])),
@@ -127,6 +128,12 @@ describe('createBurnBarWorkspaceApi', () => {
     const api = createBurnBarWorkspaceApi('ui');
 
     expect(typeof api.readFile).toBe('function');
+  });
+
+  it('should expose stat method', () => {
+    const api = createBurnBarWorkspaceApi('ui');
+
+    expect(typeof api.stat).toBe('function');
   });
 
   it('should expose findFiles method', () => {
@@ -238,6 +245,32 @@ describe('resolveWorkspaceUri', () => {
     expect(() => resolveWorkspaceUri(api, '../outside.txt')).toThrow('outside the opened workspace root');
   });
 
+  it('normalizes non-file URI paths before workspace containment checks', () => {
+    const api = makeRemoteWorkspaceApi();
+    const result = resolveWorkspaceUri(api, 'vscode-remote://ssh-remote+host/workspace/src/file.ts');
+
+    expect(result.path).toBe('/workspace/src/file.ts');
+  });
+
+  it('rejects non-file URI traversal outside the workspace root', () => {
+    const api = makeRemoteWorkspaceApi();
+
+    expect(() => resolveWorkspaceUri(api, 'vscode-remote://ssh-remote+host/workspace/../secret.txt')).toThrow(
+      'outside the opened workspace root'
+    );
+    expect(() => resolveWorkspaceUri(api, 'vscode-remote://ssh-remote+host/workspace/%2e%2e/secret.txt')).toThrow(
+      'outside the opened workspace root'
+    );
+  });
+
+  it('rejects non-file URIs for a different remote authority', () => {
+    const api = makeRemoteWorkspaceApi();
+
+    expect(() => resolveWorkspaceUri(api, 'vscode-remote://different-host/workspace/src/file.ts')).toThrow(
+      'outside the opened workspace root'
+    );
+  });
+
   it('should throw when no workspace folder is open', () => {
     const emptyApi = createEmptyWorkspaceUriApi();
 
@@ -314,6 +347,7 @@ describe('BurnBarWorkspaceApi Interface', () => {
     const api = createBurnBarWorkspaceApi('ui');
 
     expect(typeof api.isWritableFileSystem).toBe('function');
+    expect(typeof api.stat).toBe('function');
     expect(typeof api.readFile).toBe('function');
     expect(typeof api.findFiles).toBe('function');
     expect(typeof api.openTextDocument).toBe('function');
@@ -327,6 +361,35 @@ describe('BurnBarWorkspaceApi Interface', () => {
     expect(typeof api.joinPath).toBe('function');
   });
 });
+
+function makeRemoteWorkspaceApi(): Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'> {
+  return {
+    workspaceFolders: [
+      {
+        uri: remoteUri('vscode-remote://ssh-remote+host/workspace')
+      }
+    ],
+    parseUri: remoteUri,
+    fileUri: (value: string) => ({ scheme: 'file', fsPath: value, path: value, toString: () => `file://${value}` }),
+    joinPath: (base: BurnBarWorkspaceUri, ...segments: string[]) => {
+      const joinedPath = path.posix.join(base.path ?? base.fsPath, ...segments);
+      return remoteUri(`vscode-remote://${base.authority}${joinedPath}`);
+    }
+  };
+}
+
+function remoteUri(value: string): BurnBarWorkspaceUri {
+  const parsed = new URL(value);
+  return {
+    scheme: parsed.protocol.slice(0, -1),
+    authority: parsed.host,
+    fsPath: parsed.pathname,
+    path: parsed.pathname,
+    query: parsed.search ? parsed.search.slice(1) : '',
+    fragment: parsed.hash ? parsed.hash.slice(1) : '',
+    toString: () => value
+  };
+}
 
 // Type tests
 describe('BurnBarWorkspaceUri Interface', () => {

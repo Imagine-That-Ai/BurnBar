@@ -121,14 +121,16 @@ function sealKeychain(email, password) {
       "OpenBurnBar.QAFirebase",
       "-a",
       email,
-      "-w",
-      password,
       "-l",
       "OpenBurnBar QA Firebase Account",
       "-j",
       "QA-only Firebase Auth account; managed by tools/qa/provision-qa-firebase.js",
+      "-w",
     ],
-    { stdio: ["ignore", "inherit", "inherit"] }
+    {
+      input: `${password}\n${password}\n`,
+      stdio: ["pipe", "inherit", "inherit"],
+    }
   );
 }
 

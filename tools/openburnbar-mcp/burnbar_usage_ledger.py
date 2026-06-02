@@ -30,6 +30,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -44,6 +45,8 @@ from typing import Any, Iterator, Optional
 # ledger uses that default, so all `recordedAt` values written by Hermes/MCP
 # clients must be expressed as `unix_seconds - APPLE_REFERENCE_DATE_OFFSET`.
 APPLE_REFERENCE_DATE_OFFSET: float = 978_307_200.0
+DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE = "com.openburnbar.controller-runtime"
+DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT = "daemon.socket.authToken"
 
 
 KNOWN_PROVIDER_IDS: frozenset[str] = frozenset(
@@ -287,11 +290,12 @@ def _default_socket_path() -> Path:
 
 
 def _resolve_socket_auth_token() -> Optional[str]:
-    """Best-effort lookup of the daemon socket auth token.
+    """Best-effort lookup of the daemon socket auth token from env or Keychain.
 
-    The macOS app stamps the token into the launch-agent plist; the daemon
-    process picks it up from the `OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN`
-    env var. Hermes-launched MCP servers may inherit it directly.
+    The LaunchAgent plist is intentionally not a credential source. A local
+    MCP process must inherit the token from the trusted launcher, read the
+    app-managed Keychain item, or use the offline ledger path when the daemon
+    is unreachable.
     """
     env_token = (
         os.environ.get("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN")
@@ -299,33 +303,42 @@ def _resolve_socket_auth_token() -> Optional[str]:
     )
     if env_token and env_token.strip():
         return env_token.strip()
+    return _read_socket_auth_token_from_keychain()
 
-    plist_path = (
-        Path.home()
-        / "Library"
-        / "LaunchAgents"
-        / "com.openburnbar.daemon.plist"
+
+def _socket_auth_keychain_setting(primary: str, legacy: str, fallback: str) -> str:
+    value = (os.environ.get(primary) or os.environ.get(legacy) or "").strip()
+    return value or fallback
+
+
+def _read_socket_auth_token_from_keychain(timeout_seconds: float = 0.75) -> Optional[str]:
+    if sys.platform != "darwin":
+        return None
+    service = _socket_auth_keychain_setting(
+        "OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE",
+        "BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE",
+        DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE,
     )
-    if not plist_path.is_file():
-        return None
+    account = _socket_auth_keychain_setting(
+        "OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT",
+        "BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT",
+        DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT,
+    )
     try:
-        result = subprocess.run(
-            [
-                "/usr/libexec/PlistBuddy",
-                "-c",
-                "Print :EnvironmentVariables:OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN",
-                str(plist_path),
-            ],
-            capture_output=True,
+        completed = subprocess.run(
+            ["security", "find-generic-password", "-s", service, "-a", account, "-w"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
+            timeout=timeout_seconds,
             check=False,
-            timeout=2,
         )
-    except (subprocess.SubprocessError, OSError):
+    except (OSError, subprocess.SubprocessError):
         return None
-    if result.returncode != 0:
+    if completed.returncode != 0:
         return None
-    token = result.stdout.strip()
+    token = completed.stdout.strip()
     return token or None
 
 
@@ -418,18 +431,12 @@ def append_usage_record(
     key = idempotency_key.strip()
 
     if prefer_daemon:
-        try:
-            daemon_result = _try_record_via_daemon_socket(
-                event_payload=payload,
-                idempotency_key=key,
-                socket_path=_default_socket_path(),
-                auth_token=_resolve_socket_auth_token(),
-            )
-        except RuntimeError:
-            # Daemon explicitly rejected — fall through to local append so we
-            # still capture the spend; the daemon will dedupe on its next
-            # ledger reload.
-            daemon_result = None
+        daemon_result = _try_record_via_daemon_socket(
+            event_payload=payload,
+            idempotency_key=key,
+            socket_path=_default_socket_path(),
+            auth_token=_resolve_socket_auth_token(),
+        )
         if daemon_result is not None:
             return daemon_result
 

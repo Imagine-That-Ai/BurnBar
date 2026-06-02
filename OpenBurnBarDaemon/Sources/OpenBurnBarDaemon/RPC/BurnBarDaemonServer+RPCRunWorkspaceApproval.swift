@@ -13,6 +13,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCreateRequest>.self,
                 from: requestData
             )
+            try validateRunCreateRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -24,6 +25,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunListRequest>.self,
                 from: requestData
             )
+            try validateRunListRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -35,6 +37,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunGetRequest>.self,
                 from: requestData
             )
+            try validateRunGetRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -46,6 +49,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunPollRequest>.self,
                 from: requestData
             )
+            try validateRunPollRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -57,6 +61,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCancelRequest>.self,
                 from: requestData
             )
+            try validateRunCancelRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -68,6 +73,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunRetryRequest>.self,
                 from: requestData
             )
+            try validateRunRetryRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -106,6 +112,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarToolExecutionRequest>.self,
                 from: requestData
             )
+            try validateToolExecutionRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -117,6 +124,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarToolResultSubmissionRequest>.self,
                 from: requestData
             )
+            try validateToolResultSubmissionRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -128,6 +136,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarApprovalRespondRequest>.self,
                 from: requestData
             )
+            try validateApprovalRespondRequest(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,

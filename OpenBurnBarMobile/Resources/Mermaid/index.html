@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
 <title>Chart Studio · Mermaid</title>
 <style>
   :root {
@@ -108,7 +109,10 @@
             fontFamily: "-apple-system, SF Pro Rounded, system-ui, sans-serif",
             fontSize: "14px"
           },
-          flowchart: { htmlLabels: true, curve: "basis" },
+          securityLevel: "strict",
+          startOnLoad: false,
+          maxTextSize: 50000,
+          flowchart: { htmlLabels: false, curve: "basis" },
           sequence: { mirrorActors: false, useMaxWidth: true },
           gantt: { useMaxWidth: true }
         };

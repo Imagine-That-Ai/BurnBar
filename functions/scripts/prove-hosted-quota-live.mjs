@@ -13,9 +13,11 @@ import process from "node:process";
 import { createHash } from "node:crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { fileURLToPath } from "node:url";
 
 const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
 const ENTITLEMENT_PATH = "entitlements/hosted_quota_sync";
+const PRIVATE_SECRET_REF_COLLECTION = "provider_account_secret_refs";
 
 function usage() {
   return `Usage:
@@ -30,7 +32,7 @@ Options:
   --allow-sandbox                     Permit Sandbox as well as Production.
   --require-audit-event               Require a matching entitlement_events row. Default: true.
   --require-backup                    Require paid Firestore backup content evidence.
-  --require-hosted-quota              Require a server_private provider account and quota snapshot.
+  --require-hosted-quota              Require Admin-only hosted credential evidence and public quota readback.
 
 Examples:
   OPENBURNBAR_PROOF_UID=abc123 npm --prefix functions run prove:hosted-quota
@@ -134,6 +136,20 @@ function redactID(value) {
   return typeof value === "string" && value
     ? { sha256: digest(value), prefix: value.slice(0, 4), suffix: value.slice(-4) }
     : null;
+}
+
+function providerAccountSecretRefID(uid, accountID) {
+  const safeUid = String(uid).replace(/[^a-zA-Z0-9]/g, "-");
+  const safeAccountID = String(accountID).replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `${safeUid}_${safeAccountID}`;
+}
+
+function providerAccountSecretRefPath(uid, accountID) {
+  return `${PRIVATE_SECRET_REF_COLLECTION}/${providerAccountSecretRefID(uid, accountID)}`;
+}
+
+function redactPrivateSecretRefPath(uid, accountID) {
+  return `${PRIVATE_SECRET_REF_COLLECTION}/sha256_16_${shortDigest(`${uid}:${accountID}`)}`;
 }
 
 function asDate(value) {
@@ -277,26 +293,56 @@ async function proveBackupContent(db, uid) {
 async function proveHostedQuota(db, uid) {
   const account = await firstMatching(
     db.collection(`users/${uid}/provider_accounts`).where("providerID", "==", "codex"),
-    (data) => data.storageScope === "server_private"
+    (data, doc) =>
+      data.storageScope === "server_private" &&
+      data.id === doc.id &&
+      data.providerID === "codex" &&
+      data.status !== "deleted"
   );
   if (!account) {
     fail("no server_private Codex provider account found");
+  }
+  const accountData = account.data();
+
+  const privateRefPath = providerAccountSecretRefPath(uid, accountData.id);
+  const privateRefSnap = await db.doc(privateRefPath).get();
+  if (!privateRefSnap.exists) {
+    fail("no Admin-only private secret reference found for the hosted Codex account", {
+      accountPath: redactPath(account.ref.path),
+      expectedPrivateRef: redactPrivateSecretRefPath(uid, accountData.id),
+    });
+  }
+  const privateRef = privateRefSnap.data() || {};
+  if (
+    privateRef.uid !== uid ||
+    privateRef.accountID !== accountData.id ||
+    privateRef.providerID !== "codex" ||
+    typeof privateRef.secretVersionName !== "string" ||
+    !/^projects\/[^/]+\/secrets\/[^/]+\/versions\/[^/]+$/.test(privateRef.secretVersionName) ||
+    typeof privateRef.createdAt !== "string" ||
+    typeof privateRef.updatedAt !== "string"
+  ) {
+    fail("hosted Codex private secret reference is malformed or mismatched", {
+      accountPath: redactPath(account.ref.path),
+      privateRef: redactPrivateSecretRefPath(uid, accountData.id),
+    });
   }
 
   const snapshot = await firstMatching(
     db.collection(`users/${uid}/quota_snapshots`).where("providerID", "==", "codex"),
     (data) =>
-      data.accountID === account.id &&
+      data.accountID === accountData.id &&
       data.accountStorageScope === "server_private"
   );
   if (!snapshot) {
-    fail("no hosted Codex quota snapshot found for the server_private account", {
+    fail("no public hosted Codex quota snapshot readback found for the Admin-backed account", {
       accountPath: redactPath(account.ref.path),
     });
   }
 
   return {
     accountPath: account.ref.path,
+    privateSecretRefPath: redactPrivateSecretRefPath(uid, accountData.id),
     snapshotPath: snapshot.ref.path,
   };
 }
@@ -345,6 +391,7 @@ async function main() {
     const evidence = await proveHostedQuota(db, opts.uid);
     result.hostedQuotaEvidence = {
       accountPath: redactPath(evidence.accountPath),
+      privateSecretRefPath: evidence.privateSecretRefPath,
       snapshotPath: redactPath(evidence.snapshotPath),
     };
   }
@@ -353,17 +400,25 @@ async function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-main().catch((err) => {
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        error: err.message,
-        details: err.details,
-      },
-      null,
-      2
-    )
-  );
-  process.exitCode = 1;
-});
+export {
+  providerAccountSecretRefID,
+  providerAccountSecretRefPath,
+  redactPrivateSecretRefPath,
+};
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error(
+      JSON.stringify(
+        {
+          ok: false,
+          error: err.message,
+          details: err.details,
+        },
+        null,
+        2
+      )
+    );
+    process.exitCode = 1;
+  });
+}

@@ -201,8 +201,10 @@ final class PiAgentCloudRelayHostService {
         if let selected = status.selectedInstanceID {
             data["selectedInstanceID"] = selected
         }
-        if !redisRaw.isEmpty {
-            data["redisURL"] = redisRaw
+        if let redisURL = Self.firestoreSafeRedisURLString(redisRaw) {
+            data["redisURL"] = redisURL
+        } else if !redisRaw.isEmpty {
+            data["redisURL"] = FieldValue.delete()
         }
         if !status.instances.isEmpty {
             data["instances"] = status.instances.map { instance in
@@ -243,6 +245,20 @@ final class PiAgentCloudRelayHostService {
                 metadata: ["error": error.localizedDescription]
             )
         }
+    }
+
+    private static func firestoreSafeRedisURLString(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let components = URLComponents(string: trimmed) else { return nil }
+        let scheme = components.scheme?.lowercased()
+        guard scheme == "redis" || scheme == "rediss" else { return nil }
+        guard components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            return nil
+        }
+        return components.url?.absoluteString
     }
 
     private func ensureRequestListener(uid: String) {

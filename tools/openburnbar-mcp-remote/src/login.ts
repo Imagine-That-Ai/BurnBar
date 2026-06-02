@@ -4,9 +4,14 @@ import { promisify } from "node:util";
 import { userInfo, hostname } from "node:os";
 import { writeAccessToken } from "./oauth.js";
 import { readVaultKey } from "./vaultStore.js";
-import { DEFAULT_ENDPOINT } from "./shim.js";
+import { DEFAULT_ENDPOINT, validatedMcpEndpoint } from "./shim.js";
 
 const execFileAsync = promisify(execFile);
+const TRUSTED_VERIFICATION_ORIGINS = new Set([
+  "https://burnbar.ai",
+  "https://openburnbar.com",
+  "https://mcp.burnbar.ai"
+]);
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -24,20 +29,63 @@ async function openUrl(url: string): Promise<void> {
   }
 }
 
-export async function runLoginFlow(): Promise<void> {
-  const mcpEndpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+}
 
-  let startUrl = "";
-  let pollUrl = "";
-  if (mcpEndpoint.includes("/us-central1/")) {
-    const base = mcpEndpoint.substring(0, mcpEndpoint.indexOf("/mcp"));
-    startUrl = `${base}/startCliLink`;
-    pollUrl = `${base}/pollCliLink`;
-  } else {
-    const base = mcpEndpoint.replace(/\/mcp$/, "");
-    startUrl = `${base}/api/cli-link/start`;
-    pollUrl = `${base}/api/cli-link/poll`;
+function endpointOrigin(endpoint: URL): string {
+  return endpoint.origin;
+}
+
+function isDefaultHostedEndpoint(endpoint: URL): boolean {
+  return endpoint.protocol === "https:" && endpoint.hostname.toLowerCase() === "mcp.burnbar.ai";
+}
+
+function expectedVerificationOrigins(endpoint: URL): Set<string> {
+  if (isDefaultHostedEndpoint(endpoint)) {
+    return TRUSTED_VERIFICATION_ORIGINS;
   }
+  return new Set([endpointOrigin(endpoint)]);
+}
+
+export function loginUrlsForEndpoint(endpoint: string): { mcpEndpoint: URL; startUrl: string; pollUrl: string } {
+  const mcpEndpoint = validatedMcpEndpoint(endpoint);
+  const endpointHref = mcpEndpoint.href.replace(/\/$/u, "");
+  if (endpointHref.includes("/us-central1/")) {
+    const mcpPathIndex = endpointHref.lastIndexOf("/mcp");
+    const base = mcpPathIndex >= 0 ? endpointHref.substring(0, mcpPathIndex) : endpointHref;
+    return {
+      mcpEndpoint,
+      startUrl: `${base}/startCliLink`,
+      pollUrl: `${base}/pollCliLink`
+    };
+  }
+  const base = endpointHref.replace(/\/mcp$/u, "");
+  return {
+    mcpEndpoint,
+    startUrl: `${base}/api/cli-link/start`,
+    pollUrl: `${base}/api/cli-link/poll`
+  };
+}
+
+export function validateVerificationUriComplete(verificationUriComplete: string, endpoint: URL): URL {
+  const verificationURL = new URL(verificationUriComplete);
+  if (verificationURL.username || verificationURL.password) {
+    throw new Error("OpenBurnBar CLI verification URL must not include URL credentials.");
+  }
+  if (verificationURL.protocol !== "https:" && !(verificationURL.protocol === "http:" && isLoopbackHost(verificationURL.hostname))) {
+    throw new Error("OpenBurnBar CLI verification URL must use HTTPS, except loopback HTTP for local development.");
+  }
+  const allowedOrigins = expectedVerificationOrigins(endpoint);
+  if (!allowedOrigins.has(verificationURL.origin)) {
+    throw new Error(`OpenBurnBar CLI verification URL origin ${verificationURL.origin} does not match the expected BurnBar/custom auth origin.`);
+  }
+  return verificationURL;
+}
+
+export async function runLoginFlow(): Promise<void> {
+  const { mcpEndpoint, startUrl, pollUrl } = loginUrlsForEndpoint(process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT);
 
   let displayName = "CLI Session";
   try {
@@ -73,12 +121,13 @@ export async function runLoginFlow(): Promise<void> {
     interval: number;
     expiresIn: number;
   };
+  const verificationURL = validateVerificationUriComplete(startData.verificationUriComplete, mcpEndpoint);
 
   console.log(`\nTo link this CLI, please open the following URL in your browser:\n`);
-  console.log(`  ${startData.verificationUriComplete}\n`);
+  console.log(`  ${verificationURL.href}\n`);
   console.log(`Confirm that the code matches: ${startData.userCode}\n`);
 
-  await openUrl(startData.verificationUriComplete);
+  await openUrl(verificationURL.href);
 
   const intervalMs = (startData.interval || 5) * 1000;
   const expiresAt = Date.now() + (startData.expiresIn || 600) * 1000;

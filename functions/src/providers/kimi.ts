@@ -115,8 +115,6 @@ async function tryEachHost(path: string, token: string): Promise<KimiFetchResult
     const result = await kimiFetch(url, token);
     if (result.ok) return result;
     lastFailure = result;
-    // Auth failures mean the key is bad — no point trying another host.
-    if (result.errorCode === "auth_failed") return result;
   }
   return (
     lastFailure ?? {

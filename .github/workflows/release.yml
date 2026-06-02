@@ -1,9 +1,7 @@
 name: OpenBurnBar Release
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 on:
   push:
@@ -42,6 +40,11 @@ jobs:
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
       version: ${{ steps.version.outputs.version }}
+      commit_sha: ${{ steps.version.outputs.commit_sha }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
@@ -49,41 +52,27 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve release tag and version
         id: version
         env:
           INPUT_TAG: ${{ github.event.inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAG_NAME="${INPUT_TAG}"
-          else
-            TAG_NAME="${GITHUB_REF_NAME}"
-          fi
-
-          if [[ ! "$TAG_NAME" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
-            echo "::error::Invalid tag format: $TAG_NAME"
-            exit 1
-          fi
-
-          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
-            echo "::error::Tag does not exist in repository: $TAG_NAME"
-            exit 1
-          fi
-
-          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+          scripts/security/resolve-trusted-release-tag.sh
 
       - name: Check out release tag
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          COMMIT_SHA: ${{ steps.version.outputs.commit_sha }}
         run: |
-          git fetch --force --tags origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
-          git checkout --detach "$TAG_NAME"
-          echo "Building release tag $TAG_NAME at $(git rev-parse HEAD)"
+          git checkout --detach "$COMMIT_SHA"
+          echo "Building trusted release tag $TAG_NAME at $(git rev-parse HEAD)"
 
       - name: Install release security scanners
         run: brew install gitleaks trufflehog
@@ -135,7 +124,7 @@ jobs:
           fi
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: npm
@@ -192,13 +181,13 @@ jobs:
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Set up Java 21 (Android release tests)
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
         with:
           java-version: "21"
           distribution: temurin
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: "platforms;android-35 build-tools;35.0.0"
 
@@ -527,7 +516,7 @@ jobs:
           echo "vex_path=$VEX_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
 
       - name: SLSA provenance attestations (SBOM + VEX + checksums + binaries)
         env:
@@ -636,21 +625,21 @@ jobs:
           cat "$METADATA_FILE"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ steps.dmg.outputs.dmg_name }}
           path: ${{ steps.dmg.outputs.dmg_path }}
           if-no-files-found: error
 
       - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ steps.zip.outputs.zip_name }}
           path: ${{ steps.zip.outputs.zip_path }}
           if-no-files-found: error
 
       - name: Upload checksums artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: checksums-v${{ steps.version.outputs.version }}
           path: ${{ steps.checksums.outputs.checksums_path }}
@@ -658,35 +647,35 @@ jobs:
 
       - name: Upload checksum signature artifact
         if: steps.sign-checksums.outputs.sig_path != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: checksums-v${{ steps.version.outputs.version }}-signature
           path: ${{ steps.sign-checksums.outputs.sig_path }}
           if-no-files-found: error
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sbom-v${{ steps.version.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
           if-no-files-found: error
 
       - name: Upload VEX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: vex-v${{ steps.version.outputs.version }}
           path: ${{ steps.vex.outputs.vex_path }}
           if-no-files-found: error
 
       - name: Upload NOTICES artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: notices-v${{ steps.version.outputs.version }}
           path: ${{ steps.notices.outputs.notices_path }}
           if-no-files-found: error
 
       - name: Upload release metadata artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-metadata-v${{ steps.version.outputs.version }}
           path: ${{ steps.metadata.outputs.metadata_path }}
@@ -713,7 +702,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Download DMG artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ${{ needs.build-and-release.outputs.dmg_name }}
           path: ${{ runner.temp }}
@@ -809,12 +798,19 @@ jobs:
     needs: [build-and-release, smoke-test]
     runs-on: macos-15
     timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.build-and-release.outputs.commit_sha }}
+          persist-credentials: false
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: ${{ runner.temp }}
           merge-multiple: true
@@ -875,8 +871,12 @@ jobs:
               --notes-file "$NOTES_FILE"
           fi
 
+      - name: Install Sentry CLI
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
+        run: bash scripts/supply-chain/install-sentry-cli.sh
+
       - name: Notify Sentry of new release
-        if: env.SENTRY_AUTH_TOKEN != ''
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -885,9 +885,6 @@ jobs:
           VERSION: ${{ needs.build-and-release.outputs.version }}
         run: |
           set -euo pipefail
-          # Install Sentry CLI
-          curl -sL https://sentry.io/get-cli/ | bash
-
           RELEASE_NAME="openburnbar@${VERSION}"
 
           for PROJECT in "$SENTRY_PROJECT_MACOS" "$SENTRY_PROJECT_FUNCTIONS"; do

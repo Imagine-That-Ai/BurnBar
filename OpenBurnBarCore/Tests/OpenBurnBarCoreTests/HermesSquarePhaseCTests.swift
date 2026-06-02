@@ -39,6 +39,24 @@ final class HermesSquareMiniProgramHostTests: XCTestCase {
         }
     }
 
+    func testAgentSpoofingRejectedEvenWhenBothAgentsAreInstalled() {
+        XCTAssertThrowsError(
+            try MiniProgramHostCallValidator.validate(
+                validCall(),
+                installedAgentURIs: [
+                    "agent://third-party/foo/scout",
+                    "agent://third-party/foo/other"
+                ],
+                expectedAgentURI: "agent://third-party/foo/other"
+            )
+        ) { error in
+            guard case MiniProgramHostCallValidator.ValidationError.agentMismatch = error else {
+                XCTFail("Expected agentMismatch; got \(error)")
+                return
+            }
+        }
+    }
+
     func testEmptyAgentURIRejected() {
         let call = MiniProgramHostCall(
             action: .dispatch,
@@ -69,6 +87,17 @@ final class HermesSquareMiniProgramHostTests: XCTestCase {
         XCTAssertThrowsError(
             try MiniProgramHostCallValidator.validate(call, installedAgentURIs: ["agent://foo/bar"])
         ) { error in
+            guard case MiniProgramHostCallValidator.ValidationError.fieldTooLarge(let field, _, _) = error else {
+                XCTFail("Expected fieldTooLarge; got \(error)")
+                return
+            }
+            XCTAssertEqual(field, "payload.bulk")
+        }
+    }
+
+    func testRawBridgePayloadCapCoversWholeEnvelope() {
+        let huge = Data(repeating: 0x61, count: MiniProgramHostCallValidator.maxCallPayloadBytes + 1)
+        XCTAssertThrowsError(try MiniProgramHostCallValidator.validateRawBridgePayload(huge)) { error in
             guard case MiniProgramHostCallValidator.ValidationError.payloadTooLarge = error else {
                 XCTFail("Expected payloadTooLarge; got \(error)")
                 return
@@ -76,13 +105,112 @@ final class HermesSquareMiniProgramHostTests: XCTestCase {
         }
     }
 
+    func testRawBridgeMessageRejectsOversizedStringsBeforeSerialization() {
+        let body: [String: Any] = [
+            "action": "dispatch",
+            "correlationID": String(repeating: "x", count: MiniProgramHostCallValidator.maxCorrelationIDBytes + 1),
+            "payload": ["prompt": "hello"],
+            "agentURI": "agent://third-party/foo/scout",
+            "cardURI": "card://scout/dispatch"
+        ]
+        XCTAssertThrowsError(try MiniProgramHostCallValidator.validateRawBridgeMessageBody(body)) { error in
+            guard case MiniProgramHostCallValidator.ValidationError.fieldTooLarge(let field, _, _) = error else {
+                XCTFail("Expected fieldTooLarge; got \(error)")
+                return
+            }
+            XCTAssertEqual(field, "correlationID")
+        }
+    }
+
+    func testRateLimiterAppliesPerActionWindow() {
+        var limiter = MiniProgramHostBridgeRateLimiter(maxCallsPerAction: 2, windowSeconds: 10)
+        XCTAssertTrue(limiter.allow(.dispatch, at: 100))
+        XCTAssertTrue(limiter.allow(.dispatch, at: 101))
+        XCTAssertFalse(limiter.allow(.dispatch, at: 102))
+        XCTAssertTrue(limiter.allow(.approve, at: 103))
+        XCTAssertTrue(limiter.allow(.dispatch, at: 111))
+    }
+
     func testCSPLocksToSandboxOrigin() {
-        let csp = MiniProgramHostCallValidator.contentSecurityPolicy(
-            sandboxURL: "https://example.com/mini-prog/v1/index.html"
+        let policy = MiniProgramHostCallValidator.approvedSandboxPolicy(
+            sandboxURL: "https://example.com/mini-prog/v1/index.html",
+            approvedOrigins: ["https://example.com"]
         )
+        let csp = MiniProgramHostCallValidator.contentSecurityPolicy(policy: policy)
         XCTAssertTrue(csp.contains("https://example.com"))
         XCTAssertTrue(csp.contains("frame-ancestors 'none'"))
         XCTAssertTrue(csp.contains("object-src 'none'"))
+        XCTAssertTrue(csp.contains("form-action 'none'"))
+        XCTAssertTrue(csp.contains("worker-src 'none'"))
+    }
+
+    func testBridgeOriginMustMatchSandboxOrigin() {
+        let policy = MiniProgramHostCallValidator.approvedSandboxPolicy(
+            sandboxURL: "https://example.com/mini/index.html",
+            approvedOrigins: ["https://example.com"]
+        )!
+        XCTAssertTrue(MiniProgramHostCallValidator.isAllowedBridgeOrigin(
+            currentURL: URL(string: "https://example.com/mini/a.html")!,
+            policy: policy
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedBridgeOrigin(
+            currentURL: URL(string: "https://evil.example/mini/a.html")!,
+            policy: policy
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedBridgeOrigin(
+            currentURL: URL(string: "http://example.com/mini/a.html")!,
+            policy: policy
+        ))
+    }
+
+    func testSandboxURLRequiresIndependentApproval() {
+        XCTAssertTrue(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            URL(string: "https://example.com/card.html")!,
+            approvedOrigins: ["https://example.com"]
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            URL(string: "https://attacker.example/card.html")!,
+            approvedOrigins: ["https://example.com"]
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            URL(string: "http://example.com/card.html")!,
+            approvedOrigins: ["http://example.com"]
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            URL(string: "https://token@example.com/card.html")!,
+            approvedOrigins: ["https://example.com"]
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(URL(string: "data:text/html,hi")!))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(URL(string: "javascript:alert(1)")!))
+    }
+
+    func testSandboxURLAllowsExplicitLoopbackLocalDevelopment() {
+        XCTAssertTrue(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            URL(string: "http://127.0.0.1:8787/card.html")!,
+            approvedOrigins: [],
+            allowLocalDevelopment: true
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            URL(string: "http://example.com/card.html")!,
+            approvedOrigins: [],
+            allowLocalDevelopment: true
+        ))
+    }
+
+    func testFileSandboxRequiresApprovedPackageDirectory() {
+        let packageDirectory = URL(fileURLWithPath: "/tmp/openburnbar-mini-package", isDirectory: true)
+        let packageFile = packageDirectory.appendingPathComponent("index.html")
+        let outsideFile = URL(fileURLWithPath: "/tmp/outside.html")
+        XCTAssertTrue(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            packageFile,
+            approvedOrigins: [],
+            approvedPackageDirectoryURLs: [packageDirectory]
+        ))
+        XCTAssertFalse(MiniProgramHostCallValidator.isAllowedSandboxURL(
+            outsideFile,
+            approvedOrigins: [],
+            approvedPackageDirectoryURLs: [packageDirectory]
+        ))
     }
 
     func testAllPrimitivesEnumeratedAndStable() {

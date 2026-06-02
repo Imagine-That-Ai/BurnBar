@@ -30,6 +30,7 @@ import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } fr
 import {
   appStoreEntitlementTarget,
   beginBinding,
+  consumeAppStoreLiveStatusRateLimit,
   consumeBindingByToken,
   EntitlementReconcileError,
   reconcileEntitlement,
@@ -174,6 +175,9 @@ export const verifyCloudProTopUp = onCall(
       if (decoded.payload.bundleId !== cfg.bundleId) {
         throw httpsError("permission-denied", "transaction bundleID does not match this app");
       }
+      if (decoded.environment !== "Production") {
+        throw httpsError("permission-denied", `Non-production App Store transaction environment ${decoded.environment} cannot grant production top-up.`);
+      }
       const kind = appStoreTopUpKind(transactionProductID);
       if (!kind) {
         throw httpsError("invalid-argument", "Unsupported App Store top-up productID.");
@@ -298,6 +302,11 @@ export const restoreHostedQuotaEntitlement = onCall(
       if (!original) {
         throw httpsError("failed-precondition", "entitlement has no originalTransactionID");
       }
+      try {
+        await consumeAppStoreLiveStatusRateLimit(db, uid, original);
+      } catch (err) {
+        throw mapReconcileError(err);
+      }
       const live = await fetchLiveSubscriptionStatus(cfg, existing.environment ?? cfg.environment, original);
       const seedJWS = live.pairs[0]?.signedTransactionInfo;
       if (!seedJWS) {
@@ -310,6 +319,9 @@ export const restoreHostedQuotaEntitlement = onCall(
           claimedUid: uid,
           source: "client_callable",
           productID,
+        }, {
+          fetchLive: async () => live,
+          rateLimitLiveStatus: false,
         });
         return result.entitlement;
       } catch (err) {
@@ -344,7 +356,8 @@ function mapReconcileError(err: unknown): functions.HttpsError {
       err.code === "binding_mismatch" ||
       err.code === "binding_unknown" ||
       err.code === "uid_unresolved" ||
-      err.code === "bundle_id_mismatch"
+      err.code === "bundle_id_mismatch" ||
+      err.code === "non_production_transaction"
     ) {
       return httpsError("permission-denied", err.message);
     }
@@ -353,6 +366,9 @@ function mapReconcileError(err: unknown): functions.HttpsError {
     }
     if (err.code === "asc_live_status_unavailable") {
       return httpsError("unavailable", err.message);
+    }
+    if (err.code === "asc_live_status_rate_limited") {
+      return httpsError("resource-exhausted", err.message);
     }
     if (err.code === "missing_field") {
       return httpsError("invalid-argument", err.message);

@@ -137,6 +137,53 @@ export function validatePiAgentEndpointURL(raw: unknown, mode: PiAgentConnection
   throw new HttpsError("invalid-argument", "Use HTTPS, or HTTP only for localhost/private LAN Pi Agent hosts.");
 }
 
+export function validatePiAgentRedisURLForStorage(raw: unknown): string | undefined {
+  const value = boundedTrimmedString(raw, "redisURL", 2048);
+  if (!value) {
+    return undefined;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new HttpsError("invalid-argument", "redisURL must be a valid redis:// or rediss:// URL.");
+  }
+  const scheme = url.protocol.toLowerCase();
+  if (scheme !== "redis:" && scheme !== "rediss:") {
+    throw new HttpsError("invalid-argument", "redisURL must use redis:// or rediss://.");
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new HttpsError(
+      "invalid-argument",
+      "redisURL must not include credentials, query strings, or fragments. Keep Redis credentials local.",
+    );
+  }
+  return url.toString();
+}
+
+export function redactPiAgentRedisURL(raw: string | undefined): string | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const url = new URL(raw);
+    if (!url.username && !url.password && !url.search && !url.hash) {
+      return url.toString();
+    }
+    const auth = url.username || url.password ? "[REDACTED]@" : "";
+    return `${url.protocol}//${auth}${url.host}${url.pathname}`;
+  } catch {
+    return "[REDACTED]";
+  }
+}
+
+export function redactPiAgentConnectionDoc(doc: PiAgentConnectionDoc): PiAgentConnectionDoc {
+  return {
+    ...doc,
+    redisURL: redactPiAgentRedisURL(doc.redisURL),
+  };
+}
+
 export function isPiAgentConnectionDoc(doc: unknown): doc is PiAgentConnectionDoc {
   const record = recordOrUndefined(doc);
   if (!record) return false;

@@ -116,7 +116,7 @@ test("hosted resume list returns sealed metadata only", async () => {
   assert.equal(result.items.length, 1);
   assert.equal(result.items[0].session_id, "goose-1");
   assert.equal(result.items[0].can_resume_native, false);
-  assert.equal(result.items[0].summary_title_sealed, envelope);
+  assert.deepEqual(result.items[0].summary_title_sealed, envelope);
 });
 
 test("hosted resume returns sealed response with ordered chunk hashes", async () => {
@@ -133,6 +133,40 @@ test("hosted resume returns sealed response with ordered chunk hashes", async ()
   assert.equal(result.header_plain.provider, "Goose");
   assert.equal(result.sealed.trail_chunks.length, 2);
   assert.equal(result.body_hashes.length, 2);
+});
+
+test("hosted resume strips non-canonical sealed envelope keys", async () => {
+  const leakyEnvelope = {
+    ...envelope,
+    plaintext: "should not leave Firestore",
+    nested: { prompt: "also stripped" }
+  };
+  const result = await resumeConversation(
+    makeFirestore([
+      {
+        id: "doc-leaky",
+        data: {
+          provider: "Codex",
+          sessionId: "codex-leaky",
+          sourceID: "Codex:codex-leaky",
+          projectName: "FixtureApp",
+          model: "gpt-5.1",
+          sealedTitle: leakyEnvelope,
+          sealedBodyPreview: leakyEnvelope
+        }
+      }
+    ]),
+    "user-1",
+    { session_id: "doc-leaky" }
+  );
+
+  assert.equal(result.kind, "ported_sealed");
+  if (result.kind !== "ported_sealed") {
+    throw new Error("expected ported_sealed");
+  }
+  assert.deepEqual(result.sealed.summary_title, envelope);
+  assert.deepEqual(result.sealed.summary, envelope);
+  assert.doesNotMatch(JSON.stringify(result), /should not leave Firestore|also stripped/u);
 });
 
 test("hosted resume resolves a unique opaque query hash to a sealed response", async () => {

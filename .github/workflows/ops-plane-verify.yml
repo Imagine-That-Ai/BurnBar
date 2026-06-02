@@ -2,7 +2,6 @@ name: Ops plane verify (production)
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   schedule:
@@ -44,6 +43,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -52,12 +53,12 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@a511b5a7f286f9b1edc5e21fb27b9bbc2e8e880f # v2
+        uses: google-github-actions/setup-gcloud@a511b5a7f286f9b1edc5e21fb27b9bbc2e8e880f
 
       - name: Activate ops plane (optional)
         if: github.event_name == 'workflow_dispatch' && inputs.apply == true
@@ -76,7 +77,7 @@ jobs:
 
       - name: Upload verification summary
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ops-plane-verify-${{ github.run_id }}
           path: verify-ops-plane-summary.json

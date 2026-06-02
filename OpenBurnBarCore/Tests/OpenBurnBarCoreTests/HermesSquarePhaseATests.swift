@@ -243,6 +243,37 @@ final class HermesSquareCardEnvelopeTests: XCTestCase {
             XCTFail("Expected unknown(label)")
         }
     }
+
+    func testImagePresentationHintsClampOnDecode() {
+        let raw = #"{"kind":"image","payload":{"url":"https://example.com/a.png","alt":"a","widthHint":999999,"heightHint":-25}}"#
+            .data(using: .utf8)!
+        let decoded = CardEnvelope.fromJSON(raw)
+        guard case .image(let image) = decoded else {
+            XCTFail("Expected image payload")
+            return
+        }
+
+        XCTAssertEqual(image.widthHint, 4_096)
+        XCTAssertEqual(image.heightHint, 1)
+    }
+
+    func testCustomCardHeightHintClampsOnInitAndDecode() {
+        let direct = CardCustom(
+            schemaURL: "https://example.com/schema.json",
+            sandboxURL: "https://example.com/card.html",
+            heightHint: 50_000
+        )
+        XCTAssertEqual(direct.heightHint, 720)
+
+        let raw = #"{"kind":"custom","payload":{"schemaURL":"https://example.com/schema.json","sandboxURL":"https://example.com/card.html","heightHint":-500}}"#
+            .data(using: .utf8)!
+        let decoded = CardEnvelope.fromJSON(raw)
+        guard case .custom(let custom) = decoded else {
+            XCTFail("Expected custom payload")
+            return
+        }
+        XCTAssertEqual(custom.heightHint, 96)
+    }
 }
 
 final class HermesSquarePinnedGridTests: XCTestCase {

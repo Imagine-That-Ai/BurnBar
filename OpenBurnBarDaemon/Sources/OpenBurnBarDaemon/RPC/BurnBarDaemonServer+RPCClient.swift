@@ -13,6 +13,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarClientAttachRequest>.self,
                 from: requestData
             )
+            try validateClientAttachRequest(typedRequest.params)
             let (attachResponse, arbitration) = await clientRegistry.attach(typedRequest.params)
             logger.notice(
                 "client_arbitration_updated",
@@ -32,6 +33,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarClientDetachRequest>.self,
                 from: requestData
             )
+            try validateClientSessionRequest(clientID: typedRequest.params.clientID, sessionID: typedRequest.params.sessionID)
             let arbitration = try await clientRegistry.detach(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
@@ -44,6 +46,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarClientClaimControlRequest>.self,
                 from: requestData
             )
+            try validateClientSessionRequest(clientID: typedRequest.params.clientID, sessionID: typedRequest.params.sessionID)
             let arbitration = try await clientRegistry.claimControl(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,

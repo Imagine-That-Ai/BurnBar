@@ -86,10 +86,15 @@
 
       var handles = new Map();
       var nextHandle = 1;
+      var maxHandles = 1024;
 
       function storeHandle(value) {
         var id = nextHandle++;
         handles.set(id, value);
+        while (handles.size > maxHandles) {
+          var oldest = handles.keys().next().value;
+          handles.delete(oldest);
+        }
         return id;
       }
 
@@ -235,6 +240,9 @@
           msg = JSON.parse(json);
         } catch (e) {
           return; // Malformed; nothing we can reply to.
+        }
+        if (!msg || typeof msg.id !== "number" || typeof msg.method !== "string") {
+          return;
         }
         var id = msg.id;
         var method = methods[msg.method];

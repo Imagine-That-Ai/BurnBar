@@ -482,7 +482,10 @@ private func resolveAllAPIKeys(
         }
     }
 
-    resolvedKeys["cursor_cookie"] = keyStore.apiKey(for: "cursor_cookie")
+    resolvedKeys[CursorCredentialStore.cookieAccount] = CursorCredentialStore.resolvedCookieHeader(
+        providerKeyStore: keyStore,
+        connectorKeychain: providerRuntimeKeyStore
+    )
     for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
         resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
     }

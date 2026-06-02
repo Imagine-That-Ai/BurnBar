@@ -56,7 +56,7 @@ struct OpenBurnBarMobileApp: App {
         if GIDSignIn.sharedInstance.handle(url) {
             return
         }
-        guard url.scheme == "burnbar" else { return }
+        guard isOpenBurnBarAppDeepLink(url) else { return }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let promptParam = components?.queryItems?.first(where: { $0.name == "prompt" })?.value
         let threadParam = components?.queryItems?.first(where: { $0.name == "threadId" })?.value
@@ -78,8 +78,8 @@ struct OpenBurnBarMobileApp: App {
         case "chat", "hermes":
             // Hermes legacy deep link stays valid. The Assistants tab opens
             // with the Hermes runtime selected. An optional `?prompt=` is
-            // stashed for the Hermes auto-submit hook.
-            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: promptTrimmed)
+            // stashed for user confirmation before sending.
+            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: promptTrimmed, source: .deepLink)
             NotificationCenter.default.post(name: .init("ShowHermesChat"), object: nil)
             var userInfo: [AnyHashable: Any] = ["runtime": AssistantRuntimeID.hermes.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
@@ -91,7 +91,7 @@ struct OpenBurnBarMobileApp: App {
             )
         case "pi":
             // Direct Pi entry point — symmetry with `burnbar://hermes`.
-            AssistantPendingPrompt.shared.stash(assistant: .pi, prompt: promptTrimmed)
+            AssistantPendingPrompt.shared.stash(assistant: .pi, prompt: promptTrimmed, source: .deepLink)
             var userInfo: [AnyHashable: Any] = ["runtime": AssistantRuntimeID.pi.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
             NotificationCenter.default.post(
@@ -104,7 +104,7 @@ struct OpenBurnBarMobileApp: App {
             let runtimeRaw = components?.queryItems?.first(where: { $0.name == "runtime" })?.value
                 ?? url.pathComponents.dropFirst().first
             let runtime = AssistantRuntimeID(rawValue: runtimeRaw ?? "") ?? .hermes
-            AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: promptTrimmed)
+            AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: promptTrimmed, source: .deepLink)
             var userInfo: [AnyHashable: Any] = ["runtime": runtime.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
             if let threadTrimmed { userInfo["threadId"] = threadTrimmed }
@@ -125,6 +125,15 @@ struct OpenBurnBarMobileApp: App {
         default:
             break
         }
+    }
+}
+
+private func isOpenBurnBarAppDeepLink(_ url: URL) -> Bool {
+    switch url.scheme?.lowercased() {
+    case "burnbar", "openburnbar":
+        return true
+    default:
+        return false
     }
 }
 

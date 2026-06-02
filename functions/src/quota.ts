@@ -33,7 +33,6 @@ import { xaiAdapter } from "./providers/xai.js";
 import {
   isProviderAccountStorageScope,
   isTimestampWithToDate,
-  isTimestampWithToMillis,
   jsonObject,
   parseProvider,
   parseProviderAccountDoc,
@@ -43,6 +42,7 @@ import {
   recordOrUndefined,
   stripUndefinedRecord,
 } from "./guards.js";
+import { isActiveHostedQuotaEntitlement, isActivePremiumEntitlement } from "./entitlements.js";
 
 /** Schema version for quota snapshot documents. */
 const QUOTA_SCHEMA_VERSION = 2;
@@ -81,7 +81,12 @@ export function providerAccountSecretRefPath(uid: string, accountID: string): st
   return `provider_account_secret_refs/${providerAccountSecretRefID(uid, accountID)}`;
 }
 
-async function retrieveAccountSecret(db: Firestore, uid: string, accountID: string): Promise<string> {
+async function retrieveAccountSecret(
+  db: Firestore,
+  uid: string,
+  accountID: string,
+  expectedProvider: Provider,
+): Promise<string> {
   const ref = db.doc(providerAccountSecretRefPath(uid, accountID));
   const snap = await ref.get();
   if (!snap.exists) {
@@ -93,6 +98,9 @@ async function retrieveAccountSecret(db: Firestore, uid: string, accountID: stri
   }
   if (data.uid !== uid || data.accountID !== accountID || !data.secretVersionName) {
     throw new Error(`Secret reference does not match account ${accountID}`);
+  }
+  if (data.providerID !== expectedProvider) {
+    throw new Error(`Secret reference provider ${data.providerID} does not match account provider ${expectedProvider}`);
   }
   return retrieveCredential(data.secretVersionName);
 }
@@ -127,7 +135,7 @@ export async function refreshUserProviderQuota(
     throw new Error(`Connection ${provider} is not active (${conn.status})`);
   }
 
-  const credential = await retrieveAccountSecret(db, uid, legacyAccountID);
+  const credential = await retrieveAccountSecret(db, uid, legacyAccountID, provider);
   const adapter = adapterFor(provider);
   if (!adapter) {
     throw new Error(`No adapter for provider ${provider}`);
@@ -210,7 +218,7 @@ export async function refreshUserProviderAccountQuota(
     throw new Error(`No adapter for provider ${provider}`);
   }
 
-  const credential = await retrieveAccountSecret(db, uid, accountID);
+  const credential = await retrieveAccountSecret(db, uid, accountID, provider);
   const result: QuotaRefreshResult = await adapter.fetchQuota(credential, accountID, {
     endpointProfileID: account.endpointProfileID,
     region: account.region,
@@ -264,7 +272,11 @@ async function refreshHostedQuotaAccount(
   await requireHostedQuotaEntitlement(db, uid);
   await consumeHostedRefreshBudget(db, uid, account.id);
 
-  const credential = await retrieveAccountSecret(db, uid, account.id);
+  const provider = parseProvider(account.providerID);
+  if (!provider) {
+    throw new Error(`No hosted runner provider for ${account.providerID}`);
+  }
+  const credential = await retrieveAccountSecret(db, uid, account.id, provider);
   const now = new Date().toISOString();
   try {
     const snapshot = await fetchHostedRunnerSnapshot(account, credential, now);
@@ -301,37 +313,6 @@ async function requireHostedQuotaEntitlement(db: Firestore, uid: string): Promis
   if (isActiveHostedQuotaEntitlement(recordOrUndefined(hostedSnap.data()))) return;
   if (isActivePremiumEntitlement(proSnap.data())) return;
   throw new Error("permission-denied: Hosted Quota Sync or BurnBar Pro subscription required.");
-}
-
-function isActiveHostedQuotaEntitlement(entitlement: Record<string, unknown> | undefined): boolean {
-  if (!entitlement) return false;
-  const expiresAtMs = typeof entitlement.expiresAt === "string" ? Date.parse(entitlement.expiresAt) : 0;
-  return (
-    entitlement.active === true &&
-    entitlement.productID === getConfig().hostedQuotaProductID &&
-    Number.isFinite(expiresAtMs) &&
-    expiresAtMs > Date.now()
-  );
-}
-
-function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  if (
-    productID !== getConfig().hostedQuotaProductID &&
-    productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID
-  ) {
-    return false;
-  }
-  const expireAt = raw.expireAt;
-  if (expireAt && typeof expireAt === "object") {
-    if (isTimestampWithToMillis(expireAt)) {
-      return expireAt.toMillis() > Date.now();
-    }
-  }
-  const expiresAtMs = raw.expiresAt ? Date.parse(String(raw.expiresAt)) : 0;
-  return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
 }
 
 async function consumeHostedRefreshBudget(db: Firestore, uid: string, accountID: string): Promise<void> {

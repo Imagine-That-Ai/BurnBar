@@ -12,6 +12,8 @@
 import { randomUUID } from "node:crypto";
 import { onCall, type CallableOptions, type CallableRequest } from "firebase-functions/v2/https";
 
+const REDACTED = "[REDACTED]";
+
 // Patterns for PII and sensitive data scrubbing
 const SCRUB_PATTERNS: Array<[RegExp, string]> = [
   // Email addresses
@@ -20,26 +22,34 @@ const SCRUB_PATTERNS: Array<[RegExp, string]> = [
   [/\b(\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
   // API keys / bearer tokens (long alphanumeric strings with known prefixes)
   // Note: Stripe sk-, Google AIza, Google OAuth ya29., JWT eyJ headers
-  [/\b(sk-|AIza|ya29\.|eyJ)[A-Za-z0-9\-_.+/]{20,}/g, "[REDACTED]"],
+  [/\b(sk-|rk-|AIza|ya29\.|eyJ)[A-Za-z0-9\-_.+/=]{20,}/g, REDACTED],
+  [/\bBearer\s+[A-Za-z0-9._~+/\-=]{12,}/gi, `Bearer ${REDACTED}`],
   // Credit card-like numbers (16 digits, optional separators)
-  [/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]"],
+  [/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, REDACTED],
   // NOTE: Firebase Auth UIDs (28-char alphanumeric) are handled by key-based
   // logic in scrubFields, NOT by regex, to avoid false-positives on
   // correlation IDs, git hashes, and other 28-char tokens.
 ];
 
 const MAX_FIELD_LENGTH = 1024;
-function isSensitiveLogKey(key: string): boolean {
+const SECRET_QUERY_KEYS =
+  "access_token|refresh_token|id_token|token|api_key|apikey|key|secret|password|pass|code|auth|authorization|cookie|session|bearer";
+
+export function isSensitiveLogKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
   return (
     normalized.includes("accesstoken") ||
     normalized.includes("apikey") ||
     normalized.includes("authorization") ||
     normalized.includes("bearer") ||
+    normalized.includes("credential") ||
     normalized.includes("cookie") ||
+    normalized.includes("redisurl") ||
     normalized.includes("password") ||
     normalized.includes("privatekey") ||
+    normalized.includes("refreshtoken") ||
     normalized.includes("secret") ||
+    normalized.includes("sessiontoken") ||
     normalized.includes("token")
   );
 }
@@ -53,11 +63,49 @@ function scrubString(value: string): string {
   for (const [pattern, replacement] of SCRUB_PATTERNS) {
     result = result.replace(pattern, replacement);
   }
+  result = result
+    .replace(
+      new RegExp(`([?&](?:${SECRET_QUERY_KEYS})=)[^&#\\s"'<>]+`, "gi"),
+      `$1${REDACTED}`,
+    )
+    .replace(/\b(rediss?:\/\/)(?:[^@\s/]+@)/gi, `$1${REDACTED}@`)
+    .replace(
+      /\b(authorization|proxy-authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/gi,
+      (_match, key: string) => `${key}: ${REDACTED}`,
+    )
+    .replace(/\b(set-cookie|cookie)\s*[:=]\s*[^\r\n]+/gi, (_match, key: string) => `${key}: ${REDACTED}`)
+    .replace(
+      /\b(password|passwd|pwd|token|secret|api[_-]?key|access[_-]?token|refresh[_-]?token)\b(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+      (_match, key: string, sep: string) => `${key}${sep}${REDACTED}`,
+    );
   return result;
 }
 
+export function sanitizeForTelemetry(value: unknown, key = ""): unknown {
+  if (typeof value === "string") {
+    if (key === "uid" || key === "userId" || key === "user_id") {
+      return value.slice(0, 8);
+    }
+    return isSensitiveLogKey(key) ? REDACTED : scrubString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForTelemetry(item, key));
+  }
+  if (value instanceof Error) {
+    return {
+      name: scrubString(value.name),
+      message: scrubString(value.message),
+      stack: value.stack ? scrubString(value.stack) : undefined,
+    };
+  }
+  if (typeof value === "object" && value !== null) {
+    return scrubFields(value as Record<string, unknown>);
+  }
+  return value;
+}
+
 /** Recursively scrub all string values in a log payload. */
-function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
+export function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
   const scrubbed: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === "string") {
@@ -65,12 +113,14 @@ function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
       if (key === "uid" || key === "userId" || key === "user_id") {
         scrubbed[key === "uid" ? "user_id_hash" : key] = value.slice(0, 8);
       } else if (isSensitiveLogKey(key)) {
-        scrubbed[key] = "[REDACTED]";
+        scrubbed[key] = REDACTED;
       } else {
         scrubbed[key] = scrubString(value);
       }
-    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      scrubbed[key] = scrubFields(value as Record<string, unknown>);
+    } else if (Array.isArray(value)) {
+      scrubbed[key] = value.map((item) => sanitizeForTelemetry(item, key));
+    } else if (typeof value === "object" && value !== null) {
+      scrubbed[key] = sanitizeForTelemetry(value, key);
     } else {
       scrubbed[key] = value;
     }
@@ -83,7 +133,7 @@ export interface LogFields {
   trace_id?: string;
   session_id?: string;
   user_id_hash?: string;
-  [key: string]: string | number | boolean | undefined;
+  [key: string]: unknown;
 }
 
 export function logInfo(fields: LogFields): void {

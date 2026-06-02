@@ -167,6 +167,7 @@ public struct PretextRichLine: Hashable, Sendable {
 public enum PretextError: Error, CustomStringConvertible, Sendable {
     case engineUnavailable
     case timeout
+    case inputRejected(String)
     case invalidResponse
     case bridgeError(String)
 
@@ -174,6 +175,8 @@ public enum PretextError: Error, CustomStringConvertible, Sendable {
         switch self {
         case .engineUnavailable: return "Pretext engine is not loaded yet."
         case .timeout:           return "Pretext call timed out."
+        case .inputRejected(let reason):
+            return "Pretext input rejected: \(reason)"
         case .invalidResponse:   return "Pretext returned a malformed response."
         case .bridgeError(let m): return "Pretext bridge error: \(m)"
         }

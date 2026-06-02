@@ -22,6 +22,7 @@ const extensionsDir = join(tempRoot, "extensions");
 const workspaceDir = join(tempRoot, "workspace");
 const supportDir = join(tempRoot, "openburnbar-support");
 const smokeOutput = join(tempRoot, "smoke-output.json");
+const smokeFilePath = join(workspaceDir, "src", "example.ts");
 const socketPath = join("/tmp", `obbcs-${smokeID}.sock`);
 const logPath = join("/tmp", `obbcs-${smokeID}.log`);
 const fakeProviderOutputsPath = join(tempRoot, "fake-provider-outputs.json");
@@ -33,7 +34,7 @@ mkdirSync(supportDir, { recursive: true });
 mkdirSync(join(userDataDir, "User"), { recursive: true });
 mkdirSync(join(workspaceDir, "src"), { recursive: true });
 
-writeFileSync(join(workspaceDir, "src", "example.ts"), "export const value = 42;\n", "utf8");
+writeFileSync(smokeFilePath, "export const value = 42;\n", "utf8");
 writeFileSync(
   fakeProviderOutputsPath,
   JSON.stringify({
@@ -50,7 +51,7 @@ writeFileSync(
         action: "read_file",
         requestedTool: "read_file",
         arguments: {
-          path: join(workspaceDir, "src", "example.ts")
+          path: smokeFilePath
         },
         rationale: "Inspect the current file contents before patching."
       }),
@@ -60,7 +61,7 @@ writeFileSync(
         arguments: {
           changes: [
             {
-              path: join(workspaceDir, "src", "example.ts"),
+              path: smokeFilePath,
               text: "export const value = 43;\n"
             }
           ]
@@ -80,10 +81,7 @@ writeFileSync(
   join(userDataDir, "User", "settings.json"),
   JSON.stringify(
     {
-      "security.workspace.trust.enabled": false,
-      "openburnbar.cursorSmoke.outputPath": smokeOutput,
-      "openburnbar.cursorSmoke.filePath": join(workspaceDir, "src", "example.ts"),
-      "openburnbar.cursorSmoke.modelID": "glm-5"
+      "security.workspace.trust.enabled": false
     },
     null,
     2
@@ -180,7 +178,11 @@ const cursor = spawn(cursorBinary, [workspaceDir, "--new-window", "--user-data-d
   env: {
     ...process.env,
     OPENBURNBAR_DAEMON_SOCKET_PATH: socketPath,
-    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken
+    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken,
+    BURNBAR_CURSOR_SMOKE_OUTPUT: smokeOutput,
+    BURNBAR_CURSOR_SMOKE_ALLOWED_DIR: tempRoot,
+    BURNBAR_CURSOR_SMOKE_FILE_PATH: smokeFilePath,
+    BURNBAR_CURSOR_SMOKE_MODEL: "glm-5"
   },
   stdio: ["ignore", "ignore", "ignore"]
 });

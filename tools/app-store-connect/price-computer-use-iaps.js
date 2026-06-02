@@ -18,6 +18,7 @@ const KEY_ID = process.env.APP_STORE_ASC_KEY_ID;
 const ISSUER_ID = process.env.APP_STORE_ASC_ISSUER_ID;
 const KEY_P8 = process.env.APP_STORE_ASC_KEY_P8;
 const KEY_PATH = process.env.APP_STORE_ASC_KEY_PATH;
+const APP_ID = process.env.APP_STORE_APPLE_APP_ID || '6766366964';
 
 const APPLY = new Set(process.argv.slice(2)).has('--apply');
 
@@ -104,7 +105,7 @@ function api(method, path, body, token) {
 
 async function listSubscriptions(token) {
   const resp = await api('GET',
-    `/v1/apps/6766366964/subscriptionGroups?include=subscriptions&limit=200`,
+    `/v1/apps/${APP_ID}/subscriptionGroups?include=subscriptions&limit=200`,
     undefined, token);
   const subs = (resp.included || []).filter((x) => x.type === 'subscriptions');
   const out = {};
@@ -129,13 +130,13 @@ async function findUSAPricePoint(subscriptionId, customerPrice, token) {
   return null;
 }
 
-async function ensurePrice(subscription, pricePointId, token, dryRun) {
-  const body = {
+function buildSubscriptionPriceBody(subscriptionId, pricePointId) {
+  return {
     data: {
       type: 'subscriptionPrices',
       attributes: { startDate: null, preserveCurrentPrice: false },
       relationships: {
-        subscription: { data: { type: 'subscriptions', id: subscription.id } },
+        subscription: { data: { type: 'subscriptions', id: subscriptionId } },
         subscriptionPricePoint: {
           data: { type: 'subscriptionPricePoints', id: pricePointId },
         },
@@ -143,6 +144,10 @@ async function ensurePrice(subscription, pricePointId, token, dryRun) {
       },
     },
   };
+}
+
+async function ensurePrice(subscription, pricePointId, token, dryRun) {
+  const body = buildSubscriptionPriceBody(subscription.id, pricePointId);
   if (dryRun) {
     console.log(`  [DRY] POST /v1/subscriptionPrices  pricePoint=${pricePointId}`);
     return;
@@ -158,7 +163,7 @@ async function ensurePrice(subscription, pricePointId, token, dryRun) {
   }
 }
 
-(async () => {
+async function main() {
   const token = makeToken();
   const subs = await listSubscriptions(token);
   for (const t of TARGETS) {
@@ -179,4 +184,14 @@ async function ensurePrice(subscription, pricePointId, token, dryRun) {
   console.log(APPLY
     ? '\nPrices attached. Other territories use auto-conversion from USA base.'
     : '\nDry-run complete. Add --apply to write.');
-})().catch((e) => { console.error(e); process.exit(1); });
+}
+
+module.exports = {
+  TARGETS,
+  buildSubscriptionPriceBody,
+  main,
+};
+
+if (require.main === module) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}

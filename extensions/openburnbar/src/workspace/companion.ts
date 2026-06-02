@@ -1,4 +1,4 @@
-import { TextDecoder } from 'node:util';
+import { TextDecoder, TextEncoder } from 'node:util';
 
 import * as vscode from 'vscode';
 
@@ -35,7 +35,15 @@ const DEFAULT_SEARCH_INCLUDE = '**/*';
 const DEFAULT_SEARCH_MAX_FILES = 100;
 const DEFAULT_SEARCH_MAX_RESULTS = 50;
 const DEFAULT_SEARCH_MAX_FILE_BYTES = 256_000;
+const MAX_READ_FILE_BYTES = 1_000_000;
+const MAX_SEARCH_FILES = 200;
+const MAX_SEARCH_RESULTS = 100;
+const MAX_SEARCH_FILE_BYTES = 512_000;
+const MAX_SEARCH_QUERY_BYTES = 4_096;
+const MAX_GLOB_BYTES = 512;
+const MAX_PREVIEW_CHARACTERS = 500;
 const decoder = new TextDecoder('utf-8');
+const encoder = new TextEncoder();
 
 export type BurnBarIndexedSearchBridge = (
   params: BurnBarSearchBurnbarIndexRequest
@@ -113,9 +121,17 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
   private async readFile(request: BurnBarReadFileRequest): Promise<BurnBarReadFileResult> {
     smokeDebug(`read_file:start path=${request.path}`);
     const uri = resolveWorkspaceUri(this.api, request.path);
+    await this.assertFileWithinByteLimit(uri, MAX_READ_FILE_BYTES, 'READ_FILE_TOO_LARGE');
     const document = await this.api.openTextDocument(uri);
     const content = document.getText();
-    smokeDebug(`read_file:end path=${request.path} bytes=${content.length}`);
+    const byteLength = encoder.encode(content).byteLength;
+    if (byteLength > MAX_READ_FILE_BYTES) {
+      throw new OpenBurnBarWorkspaceRpcError(
+        'READ_FILE_TOO_LARGE',
+        `OpenBurnBar read_file is limited to ${MAX_READ_FILE_BYTES} bytes.`
+      );
+    }
+    smokeDebug(`read_file:end path=${request.path} bytes=${byteLength}`);
     return {
       path: uri.toString(),
       content
@@ -131,24 +147,58 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
       );
     }
 
-    const include = request.include ?? DEFAULT_SEARCH_INCLUDE;
-    const maxFiles = request.maxFiles ?? DEFAULT_SEARCH_MAX_FILES;
-    const maxResults = request.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS;
-    const maxFileBytes = request.maxFileBytes ?? DEFAULT_SEARCH_MAX_FILE_BYTES;
-    const files = await this.api.findFiles(include, request.exclude, maxFiles);
+    const query = boundedString(request.query, 'search_workspace.query', MAX_SEARCH_QUERY_BYTES).trim();
+    if (!query) {
+      throw new OpenBurnBarWorkspaceRpcError(
+        'INVALID_SEARCH_QUERY',
+        'OpenBurnBar workspace search requires a non-empty query.'
+      );
+    }
+    const include = request.include
+      ? boundedString(request.include, 'search_workspace.include', MAX_GLOB_BYTES)
+      : DEFAULT_SEARCH_INCLUDE;
+    const exclude = request.exclude
+      ? boundedString(request.exclude, 'search_workspace.exclude', MAX_GLOB_BYTES)
+      : undefined;
+    const maxFiles = boundedInteger(
+      request.maxFiles,
+      'search_workspace.maxFiles',
+      DEFAULT_SEARCH_MAX_FILES,
+      MAX_SEARCH_FILES
+    );
+    const maxResults = boundedInteger(
+      request.maxResults,
+      'search_workspace.maxResults',
+      DEFAULT_SEARCH_MAX_RESULTS,
+      MAX_SEARCH_RESULTS,
+      0
+    );
+    const maxFileBytes = boundedInteger(
+      request.maxFileBytes,
+      'search_workspace.maxFileBytes',
+      DEFAULT_SEARCH_MAX_FILE_BYTES,
+      MAX_SEARCH_FILE_BYTES
+    );
+    if (maxResults === 0) {
+      return { matches: [] };
+    }
+    const files = await this.api.findFiles(include, exclude, maxFiles);
     const matches: BurnBarSearchWorkspaceMatch[] = [];
-    const needle = request.caseSensitive ? request.query : request.query.toLowerCase();
+    const needle = request.caseSensitive ? query : query.toLowerCase();
 
     for (const uri of files) {
       if (matches.length >= maxResults) {
         break;
       }
 
+      if (!(await this.isFileWithinByteLimit(uri, maxFileBytes))) {
+        continue;
+      }
+
       const bytes = await this.api.readFile(uri);
       if (bytes.byteLength > maxFileBytes) {
         continue;
       }
-
       const content = decoder.decode(bytes);
       const lines = content.split(/\r?\n/u);
 
@@ -164,7 +214,7 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
           path: uri.toString(),
           line: lineIndex,
           character,
-          preview: line.trim()
+          preview: truncatePreview(line.trim())
         });
 
         if (matches.length >= maxResults) {
@@ -332,6 +382,19 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
 
     return uri.fsPath;
   }
+
+  private async assertFileWithinByteLimit(uri: ReturnType<typeof resolveWorkspaceUri>, maxBytes: number, code: string) {
+    if (await this.isFileWithinByteLimit(uri, maxBytes)) {
+      return;
+    }
+
+    throw new OpenBurnBarWorkspaceRpcError(code, `OpenBurnBar workspace file access is limited to ${maxBytes} bytes.`);
+  }
+
+  private async isFileWithinByteLimit(uri: ReturnType<typeof resolveWorkspaceUri>, maxBytes: number): Promise<boolean> {
+    const stat = await this.api.stat(uri);
+    return Number.isFinite(stat.size) && stat.size <= maxBytes;
+  }
 }
 
 export function activateOpenBurnBarWorkspaceCompanion(
@@ -359,4 +422,37 @@ function smokeDebug(message: string): void {
   if (process.env.BURNBAR_CURSOR_SMOKE_OUTPUT) {
     console.warn(`[OpenBurnBar smoke] ${message}`);
   }
+}
+
+function boundedString(value: unknown, label: string, maxBytes: number): string {
+  if (typeof value !== 'string') {
+    throw new OpenBurnBarWorkspaceRpcError('INVALID_PARAMS', `${label} must be a string.`);
+  }
+  if (encoder.encode(value).byteLength > maxBytes) {
+    throw new OpenBurnBarWorkspaceRpcError('INVALID_PARAMS', `${label} is limited to ${maxBytes} bytes.`);
+  }
+  return value;
+}
+
+function boundedInteger(
+  value: unknown,
+  label: string,
+  defaultValue: number,
+  maxValue: number,
+  minValue = 1
+): number {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minValue) {
+    throw new OpenBurnBarWorkspaceRpcError(
+      'INVALID_PARAMS',
+      `${label} must be a finite number greater than or equal to ${minValue}.`
+    );
+  }
+  return Math.min(Math.floor(value), maxValue);
+}
+
+function truncatePreview(value: string): string {
+  return value.length > MAX_PREVIEW_CHARACTERS ? `${value.slice(0, MAX_PREVIEW_CHARACTERS)}...` : value;
 }

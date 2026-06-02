@@ -6,6 +6,12 @@
  */
 
 const { chromium } = require('playwright');
+const fs = require('fs');
+const os = require('os');
+const nodePath = require('path');
+
+const SCREENSHOT_DIR = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'openburnbar-asc-screenshots-'));
+fs.chmodSync(SCREENSHOT_DIR, 0o700);
 
 const APP = {
   name: 'OpenBurnBar',
@@ -127,9 +133,9 @@ async function trySelect(page, selectors, valueOrLabel, label) {
 }
 
 async function screenshot(page, name) {
-  const path = `/tmp/asc-${name}-${Date.now()}.png`;
-  await page.screenshot({ path, fullPage: false });
-  log(`📸 Screenshot → ${path}`);
+  const filePath = nodePath.join(SCREENSHOT_DIR, `asc-${name}-${Date.now()}.png`);
+  await page.screenshot({ path: filePath, fullPage: false });
+  log(`Screenshot -> ${filePath}`);
 }
 
 async function main() {
@@ -399,7 +405,7 @@ Still needed (manual):
   🔑 Register bundle ID if not yet at:
      developer.apple.com/account/resources/identifiers/add/bundleId
 
-Screenshots saved to /tmp/asc-*.png for reference.
+Screenshots saved to ${SCREENSHOT_DIR} for reference.
 `);
 
   log('Browser staying open — close it when ready.');

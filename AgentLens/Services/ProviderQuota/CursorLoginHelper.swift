@@ -52,6 +52,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
     private var continuation: CheckedContinuation<LoginResult, any Error>?
     private var webView: WKWebView?
     private var windowDelegate: WindowDelegate?
+    private var isFinishing = false
 
     private init(continuation: CheckedContinuation<LoginResult, any Error>) {
         self.continuation = continuation
@@ -59,8 +60,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
     }
 
     private func start() {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
+        let config = Self.makeWebViewConfiguration()
 
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 480, height: 640), configuration: config)
         webView.navigationDelegate = self
@@ -80,7 +80,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
 
         // Close window → user cancelled
         let windowDelegate = WindowDelegate(onClose: { [weak self] in
-            self?.finish(.failure(CursorLoginError.userCancelled))
+            self?.handleWindowClose()
         })
         self.windowDelegate = windowDelegate
         window.delegate = windowDelegate
@@ -92,6 +92,33 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
             return
         }
         webView.load(URLRequest(url: url))
+    }
+
+    static func makeWebViewConfigurationForTesting() -> WKWebViewConfiguration {
+        makeWebViewConfiguration()
+    }
+
+    static func shouldTreatWindowCloseAsCancellationForTesting(
+        isFinishing: Bool,
+        hasContinuation: Bool
+    ) -> Bool {
+        shouldTreatWindowCloseAsCancellation(
+            isFinishing: isFinishing,
+            hasContinuation: hasContinuation
+        )
+    }
+
+    private static func makeWebViewConfiguration() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        return config
+    }
+
+    private static func shouldTreatWindowCloseAsCancellation(
+        isFinishing: Bool,
+        hasContinuation: Bool
+    ) -> Bool {
+        hasContinuation && !isFinishing
     }
 
     // MARK: - WKNavigationDelegate
@@ -139,9 +166,6 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
         // Store in Keychain
         storeInKeychain(cookieHeader: cookieHeader)
 
-        // Close window
-        webView.window?.close()
-
         let result = LoginResult(
             cookieHeader: cookieHeader,
             cookies: cursorCookies
@@ -149,8 +173,17 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
         finish(.success(result))
     }
 
+    private func handleWindowClose() {
+        guard Self.shouldTreatWindowCloseAsCancellation(
+            isFinishing: isFinishing,
+            hasContinuation: continuation != nil
+        ) else { return }
+        finish(.failure(CursorLoginError.userCancelled))
+    }
+
     private func finish(_ result: Result<LoginResult, any Error>) {
         guard let continuation else { return }
+        isFinishing = true
         self.continuation = nil
 
         let window = webView?.window
@@ -160,6 +193,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
         window?.close()
         windowDelegate = nil
         Self.activeHelpers.removeValue(forKey: ObjectIdentifier(self))
+        isFinishing = false
 
         switch result {
         case let .success(loginResult):
@@ -172,7 +206,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
     private func storeInKeychain(cookieHeader: String) {
         let keychain = KeychainStore()
         do {
-            try keychain.set(cookieHeader, for: "cursor_cookie")
+            try keychain.set(cookieHeader, for: CursorCredentialStore.cookieAccount)
         } catch {
             // Non-fatal: cookie works for this session even without keychain persistence
             AppLogger.dataStore.silentFailure("CursorLoginHelper: Failed to store cookie in keychain", error: error)

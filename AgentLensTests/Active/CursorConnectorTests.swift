@@ -1,5 +1,6 @@
 import XCTest
 import Security
+import WebKit
 @testable import OpenBurnBar
 
 @MainActor
@@ -263,6 +264,56 @@ final class CursorConnectorTests: XCTestCase {
         ])
     }
 
+    func test_cursorLoginUsesNonPersistentCookieStore() {
+        let config = CursorLoginHelper.makeWebViewConfigurationForTesting()
+
+        XCTAssertFalse(config.websiteDataStore.isPersistent)
+    }
+
+    func test_cursorLoginWindowCloseOnlyCancelsInteractiveOpenLogin() {
+        XCTAssertTrue(CursorLoginHelper.shouldTreatWindowCloseAsCancellationForTesting(
+            isFinishing: false,
+            hasContinuation: true
+        ))
+        XCTAssertFalse(CursorLoginHelper.shouldTreatWindowCloseAsCancellationForTesting(
+            isFinishing: true,
+            hasContinuation: true
+        ))
+        XCTAssertFalse(CursorLoginHelper.shouldTreatWindowCloseAsCancellationForTesting(
+            isFinishing: false,
+            hasContinuation: false
+        ))
+    }
+
+    func test_cursorQuotaCredentialResolutionReadsConnectorKeychainNamespaceFirst() throws {
+        let backend = InMemoryKeychainStoreBackend()
+        let providerKeychain = KeychainStore(service: "provider-api-keys", legacyServices: [], backend: backend)
+        let connectorKeychain = KeychainStore(service: "cursor-connector", legacyServices: [], backend: backend)
+        let providerStore = ProviderAPIKeyStore(keychain: providerKeychain)
+
+        try providerStore.setAPIKey("provider-cookie", for: CursorCredentialStore.cookieAccount)
+        try connectorKeychain.set("connector-cookie", for: CursorCredentialStore.cookieAccount)
+
+        XCTAssertEqual(
+            CursorCredentialStore.resolvedCookieHeader(providerKeyStore: providerStore, connectorKeychain: connectorKeychain),
+            "connector-cookie"
+        )
+    }
+
+    func test_cursorQuotaCredentialResolutionFallsBackToProviderKeyNamespace() throws {
+        let backend = InMemoryKeychainStoreBackend()
+        let providerKeychain = KeychainStore(service: "provider-api-keys", legacyServices: [], backend: backend)
+        let connectorKeychain = KeychainStore(service: "cursor-connector", legacyServices: [], backend: backend)
+        let providerStore = ProviderAPIKeyStore(keychain: providerKeychain)
+
+        try providerStore.setAPIKey("provider-cookie", for: CursorCredentialStore.cookieAccount)
+
+        XCTAssertEqual(
+            CursorCredentialStore.resolvedCookieHeader(providerKeyStore: providerStore, connectorKeychain: connectorKeychain),
+            "provider-cookie"
+        )
+    }
+
     func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {
         let script = CursorConnectorManager.proxyScript()
 
@@ -440,5 +491,32 @@ private final class RecordingSecurityKeychainOperations: SecurityKeychainOperati
                 interactionDisabled: disabledDepth > 0
             ))
         }
+    }
+}
+
+private final class InMemoryKeychainStoreBackend: KeychainStoreBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Data] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        lock.withLock {
+            storage[key(service: service, account: account)] = value
+        }
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        lock.withLock {
+            storage[key(service: service, account: account)]
+        }
+    }
+
+    func delete(service: String, account: String) throws {
+        lock.withLock {
+            storage.removeValue(forKey: key(service: service, account: account))
+        }
+    }
+
+    private func key(service: String, account: String) -> String {
+        "\(service)\u{1f}\(account)"
     }
 }

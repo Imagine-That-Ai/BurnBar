@@ -34,7 +34,7 @@ export function readVaultKey(): string | undefined {
 export function writeVaultKey(base64Key: string): void {
   if (process.platform === "darwin") {
     try {
-      execFileSync("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT, "-w", base64Key], { stdio: "ignore" });
+      writeMacKeychainSecret(SERVICE, ACCOUNT, base64Key);
       return;
     } catch {
       // Use the fallback path only when Keychain is unavailable.
@@ -43,4 +43,11 @@ export function writeVaultKey(base64Key: string): void {
   const path = fallbackPath();
   writeFileSync(path, `${base64Key}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
+}
+
+function writeMacKeychainSecret(service: string, account: string, secret: string): void {
+  execFileSync("security", ["add-generic-password", "-U", "-s", service, "-a", account, "-w"], {
+    input: `${secret}\n${secret}\n`,
+    stdio: ["pipe", "ignore", "ignore"]
+  });
 }

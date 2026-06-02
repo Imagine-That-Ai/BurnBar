@@ -97,7 +97,7 @@ async function callHostedTool(name: string, args: Record<string, unknown>, endpo
     throw new ResumeCliError(JSON.stringify({
       kind: "error",
       code: "mcp_auth_unavailable",
-      recovery: "Run `openburnbar mcp login <token>` or connect from the OpenBurnBar app."
+      recovery: "Run `openburnbar mcp login`, pipe a manual token to `openburnbar mcp login --stdin`, or connect from the OpenBurnBar app."
     }), 3);
   }
   const response = await fetch(target, {

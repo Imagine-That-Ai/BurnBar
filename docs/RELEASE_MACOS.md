@@ -83,11 +83,12 @@ these release gates and is pending Apple review:
 # First: scan exactly the files that could be published from this checkout
 scripts/security/scan-publishable-tree.sh
 
-# Recommended: use the tag-release script for validated, annotated tags
+# Recommended: use the tag-release script for validated, annotated tags.
+# Ensure git tag signing is enabled first, for example: git config tag.gpgSign true
 scripts/tag-release.sh 0.2.0
 
 # Or manually:
-git tag -a v0.2.0 -m "OpenBurnBar 0.2.0"
+git tag -s v0.2.0 -m "OpenBurnBar 0.2.0"
 git push origin v0.2.0
 ```
 
@@ -97,6 +98,14 @@ The `tag-release.sh` script:
 - Verifies the version exists in `CHANGELOG.md`
 - Creates an annotated tag with the changelog section as the body
 - Pushes the tag to origin
+
+`scripts/tag-release.sh` uses `git tag -a`; configure `tag.gpgSign=true` or use
+the manual `git tag -s` path so GitHub marks the tag verified.
+
+CI release and deploy jobs additionally require the tag to be an annotated,
+GitHub-verified tag whose target commit is reachable from `origin/main`. A
+lightweight tag, unsigned/unverified tag, or tag pointing outside `main` fails
+before Apple/Firebase/Sentry release secrets are exposed to checked-out code.
 
 The workflow will:
 1. Require the protected `release` GitHub environment before any Apple signing material is available to the job
@@ -108,7 +117,7 @@ The workflow will:
 7. Notarize + staple DMG using `notarytool` with App Store Connect API key
 8. Compute SHA256/SHA512 checksums for DMG and ZIP
 9. Sign checksums with GPG key (if `RELEASE_SIGNING_KEY` secret is configured)
-10. Generate SPDX SBOM from SPM + npm dependencies
+10. Generate SPDX SBOM from SwiftPM, npm, and Cargo lockfiles in the resolved release tree
 11. Write release metadata JSON with version, commit, timestamp, and runner metadata
 12. Upload the DMG, ZIP, checksums, optional checksum signature, SBOM, and metadata as Actions artifacts
 13. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
@@ -157,7 +166,9 @@ python3 -m json.tool sbom-v0.2.0.spdx.json | head -30
 ## Manual rerun path
 
 Use `workflow_dispatch` on `.github/workflows/release.yml` and provide an existing `v*` tag.
-The workflow checks out that exact tag before building. This is intended for release recovery without creating a new tag.
+The workflow verifies that tag's annotation/signature and `origin/main` ancestry,
+then checks out the resolved commit before building. This is intended for release
+recovery without creating a new tag.
 
 ## Release environment and tag protection
 
@@ -170,8 +181,8 @@ release-time control that prevents an accidental tag push from immediately using
 Apple signing material.
 
 Protect `v*` tags with a repository ruleset that blocks deletion and non-fast-forward
-updates. A release tag should be created once, by `scripts/tag-release.sh`, and
-never rewritten.
+updates. A release tag should be signed or otherwise GitHub-verified, created
+once by `scripts/tag-release.sh`, and never rewritten.
 
 Before creating a tag, run:
 
@@ -251,7 +262,10 @@ gpg --export --armor RELEASE_KEY_ID > openburnbar-release-pubkey.asc
 
 ## Workflow guardrail
 
-`.github/workflows/workflow-lint.yml` runs `actionlint` on workflow-file changes so syntax/expression issues are caught before tag day.
+`.github/workflows/workflow-lint.yml` runs `actionlint` plus
+`scripts/security/validate-ci-supply-chain.py` on workflow-file changes so
+syntax, mutable action refs, unsafe remote installers, raw workflow input
+interpolation, and missing release tag trust checks are caught before tag day.
 
 ## Build from source (local dev)
 

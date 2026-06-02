@@ -41,6 +41,11 @@ export interface RelayDependencies {
   presenceTTLSeconds?: number;
 }
 
+interface ActiveRequest {
+  runtime: HermesRelayRuntime;
+  inFlightMember: string;
+}
+
 export class HermesRealtimeRelaySession {
   private readonly presenceTTLSeconds: number;
   private readonly quota: RelayQuotaStore;
@@ -49,7 +54,7 @@ export class HermesRealtimeRelaySession {
   private boundRuntime: HermesRelayRuntime | undefined;
   private subscribedChannels = new Set<string>();
   private unsubscribeCallbacks: Array<() => Promise<void>> = [];
-  private activeRequestRuntimes = new Map<string, HermesRelayRuntime>();
+  private activeRequests = new Map<string, ActiveRequest>();
   private presenceTimer: NodeJS.Timeout | undefined;
   private leaseTimer: NodeJS.Timeout | undefined;
   private closed = false;
@@ -100,9 +105,18 @@ export class HermesRealtimeRelaySession {
       case "request.cancel":
         assertRequestFrame(frame);
         if (frame.type === "request.start") {
-          await this.quota.checkRequestStart(frame.uid, runtime);
-          await this.quota.reserveInFlight(frame.uid, frame.requestId, runtime);
-          this.activeRequestRuntimes.set(frame.requestId, runtime);
+          if (this.activeRequests.has(frame.requestId)) {
+            throw new Error("Realtime requestId is already active on this relay socket.");
+          }
+          const inFlightMember = this.inFlightMember(frame.requestId);
+          this.activeRequests.set(frame.requestId, { runtime, inFlightMember });
+          try {
+            await this.quota.checkRequestStart(frame.uid, runtime);
+            await this.quota.reserveInFlight(frame.uid, inFlightMember, runtime);
+          } catch (error) {
+            this.activeRequests.delete(frame.requestId);
+            throw error;
+          }
         } else if (frame.requestId) {
           await this.releaseInFlight(frame.requestId);
         }
@@ -240,9 +254,15 @@ export class HermesRealtimeRelaySession {
   }
 
   private async releaseInFlight(requestID: string, runtime?: HermesRelayRuntime): Promise<void> {
-    const requestRuntime = this.activeRequestRuntimes.get(requestID) ?? runtime ?? this.boundRuntime ?? DEFAULT_RELAY_RUNTIME;
-    this.activeRequestRuntimes.delete(requestID);
-    await this.quota.releaseInFlight(this.deps.uid, requestID, requestRuntime);
+    const active = this.activeRequests.get(requestID);
+    const requestRuntime = active?.runtime ?? runtime ?? this.boundRuntime ?? DEFAULT_RELAY_RUNTIME;
+    const inFlightMember = active?.inFlightMember ?? this.inFlightMember(requestID);
+    this.activeRequests.delete(requestID);
+    await this.quota.releaseInFlight(this.deps.uid, inFlightMember, requestRuntime);
+  }
+
+  private inFlightMember(requestID: string): string {
+    return `${this.deps.sessionID}:${requestID}`;
   }
 
   private sendError(error: unknown, frame?: HermesRealtimeFrame): void {
@@ -279,11 +299,11 @@ export class HermesRealtimeRelaySession {
     this.unsubscribeCallbacks = [];
     this.subscribedChannels.clear();
     await Promise.allSettled(
-      [...this.activeRequestRuntimes].map(([requestID, runtime]) =>
-        this.quota.releaseInFlight(this.deps.uid, requestID, runtime)
+      [...this.activeRequests.values()].map((request) =>
+        this.quota.releaseInFlight(this.deps.uid, request.inFlightMember, request.runtime)
       )
     );
-    this.activeRequestRuntimes.clear();
+    this.activeRequests.clear();
     if (this.registeredHostConnectionId) {
       await this.deps.bus.del(hostPresenceKey(
         this.deps.uid,

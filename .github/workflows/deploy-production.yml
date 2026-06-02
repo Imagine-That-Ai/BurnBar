@@ -2,7 +2,6 @@ name: Deploy Production (Cloud Functions)
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   push:
@@ -34,23 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve release tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          if [[ ! "$TAG" =~ ^v ]]; then
-            echo "::error::Deploy only from v* tags"
-            exit 1
-          fi
-          git checkout "$TAG"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}" >> "$GITHUB_OUTPUT"
+          scripts/security/resolve-trusted-release-tag.sh
+          git checkout --detach "$(awk -F= '$1 == "commit_sha" {print $2}' "$GITHUB_OUTPUT" | tail -n1)"
+          echo "tag=$(awk -F= '$1 == "tag_name" {print $2}' "$GITHUB_OUTPUT" | tail -n1)" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -65,6 +62,10 @@ jobs:
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
 
+      - name: Install Sentry CLI
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
+        run: bash scripts/supply-chain/install-sentry-cli.sh
+
       - name: Sentry release (Functions)
         if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
         env:
@@ -74,7 +75,6 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          curl -sL https://sentry.io/get-cli/ | bash
           RELEASE_NAME="openburnbar-functions@${TAG}"
           sentry-cli releases new --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
           sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" --auto || true
@@ -96,7 +96,7 @@ jobs:
             echo "::error::FIREBASE_TOKEN secret required"
             exit 1
           fi
-          TAG="${{ steps.tag.outputs.tag }}"
+          TAG="${FUNCTION_VERSION}"
           ENV_FILE="functions/.env.burnbar"
           touch "$ENV_FILE"
           { grep -v '^FUNCTION_VERSION=' "$ENV_FILE" || true; echo "FUNCTION_VERSION=${TAG}"; } > "${ENV_FILE}.tmp"
@@ -121,7 +121,7 @@ jobs:
 
       - name: Upload deploy health artifact
         if: always() && hashFiles('deploy-health.json') != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: deploy-health-${{ steps.tag.outputs.tag }}
           path: deploy-health.json

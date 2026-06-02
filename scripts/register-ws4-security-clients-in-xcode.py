@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-REPO = Path(__file__).resolve().parents[1]
-PROJ = REPO / "OpenBurnBar.xcodeproj/project.pbxproj"
+REPO = Path(os.environ.get("OPENBURNBAR_REPO", Path(__file__).resolve().parents[1]))
+PROJ = Path(os.environ.get("OPENBURNBAR_XCODEPROJ", REPO / "OpenBurnBar.xcodeproj/project.pbxproj"))
 
 MAC_APP_SOURCES = "EF7D3D6CF9326CBCD20C7DF5"
 MOBILE_APP_SOURCES = "989FB439884BAD69F857287F"
@@ -44,6 +45,109 @@ def pbx_quote(value: str) -> str:
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def normalize_path(path: str) -> str:
+    return str(PurePosixPath(path))
+
+
+def pbx_unquote(value: str) -> str:
+    value = value.strip()
+    if value.startswith('"') and value.endswith('"'):
+        return value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return value
+
+
+def parse_pbx_fields(body: str) -> dict[str, str]:
+    return {
+        match.group(1): pbx_unquote(match.group(2))
+        for match in re.finditer(r'\b([A-Za-z0-9_]+) = ("(?:\\.|[^"])*"|[^;]+);', body)
+    }
+
+
+def parse_pbx_groups(text: str) -> tuple[dict[str, str], dict[str, str]]:
+    group_paths: dict[str, str] = {}
+    parent_by_child: dict[str, str] = {}
+    pattern = re.compile(
+        r"^\t\t([0-9A-F]{24}) /\* [^*]+ \*/ = \{\n(?P<body>.*?)^\t\t\};",
+        re.MULTILINE | re.DOTALL,
+    )
+    for match in pattern.finditer(text):
+        body = match.group("body")
+        if "isa = PBXGroup;" not in body:
+            continue
+        group_id = match.group(1)
+        fields = parse_pbx_fields(body)
+        group_paths[group_id] = fields.get("path") or fields.get("name") or ""
+        children_match = re.search(r"children = \(\n(?P<children>.*?)\n\s*\);", body, re.DOTALL)
+        if not children_match:
+            continue
+        for child_id in re.findall(r"^\s*([0-9A-F]{24}) /\* .*? \*/,", children_match.group("children"), re.MULTILINE):
+            parent_by_child[child_id] = group_id
+    return group_paths, parent_by_child
+
+
+def group_path_parts(group_id: str | None, group_paths: dict[str, str], parent_by_child: dict[str, str]) -> list[str]:
+    parts: list[str] = []
+    seen: set[str] = set()
+    current = group_id
+    while current and current not in seen:
+        seen.add(current)
+        path = group_paths.get(current)
+        if path:
+            parts.append(path)
+        current = parent_by_child.get(current)
+    return list(reversed(parts))
+
+
+def resolved_file_refs_by_path(text: str) -> dict[str, list[str]]:
+    group_paths, parent_by_child = parse_pbx_groups(text)
+    refs: dict[str, list[str]] = {}
+    pattern = re.compile(
+        r"^\s*([0-9A-F]{24}) /\* ([^*]+) \*/ = \{isa = PBXFileReference; (?P<body>.*?)\};",
+        re.MULTILINE,
+    )
+    for match in pattern.finditer(text):
+        file_ref_id, comment = match.group(1), match.group(2)
+        fields = parse_pbx_fields(match.group("body"))
+        raw_path = fields.get("path") or fields.get("name") or comment
+        source_tree = fields.get("sourceTree", "<group>")
+        if source_tree == "SOURCE_ROOT":
+            resolved = raw_path
+        else:
+            parts = group_path_parts(parent_by_child.get(file_ref_id), group_paths, parent_by_child)
+            parts.append(raw_path)
+            resolved = "/".join(parts)
+        refs.setdefault(normalize_path(resolved), []).append(file_ref_id)
+    return refs
+
+
+def build_file_ids_for_file_ref(text: str, file_ref_id: str) -> list[str]:
+    pattern = re.compile(
+        rf"^\s*([0-9A-F]{{24}}) /\* .*? in Sources \*/ = "
+        rf"\{{isa = PBXBuildFile; fileRef = {re.escape(file_ref_id)} /\* .*? \*/; \}};",
+        re.MULTILINE,
+    )
+    return [match.group(1) for match in pattern.finditer(text)]
+
+
+def source_phase_build_ids(text: str, phase_id: str) -> set[str]:
+    pattern = re.compile(
+        rf"({re.escape(phase_id)}\s*/\*\s*Sources\s*\*/\s*=\s*\{{[^}}]*?files\s*=\s*\(\n)(.*?)(\n\s*\);)",
+        re.DOTALL,
+    )
+    match = pattern.search(text)
+    if not match:
+        raise RuntimeError(f"Sources phase {phase_id} not found")
+    return set(re.findall(r"^\s*([0-9A-F]{24}) /\* .*? in Sources \*/,", match.group(2), re.MULTILINE))
+
+
+def source_phase_build_id_for_file_ref(text: str, phase_id: str, file_ref_id: str) -> str | None:
+    phase_ids = source_phase_build_ids(text, phase_id)
+    return next(
+        (build_id for build_id in build_file_ids_for_file_ref(text, file_ref_id) if build_id in phase_ids),
+        None,
+    )
 
 
 def find_mobile_services_group(text: str) -> str:
@@ -83,8 +187,8 @@ def find_mobile_services_group(text: str) -> str:
     return m.group(1)
 
 
-def insert_into_group(text: str, group_id: str, file_ref_line: str, file_name: str) -> str:
-    needle = f"{file_ref_line.split()[0]} /* {file_name} */,"
+def insert_into_group(text: str, group_id: str, file_ref_id: str, file_name: str) -> str:
+    needle = f"{file_ref_id} /* {file_name} */,"
     if needle in text:
         return text
     pattern = re.compile(
@@ -94,15 +198,13 @@ def insert_into_group(text: str, group_id: str, file_ref_line: str, file_name: s
     m = pattern.search(text)
     if not m:
         raise RuntimeError(f"PBXGroup {group_id} not found")
-    if file_name in m.group(2):
-        return text
     children = m.group(2)
     separator = "" if children.endswith("\n") else "\n"
     return text[: m.start()] + m.group(1) + children + separator + f"\t\t\t\t{needle}" + m.group(3) + text[m.end() :]
 
 
-def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str) -> str:
-    needle = f"{build_line.split()[0]} /* {file_name} in Sources */,"
+def insert_into_phase(text: str, phase_id: str, build_id: str, file_name: str) -> str:
+    needle = f"{build_id} /* {file_name} in Sources */,"
     if needle in text:
         return text
     pattern = re.compile(
@@ -112,35 +214,20 @@ def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str)
     m = pattern.search(text)
     if not m:
         raise RuntimeError(f"Sources phase {phase_id} not found")
-    if file_name in m.group(2) and "in Sources */," in m.group(2):
-        return text
     files = m.group(2)
     separator = "" if files.endswith("\n") else "\n"
     return text[: m.start()] + m.group(1) + files + separator + f"\t\t\t\t{needle}" + m.group(3) + text[m.end() :]
 
 
-def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
-    for line in text.splitlines():
-        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
-            continue
-        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
-            continue
-        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
-            continue
-        return line.strip().split(" ", 1)[0]
-    return None
-
-
-def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
-    for line in text.splitlines():
-        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
-            continue
-        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
-            continue
-        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
-            continue
-        return line.strip().split(" ", 1)[0]
-    return None
+def find_existing_file_id(text: str, path: str, phase_id: str) -> str | None:
+    candidates = resolved_file_refs_by_path(text).get(normalize_path(path), [])
+    if not candidates:
+        return None
+    phase_ids = source_phase_build_ids(text, phase_id)
+    for file_ref_id in candidates:
+        if any(build_id in phase_ids for build_id in build_file_ids_for_file_ref(text, file_ref_id)):
+            return file_ref_id
+    return candidates[0]
 
 
 def main() -> int:
@@ -151,9 +238,11 @@ def main() -> int:
     for path, phase_id, group_hint, source_root_path in ENTRIES:
         name = Path(path).name
         group_id = mobile_services if group_hint is None else group_hint
-        file_id = find_existing_file_id(text, name, source_root_path) or stable_id(path, "fileref")
+        existing_file_id = find_existing_file_id(text, path, phase_id)
+        before_entry = text
+        file_id = existing_file_id or stable_id(path, "fileref")
         build_id = stable_id(path, "buildfile")
-        if file_id == stable_id(path, "fileref"):
+        if existing_file_id is None:
             if source_root_path:
                 file_line = (
                     f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
@@ -165,16 +254,27 @@ def main() -> int:
                     f"path = {pbx_quote(name)}; sourceTree = \"<group>\"; }};\n"
                 )
             text = text.replace("/* End PBXFileReference section */", file_line + "/* End PBXFileReference section */", 1)
+            changed = True
+        existing_build_ids = build_file_ids_for_file_ref(text, file_id)
+        if existing_build_ids:
+            build_id = existing_build_ids[0]
         build_line = (
             f"\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* {name} */; }};\n"
         )
-        if build_id not in text:
+        if not existing_build_ids:
             text = text.replace("/* End PBXBuildFile section */", build_line + "/* End PBXBuildFile section */", 1)
-        group_ref = f"{file_id} /* {name} */,"
-        text = insert_into_group(text, str(group_id), group_ref, name)
-        text = insert_into_phase(text, phase_id, build_line.strip(), name)
-        changed = True
-        print(f"registered {path}")
+            changed = True
+        updated = insert_into_group(text, str(group_id), file_id, name)
+        changed = changed or updated != text
+        text = updated
+        if source_phase_build_id_for_file_ref(text, phase_id, file_id) is None:
+            updated = insert_into_phase(text, phase_id, build_id, name)
+            changed = changed or updated != text
+            text = updated
+        if text == before_entry:
+            print(f"already registered: {path}")
+        else:
+            print(f"registered {path}")
 
     if changed:
         PROJ.write_text(text, encoding="utf-8")

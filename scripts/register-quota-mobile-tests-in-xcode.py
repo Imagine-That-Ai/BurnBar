@@ -8,8 +8,8 @@ import re
 import os
 from pathlib import Path
 
-REPO = Path("/Users/albertonunez/Documents/Windsurf/BurnBar")
-PROJ = REPO / "OpenBurnBar.xcodeproj/project.pbxproj"
+REPO = Path(os.environ.get("OPENBURNBAR_REPO", Path(__file__).resolve().parents[1]))
+PROJ = Path(os.environ.get("OPENBURNBAR_XCODEPROJ", REPO / "OpenBurnBar.xcodeproj/project.pbxproj"))
 
 MOBILE_TESTS_SOURCES_PHASE = "2D8814837B36BCC7F8EE4D64"
 MOBILE_TESTS_GROUP_ID = "ADEFB03BCBA21A308A3E93DE"

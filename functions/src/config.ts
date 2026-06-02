@@ -30,6 +30,18 @@ function parseAppStoreEnvironmentValue(raw: unknown): EnvConfig["appStore"]["env
   }
 }
 
+function parseDelimitedStrings(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean);
+  }
+  if (typeof raw !== "string") return [];
+  return raw
+    .split(/[,\s]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 /** Cached config object computed once per function instance. */
 let cached: EnvConfig | undefined;
 
@@ -135,6 +147,11 @@ function buildConfig(): EnvConfig {
       process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID ?? configString(stripe, "floo_relay_50gb_price_id") ?? "",
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? configString(stripe, "secret_key") ?? "",
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? configString(stripe, "webhook_secret") ?? "",
+    stripeAllowedRedirectOrigins: parseDelimitedStrings(
+      process.env.STRIPE_ALLOWED_REDIRECT_ORIGINS ??
+        configString(stripe, "allowed_redirect_origins") ??
+        configString(openburnbar, "stripe_allowed_redirect_origins"),
+    ),
     googlePlayPackageName:
       process.env.GOOGLE_PLAY_PACKAGE_NAME ?? configString(googleplay, "package_name") ?? "com.openburnbar",
     googlePlaySubscriptionProductID:
@@ -188,7 +205,7 @@ function buildConfig(): EnvConfig {
       // for Production-environment notification verification.
       appAppleId: parseAppleId(process.env.APP_STORE_APPLE_APP_ID ?? configString(appstore, "apple_app_id")),
       environment: parseAppStoreEnvironmentValue(
-        process.env.APP_STORE_ENV ?? configString(appstore, "environment") ?? "Sandbox",
+        process.env.APP_STORE_ENV ?? configString(appstore, "environment") ?? "Production",
       ),
       enableOnlineChecks: toBool(
         process.env.APP_STORE_ENABLE_ONLINE_CHECKS ?? configString(appstore, "enable_online_checks"),

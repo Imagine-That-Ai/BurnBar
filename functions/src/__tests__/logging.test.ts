@@ -154,6 +154,22 @@ describe("PII scrubbing in structured logging", () => {
       expect(payload.accessToken).toBe("[REDACTED]");
       expect(payload.tokenPreview).toBe("[REDACTED]");
     });
+
+    it("redacts embedded headers, query secrets, and Redis credentials in strings", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({
+        event: "test",
+        message:
+          "Authorization: Bearer eyJsuperSecretTokenValue123456 password=hunter2 redis://:redispass@example.local:6379/0 https://example.test/cb?token=urlsecret&ok=1",
+      });
+      const payload = captureLog(logSpy);
+      const message = String(payload.message);
+      expect(message).not.toContain("eyJsuperSecretTokenValue123456");
+      expect(message).not.toContain("hunter2");
+      expect(message).not.toContain("redispass");
+      expect(message).not.toContain("urlsecret");
+      expect(message).toContain("[REDACTED]");
+    });
   });
 
   // ── Credit card redaction ───────────────────────────────────────────────
@@ -258,6 +274,19 @@ describe("PII scrubbing in structured logging", () => {
       });
       const payload = captureLog(logSpy);
       expect((payload.nested as { privateKey: string }).privateKey).toBe("[REDACTED]");
+    });
+
+    it("recursively scrubs arrays inside nested objects", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({
+        event: "test",
+        nested: {
+          attempts: [{ authorization: "Bearer array-secret-token-value" }],
+        },
+      });
+      const payload = captureLog(logSpy);
+      const nested = payload.nested as { attempts: Array<{ authorization: string }> };
+      expect(nested.attempts[0]?.authorization).toBe("[REDACTED]");
     });
   });
 

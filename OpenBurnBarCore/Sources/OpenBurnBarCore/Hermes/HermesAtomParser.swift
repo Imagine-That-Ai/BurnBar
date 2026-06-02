@@ -70,6 +70,9 @@ public struct HermesRichRun: Hashable, Sendable {
 // link-flattening semantics (link text is preserved as the chip label).
 
 public enum HermesAtomParser {
+    private static let maxAtomLinkLabelCharacters = 120
+    private static let maxAtomLinkURLCharacters = 2_048
+    private static let truncatedLabelSuffix = "..."
 
     /// Parse `text` into a stream of `HermesRichRun`s. Cross-platform —
     /// no SwiftUI / UIKit / AppKit imports.
@@ -142,6 +145,7 @@ public enum HermesAtomParser {
         // 1. Find the closing `]`.
         var idx = source.index(after: start)
         var label = ""
+        var labelLength = 0
         var depth = 1
         while idx < source.endIndex {
             let c = source[idx]
@@ -151,7 +155,10 @@ public enum HermesAtomParser {
                 depth -= 1
                 if depth == 0 { break }
             }
-            label.append(c)
+            labelLength += 1
+            if labelLength <= maxAtomLinkLabelCharacters + truncatedLabelSuffix.count {
+                label.append(c)
+            }
             idx = source.index(after: idx)
         }
         guard idx < source.endIndex, source[idx] == "]" else { return nil }
@@ -161,10 +168,13 @@ public enum HermesAtomParser {
         // 3. Read the URL up to `)`.
         var urlIdx = source.index(after: afterCloseBracket)
         var urlString = ""
+        var urlLength = 0
         while urlIdx < source.endIndex {
             let c = source[urlIdx]
             if c == ")" { break }
             if c == "\n" { return nil }
+            urlLength += 1
+            guard urlLength <= maxAtomLinkURLCharacters else { return nil }
             urlString.append(c)
             urlIdx = source.index(after: urlIdx)
         }
@@ -172,9 +182,17 @@ public enum HermesAtomParser {
         let endIndex = source.index(after: urlIdx)
         // 4. Must decode to a real atom.
         guard let atom = HermesAtomURL.decode(urlString) else { return nil }
-        let cleanedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedLabel = sanitizedAtomLabel(label)
         let resolvedLabel = cleanedLabel.isEmpty ? atom.fallbackLabel : cleanedLabel
         return MarkdownLinkMatch(atom: atom, label: resolvedLabel, endIndex: endIndex)
+    }
+
+    private static func sanitizedAtomLabel(_ label: String) -> String {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutControls = String(trimmed.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+        guard withoutControls.count > maxAtomLinkLabelCharacters else { return withoutControls }
+        let prefixCount = maxAtomLinkLabelCharacters - truncatedLabelSuffix.count
+        return String(withoutControls.prefix(prefixCount)) + truncatedLabelSuffix
     }
 
     // MARK: - Phase 2: entity regex fallback

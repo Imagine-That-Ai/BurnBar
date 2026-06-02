@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: OWASP ZAP baseline (burnbar.ai)
-        uses: zaproxy/action-baseline@v0.14.0
+        uses: zaproxy/action-baseline@2b5fc7f98d837319798ab7f128ea50b7d40563b6
         with:
           target: "https://burnbar.ai"
           rules_file_name: ".github/zap-rules.tsv"

@@ -245,8 +245,19 @@ export function parseHostedQuotaEntitlementDoc(raw: unknown): HostedQuotaEntitle
     productID: raw.productID,
     transactionID: raw.transactionID,
     originalTransactionID: raw.originalTransactionID,
+    expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : undefined,
+    expireAt: isTimestampWithToMillis(raw.expireAt)
+      ? (raw.expireAt as HostedQuotaEntitlementDoc["expireAt"])
+      : undefined,
+    revokedAt: typeof raw.revokedAt === "string" ? raw.revokedAt : undefined,
+    revocationReason: typeof raw.revocationReason === "number" ? raw.revocationReason : undefined,
     environment,
+    ownershipType:
+      raw.ownershipType === "PURCHASED" || raw.ownershipType === "FAMILY_SHARED" ? raw.ownershipType : undefined,
+    appAccountToken: typeof raw.appAccountToken === "string" ? raw.appAccountToken : undefined,
     signedTransactionHash: raw.signedTransactionHash,
+    signedDateMs: typeof raw.signedDateMs === "number" ? raw.signedDateMs : undefined,
+    lastNotificationUUID: typeof raw.lastNotificationUUID === "string" ? raw.lastNotificationUUID : undefined,
     lastVerifiedAt: raw.lastVerifiedAt,
     source,
     verificationVersion: raw.verificationVersion,
@@ -270,6 +281,11 @@ export function parseEntitlementBindingDoc(raw: unknown): EntitlementBindingDoc 
     id: raw.id,
     uid: raw.uid,
     productID: raw.productID,
+    clientPlatform:
+      raw.clientPlatform === "ios" || raw.clientPlatform === "ipados" || raw.clientPlatform === "macos"
+        ? raw.clientPlatform
+        : undefined,
+    consumedAt: typeof raw.consumedAt === "string" ? raw.consumedAt : undefined,
     createdAt: raw.createdAt,
     schemaVersion: raw.schemaVersion,
   };

@@ -15,6 +15,21 @@ import kotlinx.serialization.json.jsonPrimitive
  * has something renderable.
  */
 object ChartSpecRenderer {
+    internal const val SAFE_MERMAID_FALLBACK = "flowchart TD\n  blocked[Unsupported Mermaid content removed]"
+
+    private const val MAX_MERMAID_SOURCE_CHARS = 12_000
+
+    private val dangerousMermaidPatterns =
+        listOf(
+            Regex("""<\s*/?\s*(script|iframe|object|embed|foreignObject|link|meta)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\bon[a-z]+\s*=""", RegexOption.IGNORE_CASE),
+            Regex("""\b(javascript|data|vbscript)\s*:""", RegexOption.IGNORE_CASE),
+            Regex("""\bhttps?://""", RegexOption.IGNORE_CASE),
+            Regex("""(^|[;\n])\s*(click|href)\b""", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)),
+            Regex("""^\s*%%\{""", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)),
+            Regex("""\burl\s*\(""", RegexOption.IGNORE_CASE),
+        )
+
     private val json =
         Json {
             ignoreUnknownKeys = true
@@ -107,16 +122,26 @@ object ChartSpecRenderer {
     }
 
     /**
-     * Defensive sanitation for Mermaid DSL — strip leading code-fence markers
-     * and trim outer whitespace.
+     * Defensive sanitation for Mermaid DSL. This blocks active content and
+     * external resource references before the source reaches the WebView;
+     * the WebView shell still enforces CSP/network blocks as defense in depth.
      */
-    private fun sanitizeMermaid(source: String): String {
+    internal fun sanitizeMermaid(source: String): String {
         var s = source.trim()
         if (s.startsWith("```")) {
             s = s.substringAfter('\n', s).trim()
         }
         if (s.endsWith("```")) {
             s = s.substringBeforeLast("```").trim()
+        }
+        if (s.isBlank() || s.length > MAX_MERMAID_SOURCE_CHARS) {
+            return SAFE_MERMAID_FALLBACK
+        }
+        if (s.any { it == '\u0000' || (it.isISOControl() && it != '\n' && it != '\r' && it != '\t') }) {
+            return SAFE_MERMAID_FALLBACK
+        }
+        if (dangerousMermaidPatterns.any { it.containsMatchIn(s) }) {
+            return SAFE_MERMAID_FALLBACK
         }
         return s
     }

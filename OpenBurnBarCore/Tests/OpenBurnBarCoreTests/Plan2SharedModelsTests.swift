@@ -71,6 +71,29 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(decoded, [.pi, .hermes])
     }
 
+    @MainActor
+    func test_assistantPendingPromptMarksDeepLinksConfirmationRequired() {
+        let store = AssistantPendingPrompt.makeIsolatedForTesting()
+        store.stash(assistant: .hermes, prompt: "run this", source: .deepLink)
+
+        let request = store.consumeRequest(.hermes)
+        XCTAssertEqual(request?.prompt, "run this")
+        XCTAssertEqual(request?.source, .deepLink)
+        XCTAssertEqual(request?.requiresConfirmation, true)
+        XCTAssertNil(store.consumeRequest(.hermes))
+    }
+
+    @MainActor
+    func test_assistantPendingPromptKeepsAppIntentPromptsTrusted() {
+        let store = AssistantPendingPrompt.makeIsolatedForTesting()
+        store.stash(assistant: .pi, prompt: "summarize", source: .appIntent)
+
+        let request = store.consumeRequest(.pi)
+        XCTAssertEqual(request?.prompt, "summarize")
+        XCTAssertEqual(request?.source, .appIntent)
+        XCTAssertEqual(request?.requiresConfirmation, false)
+    }
+
     func test_realtimeRelayFrameCarriesOptionalRuntimeDiscriminator() throws {
         let original = HermesRealtimeRelayFrame(
             type: .requestStart,

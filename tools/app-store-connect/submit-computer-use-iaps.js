@@ -26,6 +26,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
+const { buildSubscriptionPriceBody } = require('./price-computer-use-iaps.js');
 
 const APP_ID = process.env.APP_STORE_APPLE_APP_ID || '6766366964';
 const KEY_ID = process.env.APP_STORE_ASC_KEY_ID;
@@ -131,6 +132,7 @@ const SUBSCRIPTIONS = [
       productId: 'com.openburnbar.pro.monthly',
       name: 'BurnBar Cloud Monthly',
       subscriptionPeriod: 'ONE_MONTH',
+      priceUSD: '7.99',
       reviewNote:
         'BurnBar Cloud adds hosted quota refresh, encrypted history backup, ' +
         'cloud search, Intelligence Brief fallback, remote relay, and synced ' +
@@ -149,6 +151,7 @@ const SUBSCRIPTIONS = [
       productId: 'com.openburnbar.pro.annual',
       name: 'BurnBar Cloud Annual',
       subscriptionPeriod: 'ONE_YEAR',
+      priceUSD: '79.00',
       reviewNote:
         'Annual BurnBar Cloud subscription. Includes hosted quota refresh, ' +
         'encrypted history backup, cloud search, Intelligence Brief fallback, ' +
@@ -167,6 +170,7 @@ const SUBSCRIPTIONS = [
       productId: 'com.openburnbar.proMax.v2.monthly',
       name: 'BurnBar Cloud Pro Monthly',
       subscriptionPeriod: 'ONE_MONTH',
+      priceUSD: '24.99',
       reviewNote:
         'BurnBar Cloud Pro includes everything in BurnBar Cloud plus Floo ' +
         'phone-to-Mac workflows and supervised Agent Control. Each billing ' +
@@ -186,6 +190,7 @@ const SUBSCRIPTIONS = [
       productId: 'com.openburnbar.proMax.annual',
       name: 'BurnBar Cloud Pro Annual',
       subscriptionPeriod: 'ONE_YEAR',
+      priceUSD: '249.00',
       reviewNote:
         'Annual BurnBar Cloud Pro subscription. Includes BurnBar Cloud plus ' +
         'Floo phone-to-Mac workflows and supervised Agent Control. Each billing ' +
@@ -276,7 +281,7 @@ async function ensureSubscription(token, groupId, sku, dryRun) {
   if (existingByPid.has(sku.productId)) {
     const existingId = existingByPid.get(sku.productId);
     console.log(`  subscription exists: id=${existingId}  pid=${sku.productId}`);
-    return existingId;
+    return { id: existingId, existed: true };
   }
   const body = {
     data: {
@@ -295,11 +300,50 @@ async function ensureSubscription(token, groupId, sku, dryRun) {
   };
   if (dryRun) {
     console.log(`  [DRY] POST /v1/subscriptions  pid=${sku.productId}`);
-    return '<dry-run-sub>';
+    return { id: '<dry-run-sub>', existed: false };
   }
   const resp = await request('POST', '/v1/subscriptions', body, token);
   console.log(`  subscription created: id=${resp.data.id}  pid=${sku.productId}`);
-  return resp.data.id;
+  return { id: resp.data.id, existed: false };
+}
+
+function buildSubscriptionPatchBody(subId, sku) {
+  return {
+    data: {
+      id: subId,
+      type: 'subscriptions',
+      attributes: {
+        name: sku.name,
+        reviewNote: sku.reviewNote,
+        familySharable: false,
+      },
+    },
+  };
+}
+
+async function updateExistingSubscription(token, subId, sku, dryRun) {
+  if (dryRun || subId === '<dry-run-sub>') {
+    console.log(`  [DRY] PATCH /v1/subscriptions/${subId}  pid=${sku.productId}`);
+    return;
+  }
+  await request('PATCH', `/v1/subscriptions/${subId}`, buildSubscriptionPatchBody(subId, sku), token);
+  console.log(`  subscription metadata updated: id=${subId}  pid=${sku.productId}`);
+}
+
+function buildSubscriptionLocalizationBody(subId, loc, localizationId = undefined) {
+  const data = {
+    type: 'subscriptionLocalizations',
+    attributes: { locale: loc.locale, name: loc.name, description: loc.description },
+    relationships: {
+      subscription: { data: { type: 'subscriptions', id: subId } },
+    },
+  };
+  if (localizationId) {
+    data.id = localizationId;
+    delete data.attributes.locale;
+    delete data.relationships;
+  }
+  return { data };
 }
 
 async function ensureSubLocalization(token, subId, loc, dryRun) {
@@ -312,24 +356,69 @@ async function ensureSubLocalization(token, subId, loc, dryRun) {
     `/v1/subscriptions/${subId}/subscriptionLocalizations?limit=20`,
     undefined, token
   );
-  if ((existing.data || []).some((x) => x.attributes.locale === loc.locale)) {
-    console.log(`  subscription localization ${loc.locale} already exists`);
+  const current = (existing.data || []).find((x) => x.attributes.locale === loc.locale);
+  if (current) {
+    await request(
+      'PATCH',
+      `/v1/subscriptionLocalizations/${current.id}`,
+      buildSubscriptionLocalizationBody(subId, loc, current.id),
+      token,
+    );
+    console.log(`  subscription localization ${loc.locale} updated`);
     return;
   }
-  const body = {
-    data: {
-      type: 'subscriptionLocalizations',
-      attributes: { locale: loc.locale, name: loc.name, description: loc.description },
-      relationships: {
-        subscription: { data: { type: 'subscriptions', id: subId } },
-      },
-    },
-  };
-  await request('POST', '/v1/subscriptionLocalizations', body, token);
+  await request('POST', '/v1/subscriptionLocalizations', buildSubscriptionLocalizationBody(subId, loc), token);
   console.log(`  subscription localization ${loc.locale} created`);
 }
 
-(async () => {
+async function findUSAPricePoint(token, subscriptionId, customerPrice) {
+  const targetPrice = Number(customerPrice);
+  let next = `/v1/subscriptions/${subscriptionId}/pricePoints?filter[territory]=USA&limit=200`;
+  while (next) {
+    const resp = await request('GET', next, undefined, token);
+    for (const point of resp.data || []) {
+      if (Number(point.attributes.customerPrice) === targetPrice) return point.id;
+    }
+    next = resp.links && resp.links.next
+      ? resp.links.next.replace('https://api.appstoreconnect.apple.com', '')
+      : null;
+  }
+  return null;
+}
+
+async function ensureSubscriptionBasePrice(token, subscriptionId, sku, dryRun) {
+  if (subscriptionId === '<dry-run-sub>') {
+    console.log(`  [DRY] would apply USA base price $${sku.priceUSD} after creating ${sku.productId}`);
+    return;
+  }
+  const pricePointId = await findUSAPricePoint(token, subscriptionId, sku.priceUSD);
+  if (!pricePointId) {
+    console.log(`  no USA subscription price point matching $${sku.priceUSD}`);
+    return;
+  }
+  if (dryRun) {
+    console.log(`  [DRY] POST /v1/subscriptionPrices  pid=${sku.productId} pricePoint=${pricePointId}`);
+    return;
+  }
+  try {
+    const resp = await request(
+      'POST',
+      '/v1/subscriptionPrices',
+      buildSubscriptionPriceBody(subscriptionId, pricePointId),
+      token,
+    );
+    console.log(`  subscription USA base price set: id=${resp.data && resp.data.id}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith('HTTP 409')) {
+      console.log('  subscription USA base price already set');
+      return;
+    }
+    throw error;
+  }
+}
+
+async function main() {
   const token = makeToken();
   const dryRun = !APPLY;
   console.log(`mode: ${dryRun ? 'DRY-RUN' : 'APPLY'}  app=${APP_ID}`);
@@ -337,10 +426,24 @@ async function ensureSubLocalization(token, subId, loc, dryRun) {
     console.log(`\n→ ${item.sku.productId}`);
     const groupId = await ensureGroup(token, item.groupName, dryRun);
     await ensureGroupLocalization(token, groupId, item.groupName, dryRun);
-    const subId = await ensureSubscription(token, groupId, item.sku, dryRun);
-    await ensureSubLocalization(token, subId, item.localization, dryRun);
+    const subscription = await ensureSubscription(token, groupId, item.sku, dryRun);
+    if (subscription.existed) await updateExistingSubscription(token, subscription.id, item.sku, dryRun);
+    await ensureSubLocalization(token, subscription.id, item.localization, dryRun);
+    await ensureSubscriptionBasePrice(token, subscription.id, item.sku, dryRun);
   }
   console.log(dryRun
-    ? '\nDry-run complete. Re-run with --apply to create missing draft subscriptions.'
-    : '\nCommercial subscriptions ensured in App Store Connect. Add pricing + screenshots in ASC, then submit for review.');
-})().catch((e) => { console.error(e); process.exit(1); });
+    ? '\nDry-run complete. Re-run with --apply to create/update subscriptions and apply USA base prices.'
+    : '\nCommercial subscriptions and USA base prices ensured in App Store Connect. Add screenshots in ASC, then submit for review.');
+}
+
+module.exports = {
+  SUBSCRIPTIONS,
+  buildSubscriptionLocalizationBody,
+  buildSubscriptionPatchBody,
+  ensureSubscriptionBasePrice,
+  main,
+};
+
+if (require.main === module) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}

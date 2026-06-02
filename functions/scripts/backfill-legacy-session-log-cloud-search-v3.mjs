@@ -15,6 +15,7 @@
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 import admin from "firebase-admin";
 
@@ -464,7 +465,7 @@ async function readLegacyBody(logRef) {
 
 async function commitBatch(db, writes, apply) {
   if (!apply || writes.length === 0) return;
-  for (let start = 0; start < writes.length; start += 1) {
+  for (let start = 0; start < writes.length; start += 400) {
     const batch = db.batch();
     for (const write of writes.slice(start, start + 400)) {
       batch.set(write.ref, write.data, { merge: true });
@@ -666,9 +667,16 @@ async function main() {
   console.log(JSON.stringify({ apply, uidPrefix: uid.slice(0, 8), deviceId, commitID: COMMIT_ID, totals }, null, 2));
 }
 
-main()
-  .then(() => setTimeout(() => process.exit(0), 100))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+export {
+  commitBatch,
+  parseArgs,
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+    .then(() => setTimeout(() => process.exit(0), 100))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

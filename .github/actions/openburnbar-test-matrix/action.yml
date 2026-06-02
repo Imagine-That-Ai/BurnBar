@@ -115,12 +115,18 @@ runs:
     - name: Compute diff coverage
       if: inputs.enable_diff_coverage == 'true'
       shell: bash
+      env:
+        BASE_REF: ${{ inputs.base_ref }}
       run: |
         set -euo pipefail
+        if [[ ! "${BASE_REF}" =~ ^[A-Za-z0-9._/-]+$ || "${BASE_REF}" == *..* || "${BASE_REF}" == /* ]]; then
+          echo "Invalid diff coverage base ref: ${BASE_REF}" >&2
+          exit 1
+        fi
         xcresult="$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
         if [[ ! -d "$xcresult" ]]; then
           echo "Missing xcresult at $xcresult" >&2
           exit 1
         fi
         ./scripts/extract-coverage.sh "$xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-        ./scripts/diff-coverage-all.sh "${{ inputs.base_ref }}"
+        ./scripts/diff-coverage-all.sh "$BASE_REF"

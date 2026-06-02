@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import OpenBurnBarMobile
 
 final class ChartSpecRendererTests: XCTestCase {
@@ -188,5 +189,45 @@ final class MermaidSanitizationTests: XCTestCase {
         let sanitized = ChartSpecRenderer.sanitizeMermaid(raw)
         XCTAssertFalse(sanitized.contains("```"))
         XCTAssertTrue(sanitized.contains("graph TD"))
+    }
+
+    func testStripsExternalResourceAndClickDirectives() {
+        let raw = """
+        graph TD
+          A-->B
+          click A "https://evil.example/steal" "open"
+          B[<img src="https://evil.example/pixel.png">]
+          C["@import url('https://evil.example/style.css');"]
+        """
+        let sanitized = ChartSpecRenderer.sanitizeMermaid(raw)
+
+        XCTAssertFalse(sanitized.localizedCaseInsensitiveContains("click A"))
+        XCTAssertFalse(sanitized.localizedCaseInsensitiveContains("https://"))
+        XCTAssertFalse(sanitized.localizedCaseInsensitiveContains("<img"))
+        XCTAssertFalse(sanitized.localizedCaseInsensitiveContains("@import"))
+    }
+
+    func testMermaidWebViewAllowsOnlyLocalShellNavigation() {
+        XCTAssertEqual(
+            MermaidWebView.Coordinator.navigationPolicy(
+                for: URL(fileURLWithPath: "/tmp/index.html"),
+                navigationType: .other
+            ),
+            .allow
+        )
+        XCTAssertEqual(
+            MermaidWebView.Coordinator.navigationPolicy(
+                for: URL(string: "https://example.com")!,
+                navigationType: .other
+            ),
+            .cancel
+        )
+        XCTAssertEqual(
+            MermaidWebView.Coordinator.navigationPolicy(
+                for: URL(fileURLWithPath: "/tmp/index.html"),
+                navigationType: .linkActivated
+            ),
+            .cancel
+        )
     }
 }

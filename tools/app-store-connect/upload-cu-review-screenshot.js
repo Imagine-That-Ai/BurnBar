@@ -61,22 +61,26 @@ const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.agentControl.actions100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
   'com.openburnbar.floo.relay50gb': 'review-final/burnbar-cloud-pro-topups-review.jpg',
 };
-const TRUSTED_UPLOAD_HOST_SUFFIXES = [
-  '.apple.com',
-  '.mzstatic.com',
-  '.icloud-content.com',
-  '.amazonaws.com',
-];
-const TRUSTED_UPLOAD_HOST_SUFFIXES = [
-  '.apple.com',
-  '.mzstatic.com',
-  '.icloud-content.com',
-  '.amazonaws.com',
-];
+const TRUSTED_UPLOAD_HOST_SUFFIXES = ['.apple.com', '.mzstatic.com', '.icloud-content.com'];
 
 function b64u(s) { return Buffer.from(s).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
-function derToJose(d){let o=0;if(d[o++]!==0x30)throw'';let l=d[o++];if(l&0x80){const n=l&0x7f;l=0;for(let i=0;i<n;i++)l=(l<<8)|d[o++];}if(d[o++]!==0x02)throw'';let rL=d[o++],r=d.slice(o,o+rL);o+=rL;if(d[o++]!==0x02)throw'';let sL=d[o++],s=d.slice(o,o+sL);if(r[0]===0)r=r.slice(1);if(s[0]===0)s=s.slice(1);const out=Buffer.alloc(64,0);r.copy(out,32-r.length);s.copy(out,64-s.length);return out;}
+function derToJose(d){
+  let o=0;
+  if(d[o++]!==0x30)throw new Error('bad DER sequence');
+  let l=d[o++];
+  if(l&0x80){const n=l&0x7f;l=0;for(let i=0;i<n;i++)l=(l<<8)|d[o++];}
+  if(d[o++]!==0x02)throw new Error('bad DER r marker');
+  let rL=d[o++],r=d.slice(o,o+rL);o+=rL;
+  if(d[o++]!==0x02)throw new Error('bad DER s marker');
+  let sL=d[o++],s=d.slice(o,o+sL);
+  if(r[0]===0)r=r.slice(1);
+  if(s[0]===0)s=s.slice(1);
+  const out=Buffer.alloc(64,0);
+  r.copy(out,32-r.length);s.copy(out,64-s.length);
+  return out;
+}
 function makeToken(){
+  if (!KEY_ID || !ISSUER_ID) throw new Error('APP_STORE_ASC_KEY_ID and APP_STORE_ASC_ISSUER_ID required');
   const keyPem = KEY_P8 || (KEY_PATH && fs.readFileSync(KEY_PATH,'utf8'));
   if (!keyPem) throw new Error('APP_STORE_ASC_KEY_P8 or APP_STORE_ASC_KEY_PATH required');
   const header=b64u(JSON.stringify({alg:'ES256',kid:KEY_ID,typ:'JWT'}));
@@ -85,6 +89,18 @@ function makeToken(){
   const si=header+'.'+claims;
   const sg=crypto.createSign('SHA256');sg.update(si);
   return si+'.'+b64u(derToJose(sg.sign(keyPem)));
+}
+
+function isTrustedUploadHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (TRUSTED_UPLOAD_HOST_SUFFIXES.some((suffix) => host === suffix.slice(1) || host.endsWith(suffix))) {
+    return true;
+  }
+  if (host === 's3.amazonaws.com' || host.endsWith('.s3.amazonaws.com')) return true;
+  if (host === 's3-accelerate.amazonaws.com' || host.endsWith('.s3-accelerate.amazonaws.com')) return true;
+  if (/^s3[.-][a-z0-9-]+\.amazonaws\.com$/.test(host)) return true;
+  if (/^[a-z0-9.-]+\.s3[.-][a-z0-9-]+\.amazonaws\.com$/.test(host)) return true;
+  return false;
 }
 
 function ascApi(method, p, body, token, extraHeaders={}) {
@@ -134,15 +150,14 @@ function putBytes(uploadUrl, headersList, bytes) {
   if (u.username || u.password) {
     throw new Error('Refusing App Store upload operation with URL credentials.');
   }
-  const host = u.hostname.toLowerCase();
-  if (!TRUSTED_UPLOAD_HOST_SUFFIXES.some((suffix) => host === suffix.slice(1) || host.endsWith(suffix))) {
+  if (!isTrustedUploadHost(u.hostname)) {
     throw new Error(`Refusing App Store upload operation for unexpected host: ${u.hostname}`);
   }
   return new Promise((resolve, reject) => {
     const headers = {};
     for (const h of headersList) headers[h.name] = h.value;
     headers['Content-Length'] = bytes.length;
-    const opts = { method: 'PUT', hostname: u.hostname, path: u.pathname + u.search, headers };
+    const opts = { method: 'PUT', hostname: u.hostname, port: u.port || undefined, path: u.pathname + u.search, headers };
     const req = https.request(opts, (res) => {
       let c = ''; res.on('data',(d)=>c+=d);
       res.on('end',() => {
@@ -196,6 +211,9 @@ async function uploadFor(subId, imagePath, token, dryRun) {
 
 function defaultImagePath(productId) {
   if (IMAGE_OVERRIDE) return IMAGE_OVERRIDE;
+  if (!REVIEW_SCREENSHOT_BY_PRODUCT_ID[productId]) {
+    throw new Error(`No review screenshot mapping for product ${productId}`);
+  }
   return path.join(process.cwd(), '.appstore-screenshots', REVIEW_SCREENSHOT_BY_PRODUCT_ID[productId]);
 }
 
@@ -336,11 +354,7 @@ async function uploadInAppPurchaseScreenshotFor(iap, imagePath, token, dryRun) {
   console.log('  commit OK');
 }
 
-(async () => {
-  if (!KEY_ID || !ISSUER_ID || !(KEY_P8 || KEY_PATH)) {
-    console.error('APP_STORE_ASC_KEY_ID, APP_STORE_ASC_ISSUER_ID, APP_STORE_ASC_KEY_P8|PATH required');
-    process.exit(2);
-  }
+async function main() {
   const token = makeToken();
   console.log(`mode: ${APPLY ? 'APPLY' : 'DRY-RUN'}  app=${APP_ID}`);
   const targets = await listCommercialSubscriptions(token);
@@ -371,4 +385,15 @@ async function uploadInAppPurchaseScreenshotFor(iap, imagePath, token, dryRun) {
   console.log(APPLY
     ? '\nReview screenshots uploaded. Check ASC state in a few seconds.'
     : '\nDry-run complete. Add --apply to upload.');
-})().catch((e) => { console.error(e); process.exit(1); });
+}
+
+module.exports = {
+  derToJose,
+  isTrustedUploadHost,
+  defaultImagePath,
+  main,
+};
+
+if (require.main === module) {
+  main().catch((e) => { console.error(e.message || e); process.exit(1); });
+}

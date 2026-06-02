@@ -2152,6 +2152,183 @@ test("runtime preferences are per device and provider device links are server-wr
   );
 });
 
+test("provider accounts preserve client-only authority boundaries", async () => {
+  const db = authedDb("provider-owner");
+  const localAccountPath = "users/provider-owner/provider_accounts/local-codex";
+  const cloudAccountPath = "users/provider-owner/provider_accounts/cloud-codex";
+  const now = Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z"));
+  const baseLocalAccount = {
+    id: "local-codex",
+    providerID: "codex",
+    label: "Local Codex",
+    status: "connected",
+    credentialKind: "token",
+    storageScope: "device_keychain",
+    redactedLabel: "sk-...abcd",
+    isDefault: true,
+    sortKey: 1,
+    schemaVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await assertSucceeds(setDoc(doc(db, localAccountPath), baseLocalAccount));
+
+  await assertFails(
+    setDoc(doc(db, "users/provider-owner/provider_accounts/forged-cloud"), {
+      ...baseLocalAccount,
+      id: "forged-cloud",
+      storageScope: "cloud_refreshable",
+    })
+  );
+
+  await assertFails(
+    updateDoc(doc(db, localAccountPath), {
+      storageScope: "cloud_refreshable",
+      updatedAt: Timestamp.fromDate(new Date("2026-06-01T00:01:00.000Z")),
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), cloudAccountPath), {
+      id: "cloud-codex",
+      providerID: "codex",
+      label: "Cloud Codex",
+      status: "connected",
+      credentialKind: "oauth",
+      storageScope: "cloud_refreshable",
+      redactedLabel: "cloud account",
+      isDefault: false,
+      sortKey: 2,
+      schemaVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  await assertFails(deleteDoc(doc(db, cloudAccountPath)));
+  await assertSucceeds(deleteDoc(doc(db, localAccountPath)));
+});
+
+test("quota snapshots cannot carry server-verified authority from clients", async () => {
+  const db = authedDb("quota-owner");
+  const now = Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z"));
+  const snapshotPath = "users/quota-owner/quota_snapshots/local-codex";
+  const baseSnapshot = {
+    sourceKind: "provider",
+    sourceId: "local-codex",
+    provider: "codex",
+    accountID: "local-codex",
+    accountLabel: "Local Codex",
+    accountStorageScope: "device_keychain",
+    fetchedAt: now,
+    source: "local-device",
+    confidence: "high",
+    buckets: [],
+    schemaVersion: 1,
+    updatedAt: now,
+  };
+
+  await assertSucceeds(setDoc(doc(db, snapshotPath), baseSnapshot));
+
+  await assertFails(
+    setDoc(doc(db, "users/quota-owner/quota_snapshots/forged-authority"), {
+      ...baseSnapshot,
+      sourceId: "forged-authority",
+      sourceAuthority: "server",
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/quota-owner/quota_snapshots/forged-verified"), {
+      ...baseSnapshot,
+      sourceId: "forged-verified",
+      serverVerified: true,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/quota-owner/quota_snapshots/forged-cloud"), {
+      ...baseSnapshot,
+      sourceId: "forged-cloud",
+      accountStorageScope: "cloud_refreshable",
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/quota-owner/quota_snapshots/server-cloud"), {
+      ...baseSnapshot,
+      sourceId: "server-cloud",
+      accountStorageScope: "cloud_refreshable",
+      sourceAuthority: "server",
+      serverVerified: true,
+    });
+  });
+
+  await assertFails(
+    updateDoc(doc(db, "users/quota-owner/quota_snapshots/server-cloud"), {
+      updatedAt: Timestamp.fromDate(new Date("2026-06-01T00:01:00.000Z")),
+    })
+  );
+});
+
+test("computer-use client writes cannot set global spend or pricing evidence", async () => {
+  const uid = "computer-use-owner";
+  const db = authedDb(uid);
+  const now = Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z"));
+  await seedHostedComputerUseEntitlement(uid);
+
+  const actionDoc = {
+    id: "action-1",
+    sessionId: "session-1",
+    entryIndex: 1,
+    toolKind: "browser",
+    actionKind: "click",
+    status: "executed",
+    approvedBy: "mac",
+    parentEntryHashHex: "a".repeat(64),
+    recordedAt: now,
+    schemaVersion: 1,
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}/computer_use_actions/action-1`), actionDoc)
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${uid}/computer_use_actions/action-cost`), {
+      ...actionDoc,
+      id: "action-cost",
+      visionTokensCostUSD: 25,
+    })
+  );
+
+  const usageDoc = {
+    dayKey: "2026-06-01",
+    browserActionsExecuted: 1,
+    browserActionsRejected: 0,
+    systemActionsExecuted: 0,
+    systemActionsRejected: 0,
+    phoneControlIntentsExecuted: 0,
+    phoneControlIntentsRejected: 0,
+    sessionsStarted: 1,
+    sessionsCompleted: 0,
+    totalSessionSeconds: 30,
+    updatedAt: now,
+    schemaVersion: 1,
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}/computer_use_quota_usage/2026-06-01`), usageDoc)
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${uid}/computer_use_quota_usage/2026-06-02`), {
+      ...usageDoc,
+      dayKey: "2026-06-02",
+      visionModelSpendUSD: 25,
+    })
+  );
+});
+
 test("agent notification events are server-written and replies are queued by owner", async () => {
   const db = authedDb("nina");
   const otherDb = authedDb("mallory");

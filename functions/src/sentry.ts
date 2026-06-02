@@ -15,7 +15,7 @@
 
 import * as Sentry from "@sentry/node";
 import type { ErrorEvent, EventHint, Breadcrumb } from "@sentry/core";
-import { logInfo } from "./logging.js";
+import { logInfo, sanitizeForTelemetry } from "./logging.js";
 
 const dsn = process.env.SENTRY_DSN;
 const release = process.env.FUNCTION_VERSION ?? "unknown";
@@ -31,29 +31,40 @@ if (dsn) {
     // 100% in non-production environments for debugging visibility.
     tracesSampleRate: environment === "production" ? 0.1 : 1.0,
 
-    // Attach breadcrumbs from console output (scrubbed by our logging.ts layer).
-    integrations: [Sentry.extraErrorDataIntegration({ depth: 5 }), Sentry.requestDataIntegration()],
+    // Keep request telemetry metadata-only. Callable request bodies commonly
+    // contain prompts, messages, and provider data that must not leave Firebase.
+    integrations: [
+      Sentry.requestDataIntegration({
+        include: {
+          cookies: false,
+          data: false,
+          headers: false,
+          ip: false,
+          query_string: false,
+          url: false,
+          user: false,
+        },
+      }),
+    ],
 
     // Filter events that are noise rather than actionable bugs.
     beforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
+      const scrubbed = sanitizeSentryEvent(event);
       // Drop rate-limit errors (429) — these are expected under load.
-      const statusCode = typeof event.extra?.statusCode === "number" ? event.extra.statusCode : undefined;
+      const statusCode = typeof scrubbed.extra?.statusCode === "number" ? scrubbed.extra.statusCode : undefined;
       if (
         statusCode === 429 ||
-        (typeof event.message === "string" &&
-          (event.message.includes("rate limit") || event.message.includes("RESOURCE_EXHAUSTED")))
+        (typeof scrubbed.message === "string" &&
+          (scrubbed.message.includes("rate limit") || scrubbed.message.includes("RESOURCE_EXHAUSTED")))
       ) {
         return null;
       }
-      return event;
+      return scrubbed;
     },
 
-    // Breadcrumb scrubbing: remove auth tokens from URL breadcrumbs.
+    // Breadcrumb scrubbing: remove auth tokens from URL breadcrumbs and data.
     beforeBreadcrumb(breadcrumb: Breadcrumb) {
-      if (breadcrumb.data?.url && typeof breadcrumb.data.url === "string") {
-        breadcrumb.data.url = breadcrumb.data.url.replace(/([?&](?:token|key|secret))=[^&]+/gi, "$1=[REDACTED]");
-      }
-      return breadcrumb;
+      return sanitizeSentryBreadcrumb(breadcrumb);
     },
   });
 
@@ -103,4 +114,28 @@ export async function withSentry<T>(fn: () => Promise<T>, context?: Record<strin
     captureException(err, context);
     throw err;
   }
+}
+
+function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
+  const scrubbed = sanitizeForTelemetry(event) as ErrorEvent;
+  scrubbed.request = sanitizeSentryRequest(scrubbed.request);
+  return scrubbed;
+}
+
+function sanitizeSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
+  return sanitizeForTelemetry(breadcrumb) as Breadcrumb;
+}
+
+export function sanitizeSentryEventForTesting(event: ErrorEvent): ErrorEvent {
+  return sanitizeSentryEvent(event);
+}
+
+export function sanitizeSentryBreadcrumbForTesting(breadcrumb: Breadcrumb): Breadcrumb {
+  return sanitizeSentryBreadcrumb(breadcrumb);
+}
+
+function sanitizeSentryRequest(request: ErrorEvent["request"]): ErrorEvent["request"] {
+  if (!request) return undefined;
+  const method = typeof request.method === "string" ? request.method : undefined;
+  return method ? { method } : undefined;
 }

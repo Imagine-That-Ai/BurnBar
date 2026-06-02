@@ -94,16 +94,26 @@ export async function eraseUserCloudData(
   for (const doc of secretRefs.docs) {
     const secretVersionName = doc.get("secretVersionName");
     const secretVersion = typeof secretVersionName === "string" ? secretVersionName : undefined;
+    let secretDestroyedOrMissing = true;
     if (secretVersion) {
+      secretDestroyedOrMissing = false;
       try {
         await options.destroyCredential(secretVersion);
         summary.destroyedSecrets += 1;
+        secretDestroyedOrMissing = true;
       } catch (error) {
         summary.failedSecretDestroys += 1;
-        logger.warn(`Failed to destroy provider credential secret for ${uid}/${doc.id}:`, error);
+        logger.warn(`Failed to destroy provider credential secret for uid:${uid.slice(0, 8)}/${doc.id}; keeping ref for retry.`, error);
       }
     }
-    await batcher.delete(doc.ref);
+    if (secretDestroyedOrMissing) {
+      await batcher.delete(doc.ref);
+    }
+  }
+
+  if (summary.failedSecretDestroys > 0) {
+    await batcher.flush();
+    return summary;
   }
 
   await deleteDocumentTree(db.doc(`users/${uid}`), batcher);

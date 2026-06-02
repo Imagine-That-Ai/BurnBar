@@ -1408,6 +1408,9 @@ export interface EnvConfig {
   /** Stripe webhook signing secret for subscription entitlement updates. */
   stripeWebhookSecret: string;
 
+  /** Allowed origins for Stripe Checkout success/cancel and billing portal return URLs. */
+  stripeAllowedRedirectOrigins: string[];
+
   /** Google Play package name used for Android subscription verification. */
   googlePlayPackageName: string;
 

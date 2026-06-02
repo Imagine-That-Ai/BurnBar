@@ -22,7 +22,7 @@ function fallbackPath(): string {
 }
 
 export function readAccessToken(): string | undefined {
-  if (process.env.OPENBURNBAR_MCP_ACCESS_TOKEN) return process.env.OPENBURNBAR_MCP_ACCESS_TOKEN;
+  if (process.env.OPENBURNBAR_MCP_ACCESS_TOKEN) return validatedTokenForStorage(process.env.OPENBURNBAR_MCP_ACCESS_TOKEN);
   if (process.platform === "darwin") {
     try {
       return execFileSync("security", ["find-generic-password", "-s", SERVICE, "-a", ACCOUNT, "-w"], { encoding: "utf8" }).trim();
@@ -42,7 +42,7 @@ export function writeAccessToken(token: string): void {
   const safeToken = validatedTokenForStorage(token);
   if (process.platform === "darwin") {
     try {
-      execFileSync("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT, "-w", safeToken], { stdio: "ignore" });
+      writeMacKeychainSecret(SERVICE, ACCOUNT, safeToken);
       return;
     } catch {
       // Use the fallback path only when Keychain is unavailable.
@@ -51,4 +51,11 @@ export function writeAccessToken(token: string): void {
   const path = fallbackPath();
   writeFileSync(path, `${safeToken}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
+}
+
+function writeMacKeychainSecret(service: string, account: string, secret: string): void {
+  execFileSync("security", ["add-generic-password", "-U", "-s", service, "-a", account, "-w"], {
+    input: `${secret}\n${secret}\n`,
+    stdio: ["pipe", "ignore", "ignore"]
+  });
 }

@@ -26,6 +26,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>burnbar</string>
+				<string>openburnbar</string>
 			</array>
 		</dict>
 		<dict>

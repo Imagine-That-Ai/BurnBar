@@ -8,12 +8,16 @@ on:
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - ".github/actions/**/*.yml"
+      - ".github/actions/**/*.yaml"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - ".github/actions/**/*.yml"
+      - ".github/actions/**/*.yaml"
 
 jobs:
   actionlint:
@@ -22,13 +26,14 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install actionlint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
-            | bash -s -- latest
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 
       - name: Lint workflow files
         run: |
-          ./actionlint -color
+          "$HOME/go/bin/actionlint" -color
+
+      - name: Validate CI supply-chain invariants
+        run: python3 scripts/security/validate-ci-supply-chain.py

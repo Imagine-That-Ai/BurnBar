@@ -756,6 +756,14 @@ export const refreshProviderAccountQuota = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     const accountID = accountIDFor("account", request.data.accountID);
+    const accountSnap = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
+    if (!accountSnap.exists) {
+      throw new HttpsError("not-found", "Provider account not found.");
+    }
+    const account = requireProviderAccountDoc(accountSnap.data());
+    assertProvider(account.providerID);
+    await checkRefreshRateLimit(db, uid, account.providerID);
+
     const snapshot = await refreshUserProviderAccountQuota(db, uid, accountID);
     if (!snapshot) {
       throw new Error("failed-precondition: quota refresh returned no snapshot.");

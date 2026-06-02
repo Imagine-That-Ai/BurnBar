@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import sqlite3
@@ -70,12 +71,75 @@ def test_semantic_search_returns_unavailable_when_tables_missing(tmp_path, monke
 
 def test_cloud_semantic_search_requires_explicit_cloud_credentials(monkeypatch):
     monkeypatch.delenv("OPENBURNBAR_FIREBASE_ID_TOKEN", raising=False)
+    monkeypatch.delenv("OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN", raising=False)
     monkeypatch.delenv("OPENBURNBAR_CLOUD_VAULT_KEY_BASE64", raising=False)
 
     payload = json.loads(server.burnbar_cloud_semantic_search_conversations("hosted semantic search"))
 
     assert payload["status"] == "unavailable"
     assert payload["code"] == "CLOUD_AUTH_UNCONFIGURED"
+
+
+def test_cloud_config_requires_app_check_token(monkeypatch):
+    monkeypatch.setenv("OPENBURNBAR_FIREBASE_ID_TOKEN", "firebase-id-token")
+    monkeypatch.delenv("OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN", raising=False)
+    monkeypatch.setenv("OPENBURNBAR_CLOUD_VAULT_KEY_BASE64", base64.b64encode(b"\x00" * 32).decode("ascii"))
+
+    payload = server._cloud_config()
+
+    assert payload["status"] == "unavailable"
+    assert payload["code"] == "CLOUD_APP_CHECK_UNCONFIGURED"
+
+
+def test_cloud_config_reads_app_check_token(monkeypatch):
+    monkeypatch.setenv("OPENBURNBAR_FIREBASE_ID_TOKEN", "firebase-id-token")
+    monkeypatch.setenv("OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN", "app-check-token")
+    monkeypatch.setenv("OPENBURNBAR_CLOUD_VAULT_KEY_BASE64", base64.b64encode(b"\x00" * 32).decode("ascii"))
+
+    payload = server._cloud_config()
+
+    assert payload["status"] == "ok"
+    assert payload["idToken"] == "firebase-id-token"
+    assert payload["appCheckToken"] == "app-check-token"
+
+
+def test_firebase_callable_sends_app_check_header(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc, _tb):
+            return False
+
+        def read(self):
+            return b'{"result":{"ok":true}}'
+
+    def _fake_urlopen(request, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr(server.urllib.request, "urlopen", _fake_urlopen)
+
+    result = server._call_firebase_callable(
+        "searchEncryptedConversationIndex",
+        {"query": "routing"},
+        {
+            "projectID": "burnbar",
+            "region": "us-central1",
+            "idToken": "firebase-id-token",
+            "appCheckToken": "app-check-token",
+        },
+    )
+
+    request = captured["request"]
+    headers = {name.lower(): value for name, value in request.header_items()}
+    assert result == {"ok": True}
+    assert captured["timeout"] == 30
+    assert headers["authorization"] == "Bearer firebase-id-token"
+    assert headers["x-firebase-appcheck"] == "app-check-token"
 
 
 def test_semantic_search_returns_deterministic_hit(tmp_path, monkeypatch):

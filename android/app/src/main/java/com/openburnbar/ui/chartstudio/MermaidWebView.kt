@@ -4,8 +4,11 @@
 package com.openburnbar.ui.chartstudio
 
 import android.annotation.SuppressLint
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -14,6 +17,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.openburnbar.ui.theme.AuroraColors
+import java.io.ByteArrayInputStream
 import org.json.JSONObject
 
 /**
@@ -42,9 +46,17 @@ fun MermaidCanvas(spec: MermaidSpec, modifier: Modifier = Modifier) {
                     displayZoomControls = false
                     loadWithOverviewMode = true
                     useWideViewPort = true
-                    cacheMode = WebSettings.LOAD_DEFAULT
-                    domStorageEnabled = true
+                    cacheMode = WebSettings.LOAD_NO_CACHE
+                    domStorageEnabled = false
+                    databaseEnabled = false
+                    allowContentAccess = false
+                    allowFileAccess = true
+                    allowFileAccessFromFileURLs = false
+                    allowUniversalAccessFromFileURLs = false
+                    blockNetworkLoads = true
+                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 }
+                webViewClient = MermaidWebViewClient
                 setBackgroundColor(0x00000000) // transparent so the Aurora gradient bleeds through
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
@@ -67,4 +79,26 @@ fun MermaidCanvas(spec: MermaidSpec, modifier: Modifier = Modifier) {
             )
         },
     )
+}
+
+private object MermaidWebViewClient : WebViewClient() {
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
+
+    override fun shouldInterceptRequest(
+        view: WebView?,
+        request: WebResourceRequest?,
+    ): WebResourceResponse? {
+        val scheme = request?.url?.scheme?.lowercase() ?: return blocked()
+        if (scheme == "http" || scheme == "https" || scheme == "data" || scheme == "javascript") {
+            return blocked()
+        }
+        return null
+    }
+
+    private fun blocked(): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain",
+            "utf-8",
+            ByteArrayInputStream(ByteArray(0)),
+        )
 }

@@ -17,6 +17,12 @@ Workflows:
 - [`.github/workflows/supply-chain-provenance.yml`](../../.github/workflows/supply-chain-provenance.yml) — standalone re-attestation / provenance verification (`workflow_dispatch`).
 - [`.github/workflows/openburnbar-pr-harness.yml`](../../.github/workflows/openburnbar-pr-harness.yml) — PR SBOM + VEX + ecosystem deny checks.
 
+Release and deploy workflows first resolve the requested tag with
+[`scripts/security/resolve-trusted-release-tag.sh`](../../scripts/security/resolve-trusted-release-tag.sh).
+The tag must be version-like, annotated, GitHub-verified, and point to a commit
+reachable from `origin/main` before any release/deploy secrets are exposed to
+checked-out repository code.
+
 ## OIDC + cosign (keyless)
 
 Release jobs request:
@@ -36,6 +42,11 @@ Cosign uses GitHub's OIDC identity (`sigstore/cosign-installer` + `cosign attest
 |---------|------|-----|
 | PR | `scripts/generate-sbom.py` (lightweight, no notarization) | `scripts/supply-chain/generate-vex.py` |
 | Release tag | Full SPDX via `scripts/generate-sbom.py` + syft optional mirror | OpenVEX sidecar uploaded to GitHub Release |
+
+`scripts/generate-sbom.py` reads lockfiles from the resolved source tree:
+SwiftPM `Package.resolved`, every repo `package-lock.json`, and Rust
+`Cargo.lock` files. The SPDX document namespace includes the source commit SHA
+so re-attestation cannot silently describe the wrong tree.
 
 VEX is a **triage artifact**: default generation marks `not_affected` with a placeholder statement when no exceptions are filed. Update VEX when `npm audit`, OSV-Scanner, or `cargo-deny` findings are accepted with documented rationale.
 
@@ -77,6 +88,9 @@ If Apple or the community ships practical notarized-repro tooling, revisit in a 
 # Generate SBOM + VEX locally
 ./scripts/generate-sbom.py --version dev --repo-root . --output /tmp/openburnbar-dev.spdx.json
 python3 scripts/supply-chain/generate-vex.py --sbom /tmp/openburnbar-dev.spdx.json --output /tmp/openburnbar-dev.vex.json
+
+# Validate workflow supply-chain guardrails
+python3 scripts/security/validate-ci-supply-chain.py
 
 # Verify cosign attestation (after release)
 cosign verify-attestation --type slsaprovenance \

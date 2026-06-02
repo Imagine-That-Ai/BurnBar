@@ -29,11 +29,13 @@ import {
   parsePiAgentConnectionMode,
   parsePiAgentPlatform,
   randomPiAgentPairingCode,
+  redactPiAgentConnectionDoc,
   requirePiAgentPairingDoc,
   sanitizePiAgentCapabilities,
   sanitizePiAgentInstances,
   sanitizePiAgentModels,
   validatePiAgentEndpointURL,
+  validatePiAgentRedisURLForStorage,
 } from "../piAgent.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import type { PiAgentConnectionDoc, PiAgentConnectionMode, PiAgentPairingDoc } from "../types.js";
@@ -200,7 +202,7 @@ export const completePiAgentPairing = onCall(
             endpointURL,
             advertisedModel: boundedTrimmedString(request.data.advertisedModel, "advertisedModel", 160),
             selectedInstanceID: boundedTrimmedString(request.data.selectedInstanceID, "selectedInstanceID", 128),
-            redisURL: boundedTrimmedString(request.data.redisURL, "redisURL", 2048),
+            redisURL: validatePiAgentRedisURLForStorage(request.data.redisURL),
             relayPublicKey: boundedTrimmedString(request.data.relayPublicKey, "relayPublicKey", 256),
             relayKeyVersion:
               typeof request.data.relayKeyVersion === "number" ? request.data.relayKeyVersion : undefined,
@@ -251,7 +253,7 @@ export const completePiAgentPairing = onCall(
         pairing_id: pairingId,
         connection_id: connection.id,
       });
-      return stripUndefinedObject(connection);
+      return stripUndefinedObject(redactPiAgentConnectionDoc(connection));
     },
   ),
 );
@@ -274,7 +276,7 @@ export const listPiAgentConnections = onCall(
     const connections = snap.docs
       .flatMap((doc): PiAgentConnectionDoc[] => {
         const data = recordOrUndefined(doc.data());
-        return data && isPiAgentConnectionDoc(data) ? [data] : [];
+        return data && isPiAgentConnectionDoc(data) ? [redactPiAgentConnectionDoc(data)] : [];
       })
       .filter((doc) => request.data.includeRevoked === true || doc.status !== "revoked")
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));

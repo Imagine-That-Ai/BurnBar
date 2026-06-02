@@ -77,15 +77,15 @@ Options:
   --product-id <id>                   Require the entitlement productID/sourceProductID to match.
   --external-subscription-id <id>     Require externalSubscriptionID to match.
   --purchase-token-hash <hash>        Require Google Play purchaseTokenHash to match.
-  --environment <Production|Sandbox>  Require environment. Defaults to Production.
+  --environment <Production|Sandbox>  Required provider environment to prove.
   --allow-sandbox                     Permit Sandbox as well as Production.
   --require-allowance-ledger          Require current-month Cloud Pro allowance doc. Default for --tier cloud-pro.
   --skip-allowance-ledger             Do not require current-month allowance evidence.
   --self-test                         Validate proof command configuration and exit.
 
 Examples:
-  npm --prefix functions run prove:paid-tier -- --uid abc123 --tier cloud --channel apple
-  npm --prefix functions run prove:paid-tier -- --uid abc123 --tier cloud-pro --channel stripe --external-subscription-id sub_123
+  npm --prefix functions run prove:paid-tier -- --uid abc123 --tier cloud --channel apple --environment Production
+  npm --prefix functions run prove:paid-tier -- --uid abc123 --tier cloud-pro --channel stripe --environment Production --external-subscription-id sub_123
 `;
 }
 
@@ -99,7 +99,7 @@ export function parseArgs(argv) {
     productID: process.env.OPENBURNBAR_PROOF_PRODUCT_ID || "",
     externalSubscriptionID: process.env.OPENBURNBAR_PROOF_EXTERNAL_SUBSCRIPTION_ID || "",
     purchaseTokenHash: process.env.OPENBURNBAR_PROOF_PURCHASE_TOKEN_HASH || "",
-    environment: process.env.OPENBURNBAR_PROOF_ENVIRONMENT || "Production",
+    environment: process.env.OPENBURNBAR_PROOF_ENVIRONMENT || "",
     allowSandbox: false,
     requireAllowanceLedger: null,
   };
@@ -162,6 +162,12 @@ export function parseArgs(argv) {
   if (!PRODUCTS[out.tier]) throw new Error(`Unsupported tier: ${out.tier}`);
   if (!CHANNELS.has(out.channel)) throw new Error(`Unsupported channel: ${out.channel}`);
   if (out.requireAllowanceLedger === null) out.requireAllowanceLedger = out.tier === "cloud-pro";
+  if (!out.selfTest && !out.environment) {
+    throw new Error("OPENBURNBAR_PROOF_ENVIRONMENT or --environment is required");
+  }
+  if (out.environment && !["Production", "Sandbox"].includes(out.environment)) {
+    throw new Error("environment must be Production or Sandbox");
+  }
   if (!out.selfTest && !out.uid) throw new Error("OPENBURNBAR_PROOF_UID or --uid is required");
   return out;
 }
@@ -240,7 +246,10 @@ export function assertPaidTierEntitlement(entitlement, opts) {
 
   const allowedEnvironments = new Set([opts.environment]);
   if (opts.allowSandbox) allowedEnvironments.add("Sandbox");
-  if (entitlement.environment && !allowedEnvironments.has(entitlement.environment)) {
+  if (!entitlement.environment) {
+    fail("entitlement environment is missing");
+  }
+  if (!allowedEnvironments.has(entitlement.environment)) {
     fail("entitlement environment mismatch", {
       got: entitlement.environment,
       allowed: [...allowedEnvironments],

@@ -11,6 +11,7 @@ import process from "node:process";
 import { createHash } from "node:crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { fileURLToPath } from "node:url";
 
 const PRO_ENTITLEMENT = "burnbar_pro";
 const HOSTED_ENTITLEMENT = "hosted_quota_sync";
@@ -123,8 +124,8 @@ function assertSealedText(value, label) {
   }
 }
 
-function assertHashList(value, label) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 250) {
+export function assertHashList(value, label, { min = 1, max = 250 } = {}) {
+  if (!Array.isArray(value) || value.length < min || value.length > max) {
     fail(`${label} must be a non-empty bounded hash list`);
   }
   for (const hash of value) {
@@ -132,6 +133,11 @@ function assertHashList(value, label) {
       fail(`${label} contains invalid hash`, hash);
     }
   }
+}
+
+function maxTokenHashesForChunk(chunk) {
+  const indexVersion = Number(chunk?.indexVersion || 0);
+  return indexVersion >= 4 ? 1024 : 250;
 }
 
 async function count(collectionRef) {
@@ -170,15 +176,19 @@ async function main() {
   }
   if (wrapperCount < 1) fail("No active cloud vault key wrapper found.");
 
-  const [sampleDocSnap, sampleChunkSnap, samplePostingSnap] = await Promise.all([
+  const [sampleDocSnap, samplePostingSnap] = await Promise.all([
     docsRef.limit(1).get(),
-    chunksRef.limit(1).get(),
     postingsRef.where("kind", "==", "semantic").limit(1).get(),
   ]);
   const sampleDoc = sampleDocSnap.docs[0]?.data();
-  const sampleChunk = sampleChunkSnap.docs[0]?.data();
   const samplePosting = samplePostingSnap.docs[0]?.data();
-  if (!sampleDoc || !sampleChunk || !samplePosting) fail("Sample encrypted search artifacts are missing.");
+  if (!sampleDoc || !samplePosting) fail("Sample encrypted search artifacts are missing.");
+  if (typeof samplePosting.chunkID !== "string" || !samplePosting.chunkID) {
+    fail("semantic posting edge is missing chunkID");
+  }
+  const sampleChunkSnap = await chunksRef.doc(samplePosting.chunkID).get();
+  const sampleChunk = sampleChunkSnap.data();
+  if (!sampleChunk) fail("Semantic posting sample points at a missing encrypted search chunk.");
 
   assertNoPlaintextFields(sampleDoc, "cloud_search_documents sample");
   assertNoPlaintextFields(sampleChunk, "cloud_search_chunks sample");
@@ -186,10 +196,13 @@ async function main() {
   assertSealedText(sampleDoc.sealedTitle, "sealedTitle");
   assertSealedText(sampleDoc.sealedBodyPreview, "sealedBodyPreview");
   assertSealedText(sampleChunk.sealedSnippet, "sealedSnippet");
-  assertHashList(sampleChunk.tokenHashes, "tokenHashes");
-  assertHashList(sampleChunk.semanticHashes, "semanticHashes");
+  assertHashList(sampleChunk.tokenHashes, "tokenHashes", { max: maxTokenHashesForChunk(sampleChunk) });
+  assertHashList(sampleChunk.semanticHashes, "semanticHashes", { max: 250 });
   if (samplePosting.kind !== "semantic" || !/^[a-f0-9]{32}$/.test(samplePosting.hash)) {
     fail("semantic posting edge is malformed");
+  }
+  if (!sampleChunk.semanticHashes.includes(samplePosting.hash)) {
+    fail("semantic posting hash is not present in the referenced chunk semanticHashes");
   }
 
   console.log(JSON.stringify({
@@ -212,11 +225,13 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(JSON.stringify({
-    ok: false,
-    error: error.message,
-    details: error.details,
-  }, null, 2));
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    console.error(JSON.stringify({
+      ok: false,
+      error: error.message,
+      details: error.details,
+    }, null, 2));
+    process.exit(1);
+  });
+}

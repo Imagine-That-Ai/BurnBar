@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { HermesRealtimeRelaySession, type RelaySocket } from "./relay.js";
-import { PROTOCOL_VERSION, serializeFrame, type HermesRelayRuntime } from "./protocol.js";
+import { PROTOCOL_VERSION, serializeFrame, type HermesRealtimeFrame, type HermesRelayRuntime } from "./protocol.js";
 import type { RelayQuotaStore } from "./quota.js";
 import type { RelayMessageBus } from "./redisHub.js";
 
@@ -87,11 +87,11 @@ class FakeQuota implements RelayQuotaStore {
   async checkRequestStart(): Promise<void> {
     this.requestStarts += 1;
   }
-  async reserveInFlight(_uid: string, requestID: string, runtime: HermesRelayRuntime): Promise<void> {
-    this.inFlight.set(requestID, runtime);
+  async reserveInFlight(_uid: string, member: string, runtime: HermesRelayRuntime): Promise<void> {
+    this.inFlight.set(member, runtime);
   }
-  async releaseInFlight(_uid: string, requestID: string): Promise<void> {
-    this.inFlight.delete(requestID);
+  async releaseInFlight(_uid: string, member: string): Promise<void> {
+    this.inFlight.delete(member);
   }
 }
 
@@ -131,6 +131,10 @@ function frameTypes(socket: FakeSocket): string[] {
   return socket.sent.map((frame) => JSON.parse(frame).type);
 }
 
+function inFlightMember(sessionID: string, requestID: string): string {
+  return `${sessionID}:${requestID}`;
+}
+
 test("routes request frames to registered host and response frames back to requester", async () => {
   const bus = new FakeBus();
   const quota = new FakeQuota();
@@ -168,7 +172,7 @@ test("routes request frames to registered host and response frames back to reque
   assert.ok(frameTypes(host).includes("host.ready"));
   assert.ok(frameTypes(host).includes("request.start"));
   assert.equal(quota.requestStarts, 1);
-  assert.equal(quota.inFlight.get("req-1"), "hermes");
+  assert.equal(quota.inFlight.get(inFlightMember("client-session", "req-1")), "hermes");
 
   host.emit("message", Buffer.from(serializeFrame({
     type: "response.chunk",
@@ -196,7 +200,7 @@ test("routes request frames to registered host and response frames back to reque
   const encryptedPayload = encryptedFrame.payload;
   assert.ok(isRecord(encryptedPayload));
   assert.equal(encryptedPayload.ciphertext, "encrypted-data");
-  assert.equal(quota.inFlight.has("req-1"), false);
+  assert.equal(quota.inFlight.has(inFlightMember("client-session", "req-1")), false);
 
   host.close();
   client.close();
@@ -259,8 +263,54 @@ test("fails request.start fast when no host is subscribed and releases in-flight
   assert.equal(response.requestId, "req-1");
   assert.ok(isRecord(response.payload));
   assert.equal(response.payload.error, "Realtime Hermes host is not connected.");
-  assert.equal(quota.inFlight.has("req-1"), false);
+  assert.equal(quota.inFlight.has(inFlightMember("client-session", "req-1")), false);
   socket.close();
+});
+
+test("rejects duplicate active request IDs on the same client socket", async () => {
+  const bus = new FakeBus();
+  const quota = new FakeQuota();
+  const host = new FakeSocket();
+  const client = new FakeSocket();
+  makeSession(host, bus, quota, "host", "host-session").start();
+  makeSession(client, bus, quota, "client", "client-session").start();
+
+  host.emit("message", Buffer.from(serializeFrame({
+    type: "host.register",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { capabilities: ["realtime_relay"] },
+  })));
+  await flushRelay();
+
+  const startFrame = {
+    type: "request.start",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    requestId: "req-duplicate",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: {
+      operation: "models",
+      method: "GET",
+      payloadCiphertext: "cipher",
+      wrappedKey: "wrapped",
+      relayEncryption: "p256-hkdf-sha256-aesgcm",
+      relayKeyVersion: 1,
+    },
+  } satisfies HermesRealtimeFrame;
+
+  client.emit("message", Buffer.from(serializeFrame(startFrame)));
+  await flushRelay();
+  client.emit("message", Buffer.from(serializeFrame(startFrame)));
+  await flushRelay();
+
+  assert.equal(quota.requestStarts, 1);
+  assert.equal(frameTypes(host).filter((type) => type === "request.start").length, 1);
+  const errorFrame = parseSentAt(client, -1);
+  assert.ok(isRecord(errorFrame.payload));
+  assert.equal(errorFrame.payload.error, "Realtime requestId is already active on this relay socket.");
+  assert.equal(client.closes.at(-1)?.code, 1008);
 });
 
 test("prevents clients from registering as hosts", async () => {
@@ -339,7 +389,7 @@ test("keeps Pi relay traffic on Pi runtime channels and quotas", async () => {
   })));
   await flushRelay();
 
-  assert.equal(quota.inFlight.get("pi-req-1"), "pi");
+  assert.equal(quota.inFlight.get(inFlightMember("pi-client-session", "pi-req-1")), "pi");
   assert.ok(frameTypes(host).includes("request.start"));
 
   host.emit("message", Buffer.from(serializeFrame({
@@ -352,7 +402,7 @@ test("keeps Pi relay traffic on Pi runtime channels and quotas", async () => {
   })));
   await flushRelay();
 
-  assert.equal(quota.inFlight.has("pi-req-1"), false);
+  assert.equal(quota.inFlight.has(inFlightMember("pi-client-session", "pi-req-1")), false);
 
   host.close();
   client.close();
@@ -438,7 +488,7 @@ test("does not bind runtime from a ping before the first routed frame", async ()
   await flushRelay();
 
   assert.equal(JSON.parse(client.sent[0]).type, "pong");
-  assert.equal(quota.inFlight.get("pi-req-after-ping"), "pi");
+  assert.equal(quota.inFlight.get(inFlightMember("pi-client-session", "pi-req-after-ping")), "pi");
   assert.ok(frameTypes(host).includes("request.start"));
 
   host.close();
