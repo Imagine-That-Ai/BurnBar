@@ -245,6 +245,29 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
+    func testRefreshIgnoresSandboxDirectEntitlementWhenRuntimeRejectsEnvironment() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let service = FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        let directReader = FakeHostedQuotaDirectReader(
+            response: .burnBarPro(active: true, expiresAt: expiresAt, environment: "Sandbox")
+        )
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            directReader: directReader,
+            isSignedIn: { true },
+            acceptsEntitlementEnvironment: { $0 != "Sandbox" }
+        )
+
+        try await store.refreshEntitlement()
+
+        XCTAssertFalse(store.isActive)
+        XCTAssertNil(store.activeProductID)
+        XCTAssertEqual(service.restoreRequests.count, 1)
+        XCTAssertEqual(directReader.fetchCount, 2)
+    }
+
     func testRestoreFallsBackToServerWhenStoreKitHasNoCurrentEntitlement() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
@@ -267,6 +290,30 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(store.expirationDate, expiresAt)
         XCTAssertEqual(service.restoreRequests.count, 1)
         XCTAssertEqual(service.restoreRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
+    }
+
+    func testRestoreDoesNotApplySandboxServerResponseWhenRuntimeRejectsEnvironment() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let service = FakeHostedQuotaEntitlementService(
+            restoreResponse: .burnBarPro(active: true, expiresAt: expiresAt, environment: "Sandbox")
+        )
+        var didSyncAppStore = false
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            syncAppStore: { didSyncAppStore = true },
+            isSignedIn: { true },
+            acceptsEntitlementEnvironment: { $0 != "Sandbox" }
+        )
+
+        await store.restorePurchases()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(didSyncAppStore)
+        XCTAssertFalse(store.isActive)
+        XCTAssertNil(store.activeProductID)
+        XCTAssertEqual(service.restoreRequests.count, 1)
     }
 
     func testSignedOutPurchaseStillPresentsStoreKitAndFinishesWithActionableRecovery() async throws {
@@ -556,39 +603,51 @@ private final class FakeHostedQuotaDirectReader: HostedQuotaEntitlementDirectRea
 }
 
 private extension HostedQuotaEntitlementResponse {
-    static func hostedQuota(active: Bool, expiresAt: Date? = nil) -> HostedQuotaEntitlementResponse {
+    static func hostedQuota(
+        active: Bool,
+        expiresAt: Date? = nil,
+        environment: String = "Xcode"
+    ) -> HostedQuotaEntitlementResponse {
         HostedQuotaEntitlementResponse(
             active: active,
             productID: HostedQuotaSubscriptionStore.legacyHostedQuotaProductID,
             transactionID: active ? "test-transaction" : nil,
             originalTransactionID: active ? "test-original-transaction" : nil,
-            environment: "Xcode",
+            environment: environment,
             expiresAt: expiresAt,
             revokedAt: nil,
             revocationReason: nil
         )
     }
 
-    static func burnBarPro(active: Bool, expiresAt: Date? = nil) -> HostedQuotaEntitlementResponse {
+    static func burnBarPro(
+        active: Bool,
+        expiresAt: Date? = nil,
+        environment: String = "Xcode"
+    ) -> HostedQuotaEntitlementResponse {
         HostedQuotaEntitlementResponse(
             active: active,
             productID: burnBarProProductID,
             transactionID: active ? "test-pro-transaction" : nil,
             originalTransactionID: active ? "test-pro-original-transaction" : nil,
-            environment: "Xcode",
+            environment: environment,
             expiresAt: expiresAt,
             revokedAt: nil,
             revocationReason: nil
         )
     }
 
-    static func burnBarProMax(active: Bool, expiresAt: Date? = nil) -> HostedQuotaEntitlementResponse {
+    static func burnBarProMax(
+        active: Bool,
+        expiresAt: Date? = nil,
+        environment: String = "Xcode"
+    ) -> HostedQuotaEntitlementResponse {
         HostedQuotaEntitlementResponse(
             active: active,
             productID: burnBarProMaxProductID,
             transactionID: active ? "test-pro-max-transaction" : nil,
             originalTransactionID: active ? "test-pro-max-original-transaction" : nil,
-            environment: "Xcode",
+            environment: environment,
             expiresAt: expiresAt,
             revokedAt: nil,
             revocationReason: nil
