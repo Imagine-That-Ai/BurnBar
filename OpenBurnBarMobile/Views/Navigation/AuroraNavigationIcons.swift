@@ -46,6 +46,17 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         }
     }
 
+    var trayLabel: String {
+        switch self {
+        case .pulse:    return "Pulse"
+        case .burn:     return "Burn"
+        case .insights: return "Insights"
+        case .streams:  return "Streams"
+        case .hermes:   return "Agents"
+        case .you:      return "Store"
+        }
+    }
+
     var accent: Color {
         switch self {
         case .pulse:    return MobileTheme.ember

@@ -35,8 +35,11 @@ struct YouView: View {
                     cloudMembershipRow
                         .staggeredEntrance(delay: 0.03)
 
+                    storeAndTopUpsRow
+                        .staggeredEntrance(delay: 0.04)
+
                     syncDiagnosticsCard
-                        .staggeredEntrance(delay: 0.05)
+                        .staggeredEntrance(delay: 0.06)
 
                     NavigationLink(value: YouRoute.devices) {
                         ConnectedDevicesRow(devices: devicesStore.devices)
@@ -130,6 +133,57 @@ struct YouView: View {
                 showCloudStore = true
             }
         }
+    }
+
+    private var storeAndTopUpsRow: some View {
+        Button {
+            HapticBus.primaryAction()
+            showCloudStore = true
+        } label: {
+            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "cart.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(MobileTheme.blaze)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(MobileTheme.blaze.opacity(0.16))
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Store & Top-ups")
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text(cloudStore?.isActive == true ? "Manage Cloud, Cloud Pro, and add-ons" : "Buy Cloud, Cloud Pro, and add-ons")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Text("Open")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(LinearGradient(
+                                    colors: [MobileTheme.blaze, MobileTheme.ember],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ))
+                        )
+                }
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("you.storeAndTopUps")
+        .accessibilityLabel("Store and Top-ups")
+        .accessibilityHint("Opens OpenBurnBar Cloud purchases and top-ups")
     }
 
     // MARK: - Sync Card
