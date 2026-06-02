@@ -74,6 +74,8 @@ function emitTs(reg) {
     "  callables: Record<string, string>;",
     "  entitlementGate: string | null;",
     "  suspensionSurface: string | null;",
+    "  /** Optional reference to a tiered-limits table (e.g. PENSIEVE_LIMITS). */",
+    "  tieredLimits?: string;",
     "}",
     "",
     `export const ENCRYPTION_TIERS = ${JSON.stringify(reg.encryptionTiers, null, 2)} as const;`,
