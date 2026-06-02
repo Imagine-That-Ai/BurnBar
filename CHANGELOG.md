@@ -551,7 +551,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and Android locked-Mac certification without collecting or logging the Mac
   password.
 
-## [1.0] — 2026-05-26
+## [1.0.1] — 2026-05-26
 
 ### Added — macOS release channels
 - Prepared the macOS `1.0` release for both channels: a sandboxed Mac App Store
