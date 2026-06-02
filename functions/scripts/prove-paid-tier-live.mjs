@@ -77,6 +77,7 @@ Options:
   --product-id <id>                   Require the entitlement productID/sourceProductID to match.
   --external-subscription-id <id>     Require externalSubscriptionID to match.
   --purchase-token-hash <hash>        Require Google Play purchaseTokenHash to match.
+  --google-play-audit-record          Prove Google Play via billing audit record instead of canonical entitlement.
   --environment <Production|Sandbox>  Require environment. Defaults to Production.
   --allow-sandbox                     Permit Sandbox as well as Production.
   --require-allowance-ledger          Require current-month Cloud Pro allowance doc. Default for --tier cloud-pro.
@@ -99,6 +100,7 @@ export function parseArgs(argv) {
     productID: process.env.OPENBURNBAR_PROOF_PRODUCT_ID || "",
     externalSubscriptionID: process.env.OPENBURNBAR_PROOF_EXTERNAL_SUBSCRIPTION_ID || "",
     purchaseTokenHash: process.env.OPENBURNBAR_PROOF_PURCHASE_TOKEN_HASH || "",
+    googlePlayAuditRecord: process.env.OPENBURNBAR_PROOF_GOOGLE_PLAY_AUDIT_RECORD === "1",
     environment: process.env.OPENBURNBAR_PROOF_ENVIRONMENT || "Production",
     allowSandbox: false,
     requireAllowanceLedger: null,
@@ -142,6 +144,9 @@ export function parseArgs(argv) {
       case "--purchase-token-hash":
         out.purchaseTokenHash = next();
         break;
+      case "--google-play-audit-record":
+        out.googlePlayAuditRecord = true;
+        break;
       case "--environment":
         out.environment = next();
         break;
@@ -162,6 +167,12 @@ export function parseArgs(argv) {
   if (!PRODUCTS[out.tier]) throw new Error(`Unsupported tier: ${out.tier}`);
   if (!CHANNELS.has(out.channel)) throw new Error(`Unsupported channel: ${out.channel}`);
   if (out.requireAllowanceLedger === null) out.requireAllowanceLedger = out.tier === "cloud-pro";
+  if (out.googlePlayAuditRecord && out.channel !== "google_play") {
+    throw new Error("--google-play-audit-record requires --channel google_play");
+  }
+  if (out.googlePlayAuditRecord && !out.purchaseTokenHash) {
+    throw new Error("--google-play-audit-record requires --purchase-token-hash");
+  }
   if (!out.selfTest && !out.uid) throw new Error("OPENBURNBAR_PROOF_UID or --uid is required");
   return out;
 }
@@ -271,6 +282,35 @@ export function assertPaidTierEntitlement(entitlement, opts) {
   };
 }
 
+export function assertGooglePlayAuditRecord(record, opts) {
+  if (opts.channel !== "google_play") fail("Google Play audit proof requires google_play channel");
+  const target = PRODUCTS[opts.tier];
+  if (record.entitlementID !== target.entitlementID) fail("Google Play audit entitlementID mismatch", record.entitlementID);
+  const actual = record.productID || record.lineItemProductID || "";
+  const allowed = target.products.google_play;
+  if (opts.productID) {
+    if (actual !== opts.productID && record.lineItemProductID !== opts.productID) {
+      fail("Google Play audit productID mismatch", { actual, expected: opts.productID });
+    }
+  } else if (!allowed.includes(actual)) {
+    fail("Google Play audit productID is not valid for tier", { actual, allowed });
+  }
+  if (record.purchaseTokenHash !== opts.purchaseTokenHash) fail("Google Play audit purchaseTokenHash mismatch");
+  if (record.subscriptionState !== "SUBSCRIPTION_STATE_ACTIVE") {
+    fail("Google Play audit subscription is not active", record.subscriptionState);
+  }
+  const expiresAt = asDate(record.expiresAt);
+  if (!expiresAt) fail("Google Play audit expiry is missing or unreadable");
+  if (expiresAt.getTime() <= Date.now()) fail("Google Play audit subscription is expired", expiresAt.toISOString());
+  return {
+    productID: actual,
+    lineItemProductID: record.lineItemProductID || null,
+    purchaseTokenHash: record.purchaseTokenHash,
+    subscriptionState: record.subscriptionState,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
 async function proveAllowanceLedger(db, uid) {
   const path = `users/${uid}/billing/allowances/months/${monthKey()}`;
   const snap = await db.doc(path).get();
@@ -307,6 +347,27 @@ async function main() {
 
   if (getApps().length === 0) initializeApp({ projectId: opts.project });
   const db = getFirestore();
+
+  if (opts.googlePlayAuditRecord) {
+    const auditPath = `users/${opts.uid}/billing/google_play_purchases/tokens/${opts.purchaseTokenHash}`;
+    const auditSnap = await db.doc(auditPath).get();
+    if (!auditSnap.exists) fail("Google Play billing audit record does not exist", redactPath(auditPath));
+    const googlePlayAuditRecord = assertGooglePlayAuditRecord(auditSnap.data() || {}, opts);
+    const result = {
+      ok: true,
+      project: opts.project,
+      uidHash: digest(opts.uid),
+      uidHash16: shortDigest(opts.uid),
+      tier: opts.tier,
+      channel: opts.channel,
+      googlePlayAuditPath: redactPath(auditPath),
+      googlePlayAuditRecord,
+    };
+    console.log(`# proof-subject uid_sha256_16=${result.uidHash16}`);
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   const entitlementPath = `users/${opts.uid}/entitlements/${PRODUCTS[opts.tier].entitlementID}`;
   const snap = await db.doc(entitlementPath).get();
   if (!snap.exists) fail("paid-tier entitlement document does not exist", redactPath(entitlementPath));

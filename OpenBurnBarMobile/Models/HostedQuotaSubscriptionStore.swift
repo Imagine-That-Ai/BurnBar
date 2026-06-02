@@ -192,6 +192,7 @@ typealias HostedQuotaProductPurchaseExecutor = @MainActor (
 typealias HostedQuotaAppStoreSync = @MainActor () async throws -> Void
 typealias HostedQuotaProductCatalogFetcher = @MainActor ([String]) async throws -> [HostedQuotaStoreProduct]
 typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
+typealias HostedQuotaEntitlementEnvironmentFilter = @MainActor (String?) -> Bool
 
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
@@ -238,6 +239,7 @@ final class HostedQuotaSubscriptionStore {
     private let syncAppStore: HostedQuotaAppStoreSync
     private let fetchProducts: HostedQuotaProductCatalogFetcher
     private let isSignedIn: HostedQuotaAuthStateReader
+    private let acceptsEntitlementEnvironment: HostedQuotaEntitlementEnvironmentFilter
 
     private(set) var product: HostedQuotaStoreProduct?
     private(set) var productsByID: [String: HostedQuotaStoreProduct] = [:]
@@ -274,7 +276,9 @@ final class HostedQuotaSubscriptionStore {
         purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = HostedQuotaSubscriptionStore.purchaseProduct,
         syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore,
         fetchProducts: @escaping HostedQuotaProductCatalogFetcher = HostedQuotaSubscriptionStore.fetchProducts,
-        isSignedIn: @escaping HostedQuotaAuthStateReader = { AuthRepository.shared.isSignedIn }
+        isSignedIn: @escaping HostedQuotaAuthStateReader = { AuthRepository.shared.isSignedIn },
+        acceptsEntitlementEnvironment: @escaping HostedQuotaEntitlementEnvironmentFilter =
+            HostedQuotaSubscriptionStore.acceptsCurrentRuntimeEntitlementEnvironment
     ) {
         self.functions = functions
         self.directReader = directReader
@@ -282,6 +286,7 @@ final class HostedQuotaSubscriptionStore {
         self.syncAppStore = syncAppStore
         self.fetchProducts = fetchProducts
         self.isSignedIn = isSignedIn
+        self.acceptsEntitlementEnvironment = acceptsEntitlementEnvironment
     }
 
     deinit {
@@ -493,6 +498,7 @@ final class HostedQuotaSubscriptionStore {
             }
             guard response.active,
                   Self.entitlementProductIDs.contains(response.productID),
+                  acceptsEntitlementEnvironment(response.environment),
                   let expires = response.expiresAt,
                   expires > Date() else {
                 return false
@@ -613,9 +619,12 @@ final class HostedQuotaSubscriptionStore {
     }
 
     private func apply(response: HostedQuotaEntitlementResponse) {
-        isActive = response.active
-        activeProductID = response.active ? response.productID : nil
-        expirationDate = response.expiresAt
+        let active = response.active &&
+            Self.entitlementProductIDs.contains(response.productID) &&
+            acceptsEntitlementEnvironment(response.environment)
+        isActive = active
+        activeProductID = active ? response.productID : nil
+        expirationDate = active ? response.expiresAt : nil
     }
 
     var isActivePro: Bool {
@@ -687,6 +696,29 @@ final class HostedQuotaSubscriptionStore {
 
     private static func syncAppStore() async throws {
         try await AppStore.sync()
+    }
+
+    private static func acceptsCurrentRuntimeEntitlementEnvironment(_ environment: String?) -> Bool {
+        guard let environment else { return true }
+        switch environment {
+        case "Production":
+            return true
+        case "Sandbox", "Xcode", "LocalTesting":
+            return isSandboxStoreKitRuntime
+        default:
+            return true
+        }
+    }
+
+    private static var isSandboxStoreKitRuntime: Bool {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        #if DEBUG
+        return true
+        #else
+        return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        #endif
     }
 
     private static func fetchProducts(for identifiers: [String]) async throws -> [HostedQuotaStoreProduct] {

@@ -19,7 +19,7 @@ export const SITE = {
     tiers: [
       {
         id: "free",
-        name: "Free Local",
+        name: "OpenBurnBar Local",
         shortName: "Local",
         priceMonthlyUSD: "0",
         period: "forever",

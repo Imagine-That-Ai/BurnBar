@@ -76,12 +76,16 @@ const TOP_UPS = [
     name: 'Agent Control 100 Actions',
     description: 'Adds 100 hosted Agent Control actions.',
     priceUSD: '4.99',
+    reviewNote:
+      'Consumable top-up for BurnBar Cloud Pro subscribers. Adds 100 hosted Agent Control actions to the signed-in user allowance ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Agent Control top-ups.',
   },
   {
     productId: 'com.openburnbar.floo.relay50gb',
     name: 'Floo Relay 50 GB',
     description: 'Adds 50 GB of Floo relay bandwidth.',
     priceUSD: '4.99',
+    reviewNote:
+      'Consumable top-up for BurnBar Cloud Pro subscribers. Adds 50 GB of Floo relay bandwidth allowance to the signed-in user ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Floo Relay top-ups.',
   },
 ];
 
@@ -214,6 +218,7 @@ async function maybeWrite(label, fn) {
     console.log(`  [DRY] ${label}`);
     return null;
   }
+  console.log(`  [APPLY] ${label}`);
   return fn();
 }
 
@@ -445,35 +450,60 @@ async function ensureInAppPurchaseLocalization(iap, target, token) {
     token,
   );
   const current = localizations.find((entry) => entry.attributes.locale === 'en-US');
-  if (current) {
-    await maybeWrite(`PATCH IAP localization ${current.id}`, () => api(
-      'PATCH',
-      `/v1/inAppPurchaseLocalizations/${current.id}`,
-      {
-        data: {
-          id: current.id,
-          type: 'inAppPurchaseLocalizations',
-          attributes: { name: target.name, description: target.description },
+  const patchLocalization = (localization) => maybeWrite(`PATCH IAP localization ${localization.id}`, () => api(
+    'PATCH',
+    `/v1/inAppPurchaseLocalizations/${localization.id}`,
+    {
+      data: {
+        id: localization.id,
+        type: 'inAppPurchaseLocalizations',
+        attributes: { name: target.name, description: target.description },
+      },
+    },
+    token,
+  ));
+  const createLocalization = (locale) => maybeWrite(`POST IAP localization ${locale}`, () => api(
+    'POST',
+    '/v1/inAppPurchaseLocalizations',
+    {
+      data: {
+        type: 'inAppPurchaseLocalizations',
+        attributes: { locale, name: target.name, description: target.description },
+        relationships: {
+          inAppPurchaseV2: { data: { type: 'inAppPurchases', id: iap.id } },
         },
       },
-      token,
-    ));
-  } else {
-    await maybeWrite(`POST IAP localization en-US`, () => api(
-      'POST',
-      '/v1/inAppPurchaseLocalizations',
-      {
-        data: {
-          type: 'inAppPurchaseLocalizations',
-          attributes: { locale: 'en-US', name: target.name, description: target.description },
-          relationships: {
-            inAppPurchaseV2: { data: { type: 'inAppPurchases', id: iap.id } },
-          },
-        },
-      },
-      token,
-    ));
+    },
+    token,
+  ));
+  if (current && current.attributes.state === 'REJECTED') {
+    console.log(`  ${target.productId} en-US localization is REJECTED; App Store Connect locks rejected IAP localizations, so leaving it for inAppPurchaseSubmissions resubmission`);
+    return;
   }
+  if (current) {
+    await patchLocalization(current);
+  } else {
+    await createLocalization('en-US');
+  }
+}
+
+async function ensureInAppPurchaseMetadata(iap, target, token) {
+  await maybeWrite(`PATCH IAP metadata ${target.productId}`, () => api(
+    'PATCH',
+    `/v2/inAppPurchases/${iap.id}`,
+    {
+      data: {
+        id: iap.id,
+        type: 'inAppPurchases',
+        attributes: {
+          name: target.name,
+          reviewNote: target.reviewNote,
+          familySharable: false,
+        },
+      },
+    },
+    token,
+  ));
 }
 
 async function ensureInAppPurchaseAvailability(iap, territoryIds, token) {
@@ -586,6 +616,7 @@ async function main() {
       console.log('  missing in visible App Store Connect in-app purchases');
       continue;
     }
+    await ensureInAppPurchaseMetadata(iap, target, token);
     await ensureInAppPurchaseLocalization(iap, target, token);
     await ensureInAppPurchaseAvailability(iap, territoryIds, token);
     await ensureInAppPurchasePriceSchedule(iap, target, token);
