@@ -13,10 +13,10 @@ import org.junit.Test
 
 class BurnViewStyleTest {
     @Test
-    fun hasFiveStylesWithStableKeys() {
-        assertEquals(5, BurnViewStyle.entries.size)
+    fun hasTwoStylesWithStableKeys() {
+        assertEquals(2, BurnViewStyle.entries.size)
         assertEquals(
-            listOf("cards", "constellation", "grid", "leaderboard", "timeline"),
+            listOf("cards", "list"),
             BurnViewStyle.entries.map { it.key },
         )
     }
@@ -28,8 +28,7 @@ class BurnViewStyleTest {
 
     @Test
     fun fromKeyFallsBackToCards() {
-        assertEquals(BurnViewStyle.GRID, BurnViewStyle.fromKey("grid"))
-        assertEquals(BurnViewStyle.TIMELINE, BurnViewStyle.fromKey("timeline"))
+        assertEquals(BurnViewStyle.LIST, BurnViewStyle.fromKey("list"))
         assertEquals(BurnViewStyle.CARDS, BurnViewStyle.fromKey("nonsense"))
         assertEquals(BurnViewStyle.CARDS, BurnViewStyle.fromKey(null))
     }

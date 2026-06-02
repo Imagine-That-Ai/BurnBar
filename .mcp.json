@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mem0-burnbar": {
+      "type": "http",
+      "url": "https://mcp.mem0.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MEM0_BURNBAR_API_KEY}"
+      }
+    }
+  }
+}

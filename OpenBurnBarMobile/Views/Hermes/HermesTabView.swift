@@ -1409,6 +1409,13 @@ struct HermesChatView: View {
                         }
                     }
                 }
+                .onChange(of: service.messages.last?.text.count ?? 0) { _, _ in
+                    if let last = service.messages.last, last.isStreaming {
+                        withAnimation(AuroraDesign.Motion.auroraSpring) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
                 .onChange(of: service.isStreaming) { _, streaming in
                     if streaming {
                         withAnimation(AuroraDesign.Motion.auroraSpring) {
@@ -3956,18 +3963,16 @@ struct HermesMessageBubble: View {
 
     /// Routes to either pretext rich rendering or plain native `Text` based on
     /// the user's preference and whether the message is in an error state.
-    /// Streaming and error messages always use plain Text — streaming because
-    /// pretext can't keep up with chunk-by-chunk text mutation, error because
-    /// the contract is "render exactly what the server returned".
+    /// Error messages use plain Text because the contract is "render exactly
+    /// what the server returned"; normal assistant text uses the atom-aware
+    /// renderer both during and after streaming.
     @ViewBuilder
     private var assistantTextBody: some View {
-        if usePretextRendering, !message.isError, !message.isStreaming {
-            // Completed rich turns should be sized by the same atom/link
-            // renderer that draws them. The generic streaming wrapper
-            // measures plain text, which overestimates rich lines and leaves
-            // the dead space shown in the chat bubble.
+        if usePretextRendering, !message.isError {
             HermesRichBubble(
-                text: HermesSourceLinkExtractor.collapseExternalLinksForDisplay(in: message.text),
+                text: HermesSourceLinkExtractor.collapseExternalLinksForDisplay(
+                    in: message.text + (message.isStreaming ? "▍" : "")
+                ),
                 baseColor: MobileTheme.Colors.textPrimary,
                 mentionColor: MobileTheme.hermesAureate,
                 codeColor: MobileTheme.Colors.textPrimary,
@@ -3976,21 +3981,6 @@ struct HermesMessageBubble: View {
             )
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-        } else if usePretextRendering, !message.isError, message.isStreaming {
-            // In-flight — plain Text inside StreamingBubble so the bubble's
-            // outer frame animates smoothly even while text mutates.
-            StreamingBubble(
-                text: message.text,
-                isStreaming: true,
-                isError: false,
-                baseSize: 15,
-                lineHeight: 21
-            ) {
-                Text(message.text)
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
         } else {
             Text(message.text)
                 .font(MobileTheme.Typography.body)

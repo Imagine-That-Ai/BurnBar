@@ -5,6 +5,7 @@ package com.openburnbar.ui.you
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -132,12 +133,14 @@ internal fun IdentityHeroIdentityBlock(
 @Composable
 internal fun IdentityHeroHealthySyncLine(syncHealth: CloudSyncHealth) {
     if (syncHealth != CloudSyncHealth.HEALTHY) return
+    val isDark = isSystemInDarkTheme()
+    val successColor = if (isDark) AuroraColors.successDark else AuroraColors.success
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "✓",
             fontSize = 11.sp,
-            color = AuroraColors.success,
+            color = successColor,
             fontWeight = FontWeight.Bold,
         )
         Spacer(modifier = Modifier.width(4.dp))
@@ -178,14 +181,19 @@ internal fun IdentityHeroFallbackAvatar(name: String) {
 
 @Composable
 internal fun IdentityHeroStatusPill(syncHealth: CloudSyncHealth, connectionsCount: Int) {
+    val isDark = isSystemInDarkTheme()
+    val successColor = if (isDark) AuroraColors.successDark else AuroraColors.success
+    val warningColor = if (isDark) AuroraColors.warningDark else AuroraColors.warning
+    val errorColor = if (isDark) AuroraColors.errorDark else AuroraColors.error
+
     val (statusText, statusColor) =
         when (syncHealth) {
-            CloudSyncHealth.HEALTHY -> "Synced · $connectionsCount provider${if (connectionsCount == 1) "" else "s"}" to AuroraColors.success
-            CloudSyncHealth.SYNCING -> "Syncing…" to AuroraColors.amber
-            CloudSyncHealth.OFFLINE -> "Offline" to AuroraColors.warning
-            CloudSyncHealth.FIREBASE_UNAVAILABLE, CloudSyncHealth.APP_CHECK_BLOCKED -> "Cloud unreachable" to AuroraColors.error
-            CloudSyncHealth.PERMISSION_DENIED -> "Access denied" to AuroraColors.error
-            CloudSyncHealth.DEGRADED -> "Degraded" to AuroraColors.warning
+            CloudSyncHealth.HEALTHY -> "Synced · $connectionsCount provider${if (connectionsCount == 1) "" else "s"}" to successColor
+            CloudSyncHealth.SYNCING -> "Syncing…" to warningColor
+            CloudSyncHealth.OFFLINE -> "Offline" to warningColor
+            CloudSyncHealth.FIREBASE_UNAVAILABLE, CloudSyncHealth.APP_CHECK_BLOCKED -> "Cloud unreachable" to errorColor
+            CloudSyncHealth.PERMISSION_DENIED -> "Access denied" to errorColor
+            CloudSyncHealth.DEGRADED -> "Degraded" to warningColor
             CloudSyncHealth.UNKNOWN -> "Checking…" to MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         }
 

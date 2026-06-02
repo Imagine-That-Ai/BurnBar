@@ -508,7 +508,12 @@ internal fun YouSettingsRow(
             )
             Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontSize = AuroraTypography.body.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    title,
+                    fontSize = AuroraTypography.body.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 Text(
                     subtitle,
                     fontSize = AuroraTypography.caption.sp,

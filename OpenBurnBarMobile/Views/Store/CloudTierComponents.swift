@@ -183,12 +183,21 @@ struct CloudTierLineup: View {
 
 // MARK: - Tier Card
 
+/// One delineated benefit row on a tier card — a meaningful glyph paired with
+/// its promise. The icon gives each benefit a distinct silhouette so the value
+/// stack reads as four concrete capabilities, not an undifferentiated checklist.
+struct CloudTierBenefit: Identifiable {
+    let icon: String
+    let text: String
+    var id: String { text }
+}
+
 struct CloudTierCard: View {
     enum Tier { case cloud, pro }
 
     let plan: OpenBurnBarStoreProduct
     let priceText: String
-    let features: [String]
+    let features: [CloudTierBenefit]
     let isFlagship: Bool
     let billingPeriod: CloudBillingPeriod
     let isPurchasing: Bool
@@ -291,15 +300,22 @@ struct CloudTierCard: View {
     }
 
     private var featureList: some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-            ForEach(features, id: \.self) { feature in
-                HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(ProTheme.Membership.foilLeaf)
-                        .padding(.top, 1)
-                    Text(feature)
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm + 2) {
+            ForEach(features) { benefit in
+                HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(ProTheme.Membership.foilLeaf.opacity(0.16))
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .stroke(ProTheme.Membership.foilLeaf.opacity(0.30), lineWidth: 0.75)
+                        Image(systemName: benefit.icon)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(ProTheme.Membership.foilLeaf)
+                    }
+                    .frame(width: 30, height: 30)
+                    Text(benefit.text)
                         .font(MobileTheme.Typography.body)
+                        .fontWeight(.medium)
                         .foregroundStyle(ProTheme.Membership.engraving)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -316,21 +332,29 @@ struct CloudTierCard: View {
         "\(plan.title), \(billingPeriod.title), \(priceText) \(billingPeriod.priceSuffix). \(plan.included) \(plan.disclosure)"
     }
 
-    static func features(for tier: Tier) -> [String] {
+    static func features(for tier: Tier) -> [CloudTierBenefit] {
         switch tier {
         case .cloud:
             return [
-                "Cross-device sync & encrypted history backup",
-                "Cloud search across every agent run",
-                "Hosted Intelligence Brief fallback",
-                "Hermes remote relay & Hosted Remote MCP"
+                CloudTierBenefit(icon: "arrow.triangle.2.circlepath",
+                                 text: "Cross-device sync & encrypted history backup"),
+                CloudTierBenefit(icon: "magnifyingglass",
+                                 text: "Cloud search across every agent run"),
+                CloudTierBenefit(icon: "newspaper.fill",
+                                 text: "Hosted Intelligence Brief fallback"),
+                CloudTierBenefit(icon: "antenna.radiowaves.left.and.right",
+                                 text: "Hermes remote relay & Hosted Remote MCP")
             ]
         case .pro:
             return [
-                "Everything in BurnBar Cloud",
-                "Floo live phone-to-Mac control & calls",
-                "Supervised Agent Control + 500 hosted actions",
-                "50 relay GB, file transfer & shared clipboard"
+                CloudTierBenefit(icon: "infinity",
+                                 text: "Everything in BurnBar Cloud"),
+                CloudTierBenefit(icon: "laptopcomputer.and.iphone",
+                                 text: "Floo live phone-to-Mac control & calls"),
+                CloudTierBenefit(icon: "cpu.fill",
+                                 text: "Supervised Agent Control + 500 hosted actions"),
+                CloudTierBenefit(icon: "arrow.up.arrow.down",
+                                 text: "50 relay GB, file transfer & shared clipboard")
             ]
         }
     }

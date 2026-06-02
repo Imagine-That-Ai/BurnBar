@@ -719,14 +719,13 @@ private struct HermesPopoverBubble: View {
                     case .single(let piece):
                         let isLast = piece.id == transcript.last(where: { $0.kind == .text })?.id
                         let display = piece.value + (isStreaming && isLast ? "▍" : "")
-                        // Use atom-aware rendering for completed assistant
-                        // turns; streaming/error keeps plain `Text` so chips
-                        // never thrash mid-stream.
-                        let useAtomRendering = !isStreaming && !display.isEmpty
+                        // Keep popover rendering in lockstep with the full chat
+                        // surface: atom chips should appear while the text streams.
+                        let useAtomRendering = !display.isEmpty
                         if !display.isEmpty {
                             Group {
                                 if useAtomRendering {
-                                    HermesRichBubble(text: piece.value, baseSize: 12)
+                                    HermesRichBubble(text: display, baseSize: 12)
                                         .frame(maxWidth: 260, alignment: .leading)
                                 } else {
                                     Text(display)
