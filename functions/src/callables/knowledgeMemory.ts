@@ -144,7 +144,12 @@ export const commitKnowledgeBatch = onCall(
       await assertActiveBurnBarCloudProEntitlement(uid);
 
       const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
-      const embeddingModelVersion = boundedTrimmedString(request.data.embeddingModelVersion, "embeddingModelVersion", 120, true);
+      const embeddingModelVersion = boundedTrimmedString(
+        request.data.embeddingModelVersion,
+        "embeddingModelVersion",
+        120,
+        true,
+      );
       const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 256, false);
       const vectors = requireRecordArray(request.data.vectors, "vectors", MAX_BATCH_VECTORS);
 
@@ -300,8 +305,8 @@ export const configureKnowledgeSource = onCall(
           sourceKind,
           rootPath,
           repoInstallId,
-          chunkCount: existing.exists ? existing.get("chunkCount") ?? 0 : 0,
-          byteCount: existing.exists ? existing.get("byteCount") ?? 0 : 0,
+          chunkCount: existing.exists ? (existing.get("chunkCount") ?? 0) : 0,
+          byteCount: existing.exists ? (existing.get("byteCount") ?? 0) : 0,
           lastConfiguredAt: Timestamp.now(),
           schemaVersion: 1,
         }),
@@ -315,19 +320,16 @@ export const configureKnowledgeSource = onCall(
 /** deleteKnowledgeSource — drop all vectors for one source + its manifest. */
 export const deleteKnowledgeSource = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler(
-    "deleteKnowledgeSource",
-    async (request: CallableRequest<{ sourceSlug?: unknown }>) => {
-      const uid = requireUid(request);
-      await assertActiveBurnBarCloudProEntitlement(uid);
-      const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
-      const deleted = await deleteQueryInBatches(
-        db.collection(`users/${uid}/cloud_search_knowledge`).where("sourceSlug", "==", sourceSlug),
-      );
-      await db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`).delete();
-      return { ok: true, deleted };
-    },
-  ),
+  wrapCallableHandler("deleteKnowledgeSource", async (request: CallableRequest<{ sourceSlug?: unknown }>) => {
+    const uid = requireUid(request);
+    await assertActiveBurnBarCloudProEntitlement(uid);
+    const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
+    const deleted = await deleteQueryInBatches(
+      db.collection(`users/${uid}/cloud_search_knowledge`).where("sourceSlug", "==", sourceSlug),
+    );
+    await db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`).delete();
+    return { ok: true, deleted };
+  }),
 );
 
 /** Pure helpers exposed for unit testing (validators + tier table). */
