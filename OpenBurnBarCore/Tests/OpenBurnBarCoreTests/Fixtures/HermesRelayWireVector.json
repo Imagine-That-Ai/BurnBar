@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "fBrSzu+0BAHQ1r250xrI67\/76PTfC4gyb64nUq5xRPxgHMAMEBhbHSuDOyb2AhI=",
+  "chunkCiphertext" : "wHNaL8tZfnbR6jll3N1clgvWEPRnJQRS+7DyuZA6kl3nmRKII3ILlrb6Bk181Lc=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "sFzg5wyw4jdklrsQ8ZTMKUUvIB2EPpJr90rBX6Cy3BMDrYrZWffnXhunIAP5n0ISeHN5ZwzKyyomVIwsUh5BPJ\/kODJ5G5375YISqBiuBWUtj3fDGVTgUIKuVLE7dp3Nb62s+S53oeZrvmERKNKsSKWNY+k51HXvAEiYYmDTW16SKoqAqybOJWnZevqIEU0Yk2CJaTLb",
+  "payloadCiphertext" : "oX5MoBCq7oM+QO+Va2DLuZ\/om1PRCvYoFuav10Wes77NMus\/Nz\/L6hzCVfJcMdSdxWDXlnzWDLSbSU3vQ\/ZxbzN5qtH186dGciZPPJyXLnZx0VSg5SQOvJd9B7BcvtuLV7xgSKH3rNbQBQKifaKLVbShofnBBqC3ZV6\/taT9X\/V2cAauVdX12r2xDRYNxbnqazjC3GID",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BCC7sq4jwiPQt33ThRlLigGH0gtvs5HxuF3x5O4aTWlG7rrEqp6\/QDs741E54eZSYcH6EhhLW2ddeVIEs6tHxZtPEuqqciAC1KzPXgCcgQSRL9eKwL39AQB+\/iB2OwlXdtlBb34m7yOgmtY\/ui25DIZcb5VkPTFmoz\/ADpY="
+  "wrappedKey" : "BEeSM+HYIbCm\/eYMG78naclA8+Cs07BrIDiYnV5L7A5gSAu0hoVE8ZVffxZTF4yOjk5zH++v6BQrYUPa38rzLJHXFUodRNVk87R80lNDEZ600pwwV6oQtSojogN12SLH7WaRXGx86csNz2j3yFVc0YRe+767DCIHmy\/7jm8="
 }

@@ -159,60 +159,25 @@ struct CLIAgentTranscriptView: View {
                         )
                 }
                 if !message.toolUses.isEmpty {
-                    toolStrip(message.toolUses)
+                    UnifiedToolCallAccordion(calls: unifiedToolCalls(for: message), accent: .agent(accent))
                 }
             }
             if !isUser { Spacer(minLength: 32) }
         }
     }
 
-    @ViewBuilder
-    private func toolStrip(_ toolUses: [CLIAgentToolUse]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(toolUses) { tool in
-                    toolPill(tool)
-                }
-            }
+    /// Maps a mirrored CLI agent message's tool uses into the shared display
+    /// model. CLI runtimes report an honest per-call status, so the status
+    /// string drives the running pulse — `isRunning` stays false here.
+    private func unifiedToolCalls(for message: CLIAgentMessage) -> [UnifiedToolCallDisplay] {
+        message.toolUses.map { tool in
+            UnifiedToolCallDisplay(
+                id: tool.id,
+                name: tool.name,
+                statusRaw: tool.status,
+                detail: tool.detail
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func toolPill(_ tool: CLIAgentToolUse) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: iconName(for: tool.name))
-                    .font(.system(size: 13, weight: .bold))
-                Text(tool.name)
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                Spacer(minLength: 8)
-                Text(tool.status)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            if let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
-                Text(detail)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .truncationMode(.middle)
-            }
-        }
-        .foregroundStyle(accent)
-        .frame(maxWidth: 240, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(MobileTheme.Colors.surface.opacity(0.75))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(accent.opacity(0.7), lineWidth: 0.75)
-        )
     }
 
     private var liveIndicator: some View {
@@ -227,18 +192,6 @@ struct CLIAgentTranscriptView: View {
         .padding(.leading, MobileTheme.Spacing.sm)
     }
 
-    private func iconName(for name: String) -> String {
-        let n = name.lowercased()
-        if n.contains("read") || n.contains("file") || n.contains("write") { return "doc.text" }
-        if n.contains("bash") || n.contains("exec") || n.contains("run") || n.contains("terminal") { return "terminal" }
-        if n.contains("search") || n.contains("grep") || n.contains("glob") || n.contains("find") { return "magnifyingglass" }
-        if n.contains("web") || n.contains("browser") || n.contains("fetch") || n.contains("http") { return "globe" }
-        if n.contains("edit") || n.contains("patch") || n.contains("replace") { return "pencil.and.outline" }
-        if n.contains("memory") || n.contains("skill") || n.contains("learn") { return "brain" }
-        if n.contains("image") || n.contains("vision") || n.contains("screenshot") { return "photo" }
-        return "wrench.and.screwdriver.fill"
-    }
-
     private var accent: Color {
         switch liveSession.agent {
         case .codex:    return Color(hex: "1ABC9C")
@@ -247,7 +200,7 @@ struct CLIAgentTranscriptView: View {
         case .droid:    return Color(hex: "8B5CF6")
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
-        case .grok: return Color(hex: "111111")
+        case .grok: return Color(hex: "E0E0E0")  // Grok monochrome brand — light gray legible in dark mode
         case .cursorAgent: return Color(hex: "00E5FF")
         }
     }

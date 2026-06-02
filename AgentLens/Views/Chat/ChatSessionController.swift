@@ -1696,7 +1696,9 @@ final class ChatSessionController {
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
                             model: requestModel,
-                            capabilityGrant: activeDesktopGrant
+                            capabilityGrant: activeDesktopGrant,
+                            profileStore: self.makeCLIProfileStoreAdapter(),
+                            fallbackPlanner: self.makeCLIStreamFallbackPlanner()
                         )
                     case .claude:
                         return self.cliBridge.chatClaudeStream(
@@ -1855,6 +1857,25 @@ final class ChatSessionController {
             return "Hermes gateway is running, but OpenBurnBar could not read its live model catalog. Wait a few seconds and retry, or choose a live Hermes model from Settings → Chat.\(modelLine)"
         }
         return "Hermes isn’t running. Click Open Hermes + Gateway and OpenBurnBar will enable the local API server and start the gateway. If you set API_SERVER_KEY in ~/.hermes/.env, OpenBurnBar will reuse it locally."
+    }
+
+    private func makeCLIProfileStoreAdapter() -> ProductionSwitcherProfileStoreAdapter {
+        ProductionSwitcherProfileStoreAdapter(store: dataStore.switcherStore)
+    }
+
+    private func makeCLIStreamFallbackPlanner() -> SwitcherCLIFallbackPlanner {
+        SwitcherCLIFallbackPlanner { profile in
+            await MainActor.run {
+                guard let snapshot = ProviderQuotaService.shared.snapshot(accountID: profile.id) else {
+                    return nil
+                }
+                return CLIFallbackQuotaStatus(
+                    fiveHourRemainingPercent: snapshot.hourlyBucket?.remainingPercent,
+                    weeklyRemainingPercent: snapshot.weeklyBucket?.remainingPercent,
+                    statusMessage: snapshot.statusMessage
+                )
+            }
+        }
     }
 
     private func hermesHealthReachable() async -> Bool {

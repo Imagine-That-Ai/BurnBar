@@ -112,6 +112,25 @@ enum InteractiveTerminalLauncher {
             var arguments: [String] = []
             if let model { arguments += ["--model", model] }
             return Invocation(executableName: "pi", arguments: arguments, extraEnvironment: [:])
+        case "ollama":
+            if let model {
+                return Invocation(executableName: "ollama", arguments: ["run", model], extraEnvironment: [:])
+            }
+            return Invocation(
+                executableName: "zsh",
+                arguments: [
+                    "-lc",
+                    """
+                    model="${OPENBURNBAR_OLLAMA_MODEL:-$(ollama list | awk 'NR==2 { print $1 }')}"
+                    if [ -z "$model" ]; then
+                      echo "No local Ollama model is installed. Pull a model or set OPENBURNBAR_OLLAMA_MODEL." >&2
+                      exit 66
+                    fi
+                    exec ollama run "$model"
+                    """
+                ],
+                extraEnvironment: [:]
+            )
         default:
             return nil
         }

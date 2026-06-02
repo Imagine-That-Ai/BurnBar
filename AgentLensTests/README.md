@@ -13,6 +13,8 @@ The active target compiles `Active/**` plus `Support/**`. Files should not sit u
 
 ## Active bundle
 
+The folder is named `AgentLensTests`, but the compiled XCTest bundle is named `OpenBurnBarTests`. Use `OpenBurnBarTests/...` in raw `xcodebuild -only-testing` filters. `./scripts/test-openburnbar-app.sh` accepts the common `AgentLensTests/...` alias and normalizes it before invoking Xcode.
+
 Run the active bundle:
 
 ```bash

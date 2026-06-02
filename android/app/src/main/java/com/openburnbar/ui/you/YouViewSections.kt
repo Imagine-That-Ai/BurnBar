@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -227,6 +228,7 @@ private fun YouRootScrollContent(
         syncHealthLabel = state.syncHealthLabel,
         devices = state.devices,
         navigation = navigation,
+        openCloud = state.openCloud,
     )
 
     YouRootSignOutButton(onSignOut = onSignOut)
@@ -278,7 +280,14 @@ private fun YouRootSettingsRows(
     syncHealthLabel: String,
     devices: List<DeviceRecord>,
     navigation: YouRootNavigation,
+    openCloud: () -> Unit,
 ) {
+    YouSettingsRow(
+        icon = Icons.Filled.ShoppingBag,
+        title = "Store & Top-ups",
+        subtitle = "Manage plans and purchase credits",
+        onClick = openCloud,
+    )
     YouSettingsRow(icon = Icons.Filled.Cloud, title = "Cloud Sync", subtitle = syncHealthLabel) {}
     ConnectedDevicesRow(devices = devices) {}
     YouSettingsRow(

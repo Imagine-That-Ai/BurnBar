@@ -11,12 +11,8 @@ struct SettingsHubView: View {
     let authStore: AuthStore
 
     @Environment(\.cloudSubscriptionStore) private var sharedSubscriptionStore
-    @Environment(\.colorScheme) private var colorScheme
     @State private var localSubscriptionStore = HostedQuotaSubscriptionStore()
     @State private var didLoadLocalSubscription = false
-    @State private var showDeleteAccountConfirmation = false
-    @State private var accountDeletionError: String?
-    @State private var showSignIn = false
     @State private var transcriptCacheLimitMegabytes = CloudTranscriptCacheSettings.shared.maxMegabytes
     @State private var transcriptCacheSnapshot = CloudTranscriptCacheSnapshot(
         usageBytes: 0,
@@ -52,8 +48,9 @@ struct SettingsHubView: View {
     @ViewBuilder
     private var hubContent: some View {
         @Bindable var router = router
+        // Native grouped Settings — the `Form` supplies the system grouped
+        // background; the ZStack only swaps the live search results in.
         ZStack {
-            AuroraBackdrop(density: .subtle)
             if router.isSearching {
                 SettingsSearchResultsView(router: router)
                     .environment(router)
@@ -67,35 +64,6 @@ struct SettingsHubView: View {
             prompt: "Search settings"
         )
         .navigationTitle("Settings")
-        .confirmationDialog(
-            "Delete OpenBurnBar account?",
-            isPresented: $showDeleteAccountConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete account", role: .destructive) {
-                Task { await deleteAccount() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently deletes your OpenBurnBar cloud data, provider account records, devices, usage history, and sign-in. This cannot be undone.")
-        }
-        .alert("Account deletion failed", isPresented: deletionErrorBinding) {
-            Button("OK", role: .cancel) {
-                accountDeletionError = nil
-            }
-        } message: {
-            Text(accountDeletionError ?? "Try signing in again, then delete the account from Settings.")
-        }
-        .sheet(isPresented: $showSignIn) {
-            SignInScene(authStore: authStore)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-        .onChange(of: authStore.state.isSignedIn) { _, isSignedIn in
-            if isSignedIn {
-                showSignIn = false
-            }
-        }
         .task {
             if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
                 didLoadLocalSubscription = true
@@ -118,6 +86,10 @@ struct SettingsHubView: View {
         switch route {
         case .hubRoot:
             EmptyView()
+        case .account:
+            SettingsDeepLinkScrollContainer(route: .account) { _ in
+                AccountSettingsView(authStore: authStore)
+            }
         case .cloud:
             SettingsDeepLinkScrollContainer(route: .cloud) { _ in
                 CloudStoreView()
@@ -162,6 +134,19 @@ struct SettingsHubView: View {
         SettingsDeepLinkScrollContainer(route: .hubRoot) { _ in
             Form {
                 Section {
+                    NavigationLink(value: SettingsPageRoute.account) {
+                        SettingsProfileHeader(authStore: authStore, cloudStatus: bannerCloudStatus)
+                    }
+                }
+
+                Section {
+                    NavigationLink(value: SettingsPageRoute.cloud) {
+                        SettingsLabel(icon: "bag.fill", color: MobileTheme.ember, title: "Store & Top-ups")
+                    }
+                    .settingsAnchor(SettingsAnchor.cloudRow)
+                } header: { groupHeader("Store") }
+
+                Section {
                     NavigationLink(value: SettingsPageRoute.theme) {
                         SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Theme")
                     }
@@ -191,15 +176,13 @@ struct SettingsHubView: View {
                     .tint(MobileTheme.ember)
                     .settingsAnchor(SettingsAnchor.useWebsiteBackground)
                 } header: { groupHeader("Appearance") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     UIModePicker(selection: $uiMode)
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                        .listRowBackground(Color.clear)
                         .settingsAnchor(SettingsAnchor.uiMode)
+                        .listRowBackground(Color.clear)
                 } header: { groupHeader("UI Mode") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     Button {
@@ -214,18 +197,16 @@ struct SettingsHubView: View {
                             SettingsLabel(icon: "dollarsign.circle.fill", color: MobileTheme.amber, title: "Budget Center")
                             Spacer()
                             Text("Manage rules")
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
                             Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
                         }
                     }
                     .buttonStyle(.plain)
                     .settingsAnchor(SettingsAnchor.dailyBudget)
                 } header: { groupHeader("Budget") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
-
 
                 Section {
                     Toggle(isOn: $dailyDigestEnabled) {
@@ -248,72 +229,19 @@ struct SettingsHubView: View {
                             UIApplication.shared.open(url)
                         }
                     } label: {
-                        SettingsLabel(icon: "gear", color: MobileTheme.Colors.textSecondary, title: "Open system Notifications…")
+                        SettingsLabel(icon: "gear", color: .gray, title: "Open system Notifications…")
                     }
-                    .foregroundStyle(MobileTheme.ember)
                     .settingsAnchor(SettingsAnchor.openSystemNotifications)
                 } header: { groupHeader("Notifications") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
-                    NavigationLink(value: SettingsPageRoute.cloud) {
-                        cloudSettingsRow
-                    }
-                    .settingsAnchor(SettingsAnchor.cloudRow)
-
                     transcriptCacheSettingsControl
                         .settingsAnchor(SettingsAnchor.transcriptCache)
                 } header: {
-                    groupHeader("Cloud")
+                    groupHeader("Storage")
                 } footer: {
                     Text("Transcript cache stores encrypted stream downloads on this device only. Default limit is 250 MB.")
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
-
-                Section {
-                    if let identity = authStore.currentIdentity {
-                        LabeledContent("Signed in", value: identity.email ?? identity.displayName ?? "OpenBurnBar account")
-                            .settingsAnchor(SettingsAnchor.accountRow)
-                    } else {
-                        Button {
-                            showSignIn = true
-                        } label: {
-                            SettingsLabel(
-                                icon: "person.crop.circle.badge.checkmark",
-                                color: MobileTheme.ember,
-                                title: "Sign in for Cloud"
-                            )
-                        }
-                        .settingsAnchor(SettingsAnchor.accountRow)
-                    }
-                    Button(role: .destructive) {
-                        showDeleteAccountConfirmation = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            if authStore.isDeletingAccount {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "person.crop.circle.badge.xmark")
-                                    .foregroundStyle(MobileTheme.Colors.error)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(authStore.isDeletingAccount ? "Deleting account..." : "Delete account")
-                                    .font(MobileTheme.Typography.body)
-                                Text("Permanently removes your OpenBurnBar cloud data and sign-in.")
-                                    .font(MobileTheme.Typography.tiny)
-                                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                            }
-                        }
-                    }
-                    .disabled(!authStore.state.isSignedIn || authStore.isDeletingAccount)
-                    .accessibilityIdentifier("settings.deleteAccount")
-                    .accessibilityHint("Permanently deletes your OpenBurnBar account and cloud data.")
-                    .settingsAnchor(SettingsAnchor.deleteAccount)
-                } header: { groupHeader("Account") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     NavigationLink(value: SettingsPageRoute.providerConnections) {
@@ -326,7 +254,6 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.providersRow)
                 } header: { groupHeader("Providers") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     NavigationLink(value: SettingsPageRoute.chatTiles) {
@@ -382,16 +309,12 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.textExpansionRow)
                 } header: { groupHeader("AI Environments") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     MissionFABResurrectToggle()
                 } header: { groupHeader("Experimental") } footer: {
                     Text("The Mission Console orb toggle controls the floating action button. The orb auto-restores when an approval is waiting or a mission fails, regardless of this setting.")
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
 
                 Section {
                     LabeledContent("Version", value: marketingVersion)
@@ -406,66 +329,23 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.aboutTerms)
                 } header: { groupHeader("About") }
-                .listRowBackground(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.60))
             }
-            .scrollContentBackground(.hidden)
         }
     }
 
-    private var deletionErrorBinding: Binding<Bool> {
-        Binding(
-            get: { accountDeletionError != nil },
-            set: { if !$0 { accountDeletionError = nil } }
-        )
-    }
-
-    private func deleteAccount() async {
-        await authStore.deleteAccount()
-        if let error = authStore.lastError {
-            accountDeletionError = error.label
+    /// Status line shown under the account name in the profile banner.
+    private var bannerCloudStatus: String {
+        if authStore.currentIdentity == nil {
+            return "Sign in to sync quota, backups & Hermes"
         }
+        if subscriptionStore.isActive {
+            return "OpenBurnBar Cloud · Active"
+        }
+        return "Free plan · Tap to upgrade"
     }
 
     private var subscriptionStore: HostedQuotaSubscriptionStore {
         sharedSubscriptionStore ?? localSubscriptionStore
-    }
-
-    @ViewBuilder
-    private var cloudSettingsRow: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("OpenBurnBar Cloud")
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-                Text(cloudRowSubtitle)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                    .lineLimit(1)
-            }
-        } icon: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(UnifiedDesignSystem.mercuryGradient)
-                    .frame(width: 26, height: 26)
-                Image(systemName: "cloud.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-        }
-    }
-
-    private var cloudRowSubtitle: String {
-        if subscriptionStore.isActive {
-            if let expires = subscriptionStore.expirationDate {
-                let formatted = expires.formatted(.dateTime.month(.abbreviated).day())
-                return "Active · renews \(formatted)"
-            }
-            return "Active"
-        }
-        if let priceText = subscriptionStore.product?.displayPrice {
-            return "Upgrade — \(priceText)/mo"
-        }
-        return "Quota, backups, Hermes — anywhere"
     }
 
     @ViewBuilder
@@ -477,22 +357,22 @@ struct SettingsHubView: View {
                         .foregroundStyle(MobileTheme.ember)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Transcript cache")
-                            .font(MobileTheme.Typography.body)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .font(.body)
+                            .foregroundStyle(.primary)
                         Text(transcriptCacheLimitLabel)
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
 
             HStack {
                 Label("Used", systemImage: "chart.pie")
-                    .font(MobileTheme.Typography.caption)
+                    .font(.callout)
                 Spacer()
                 Text(transcriptCacheUsageLabel)
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
 
@@ -515,12 +395,12 @@ struct SettingsHubView: View {
                 }
                 .disabled(transcriptCacheLimitMegabytes == CloudTranscriptCacheSettings.defaultMaxMegabytes)
             }
-            .font(MobileTheme.Typography.caption)
+            .font(.callout)
 
             if let transcriptCacheStatus {
                 Text(transcriptCacheStatus)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .onAppear {
@@ -546,12 +426,10 @@ struct SettingsHubView: View {
         transcriptCacheSnapshot = await CloudTranscriptCache.shared.snapshot()
     }
 
+    /// Plain header text — the inset-grouped `Form` supplies the native
+    /// uppercased, secondary-gray section-header styling automatically.
     private func groupHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(MobileTheme.Typography.tiny)
-            .fontWeight(.semibold)
-            .tracking(1.4)
-            .foregroundStyle(MobileTheme.Colors.textMuted)
+        Text(title)
     }
 
     private var marketingVersion: String {
@@ -572,22 +450,31 @@ struct SettingsLabel: View {
     var logoProviders: [AgentProvider] = []
 
     var body: some View {
-        Label {
-            Text(title)
-                .font(MobileTheme.Typography.body)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
-        } icon: {
-            if logoProviders.isEmpty {
+        if logoProviders.isEmpty {
+            Label {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            } icon: {
                 ZStack {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(color)
-                        .frame(width: 26, height: 26)
+                        .frame(width: 29, height: 29)
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                 }
-            } else {
-                SettingsProviderLogoStack(providers: logoProviders, size: 26, maxVisible: 5)
+            }
+        } else {
+            // A multi-logo preview is wider than a standard icon, so a `Label`
+            // would overlap it onto the title. Lay it out explicitly so the
+            // title always flows after the full width of the logo cluster.
+            HStack(spacing: 12) {
+                SettingsProviderLogoStack(providers: logoProviders, size: 24, maxVisible: 4)
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
             }
         }
     }

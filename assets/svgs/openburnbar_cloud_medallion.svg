@@ -1,0 +1,72 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Platinum to Gold Foil -->
+    <linearGradient id="platGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E5E4E2"/>
+      <stop offset="25%" stop-color="#9A9A9A"/>
+      <stop offset="50%" stop-color="#FFDF73"/>
+      <stop offset="75%" stop-color="#997A00"/>
+      <stop offset="100%" stop-color="#F3E5AB"/>
+    </linearGradient>
+
+    <!-- Vibrant Bar Gradients -->
+    <linearGradient id="bar1Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE600"/>
+      <stop offset="100%" stop-color="#FFC400"/>
+    </linearGradient>
+    <linearGradient id="bar2Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF9D00"/>
+      <stop offset="100%" stop-color="#FF7B00"/>
+    </linearGradient>
+    <linearGradient id="bar3Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF5E00"/>
+      <stop offset="100%" stop-color="#E63900"/>
+    </linearGradient>
+    <linearGradient id="bar4Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#D31500"/>
+      <stop offset="100%" stop-color="#990000"/>
+    </linearGradient>
+
+    <!-- Relief and Bevel Filters -->
+    <filter id="relief" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.9"/>
+    </filter>
+
+    <filter id="insetShadow">
+      <feOffset dx="0" dy="6"/>
+      <feGaussianBlur stdDeviation="8" result="offset-blur"/>
+      <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+      <feFlood flood-color="black" flood-opacity="0.8" result="color"/>
+      <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+      <feComposite operator="over" in="shadow" in2="SourceGraphic"/>
+    </filter>
+
+    <!-- Text Path -->
+    <path id="medallionTextPath" fill="none" d="M 256,66 A 190,190 0 1,1 255.9,66" />
+  </defs>
+
+  <!-- Obsidian Field -->
+  <rect width="512" height="512" fill="#0A0A0C" />
+
+  <!-- Outer Rings -->
+  <circle cx="256" cy="256" r="236" fill="#161619" stroke="url(#platGold)" stroke-width="12" filter="url(#relief)" />
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#platGold)" stroke-width="2" opacity="0.4" />
+  <circle cx="256" cy="256" r="146" fill="#0D0D0F" stroke="url(#platGold)" stroke-width="6" filter="url(#insetShadow)" />
+
+  <!-- Engraved Text -->
+  <text fill="url(#platGold)" font-family="system-ui, -apple-system, sans-serif" font-size="30" font-weight="700">
+    <textPath href="#medallionTextPath" startOffset="0%" textLength="1193" lengthAdjust="spacing">OPENBURNBAR · CLOUD · OPENBURNBAR · CLOUD · </textPath>
+  </text>
+
+  <!-- Flame-with-bars Logo Mark -->
+  <g transform="translate(256, 256) scale(0.60) translate(-256, -256)">
+    <!-- Flame Outline Container -->
+    <path d="M256,50 C270,120 350,200 350,290 A94,94 0 0,1 162,290 C162,200 240,150 256,50 Z" fill="none" stroke="url(#platGold)" stroke-width="6"/>
+
+    <!-- Embedded Ascending 4-Bar Chart -->
+    <rect x="190" y="280" width="24" height="60" rx="12" fill="url(#bar1Grad)"/>
+    <rect x="226" y="230" width="24" height="110" rx="12" fill="url(#bar2Grad)"/>
+    <rect x="262" y="180" width="24" height="160" rx="12" fill="url(#bar3Grad)"/>
+    <rect x="298" y="130" width="24" height="210" rx="12" fill="url(#bar4Grad)"/>
+  </g>
+</svg>

@@ -4,14 +4,6 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { isRecord, recordOrUndefined } from "./guards.js";
-import type {
-  GeneratedHermesGatewayAttachmentManifestDoc,
-  GeneratedHermesGatewayClientDoc,
-  GeneratedHermesGatewayDestinationDoc,
-  GeneratedHermesGatewayEventDoc,
-  GeneratedHermesGatewayMessageDoc,
-  GeneratedHermesGatewayModelOptionDoc,
-} from "./types/generated/index.js";
 
 export const HERMES_GATEWAY_SCHEMA_VERSION = 1;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
@@ -33,33 +25,86 @@ export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
 export type HermesGatewayEventKind = "message" | "model_switch";
 export type HermesGatewayMessageKind = "agent_message" | "typing";
 
-type HermesGatewayModelOptionDoc = GeneratedHermesGatewayModelOptionDoc;
+export interface HermesGatewayModelOptionDoc {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+}
 
-export type HermesGatewayClientDoc = Omit<
-  GeneratedHermesGatewayClientDoc,
-  "status" | "scopes" | "runtimeModelOptions"
-> & {
+export interface HermesGatewayClientDoc {
+  id: string;
+  uid: string;
+  displayName: string;
   status: HermesGatewayClientStatus;
+  tokenHash: string;
+  tokenPreview: string;
   scopes: HermesGatewayScope[];
+  homeDestinationId: string;
+  lastSeenAt?: string;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
   runtimeModelOptions?: HermesGatewayModelOptionDoc[];
-};
+  runtimeUpdatedAt?: string;
+  revokedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
 
-export type HermesGatewayDestinationDoc = Omit<GeneratedHermesGatewayDestinationDoc, "kind" | "status"> & {
+export interface HermesGatewayDestinationDoc {
+  id: string;
+  displayName: string;
   kind: HermesGatewayDestinationKind;
   status: "active" | "archived";
-};
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
 
-export type HermesGatewayEventDoc = Omit<GeneratedHermesGatewayEventDoc, "kind"> & {
+export interface HermesGatewayEventDoc {
+  id: string;
+  sequence: number;
   kind: HermesGatewayEventKind;
-};
+  destinationId: string;
+  targetClientId?: string;
+  threadId?: string;
+  senderId: string;
+  senderDisplayName?: string;
+  text: string;
+  modelId?: string;
+  attachmentIds: string[];
+  createdAt: string;
+  schemaVersion: number;
+}
 
-export type HermesGatewayMessageDoc = Omit<GeneratedHermesGatewayMessageDoc, "kind"> & {
+export interface HermesGatewayMessageDoc {
+  id: string;
+  clientId: string;
   kind: HermesGatewayMessageKind;
-};
+  destinationId: string;
+  threadId?: string;
+  replyToEventId?: string;
+  text?: string;
+  attachmentIds: string[];
+  createdAt: string;
+  schemaVersion: number;
+}
 
-export type HermesGatewayAttachmentManifestDoc = Omit<GeneratedHermesGatewayAttachmentManifestDoc, "status"> & {
+export interface HermesGatewayAttachmentManifestDoc {
+  id: string;
+  clientId: string;
+  destinationId?: string;
+  fileName: string;
+  contentType: string;
+  byteCount: number;
+  storagePath: string;
   status: "pending_upload" | "uploaded" | "failed";
-};
+  createdAt: string;
+  expiresAt: string;
+  schemaVersion: number;
+}
 
 const USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const TOKEN_PREFIX = "obb_hgw_";
@@ -206,6 +251,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     sequence: record.sequence,
     kind: record.kind,
     destinationId: record.destinationId,
+    targetClientId: typeof record.targetClientId === "string" ? record.targetClientId : undefined,
     threadId: typeof record.threadId === "string" ? record.threadId : undefined,
     senderId: record.senderId,
     senderDisplayName: typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,
@@ -253,18 +299,15 @@ export function sanitizeHermesGatewayModelOptions(raw: unknown): HermesGatewayMo
     if (!record) continue;
     const modelId = sanitizeHermesGatewayModelId(record.modelId);
     if (!modelId || seen.has(modelId.toLowerCase())) continue;
-    const providerId =
-      typeof record.providerId === "string" && record.providerId.trim()
-        ? record.providerId.trim().slice(0, 80)
-        : "hermes";
-    const providerName =
-      typeof record.providerName === "string" && record.providerName.trim()
-        ? record.providerName.trim().slice(0, 120)
-        : providerId;
-    const displayName =
-      typeof record.displayName === "string" && record.displayName.trim()
-        ? record.displayName.trim().slice(0, 180)
-        : modelId;
+    const providerId = typeof record.providerId === "string" && record.providerId.trim()
+      ? record.providerId.trim().slice(0, 80)
+      : "hermes";
+    const providerName = typeof record.providerName === "string" && record.providerName.trim()
+      ? record.providerName.trim().slice(0, 120)
+      : providerId;
+    const displayName = typeof record.displayName === "string" && record.displayName.trim()
+      ? record.displayName.trim().slice(0, 180)
+      : modelId;
     seen.add(modelId.toLowerCase());
     options.push({ providerId, providerName, modelId, displayName });
     if (options.length >= 100) break;

@@ -581,6 +581,22 @@ final class SwitcherCLIFallbackPlannerTests: XCTestCase {
         XCTAssertEqual(eligibility, .quotaExhausted(reason: "5-hour limit reached"))
     }
 
+    func testEligibility_rejectsDisabledProfile() async {
+        let planner = SwitcherCLIFallbackPlanner { _ in nil }
+        let profile = makeCLIProfile(
+            id: "disabled",
+            cliType: .codex,
+            label: "Disabled Profile",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro",
+            isDisabled: true
+        )
+
+        let eligibility = await planner.eligibility(for: profile)
+        XCTAssertEqual(eligibility, .ineligible(reason: "Disabled Profile is disabled."))
+    }
+
     func testEligibility_usesQuotaLookupWhenRemainingPercentIsZero() async {
         let planner = SwitcherCLIFallbackPlanner { _ in
             CLIFallbackQuotaStatus(
@@ -727,7 +743,8 @@ final class SwitcherCLIFallbackPlannerTests: XCTestCase {
         subscriptionTierID: String,
         neverAutoSwitch: Bool = false,
         exhaustedUntil: Date? = nil,
-        lastQuotaExhaustionDetail: String? = nil
+        lastQuotaExhaustionDetail: String? = nil,
+        isDisabled: Bool = false
     ) -> SwitcherProfileRecord {
         SwitcherProfileRecord(
             id: id,
@@ -740,7 +757,8 @@ final class SwitcherCLIFallbackPlannerTests: XCTestCase {
                 modelCapabilityClassID: capabilityClassID,
                 neverAutoSwitch: neverAutoSwitch,
                 exhaustedUntil: exhaustedUntil,
-                lastQuotaExhaustionDetail: lastQuotaExhaustionDetail
+                lastQuotaExhaustionDetail: lastQuotaExhaustionDetail,
+                isDisabled: isDisabled
             ),
             sortKey: 0,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),

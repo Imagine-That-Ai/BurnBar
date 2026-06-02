@@ -14,6 +14,7 @@ import OpenBurnBarCore
 struct CloudCapability: Identifiable, Hashable {
     let id: String
     let icon: String
+    let art: String               // asset-catalog illustration (vector SVG)
     let headline: String          // user benefit headline
     let metric: String            // concrete measurable subtitle
     let scenario: String          // a "you are at the airport…" story
@@ -36,6 +37,7 @@ struct CloudCapability: Identifiable, Hashable {
         .init(
             id: "hosted-codex",
             icon: "cloud.fill",
+            art: "CloudCapQuotaRefresh",
             headline: "Refresh your Codex quota from anywhere",
             metric: "30 refreshes / day · 300 / month · no laptop required",
             scenario: "You're at the airport. Codex is dry. You tap one button on your iPhone — our hosted runner refreshes your quota, signed in to your account, and pings you when it's ready. Your Mac stays asleep.",
@@ -49,6 +51,7 @@ struct CloudCapability: Identifiable, Hashable {
         .init(
             id: "conversation-resume",
             icon: "arrow.triangle.2.circlepath",
+            art: "CloudCapCrossDevice",
             headline: "Pick up your chat on any device",
             metric: "iPhone → iPad → Mac · encrypted · sub-2-second sync",
             scenario: "You start a Hermes conversation on the train. Switch to your iPad at the café — every message, every tool call, every artefact is already there. Walk to your Mac. Same thread, same place in the scrollback.",
@@ -62,6 +65,7 @@ struct CloudCapability: Identifiable, Hashable {
         .init(
             id: "session-search",
             icon: "text.alignleft",
+            art: "CloudCapSessionSearch",
             headline: "Search every agent run, ever",
             metric: "Every tool call · every chunk · every cost line",
             scenario: "“What did Claude burn last Wednesday during the auth refactor?” Type `auth refactor` — your full session log returns in milliseconds. Tool calls, generated diffs, token spend per turn. Searchable, replayable, on every device.",
@@ -75,6 +79,7 @@ struct CloudCapability: Identifiable, Hashable {
         .init(
             id: "remote-relay",
             icon: "antenna.radiowaves.left.and.right",
+            art: "CloudCapRemoteRelay",
             headline: "Your Mac's AI, anywhere on Earth",
             metric: "Verified WebSocket · App Check + Apple JWS · sub-200ms",
             scenario: "You're at a coffee shop, your laptop is asleep at home. From your phone, you wake your Mac's Hermes, ask it to refactor a file, and stream the answer back to your hand. End-to-end signed. Nothing leaves your devices unencrypted.",
@@ -160,11 +165,13 @@ struct CapabilityDetailSheet: View {
                 ZStack {
                     Circle().fill(MobileTheme.Colors.surfaceElevated)
                     Circle().stroke(MobileTheme.ember.opacity(0.45), lineWidth: 0.9)
-                    Image(systemName: capability.icon)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(MobileTheme.ember)
+                    Image(capability.art)
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .padding(6)
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 40, height: 40)
                 Text("CLOUD CAPABILITY")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.bold)

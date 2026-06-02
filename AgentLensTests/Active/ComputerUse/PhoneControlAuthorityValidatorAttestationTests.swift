@@ -3,7 +3,7 @@ import XCTest
 import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
-@testable import AgentLens
+@testable import OpenBurnBar
 
 final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     private let phoneSigner = ComputerUsePhoneControlSigner()
@@ -14,7 +14,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
 
         var intent = HermesRealtimeRelayInputIntent(
-            kind: .click,
+            kind: .tap,
             displayId: nil,
             normalizedX: 0.5,
             normalizedY: 0.5,
@@ -57,6 +57,63 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         }
     }
 
+    func test_strictMode_rejectsMissingEnvelopeAttestation() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: nil)
+
+        XCTAssertThrowsError(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .required(digest: "required-digest")
+            )
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.missingAttestation = error else {
+                XCTFail("Expected missingAttestation, got \(error)")
+            }
+        }
+    }
+
+    func test_strictMode_rejectsMacUnbound() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "any")
+
+        XCTAssertThrowsError(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .rejectUnboundHost
+            )
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.macAttestationUnbound = error else {
+                XCTFail("Expected macAttestationUnbound, got \(error)")
+            }
+        }
+    }
+
+    func test_strictMode_acceptsMatchingDigest() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let digest = AppCheckAttestationBinding.digestHex(
+            appId: "1:123:ios:abc",
+            boundAtMillis: 1_700_000_000_000
+        )
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: digest)
+
+        XCTAssertNoThrow(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .required(digest: digest)
+            )
+        )
+    }
+
     func test_revokedPeerRejected() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let validator = PhoneControlAuthorityValidator()
@@ -64,7 +121,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         validator.revokePeer(nodeId: "peer-1")
 
         var intent = HermesRealtimeRelayInputIntent(
-            kind: .click,
+            kind: .tap,
             displayId: nil,
             normalizedX: 0.5,
             normalizedY: 0.5,
@@ -98,6 +155,43 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
                 return XCTFail("Expected peerRevoked, got \(error)")
             }
         }
+    }
+
+    private func signedTapIntent(
+        privateKey: Curve25519.Signing.PrivateKey,
+        attestationDigest: String?
+    ) throws -> HermesRealtimeRelayInputIntent {
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            displayId: nil,
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            normalizedX2: nil,
+            normalizedY2: nil,
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            mouseButton: nil,
+            clientIntentId: UUID().uuidString,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "peer-1",
+                counter: 1,
+                timestamp: Date(),
+                intentHashBlake3: "",
+                signatureEd25519: "",
+                attestationHashBlake3: attestationDigest
+            )
+        )
+        let signed = try phoneSigner.sign(
+            intent: intent,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: intent.authority.timestamp,
+            privateKey: privateKey
+        )
+        intent.authority.intentHashBlake3 = signed.intentHashHex
+        intent.authority.signatureEd25519 = signed.signatureBase64
+        return intent
     }
 }
 #endif

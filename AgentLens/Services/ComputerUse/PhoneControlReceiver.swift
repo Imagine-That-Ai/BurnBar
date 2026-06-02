@@ -29,8 +29,8 @@ public final class PhoneControlReceiver: @unchecked Sendable {
 
     public let sessionId: ComputerUseSessionID
     public let validator: PhoneControlAuthorityValidator
-    /// When set, phone envelopes must carry a matching `attestationHashBlake3` (WS2/WS4).
-    public var requiredAttestationDigestProvider: (@Sendable () async -> String?)?
+    /// When set, resolves attestation policy from Remote Config + Mac `obb_app_check` claim.
+    public var attestationRequirementProvider: (@Sendable () async -> PhoneControlAttestationRequirement)?
     public let signer: ComputerUsePhoneControlSigner
     private let dispatchHandler: DispatchHandler
     private let denyFrameSink: FrameSink
@@ -68,15 +68,20 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         // Validate the authority envelope.
         let validation: PhoneControlAuthorityValidator.ValidationResult
         do {
-            let requiredAttestation = await requiredAttestationDigestProvider?()
+            let attestation = await attestationRequirementProvider?() ?? .none
             validation = try validator.validate(
                 envelope: intent.authority,
                 intent: intent,
-                requiredAttestationHashBlake3: requiredAttestation,
+                attestation: attestation,
                 now: Date()
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
-            await emitDeniedFrame(reason: deniedReason(for: error), uid: frame.uid, connectionId: frame.connectionId)
+            await emitDeniedFrame(
+                reason: deniedReason(for: error),
+                detail: error.relayControlDeniedDetail,
+                uid: frame.uid,
+                connectionId: frame.connectionId
+            )
             return
         } catch {
             await emitDeniedFrame(reason: .signatureFailure, uid: frame.uid, connectionId: frame.connectionId)

@@ -12,6 +12,7 @@ burnbar-remote-observability.workspace = true
 burnbar-remote-protocol.workspace = true
 burnbar-remote-security.workspace = true
 bytes.workspace = true
+getrandom.workspace = true
 iroh.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

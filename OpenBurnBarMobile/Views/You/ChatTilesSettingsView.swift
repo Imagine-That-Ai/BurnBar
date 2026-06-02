@@ -21,23 +21,17 @@ struct ChatTilesSettingsView: View {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(runtime.displayName)
-                                    .font(MobileTheme.Typography.body)
-                                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
                                 Text(detailCopy(for: runtime))
-                                    .font(MobileTheme.Typography.tiny)
-                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         } icon: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(tileTint(for: runtime))
-                                    .frame(width: 26, height: 26)
-                                Text(runtime.glyph)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
+                            UnifiedProviderLogoView(provider: runtime.agentProvider, size: 29)
                         }
                     }
+                    .tint(MobileTheme.ember)
                 }
             } header: {
                 Text("Chat tiles")
@@ -51,23 +45,17 @@ struct ChatTilesSettingsView: View {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(provider.displayName)
-                                    .font(MobileTheme.Typography.body)
-                                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
                                 Text("Routes Hermes traffic through \(provider.displayName).")
-                                    .font(MobileTheme.Typography.tiny)
-                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         } icon: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(MobileTheme.Colors.surface.opacity(0.6))
-                                    .frame(width: 26, height: 26)
-                                Text(provider.glyph)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-                            }
+                            UnifiedProviderLogoView(provider: provider.agentProvider, size: 29)
                         }
                     }
+                    .tint(MobileTheme.ember)
                 }
             } header: {
                 Text("Hermes models")
@@ -75,8 +63,6 @@ struct ChatTilesSettingsView: View {
                 Text("Each toggle hides or shows a sub-provider in the Hermes model picker. Disabled providers stop appearing even when the live relay advertises them.")
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(AuroraBackdrop(density: .subtle).ignoresSafeArea())
         .navigationTitle("Chat tiles")
         .onAppear {
             preferences = ChatTilePreferences.from(jsonString: tilePreferencesJSON).sanitized()
@@ -112,20 +98,7 @@ struct ChatTilesSettingsView: View {
         )
     }
 
-    private func tileTint(for runtime: AssistantRuntimeID) -> AnyShapeStyle {
-        switch runtime {
-        case .hermes:   return AnyShapeStyle(MobileTheme.mercuryGradient)
-        case .pi:       return AnyShapeStyle(MobileTheme.piGradient)
-        case .codex:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "1ABC9C"), Color(hex: "2ECC71")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .claude:   return AnyShapeStyle(LinearGradient(colors: [Color(hex: "D58A4F"), Color(hex: "C76A2C")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .openClaw: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "6E56CF"), Color(hex: "4F44C6")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .droid:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "8B5CF6"), Color(hex: "6D5DF6")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .forge:    return AnyShapeStyle(LinearGradient(colors: [Color(hex: "F97316"), Color(hex: "EA580C")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .antigravity: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "6C63FF"), Color(hex: "8F8AFF")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .grok: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "111111"), Color(hex: "333333")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .cursorAgent: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "00E5FF"), Color(hex: "33ECFF")], startPoint: .topLeading, endPoint: .bottomTrailing))
-        }
-    }
+
 
     private func detailCopy(for runtime: AssistantRuntimeID) -> String {
         switch runtime {

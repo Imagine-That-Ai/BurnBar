@@ -10,6 +10,8 @@ import OpenBurnBarMedia
 
 @MainActor
 final class HermesRelayHostService {
+    private static let relayHostInstallationIDDefaultsKey = "com.openburnbar.hermesRelayHostInstallationId"
+
     private let db: Firestore
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
@@ -162,8 +164,16 @@ final class HermesRelayHostService {
         }
     }
 
+    var legacyConnectionID: String {
+        Self.legacyRelayConnectionID(forDeviceID: accountManager.deviceId)
+    }
+
+    var relayHostInstallationID: String {
+        Self.loadOrCreateRelayHostInstallationID()
+    }
+
     var connectionID: String {
-        "relay-\(Self.safeIdentifier(accountManager.deviceId))"
+        Self.relayConnectionID(forHostInstallationID: relayHostInstallationID)
     }
 
     private static let cadenceIDHermesHeartbeat = "hermes-relay-host-heartbeat"
@@ -253,6 +263,7 @@ final class HermesRelayHostService {
                 "mode": HermesConnectionMode.relayLink.rawValue,
                 "status": HermesConnectionStatus.offline.rawValue,
                 "capabilities": ["remote_relay"],
+                "hostInstallationId": relayHostInstallationID,
                 "advertisedModel": FieldValue.delete(),
                 "realtimeRelayURL": FieldValue.delete(),
                 "realtimeRelayStatus": "offline",
@@ -270,6 +281,7 @@ final class HermesRelayHostService {
                 data["createdAt"] = now
             }
             try await ref.setData(data, merge: true)
+            await publishLegacyRelayReplacementIfNeeded(uid: uid, now: now)
         } catch {
             AppLogger.network.silentFailure("hermes_relay_offline_publish_failed", error: error)
         }
@@ -328,6 +340,8 @@ final class HermesRelayHostService {
             "mode": HermesConnectionMode.relayLink.rawValue,
             "status": relayAvailable ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
             "capabilities": capabilities,
+            "hostInstallationId": relayHostInstallationID,
+            "replacedByConnectionId": FieldValue.delete(),
             "relayPublicKey": relayPrivateKey.publicKeyBase64,
             "relayKeyVersion": HermesRelayCrypto.keyVersion,
             "relayEncryption": HermesRelayCrypto.algorithm,
@@ -363,11 +377,46 @@ final class HermesRelayHostService {
                 data["createdAt"] = now
             }
             try await ref.setData(data, merge: true)
+            await publishLegacyRelayReplacementIfNeeded(uid: uid, now: now)
         } catch {
             AppLogger.network.error(
                 "hermes_relay_connection_publish_failed",
                 metadata: ["error": error.localizedDescription]
             )
+        }
+    }
+
+    private func publishLegacyRelayReplacementIfNeeded(uid: String, now: String) async {
+        let legacyID = legacyConnectionID
+        guard legacyID != connectionID else { return }
+        let ref = db.collection("users").document(uid).collection("hermes_connections").document(legacyID)
+        var data: [String: Any] = [
+            "id": legacyID,
+            "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
+            "mode": HermesConnectionMode.relayLink.rawValue,
+            "status": HermesConnectionStatus.offline.rawValue,
+            "capabilities": ["remote_relay"],
+            "hostInstallationId": relayHostInstallationID,
+            "replacedByConnectionId": connectionID,
+            "advertisedModel": FieldValue.delete(),
+            "realtimeRelayURL": FieldValue.delete(),
+            "realtimeRelayStatus": "offline",
+            "realtimeRelayLastSeenAt": FieldValue.delete(),
+            "realtimeRelayProtocolVersion": FieldValue.delete(),
+            "updatedAt": now,
+            "schemaVersion": 2
+        ]
+        if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
+            data["relayPublicKey"] = publicKey
+            data["relayKeyVersion"] = HermesRelayCrypto.keyVersion
+            data["relayEncryption"] = HermesRelayCrypto.algorithm
+        }
+        do {
+            let snap = try await ref.getDocument()
+            guard snap.exists else { return }
+            try await ref.setData(data, merge: true)
+        } catch {
+            AppLogger.network.silentFailure("hermes_relay_legacy_replacement_publish_failed", error: error)
         }
     }
 
@@ -1007,6 +1056,24 @@ final class HermesRelayHostService {
         let scalars = lowered.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
         let collapsed = String(scalars).split(separator: "-").joined(separator: "-")
         return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-")).isEmpty ? "mac" : collapsed
+    }
+
+    static func loadOrCreateRelayHostInstallationID(defaults: UserDefaults = .standard) -> String {
+        if let stored = defaults.string(forKey: relayHostInstallationIDDefaultsKey),
+           !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return stored
+        }
+        let created = UUID().uuidString
+        defaults.set(created, forKey: relayHostInstallationIDDefaultsKey)
+        return created
+    }
+
+    static func relayConnectionID(forHostInstallationID installationID: String) -> String {
+        "relay-host-\(safeIdentifier(installationID))"
+    }
+
+    static func legacyRelayConnectionID(forDeviceID deviceID: String) -> String {
+        "relay-\(safeIdentifier(deviceID))"
     }
 
     private static let iso8601: ISO8601DateFormatter = {

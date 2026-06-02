@@ -109,6 +109,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 enum SettingsPageRoute: Hashable, Codable {
     /// The row lives on the Settings root Form.
     case hubRoot
+    /// `AccountSettingsView` — Apple-ID-style account page reached from the
+    /// profile banner: identity, sign in/out, OpenBurnBar Cloud, delete account.
+    case account
     /// `CloudStoreView` (subscription / plan / capabilities).
     case cloud
     /// `ProviderConnectionsView` (add account, per-provider rows).
@@ -178,6 +181,7 @@ enum SettingsAnchor {
 
     // Hermes
     static let hermesConnections = "hermes.connections"
+    static let hermesCloudGateway = "hermes.cloudGateway"
     static let hermesModels = "hermes.models"
     static let hermesDisplayTPS = "hermes.display.tps"
     static let hermesPretext = "hermes.pretext"

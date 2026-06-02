@@ -1,0 +1,53 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Neon Glow Filters -->
+    <filter id="neonGlowOrange" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur1" />
+      <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="neonGlowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur1" />
+      <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Dark Background -->
+  <rect width="512" height="512" fill="#0D0D11" />
+
+  <!-- Phone Element -->
+  <g filter="url(#neonGlowCyan)">
+    <!-- Outer Chassis -->
+    <rect x="206" y="260" width="100" height="180" rx="16" fill="none" stroke="#00F0FF" stroke-width="2" />
+    <!-- Screen Outline -->
+    <rect x="214" y="270" width="84" height="150" rx="8" fill="none" stroke="#00F0FF" stroke-width="2" stroke-opacity="0.4"/>
+    <!-- Top Notch -->
+    <line x1="240" y1="260" x2="272" y2="260" stroke="#00F0FF" stroke-width="2" />
+  </g>
+
+  <!-- Circular Refresh Arrow forming Flame -->
+  <g filter="url(#neonGlowOrange)">
+    <path d="M 256,230
+             A 60 60 0 0 1 196,170
+             C 196,120 240,80 256,70
+             C 272,80 316,120 316,170
+             A 60 60 0 0 1 270,225"
+          fill="none" stroke="#FF5500" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Arrowhead -->
+    <polyline points="290,215 270,225 275,205" fill="none" stroke="#FF5500" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- Tiny Lightning/Ember Spark inside Flame -->
+    <polygon points="256,130 248,155 258,155 254,180 266,145 254,145" fill="none" stroke="#FFEA00" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -202,6 +202,7 @@ final class SettingsManager {
         "computer_use_browser_enabled": NSNumber(value: false),
         "computer_use_system_enabled": NSNumber(value: false),
         "computer_use_phone_control_enabled": NSNumber(value: false),
+        "computer_use_phone_control_attestation_required": NSNumber(value: false),
         "computer_use_trust_modes_enabled": NSNumber(value: false),
         "computer_use_polish_enabled": NSNumber(value: false),
         "computer_use_kill_switch": NSNumber(value: false),
@@ -244,6 +245,9 @@ final class SettingsManager {
         computerUseBrowserEnabled = remoteConfig.configValue(forKey: "computer_use_browser_enabled").boolValue
         computerUseSystemEnabled = remoteConfig.configValue(forKey: "computer_use_system_enabled").boolValue
         computerUsePhoneControlEnabled = remoteConfig.configValue(forKey: "computer_use_phone_control_enabled").boolValue
+        computerUsePhoneControlAttestationRequired = remoteConfig.configValue(
+            forKey: "computer_use_phone_control_attestation_required"
+        ).boolValue
         computerUseTrustedScopesEnabled = remoteConfig.configValue(forKey: "computer_use_trust_modes_enabled").boolValue
         computerUseAuditExportEnabled = remoteConfig.configValue(forKey: "computer_use_polish_enabled").boolValue
 
@@ -663,6 +667,11 @@ final class SettingsManager {
     var computerUsePhoneControlEnabled: Bool {
         get { chatBackend.computerUsePhoneControlEnabled }
         set { chatBackend.computerUsePhoneControlEnabled = newValue }
+    }
+
+    var computerUsePhoneControlAttestationRequired: Bool {
+        get { chatBackend.computerUsePhoneControlAttestationRequired }
+        set { chatBackend.computerUsePhoneControlAttestationRequired = newValue }
     }
 
     var computerUseTrustedScopesEnabled: Bool {

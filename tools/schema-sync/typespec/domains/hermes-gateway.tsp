@@ -44,6 +44,7 @@ model HermesGatewayEventDoc {
   sequence: int32;
   kind: string;
   destinationId: string;
+  targetClientId?: string;
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;

@@ -79,6 +79,11 @@ final class iPadNavigationUITests: XCTestCase {
 
     func testCloudSyncHealthPresentationCopyIsActionable() {
         XCTAssertEqual(CloudSyncHealth.healthy.systemImageName, "checkmark.icloud.fill")
+        XCTAssertEqual(CloudSyncHealth.macNotSyncing.systemImageName, "desktopcomputer.trianglebadge.exclamationmark")
+        XCTAssertEqual(
+            CloudSyncHealth.macNotSyncing.detailText,
+            "OpenBurnBar on your Mac has not published recently. Open the Mac app to update cloud data."
+        )
         XCTAssertEqual(CloudSyncHealth.offline.detailText, CloudErrorClassification.networkUnavailable.recoveryHint)
         XCTAssertEqual(CloudSyncHealth.permissionDenied.detailText, CloudErrorClassification.permissionDenied.recoveryHint)
     }

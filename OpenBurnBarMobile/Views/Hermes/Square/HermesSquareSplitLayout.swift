@@ -1745,7 +1745,7 @@ struct MercuryLiveDetailView: View {
     }
 
     private func refreshCoordinator() {
-        guard let active = HermesIrohRelayTransport.shared.currentMediaControlCoordinator else {
+        guard let active = HermesIrohRelayTransport.shared.mediaControlCoordinator(for: connectionID) else {
             coordinator = nil
             return
         }

@@ -1035,7 +1035,10 @@ public actor BurnBarConfigStore {
             let provider = try catalogSupport.requiredProvider(id: providerID)
             return BurnBarProviderSettings(
                 providerID: provider.id,
-                isEnabled: false,
+                // Local, credential-less providers (e.g. a local Ollama daemon)
+                // auto-enable so their models appear with zero configuration;
+                // cloud providers stay disabled until the user adds a credential.
+                isEnabled: provider.local,
                 baseURL: provider.baseURL,
                 preferredModelIDs: catalogSupport.defaultModelIDs(forProviderID: provider.id)
             )

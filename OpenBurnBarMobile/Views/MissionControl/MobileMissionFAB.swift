@@ -77,7 +77,7 @@ struct MobileMissionFAB: View {
                         .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
 
-                if isDismissed && isVisible {
+                if resurrection.showRestoreDot && isVisible {
                     restoreDot
                         .position(restoreDotPosition(bounds: bounds, safeArea: safeArea))
                         .transition(.scale(scale: 0.4).combined(with: .opacity))

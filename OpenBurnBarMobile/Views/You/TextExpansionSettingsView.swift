@@ -70,7 +70,7 @@ struct MobileTextExpansionSettingsView: View {
 
     var body: some View {
         ZStack {
-            AuroraBackdrop(density: .subtle)
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 20) {
@@ -104,7 +104,7 @@ struct MobileTextExpansionSettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(statusIsError ? MobileTheme.error : MobileTheme.success)
                         Text(statusMessage)
-                            .font(MobileTheme.Typography.body)
+                            .font(.body)
                             .foregroundStyle(MobileTheme.textPrimary)
                     }
                     .padding(.horizontal, 18)
@@ -147,7 +147,7 @@ struct MobileTextExpansionSettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(editingID == nil ? "NEW SNIPPET" : "EDIT SNIPPET")
-                    .font(MobileTheme.Typography.tiny)
+                    .font(.caption2)
                     .fontWeight(.bold)
                     .tracking(1.4)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -156,7 +156,7 @@ struct MobileTextExpansionSettingsView: View {
 
                 if editingID != nil {
                     Text("✨ Editing Active")
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundStyle(MobileTheme.hermesAureate)
                         .padding(.horizontal, 8)
@@ -169,7 +169,7 @@ struct MobileTextExpansionSettingsView: View {
             HStack(spacing: 8) {
                 if !trigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(trigger.hasPrefix("&&") ? trigger : "&&\(trigger)")
-                        .font(MobileTheme.Typography.mono)
+                        .font(.system(.body, design: .monospaced))
                         .foregroundStyle(MobileTheme.hermesAureate)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -177,7 +177,7 @@ struct MobileTextExpansionSettingsView: View {
                         .overlay(Capsule().stroke(MobileTheme.hermesAureate.opacity(0.25), lineWidth: 0.75))
                 } else {
                     Text("&&trigger")
-                        .font(MobileTheme.Typography.mono)
+                        .font(.system(.body, design: .monospaced))
                         .foregroundStyle(MobileTheme.textMuted)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -192,13 +192,13 @@ struct MobileTextExpansionSettingsView: View {
                 // Name Field
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Name")
-                        .font(MobileTheme.Typography.caption)
+                        .font(.caption)
                         .foregroundStyle(MobileTheme.textSecondary)
 
                     TextField("Confident reply", text: $title)
-                        .font(MobileTheme.Typography.body)
+                        .font(.body)
                         .padding(10)
-                        .background(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.40))
+                        .background(Color(.tertiarySystemGroupedBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -210,23 +210,23 @@ struct MobileTextExpansionSettingsView: View {
                 // Trigger Field
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Trigger")
-                        .font(MobileTheme.Typography.caption)
+                        .font(.caption)
                         .foregroundStyle(MobileTheme.textSecondary)
 
                     HStack(spacing: 0) {
                         Text("&&")
-                            .font(MobileTheme.Typography.mono)
+                            .font(.system(.body, design: .monospaced))
                             .foregroundStyle(MobileTheme.hermesAureate)
                             .padding(.leading, 10)
 
                         TextField("confident", text: $trigger)
-                            .font(MobileTheme.Typography.mono)
+                            .font(.system(.body, design: .monospaced))
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .padding(.vertical, 10)
                             .padding(.trailing, 10)
                     }
-                    .background(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.40))
+                    .background(Color(.tertiarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
@@ -236,13 +236,13 @@ struct MobileTextExpansionSettingsView: View {
 
                     if let triggerError {
                         Label(triggerError, systemImage: "exclamationmark.triangle.fill")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.error)
                             .padding(.leading, 4)
                     }
                     if let duplicateTriggerError {
                         Label(duplicateTriggerError, systemImage: "exclamationmark.triangle.fill")
-                            .font(MobileTheme.Typography.tiny)
+                            .font(.caption2)
                             .foregroundStyle(MobileTheme.error)
                             .padding(.leading, 4)
                     }
@@ -251,14 +251,14 @@ struct MobileTextExpansionSettingsView: View {
                 // Content Body TextEditor
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Expansion Text")
-                        .font(MobileTheme.Typography.caption)
+                        .font(.caption)
                         .foregroundStyle(MobileTheme.textSecondary)
 
                     TextEditor(text: $snippetBody)
-                        .font(MobileTheme.Typography.body)
+                        .font(.body)
                         .frame(minHeight: 100)
                         .padding(8)
-                        .background(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.40))
+                        .background(Color(.tertiarySystemGroupedBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -278,7 +278,7 @@ struct MobileTextExpansionSettingsView: View {
                     Text(mode == .staticText
                          ? "Expands to your exact text in all surfaces."
                          : "On Mac, rewrites dynamically using AI chat context. Mobile keyboard expands as static text.")
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .foregroundStyle(MobileTheme.textMuted)
                         .padding(.horizontal, 2)
 
@@ -313,7 +313,7 @@ struct MobileTextExpansionSettingsView: View {
                             newDraft()
                         } label: {
                             Text("Cancel Edit")
-                                .font(MobileTheme.Typography.caption)
+                                .font(.caption)
                                 .foregroundStyle(MobileTheme.textSecondary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
@@ -327,7 +327,7 @@ struct MobileTextExpansionSettingsView: View {
             .padding(.top, 8)
         }
         .padding(18)
-        .background(.ultraThinMaterial)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -341,7 +341,7 @@ struct MobileTextExpansionSettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("SAVED SNIPPETS")
-                    .font(MobileTheme.Typography.tiny)
+                    .font(.caption2)
                     .fontWeight(.bold)
                     .tracking(1.4)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -350,7 +350,7 @@ struct MobileTextExpansionSettingsView: View {
 
                 if !store.snippets.isEmpty {
                     Text("\(store.snippets.count) total")
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .foregroundStyle(MobileTheme.textMuted)
                 }
             }
@@ -361,7 +361,7 @@ struct MobileTextExpansionSettingsView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(MobileTheme.textMuted)
                 TextField("Search trigger or content...", text: $searchQuery)
-                    .font(MobileTheme.Typography.caption)
+                    .font(.caption)
                 if !searchQuery.isEmpty {
                     Button {
                         searchQuery = ""
@@ -385,10 +385,10 @@ struct MobileTextExpansionSettingsView: View {
                         .font(.system(size: 36))
                         .foregroundStyle(MobileTheme.textMuted.opacity(0.7))
                     Text(searchQuery.isEmpty ? "No snippets yet" : "No matching snippets")
-                        .font(MobileTheme.Typography.body.weight(.bold))
+                        .font(.body.weight(.bold))
                         .foregroundStyle(MobileTheme.textSecondary)
                     Text(searchQuery.isEmpty ? "Create your first &&trigger above" : "Adjust your search criteria")
-                        .font(MobileTheme.Typography.caption)
+                        .font(.caption)
                         .foregroundStyle(MobileTheme.textMuted)
                 }
                 .frame(maxWidth: .infinity)
@@ -409,7 +409,7 @@ struct MobileTextExpansionSettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 6) {
                                         Text(snippet.title)
-                                            .font(MobileTheme.Typography.body.weight(.medium))
+                                            .font(.body.weight(.medium))
                                             .foregroundStyle(MobileTheme.textPrimary)
                                             .lineLimit(1)
                                         if !snippet.isEnabled {
@@ -422,13 +422,13 @@ struct MobileTextExpansionSettingsView: View {
                                     }
                                     HStack {
                                         Text(snippet.activationToken)
-                                            .font(MobileTheme.Typography.monoSmall)
+                                            .font(.system(.caption, design: .monospaced))
                                             .foregroundStyle(snippet.isEnabled ? MobileTheme.hermesAureate : MobileTheme.textMuted)
 
                                         Spacer()
 
                                         Text(relativeTime(snippet.updatedAt))
-                                            .font(MobileTheme.Typography.monoTiny)
+                                            .font(.system(.caption2, design: .monospaced))
                                             .foregroundStyle(MobileTheme.textMuted)
                                     }
                                 }
@@ -456,7 +456,7 @@ struct MobileTextExpansionSettingsView: View {
             }
         }
         .padding(18)
-        .background(.ultraThinMaterial)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -470,14 +470,14 @@ struct MobileTextExpansionSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Live Expansion Sandbox", systemImage: "play.circle.fill")
-                    .font(MobileTheme.Typography.body.weight(.bold))
+                    .font(.body.weight(.bold))
                     .foregroundStyle(MobileTheme.hermesAureate)
 
                 Spacer()
 
                 if sandboxSuccess {
                     Text("Expanded!")
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .fontWeight(.bold)
                         .foregroundStyle(MobileTheme.success)
                         .transition(.scale.combined(with: .opacity))
@@ -486,13 +486,13 @@ struct MobileTextExpansionSettingsView: View {
 
             let testTrigger = trigger.isEmpty ? "confident" : trigger.replacingOccurrences(of: "&&", with: "")
             Text("Try it: Type `&&\(testTrigger)` followed by a space to instantly watch it expand:")
-                .font(MobileTheme.Typography.tiny)
+                .font(.caption2)
                 .foregroundStyle(MobileTheme.textMuted)
 
             TextField("Test expanding your shortcuts here...", text: $sandboxText)
-                .font(MobileTheme.Typography.mono)
+                .font(.system(.body, design: .monospaced))
                 .padding(10)
-                .background(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.40))
+                .background(Color(.tertiarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -504,7 +504,7 @@ struct MobileTextExpansionSettingsView: View {
                 }
         }
         .padding(18)
-        .background(.ultraThinMaterial)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -517,7 +517,7 @@ struct MobileTextExpansionSettingsView: View {
     private var cloudSyncCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("CLOUD SYNC")
-                .font(MobileTheme.Typography.tiny)
+                .font(.caption2)
                 .fontWeight(.bold)
                 .tracking(1.4)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -552,14 +552,14 @@ struct MobileTextExpansionSettingsView: View {
                     .disabled(isSyncing)
 
                     Text("Sync is protected and fully encrypted end-to-end via Cloud Vault device keys.")
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .foregroundStyle(MobileTheme.textMuted)
                         .padding(.horizontal, 2)
                 }
             }
         }
         .padding(18)
-        .background(.ultraThinMaterial)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -572,7 +572,7 @@ struct MobileTextExpansionSettingsView: View {
     private var keyboardCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("INTEGRATION")
-                .font(MobileTheme.Typography.tiny)
+                .font(.caption2)
                 .fontWeight(.bold)
                 .tracking(1.4)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -585,17 +585,17 @@ struct MobileTextExpansionSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("System-wide Keyboard Extension")
-                        .font(MobileTheme.Typography.body.weight(.semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(MobileTheme.textPrimary)
                     Text("Go to iOS Settings → General → Keyboard → Keyboards to activate OpenBurnBar. Now, you can trigger your `&&shortcuts` in any browser, chat, or mail application!")
-                        .font(MobileTheme.Typography.tiny)
+                        .font(.caption2)
                         .foregroundStyle(MobileTheme.textMuted)
                         .lineSpacing(2)
                 }
             }
         }
         .padding(18)
-        .background(.ultraThinMaterial)
+        .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -612,7 +612,7 @@ struct MobileTextExpansionSettingsView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 8, weight: .bold))
                 Text("Mac LLM")
-                    .font(MobileTheme.Typography.monoTiny)
+                    .font(.system(.caption2, design: .monospaced))
                     .fontWeight(.bold)
             }
             .foregroundStyle(MobileTheme.hermesAureate)
@@ -622,7 +622,7 @@ struct MobileTextExpansionSettingsView: View {
             .overlay(Capsule().stroke(MobileTheme.hermesAureate.opacity(0.2), lineWidth: 0.5))
         } else {
             Text("Static")
-                .font(MobileTheme.Typography.monoTiny)
+                .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(MobileTheme.textSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
@@ -753,7 +753,7 @@ struct PremiumButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(MobileTheme.Typography.body.weight(.bold))
+            .font(.body.weight(.bold))
             .foregroundStyle(.white)
             .padding(.vertical, 12)
             .padding(.horizontal, 16)

@@ -27,6 +27,7 @@ Implementation tracker for the June 2026 security swarm + [`2026-05-30-sota-secu
 | Privileged socket red-team | Ops script | `scripts/ops/run-privileged-socket-redteam.sh` + `PrivilegedSocketRedTeamIntegrationTests` |
 | WS1–WS6 leaf tokens | Done (core) | `PrivilegedPeerAuthenticator`, `VirtualHIDBridgeCapabilityGate`, capability tokens |
 | Phone attestation binding | Done | `AppCheckAttestationBinding` + Mac/iOS readers + envelope digest on send |
+| Phone attestation fail-closed (RC) | Done | `computer_use_phone_control_attestation_required` + `PhoneControlAttestationPolicy` |
 
 ## Phase 3 — AI agency
 

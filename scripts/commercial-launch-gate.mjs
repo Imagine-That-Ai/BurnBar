@@ -791,93 +791,42 @@ function pickCheck(check) {
   };
 }
 
-function parseJSONOutput(result) {
-  try {
-    return JSON.parse(result.stdout);
-  } catch (error) {
-    return {
-      ok: false,
-      parseError: error.message,
-      stderr: result.stderr,
-      stdout: result.stdout,
-    };
-  }
-}
-
-function describeCloudRunService(name) {
+function checkCloudRun() {
   const result = run("gcloud", [
     "run",
     "services",
-    "describe",
-    name,
+    "list",
     "--project",
     PROJECT,
     "--region",
     REGION,
     "--format=json",
   ]);
-  if (!result.ok) {
-    const output = `${result.stderr}\n${result.stdout}\n${result.error || ""}`;
-    if (/not found|cannot find|NOT_FOUND/i.test(output)) {
-      return { ok: true, missing: true, name };
-    }
-    return {
-      ok: false,
-      missing: false,
-      name,
-      error: result.stderr || result.stdout || result.error,
-    };
-  }
-  const parsed = parseJSONOutput(result);
-  if (parsed?.ok === false) {
-    return { ...parsed, missing: false, name };
-  }
-  return { ok: true, missing: false, name, service: parsed };
-}
-
-export function evaluateCloudRunServiceReadiness(name, service) {
-  const ready = (service?.status?.conditions || []).some(
-    (condition) => condition.type === "Ready" && condition.status === "True",
-  );
-  return { name, ready, url: service?.status?.url || null };
-}
-
-export function evaluateRetiredCloudRunServiceAbsence(name, described) {
-  return {
-    name,
-    absent: described?.missing === true,
-    url: described?.service?.status?.url || null,
-    error: described?.ok === false ? described.error || described.parseError : undefined,
-  };
-}
-
-function checkCloudRun() {
+  if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
+  const services = JSON.parse(result.stdout);
   const required = ["openburnbar-quota-runner"];
-  const describedRequired = required.map((name) => describeCloudRunService(name));
-  const serviceStates = describedRequired.map((described) =>
-    evaluateCloudRunServiceReadiness(described.name, described.service),
+  const byName = new Map(
+    services.map((service) => [service.metadata?.name, service]),
   );
-  const serviceErrors = describedRequired.filter((described) => described.ok === false);
-  const retiredRelay = describeCloudRunService(RETIRED_HERMES_REALTIME_RELAY_SERVICE);
-  const retiredState = evaluateRetiredCloudRunServiceAbsence(
-    RETIRED_HERMES_REALTIME_RELAY_SERVICE,
-    retiredRelay,
-  );
+  const serviceStates = required.map((name) => {
+    const service = byName.get(name);
+    const ready = (service?.status?.conditions || []).some(
+      (condition) => condition.type === "Ready" && condition.status === "True",
+    );
+    return { name, ready, url: service?.status?.url || null };
+  });
+  const retiredRelay =
+    byName.get(RETIRED_HERMES_REALTIME_RELAY_SERVICE) || null;
   return {
     ok:
-      serviceErrors.length === 0 &&
-      serviceStates.every((service) => service.ready) &&
-      retiredState.absent === true,
+      serviceStates.every((service) => service.ready) && retiredRelay === null,
     services: serviceStates,
-    retiredServices: [retiredState],
-    errors: [
-      ...serviceErrors.map((described) => ({
-        name: described.name,
-        error: described.error || described.parseError,
-      })),
-      ...(retiredRelay.ok === false
-        ? [{ name: retiredRelay.name, error: retiredRelay.error || retiredRelay.parseError }]
-        : []),
+    retiredServices: [
+      {
+        name: RETIRED_HERMES_REALTIME_RELAY_SERVICE,
+        absent: retiredRelay === null,
+        url: retiredRelay?.status?.url || null,
+      },
     ],
   };
 }

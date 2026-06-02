@@ -2773,7 +2773,8 @@ private struct HermesConnectionSheet: View {
     private var burnBarGatewayConnectionCard: some View {
         let onlineCount = gatewayStore.onlineClients.count
         let activeCount = gatewayStore.activeClients.count
-        let isOnline = onlineCount > 0
+        let selectedClient = gatewayStore.selectedClient
+        let isOnline = selectedClient.map { gatewayStore.isOnline($0) } ?? (onlineCount > 0)
 
         return AuroraGlassCard(variant: isOnline ? .success : .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
             VStack(alignment: .leading, spacing: 14) {
@@ -2809,11 +2810,11 @@ private struct HermesConnectionSheet: View {
                         .background(Capsule().fill((isOnline ? MobileTheme.success : MobileTheme.warning).opacity(0.12)))
                 }
 
-                if let client = gatewayStore.onlineClients.first ?? gatewayStore.activeClients.first {
+                if let client = selectedClient ?? gatewayStore.onlineClients.first ?? gatewayStore.activeClients.first {
                     HStack(spacing: 8) {
-                        Image(systemName: "iphone")
+                        Image(systemName: gatewayStore.selectedClient?.id == client.id ? "checkmark.circle.fill" : "iphone")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .foregroundStyle(gatewayStore.selectedClient?.id == client.id ? MobileTheme.hermesAureate : MobileTheme.Colors.textMuted)
                         Text(client.displayName)
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
@@ -2921,15 +2922,17 @@ struct HermesGatewayModelPickerSheet: View {
     }
 
     private var statusCard: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
+        let selectedGateway = gatewayStore.selectedClient
+        let selectedOnline = selectedGateway.map { gatewayStore.isOnline($0) } ?? false
+        return AuroraGlassCard(variant: .standard, cornerRadius: AuroraDesign.Shape.standardCorner) {
             HStack(spacing: 12) {
-                Image(systemName: gatewayStore.onlineClients.isEmpty ? "link.circle" : "checkmark.seal.fill")
+                Image(systemName: selectedOnline ? "checkmark.seal.fill" : "link.circle")
                     .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(gatewayStore.onlineClients.isEmpty ? MobileTheme.warning : MobileTheme.success)
+                    .foregroundStyle(selectedOnline ? MobileTheme.success : MobileTheme.warning)
                     .frame(width: 40, height: 40)
                     .background(
                         Circle()
-                            .fill((gatewayStore.onlineClients.isEmpty ? MobileTheme.warning : MobileTheme.success).opacity(0.12))
+                            .fill((selectedOnline ? MobileTheme.success : MobileTheme.warning).opacity(0.12))
                     )
                 VStack(alignment: .leading, spacing: 3) {
                     Text(currentModelText)
@@ -2937,7 +2940,7 @@ struct HermesGatewayModelPickerSheet: View {
                         .fontWeight(.bold)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                         .lineLimit(2)
-                    Text("Switches are sent to Hermes through BurnBar Cloud and apply before the next queued message in this conversation.")
+                    Text(selectedGateway.map { "Switches are sent to \($0.displayName) through BurnBar Cloud and apply before the next queued message in this conversation." } ?? "Switches are sent to the selected Hermes gateway through BurnBar Cloud.")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
