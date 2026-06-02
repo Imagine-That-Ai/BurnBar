@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-02T02:14:15.936Z",
+  "channel": "apple",
+  "scope": "commercial-top-up-review-submission",
+  "actions": [
+    {
+      "productId": "com.openburnbar.agentControl.actions100",
+      "ascId": "6775039582",
+      "screenshotUpload": "accepted",
+      "submission": "accepted"
+    },
+    {
+      "productId": "com.openburnbar.floo.relay50gb",
+      "ascId": "6775039480",
+      "screenshotUpload": "accepted",
+      "submission": "accepted"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "asc-command-log",
+      "path": "/tmp/apple-topup-screenshot-upload-20260602.log",
+      "note": "local non-secret command log; not committed"
+    },
+    {
+      "kind": "asc-command-log",
+      "path": "/tmp/apple-topup-submit-20260602.log",
+      "note": "local non-secret command log; not committed"
+    },
+    {
+      "kind": "asc-readback",
+      "path": "/tmp/asc-status-after-topup-submit-later-20260602.json",
+      "note": "local non-secret readback; not committed"
+    }
+  ],
+  "latestReadback": {
+    "inAppPurchases": [
+      {
+        "id": "6775039582",
+        "productId": "com.openburnbar.agentControl.actions100",
+        "name": "Agent Control 100 Actions",
+        "type": "CONSUMABLE",
+        "state": "DEVELOPER_ACTION_NEEDED"
+      },
+      {
+        "id": "6775039480",
+        "productId": "com.openburnbar.floo.relay50gb",
+        "name": "Floo Relay 50GB",
+        "type": "CONSUMABLE",
+        "state": "DEVELOPER_ACTION_NEEDED"
+      }
+    ]
+  },
+  "note": "App Store Connect accepted review screenshot uploads and inAppPurchaseSubmissions for both commercial consumable top-ups. ASC product-list state may lag after submission acceptance."
+}

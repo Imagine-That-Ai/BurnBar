@@ -49,6 +49,11 @@ const APP = {
     path.join(REPO_ROOT, ".appstore-screenshots"),
 };
 
+const COMMERCIAL_TOP_UP_PRODUCT_IDS = [
+  "com.openburnbar.agentControl.actions100",
+  "com.openburnbar.floo.relay50gb",
+];
+
 function currentMobileBuildVersion() {
   const projectPath = path.join(REPO_ROOT, "project.yml");
   try {
@@ -737,6 +742,81 @@ async function submitSubscriptionReview() {
     if (!isSubmissionAlreadyInProgress(error)) throw error;
     console.log(`Subscription ${APP.subscriptionId} already submitted or not in a directly submit-able state`);
   }
+}
+
+async function submitCommercialTopUpReviews() {
+  const inAppPurchases = await getAllInAppPurchases();
+  const byProductId = new Map(
+    inAppPurchases.map((purchase) => [purchase.productId, purchase])
+  );
+  const settledStates = new Set([
+    "WAITING_FOR_REVIEW",
+    "IN_REVIEW",
+    "APPROVED",
+    "READY_FOR_SALE",
+  ]);
+  const submitted = [];
+
+  for (const productId of COMMERCIAL_TOP_UP_PRODUCT_IDS) {
+    const purchase = byProductId.get(productId);
+    if (!purchase?.id) {
+      throw new Error(`Missing App Store Connect in-app purchase ${productId}`);
+    }
+    if (settledStates.has(purchase.state)) {
+      console.log(
+        `${productId} is already in review/sale state: ${purchase.state}`
+      );
+      submitted.push({ ...purchase, submitted: false, reason: "settled" });
+      continue;
+    }
+
+    try {
+      const response = await api(
+        "POST",
+        "/inAppPurchaseSubmissions",
+        {
+          data: {
+            type: "inAppPurchaseSubmissions",
+            relationships: {
+              inAppPurchaseV2: rel("inAppPurchases", purchase.id),
+            },
+          },
+        }
+      );
+      console.log(
+        `Created in-app purchase submission ${response?.data?.id} for ${productId}`
+      );
+      submitted.push({
+        ...purchase,
+        submitted: true,
+        submissionId: response?.data?.id,
+      });
+    } catch (error) {
+      if (!isSubmissionAlreadyInProgress(error)) throw error;
+      console.log(
+        `${productId} already submitted or not in a directly submit-able state`
+      );
+      submitted.push({
+        ...purchase,
+        submitted: false,
+        reason: "already-submitted",
+      });
+    }
+  }
+
+  const readback = await getAllInAppPurchases();
+  console.log(
+    JSON.stringify(
+      {
+        submitted,
+        inAppPurchases: readback.filter((purchase) =>
+          COMMERCIAL_TOP_UP_PRODUCT_IDS.includes(purchase.productId)
+        ),
+      },
+      null,
+      2
+    )
+  );
 }
 
 async function submitSubscriptionGroupReview({ force = false } = {}) {
@@ -1827,6 +1907,7 @@ async function main() {
   if (command === "release-approved-ios") return releaseApprovedIos();
   if (command === "submit-subscription-review") return submitSubscriptionReview();
   if (command === "submit-subscription-group-review") return submitSubscriptionGroupReview({ force: true });
+  if (command === "submit-top-up-review") return submitCommercialTopUpReviews();
   if (command === "submit-review") return submitReview();
   if (command === "review-submissions") return printReviewSubmissions();
   if (command === "repair-subscription-localization") return repairSubscriptionLocalization();
