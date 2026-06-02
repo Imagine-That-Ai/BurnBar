@@ -142,6 +142,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   const destroyedSecrets = [];
   const summary = await eraseUserCloudData(db, "alice", {
+    deleteStorageObjects: async () => {},
     destroyCredential: async (secretVersionName) => {
       destroyedSecrets.push(secretVersionName);
     },
@@ -173,6 +174,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   const warnings = [];
   const summary = await eraseUserCloudData(db, "alice", {
+    deleteStorageObjects: async () => {},
     destroyCredential: async () => {
       throw new Error("destroy failed");
     },
@@ -194,6 +196,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   const deletedAuthUsers = [];
   const summary = await eraseUserAccount(db, "alice", {
+    deleteStorageObjects: async () => {},
     destroyCredential: async () => {},
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
@@ -220,6 +223,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   const deletedAuthUsers = [];
   const summary = await eraseUserAccount(db, "alice", {
+    deleteStorageObjects: async () => {},
     destroyCredential: async () => {
       throw new Error("destroy failed");
     },
@@ -244,6 +248,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   const userNotFound = new Error("No such user.");
   userNotFound.code = "auth/user-not-found";
   const summary = await eraseUserAccount(db, "alice", {
+    deleteStorageObjects: async () => {},
     destroyCredential: async () => {},
     deleteAuthUser: async () => {
       throw userNotFound;
@@ -260,3 +265,45 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.equal(isFirebaseAuthUserNotFound({ errorInfo: { code: "auth/user-not-found" } }), true);
   assert.equal(isFirebaseAuthUserNotFound({ code: "auth/too-many-requests" }), false);
 }
+
+// Storage-orphan fix: account erase must also purge the user's Cloud Storage prefixes.
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(collection("provider_account_secret_refs", []));
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const deletedPrefixes = [];
+  await eraseUserCloudData(db, "alice", {
+    destroyCredential: async () => {},
+    deleteStorageObjects: async (prefix) => {
+      deletedPrefixes.push(prefix);
+    },
+  });
+
+  assert.ok(deletedPrefixes.includes("users/alice/"), "must delete the user storage prefix");
+  assert.ok(deletedPrefixes.includes("avatars/alice"), "must delete the avatar object");
+}
+
+// A storage deletion failure must NOT fail the erase (best-effort), but must warn.
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(collection("provider_account_secret_refs", []));
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const warnings = [];
+  const summary = await eraseUserCloudData(db, "alice", {
+    destroyCredential: async () => {},
+    deleteStorageObjects: async () => {
+      throw new Error("storage unavailable");
+    },
+    logger: { warn: (...args) => warnings.push(args) },
+  });
+
+  assert.equal(summary.failedSecretDestroys, 0, "storage failure is not a secret failure");
+  assert.equal(warnings.length, 2, "one warning per failed storage prefix");
+  assert.ok(db.deletedPaths.includes("users/alice"), "Firestore tree still erased despite storage failure");
+}
+
+console.log("account-deletion storage-prefix tests passed");
