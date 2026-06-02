@@ -7,8 +7,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { remoteConfigStringValue } from "./remoteConfigGuards.js";
 
 const KILL_SWITCH_PARAM = "computer_use_kill_switch";
-export const COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM =
-  "computer_use_phone_control_attestation_required";
+export const COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM = "computer_use_phone_control_attestation_required";
 
 export async function publishComputerUseKillSwitch(enabled: boolean, reason: string): Promise<void> {
   const rc = getRemoteConfig();
@@ -50,8 +49,7 @@ export async function publishComputerUsePhoneControlAttestationRequired(
   const parameters = template.parameters ?? {};
 
   const current =
-    remoteConfigStringValue(parameters[COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM]?.defaultValue) ??
-    "false";
+    remoteConfigStringValue(parameters[COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM]?.defaultValue) ?? "false";
   const next = enabled ? "true" : "false";
   if (current === next) {
     return;

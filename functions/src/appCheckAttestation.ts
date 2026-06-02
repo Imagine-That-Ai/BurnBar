@@ -62,10 +62,7 @@ export function isAppCheckAttestationClaimFresh(
  * SHA-256 hex digest placed in `attestationHashBlake3` on phone-control envelopes.
  * (Field name is historical; digest algorithm is SHA-256, shared with Swift.)
  */
-export function appCheckAttestationDigestHex(
-  appId: string,
-  boundAtMillis: number,
-): string {
+export function appCheckAttestationDigestHex(appId: string, boundAtMillis: number): string {
   const payload = `${APP_CHECK_ATTESTATION_DIGEST_PREFIX}|${appId}|${boundAtMillis}`;
   return createHash("sha256").update(payload).digest("hex");
 }
