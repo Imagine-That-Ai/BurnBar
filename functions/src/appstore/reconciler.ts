@@ -662,10 +662,7 @@ export async function consumeAppStoreLiveStatusRateLimit(
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const lastAttemptAt = snap.get("lastAttemptAt");
-    const lastAttemptMs =
-      lastAttemptAt && typeof lastAttemptAt === "object" && "toMillis" in lastAttemptAt
-        ? Number((lastAttemptAt as { toMillis: () => number }).toMillis())
-        : undefined;
+    const lastAttemptMs = hasToMillis(lastAttemptAt) ? Number(lastAttemptAt.toMillis()) : undefined;
     if (lastAttemptMs !== undefined && Number.isFinite(lastAttemptMs) && nowMs - lastAttemptMs < windowMs) {
       throw new EntitlementReconcileError(
         "asc_live_status_rate_limited",
@@ -682,6 +679,15 @@ export async function consumeAppStoreLiveStatusRateLimit(
       { merge: true },
     );
   });
+}
+
+function hasToMillis(value: unknown): value is { toMillis: () => number } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "toMillis" in value &&
+    typeof value.toMillis === "function"
+  );
 }
 
 function requireString(value: unknown, field: string): string {

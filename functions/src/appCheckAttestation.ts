@@ -82,7 +82,7 @@ export async function bindAppCheckAttestationForUid(
   };
   const auth = getAuth();
   const user = await auth.getUser(uid);
-  const existing = (user.customClaims ?? {}) as Record<string, unknown>;
+  const existing = isRecord(user.customClaims) ? user.customClaims : {};
   await auth.setCustomUserClaims(uid, {
     ...existing,
     [APP_CHECK_ATTESTATION_CLAIM_KEY]: claim,
@@ -106,7 +106,7 @@ export function assertAppAttestBoundClaims(request: CallableRequest): void {
     throw new functions.HttpsError("unauthenticated", "App Check attestation is required.");
   }
 
-  const token = request.auth?.token as Record<string, unknown> | undefined;
+  const token = isRecord(request.auth?.token) ? request.auth.token : undefined;
   const claim = readAppCheckAttestationClaim(token);
   if (!claim) {
     throw new functions.HttpsError(

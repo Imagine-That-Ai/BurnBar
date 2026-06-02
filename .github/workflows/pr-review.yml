@@ -46,7 +46,18 @@ jobs:
 
           # Summarize what changed for the review comment
           STATS=$(git diff --stat "$BASE...$HEAD" | tail -1)
-          FILES=$(git diff --name-only "$BASE...$HEAD" | head -20 | tr '\n' ', ' | sed 's/,$//')
+          FILES=$(python3 - "$BASE" "$HEAD" <<'PY'
+          import subprocess
+          import sys
+
+          base, head = sys.argv[1:3]
+          names = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{base}...{head}"],
+              text=True,
+          ).splitlines()
+          print(", ".join(names[:20]))
+          PY
+          )
           LINES_ADDED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$1} END {print sum}')
           LINES_REMOVED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$2} END {print sum}')
 

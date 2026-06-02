@@ -117,13 +117,15 @@ export async function withSentry<T>(fn: () => Promise<T>, context?: Record<strin
 }
 
 function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
-  const scrubbed = sanitizeForTelemetry(event) as ErrorEvent;
-  scrubbed.request = sanitizeSentryRequest(scrubbed.request);
-  return scrubbed;
+  const scrubbed = sanitizeForTelemetry(event);
+  const sanitizedEvent: ErrorEvent = isRecord(scrubbed) ? { ...event, ...scrubbed } : { ...event };
+  sanitizedEvent.request = sanitizeSentryRequest(sanitizedEvent.request);
+  return sanitizedEvent;
 }
 
 function sanitizeSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
-  return sanitizeForTelemetry(breadcrumb) as Breadcrumb;
+  const scrubbed = sanitizeForTelemetry(breadcrumb);
+  return isRecord(scrubbed) ? { ...breadcrumb, ...scrubbed } : { ...breadcrumb };
 }
 
 export function sanitizeSentryEventForTesting(event: ErrorEvent): ErrorEvent {
@@ -138,4 +140,8 @@ function sanitizeSentryRequest(request: ErrorEvent["request"]): ErrorEvent["requ
   if (!request) return undefined;
   const method = typeof request.method === "string" ? request.method : undefined;
   return method ? { method } : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

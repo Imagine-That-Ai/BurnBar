@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
 import { eraseUserAccount, eraseUserCloudData } from "../accountDeletion.js";
 
 class FakeDocumentSnapshot {
@@ -20,16 +19,16 @@ class FakeDocumentReference {
     private readonly collections: FakeCollectionReference[] = [],
   ) {}
 
-  async listCollections(): Promise<CollectionReference[]> {
-    return this.collections as unknown as CollectionReference[];
+  async listCollections(): Promise<FakeCollectionReference[]> {
+    return this.collections;
   }
 }
 
 class FakeCollectionReference {
   constructor(private readonly refs: FakeDocumentReference[] = []) {}
 
-  async listDocuments(): Promise<DocumentReference[]> {
-    return this.refs as unknown as DocumentReference[];
+  async listDocuments(): Promise<FakeDocumentReference[]> {
+    return this.refs;
   }
 
   where(_field: string, _op: string, _value: string): { get: () => Promise<{ docs: FakeDocumentSnapshot[] }> } {
@@ -40,8 +39,8 @@ class FakeCollectionReference {
 class FakeBatch {
   readonly deletedPaths: string[] = [];
 
-  delete(ref: DocumentReference): void {
-    this.deletedPaths.push((ref as unknown as FakeDocumentReference).path);
+  delete(ref: FakeDocumentReference): void {
+    this.deletedPaths.push(ref.path);
   }
 
   async commit(): Promise<void> {}
@@ -63,8 +62,8 @@ class FakeFirestore {
     return new FakeDocumentReference(path);
   }
 
-  batch(): WriteBatch {
-    return this.batchInstance as unknown as WriteBatch;
+  batch(): FakeBatch {
+    return this.batchInstance;
   }
 }
 
@@ -81,7 +80,7 @@ describe("account deletion secret retention", () => {
     ]);
     const logger = { warn: vi.fn() };
 
-    const summary = await eraseUserCloudData(db as unknown as Firestore, "uid123456789", {
+    const summary = await eraseUserCloudData(db, "uid123456789", {
       logger,
       destroyCredential: async (name) => {
         if (name.includes("failed")) {
@@ -103,7 +102,7 @@ describe("account deletion secret retention", () => {
     const db = new FakeFirestore([secretRef("uid_account_failed", "projects/p/secrets/failed/versions/1")]);
     const deleteAuthUser = vi.fn();
 
-    const result = await eraseUserAccount(db as unknown as Firestore, "uid123456789", {
+    const result = await eraseUserAccount(db, "uid123456789", {
       deleteAuthUser,
       logger: { warn: vi.fn() },
       destroyCredential: async () => {

@@ -18,6 +18,7 @@ const EXCLUDED_PREFIXES = [
   "Vendor/",
   "artifacts/",
   "functions/src/types/generated/",
+  "android/app/src/main/assets/mermaid/",
   "OpenBurnBarMobile/Resources/Mermaid/",
   "tools/type-debt/fixtures/",
 ];

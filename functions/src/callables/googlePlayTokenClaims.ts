@@ -27,7 +27,7 @@ export async function claimGooglePlayPurchaseToken(args: {
       schemaVersion: 1,
     });
   } catch (err: unknown) {
-    const code = (err as { code?: number })?.code;
+    const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
     if (code !== 6) {
       throw err;
     }

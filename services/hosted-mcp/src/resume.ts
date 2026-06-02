@@ -157,13 +157,17 @@ export async function resumeConversation(db: ResumeFirestore, uid: string, args:
 }
 
 function canonicalSealedText(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const envelope = value as Record<string, unknown>;
+  if (!isRecord(value)) return undefined;
+  const envelope = value;
   if (envelope.algorithm !== "AES-256-GCM" || typeof envelope.keyVersion !== "number") return undefined;
   for (const key of ["nonce", "ciphertext", "tag"] as const) {
     if (typeof envelope[key] !== "string") return undefined;
   }
   return Object.fromEntries(SEALED_TEXT_KEYS.map((key) => [key, envelope[key]]));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function findConversation(db: ResumeFirestore, uid: string, sessionID: string): Promise<

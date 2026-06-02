@@ -296,8 +296,12 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   if (providedSecretHash && !isSha256Hex(providedSecretHash)) {
     throw httpError(400, "invalid_device_secret_hash");
   }
-  const generatedSecret = providedSecretHash ? undefined : generateHermesGatewayDeviceSecret();
-  const deviceSecretHash = providedSecretHash || hashHermesGatewayDeviceSecret(generatedSecret!);
+  let generatedSecret: string | undefined;
+  let deviceSecretHash = providedSecretHash;
+  if (!deviceSecretHash) {
+    generatedSecret = generateHermesGatewayDeviceSecret();
+    deviceSecretHash = hashHermesGatewayDeviceSecret(generatedSecret);
+  }
   const deviceCode = generateHermesGatewayDeviceCode();
   const userCode = randomHermesGatewayUserCode();
   const now = Timestamp.now();

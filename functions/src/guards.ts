@@ -246,9 +246,7 @@ export function parseHostedQuotaEntitlementDoc(raw: unknown): HostedQuotaEntitle
     transactionID: raw.transactionID,
     originalTransactionID: raw.originalTransactionID,
     expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : undefined,
-    expireAt: isTimestampWithToMillis(raw.expireAt)
-      ? (raw.expireAt as HostedQuotaEntitlementDoc["expireAt"])
-      : undefined,
+    expireAt: isFirestoreTimestamp(raw.expireAt) ? raw.expireAt : undefined,
     revokedAt: typeof raw.revokedAt === "string" ? raw.revokedAt : undefined,
     revocationReason: typeof raw.revocationReason === "number" ? raw.revocationReason : undefined,
     environment,

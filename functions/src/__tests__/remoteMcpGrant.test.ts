@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { Firestore } from "firebase-admin/firestore";
 import { revokeAllRemoteMcpGrantsForUser } from "../remoteMcpGrant.js";
 
 interface FakeDoc {
@@ -87,7 +86,7 @@ function makeFakeFirestore(counts: { clients: number; grants: number; revokedEve
   };
 
   return {
-    db: fakeDb as unknown as Firestore,
+    db: fakeDb,
     batchSizes,
     collections,
   };
@@ -107,10 +106,14 @@ describe("remote MCP grant revocation", () => {
     for (const collectionDocs of fake.collections.values()) {
       for (const doc of collectionDocs) {
         expect(doc.data.revokedAt).toBeTruthy();
-        if (!("already" in (doc.data.revokedAt as Record<string, unknown>))) {
+        if (!isRecord(doc.data.revokedAt) || !("already" in doc.data.revokedAt)) {
           expect(doc.data.revokeReason).toBe("test_suspension");
         }
       }
     }
   });
 });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

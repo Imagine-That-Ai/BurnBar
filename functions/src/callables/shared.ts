@@ -991,12 +991,13 @@ export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe
     return;
   }
   let subscription: Stripe.Subscription | undefined;
-  if (typeof session.subscription === "string") {
+  const subscriptionID = session.subscription;
+  if (typeof subscriptionID === "string") {
     subscription = await stripeWithResilience("subscriptions.retrieve", () =>
-      stripe.subscriptions.retrieve(session.subscription as string),
+      stripe.subscriptions.retrieve(subscriptionID),
     );
-  } else if (session.subscription && typeof session.subscription === "object") {
-    subscription = session.subscription;
+  } else if (subscriptionID && typeof subscriptionID === "object") {
+    subscription = subscriptionID;
   }
   if (subscription) {
     await applyStripeSubscription(stripe, subscription, uid);

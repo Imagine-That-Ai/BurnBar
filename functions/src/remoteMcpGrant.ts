@@ -35,6 +35,37 @@ export interface RemoteMcpGrantDoc {
   schemaVersion: 1;
 }
 
+export interface RemoteMcpRevocationDocumentReference {
+  path: string;
+}
+
+export interface RemoteMcpRevocationSnapshot {
+  id: string;
+  ref: RemoteMcpRevocationDocumentReference;
+  get(field: string): unknown;
+}
+
+export interface RemoteMcpRevocationQuery {
+  orderBy(field: FieldPath): RemoteMcpRevocationQuery;
+  startAfter(doc: RemoteMcpRevocationSnapshot): RemoteMcpRevocationQuery;
+  limit(count: number): RemoteMcpRevocationQuery;
+  get(): Promise<{ empty: boolean; docs: RemoteMcpRevocationSnapshot[] }>;
+}
+
+export interface RemoteMcpRevocationBatch {
+  set(
+    ref: RemoteMcpRevocationDocumentReference,
+    data: Record<string, unknown>,
+    options: { merge: true },
+  ): void;
+  commit(): Promise<void>;
+}
+
+export interface RemoteMcpRevocationFirestore {
+  collection(path: string): RemoteMcpRevocationQuery;
+  batch(): RemoteMcpRevocationBatch;
+}
+
 export function hashRemoteMcpSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -125,7 +156,7 @@ export async function revokeRemoteMcpClient(db: Firestore, uid: string, clientId
 }
 
 export async function revokeAllRemoteMcpGrantsForUser(
-  db: Firestore,
+  db: RemoteMcpRevocationFirestore,
   uid: string,
   reason = "cloud_feature_suspension",
 ): Promise<{ clientsRevoked: number; grantsRevoked: number }> {
@@ -136,13 +167,13 @@ export async function revokeAllRemoteMcpGrantsForUser(
 }
 
 async function revokeAllInCollection(
-  db: Firestore,
+  db: RemoteMcpRevocationFirestore,
   collectionPath: string,
   now: FirebaseFirestore.Timestamp,
   reason: string,
 ): Promise<number> {
   const pageSize = 450;
-  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  let lastDoc: RemoteMcpRevocationSnapshot | undefined;
   let revoked = 0;
 
   while (true) {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { TransactionalDocumentReference, TransactionalDocumentTransaction } from "../resilienceHelpers.js";
 
 const { pushWithResilience } = vi.hoisted(() => ({
   pushWithResilience: vi.fn(async (_label: string, fn: () => Promise<unknown>) => fn()),
@@ -14,12 +15,12 @@ vi.mock("../resilienceHelpers.js", async (importOriginal) => {
 
 function makeFakePushRef(initialData: Record<string, unknown>) {
   const state = { data: { ...initialData } };
-  const ref = {
+  const ref: TransactionalDocumentReference = {
     id: "push-1",
     path: "outbound/push-1",
     firestore: {
-      async runTransaction<T>(fn: (transaction: unknown) => Promise<T>): Promise<T> {
-        const transaction = {
+      async runTransaction<T>(fn: (transaction: TransactionalDocumentTransaction) => Promise<T>): Promise<T> {
+        const transaction: TransactionalDocumentTransaction = {
           async get() {
             return {
               exists: true,
@@ -34,7 +35,7 @@ function makeFakePushRef(initialData: Record<string, unknown>) {
       },
     },
   };
-  return { ref: ref as FirebaseFirestore.DocumentReference, state };
+  return { ref, state };
 }
 
 describe("push resilience wiring", () => {
@@ -81,7 +82,11 @@ describe("push resilience wiring", () => {
     await expect(finishClaimedPush(ref, "wrong-lease", { status: "sent" })).resolves.toBe(false);
     expect(state.data.status).toBe("sending");
 
-    await expect(finishClaimedPush(ref, claim!.leaseId, { status: "sent" })).resolves.toBe(true);
+    const leaseId = claim?.leaseId;
+    expect(leaseId).toBeDefined();
+    if (!leaseId) throw new Error("Expected claim to include a lease id.");
+
+    await expect(finishClaimedPush(ref, leaseId, { status: "sent" })).resolves.toBe(true);
     expect(state.data.status).toBe("sent");
   });
 
