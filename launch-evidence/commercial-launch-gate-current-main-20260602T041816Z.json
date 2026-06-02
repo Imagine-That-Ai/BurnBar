@@ -1,0 +1,1246 @@
+{
+  "generatedAt": "2026-06-02T04:18:16.789Z",
+  "verdict": {
+    "status": "NO_GO",
+    "reason": "failed checks: mainRequiredGate, mainCodeQL"
+  },
+  "checks": {
+    "repo": {
+      "ok": true,
+      "head": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "originMain": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "status": "## HEAD (no branch)",
+      "clean": true
+    },
+    "appStore": {
+      "ok": true,
+      "state": "READY_FOR_SALE",
+      "subscriptionState": "APPROVED",
+      "manualRelease": true,
+      "buildReady": true,
+      "productCoverage": {
+        "ok": true,
+        "required": [
+          "com.openburnbar.pro.monthly",
+          "com.openburnbar.pro.annual",
+          "com.openburnbar.proMax.v2.monthly",
+          "com.openburnbar.proMax.annual",
+          "com.openburnbar.agentControl.actions100",
+          "com.openburnbar.floo.relay50gb"
+        ],
+        "observed": [
+          "com.openburnbar.agentControl.actions100",
+          "com.openburnbar.computerUse.monthly",
+          "com.openburnbar.floo.relay50gb",
+          "com.openburnbar.hostedQuotaSync.cloud.monthly",
+          "com.openburnbar.hostedQuotaSync.monthly",
+          "com.openburnbar.pro.annual",
+          "com.openburnbar.pro.monthly",
+          "com.openburnbar.proMax.annual",
+          "com.openburnbar.proMax.bundle.monthly",
+          "com.openburnbar.proMax.v2.monthly"
+        ],
+        "missing": []
+      },
+      "productReadiness": {
+        "ok": true,
+        "allowedStates": [
+          "READY_TO_SUBMIT",
+          "WAITING_FOR_REVIEW",
+          "IN_REVIEW",
+          "APPROVED",
+          "READY_FOR_SALE"
+        ],
+        "checks": [
+          {
+            "productId": "com.openburnbar.pro.monthly",
+            "ok": true,
+            "state": "WAITING_FOR_REVIEW",
+            "id": "6775039081",
+            "name": "OpenBurnBar Cloud Monthly"
+          },
+          {
+            "productId": "com.openburnbar.pro.annual",
+            "ok": true,
+            "state": "WAITING_FOR_REVIEW",
+            "id": "6775039037",
+            "name": "OpenBurnBar Cloud Annual"
+          },
+          {
+            "productId": "com.openburnbar.proMax.v2.monthly",
+            "ok": true,
+            "state": "WAITING_FOR_REVIEW",
+            "id": "6775247828",
+            "name": "OpenBurnBar Cloud Pro Monthly"
+          },
+          {
+            "productId": "com.openburnbar.proMax.annual",
+            "ok": true,
+            "state": "WAITING_FOR_REVIEW",
+            "id": "6775039475",
+            "name": "OpenBurnBar Cloud Pro Annual"
+          },
+          {
+            "productId": "com.openburnbar.agentControl.actions100",
+            "ok": true,
+            "state": "WAITING_FOR_REVIEW",
+            "id": "6775039582",
+            "name": "Agent Control 100 Actions"
+          },
+          {
+            "productId": "com.openburnbar.floo.relay50gb",
+            "ok": true,
+            "state": "WAITING_FOR_REVIEW",
+            "id": "6775039480",
+            "name": "Floo Relay 50 GB"
+          }
+        ]
+      },
+      "legacyGrandfatherPresent": true,
+      "versionString": "1.0",
+      "versionId": "5bd7a32b-29ee-476a-8efa-ec0a9614ff6d"
+    },
+    "appStoreServerNotifications": {
+      "ok": true,
+      "sandbox": {
+        "ok": true,
+        "requestStatus": 200,
+        "requestOk": true,
+        "hasToken": true,
+        "delivered": true,
+        "firstSendAttemptResult": "SUCCESS",
+        "sendAttempts": [
+          {
+            "attemptDate": 1780373851140,
+            "sendAttemptResult": "SUCCESS"
+          }
+        ]
+      },
+      "productionRequired": true,
+      "production": {
+        "ok": true,
+        "requestStatus": 200,
+        "requestOk": true,
+        "hasToken": true,
+        "delivered": true,
+        "firstSendAttemptResult": "SUCCESS",
+        "sendAttempts": [
+          {
+            "attemptDate": 1780373856553,
+            "sendAttemptResult": "SUCCESS"
+          }
+        ]
+      }
+    },
+    "firebaseAppCheck": {
+      "ok": true,
+      "serviceName": "projects/246956661961/services/firestore.googleapis.com",
+      "enforcementMode": "ENFORCED",
+      "updateTime": "2026-05-30T19:32:46.197567Z",
+      "probe": "live"
+    },
+    "branchProtection": {
+      "ok": true,
+      "requiredChecks": [
+        "openburnbar-pr",
+        "Analyze (swift)",
+        "Analyze (javascript-typescript)",
+        "Analyze (python)"
+      ],
+      "reviewCount": 1,
+      "adminsEnforced": true,
+      "forcePushesAllowed": false,
+      "deletionsAllowed": false
+    },
+    "githubSecurity": {
+      "ok": true,
+      "requiredSettings": {
+        "dependabot_security_updates": true,
+        "secret_scanning": true,
+        "secret_scanning_ai_detection": true,
+        "secret_scanning_non_provider_patterns": true,
+        "secret_scanning_push_protection": true,
+        "secret_scanning_validity_checks": true
+      },
+      "openAlerts": {
+        "codeScanning": 0,
+        "secretScanning": 0,
+        "dependabot": 0
+      },
+      "errors": {}
+    },
+    "mainRequiredGate": {
+      "ok": false,
+      "sha": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "openburnbarPr": {
+        "status": "in_progress",
+        "conclusion": null,
+        "completedAt": null
+      }
+    },
+    "mainCodeQL": {
+      "ok": false,
+      "sha": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "checks": [
+        {
+          "name": "Analyze (swift)",
+          "status": "in_progress",
+          "conclusion": null,
+          "completedAt": null
+        },
+        {
+          "name": "Analyze (javascript-typescript)",
+          "status": "completed",
+          "conclusion": "success",
+          "completedAt": "2026-06-02T04:15:15Z"
+        },
+        {
+          "name": "Analyze (python)",
+          "status": "completed",
+          "conclusion": "success",
+          "completedAt": "2026-06-02T04:14:22Z"
+        }
+      ]
+    },
+    "latestMergedPrGate": {
+      "ok": true,
+      "pr": 193,
+      "headSha": "a969f6128f15d388a4e1a8151046ad6648705449",
+      "supersededByMain": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "skipped": true,
+      "reason": "Latest merged PR head is already contained in a newer origin/main commit; mainRequiredGate is authoritative.",
+      "openburnbarPr": null,
+      "functionalQa": null
+    },
+    "cloudRun": {
+      "ok": true,
+      "services": [
+        {
+          "name": "openburnbar-quota-runner",
+          "exists": true,
+          "ready": true,
+          "url": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+          "serviceAccount": "246956661961-compute@developer.gserviceaccount.com",
+          "ingress": "all"
+        }
+      ],
+      "retiredServices": [
+        {
+          "name": "hermes-realtime-relay",
+          "absent": true,
+          "ready": null,
+          "url": null
+        }
+      ]
+    },
+    "runnerReadyz": {
+      "ok": true,
+      "url": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+      "body": "{\"ok\":true}"
+    },
+    "redis": {
+      "ok": true,
+      "name": "hermes-realtime-relay-redis-prod-secure",
+      "state": "absent",
+      "retired": true
+    },
+    "hostedQuotaRuntime": {
+      "ok": true,
+      "functions": [
+        {
+          "id": "refreshProviderAccountQuota",
+          "ok": true,
+          "envChecks": [
+            {
+              "name": "ENFORCE_APP_CHECK",
+              "ok": true,
+              "actual": "true",
+              "expected": "true"
+            },
+            {
+              "name": "HOSTED_QUOTA_DAILY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "30",
+              "expected": "30"
+            },
+            {
+              "name": "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "300",
+              "expected": "300"
+            },
+            {
+              "name": "HOSTED_QUOTA_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+              "expected": "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.pro.monthly",
+              "expected": "com.openburnbar.pro.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_MAX_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.proMax.v2.monthly",
+              "expected": "com.openburnbar.proMax.v2.monthly"
+            }
+          ],
+          "runnerURL": {
+            "ok": true,
+            "host": "openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app"
+          },
+          "runnerTokenSecret": {
+            "ok": true,
+            "required": true,
+            "present": true
+          },
+          "secretEnvVarNames": [
+            "HOSTED_QUOTA_RUNNER_TOKEN"
+          ]
+        },
+        {
+          "id": "refreshAllProviderQuotas",
+          "ok": true,
+          "envChecks": [
+            {
+              "name": "ENFORCE_APP_CHECK",
+              "ok": true,
+              "actual": "true",
+              "expected": "true"
+            },
+            {
+              "name": "HOSTED_QUOTA_DAILY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "30",
+              "expected": "30"
+            },
+            {
+              "name": "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "300",
+              "expected": "300"
+            },
+            {
+              "name": "HOSTED_QUOTA_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+              "expected": "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.pro.monthly",
+              "expected": "com.openburnbar.pro.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_MAX_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.proMax.v2.monthly",
+              "expected": "com.openburnbar.proMax.v2.monthly"
+            }
+          ],
+          "runnerURL": {
+            "ok": true,
+            "host": "openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app"
+          },
+          "runnerTokenSecret": {
+            "ok": true,
+            "required": true,
+            "present": true
+          },
+          "secretEnvVarNames": [
+            "HOSTED_QUOTA_RUNNER_TOKEN"
+          ]
+        },
+        {
+          "id": "connectHostedQuotaAccount",
+          "ok": true,
+          "envChecks": [
+            {
+              "name": "ENFORCE_APP_CHECK",
+              "ok": true,
+              "actual": "true",
+              "expected": "true"
+            },
+            {
+              "name": "HOSTED_QUOTA_DAILY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "30",
+              "expected": "30"
+            },
+            {
+              "name": "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "300",
+              "expected": "300"
+            },
+            {
+              "name": "HOSTED_QUOTA_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+              "expected": "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.pro.monthly",
+              "expected": "com.openburnbar.pro.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_MAX_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.proMax.v2.monthly",
+              "expected": "com.openburnbar.proMax.v2.monthly"
+            }
+          ],
+          "runnerURL": {
+            "ok": true,
+            "host": "openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app"
+          },
+          "runnerTokenSecret": {
+            "ok": true,
+            "required": false,
+            "present": false
+          },
+          "secretEnvVarNames": []
+        },
+        {
+          "id": "deleteHostedQuotaCredentials",
+          "ok": true,
+          "envChecks": [
+            {
+              "name": "ENFORCE_APP_CHECK",
+              "ok": true,
+              "actual": "true",
+              "expected": "true"
+            },
+            {
+              "name": "HOSTED_QUOTA_DAILY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "30",
+              "expected": "30"
+            },
+            {
+              "name": "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "300",
+              "expected": "300"
+            },
+            {
+              "name": "HOSTED_QUOTA_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+              "expected": "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.pro.monthly",
+              "expected": "com.openburnbar.pro.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_MAX_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.proMax.v2.monthly",
+              "expected": "com.openburnbar.proMax.v2.monthly"
+            }
+          ],
+          "runnerURL": {
+            "ok": true,
+            "host": "openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app"
+          },
+          "runnerTokenSecret": {
+            "ok": true,
+            "required": false,
+            "present": false
+          },
+          "secretEnvVarNames": []
+        },
+        {
+          "id": "deleteProviderAccount",
+          "ok": true,
+          "envChecks": [
+            {
+              "name": "ENFORCE_APP_CHECK",
+              "ok": true,
+              "actual": "true",
+              "expected": "true"
+            },
+            {
+              "name": "HOSTED_QUOTA_DAILY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "30",
+              "expected": "30"
+            },
+            {
+              "name": "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT",
+              "ok": true,
+              "actual": "300",
+              "expected": "300"
+            },
+            {
+              "name": "HOSTED_QUOTA_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+              "expected": "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.pro.monthly",
+              "expected": "com.openburnbar.pro.monthly"
+            },
+            {
+              "name": "BURNBAR_PRO_MAX_PRODUCT_ID",
+              "ok": true,
+              "actual": "com.openburnbar.proMax.v2.monthly",
+              "expected": "com.openburnbar.proMax.v2.monthly"
+            }
+          ],
+          "runnerURL": {
+            "ok": true,
+            "host": "openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app"
+          },
+          "runnerTokenSecret": {
+            "ok": true,
+            "required": false,
+            "present": false
+          },
+          "secretEnvVarNames": []
+        }
+      ],
+      "runner": {
+        "ok": true,
+        "secretEnvVarNames": [
+          "RUNNER_SHARED_SECRET"
+        ]
+      }
+    },
+    "commercialBillingRuntime": {
+      "ok": true,
+      "functions": {
+        "checkout": {
+          "ok": true,
+          "functionName": "createStripeBurnBarProCheckoutSession",
+          "env": {
+            "AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentControl.actions100",
+            "APNS_HOST": "https://api.push.apple.com",
+            "APNS_VOIP_TOPIC": "com.openburnbar.mobile.voip",
+            "APP_STORE_APPLE_APP_ID": "6766366964",
+            "APP_STORE_AUTO_FALLBACK_ENV": "true",
+            "APP_STORE_BUNDLE_ID": "com.openburnbar.app",
+            "APP_STORE_ENABLE_ONLINE_CHECKS": "true",
+            "APP_STORE_ENV": "Production",
+            "BURNBAR_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID": "com.openburnbar.proMax.annual",
+            "BURNBAR_PRO_MAX_PRODUCT_ID": "com.openburnbar.proMax.v2.monthly",
+            "BURNBAR_PRO_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "ENFORCE_APP_CHECK": "true",
+            "EVENTARC_CLOUD_EVENT_SOURCE": "projects/burnbar/locations/us-central1/services/createStripeBurnBarProCheckoutSession",
+            "FIREBASE_CONFIG": "{\"projectId\":\"burnbar\",\"storageBucket\":\"burnbar.firebasestorage.app\"}",
+            "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "FUNCTION_SIGNATURE_TYPE": "http",
+            "FUNCTION_TARGET": "createStripeBurnBarProCheckoutSession",
+            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
+            "GCLOUD_PROJECT": "burnbar",
+            "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
+            "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.promax.annual",
+            "GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID": "com.openburnbar.promax.v2.monthly",
+            "GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "GOOGLE_PLAY_PACKAGE_NAME": "com.openburnbar",
+            "GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "HOSTED_QUOTA_DAILY_REFRESH_LIMIT": "30",
+            "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT": "300",
+            "HOSTED_QUOTA_PRODUCT_ID": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+            "HOSTED_QUOTA_RUNNER_URL": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+            "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
+            "LOG_EXECUTION_ID": "true",
+            "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
+            "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
+            "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
+            "QUOTA_REFRESH_BATCH_SIZE": "20",
+            "REFRESH_RATE_LIMIT_SECONDS": "60",
+            "ROLLUP_BATCH_SIZE": "50",
+            "SENTRY_DSN": "https://0da1ddafe5258bfff732e2f8e5c326b3@o4510208156631040.ingest.us.sentry.io/4511485521362944",
+            "SENTRY_ENVIRONMENT": "production",
+            "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID": "price_1TcsUiCFamvUJU7yVBRaOV4p",
+            "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID": "price_1TcsUgCFamvUJU7yRbS0YWKu",
+            "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID": "price_1TcsUhCFamvUJU7yq6Q25meT",
+            "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID": "price_1TcsUgCFamvUJU7yRISgcK5V",
+            "STRIPE_BURNBAR_PRO_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_FLOO_RELAY_50GB_PRICE_ID": "price_1TcsUiCFamvUJU7yT9Zl8E0f"
+          },
+          "secretEnvVarNames": [
+            "STRIPE_SECRET_KEY"
+          ]
+        },
+        "googlePlay": {
+          "ok": true,
+          "functionName": "verifyGooglePlayBurnBarProSubscription",
+          "env": {
+            "AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentControl.actions100",
+            "APNS_HOST": "https://api.push.apple.com",
+            "APNS_VOIP_TOPIC": "com.openburnbar.mobile.voip",
+            "APP_STORE_APPLE_APP_ID": "6766366964",
+            "APP_STORE_AUTO_FALLBACK_ENV": "true",
+            "APP_STORE_BUNDLE_ID": "com.openburnbar.app",
+            "APP_STORE_ENABLE_ONLINE_CHECKS": "true",
+            "APP_STORE_ENV": "Production",
+            "BURNBAR_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID": "com.openburnbar.proMax.annual",
+            "BURNBAR_PRO_MAX_PRODUCT_ID": "com.openburnbar.proMax.v2.monthly",
+            "BURNBAR_PRO_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "ENFORCE_APP_CHECK": "true",
+            "EVENTARC_CLOUD_EVENT_SOURCE": "projects/burnbar/locations/us-central1/services/verifyGooglePlayBurnBarProSubscription",
+            "FIREBASE_CONFIG": "{\"projectId\":\"burnbar\",\"storageBucket\":\"burnbar.firebasestorage.app\"}",
+            "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "FUNCTION_SIGNATURE_TYPE": "http",
+            "FUNCTION_TARGET": "verifyGooglePlayBurnBarProSubscription",
+            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
+            "GCLOUD_PROJECT": "burnbar",
+            "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
+            "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.promax.annual",
+            "GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID": "com.openburnbar.promax.v2.monthly",
+            "GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "GOOGLE_PLAY_PACKAGE_NAME": "com.openburnbar",
+            "GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "HOSTED_QUOTA_DAILY_REFRESH_LIMIT": "30",
+            "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT": "300",
+            "HOSTED_QUOTA_PRODUCT_ID": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+            "HOSTED_QUOTA_RUNNER_URL": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+            "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
+            "LOG_EXECUTION_ID": "true",
+            "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
+            "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
+            "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
+            "QUOTA_REFRESH_BATCH_SIZE": "20",
+            "REFRESH_RATE_LIMIT_SECONDS": "60",
+            "ROLLUP_BATCH_SIZE": "50",
+            "SENTRY_DSN": "https://0da1ddafe5258bfff732e2f8e5c326b3@o4510208156631040.ingest.us.sentry.io/4511485521362944",
+            "SENTRY_ENVIRONMENT": "production",
+            "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID": "price_1TcsUiCFamvUJU7yVBRaOV4p",
+            "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID": "price_1TcsUgCFamvUJU7yRbS0YWKu",
+            "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID": "price_1TcsUhCFamvUJU7yq6Q25meT",
+            "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID": "price_1TcsUgCFamvUJU7yRISgcK5V",
+            "STRIPE_BURNBAR_PRO_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_FLOO_RELAY_50GB_PRICE_ID": "price_1TcsUiCFamvUJU7yT9Zl8E0f"
+          },
+          "secretEnvVarNames": []
+        },
+        "googlePlayTopUp": {
+          "ok": true,
+          "functionName": "verifyGooglePlayCloudProTopUp",
+          "env": {
+            "AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentControl.actions100",
+            "APNS_HOST": "https://api.push.apple.com",
+            "APNS_VOIP_TOPIC": "com.openburnbar.mobile.voip",
+            "APP_STORE_APPLE_APP_ID": "6766366964",
+            "APP_STORE_AUTO_FALLBACK_ENV": "true",
+            "APP_STORE_BUNDLE_ID": "com.openburnbar.app",
+            "APP_STORE_ENABLE_ONLINE_CHECKS": "true",
+            "APP_STORE_ENV": "Production",
+            "BURNBAR_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID": "com.openburnbar.proMax.annual",
+            "BURNBAR_PRO_MAX_PRODUCT_ID": "com.openburnbar.proMax.v2.monthly",
+            "BURNBAR_PRO_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "ENFORCE_APP_CHECK": "true",
+            "EVENTARC_CLOUD_EVENT_SOURCE": "projects/burnbar/locations/us-central1/services/verifyGooglePlayCloudProTopUp",
+            "FIREBASE_CONFIG": "{\"projectId\":\"burnbar\",\"storageBucket\":\"burnbar.firebasestorage.app\"}",
+            "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "FUNCTION_SIGNATURE_TYPE": "http",
+            "FUNCTION_TARGET": "verifyGooglePlayCloudProTopUp",
+            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
+            "GCLOUD_PROJECT": "burnbar",
+            "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
+            "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.promax.annual",
+            "GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID": "com.openburnbar.promax.v2.monthly",
+            "GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "GOOGLE_PLAY_PACKAGE_NAME": "com.openburnbar",
+            "GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "HOSTED_QUOTA_DAILY_REFRESH_LIMIT": "30",
+            "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT": "300",
+            "HOSTED_QUOTA_PRODUCT_ID": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+            "HOSTED_QUOTA_RUNNER_URL": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+            "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
+            "LOG_EXECUTION_ID": "true",
+            "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
+            "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
+            "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
+            "QUOTA_REFRESH_BATCH_SIZE": "20",
+            "REFRESH_RATE_LIMIT_SECONDS": "60",
+            "ROLLUP_BATCH_SIZE": "50",
+            "SENTRY_DSN": "https://0da1ddafe5258bfff732e2f8e5c326b3@o4510208156631040.ingest.us.sentry.io/4511485521362944",
+            "SENTRY_ENVIRONMENT": "production",
+            "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID": "price_1TcsUiCFamvUJU7yVBRaOV4p",
+            "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID": "price_1TcsUgCFamvUJU7yRbS0YWKu",
+            "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID": "price_1TcsUhCFamvUJU7yq6Q25meT",
+            "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID": "price_1TcsUgCFamvUJU7yRISgcK5V",
+            "STRIPE_BURNBAR_PRO_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_FLOO_RELAY_50GB_PRICE_ID": "price_1TcsUiCFamvUJU7yT9Zl8E0f"
+          },
+          "secretEnvVarNames": []
+        },
+        "appStoreTopUp": {
+          "ok": true,
+          "functionName": "verifyCloudProTopUp",
+          "env": {
+            "AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentControl.actions100",
+            "APNS_HOST": "https://api.push.apple.com",
+            "APNS_VOIP_TOPIC": "com.openburnbar.mobile.voip",
+            "APP_STORE_APPLE_APP_ID": "6766366964",
+            "APP_STORE_AUTO_FALLBACK_ENV": "true",
+            "APP_STORE_BUNDLE_ID": "com.openburnbar.app",
+            "APP_STORE_ENABLE_ONLINE_CHECKS": "true",
+            "APP_STORE_ENV": "Production",
+            "BURNBAR_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID": "com.openburnbar.proMax.annual",
+            "BURNBAR_PRO_MAX_PRODUCT_ID": "com.openburnbar.proMax.v2.monthly",
+            "BURNBAR_PRO_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "ENFORCE_APP_CHECK": "true",
+            "EVENTARC_CLOUD_EVENT_SOURCE": "projects/burnbar/locations/us-central1/services/verifyCloudProTopUp",
+            "FIREBASE_CONFIG": "{\"projectId\":\"burnbar\",\"storageBucket\":\"burnbar.firebasestorage.app\"}",
+            "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "FUNCTION_SIGNATURE_TYPE": "http",
+            "FUNCTION_TARGET": "verifyCloudProTopUp",
+            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
+            "GCLOUD_PROJECT": "burnbar",
+            "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
+            "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.promax.annual",
+            "GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID": "com.openburnbar.promax.v2.monthly",
+            "GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "GOOGLE_PLAY_PACKAGE_NAME": "com.openburnbar",
+            "GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "HOSTED_QUOTA_DAILY_REFRESH_LIMIT": "30",
+            "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT": "300",
+            "HOSTED_QUOTA_PRODUCT_ID": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+            "HOSTED_QUOTA_RUNNER_URL": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+            "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
+            "LOG_EXECUTION_ID": "true",
+            "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
+            "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
+            "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
+            "QUOTA_REFRESH_BATCH_SIZE": "20",
+            "REFRESH_RATE_LIMIT_SECONDS": "60",
+            "ROLLUP_BATCH_SIZE": "50",
+            "SENTRY_DSN": "https://0da1ddafe5258bfff732e2f8e5c326b3@o4510208156631040.ingest.us.sentry.io/4511485521362944",
+            "SENTRY_ENVIRONMENT": "production",
+            "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID": "price_1TcsUiCFamvUJU7yVBRaOV4p",
+            "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID": "price_1TcsUgCFamvUJU7yRbS0YWKu",
+            "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID": "price_1TcsUhCFamvUJU7yq6Q25meT",
+            "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID": "price_1TcsUgCFamvUJU7yRISgcK5V",
+            "STRIPE_BURNBAR_PRO_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_FLOO_RELAY_50GB_PRICE_ID": "price_1TcsUiCFamvUJU7yT9Zl8E0f"
+          },
+          "secretEnvVarNames": [
+            "APP_STORE_ASC_ISSUER_ID",
+            "APP_STORE_ASC_KEY_ID",
+            "APP_STORE_ASC_KEY_P8"
+          ]
+        },
+        "webhook": {
+          "ok": true,
+          "functionName": "stripeBurnBarProWebhook",
+          "env": {
+            "AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentControl.actions100",
+            "APNS_HOST": "https://api.push.apple.com",
+            "APNS_VOIP_TOPIC": "com.openburnbar.mobile.voip",
+            "APP_STORE_APPLE_APP_ID": "6766366964",
+            "APP_STORE_AUTO_FALLBACK_ENV": "true",
+            "APP_STORE_BUNDLE_ID": "com.openburnbar.app",
+            "APP_STORE_ENABLE_ONLINE_CHECKS": "true",
+            "APP_STORE_ENV": "Production",
+            "BURNBAR_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID": "com.openburnbar.proMax.annual",
+            "BURNBAR_PRO_MAX_PRODUCT_ID": "com.openburnbar.proMax.v2.monthly",
+            "BURNBAR_PRO_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "ENFORCE_APP_CHECK": "true",
+            "EVENTARC_CLOUD_EVENT_SOURCE": "projects/burnbar/locations/us-central1/services/stripeBurnBarProWebhook",
+            "FIREBASE_CONFIG": "{\"projectId\":\"burnbar\",\"storageBucket\":\"burnbar.firebasestorage.app\"}",
+            "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "FUNCTION_SIGNATURE_TYPE": "http",
+            "FUNCTION_TARGET": "stripeBurnBarProWebhook",
+            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
+            "GCLOUD_PROJECT": "burnbar",
+            "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
+            "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
+            "GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID": "com.openburnbar.promax.annual",
+            "GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID": "com.openburnbar.promax.v2.monthly",
+            "GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
+            "GOOGLE_PLAY_PACKAGE_NAME": "com.openburnbar",
+            "GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID": "com.openburnbar.pro.monthly",
+            "HOSTED_QUOTA_DAILY_REFRESH_LIMIT": "30",
+            "HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT": "300",
+            "HOSTED_QUOTA_PRODUCT_ID": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+            "HOSTED_QUOTA_RUNNER_URL": "https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app",
+            "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
+            "LOG_EXECUTION_ID": "true",
+            "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
+            "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
+            "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
+            "QUOTA_REFRESH_BATCH_SIZE": "20",
+            "REFRESH_RATE_LIMIT_SECONDS": "60",
+            "ROLLUP_BATCH_SIZE": "50",
+            "SENTRY_DSN": "https://0da1ddafe5258bfff732e2f8e5c326b3@o4510208156631040.ingest.us.sentry.io/4511485521362944",
+            "SENTRY_ENVIRONMENT": "production",
+            "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID": "price_1TcsUiCFamvUJU7yVBRaOV4p",
+            "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID": "price_1TcsUgCFamvUJU7yRbS0YWKu",
+            "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID": "price_1TcsUhCFamvUJU7yq6Q25meT",
+            "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID": "price_1TcsUgCFamvUJU7yRISgcK5V",
+            "STRIPE_BURNBAR_PRO_PRICE_ID": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "STRIPE_FLOO_RELAY_50GB_PRICE_ID": "price_1TcsUiCFamvUJU7yT9Zl8E0f"
+          },
+          "secretEnvVarNames": [
+            "STRIPE_SECRET_KEY",
+            "STRIPE_WEBHOOK_SECRET"
+          ]
+        }
+      },
+      "envRequirements": {
+        "ok": true,
+        "valueChecks": [
+          {
+            "name": "STRIPE_BURNBAR_PRO_PRICE_ID",
+            "ok": true,
+            "actual": "price_1TcsUfCFamvUJU7yjeIJ5f79",
+            "expected": "same as STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+            "aliasValue": "price_1TcsUfCFamvUJU7yjeIJ5f79"
+          },
+          {
+            "name": "BURNBAR_PRO_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.pro.monthly",
+            "expected": "com.openburnbar.pro.monthly"
+          },
+          {
+            "name": "BURNBAR_PRO_ANNUAL_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.pro.annual",
+            "expected": "com.openburnbar.pro.annual"
+          },
+          {
+            "name": "BURNBAR_PRO_MAX_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.proMax.v2.monthly",
+            "expected": "com.openburnbar.proMax.v2.monthly"
+          },
+          {
+            "name": "BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.proMax.annual",
+            "expected": "com.openburnbar.proMax.annual"
+          },
+          {
+            "name": "AGENT_CONTROL_100_ACTIONS_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.agentControl.actions100",
+            "expected": "com.openburnbar.agentControl.actions100"
+          },
+          {
+            "name": "FLOO_RELAY_50GB_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.floo.relay50gb",
+            "expected": "com.openburnbar.floo.relay50gb"
+          },
+          {
+            "name": "GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.pro.monthly",
+            "expected": "com.openburnbar.pro.monthly"
+          },
+          {
+            "name": "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.pro.annual",
+            "expected": "com.openburnbar.pro.annual"
+          },
+          {
+            "name": "GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.promax.v2.monthly",
+            "expected": "com.openburnbar.promax.v2.monthly"
+          },
+          {
+            "name": "GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.promax.annual",
+            "expected": "com.openburnbar.promax.annual"
+          },
+          {
+            "name": "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.agentcontrol.actions100",
+            "expected": "com.openburnbar.agentcontrol.actions100"
+          },
+          {
+            "name": "GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID",
+            "ok": true,
+            "actual": "com.openburnbar.floo.relay50gb",
+            "expected": "com.openburnbar.floo.relay50gb"
+          }
+        ],
+        "presenceChecks": [
+          {
+            "name": "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+            "ok": true,
+            "present": true
+          },
+          {
+            "name": "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID",
+            "ok": true,
+            "present": true
+          },
+          {
+            "name": "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID",
+            "ok": true,
+            "present": true
+          },
+          {
+            "name": "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
+            "ok": true,
+            "present": true
+          },
+          {
+            "name": "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID",
+            "ok": true,
+            "present": true
+          },
+          {
+            "name": "STRIPE_FLOO_RELAY_50GB_PRICE_ID",
+            "ok": true,
+            "present": true
+          }
+        ]
+      },
+      "stripeSecrets": {
+        "ok": true,
+        "present": [
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET"
+        ],
+        "required": [
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET"
+        ]
+      }
+    },
+    "remoteConfigCaps": {
+      "ok": true,
+      "checks": [
+        {
+          "name": "media_budget_soft_usd",
+          "ok": true,
+          "actual": "600",
+          "expected": "600"
+        },
+        {
+          "name": "media_budget_hard_usd",
+          "ok": true,
+          "actual": "1000",
+          "expected": "1000"
+        },
+        {
+          "name": "media_kill_switch",
+          "ok": true,
+          "actual": "false",
+          "expected": "false"
+        },
+        {
+          "name": "computer_use_budget_soft_usd",
+          "ok": true,
+          "actual": "1500",
+          "expected": "1500"
+        },
+        {
+          "name": "computer_use_budget_hard_usd",
+          "ok": true,
+          "actual": "2500",
+          "expected": "2500"
+        },
+        {
+          "name": "computer_use_kill_switch",
+          "ok": true,
+          "actual": "false",
+          "expected": "false"
+        },
+        {
+          "name": "hosted_quota_daily_refresh_limit",
+          "ok": true,
+          "actual": "30",
+          "expected": "30"
+        },
+        {
+          "name": "hosted_quota_monthly_refresh_limit",
+          "ok": true,
+          "actual": "300",
+          "expected": "300"
+        },
+        {
+          "name": "cloud_pro_included_hosted_actions_monthly",
+          "ok": true,
+          "actual": "500",
+          "expected": "500"
+        },
+        {
+          "name": "cloud_pro_action_topup_unit",
+          "ok": true,
+          "actual": "100",
+          "expected": "100"
+        },
+        {
+          "name": "cloud_pro_monthly_hosted_action_cap",
+          "ok": true,
+          "actual": "2000",
+          "expected": "2000"
+        },
+        {
+          "name": "cloud_pro_included_relay_gb_monthly",
+          "ok": true,
+          "actual": "50",
+          "expected": "50"
+        },
+        {
+          "name": "cloud_pro_relay_topup_unit_gb",
+          "ok": true,
+          "actual": "50",
+          "expected": "50"
+        },
+        {
+          "name": "cloud_pro_monthly_relay_gb_cap",
+          "ok": true,
+          "actual": "300",
+          "expected": "300"
+        }
+      ]
+    },
+    "opsAlerts": {
+      "ok": true,
+      "project": "burnbar",
+      "required": [
+        {
+          "displayName": "OpenBurnBar Callable error spike",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "logging.googleapis.com/user/openburnbar_callable_error"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar Circuit breaker open",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "logging.googleapis.com/user/openburnbar_circuit_breaker_tripped"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar healthReady degraded",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "run.googleapis.com/request_count"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar Hosted MCP 5xx spike",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "logging.googleapis.com/user/openburnbar_hosted_mcp_5xx"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar Firestore read spike",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "firestore.googleapis.com/document/read_count"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar storage growth",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "firestore.googleapis.com/storage/data_and_index_storage_bytes"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar relay spend proxy",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "run.googleapis.com/request_count"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar Redis pressure",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "redis.googleapis.com/clients/connected",
+            "redis.googleapis.com/stats/memory/usage_ratio"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        }
+      ]
+    },
+    "billingAlerts": {
+      "ok": true,
+      "project": "burnbar",
+      "required": [
+        {
+          "displayName": "OpenBurnBar Firestore read spike",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "firestore.googleapis.com/document/read_count"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar storage growth",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "firestore.googleapis.com/storage/data_and_index_storage_bytes"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar relay spend proxy",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "run.googleapis.com/request_count"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        },
+        {
+          "displayName": "OpenBurnBar Redis pressure",
+          "present": true,
+          "duplicateCount": 0,
+          "enabled": true,
+          "notificationChannels": [
+            "projects/burnbar/notificationChannels/5012565067290551244"
+          ],
+          "metricTypes": [
+            "redis.googleapis.com/clients/connected",
+            "redis.googleapis.com/stats/memory/usage_ratio"
+          ],
+          "missingMetricTypes": [],
+          "ok": true
+        }
+      ]
+    },
+    "firebaseFunctionsInventory": {
+      "ok": true,
+      "count": 90,
+      "missing": [],
+      "forbiddenPresent": []
+    },
+    "launchEvidence": {
+      "ok": true,
+      "skipped": true,
+      "path": "launch-evidence/final-launch-evidence.json",
+      "reason": "Launch evidence manifest is not present yet.",
+      "stages": {
+        "paidProof": {
+          "ok": false,
+          "skipped": true
+        },
+        "publicRelease": {
+          "ok": false,
+          "skipped": true
+        },
+        "done": {
+          "ok": false,
+          "skipped": true
+        }
+      }
+    }
+  }
+}
