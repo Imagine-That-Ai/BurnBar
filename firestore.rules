@@ -745,6 +745,58 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- Credential transfers (cross-device encrypted payload) ---
+
+    match /credential_transfers/{code} {
+      function validCredentialTransferCode() {
+        return code.matches("^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{12}$");
+      }
+
+      function validCredentialTransferCreate() {
+        return request.auth != null
+          && validCredentialTransferCode()
+          && request.resource.data.keys().hasOnly([
+            "ownerUid",
+            "payload",
+            "createdAt",
+            "expiresAt",
+            "consumed"
+          ])
+          && request.resource.data.keys().hasAll([
+            "ownerUid",
+            "payload",
+            "createdAt",
+            "expiresAt",
+            "consumed"
+          ])
+          && request.auth.uid == request.resource.data.ownerUid
+          && request.resource.data.payload is string
+          && request.resource.data.payload.size() <= 200000
+          && request.resource.data.payload.matches("^v1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.consumed == false;
+      }
+
+      allow create: if validCredentialTransferCreate();
+      allow get: if request.auth != null
+                 && validCredentialTransferCode()
+                 && resource.data.ownerUid == request.auth.uid
+                 && resource.data.consumed == false
+                 && resource.data.expiresAt > request.time;
+      allow update: if request.auth != null
+                    && validCredentialTransferCode()
+                    && resource.data.ownerUid == request.auth.uid
+                    && resource.data.consumed == false
+                    && resource.data.expiresAt > request.time
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["consumed", "consumedAt"])
+                    && request.resource.data.consumed == true
+                    && request.resource.data.consumedAt is timestamp;
+      allow delete: if false;
+      allow list: if false;
+    }
+
     // --- Public read-only model-landscape metadata ---
 
     match /model_benchmark_snapshots/{snapshotId} {

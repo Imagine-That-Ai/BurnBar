@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "hPYEvhiNNSF9wYv8xSpSMFZbJB+UK2QzV0ZIRhNqUNl+bvORVusYGMRMc3C\/2Ls=",
+  "chunkCiphertext" : "V4erVrJk\/mzERGlAw20HERl2Jl8AEV+Ot\/Ro2p6jAYz9BGSV7yqRcGKdclFs+yg=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "exwMhJyq9KYVFtTAh5oDVSMZcBhRjvrLbJbffOihimrTFUVjsQA+nD4Qt2wRlEcmJsbmd3rirKbK2UjTjTWJ0tK7QIGaHLv57dIRLUOC63mhzFyQ\/cFGlPrtOuqO47U48e04bOFAVW5bmtRadh1iP4T7GpziCTM6KQkbR0PGkFwaja5EBgi0pE5oZHCK76e7gVL85pIz",
+  "payloadCiphertext" : "sueBkXPIQTl9dsKfEThRLAQ891tm23eSHcVI5511ZT5zSmptSuTiJKjaSCi0xfEJcmuDms7LWToSsD7Z6IxE6BM3xMo6QgHkxocuLKtgrpAItboaWCcqVm4PNisjhpMIZN1dfVEMFrqiU9voinIszDu8exZSiPqlA5cgTEuZzla08cP\/I0BTq+538QMH4F3+QzlrFB5t",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BM5\/u7xe9s+ZKqwD6Rek0QEip40EDGWgO1Jne8NWVGW4HZtfk7+1IbPDEnm82P9RVrADewMF7m\/FqSoP5lNeeyaQxdGQf7+xCuufNSueTIo4oKW5iaGhXHdLzmJAUdhjIpY9Ra41TN8lU3dkqrcYdZgZCdhkSb5i2krkr\/Y="
+  "wrappedKey" : "BEfNLu5T3w2eleWEp4LV\/IwY4gM0p2uocOLLILaHTRz6c\/NgRSjm6o93F9tLdFw4XlM4EM0LVYNMZB606L4SX6YPsetBrL62MfbcDsGr7Nfz4BvSe6mt8EF7Z\/PNM8H2tHAUjAXp0OqxEJ3ERtvf+tTm2csKre1yHv2vYnw="
 }

@@ -206,6 +206,15 @@ final class SettingsManager {
         "computer_use_trust_modes_enabled": NSNumber(value: false),
         "computer_use_polish_enabled": NSNumber(value: false),
         "computer_use_kill_switch": NSNumber(value: false),
+        "computer_use_phone_control_respects_deny_regions": NSNumber(value: false),
+        // Future SKU model evolution — individual feature gating.
+        // Uncomment and wire into refreshEntitlement() when the SKU model
+        // supports per-feature Remote Config overrides:
+        // "computer_use_browser_allowed": NSNumber(value: true),
+        // "computer_use_system_allowed": NSNumber(value: true),
+        // "computer_use_phone_control_allowed": NSNumber(value: true),
+        // "computer_use_trusted_scopes_allowed": NSNumber(value: true),
+        // "computer_use_audit_export_allowed": NSNumber(value: true),
         "media_kill_switch": NSNumber(value: false),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
@@ -256,6 +265,10 @@ final class SettingsManager {
         if killSwitchEnabled {
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
         }
+
+        computerUsePhoneControlRespectsDenyRegions = remoteConfig.configValue(
+            forKey: "computer_use_phone_control_respects_deny_regions"
+        ).boolValue
 
         mediaKillSwitch = remoteConfig.configValue(forKey: "media_kill_switch").boolValue
     }
@@ -687,6 +700,11 @@ final class SettingsManager {
     var computerUseKillSwitch: Bool {
         get { chatBackend.computerUseKillSwitch }
         set { chatBackend.computerUseKillSwitch = newValue }
+    }
+
+    var computerUsePhoneControlRespectsDenyRegions: Bool {
+        get { chatBackend.computerUsePhoneControlRespectsDenyRegions }
+        set { chatBackend.computerUsePhoneControlRespectsDenyRegions = newValue }
     }
 
     var mediaKillSwitch: Bool {
