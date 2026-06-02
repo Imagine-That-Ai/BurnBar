@@ -38,7 +38,7 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
         XCTAssertEqual(record.sourceLabel, "GLM Plan")
         XCTAssertEqual(record.providerID, "zai")
         XCTAssertEqual(record.authMethodID, "zai-coding-plan")
-        XCTAssertEqual(record.redactedSecret, "z1")
+        XCTAssertEqual(record.redactedSecret, "...")
     }
 
     func test_importCredentialsSendsSupportedSecretsToImporter() async throws {
