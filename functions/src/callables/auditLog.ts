@@ -223,7 +223,15 @@ export const AUDIT_ACTIONS = {
 } as const;
 
 /** Resolve a stable actor label for audit events from the callable request. */
+/**
+ * The actor is ALWAYS the authenticated user — every event is written server-side
+ * under users/{uid}/, so identity is trustworthy and not client-assertable. The
+ * `x-burnbar-platform` suffix is a SELF-REPORTED device hint only (web/ios/macos),
+ * never an identity claim; clamp it to a safe charset so a spoofed header cannot
+ * inject control characters or markup into the audit display.
+ */
 export function auditActorLabel(request: CallableRequest): string {
-  const platform = boundedTrimmedString(request.rawRequest?.headers?.["x-burnbar-platform"], "platform", 40, false);
-  return platform ? `user:${platform}` : "user";
+  const raw = boundedTrimmedString(request.rawRequest?.headers?.["x-burnbar-platform"], "platform", 40, false);
+  const hint = raw ? raw.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 40) : "";
+  return hint ? `user:${hint}` : "user";
 }

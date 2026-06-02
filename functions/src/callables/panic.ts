@@ -95,42 +95,50 @@ async function revokeEscrowDevices(uid: string): Promise<number> {
   });
 }
 
-/** Destroy every provider credential secret + mark the account deleted. Returns count. */
-async function revokeProviderCredentials(uid: string): Promise<number> {
+/**
+ * Destroy every provider credential secret + mark the account deleted. Returns
+ * the count revoked AND the number of Secret Manager destroys that failed — a
+ * failed destroy means the credential may still be usable, so the panic result
+ * must NOT claim full success when secretFailures > 0.
+ */
+async function revokeProviderCredentials(uid: string): Promise<{ revoked: number; secretFailures: number }> {
   const now = new Date().toISOString();
-  return drainCollection(db.collection(`users/${uid}/provider_accounts`), async (docs) => {
-    let revoked = 0;
+  let secretFailures = 0;
+  const revoked = await drainCollection(db.collection(`users/${uid}/provider_accounts`), async (docs) => {
+    let pageRevoked = 0;
     for (const account of docs) {
       if (account.get("status") === "deleted") continue;
       const accountID = account.id;
-    const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
-    const privateSnap = await privateRef.get();
-    const secretVersionName = privateSnap.exists
-      ? (typeof privateSnap.get("secretVersionName") === "string" ? privateSnap.get("secretVersionName") : undefined)
-      : undefined;
-    if (secretVersionName) {
-      try {
-        await destroyCredential(secretVersionName);
-      } catch (err) {
-        logError({
-          event: "callable_warn",
-          message: `panic revoke: failed to destroy provider secret for ${accountID}`,
-          detail: String(err),
-        });
+      const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
+      const privateSnap = await privateRef.get();
+      const secretVersionName = privateSnap.exists
+        ? (typeof privateSnap.get("secretVersionName") === "string" ? privateSnap.get("secretVersionName") : undefined)
+        : undefined;
+      if (secretVersionName) {
+        try {
+          await destroyCredential(secretVersionName);
+        } catch (err) {
+          secretFailures += 1;
+          logError({
+            event: "callable_warn",
+            message: `panic revoke: failed to destroy provider secret for ${accountID}`,
+            detail: String(err),
+          });
+        }
       }
+      const batch = db.batch();
+      batch.delete(privateRef);
+      batch.set(
+        account.ref,
+        { status: "deleted", lastValidatedAt: null, lastRefreshAt: null, updatedAt: now },
+        { merge: true },
+      );
+      await batch.commit();
+      pageRevoked += 1;
     }
-    const batch = db.batch();
-    batch.delete(privateRef);
-    batch.set(
-      account.ref,
-      { status: "deleted", lastValidatedAt: null, lastRefreshAt: null, updatedAt: now },
-      { merge: true },
-    );
-    await batch.commit();
-    revoked += 1;
-    }
-    return revoked;
+    return pageRevoked;
   });
+  return { revoked, secretFailures };
 }
 
 export const revokeAllAccess = onCall(
@@ -152,12 +160,16 @@ export const revokeAllAccess = onCall(
     }
 
     // Each surface is best-effort + independent: a failure on one must not block
-    // the others (this is a panic button — revoke as much as possible).
+    // the others (this is a panic button — revoke as much as possible). But a
+    // failed surface is RECORDED so the result reports partial failure instead of
+    // a false "panic complete" — the UI can warn + offer retry.
+    const failures: string[] = [];
     const safe = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
       try {
         return await fn();
       } catch (err) {
         logError({ event: "callable_warn", message: `panic revoke ${label} failed`, detail: String(err) });
+        failures.push(label);
         return fallback;
       }
     };
@@ -170,13 +182,19 @@ export const revokeAllAccess = onCall(
       safe("escrow_devices", () => revokeEscrowDevices(uid), 0),
     ]);
 
-    const providers = scope === "all" ? await safe("providers", () => revokeProviderCredentials(uid), 0) : 0;
+    const providerResult =
+      scope === "all"
+        ? await safe("providers", () => revokeProviderCredentials(uid), { revoked: 0, secretFailures: 0 })
+        : { revoked: 0, secretFailures: 0 };
+    // A swallowed Secret Manager destroy means the credential may still work —
+    // that is a real partial failure, not a clean revoke.
+    if (providerResult.secretFailures > 0) failures.push(`provider_secrets(${providerResult.secretFailures})`);
 
     const revoked = {
       mcpClients: mcp.clientsRevoked,
       devices: hermes + hermesGateway + pi,
       escrowDevices,
-      providers,
+      providers: providerResult.revoked,
     };
 
     try {
@@ -189,6 +207,8 @@ export const revokeAllAccess = onCall(
       // best-effort audit
     }
 
-    return { ok: true, revoked };
+    // ok=false when any surface failed: the panic was NOT fully complete and the
+    // member may still be exposed on the failed surface(s).
+    return { ok: failures.length === 0, partial: failures.length > 0, failures, revoked };
   }),
 );
