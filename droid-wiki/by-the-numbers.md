@@ -1,27 +1,20 @@
 # By the numbers
 
-Data collected on 2026-05-30.
+Data collected on 2026-06-01.
 
 ## Codebase size
 
-| Module | Files | Notes |
-|--------|-------|-------|
-| `AgentLens` (macOS app) | 597 Swift | Main app: UI, services, parsers |
-| `OpenBurnBarDaemon` | 3,529 Swift | Daemon + extensive test suite |
-| `OpenBurnBarCore` | 471 Swift | Shared models and utilities |
-| `OpenBurnBarMobile` (iOS) | 362 Swift | iOS companion app |
-| `android/app/src` | 465 Kotlin | Android app (full iOS parity) |
-| `functions/src` | 89 TypeScript | Firebase Cloud Functions |
-| `crates/` | 136 Rust | iroh P2P transport (UniFFI) |
+| Module | Files | Lines | Language |
+|--------|-------|-------|----------|
+| `AgentLens` (macOS app) | ~597 | ~332,000 | Swift |
+| `OpenBurnBarDaemon` | ~3,529 | ~665,000 | Swift |
+| `OpenBurnBarCore` | ~471 | ~89,000 | Swift |
+| `OpenBurnBarMobile` (iOS) | ~362 | ~246,000 | Swift |
+| `android/app/src` | ~465 | ~109,787 | Kotlin |
+| `functions/src` | ~89 | ~23,820 | TypeScript |
+| `crates/` | ~136 | ~56,887 | Rust |
 
-All Swift modules combined: **1,332,044 lines** across ~4,959 files.
-
-| Language | Lines | Files |
-|----------|-------|-------|
-| Swift (all modules) | ~1,332,000 | ~4,959 |
-| Kotlin (Android) | ~109,787 | 465 |
-| Rust (iroh) | ~56,887 | 136 |
-| TypeScript (Functions) | ~23,820 | 89 |
+**All Swift combined:** ~1,332,000 lines across ~4,959 files.
 
 ```mermaid
 xychart-beta horizontal
@@ -33,22 +26,22 @@ xychart-beta horizontal
 
 ## Test coverage
 
-- `AgentLensTests/`: **208** Swift test files
-- `OpenBurnBarDaemon/Tests/`: included in the 3,529-file daemon module count; largest single test file is `OpenBurnBarMissionControlServiceTests.swift` at 5,605 lines
+- `AgentLensTests/Active/`: **208** Swift test files compiled into `OpenBurnBarTests`
+- `OpenBurnBarDaemon/Tests/`: included in daemon module count
+- Android JVM unit suite: ~253 tests
+- Largest single test file: `OpenBurnBarMissionControlServiceTests.swift` at 5,605 lines
 
 ## Commit activity
 
 | Window | Commits on `main` |
 |--------|-------------------|
 | Total (public history) | **855** |
-| Last 90 days | 855 |
-| Last 30 days | 490 |
-
-The public repo was seeded from a private baseline in April 2026. All 855 commits fall within the last 90 days. The project ships at a velocity of roughly **16 commits/day** over the last 30 days.
+| Last 30 days | ~490 |
+| Velocity | ~16 commits/day |
 
 ## Bot-attributed commits
 
-`factory-droid[bot]` co-authored **232 commits** — approximately **27%** of the entire public commit history.
+`factory-droid[bot]` co-authored **~232 commits** — approximately **27%** of the public history.
 
 ## Top churn files (last 90 days)
 
@@ -65,23 +58,17 @@ The public repo was seeded from a private baseline in April 2026. All 855 commit
 | 38 | `AgentLens/App/AgentLensApp.swift` |
 | 37 | `AgentLens/Services/ProviderQuota/ProviderQuotaService.swift` |
 
-`project.pbxproj` leading the list is expected — every new Swift file modifies it. Among non-project files, `HermesService.swift` (iOS), `CloudSyncService.swift`, and `ProviderQuotaService.swift` are the most actively evolved services.
-
-## Largest Swift files
+## Largest production files
 
 | Lines | File |
 |-------|------|
-| 5,605 | `OpenBurnBarDaemon/Tests/.../OpenBurnBarMissionControlServiceTests.swift` |
-| 4,744 | `OpenBurnBarDaemon/Tests/.../OpenBurnBarHTTPGatewayServerTests.swift` |
-| 4,589 | `OpenBurnBarMobile/Services/HermesService.swift` |
-| 4,383 | `AgentLens/Views/Dashboard/ProjectsView.swift` |
-| 4,317 | `OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift` |
-
-The two largest files are test files. Among production source, `HermesService.swift` (iOS) at 4,589 lines is the biggest single file — it owns Hermes relay connection management, iroh transport, mission dispatch, and media session state.
+| ~4,589 | `OpenBurnBarMobile/Services/HermesService.swift` |
+| ~4,383 | `AgentLens/Views/Dashboard/ProjectsView.swift` |
+| ~4,317 | `OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift` |
 
 ## Feature surface scale
 
-- **17** log-format parsers under `AgentLens/Services/LogParser/`
-- **22+** quota adapters under `AgentLens/Services/ProviderQuota/` (one per provider)
-- **49** Firebase Cloud Functions (all wrapped with structured logging as of 2026-05)
-- **89** TypeScript source files in `functions/src/`
+- **17** log-format parsers
+- **22+** quota adapters
+- **49** Firebase Cloud Functions
+- **4** deployable platforms (macOS, iOS, Android, VS Code)

@@ -1,85 +1,66 @@
 # VS Code / Cursor extension
 
-TypeScript sidebar extension for VS Code and Cursor. Backed by the OpenBurnBar daemon running locally on the same machine.
+The TypeScript extension provides a sidebar panel inside VS Code and Cursor that shows daemon health, projected run state, and workspace capability gating.
 
-**Location:** `extensions/openburnbar/`  
-**Entry point:** `src/` (TypeScript, compiled to `dist/`)  
-**Package manifest:** `extensions/openburnbar/package.json`
+## Purpose
 
-## What it shows
+Give editors a lightweight view into the local OpenBurnBar daemon without leaving the IDE. The extension is local-first and daemon-backed: it acts as a polite sidecar, not a second brain.
 
-| Panel | Content |
-|---|---|
-| Health | Daemon connection state — `Connected`, `Unavailable`, `Protocol mismatch` |
-| Runs | Projected rows for daemon handshake, catalog sync, and workspace state |
-| Run Detail | Selected row with recovery guidance when something is blocked |
+## Directory layout
 
-## What it does NOT yet have
+```
+extensions/openburnbar/
+  src/
+    extension.ts       # Activation, sidebar registration, daemon client setup
+    alerting.ts        # Alert helpers: alertDaemonUnreachable, alertRunFailed
+    daemonClient.ts    # JSON-RPC client to local daemon
+    healthView.ts      # Health sidebar view provider
+    runsView.ts        # Runs sidebar view provider
+    runDetailView.ts   # Run detail webview provider
+    trustGate.ts       # Workspace capability detection and gating
+  package.json         # Extension manifest, contributes views and commands
+```
 
-- Start, retry, or cancel run controls from the sidebar
-- Approval response UI for Computer Use actions
-- Browser tools
-- Routed providers beyond Z.ai, MiniMax, and Ollama Cloud
+## Key abstractions
 
-Factory and OpenCode routed-client sync is handled in the macOS app, not the extension.
+| Type | File | Purpose |
+|------|------|---------|
+| `activate` | `src/extension.ts` | Entry point: registers views, starts daemon client, sets up trust gating |
+| `alertDaemonUnreachable` | `src/alerting.ts` | Shows polite notification when daemon socket is missing |
+| `DaemonClient` | `src/daemonClient.ts` | JSON-RPC over Unix domain socket to OpenBurnBarDaemon |
+| `TrustGate` | `src/trustGate.ts` | Detects workspace type (local, remote, read-only, virtual, restricted) and gates actions |
+| `HealthViewProvider` | `src/healthView.ts` | Sidebar tree showing daemon health, version, and reconnect/repair actions |
+| `RunsViewProvider` | `src/runsView.ts` | Sidebar tree showing projected run state |
 
-## Supported routed providers
+## How it works
 
-Current release exposes only three providers for Cursor routing:
+```mermaid
+graph LR
+    E[VS Code / Cursor] -->|JSON-RPC| D[OpenBurnBarDaemon]
+    E -->|alerting.ts| A[User notifications]
+    E -->|trustGate.ts| T[Workspace trust
+gating]
+```
 
-- **Z.ai**
-- **MiniMax**
-- **Ollama Cloud**
+1. **Activation** — the extension activates when the OpenBurnBar sidebar is opened. It attempts to connect to the daemon via Unix domain socket.
+2. **Health view** — shows daemon status, version, and quick actions: Reconnect, Refresh, Repair Daemon.
+3. **Trust gating** — `TrustGate` detects the workspace type:
+   - **Restricted workspaces** (untrusted): allowed: `read_file`, `search_workspace`, health, catalog state. Gated until trusted: `apply_patch`, `run_terminal`.
+   - Even in trusted workspaces, `apply_patch` and `run_terminal` pause for explicit approval.
+4. **Alerting** — all user-facing errors go through `alerting.ts`. Never call `vscode.window.showErrorMessage` directly.
 
-Excluded from this release: Kimi, pony-alpha-2, internal catalog models.
+## Integration points
 
-## Workspace capability modes
+- **Daemon JSON-RPC** — connects over Unix domain socket. The daemon must be running (launched by the macOS app or manually).
+- **VS Code API** — contributes views to the activity bar, commands to the command palette, and webviews for run detail.
 
-The extension detects workspace mode from the VS Code extension host and surfaces the result in the sidebar.
+## Entry points for modification
 
-| Mode | read_file / search_workspace | apply_patch | run_terminal |
-|---|---|---|---|
-| Local trusted | ✓ available | After explicit approval | After explicit approval |
-| Remote trusted | ✓ (when remote host supports it) | After explicit approval | After explicit approval |
-| Read-only | ✓ | ✗ | ✗ |
-| Virtual | ✓ | ✗ | ✗ |
-| Restricted | ✓ | ✗ (gated until workspace trusted) | ✗ |
-| No workspace | Health only | — | — |
+- Add new sidebar views in `src/extension.ts` and register them in `package.json` under `contributes.views`.
+- Add new daemon client methods in `src/daemonClient.ts`.
+- Update alerting copy in `src/alerting.ts`.
 
-All workspace tools are bounded to the opened workspace roots.
+## Related pages
 
-## Setup
-
-1. Open the OpenBurnBar macOS app on the same machine.
-2. Install or repair the daemon from within the app.
-3. Add provider API keys in the app if you want routed models.
-4. Install the OpenBurnBar extension in Cursor / VS Code.
-5. Open a folder or workspace.
-6. Open the OpenBurnBar activity bar panel.
-
-Expected first-load: `Health` shows `Connected`, `Runs` shows projected rows.
-
-## Common recovery paths
-
-| Symptom | Recovery |
-|---|---|
-| Daemon unavailable | Open OpenBurnBar app → confirm daemon installed → run **OpenBurnBar: Repair Daemon** from sidebar |
-| Connected, waiting for catalog | Check provider settings in app → refresh sidebar |
-| No workspace open | Open a folder or workspace in Cursor |
-| Workspace companion unavailable | Reload Cursor window → reopen sidebar after host comes back |
-| Protocol mismatch | Update OpenBurnBar so app, daemon, and extension share the same protocol version |
-
-## Remote workspace note
-
-The workspace companion can run on a remote extension host. The daemon repair action is still local macOS behavior — if repair is unavailable from a remote context, use the local OpenBurnBar app directly.
-
-## Key files
-
-| Path | Purpose |
-|---|---|
-| `extensions/openburnbar/src/` | TypeScript source |
-| `extensions/openburnbar/dist/` | Compiled output |
-| `extensions/openburnbar/package.json` | Extension manifest, commands, activation events |
-| `extensions/openburnbar/test/` | Extension test suite |
-| `extensions/openburnbar/scripts/` | Build and packaging scripts |
-| `docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md` | Full onboarding guide |
+- [macOS app](macos-app/index.md)
+- [Daemon](../systems/daemon/index.md)

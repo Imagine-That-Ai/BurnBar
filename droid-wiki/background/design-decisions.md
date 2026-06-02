@@ -1,63 +1,51 @@
 # Design decisions
 
-Key architectural choices with rationale.
+Cross-cutting architectural decisions recorded as ADRs in `docs/ARCHITECTURE/`.
 
-## 1. Local-first over cloud-first
+## ADR-001: Naming conventions
 
-Local SQLite (GRDB) is the canonical data store. Firestore is a replication layer, not the source of truth.
+**Decision:** Use `*Service` for long-lived singletons, `*Store` for observable screen models, `*Actor` for state-isolated units, and `*Client` for network callers.
 
-**Rationale:** Privacy — agent session logs contain code and prompts that should not leave the machine without explicit user action. Offline reliability — the app works fully without a network connection. No cloud availability dependency for core features.
+**Rationale:** Creates a consistent vocabulary that makes file roles obvious at a glance.
 
-**Implementation:** The daemon writes all events to the local database first. `CloudSyncService` replicates to Firestore asynchronously when cloud sync is enabled. ADR [005-sync-ownership.md](../../docs/architecture/005-sync-ownership.md) defines which data lives in which plane.
+## ADR-002: Actor boundaries
 
-## 2. GRDB over Core Data
+**Decision:** `@MainActor` for SwiftUI views and view-model state. Background actors (`DatabaseActor`, `SyncActor`) for I/O and concurrent work.
 
-All persistence uses [GRDB](https://github.com/groue/GRDB.swift) (SQLite) rather than Core Data.
+**Rationale:** Prevents data races without scattering `DispatchQueue` calls.
 
-**Rationale:** Direct SQL control, no Objective-C class inheritance, better async patterns with Swift concurrency, SQLCipher encryption for sensitive data (session logs, credentials). Core Data's NSManagedObject model is incompatible with value-type Swift design.
+## ADR-003: Error handling
 
-**Implementation:** The fork `grdb-sqlcipher` (pinned to 6.29.3) adds SQLCipher. All stores are `actor` or dedicated queue to enforce serial access. See ADR [001-naming-conventions.md](../../docs/architecture/001-naming-conventions.md) for the `*Store` suffix contract.
+**Decision:** Typed errors with structured logging. Callable errors auto-capture via `wrapCallableHandler` → `withCallableLogging` → `captureException()` in `functions/src/logging.ts`.
 
-## 3. Daemon-first architecture
+**Rationale:** Failures are traceable and user-visible messages are decoupled from internal logs.
 
-Heavy logic (provider routing, mission control, search indexing, connector plane) lives in `OpenBurnBarDaemon`, a separate process from the macOS menu bar app.
+## ADR-004: Schema canon
 
-**Rationale:** The daemon runs without a UI, surviving menu bar crashes. CLI and extension access the same logic through the Unix socket RPC surface. Separation of concerns: the UI is a thin observer of daemon state.
+**Decision:** Migrate to TypeSpec in `tools/schema-sync/` as the single source of truth for Firestore types, generating TypeScript, Swift, and Kotlin emitters.
 
-**Implementation:** The macOS app connects to `~/.burnbar.sock` (JSON-RPC 2.0). The VS Code/Cursor extension uses the same socket. The daemon registers a launchd plist so it starts on login.
+**Rationale:** Prevents drift between platforms when the schema changes.
 
-## 4. @Observable over ObservableObject
+## ADR-005: Sync ownership
 
-The codebase migrated to the iOS 17+ / macOS 14+ `Observation` framework (`@Observable` macro) from `ObservableObject` + `@Published`.
+**Decision:** Local SQLite is canonical. Firestore is an optional replication and collaboration plane. iCloud mirroring is an optional file-copy plane. Neither replaces local state.
 
-**Rationale:** Simpler syntax — no `@Published` annotations on every property. Better performance — SwiftUI only re-renders views that access changed properties, not all observers of the object. Cleaner with `@State` and `@Environment`.
+**Rationale:** Zero network dependency for core token tracking; cloud is additive.
 
-**Implementation:** `SettingsManager` and its sub-stores are all `@Observable`. See ADR [002-actor-boundaries.md](../../docs/architecture/002-actor-boundaries.md) for threading rules.
+## ADR-007: Ops notification plane
 
-## 5. UniFFI for iroh P2P transport
+**Decision:** GCP Monitoring + Sentry + deploy gates for production observability.
 
-The `crates/openburnbar-iroh` Rust crate uses [UniFFI](https://github.com/mozilla/uniffi-rs) (pinned 0.28.3) to generate both Swift and Kotlin bindings.
+**Rationale:** Structured alerting with clear escalation paths.
 
-**Rationale:** One implementation of the P2P protocol instead of two. Type-safe cross-language API — UniFFI generates the glue code. The iroh library itself has no Swift or Kotlin implementation.
+## ADR-008: Remote control engine
 
-**Implementation:** CI compiles `OpenBurnBarIroh.xcframework` for iOS/macOS and `Vendor/openburnbar-iroh.aar` for Android. Mercury audio rides `MercuryAudioDatagramChannel` over ALPN `openburnbar/mercury/audio/1`.
+**Decision:** iroh-first P2P transport for remote desktop, media, and remote control.
 
-## 6. XcodeGen over checked-in xcodeproj
+**Rationale:** Single Rust crate compiles to all platforms via UniFFI, sharing wire format and Ed25519 pairing.
 
-`project.yml` (XcodeGen) is the source of truth for the Xcode project. The `.xcodeproj` is generated, not committed.
+## Related pages
 
-**Rationale:** Eliminates merge conflicts in Xcode's verbose XML project format. Config changes are human-readable diffs in YAML. New targets and build settings are reviewable.
-
-**Implementation:** Run `xcodegen generate` after pulling changes that modify `project.yml`. CI runs this step automatically.
-
-## 7. Hermes chat dual-backend
-
-The chat panel supports two backends: CLI bridge (stateless) and Hermes webapi (multi-turn).
-
-**Rationale:** Works without Hermes running — falls back to the existing CLI bridge seamlessly. When Hermes is available on `localhost:8642`, upgrades to multi-turn memory, server-side tool calls, and richer context injection.
-
-**Implementation:** `CLIBridge.detect()` probes `localhost:8642/v1/models`. If Hermes responds, it becomes the preferred backend. Both backends emit the same `CLIChatStreamEvent` types (`.text`, `.toolUse`) so the UI layer is backend-agnostic. See DESIGN.md § Hermes Integration for the full technical design.
-
----
-
-For the full naming and threading rules that govern these decisions, see the ADRs in `docs/architecture/`.
+- [Architecture](../overview/architecture.md)
+- [Iroh transport](../systems/iroh-transport.md)
+- [Cloud sync](../features/cloud-sync.md)

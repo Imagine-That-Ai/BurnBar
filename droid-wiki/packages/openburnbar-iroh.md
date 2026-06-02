@@ -1,74 +1,51 @@
-# OpenBurnBar iroh library
+# OpenBurnBar iroh
 
-Rust library providing Ed25519-authenticated P2P QUIC connections via UniFFI-generated bindings. Powers Mercury media (file transfer, screen share, 1:1 calls) and Agent Watch on both iOS and Android.
-
-**Location:** `crates/openburnbar-iroh/`
+The Rust crate that powers P2P transport across macOS, iOS, and Android via UniFFI bindings.
 
 ## Purpose
 
-A thin Rust crate wrapping the [iroh](https://crates.io/crates/iroh) QUIC + NAT-traversal stack with:
-- UniFFI `#[export]` attributes generating Swift and Kotlin bindings from one Rust source
-- `iroh-blobs` for content-addressed file transfer (Mercury Phase 1)
-- A `datagrams.rs` UniFFI surface for the `MercuryAudioDatagramChannel` (low-latency audio)
-- Ed25519 key representation via iroh's built-in secret key type (signing/verification stays in Swift CryptoKit)
+Provide a single source of truth for Ed25519-authenticated P2P transport. One crate compiles to both `Vendor/openburnbar-iroh.xcframework` (iOS/macOS) and `Vendor/openburnbar-iroh.aar` (Android).
 
-## Build artifacts
+## Directory layout
 
-| Artifact | Platform | Location |
-|---|---|---|
-| `OpenBurnBarIroh.xcframework` | iOS / macOS | `Vendor/OpenBurnBarIroh.xcframework` |
-| `openburnbar-iroh.aar` | Android | `Vendor/openburnbar-iroh.aar` |
-
-## Building the iOS xcframework
-
-```bash
-scripts/build-iroh-ios-xcframework.sh  # if present
-# or via Xcode Package Resolution pointing at the local xcframework
+```
+crates/openburnbar-iroh/
+  src/
+    lib.rs              # Main crate entry: node management, connection setup
+    datagrams.rs        # Mercury audio datagram channel over ALPN
+    pairing.rs          # Ed25519 pairing and verification
+  Cargo.toml
+  build.rs             # UniFFI scaffolding generation
 ```
 
-The crate produces a `staticlib` for linking into the xcframework binary and a `cdylib` used by `uniffi-bindgen` at host time.
+## Key abstractions
 
-## Building the Android AAR
+| Type | File | Purpose |
+|------|------|---------|
+| `OpenBurnBarIrohNode` | `src/lib.rs` | iroh node lifecycle: start, stop, dial |
+| `MercuryAudioDatagramChannel` | `src/datagrams.rs` | Audio datagrams over ALPN `openburnbar/mercury/audio/1` |
+| `PairingVerifier` | `src/pairing.rs` | Ed25519 signature verification |
 
-```bash
-scripts/build-iroh-android-aar.sh
-```
+## How it works
 
-- Runs `cargo-ndk` for four ABIs: `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`
-- Generates Kotlin bindings via `uniffi-bindgen-kotlin` pinned to `0.28.3`
-- Packages binary + `classes.jar` + manifest into `Vendor/openburnbar-iroh.aar`
-- Auto-installs NDK, `cargo-ndk`, and required Rust targets if missing
+1. **UniFFI bindings** — `uniffi-bindgen-kotlin` and `uniffi-bindgen-swift` generate bindings from the same UDL file, pinned to UniFFI 0.28.3.
+2. **Compilation** — `scripts/build-iroh-android-aar.sh` runs `cargo-ndk` for four ABIs and packages the binary + classes.jar + manifest.
+3. **Wire format** — big-endian u32 length prefix followed by JSON `HermesRealtimeRelayFrame`. ALPN `openburnbar/1` for general transport, `openburnbar/mercury/audio/1` for audio.
+4. **Fallback** — Android's `OpenBurnBarIrohFfiBackend` gates cleanly when the AAR is missing, falling back to loopback transport for dev and Firestore for prod.
 
-## Kotlin module
+## Integration points
 
-The `:openburnbar-iroh-relay` Gradle module (`android/openburnbar-iroh-relay/`) is a Kotlin 1:1 port of the Swift `OpenBurnBarIrohRelay` package — same wire format, same ALPN strings, same big-endian u32 length prefix, same `HermesRealtimeRelayFrame` JSON envelope, same Ed25519 pairing signature verification (via Tink, since JDK Ed25519 only ships on API 31+).
+- **macOS/iOS** — linked as `Vendor/openburnbar-iroh.xcframework`.
+- **Android** — linked as `Vendor/openburnbar-iroh.aar` in the `:openburnbar-iroh-relay` module.
 
-## Fallback behavior
+## Entry points for modification
 
-`OpenBurnBarIrohFfiBackend` checks for the AAR/xcframework at runtime and gates cleanly when absent:
+- Change Rust logic in `crates/openburnbar-iroh/src/`.
+- Rebuild with `scripts/build-iroh-android-aar.sh` (Android) or Xcode build (iOS/macOS).
+- Update tests in `OpenBurnBarMobileTests/` or `:openburnbar-iroh-relay:testDebugUnitTest`.
 
-- **Dev:** loopback transport — same API surface, in-process delivery
-- **Prod:** Firestore real-time listeners for signaling; no direct P2P
+## Related pages
 
-The app and daemon build without the AAR. Mercury media features are unavailable until the AAR is present.
-
-## Dependency pins
-
-```toml
-iroh = "=1.0.0-rc.0"
-iroh-dns = "=1.0.0-rc.0"
-iroh-blobs = "0.101.0"
-iroh-services = "=1.0.0-rc.0"
-```
-
-Pins are exact for xcframework build reproducibility. `iroh-blobs` must stay in lockstep with `iroh` — mismatched major lines produce duplicate endpoint types the UniFFI bridge cannot safely mix.
-
-## Crate types
-
-```toml
-crate-type = ["staticlib", "cdylib", "rlib"]
-```
-
-- `staticlib` — linked into the xcframework binary
-- `cdylib` — used by `uniffi-bindgen` CLI for introspection at build time
-- `rlib` — for Rust unit tests and downstream Rust consumers
+- [Iroh transport](../systems/iroh-transport.md)
+- [Mercury media](../features/mercury-media.md)
+- [Hermes relay](../systems/hermes-relay.md)

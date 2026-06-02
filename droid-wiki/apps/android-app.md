@@ -1,132 +1,76 @@
-# Android companion app
+# Android app
 
-Full-parity Kotlin/Compose companion app. Ships Mercury media (file transfer, screen-share viewer, 1:1 calls), iroh P2P transport, Hermes chat, Insights, and real-time Firestore usage data.
+The Android companion app reaches full iOS parity as of 2026-05-16. It is built with Kotlin and Jetpack Compose, connects to the same iroh P2P transport as the iOS app, and shares the same Firestore schema canonicalized in `functions/src/types.ts`.
 
-## Tech stack
+## Purpose
 
-| Layer | Technology |
-|---|---|
-| Language | Kotlin |
-| UI | Jetpack Compose |
-| Real-time data | Firebase Firestore (`addSnapshotListener`) |
-| Push / calls | Firebase Cloud Messaging (FCM) + `ConnectionService` |
-| P2P transport | iroh via `Vendor/openburnbar-iroh.aar` (UniFFI/JNI) |
-| Dependency injection | Hilt |
-| Async | Kotlin coroutines + `callbackFlow` |
+Provide Android users with the same surfaces as the iOS companion: Hermes Square messaging, Mercury media (file transfer, screen share, 1:1 calls), Computer Use Agent Watch, and the Insights Editorial Observatory.
 
-## Package structure
+## Directory layout
 
 ```
-com.openburnbar
-├── data/         — Models, parsers, Firestore stores
-├── ui/           — Compose screens and components
-├── services/     — Background services (Mercury, FCM, sync)
-├── menubar/      — Menu bar / notification area management
-├── text/         — Text expansion and formatting utilities
-├── util/         — Common utilities
-└── wallpaper/    — Wallpaper service (ambient display)
+android/
+  app/src/main/java/com/openburnbar/
+    data/
+      models/           # Kotlin data classes mirroring functions/src/types.ts
+      store/            # Firestore listeners, DataStore Proto prefs
+    ui/
+      theme/            # InsightsTheme, Aurora design tokens
+      screens/          # IntelligenceBriefScreen, MediaSettingsView
+      components/       # AttachmentBubble, ZScoreGauge
+    services/
+      HermesService.kt   # Relay connection management
+      MercuryFcmService.kt  # Incoming call notifications
+  openburnbar-iroh-relay/  # Gradle module: codec, pairing, loopback transport
 ```
 
-## Architecture
+## Key abstractions
 
-Screens are backed by a `*Store` (ViewModel subclass):
+| Type | File | Purpose |
+|------|------|---------|
+| `IntelligenceBriefScreen` | `ui/screens/IntelligenceBriefScreen.kt` | Editorial Observatory brief with cascade-in animations |
+| `MercuryFcmService` | `services/MercuryFcmService.kt` | Constructs `Notification.CallStyle.forIncomingCall` with full-screen intent |
+| `CallKitFacade` | `services/CallKitFacade.kt` | Self-managed `ConnectionService` wrapping Android call UI |
+| `MediaPartnerSavePreferenceStore` | `data/store/MediaPartnerSavePreferenceStore.kt` | DataStore Proto per-partner save policy (Photos / Files / Forget) |
+| `OpenBurnBarIrohFfiBackend` | `services/OpenBurnBarIrohFfiBackend.kt` | Reflection-bridged iroh AAR loader with loopback fallback |
+| `MercuryAudioDatagramChannel` | `services/MercuryAudioDatagramChannel.kt` | Audio over ALPN `openburnbar/mercury/audio/1` |
 
-```kotlin
-class UsageStore : ViewModel() {
-    // One-shot fetch
-    suspend fun load() { ... }
-
-    // Real-time Firestore listener
-    fun startListening(): Flow<UsageRollups> = callbackFlow {
-        val registration = db.collection(...).addSnapshotListener { snap, err -> ... }
-        awaitClose { registration.remove() }
-    }
-}
-```
-
-Listener lifecycle is managed by `viewModelScope`; `stopListening()` cancels the listener.
-
-## Canonical schema
-
-`functions/src/types.ts` is the source of truth. Android models must match it field-for-field.
-
-| TypeScript type | Android class | Firestore collection |
-|---|---|---|
-| `UsageEventDoc` | `TokenUsage` | `users/{uid}/usage/{doc}` |
-| `UsageRollupDoc` | `UsageRollups` + `RollupSummary` | `users/{uid}/usage_rollups/{window}` |
-| `QuotaSnapshotDoc` | `ProviderQuotaSnapshot` + `QuotaBucket` | `users/{uid}/quota_snapshots/{provider}_{sourceId}` |
-| `ProviderAccountDoc` | `ProviderAccount` | `users/{uid}/provider_accounts/{accountId}` |
-
-Model conventions:
-- `@IgnoreExtraProperties` on every data class to tolerate server additions.
-- `@PropertyName` for keys that differ from Kotlin camelCase (e.g. `providerID` → `"providerId"`).
-- Computed properties in the class body, not the primary constructor.
-- Timestamps: `it.seconds * 1000 + it.nanoseconds / 1_000_000`.
-
-Cloud Functions write **5 separate rollup documents** (`today`, `7d`, `30d`, `90d`, `all_time`). `mergeWindowDocs()` reads all 5 and flattens them into a single client-side `UsageRollups`.
-
-## Mercury media
-
-- **Incoming calls**: `MercuryFcmService` receives FCM high-priority data messages with shape `media_incoming_call`. Builds `Notification.CallStyle.forIncomingCall(...)` + `setFullScreenIntent(...)` pointing at `IncomingCallActivity`.
-- **`IncomingCallActivity`**: declared `showOnLockScreen=true` + `turnScreenOn=true`. Managed via `ConnectionService` (`MANAGE_OWN_CALLS`) wrapped in `CallKitFacade`.
-- **Android 14+ fallback**: if `USE_FULL_SCREEN_INTENT` is revoked, degrades to heads-up notification with a one-time Settings deep link in `MediaSettingsView`.
-- **Audio**: `MercuryAudioDatagramChannel` over ALPN `openburnbar/mercury/audio/1` (Opus codec, ~20 ms frames).
-- **Foreground service types**: `microphone|camera|mediaProjection|phoneCall` (Android 14+ granular types).
-
-## iroh transport
+## How it works
 
 ```mermaid
 graph LR
-    A[Rust crate\ncrates/openburnbar-iroh] -->|cargo-ndk 4 ABIs| B[Vendor/openburnbar-iroh.aar]
-    B --> C[:openburnbar-iroh-relay\nGradle module]
-    C --> D[Kotlin UniFFI bindings\nOpenBurnBarIrohFfiBackend]
-    D --> E[Mercury / Computer Use\ntransport]
+    A[Android app
+Compose] -->|Firestore| FS[(Firebase)]
+    A -->|iroh AAR| I[iroh P2P]
+    A -->|MediaStore/SAF| M[Saved media]
+    I -->|ALPN| MA[Mercury audio]
+    I -->|ALPN| MV[Mercury video]
+    FS -->|FCM| N[Incoming call
+notification]
 ```
 
-Wire format: big-endian u32 length prefix, `HermesRealtimeRelayFrame` JSON envelope. Same as iOS — ALPN `openburnbar/1`.
+1. **Schema alignment** — every Kotlin data class is annotated `@IgnoreExtraProperties` and uses `@PropertyName` for Firestore keys that differ from camelCase. The canonical schema is `functions/src/types.ts`.
+2. **Iroh transport** — the `:openburnbar-iroh-relay` module shares the same wire format as iOS: big-endian u32 length prefix, `HermesRealtimeRelayFrame` JSON envelope, Ed25519 pairing. If the AAR is missing, the app falls back to loopback transport.
+3. **Incoming calls** — Android 14+ uses `Notification.CallStyle.forIncomingCall` + `USE_FULL_SCREEN_INTENT` targeting `IncomingCallActivity`. If the user revoked the permission, the service degrades to a heads-up notification with a settings deep link.
+4. **Save preferences** — `MediaPartnerSavePreferenceStore` persists per-partner policy via DataStore Proto. `SAVE_TO_PHOTOS` routes to `MediaStore.Images.Media`; `SAVE_TO_FILES` uses `DocumentsContract.createDocument` after a one-time tree URI selection.
 
-Ed25519 pairing signatures verified via Tink (JDK Ed25519 provider only ships on API 31+).
+## Integration points
 
-`OpenBurnBarIrohFfiBackend` gates gracefully when the AAR is absent — the app still builds, falling back to loopback transport for development and Firestore for production data.
+- **Firestore** — read-only consumption is default; outbound writes follow `functions/src/types.ts`.
+- **Iroh relay** — same ALPN and frame format as iOS/macOS via the shared Rust crate.
+- **Firebase Cloud Messaging** — high-priority data messages for incoming call fan-out.
 
-## Insights — Editorial Observatory
+## Entry points for modification
 
-`IntelligenceBriefScreen.kt` mirrors the iOS story arc:
-- `INTELLIGENCE BRIEF` eyebrow + `Last 7 days` window + 22 sp rounded-semibold executive lede.
-- Mercury-gradient hairline hero with one-shot shimmer (Canvas draw).
-- 01/02/03 numbered findings with `ZScoreGauge` instrument scale in the Anomaly Atlas (`LazyRow`).
-- Recommendations with severity-aware ember seal and mono `↑ impact` arrow (direction inferred from sign).
-- Generated views via `InsightWidgetRenderer` with `Fig. 01` ordinals.
-- Cascade-in via `AnimatedVisibility` + `slideInVertically(8.dp)` + `fadeIn` at 40 ms stagger.
-- Reduce-motion: `LocalAuroraReduceMotion` (driven by `Settings.Global.animator_duration_scale == 0`) paints synchronously.
-- Font scale clamped to 1.15× upstream by `InsightsTheme`.
+- Add new UI screens under `android/app/src/main/java/com/openburnbar/ui/screens/`.
+- Update Firestore models under `android/app/src/main/java/com/openburnbar/data/models/` and run `./tools/schema-sync/check-drift.sh`.
+- Add iroh relay tests in `:openburnbar-iroh-relay:testDebugUnitTest`.
 
-## Build
+## Related pages
 
-```bash
-export JAVA_HOME="$HOME/.homebrew/opt/openjdk@21"
-export ANDROID_HOME="$HOME/Library/Android"
-
-cd android && ./gradlew assembleDebug
-```
-
-For errors only: `./gradlew clean assembleDebug --no-daemon 2>&1 | grep "^e:\|BUILD"`
-
-## Tests
-
-```bash
-# JVM unit suite (~253 tests: relay, media, missions, atom parser)
-cd android && ./gradlew :app:testDebugUnitTest --no-daemon
-
-# iroh-relay library (codec + pairing + loopback transport)
-cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon
-
-# Full CI parity (Functions, evals, Firestore rules, all test surfaces)
-make ci
-```
-
-Instrumented E2E tests:
-```bash
-scripts/e2e/android-iroh-chat.sh    # iroh chat suite via adb
-scripts/e2e/android-mercury-call.sh # Mercury call suite via adb
-```
+- [Iroh transport](../systems/iroh-transport.md)
+- [Mercury media](../features/mercury-media.md)
+- [Computer Use](../features/computer-use.md)
+- [Insights](../features/insights.md)
+- [macOS app](macos-app/index.md)
+- [iOS app](ios-app/index.md)
