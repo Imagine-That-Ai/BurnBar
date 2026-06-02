@@ -1,67 +1,50 @@
-# AgentProvider
+# Agent provider
 
-Swift enum enumerating every AI provider OpenBurnBar can track. The canonical definition lives in `OpenBurnBarCore`; the macOS app re-exports it with additional Mac-only behaviors.
+The `AgentProvider` enum defines every AI coding agent that OpenBurnBar can track.
 
-## Canonical location
+## Purpose
 
-```
-OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProvider.swift
-```
+Centralize metadata about supported agents so parsers, UI, and cost calculations can reference a single source of truth.
 
-The macOS app file `AgentLens/Models/AgentProvider.swift` is a `typealias` + extension file. It re-exports the core type and adds `logDirectory`, `filePattern`, and `supportLevel` — macOS-only behaviors that the iOS target does not need.
-
-## Each case carries
+## Key abstractions
 
 | Property | Type | Description |
-|---|---|---|
-| `rawValue` | `String` | Stable Codable key used in JSON-RPC, Firestore, and database |
-| `displayName` | `String` | Human-readable label shown in UI |
+|----------|------|-------------|
 | `iconName` | `String` | SF Symbol name for the provider icon |
-| `bundledLogoName` | `String` | Asset catalog name for bundled provider logo (macOS) |
-| `logDirectory` | `String` | Filesystem path (with `~` prefix) where the provider writes session logs (macOS only) |
-| `filePattern` | `String` | Glob matched against `logDirectory` to discover session files (macOS only) |
+| `displayName` | `String` | Human-readable name |
+| `logDirectory` | `String?` | Default log directory path (e.g., `~/.claude/projects`) |
+| `filePattern` | `String?` | Glob pattern for session files (e.g., `*.jsonl`) |
 
-## Known cases
+## Supported agents
 
-| Case | Log directory | File pattern |
-|---|---|---|
-| `.factory` | `~/.factory/sessions` | `*.jsonl` |
-| `.claudeCode` | `~/.claude/projects` | `*.jsonl` |
-| `.codex` | `~/.codex` | `*.jsonl` |
-| `.openCode` | `~/.local/share/opencode` | `*.jsonl` |
-| `.cursor` | `~/.cursor/ai-tracking` | varies |
-| `.copilot` | `~/.copilot/session-state` | varies |
-| `.aider` | `~/.aider` | varies |
-| `.cline` | `~/Library/Application Support/Code/…/saoudrizwan.claude-dev/tasks` | varies |
-| `.kiloCode` | `~/Library/Application Support/Code/…/kilocode.kilo-code/tasks` | varies |
-| `.rooCode` | `~/Library/Application Support/Code/…/rooveterinaryinc.roo-cline/tasks` | varies |
-| `.kimi` | `~/.kimi/sessions` | `*.jsonl` |
-| `.zai` | `~/.factory/sessions` | `*.jsonl` |
-| `.minimax` | `~/.factory/sessions` | `*.jsonl` |
-| `.hermes` | `~/.hermes/sessions` | `*.jsonl` |
-| `.piAgent` | `~/.pi/sessions` | `*.jsonl` |
-| `.forgeDev` | `~/.forge/sessions` | varies |
-| `.augment` | `~/Library/Application Support/Code/…/augment.vscode-augment` | varies |
-| `.geminiCLI` | `~/.gemini/tmp` | varies |
-| `.antigravity` | `~/.gemini/antigravity-cli` | varies |
-| `.cursorAgent` | `~/.cursor-agent/sessions` | varies |
-| `.goose` | `~/.local/share/goose/sessions` | varies |
-| `.openClaw` | `~/.openclaw/sessions` | varies |
-| `.ollama` | `~/.ollama/logs` | varies |
-| `.windsurf` | `~/Library/Application Support/Windsurf - Next/User/globalStorage` | varies |
-| `.warp` | `~/Library/Application Support/dev.warp.Warp-Stable` | varies |
-| `.xAI` | `~/.grok/sessions` | varies |
-| `.openAI` / `.deepSeek` | `~/.codex` (reused; remote billing, not local logs) | non-matching glob |
-| `.mimo` | `~/.codex` (reused; Token Plan API) | non-matching glob |
+| Provider | Source directory | Confidence |
+|----------|-----------------|------------|
+| Claude Code | `~/.claude/projects/*.jsonl` | Exact |
+| Factory Droid | `~/.factory/sessions/*.jsonl` | Exact |
+| Codex | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated |
+| Kimi | `~/.kimi/sessions/*.jsonl` | Estimated |
+| Cursor | Cursor BYOK + local router | Exact |
+| Gemini CLI | `~/.gemini/sessions/*.jsonl` | Estimated |
+| Goose | `~/.goose/sessions/*.jsonl` | Estimated |
+| Grok Build | `~/.grok/sessions/*.jsonl` | Estimated |
+| Warp | `~/.warp/sessions/*.jsonl` | Estimated |
+| Windsurf | `~/.windsurf/sessions/*.jsonl` | Estimated |
+| Forge | `~/.forge/sessions/*.jsonl` | Estimated |
+| Augment | `~/.augment/sessions/*.jsonl` | Estimated |
+| Antigravity/Z.ai | Via Factory sessions | Estimated |
+| Cline | `~/.cline/sessions/*.jsonl` | Estimated |
+| Copilot | Planned | — |
+| Aider | Planned | — |
 
-## Where it's used
+## Adding a new provider
 
-- **Parsers** — every `LogParser` subclass returns an `AgentProvider` case from its `provider` property
-- **UI** — `DesignSystem.Colors.primary(for:)` maps cases to brand accent colors
-- **Routing** — `SwitcherDiscoveryService` uses `logDirectory` to watch for new session files
-- **Firestore sync** — `provider.rawValue` is the Firestore `provider` field on `UsageEventDoc`
-- **ProviderBrand** — `AgentLens/Models/ProviderBrand.swift` wraps a provider into a display bundle (logo, color, icon) for both the switcher surface and the daemon catalog surface
+1. Add a case to `AgentProvider` in `AgentLens/Models/AgentProvider.swift`.
+2. Set `iconName`, `displayName`, `logDirectory`, and `filePattern`.
+3. Implement `LogParser` protocol in `AgentLens/Services/LogParser/`.
+4. Register the parser in `UsageAggregator`.
+5. Add tests in `AgentLensTests/Active/`.
 
-## ProviderBrand
+## Related pages
 
-`ProviderBrand` is a display-layer struct (not an enum) that can be built from an `AgentProvider`, a `BurnBarCatalogProvider`, or a raw provider ID string. It resolves bundled logo assets, accent color, and SF Symbol icon from whichever source is available.
+- [Usage tracking](../features/usage-tracking.md)
+- [macOS app](../apps/macos-app/index.md)

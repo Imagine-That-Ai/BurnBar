@@ -1,118 +1,99 @@
 # Design system
 
-All design tokens for OpenBurnBar. Implemented in `AgentLens/Theme/DesignSystem.swift` with adaptive colors via `AgentLens/Theme/ColorAdaptive.swift`.
+Adaptive color system, typography, spacing, and motion tokens used across all OpenBurnBar surfaces.
 
-## Typography
+## Purpose
 
-All type uses **SF Pro Rounded** (`Font.system(..., design: .rounded)`). Ships with macOS — no loading required.
+Maintain visual consistency across macOS, iOS, and Android while supporting both dark and light mode. The design system is documented in `DESIGN.md` and implemented in `DesignSystem.swift`.
 
-| Token | Size | Weight | Usage |
-|---|---|---|---|
-| `displayLarge` | 36pt | Bold | Reserved for hero moments |
-| `display` | 28pt | Bold | Large cost totals |
-| `title` | 20pt | Semibold | Modal headers |
-| `headline` | 16pt | Semibold | Card titles, provider names |
-| `body` | 14pt | Regular | Toggle labels, row text |
-| `caption` | 12pt | Semibold | Section headers, subtitles |
-| `tiny` | 11pt | Medium | Timestamps, annotations only |
-| `mono` | 14pt | Medium | Token counts, cost values |
-| `monoSmall` | 12pt | Medium | Inline cost figures |
-| `monoTiny` | 11pt | Medium | Paths, audit ordinals |
+## Color system
 
-**Section header rule:** always `caption` (12pt semibold) + `textSecondary`. Never `tiny` + `textMuted` — contrast fails at that combination.
-
-## Adaptive colors
-
-Colors use `NSColor`'s dynamic provider (via `Color.adaptive(light:dark:)` in `ColorAdaptive.swift`) so they flip automatically with macOS appearance. No asset catalog required.
-
-### Dark mode — Warm Charcoal (primary)
+### Dark mode — Warm Charcoal
 
 | Token | Value | Role |
-|---|---|---|
+|-------|-------|------|
 | `background` | `#0E0D0B` | Warm near-black |
 | `surface` | `#171510` | Dark warm charcoal |
-| `surfaceElevated` | `#201E18` | Elevated surface |
+| `surfaceElevated` | `#201E18` | Elevated warm surface |
 | `border` | `#302C22` | Earthy dark border |
 | `textPrimary` | `#F0EBE2` | Warm off-white |
 | `textSecondary` | `#9A9088` | Warm gray |
 | `textMuted` | `#7A7268` | Warm muted |
-| `success` | `#38D898` | Vivid green |
-| `warning` | `#F0C040` | Rich amber |
-| `error` | `#F06070` | Rich red |
 
 ### Light mode — Botanical Cream
 
 | Token | Value | Role |
-|---|---|---|
-| `background` | `#EDF0E5` | Herbarium paper |
+|-------|-------|------|
+| `background` | `#EDF0E5` | Herbarium paper — cream with green cast |
 | `surface` | `#F4F6EE` | Lighter botanical paper |
 | `surfaceElevated` | `#FAFAF5` | Near-white with green tint |
 | `border` | `#C5CEB6` | Pressed sage |
 | `textPrimary` | `#1C2014` | Botanical ink |
 | `textSecondary` | `#4A5442` | Aged ink |
-| `textMuted` | `#7A8572` | Faded sage |
+| `textMuted` | `#7A8572` | Faded sage text |
 
-## Brand accents
+### Brand accents
 
-| Accent | Dark | Light | Usage |
-|---|---|---|---|
-| `coral` | `#E87060` | `#C8604E` | Claude Code, gradients |
-| `purple` | `#9080D8` | `#6868B8` | Factory Droid, charts |
-| `teal` | `#2CCAC0` | `#1A9A8C` | Kimi, cache hits |
-| `gold` | `#E0A030` | `#A47A1E` | MiniMax, warnings |
+| Color | Dark | Light | Usage |
+|-------|------|-------|-------|
+| Coral | `#E87060` | `#C8604E` | Claude Code, gradients |
+| Purple | `#9080D8` | `#6868B8` | Factory Droid, charts |
+| Teal | `#2CCAC0` | `#1A9A8C` | Kimi, cache hits |
+| Gold | `#E0A030` | `#A47A1E` | MiniMax, warnings |
 
-Provider identity colors in switch statements can remain fixed; only general-purpose accent tokens need to be adaptive.
-
-## Hermes mercury identity
+### Mercury identity
 
 | Token | Dark | Light | Usage |
-|---|---|---|---|
-| `hermesMercury` | `#C8BFB5` | `#AEA69C` | Response bubble strokes, status text, thinking state |
-| `hermesAureate` | `#A2ACBA` | `#3F4651` | Badges, links, send button accent |
+|-------|------|-------|-------|
+| `hermesMercury` | `#C8BFB5` | `#AEA69C` | Warm silver — response bubble strokes, status text |
+| `hermesAureate` | `#A2ACBA` | `#3F4651` | Dark platinum — Hermes badges, links, send button accent |
 
-`mercuryGradient`: `LinearGradient([hermesMercury, hermesAureate], topLeading → bottomTrailing)`
+## Typography
+
+All type uses **SF Pro Rounded** (`Font.system(..., design: .rounded)`):
+
+| Token | Size | Weight | Usage |
+|-------|------|--------|-------|
+| `display` | 28pt | Bold | Large cost totals |
+| `title` | 20pt | Semibold | Modal headers |
+| `headline` | 16pt | Semibold | Card titles, provider names |
+| `body` | 14pt | Regular | Toggle labels, row text |
+| `caption` | 12pt | Medium | Section headers, subtitles |
+| `tiny` | 11pt | Medium | Timestamps, annotations |
+| `mono` | 14pt | Medium | Token counts, cost values, paths |
 
 ## Spacing
 
 Base unit: **4px**. All spacing is multiples of 4.
 
-| Token | Value | Usage |
-|---|---|---|
-| `xxs` | 2px | Icon-to-text nudges |
-| `xs` | 4px | Tight internal gaps |
-| `sm` | 8px | Component internal padding |
-| `md` | 12px | Between related elements |
-| `lg` | 16px | Card padding, section gaps |
-| `xl` | 24px | Between sections |
-| `xxl` | 32px | Between major blocks |
-| `xxxl` | 48px | Top-level layout gaps |
+| Token | Value |
+|-------|-------|
+| `xs` | 4px |
+| `sm` | 8px |
+| `md` | 12px |
+| `lg` | 16px |
+| `xl` | 24px |
+| `xxl` | 32px |
 
-## Layout
+## Motion
 
-- **Border radius:** sm=6px, md=10px, lg=16px, xl=22px, full=9999px
-- **Settings window:** `NavigationSplitView`, 165–190px sidebar, 720×530 frame
-- **Popover:** ~340px constrained width, no resize
-- **Card pattern:** `GlassCard` — `surface` background + `border` 0.5pt stroke + `lg` corner radius
+| Token | Parameters | Usage |
+|-------|-----------|-------|
+| Standard | `spring(response: 0.35, dampingFraction: 0.75)` | General animations |
+| Gentle | `spring(response: 0.4, dampingFraction: 0.85)` | Layout shifts |
+| Snappy | `easeOut(duration: 0.15)` | Toggles, taps |
+| Hover | `spring(response: 0.25, dampingFraction: 0.8)` | Hover states |
 
-## Motion tokens
+Always use `animation(_:value:)` — never `animation(_:)` without a value parameter.
 
-| Token | Type | Parameters | Usage |
-|---|---|---|---|
-| standard | spring | response: 0.35, dampingFraction: 0.75 | Default animations |
-| gentle | spring | response: 0.4, dampingFraction: 0.85 | Layout shifts |
-| snappy | easeOut | duration: 0.15s | Toggles, immediate feedback |
-| hover | spring | response: 0.25, dampingFraction: 0.8 | Hover states |
-| `mercuryShimmer` | linear | 3s easeInOut repeat | Sweeping highlight on mercury gradient borders |
-| `mercuryPool` | keyframes | 1.8s, 0.3s stagger | Thinking state droplets |
+## Entry points for modification
 
-Always use `animation(_:value:)` — never `animation(_:)` without a value.
+- Update tokens in `AgentLens/Theme/DesignSystem.swift`.
+- Add new provider colors in `AgentLens/Theme/ProviderTheme.swift`.
+- Update `DESIGN.md` when changing cross-platform color contracts.
 
-## Files
+## Related pages
 
-| File | Purpose |
-|---|---|
-| `AgentLens/Theme/DesignSystem.swift` | All tokens, `GlassCard`, `BrandGradients` |
-| `AgentLens/Theme/ColorAdaptive.swift` | `Color.adaptive(light:dark:)` NSColor dynamic provider |
-| `AgentLens/Theme/ProviderTheme.swift` | Per-provider color and icon mapping |
-| `AgentLens/Theme/ThemeManager.swift` | Theme lifecycle and appearance observation |
-| `AgentLens/Theme/LLMModelBrand.swift` | Per-model brand colors |
+- [macOS app](../apps/macos-app/index.md)
+- [iOS app](../apps/ios-app/index.md)
+- [Android app](../apps/android-app.md)

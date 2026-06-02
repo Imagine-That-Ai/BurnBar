@@ -1,15 +1,15 @@
 # Packages
 
-Swift packages and Rust crates that are consumed by multiple targets (macOS app, iOS app, Android app, daemon) and must stay in sync.
+Workspace packages that other parts of the codebase import.
 
 ## OpenBurnBarCore
 
-Swift package containing shared wire types, protocols, and schema models. Used by the macOS app, iOS companion, and the daemon. The strict process boundary between the app and daemon requires both sides to agree on every Codable key — this package is that agreement.
+Shared Swift package containing wire types, RPC contracts, and utilities used by the macOS app, iOS app, and daemon.
 
 → [OpenBurnBarCore](openburnbar-core.md)
 
-## iroh library
+## OpenBurnBar iroh
 
-Rust crate providing Ed25519-authenticated P2P connections via UniFFI-generated bindings for Swift (xcframework) and Kotlin (AAR). The same Rust source powers Mercury media and Agent Watch on both iOS and Android.
+Rust crate (`crates/openburnbar-iroh/`) compiled to `Vendor/openburnbar-iroh.xcframework` (iOS/macOS) and `Vendor/openburnbar-iroh.aar` (Android) via UniFFI. Single source of truth for P2P transport.
 
-→ [OpenBurnBar iroh library](openburnbar-iroh.md)
+→ [OpenBurnBar iroh](openburnbar-iroh.md)

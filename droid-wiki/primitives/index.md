@@ -1,21 +1,21 @@
 # Primitives
 
-Core domain objects that appear across three or more subsystems. Understanding these types makes the rest of the codebase navigable.
+Foundational domain objects that appear across 3+ systems.
 
-## AgentProvider
+## Agent provider
 
-The Swift enum enumerating every supported AI provider. Powers all parsers, UI color assignments, routing decisions, and Firestore sync. Every parser returns an `AgentProvider` case; every chart slice maps to one.
+The `AgentProvider` enum and its associated metadata (icon, display name, log directory, file pattern). Defines the 17+ supported AI coding agents.
 
-→ [AgentProvider](agent-provider.md)
+→ [Agent provider](agent-provider.md)
 
-## TokenUsage
+## Token usage
 
-The fundamental data model representing one AI session's token consumption event. Created by parsers, aggregated by `UsageAggregator`, persisted by `UsageStore`, displayed in the popover dashboard, and optionally synced to Firestore as `UsageEventDoc`.
+The unified token + cost ledger: `TokenUsage` model, rollup aggregation, and cost calculation from public pricing tables.
 
-→ [TokenUsage](token-usage.md)
+→ [Token usage](token-usage.md)
 
 ## Design system
 
-Color tokens (Botanical Cream light / Warm Charcoal dark), typography scale (SF Pro Rounded), spacing (4px base unit), motion tokens, and Hermes mercury identity. All adaptive via `NSColor` dynamic provider.
+Adaptive color system (Warm Charcoal dark / Botanical Cream light), SF Pro Rounded typography, spacing tokens, and animation springs. Defined in `DesignSystem.swift`.
 
 → [Design system](design-system.md)
