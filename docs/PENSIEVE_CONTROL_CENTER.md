@@ -92,7 +92,7 @@ Add to the relevant app/test targets in `OpenBurnBar.xcodeproj`:
 
 ## Documented follow-ups (from the adversarial security review — none are blockers)
 1. **Passkey sign-in**: add a `verifyPasskeyAssertion` callable (WebAuthn assertion → Firebase custom token); the console keeps passkey primary with Google/Apple fallback today.
-2. **`searchKnowledge` client callable**: iOS memory search + web Pensieve recall need a client analog of the hosted-MCP `burnbar_search_knowledge` ({queryVector[384], modelVersion, limit} → sealed hits).
+2. ~~`searchKnowledge` client callable~~ — **DONE (remediation pass)**: `functions/src/callables/knowledgeSearch.ts` implements the in-app analog of `burnbar_search_knowledge` ({cloaked queryVector[384], embeddingModelVersion, limit} → sealed hits via findNearest; client decrypts). Contract verified against the iOS `PensieveMemorySearchView` caller (field name `ciphertext`). Cloud Pro gated, model-pinned, zero-knowledge preserved. (Web Pensieve recall is not built — the dashboard shows sources/quota; web recall would need a browser embedder, a separate follow-up.)
 3. **reCAPTCHA Enterprise server assessment**: `registerBrowserEscrowDevice` length-checks `recaptchaToken` but App Check is the real gate; add a server-side `createAssessment` for true defense-in-depth (or drop the field).
 4. ~~Escrow wrapper field reconciliation~~ — **DONE (review pass)**: `apps/console/app/escrow/page.tsx` now reads the real `cloud_vault_key_wrappers` schema (`targetDeviceId`, `wrappedVaultKey`, `status === "active"`). Live escrow round-trip still needs a deployed environment to exercise end-to-end.
 5. **Escrow source-platform hardening**: optionally require `cloud_vault_key_wrappers` source device `platform != Web` in `firestore.rules` (core defense already holds — a browser cannot self-approve).
@@ -105,8 +105,8 @@ Add to the relevant app/test targets in `OpenBurnBar.xcodeproj`:
 # Foundations
 ( cd packages/data-domains && node codegen.mjs && node driftcheck.mjs && node --test )
 ( cd packages/design-tokens && npm ci && npm test )
-# Backend
-( cd functions && npx tsc --noEmit && npm run lint && npx vitest run src/__tests__/{dataExport,dataDeletion,recovery,panic,auditLog,webAppCheck,dataDomainUsage}.test.ts )
+# Backend (139 passed / 4 skipped across 25 files as of the remediation pass)
+( cd functions && npx tsc --noEmit && npm run lint && npx vitest run )
 # Web
 ( cd apps/console && npm install && npm run typecheck && npm test && npm run build )
 # Native: open OpenBurnBar.xcodeproj / android in Gradle after the wiring above.
