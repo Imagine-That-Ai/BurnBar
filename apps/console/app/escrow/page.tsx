@@ -8,21 +8,21 @@ export default function EscrowPage() {
   /**
    * Poll the user's device_trust_keys facet for a wrapper minted to this browser
    * escrow device. The wrapper is an end-to-end domain, so exportUserData returns
-   * it either inline (the wrapped ciphertext blob is itself opaque to the server)
-   * or as a sealedRef. We match on escrowDeviceId and return the wrapped-key b64.
+   * it inline (the wrapped ciphertext blob is itself opaque to the server). Field
+   * names must match the real cloud_vault_key_wrappers schema (firestore.rules):
+   * the wrapper is addressed by `targetDeviceId`, the wrapped key is
+   * `wrappedVaultKey`, and an active wrapper has status === "active".
    */
   const fetchWrappedKey = useCallback(async (escrowDeviceId: string): Promise<string | null> => {
     const res = await exportUserData(["device_trust_keys"]);
     const domain = res.domains.find((d) => d.id === "device_trust_keys");
     const wrappers = (domain?.inlineJson?.cloud_vault_key_wrappers ?? []) as Array<{
-      escrowDeviceId?: string;
-      wrappedKeyBase64?: string;
+      targetDeviceId?: string;
+      wrappedVaultKey?: string;
       status?: string;
     }>;
-    const match = wrappers.find(
-      (w) => w.escrowDeviceId === escrowDeviceId && w.status !== "revoked",
-    );
-    return match?.wrappedKeyBase64 ?? null;
+    const match = wrappers.find((w) => w.targetDeviceId === escrowDeviceId && w.status === "active");
+    return match?.wrappedVaultKey ?? null;
   }, []);
 
   return (
