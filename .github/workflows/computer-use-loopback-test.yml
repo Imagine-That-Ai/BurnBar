@@ -22,7 +22,7 @@ jobs:
       - name: Build + test
         run: |
           cd OpenBurnBarCore
-          swift test --filter "OpenBurnBarComputerUseCoreTests"
+          swift test --filter 'OpenBurnBarComputerUseCoreTests/'
       - name: Build daemon
         run: |
           cd OpenBurnBarDaemon
