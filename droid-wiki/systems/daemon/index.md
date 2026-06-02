@@ -1,157 +1,258 @@
 # Daemon
 
-The OpenBurnBar daemon is the local background process that owns provider routing, mission control, run state, the connector plane, and the browser plane. It runs persistently on macOS and communicates with the native app over a Unix domain socket.
-
-**Support tier:** Core (provider routing, run state); Experimental (mission control, connector plane, browser plane).
+The local JSON-RPC server that runs in the background. Owns provider routing, mission control, quota polling, the HTTP gateway, and the connector plane.
 
 ---
 
 ## Purpose
 
-The daemon is the control plane for AI agent execution. It:
+`OpenBurnBarDaemon/` is a SwiftPM package that builds a local JSON-RPC server (`OpenBurnBarDaemonExecutable`) plus a companion CLI (`OpenBurnBarCLI`). The daemon is the authoritative runtime for:
 
-- Routes requests to the correct provider (Anthropic, OpenAI, Grok, Factory, etc.) and applies cost/routing policies
-- Manages the full lifecycle of agent runs — queuing, execution, resume, and failure recovery
-- Maintains a run journal and checkpoint files for durable state across restarts
-- Hosts the connector plane for six external services (GitHub, Slack, Linear, PostHog, Sentry, Gmail)
-- Hosts the browser plane for daemon-side fetch and system-browser launch
-- Exposes the mission control runtime: project registry, question/followup workflows, mission dispatch, simulator/replay
-- Bridges to the mobile app via iroh P2P transport
+- **Provider routing** — scoring and selecting AI provider routes (OpenAI-compatible, Anthropic, Ollama, Factory Droid, etc.)
+- **HTTP gateway** — an OpenAI-compatible `/v1/chat/completions` endpoint on `localhost:8317`
+- **Mission control** — project registry, scheduled reviews, questions, followups, missions, and simulation
+- **Connector plane** — outbound integrations to GitHub, Slack, Linear, PostHog, Sentry, and Gmail
+- **Browser plane** — Playwright-based Computer Use browser automation
+- **Run service** — daemon-managed AI execution with approval gating and tool dispatch
+
+The macOS app (`AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift`) coordinates the daemon lifecycle: installing the binary, rotating socket auth tokens, health polling, and proxying all RPC calls.
 
 ---
 
 ## Directory layout
 
-The daemon package lives at `OpenBurnBarDaemon/` and is defined in `OpenBurnBarDaemon/Package.swift`.
-
 ```
-OpenBurnBarDaemon/Sources/
-├── OpenBurnBarDaemon/          # Library target — all daemon logic
-│   ├── MissionControl/         # Mission control runtime (service, store, scheduler, etc.)
-│   ├── ComputerUse/            # Computer Use coordinator (phase 8-13)
-│   ├── OpenBurnBarDaemonServer.swift       # JSON-RPC server actor
-│   ├── OpenBurnBarProviderRouter.swift     # Provider routing engine
-│   ├── OpenBurnBarRunService.swift         # Run lifecycle state machine
-│   ├── OpenBurnBarRunJournal.swift         # Durable run journal (JSONL)
-│   ├── OpenBurnBarConnectorPlaneService.swift
-│   ├── OpenBurnBarBrowserToolService.swift
-│   ├── OpenBurnBarConfigStore.swift        # Provider config + routing config
-│   └── ...
-├── OpenBurnBarDaemonExecutable/  # Entry point — links OpenBurnBarDaemon
-├── OpenBurnBarCLI/               # CLI binary — operator commands
-├── OpenBurnBarRemoteAccessAgent/ # Remote-access agent executable
-├── OpenBurnBarRemoteAccessAgentCore/ # Shared library for remote-access agent
-└── OpenBurnBarVirtualHIDBridge/  # Virtual HID bridge for Computer Use
-```
-
-Six build targets:
-
-| Target | Type | Role |
-|---|---|---|
-| `OpenBurnBarDaemon` | Library | All daemon logic and RPC handlers |
-| `OpenBurnBarDaemonExecutable` | Executable | Entry point; links the library |
-| `OpenBurnBarCLI` | Executable | CLI operator surface |
-| `OpenBurnBarRemoteAccessAgentCore` | Library | Shared remote-access protocol types |
-| `OpenBurnBarRemoteAccessAgent` | Executable | Remote access agent (ApplicationServices/IOKit) |
-| `OpenBurnBarVirtualHIDBridge` | Executable | Virtual HID input bridge (CoreGraphics/IOKit) |
-
----
-
-## JSON-RPC server
-
-The daemon exposes a Unix domain socket RPC server implemented in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift`.
-
-**Socket path:** `~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock`  
-(constant `BurnBarDaemonPaths.defaultSocketPath` in `OpenBurnBarDaemonConfiguration.swift`)
-
-**Auth:** Every request must carry a Keychain-backed auth token. The daemon refuses to start without one — see `BurnBarDaemonConfiguration.validate()`. The macOS app generates and passes the token automatically.
-
-**Rate limit:** 60 req/s sustained, 100 burst (configurable via `BurnBarRateLimitConfiguration`).
-
-**launchd installation:** The macOS app installs the daemon as a launchd agent so it persists across logins. The support directory (`~/Library/Application Support/OpenBurnBar/`) is the canonical root for all daemon-owned state files.
-
----
-
-## Key subsystems
-
-### Provider routing
-
-`OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift` (~79 KB) selects the provider and model for each request based on configured routing policy, per-model health scores, and budget enforcement. Provider executors (`OpenBurnBarProviderExecutor.swift`, `OpenBurnBarAnthropicProviderExecutor.swift`, `FactoryDroidProviderExecutor.swift`, etc.) translate the routed request into provider-specific wire calls.
-
-### Run service and journal
-
-`OpenBurnBarRunService.swift` drives the full run lifecycle — start, execute, stream, finish, and recover. Execution detail is in `BurnBarRunService+Execution.swift`; tool dispatch in `BurnBarRunService+ToolDispatch.swift`.
-
-The run journal (`OpenBurnBarRunJournal.swift`) appends events to `~/Library/Application Support/OpenBurnBar/run-journal.jsonl`. Checkpoints and routing decision events land in the same support directory (`run-journal.jsonl`, `provider-routing-decisions.jsonl`).
-
-### Connector plane
-
-`OpenBurnBarConnectorPlaneService.swift` manages durable connections to:
-
-- GitHub, Slack, Linear, PostHog, Sentry, Gmail
-
-Credentials are stored in the local Keychain via `OpenBurnBarConnectorSecretStore.swift`. Current supported actions are `test_connection` and `sample_request` per connector. Broader actions will ship when the interaction model stabilises.
-
-### Browser plane
-
-`OpenBurnBarBrowserToolService.swift` provides daemon-side HTTP fetch, document extraction, link extraction, and system-browser launch. Playwright and Lightpanda are detected and surfaced as status/setup engines; full headless automation runs through the daemon fetcher path in this release.
-
-### Mission control
-
-See [`mission-control.md`](./mission-control.md) for the full breakdown. Entry point: `MissionControl/MissionControlService.swift`.
-
-### Computer Use
-
-`ComputerUse/` coordinates the Computer Use phases (8–13): Agent Watch (screen mirror), browser plane, trust modes, Mac system input, phone-as-controller, and audit chain. See `docs/HERMES_COMPUTER_USE.md` and `plans/2026-05-16-computer-use-master-plan.md`.
-
----
-
-## Daemon support directory
-
-`~/Library/Application Support/OpenBurnBar/` (overridable via `OPENBURNBAR_DAEMON_SUPPORT_DIR`):
-
-| File | Owned by | Purpose |
-|---|---|---|
-| `openburnbar-daemon.sock` | Daemon | Unix socket |
-| `provider-config.json` | Daemon | Provider routing config |
-| `provider-secrets.continuity.json` | Daemon | Provider key continuity |
-| `usage-events.jsonl` | Daemon | Usage ledger |
-| `run-journal.jsonl` | Daemon | Run events |
-| `provider-routing-decisions.jsonl` | Daemon | Routing audit log |
-| `gateway-model-health.json` | Daemon | Per-model health state |
-
-Local SQLite (owned by the app, not the daemon) is the canonical store for usage history, conversations, and retrieval. See [Local database](../local-database/index.md).
-
----
-
-## CLI entrypoints
-
-Build and run with:
-
-```bash
-swift run --package-path OpenBurnBarDaemon OpenBurnBarCLI -- help
+OpenBurnBarDaemon/
+├── Package.swift                          # SwiftPM manifest (macOS 14+)
+├── Sources/
+│   ├── OpenBurnBarDaemonExecutable/       # @main entry point for the daemon process
+│   │   └── OpenBurnBarDaemonMain.swift
+│   ├── OpenBurnBarCLI/                    # @main entry point for the CLI executable
+│   │   └── OpenBurnBarCLIMain.swift
+│   ├── OpenBurnBarDaemon/                 # Core daemon library (actor-isolated)
+│   │   ├── OpenBurnBarDaemonServer.swift   # JSON-RPC accept loop + method dispatch
+│   │   ├── OpenBurnBarHTTPGatewayServer.swift # NWListener-based HTTP gateway
+│   │   ├── OpenBurnBarProviderRouter.swift # Five-dimensional route scoring
+│   │   ├── OpenBurnBarRunService.swift     # AI run lifecycle + tool dispatch
+│   │   ├── OpenBurnBarConnectorPlaneService.swift # Connector config + health checks
+│   │   ├── OpenBurnBarBrowserToolService.swift # Playwright / fetch / system browser
+│   │   ├── OpenBurnBarMissionControlService.swift # Protocol facade (deprecated; see MissionControl/)
+│   │   ├── MissionControl/                 # Mission control subsystem
+│   │   │   ├── MissionControlService.swift
+│   │   │   ├── MissionControlStore.swift
+│   │   │   ├── MissionControlProjectionReducer.swift
+│   │   │   ├── MissionControlTransport.swift
+│   │   │   ├── MissionControlSummaryEnricher.swift
+│   │   │   ├── MissionControlPerformanceGuardrails.swift
+│   │   │   ├── BurnBarParallelDAGScheduler.swift
+│   │   │   └── Bridges/
+│   │   │       ├── LocalNotificationBridge.swift
+│   │   │       ├── TelegramBotBridge.swift
+│   │   │       └── EventKitBridge.swift
+│   │   ├── ComputerUse/                   # Browser + system automation
+│   │   │   ├── ComputerUseService.swift
+│   │   │   ├── ComputerUseRunCoordinator.swift
+│   │   │   ├── OpenBurnBarPlaywrightLifecycle.swift
+│   │   │   └── OpenBurnBarPlaywrightDriver.swift
+│   │   ├── RPC/                           # Per-category RPC handlers
+│   │   │   ├── BurnBarDaemonServer+RPCLifecycle.swift
+│   │   │   ├── BurnBarDaemonServer+RPCConfig.swift
+│   │   │   ├── BurnBarDaemonServer+RPCRunWorkspaceApproval.swift
+│   │   │   ├── BurnBarDaemonServer+RPCMissionControl.swift
+│   │   │   ├── BurnBarDaemonServer+RPCComputerUse.swift
+│   │   │   ├── BurnBarDaemonServer+RPCEncoding.swift
+│   │   │   └── ...
+│   │   └── ...
+│   └── OpenBurnBarRemoteAccessAgentCore/   # Privileged input / Computer Use Phase 11+
+│       └── ...
+└── Tests/OpenBurnBarDaemonTests/           # XCTest suite (~60 test files)
 ```
 
-Available commands (from `OpenBurnBarCLI.swift`):
+---
 
-| Command | Description |
-|---|---|
-| `health` | Daemon health and version |
-| `controller [projectSlug]` | Controller summary for a project |
-| `questions [projectSlug]` | Pending questions |
-| `followups [projectSlug]` | Pending followups |
-| `missions [projectSlug]` | Mission list |
-| `mission-approve <missionID> [note]` | Approve a mission |
-| `simulator-runs [projectSlug]` | List simulator run snapshots |
-| `simulator-replay <runID>` | Replay a simulator run |
+## Key abstractions
+
+### `BurnBarDaemonServer`
+
+The top-level actor in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift`. Creates a Unix domain socket (`SOCK_STREAM`), accepts one JSON-RPC request per connection, and dispatches to per-category handlers. Supports optional socket auth tokens and per-PID rate limiting.
+
+### `BurnBarHTTPGatewayServer`
+
+An actor in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift` built on `Network.framework` (`NWListener`). Exposes:
+
+- `GET /health`
+- `GET /metrics`
+- `GET /v1/models` (advertised + full catalog)
+- `POST /v1/chat/completions` (OpenAI-compatible, streaming + buffered)
+- `POST /v1/responses`
+- `POST /v1/messages` (Anthropic Messages API)
+
+Requests are resolved to a canonical model ID, scored by the provider router, and proxied upstream with verbatim SSE passthrough when formats match.
+
+### `BurnBarProviderRouter`
+
+A `Sendable` struct in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift` that scores routes across five dimensions:
+
+| Dimension | Weight | Source |
+|-----------|--------|--------|
+| Capability | 0.20 | Provider features |
+| Cost | 0.25 | Model pricing per 1M tokens |
+| Latency | 0.15 | Historical round-trip |
+| Trust | 0.25 | Credential slot health |
+| Policy fit | 0.15 | Preferred provider/slot alignment |
+
+Supports three router modes: `providerFamilyFailover`, `sameModelFailover`, and `intelligentModelRouter`. Routing decisions are persisted to a JSONL audit log.
+
+### `BurnBarConnectorPlaneService`
+
+An actor in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConnectorPlaneService.swift` that manages six outbound connectors:
+
+- **GitHub** — `api.github.com`, Bearer token
+- **Slack** — `slack.com/api`, Bearer token
+- **Linear** — `api.linear.app/graphql`, Bearer token
+- **PostHog** — `app.posthog.com/api`, Bearer token
+- **Sentry** — `sentry.io/api/0`, Bearer token
+- **Gmail** — `gmail.googleapis.com`, OAuth access token
+
+Every base URL is validated for SSRF defense (HTTPS-only, no private/reserved IPs, no cloud metadata endpoints) before persistence.
+
+### `BurnBarBrowserToolService`
+
+An actor in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarBrowserToolService.swift` supporting three engines:
+
+1. **Daemon Fetcher** (`URLSession`) — `fetchDocument`, `extractLinks`
+2. **System Browser** (`/usr/bin/open`) — `openExternal`
+3. **Playwright** — interactive actions (`click`, `fill`, `goto`, `screenshot`, etc.)
+
+The Playwright bridge script lives at `OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js`.
+
+### `BurnBarMissionControlService`
+
+An actor in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlService.swift` (protocol alias in `OpenBurnBarMissionControlService.swift`). Provides:
+
+- Project registry (`controllerProjectUpsert`, `controllerProjectsList`)
+- Scheduled reviews with automatic launch
+- Question / followup CRUD and notification delivery
+- Mission creation, approval, dispatch, and result recording
+- Simulator run recording and replay
+- Auto-takeover when a mission packet fails
+
+### `BurnBarCLI` / `BurnBarCLIRunner`
+
+The CLI surface in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift`. Commands include:
+
+- `health` — daemon version and protocol
+- `controller` / `status` — project summary
+- `questions`, `followups`, `missions`
+- `mission-approve <id>`
+- `simulator-runs`, `simulator-replay <id>`
+- `resume <sessionId>` — run resume with harness/model selection
+- `exec <codex|claude|...>` — shell shim forwarding
+- `claude-meter-experiment`, `claude-handoff`
+- `audit-verify`, `remote-unlock-certification`
+
+The CLI connects over the same Unix socket as the macOS app via `BurnBarCLISocketClient`.
+
+---
+
+## How it works
+
+### Startup and RPC lifecycle
+
+```mermaid
+sequenceDiagram
+    participant App as AgentLens (macOS)
+    participant DM as OpenBurnBarDaemonManager
+    participant D as BurnBarDaemonServer
+    participant R as BurnBarRunService
+    participant M as BurnBarMissionControlService
+    participant G as BurnBarHTTPGatewayServer
+
+    App->>DM: installDaemonIfNeeded()
+    DM->>D: launchd start
+    D->>D: socket(AF_UNIX, SOCK_STREAM)
+    D->>D: bind/listen on ~/Library/Application Support/openburnbar-daemon.sock
+    D->>D: accept loop (Task.detached)
+    D->>M: startBackgroundLoops()
+    D->>G: start() [if enabled]
+    D->>DM: health() → ok
+    App->>DM: RPC calls
+    DM->>D: write JSON-RPC + 0x0A
+    D->>D: decode method
+    alt runCreate
+        D->>R: createRun()
+    else missionCreate
+        D->>M: missionCreate()
+    else chatCompletions
+        D->>G: [handled on NWConnection directly]
+    end
+    D-->>DM: JSON response
+```
+
+### Provider routing flow
+
+```mermaid
+flowchart LR
+    A[Client request<br/>model = "claude-opus-4"] --> B[Gateway / RPC]
+    B --> C[ProviderRouter.scoreAndRankRoutes]
+    C --> D[ConfigStore.resolvedConfigurations]
+    D --> E[Candidate routes<br/>per provider + slot]
+    E --> F[Scorecard:<br/>capability, cost,<br/>latency, trust,<br/>policyFit]
+    F --> G[Ranked routes]
+    G --> H[Select winner]
+    H --> I[Proxy upstream<br/>or return route]
+    I --> J[Record decision<br/>to JSONL audit log]
+```
+
+### Mission dispatch with approval gating
+
+```mermaid
+flowchart LR
+    A[missionDispatchPacket] --> B{mission.approved?}
+    B -->|no| C[throw missionNotApproved]
+    B -->|yes| D{terminal status?}
+    D -->|yes| E[throw missionTerminal]
+    D -->|no| F{enterprise policy block?}
+    F -->|yes| G[throw enterprisePolicyBlocked]
+    F -->|no| H{execution readiness gate}
+    H -->|fail| I[throw executionReadinessFailed]
+    H -->|pass| J[launchReviewRun]
+    J --> K[store.dispatchMissionPacket]
+```
 
 ---
 
 ## Integration points
 
-| Surface | Transport | Notes |
-|---|---|---|
-| macOS app | JSON-RPC over Unix socket | App is the RPC client; daemon is server |
-| Cursor / VS Code extension | JSON-RPC over Unix socket | Extension reads health, run state, catalog |
-| Mobile (iOS/Android) | iroh P2P (Ed25519) | Computer Use screen mirror; mercury media transport |
-| Cloud Functions | Firestore (optional) | Replication plane only — not canonical |
+| Consumer | Integration | File |
+|----------|-------------|------|
+| macOS app | Unix socket RPC | `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift` |
+| macOS app | HTTP gateway (OpenAI-compatible) | `AgentLens/Services/CLIBridge/OpenAICompatibleChatGatewayClient.swift` |
+| VS Code extension | HTTP gateway + daemon health | `extensions/openburnbar/src/daemonHealth.ts` |
+| iOS/Android | Firestore (read-only) + iroh | `functions/src/types.ts` |
+| Cloud Functions | Firestore rules, callable functions | `functions/src/logging.ts` |
+| CI / shell | `openburnbar-cli` via Unix socket | `OpenBurnBarDaemon/Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift` |
+
+---
+
+## Entry points for modification
+
+| Change | Where to start |
+|--------|----------------|
+| Add a new RPC method | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPC*.swift` + `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift` `responseData(for:)` switch |
+| Add a new provider | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift` + `OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarCatalog.swift` |
+| Add a new connector | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConnectorPlaneService.swift` `BurnBarConnectorKind` + `makeRequest` |
+| Add a new browser engine | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarBrowserToolService.swift` `BurnBarBrowserEngineKind` |
+| Change mission control logic | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlService.swift` |
+| Change simulator behavior | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlStore.swift` `recordSimulatorRun` / `replaySimulator` |
+| Add CLI command | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift` `BurnBarCLIRunner.run(arguments:)` switch |
+| Change gateway endpoint | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift` `routeRequest` switch |
+
+---
+
+## Related pages
+
+- [Mission control](mission-control.md) — deeper dive into project registry, missions, and simulation
+- [macOS app](../../apps/macos-app/index.md) — `OpenBurnBarDaemonManager` and UI integration
+- [Local database](../local-database/index.md) — SQLite schema and GRDB projections
+- [Iroh transport](../iroh-transport.md) — P2P transport used by Computer Use and Mercury

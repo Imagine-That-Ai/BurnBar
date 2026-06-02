@@ -1,147 +1,236 @@
 # Mission control
 
-Mission control is the daemon-backed runtime for project tracking, agent mission dispatch, question/followup workflows, and scheduled review automation.
-
-**Support tier:** Experimental — fully functional and tested, but the data model and CLI surface are still evolving. Disabled by default; requires explicit opt-in.
+Daemon-backed project registry, scheduled reviews, question/followup workflows, mission dispatch, and deterministic simulation.
 
 ---
 
 ## Purpose
 
-Mission control turns the daemon into an autonomous project manager. It:
+Mission Control is a subsystem inside `OpenBurnBarDaemon` that gives the macOS app a structured way to manage AI-assisted work. It is event-sourced: every mutation appends a record to a JSONL journal, then a projection reducer rebuilds an in-memory state file. This makes the history replayable and auditable.
 
-- Maintains a durable project registry with per-project metadata and review schedules
-- Ingests OpenBurnBar activity to derive controller state for each project
-- Surfaces pending questions and followups with notification dispatch and deep links
-- Dispatches mission packets to daemon-managed runs and tracks result provenance
-- Records auto-takeover state for failed or stalled work
-- Supports simulator/replay so past run sequences can be replayed for testing
+The subsystem is experimental. The core OpenBurnBar value proposition remains token-usage tracking; Mission Control is a secondary surface that should only be expanded when user demand justifies the operational burden.
 
 ---
 
-## Key concepts
-
-### Project registry
-
-Each registered project has a slug, display name, repository path, and an optional review schedule. Projects are the top-level unit of aggregation for all mission control activity.
-
-### Controller runtime
-
-The controller ingests parsed OpenBurnBar activity and builds a per-project summary — current run state, recent sessions, pending work, and health indicators. The `controllerSummary` CLI command and RPC method surface this as `BurnBarControllerSummary`.
-
-### Questions and followups
-
-During or after a run the daemon may surface **questions** (open items requiring human input) and **followups** (actions derived from run outcomes). Both are notification-driven and support deep links from macOS notifications back to the controller workbench in the app.
-
-### Mission dispatch
-
-A mission is a discrete unit of agent work with a defined goal, scope, and approval requirement. The flow is:
-
-1. Mission packet is created and surfaces in the `missions` CLI list.
-2. A human (or the CLI) calls `mission-approve <missionID>` (optionally with a note).
-3. The daemon dispatches the mission to a provider run via the run service.
-4. Result provenance is recorded against the run journal and usage ledger.
-
-### Scheduled reviews
-
-Each project can carry a review schedule. The controller runtime fires review events on schedule and enqueues any follow-on questions or missions.
-
-### Simulator / replay
-
-The simulator records run sequences that can be replayed deterministically. `simulator-runs` lists available snapshots; `simulator-replay <runID>` re-executes a run from its recorded inputs.
-
----
-
-## Source files
-
-All mission control logic lives in `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/`:
-
-| File | Role |
-|---|---|
-| `MissionControlService.swift` (~60 KB) | Top-level service actor; orchestrates all subsystems |
-| `MissionControlStore.swift` (~53 KB) | Persistence layer for projects, missions, questions, followups |
-| `BurnBarParallelDAGScheduler.swift` (~39 KB) | DAG-based parallel scheduler for mission steps |
-| `MissionControlMissionStateMerger.swift` (~19 KB) | Merges incoming run state into mission records |
-| `MissionControlSummaryEnricher.swift` (~15 KB) | Enriches controller summary with project context |
-| `MissionControlNotificationEvaluator.swift` (~6 KB) | Decides when to fire notifications |
-| `MissionControlHelpers.swift` (~11 KB) | Shared utilities |
-| `MissionControlJournalRepository.swift` (~3 KB) | Appends mission events to the run journal |
-| `MissionControlProjectionReducer.swift` (~5 KB) | Reduces events into projection snapshots |
-| `MissionControlProjectionFile.swift` (~3 KB) | Reads/writes projection files on disk |
-| `MissionControlTransport.swift` (~3 KB) | Wire types for RPC serialisation |
-| `MissionControlError.swift` | Error enum |
-| `Bridges/` | Bridge adapters to the main run service |
-
-The service is exposed to the RPC server through the `BurnBarMissionControlServing` protocol, injected into `BurnBarDaemonServer` at init time (`OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift`).
-
----
-
-## Data flow
+## Directory layout
 
 ```
-CLI / app RPC call
-    ↓
-BurnBarDaemonServer  (JSON-RPC over Unix socket)
-    ↓
-MissionControlService.dispatch()
-    ↓
-BurnBarParallelDAGScheduler  ← mission step DAG
-    ↓
-BurnBarRunService.start()    ← daemon run lifecycle
-    ↓
-Provider executor            ← actual API call
-    ↓
-run-journal.jsonl            ← durable provenance
-    ↓
-MissionControlMissionStateMerger  ← state update
-    ↓
-MissionControlStore          ← persisted mission record
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/
+├── MissionControlService.swift           # Top-level actor: orchestration loops + business rules
+├── MissionControlStore.swift             # Event-sourced store: JSONL journal + projection persistence
+├── MissionControlProjectionReducer.swift # Applies events to rebuild projection state
+├── MissionControlProjectionFile.swift    # Codable snapshot of all entities
+├── MissionControlSummaryEnricher.swift   # Builds controller summaries from projection
+├── MissionControlJournalRepository.swift # Disk I/O for journal and projection files
+├── MissionControlTransport.swift         # Notification delivery abstraction
+├── MissionControlNotificationEvaluator.swift # Decides when a followup is due
+├── MissionControlError.swift            # Typed errors
+├── MissionControlPerformanceGuardrails.swift # Cycle-duration and mission-count limits
+├── BurnBarParallelDAGScheduler.swift     # Parallel mission execution scheduling
+├── MissionControlMissionStateMerger.swift # Merges mission state from multiple sources
+└── Bridges/
+    ├── LocalNotificationBridge.swift      # macOS UserNotifications
+    ├── TelegramBotBridge.swift            # Telegram Bot API delivery
+    └── EventKitBridge.swift               # Calendar event creation
 ```
 
 ---
 
-## State storage
+## Key abstractions
 
-Mission control state is split across two locations:
+### `BurnBarMissionControlService`
 
-**Daemon support directory** (`~/Library/Application Support/OpenBurnBar/`):
+The actor in `MissionControl/MissionControlService.swift` that implements `BurnBarMissionControlServing`. It owns:
 
-- `run-journal.jsonl` — run events written by `OpenBurnBarRunJournal`
-- Projection files — per-project snapshots written by `MissionControlProjectionFile`
-- Controller event records
+- **Background notification loop** — `runNotificationLoop()` wakes every 60 seconds to ingest activity, launch scheduled reviews, sync mission execution, evaluate due followups, and poll Telegram commands.
+- **Execution readiness gating** — `missionDispatchPacket` checks approval status, terminal-state safety, enterprise policy blocks, and an `executionReadinessGate` before launching any run.
+- **Auto-takeover** — `synchronizeAutoTakeover` detects failed mission packets and automatically launches a recovery run via the `reviewRunLauncher` closure.
+- **Performance guardrails** — rejects transport cycles that exceed configured mission-count or duration ceilings.
 
-**App SQLite (mirrored, read-only for graceful degradation):**
+### `BurnBarMissionControlStore`
 
-- A mirrored controller runtime cache is written to the app's local SQLite so the app can display controller state even when the daemon is temporarily unavailable. The SQLite table is populated via `ControlPlaneStore` (see `AgentLens/Services/DataStore/DataStore.swift`).
+The actor in `MissionControl/MissionControlStore.swift` that is the single source of truth for all Mission Control entities. It:
+
+- Appends every mutation to a JSONL event journal (`controller-events.jsonl`).
+- Rebuilds a `BurnBarMissionControlProjectionFile` via `MissionControlProjectionReducer`.
+- Persists the projection to disk for fast startup.
+- Supports `injectMissionsForTieBreakTesting` for deterministic unit tests.
+
+Key entities in the projection:
+
+| Entity | Key type | Collection |
+|--------|----------|------------|
+| Project | `projectSlug: String` | `projects` |
+| Question | `BurnBarQuestionID` | `questions` |
+| Followup | `BurnBarFollowupID` | `followups` |
+| Mission | `BurnBarMissionID` | `missions` |
+| Review run | `String` | `reviewRuns` |
+| Simulator run | `BurnBarSimulatorRunID` | `simulatorRuns` |
+
+### `BurnBarMissionControlProjectionReducer`
+
+A pure function in `MissionControl/MissionControlProjectionReducer.swift` that takes a `BurnBarControllerEvent` and updates the projection. Event families:
+
+- `.controller` — project upserts, review run records
+- `.question` — question created, answered
+- `.followup` — followup created, done, snoozed, calendar scheduled
+- `.mission` — mission created, approved, cancelled, packet dispatched, result recorded
+- `.simulator` — simulator run recorded, replayed
+
+### `MissionControlSummaryEnricher`
+
+Builds operator-facing summaries from the raw projection. Computes:
+
+- `freshnessState` — fresh (< 12 h), aging (< 48 h), stale, missing, provisional
+- `nextScheduledReviewAt` — based on `preferredCadence`, `scheduleHourLocal`, and `scheduleWeekdayLocal`
+- `status` — healthy, needsAttention, stale, onboarding, paused
+- `nextActions` — ordered list of recommended operator actions
+
+Also generates `defaultSimulatorEvents` for deterministic simulation runs.
+
+### Notification bridges
+
+| Bridge | File | Transport |
+|--------|------|-----------|
+| Local | `Bridges/LocalNotificationBridge.swift` | `UNUserNotificationCenter` |
+| Telegram | `Bridges/TelegramBotBridge.swift` | Bot API POST |
+| Calendar | `Bridges/EventKitBridge.swift` | `EKEventStore` |
 
 ---
 
-## CLI reference
+## How it works
 
-```bash
-# Controller summary
-OpenBurnBarCLI controller [projectSlug]
+### Event-sourced write path
 
-# Pending questions
-OpenBurnBarCLI questions [projectSlug]
+```mermaid
+sequenceDiagram
+    participant App as AgentLens (macOS)
+    participant S as BurnBarMissionControlService
+    participant St as BurnBarMissionControlStore
+    participant J as MissionControlJournalRepository
+    participant R as MissionControlProjectionReducer
 
-# Pending followups
-OpenBurnBarCLI followups [projectSlug]
-
-# Mission list
-OpenBurnBarCLI missions [projectSlug]
-
-# Approve a mission
-OpenBurnBarCLI mission-approve <missionID> [note]
-
-# Simulator
-OpenBurnBarCLI simulator-runs [projectSlug]
-OpenBurnBarCLI simulator-replay <runID>
+    App->>S: missionCreate(request)
+    S->>St: createMission(request)
+    St->>St: appendEvent(family: .mission, eventType: "mission_created", ...)
+    St->>J: appendEventToDisk(event)
+    St->>R: apply(event, projection)
+    R-->>St: updated projection
+    St->>St: writeProjection()
+    St-->>S: BurnBarMissionMutationResponse
+    S-->>App: response
 ```
+
+### Scheduled review lifecycle
+
+```mermaid
+flowchart LR
+    A[Project.automationMode = scheduled] --> B{nextScheduledReviewAt <= now?}
+    B -->|yes| C{4h cooldown since last attempt?}
+    C -->|yes| D[buildScheduledReviewIntent]
+    D --> E[launchReviewRun]
+    E --> F[recordReviewRun]
+    F --> G[clear scheduled launch failure]
+    B -->|no| H[wait]
+    C -->|no| I[skip]
+    E -.->|error| J[recordScheduledLaunchFailure]
+```
+
+### Mission dispatch with approval and policy gating
+
+```mermaid
+flowchart LR
+    A[missionDispatchPacket] --> B{mission.approved?}
+    B -->|no| C[throw missionNotApproved]
+    B -->|yes| D{terminal status?}
+    D -->|yes| E[throw missionTerminal]
+    D -->|no| F{enterprise policy block?}
+    F -->|yes| G[throw enterprisePolicyBlocked]
+    F -->|no| H{execution readiness gate}
+    H -->|fail| I[throw executionReadinessFailed]
+    H -->|pass| J[reviewRunLauncher(prompt, modelID, metadata)]
+    J --> K[store.dispatchMissionPacket]
+```
+
+### Auto-takeover flow
+
+```mermaid
+sequenceDiagram
+    participant Sync as syncMissionExecution
+    participant M as MissionControlService
+    participant St as MissionControlStore
+    participant R as RunService
+
+    Sync->>Sync: for each mission packet
+    alt source run is terminal and no takeover exists
+        Sync->>M: shouldAutoTakeover(snapshot)
+        M->>M: buildAutoTakeoverPrompt
+        M->>R: reviewRunLauncher(prompt, modelID, metadata)
+        R-->>M: takeoverRun
+        M->>St: persistMissionSnapshot with takeoverPacket + takeoverRecord
+    else takeover exists and phase changed
+        M->>St: persistMissionSnapshot with updated takeover status
+    end
+```
+
+### Simulator and replay
+
+```mermaid
+sequenceDiagram
+    participant CLI as openburnbar-cli
+    participant S as BurnBarMissionControlService
+    participant St as BurnBarMissionControlStore
+    participant E as MissionControlSummaryEnricher
+
+    CLI->>S: simulatorRun(scenarioName: "daily-review", seed: 7)
+    S->>St: recordSimulatorRun
+    St->>E: defaultSimulatorEvents
+    E-->>St: [project, question, mission] events
+    St->>St: appendEvent("simulator_run_recorded")
+    St-->>S: BurnBarSimulatorRunSnapshot
+    S-->>CLI: response
+
+    CLI->>S: simulatorReplay(runID)
+    S->>St: replaySimulator
+    St->>St: append each emittedEvent as replay
+    St->>St: appendEvent("simulator_replayed")
+    St-->>S: BurnBarSimulatorRunSnapshot
+    S-->>CLI: response
+```
+
+---
+
+## Integration points
+
+| Consumer | Integration | File |
+|----------|-------------|------|
+| macOS app | Unix socket RPC → `BurnBarMissionControlServing` | `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+Controller.swift` |
+| macOS app | Controller runtime snapshot | `AgentLens/Services/OpenBurnBarOperating/OpenBurnBarOperatingComposer.swift` |
+| Daemon server | RPC dispatch to Mission Control methods | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCMissionControl.swift` |
+| Run service | `reviewRunLauncher` closure injects runs | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarRunService.swift` |
+| CLI | `controller`, `questions`, `followups`, `missions`, `mission-approve`, `simulator-runs`, `simulator-replay` | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift` |
+| Telegram | Bot API for notification delivery | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/Bridges/TelegramBotBridge.swift` |
+| Calendar | EventKit for followup calendar entries | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/Bridges/EventKitBridge.swift` |
+
+---
+
+## Entry points for modification
+
+| Change | Where to start |
+|--------|----------------|
+| Add a new mission status or packet type | `MissionControl/MissionControlStore.swift` `appendEvent` + `MissionControlProjectionReducer.swift` |
+| Change scheduled review cadence logic | `MissionControl/MissionControlService.swift` `launchDueScheduledReviews` + `buildScheduledReviewIntent` |
+| Change project health heuristics | `MissionControl/MissionControlSummaryEnricher.swift` `freshnessState`, `makeSummary` |
+| Change auto-takeover rules | `MissionControl/MissionControlService.swift` `synchronizeAutoTakeover` + `shouldAutoTakeover` |
+| Add a new notification bridge | `MissionControl/Bridges/` + `MissionControlTransport.swift` |
+| Change simulator scenarios | `MissionControl/MissionControlSummaryEnricher.swift` `defaultSimulatorEvents` |
+| Add enterprise policy rules | `MissionControl/MissionControlService.swift` `evaluateEnterprisePolicyBlock` |
+| Change performance guardrails | `MissionControl/MissionControlPerformanceGuardrails.swift` |
+| Add CLI mission subcommand | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift` `BurnBarCLIRunner` |
 
 ---
 
 ## Related pages
 
-- [Daemon overview](./index.md)
-- [Local database](../local-database/index.md) — ControlPlaneStore for mirror cache
+- [Daemon overview](index.md) — JSON-RPC server, provider routing, HTTP gateway, connector plane
+- [macOS app](../../apps/macos-app/index.md) — `OpenBurnBarDaemonManager` and UI integration

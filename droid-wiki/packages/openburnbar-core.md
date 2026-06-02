@@ -1,60 +1,52 @@
 # OpenBurnBarCore
 
-Swift package containing shared contracts between the macOS app, iOS companion, and the OpenBurnBar daemon. Everything that crosses the app↔daemon JSON-RPC boundary lives here.
+Shared Swift package containing wire types, RPC contracts, and utilities used by the macOS app, iOS app, and daemon.
 
-**Location:** `OpenBurnBarCore/`  
-**Package manifest:** `OpenBurnBarCore/Package.swift`
+## Purpose
 
-## Why it exists
+Prevent type drift between the macOS app UI, the iOS companion, and the local daemon. Every cross-boundary message uses a type defined in this package.
 
-The macOS app and daemon run in separate processes and exchange messages over a local JSON-RPC socket. Both sides must agree on every type name, `Codable` key, and enum `rawValue`. Keeping these types in a shared Swift package prevents drift and makes schema changes a compile error rather than a runtime surprise.
-
-## Products
-
-| Product | Purpose |
-|---|---|
-| `OpenBurnBarCore` | Shared wire types, provider contracts, token usage model, search contracts, mission control contracts |
-| `OpenBurnBarIrohRelay` | Transport-agnostic relay protocol, pairing, and loopback transport. Links the iroh QUIC bridge when `Vendor/OpenBurnBarIroh.xcframework` is present |
-| `OpenBurnBarMedia` | Mercury media substrate: frame codec, stream classes, bitrate controller, capability gate, budget envelope |
-| `OpenBurnBarComputerUseCore` | Computer Use substrate: session metadata, scope rules, deny registry, audit chain, action descriptors, capability gate, budget envelope |
-| `OpenBurnBarFirestoreModels` | Firestore document model types shared with the cloud sync layer |
-
-## Source structure
+## Directory layout
 
 ```
-OpenBurnBarCore/Sources/
-  OpenBurnBarCore/          Main shared models and contracts
-    SharedModels/           Domain types (AgentProvider, TokenUsage, HermesConnectionTypes, ...)
-    Contracts/              JSON-RPC contract protocols
-    Hermes/                 Hermes connection types
-    AgentInsights/          Insight model types
-    Views/                  Shared SwiftUI view helpers
-    TextExpansion/          Text expansion types
-  OpenBurnBarComputerUseCore/
-  OpenBurnBarFirestoreModels/
-  OpenBurnBarIroh/          UniFFI Swift shim (bridges to xcframework)
-  OpenBurnBarIrohRelay/     Relay protocol and pairing
-  OpenBurnBarMedia/         Mercury media types
+OpenBurnBarCore/
+  Package.swift
+  Sources/OpenBurnBarCore/
+    Models/
+      AgentProvider.swift       # 17+ supported agents
+      TokenUsage.swift          # Unified token + cost ledger
+      UsageRollups.swift        # Aggregated window docs
+    RPC/
+      DaemonRPCContracts.swift  # JSON-RPC method signatures
+      BurnBarComputerUseContracts.swift  # Computer Use wire types
+    Utilities/
+      Extensions.swift          # String, Date, Color helpers
 ```
 
-## Key types
+## Key abstractions
 
-| Type | File | Description |
-|---|---|---|
-| `AgentProvider` | `SharedModels/AgentProvider.swift` | Canonical provider enum (also re-exported in `AgentLens/Models/AgentProvider.swift`) |
-| `TokenUsage` | `SharedModels/TokenUsage.swift` | Core usage event model — input/output/cache tokens, cost, session metadata |
-| `UsageProvenanceMethod` | `SharedModels/TokenUsage.swift` | How usage was obtained: `providerLog`, `billingAPI`, `connectorBridge`, etc. |
-| `HermesConnectionTypes` | `SharedModels/HermesConnectionTypes.swift` | Hermes pairing and connection state types |
-| `HermesRealtimeRelayTypes` | `SharedModels/HermesRealtimeRelayTypes.swift` | All relay frame variants (~99KB) |
-| `ProviderAccountTypes` | `SharedModels/ProviderAccountTypes.swift` | Provider account and credential models (~50KB) |
-| `OpenBurnBarAgentContracts` | `OpenBurnBarAgentContracts.swift` | Agent JSON-RPC contracts |
-| `OpenBurnBarMissionControlContracts` | `OpenBurnBarMissionControlContracts.swift` | Mission control RPC contracts |
+| Type | File | Purpose |
+|------|------|---------|
+| `AgentProvider` | `Sources/OpenBurnBarCore/Models/AgentProvider.swift` | Enum of supported AI agents with metadata |
+| `TokenUsage` | `Sources/OpenBurnBarCore/Models/TokenUsage.swift` | Per-session token and cost record |
+| `BurnBarRPCMethod` | `Sources/OpenBurnBarCore/RPC/DaemonRPCContracts.swift` | JSON-RPC method constants |
+| `ComputerUseIntent` | `Sources/OpenBurnBarCore/RPC/BurnBarComputerUseContracts.swift` | Signed intent for phone-as-controller |
 
-## Build commands
+## Integration points
 
-```bash
-swift build --package-path OpenBurnBarCore
-swift test --package-path OpenBurnBarCore
-```
+- Imported by `AgentLens/`, `OpenBurnBarMobile/`, and `OpenBurnBarDaemon/`.
+- Large migrations here can trigger stale Xcode cache issues — run `./scripts/clear-xcode-caches.sh` if you see ghost errors.
 
-The `OpenBurnBarIrohRelay` product conditionally links `Vendor/OpenBurnBarIroh.xcframework` when present. The package builds without it — iroh QUIC features fall back to loopback transport.
+## Entry points for modification
+
+- Add new shared models under `Sources/OpenBurnBarCore/Models/`.
+- Add new RPC contracts under `Sources/OpenBurnBarCore/RPC/`.
+- Update `Package.swift` platform targets if adding new dependencies.
+
+## Related pages
+
+- [macOS app](../apps/macos-app/index.md)
+- [iOS app](../apps/ios-app/index.md)
+- [Daemon](../systems/daemon/index.md)
+- [Agent provider](../primitives/agent-provider.md)
+- [Token usage](../primitives/token-usage.md)

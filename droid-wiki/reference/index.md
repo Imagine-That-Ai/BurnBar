@@ -1,19 +1,27 @@
 # Reference
 
-Technical reference for OpenBurnBar configuration, schemas, protocols, and dependencies.
+Quick-lookup documentation for configuration, data models, and dependencies.
 
-## Pages
+## Configuration
 
-| Page | Contents |
-|------|----------|
-| [Configuration](configuration.md) | Environment variables, feature flags, app settings, daemon config |
-| [Data models](data-models.md) | Firestore schema, SQLite tables, Android model mapping |
-| [Dependencies](dependencies.md) | Key libraries by platform (Swift, Kotlin, TypeScript, Rust) |
-| [Daemon RPC surface](rpc-surface.md) | JSON-RPC 2.0 methods, socket protocol, auth |
+Environment variables, build settings, and runtime configuration.
 
-## Quick links
+→ [Configuration](configuration.md)
 
-- Canonical Firestore schema: `functions/src/types/legacy.ts`
-- Schema sync check: `./tools/schema-sync/check-drift.sh`
-- ADRs: `docs/architecture/`
-- SLO runbook: `docs/runbooks/slos.md`
+## Data models
+
+Key data structures and their relationships across the codebase.
+
+→ [Data models](data-models.md)
+
+## RPC surface
+
+JSON-RPC methods exposed by the daemon and consumed by the macOS app and extension.
+
+→ [RPC surface](rpc-surface.md)
+
+## Dependencies
+
+External dependencies by surface: Swift packages, npm packages, Rust crates, Android libraries.
+
+→ [Dependencies](dependencies.md)

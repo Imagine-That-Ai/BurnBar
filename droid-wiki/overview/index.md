@@ -28,23 +28,30 @@ The product is **daemon-first** and **local-first**: local SQLite plus daemon-ow
 
 ## Architecture summary
 
+```mermaid
+graph LR
+    subgraph macOS App
+        A[AgentLens
+SwiftUI + GRDB]
+    end
+    subgraph Daemon
+        D[OpenBurnBarDaemon
+JSON-RPC + missions]
+    end
+    subgraph Shared
+        C[OpenBurnBarCore
+wire types]
+    end
+    A <-->|JSON-RPC| D
+    A -->|GRDB| S[(Local SQLite)]
+    D -->|provider config| SD[Daemon support dir]
+    A -->|optional| F[(Firestore)]
+    A -->|optional| I[iCloud]
+    D --> C
+    A --> C
 ```
-+------------------+       JSON-RPC        +----------------------+
-|  AgentLens (app) |<--------------------->|  OpenBurnBarDaemon   |
-|  GRDB / SwiftUI  |                       |  Mission control,    |
-|  Parsers + UI    |                       |  Provider routing,   |
-+------------------+                       |  Connector plane     |
-        |                                  +----------+-----------+
-        |                                             |
-        v                                             v
-  Local SQLite                              Daemon support dir
-  (canonical)                               (provider config,
-                                             run journal, etc.)
-        |
-        v
-  Optional cloud
-  Firestore / iCloud
-```
+
+The macOS app (`AgentLens/`) is a SwiftUI shell that owns the UI, local SQLite database via GRDB, and log parsers. The daemon (`OpenBurnBarDaemon/`) runs as a background JSON-RPC service that handles provider routing, mission control, quota polling, and the HTTP gateway. `OpenBurnBarCore/` holds the shared types and RPC contracts that keep the two in sync.
 
 ## Quick links
 
@@ -53,5 +60,4 @@ The product is **daemon-first** and **local-first**: local SQLite plus daemon-ow
 - [Glossary](glossary.md) — project-specific terms
 - [macOS app](../apps/macos-app/index.md) — AgentLens deep dive
 - [Daemon](../systems/daemon/index.md) — OpenBurnBarDaemon deep dive
-- [Log parsers](../apps/macos-app/parsers.md) — how OpenBurnBar reads agent logs
 - [AGENTS.md](https://github.com/Imagine-That-Ai/BurnBar/blob/main/AGENTS.md) — completion bar and AI agent expectations

@@ -1,49 +1,75 @@
 # Usage tracking
 
-Reads local session logs from AI coding agents, extracts token counts and costs, and stores results in SQLite via GRDB. No network calls are required — all data comes from files on disk written by each agent.
+## Purpose
 
-## Supported providers
+Reads local session logs from 17+ AI coding agents, extracts token counts and costs, and stores the results in a local SQLite database via GRDB. No network calls are required — all data comes from files on disk written by each agent. This is the source of truth for the dashboard, insights, cloud sync, and budget governance.
 
-17+ providers are supported:
+## Directory layout
 
-| Provider | Session path |
-|---|---|
-| Claude Code | `~/.claude/projects/` |
-| Factory Droid | `~/.factory/sessions/` |
-| Codex | `~/.codex/sessions/` |
-| Kimi | `~/.kimi/sessions/` |
-| Grok Build | `~/.grok/sessions/` |
-| Cursor | Cursor-specific log directory |
-| Goose | Goose log directory |
-| Hermes | Hermes session logs |
-| Gemini CLI | Gemini CLI session path |
-| Warp | Warp AI logs |
-| Windsurf | Windsurf session logs |
-| Forge | Forge log path |
-| Augment | Augment session path |
-| Antigravity / Z.ai | Z.ai session path |
-| Cline | Cline log path |
-| Copilot | via `UsageAggregatorParsers` generic parser |
-| Aider | via `UsageAggregatorParsers` generic parser |
+```
+AgentLens/Services/LogParser/
+├── LogParserProtocol.swift          # Protocol + ParseResult + FileHandle line reader
+├── ClaudeCodeParser.swift           # Anthropic Claude Code (~397 lines)
+├── FactoryDroidParser.swift         # Factory Droid (~417 lines)
+├── KimiParser.swift                 # Moonshot Kimi CLI (~328 lines)
+├── CodexParser.swift                # OpenAI Codex
+├── GrokParser.swift               # xAI Grok Build
+├── CursorParser.swift               # Cursor IDE
+├── CursorAgentParser.swift          # Cursor agent mode
+├── CopilotParser.swift              # GitHub Copilot CLI
+├── AiderParser.swift                # Aider
+├── ClineFormatParser.swift          # Cline / KiloCode / Roo Code
+├── ForgeDevParser.swift             # Forge
+├── AugmentParser.swift              # Augment
+├── AntigravityParser.swift          # Antigravity / Z.ai
+├── GooseParser.swift                # Goose
+├── WindsurfParser.swift             # Windsurf
+├── WarpParser.swift                 # Warp
+├── HermesParser.swift               # Hermes
+├── GeminiCLIParser.swift            # Gemini CLI
+├── OpenClawParser.swift             # OpenClaw
+├── PiAgentParser.swift              # Pi Agent
+├── OpenCodeParser.swift             # OpenCode
+├── ModelFilterParser.swift          # Generic pattern-matching parser (Ollama, MiMo, Z.ai, MiniMax)
+└── TokenExtractionUtility.swift     # Shared token-count extraction helpers
 
-## LogParser protocol
+AgentLens/Services/UsageAggregation/
+├── ParserRegistry.swift             # Canonical provider → parser map (all 17+ providers)
+├── UsageAggregator.swift            # @Observable facade, refresh coordination (~554 lines)
+└── UsageAggregatorParsers.swift     # Historical catch-all (being broken up into per-parser files)
 
-Every parser conforms to:
+AgentLens/Services/DataStore/
+├── UsageStore.swift                 # SQLite persistence via GRDB (~82 KB)
+├── ModelPricing.swift               # Per-model token pricing lookup
+└── ParserCheckpointStore.swift      # Last-seen offsets to skip duplicate rows
+
+AgentLensTests/Active/Parsers/
+├── ClaudeCodeParserTests.swift
+├── ClaudeCodeParserIntegrationTests.swift
+├── FactoryDroidParserTests.swift
+├── FactoryDroidParserIntegrationTests.swift
+├── KimiParserTests.swift
+└── TestableClaudeCodeParser.swift
+```
+
+## Key abstractions
+
+### `LogParser` protocol
 
 ```swift
-protocol LogParser {
-    var provider: AgentProvider { get }
-    func parse() async throws -> [TokenUsage]
+protocol LogParser: LogParserProtocol {
+    func parse() async throws -> ParseResult
+}
+
+struct ParseResult: Sendable {
+    let usages: [TokenUsage]
+    let conversations: [ConversationRecord]
 }
 ```
 
-Each parser is keyed by `AgentProvider` inside `UsageAggregator`:
+Every parser returns both usage rows and conversation records. The `provider` property keys the parser inside `ParserRegistry`.
 
-```swift
-private let parsers: [AgentProvider: any LogParser]
-```
-
-## TokenUsage model
+### `TokenUsage`
 
 Core data record produced by all parsers:
 
@@ -58,7 +84,7 @@ Core data record produced by all parsers:
 | `sessionPath` | `String` | Absolute path to source log file |
 | `timestamp` | `Date` | When the session occurred |
 
-## ModelPricing
+### `ModelPricing`
 
 `ModelPricing.lookup(model:providerID:)` normalises the model name and returns per-million-token rates:
 
@@ -73,20 +99,22 @@ struct ModelPricing {
 
 Cache creation and cache read are optional; many models carry only input/output rates.
 
-## Refresh pipeline
+## How it works
 
 ```mermaid
 graph LR
     A[Agent log files on disk] --> B[LogParser per provider]
-    B --> C[ParserCheckpointStore\n(skip seen rows)]
+    B --> C[ParserCheckpointStore
+(skip seen rows)]
     C --> D[UsageAggregator]
     D --> E[UsageStore → SQLite]
     E --> F[SwiftUI dashboard]
-    D --> G[CloudSyncService\n(Firestore mirror)]
+    D --> G[CloudSyncService
+(Firestore mirror)]
 ```
 
 1. **RefreshOrchestrator** schedules a detached background task to avoid blocking the main actor.
-2. Each registered `LogParser` scans its directory and emits `[TokenUsage]`.
+2. Each registered `LogParser` (resolved via `ParserRegistry.defaultParsers()`) scans its directory and emits `ParseResult`.
 3. **ParserCheckpointStore** tracks the last-seen file offset/timestamp per parser, preventing duplicate rows across refreshes.
 4. **UsageAggregator** merges results and calls `UsageStore.persist(_:)`.
 5. On success, `CloudSyncService` mirrors records to Firestore for cross-device access.
@@ -100,16 +128,25 @@ private(set) var errors: [AgentProvider: String] = [:]
 private(set) var parserHealth: [AgentProvider: ParserHealth] = [:]
 ```
 
-## Key files
+## Integration points
 
-| File | Purpose |
-|---|---|
-| `AgentLens/Services/UsageAggregator.swift` | `@Observable` facade, refresh coordination (~554 lines) |
-| `AgentLens/Services/UsageAggregatorParsers.swift` | All parser implementations (~96 KB) |
-| `AgentLens/Services/RefreshOrchestrator.swift` | Refresh scheduling and background task management |
-| `AgentLens/Services/ModelPricing.swift` | Per-model token pricing lookup |
-| `AgentLens/Services/DataStore/UsageStore.swift` | SQLite persistence via GRDB (~82 KB) |
+- **Dashboard** — `UsageStore` feeds the live cost totals and provider bars.
+- **Insights** — `InsightEngine` reads the same SQLite tables to compute rollups.
+- **Cloud sync** — `CloudSyncService` uploads unsynced rows to `users/{uid}/usage/{doc}`.
+- **Budget governance** — `BudgetGate` and `BudgetLedger` consume usage rows to enforce caps.
+- **Hermes chat** — `ContextBuilder` injects recent usage summaries into the chat system prompt.
 
-## Parser health
+## Entry points for modification
 
-`parserHealth` maps each provider to a `ParserHealth` enum, allowing the UI to surface per-provider errors without blocking the rest of the refresh. `persistenceErrorMessage` and `typedPersistenceError` capture any failure that occurs during the final write to SQLite.
+- **Add a new provider parser** — create a new `LogParser` conforming type under `AgentLens/Services/LogParser/`, register it in `ParserRegistry.swift`, and add a test in `AgentLensTests/Active/Parsers/`.
+- **Update pricing** — edit `AgentLens/Services/DataStore/ModelPricing.swift` (public pricing tables, no API calls).
+- **Change refresh cadence** — adjust `RefreshOrchestrator` scheduling intervals.
+- **Fix duplicate detection** — tune `ParserCheckpointStore` keying logic (file path + last-modified).
+
+---
+
+Cross-links:
+- [Insights](insights.md)
+- [Budget governance](budget-governance.md)
+- [Cloud sync](cloud-sync.md)
+- [Hermes chat](hermes-chat.md)
