@@ -434,13 +434,7 @@ function boundedString(value: unknown, label: string, maxBytes: number): string 
   return value;
 }
 
-function boundedInteger(
-  value: unknown,
-  label: string,
-  defaultValue: number,
-  maxValue: number,
-  minValue = 1
-): number {
+function boundedInteger(value: unknown, label: string, defaultValue: number, maxValue: number, minValue = 1): number {
   if (value === undefined || value === null) {
     return defaultValue;
   }

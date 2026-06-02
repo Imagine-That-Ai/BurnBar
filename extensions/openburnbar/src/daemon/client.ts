@@ -100,15 +100,11 @@ function readSocketAuthTokenFromKeychain(): string | undefined {
     DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT
   );
   try {
-    const token = execFileSync(
-      'security',
-      ['find-generic-password', '-s', service, '-a', account, '-w'],
-      {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 750
-      }
-    ).trim();
+    const token = execFileSync('security', ['find-generic-password', '-s', service, '-a', account, '-w'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 750
+    }).trim();
     return token || undefined;
   } catch {
     return undefined;
