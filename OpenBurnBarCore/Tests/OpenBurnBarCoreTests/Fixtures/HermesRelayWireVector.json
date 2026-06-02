@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "V4erVrJk\/mzERGlAw20HERl2Jl8AEV+Ot\/Ro2p6jAYz9BGSV7yqRcGKdclFs+yg=",
+  "chunkCiphertext" : "G942L5zNxMnwzPuykgdqA4qkhQWZaHm5adKuaMIx4dE5HfOeclJhUZyP364nqiI=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "sueBkXPIQTl9dsKfEThRLAQ891tm23eSHcVI5511ZT5zSmptSuTiJKjaSCi0xfEJcmuDms7LWToSsD7Z6IxE6BM3xMo6QgHkxocuLKtgrpAItboaWCcqVm4PNisjhpMIZN1dfVEMFrqiU9voinIszDu8exZSiPqlA5cgTEuZzla08cP\/I0BTq+538QMH4F3+QzlrFB5t",
+  "payloadCiphertext" : "kl6o5UibeupIxAtVUC2IF9gv8QOUNRfDC67w0IGK6R3FqlOq1Pb16s66h3tmxo3CfzNLitk3zXKte3lbOm3DT7ZZT4gkupMi1\/tm+myLn09vJGHiuB7wt0SdC7GTc5Te5X1XDynhad7kt96AL1qOjECGYeH\/WQ06nkqSodksM3wQKoqpHFCaUIO3Z6oOoHFL858rCw0h",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BEfNLu5T3w2eleWEp4LV\/IwY4gM0p2uocOLLILaHTRz6c\/NgRSjm6o93F9tLdFw4XlM4EM0LVYNMZB606L4SX6YPsetBrL62MfbcDsGr7Nfz4BvSe6mt8EF7Z\/PNM8H2tHAUjAXp0OqxEJ3ERtvf+tTm2csKre1yHv2vYnw="
+  "wrappedKey" : "BJCDs4i9jyd1\/rvy2RHW8iK2C4SKgteW+rV3pVt3GtezGlYYRS3KqA26s8RM2qS23Yfi96YKCWcZ7ZLmNfoeNNtAie75HSKP1kthZrWDOIMzSxCsv+xhoSjjrGeQR7cZHIWz+9+gApD\/lRwUxDXvNRtoDaDcGlJulYchFOw="
 }

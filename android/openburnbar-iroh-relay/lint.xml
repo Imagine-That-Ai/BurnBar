@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <issue id="NewApi">
+        <!--
+            UniFFI emits a runtime-probed java.lang.ref.Cleaner path plus a JNA
+            fallback. Keep NewApi active everywhere else in app and relay code.
+        -->
+        <ignore path="src/main/java/uniffi/openburnbar_iroh/openburnbar_iroh.kt" />
+    </issue>
+</lint>

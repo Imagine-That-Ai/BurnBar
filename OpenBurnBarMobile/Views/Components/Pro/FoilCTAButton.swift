@@ -3,10 +3,14 @@ import OpenBurnBarCore
 
 // MARK: - Foil CTA Button
 //
-// Pro vocabulary — the call to action. Obsidian fill with foil edge,
-// continuous mercury shimmer behind the surface, mercury-aureate iconography,
-// and a haptic on tap. Used on the CloudStoreView poster, locked-feature
-// veils, and any inline Pro upsell that needs a primary action.
+// Pro vocabulary — the primary call to action, and the single most important
+// button on any Pro surface. It wears the membership two-coat system: a
+// pressed-gold ember bar in light mode (warm, saturated, unmissable against
+// the parchment certificate) and an obsidian black-card with a living mercury
+// sheen in dark mode. All colors are adaptive `ProTheme.Membership` tokens, so
+// one view tree reads luxuriously in both appearances. High-contrast ink, a
+// beveled minted-gold rim, a specular top sheen, and a haptic on tap. Used on
+// the CloudStoreView poster, locked-feature veils, and any inline Pro upsell.
 
 struct FoilCTAButton: View {
     let title: String
@@ -18,6 +22,7 @@ struct FoilCTAButton: View {
 
     @State private var isPressed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button {
@@ -31,7 +36,7 @@ struct FoilCTAButton: View {
                 if !isLoading {
                     Image(systemName: "arrow.right")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(ProTheme.Palette.aureate)
+                        .foregroundStyle(ProTheme.Membership.ctaInk)
                 }
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -40,10 +45,10 @@ struct FoilCTAButton: View {
             .background(backgroundLayers)
             .overlay(
                 RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .stroke(ProTheme.Palette.aureateStroke, lineWidth: 1.0)
+                    .stroke(ProTheme.Membership.ctaEdge, lineWidth: 1.2)
             )
             .scaleEffect(isPressed ? 0.98 : 1.0)
-            .shadow(color: ProTheme.Palette.aureate.opacity(0.22), radius: 18, y: 8)
+            .shadow(color: ProTheme.Membership.ctaGlow.opacity(0.38), radius: 18, y: 8)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -63,11 +68,11 @@ struct FoilCTAButton: View {
     @ViewBuilder
     private var leadingIcon: some View {
         if isLoading {
-            MiningPickLoader(.inline, tint: ProTheme.Palette.mercury)
+            MiningPickLoader(.inline, tint: ProTheme.Membership.ctaInk)
         } else {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(ProTheme.Palette.aureate)
+                .foregroundStyle(ProTheme.Membership.ctaInk)
         }
     }
 
@@ -76,11 +81,11 @@ struct FoilCTAButton: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
                 .font(ProTheme.Typography.headlineSerif)
-                .foregroundStyle(ProTheme.Palette.mercury)
+                .foregroundStyle(ProTheme.Membership.ctaInk)
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.68))
+                    .foregroundStyle(ProTheme.Membership.ctaInkSoft)
             }
         }
     }
@@ -89,9 +94,16 @@ struct FoilCTAButton: View {
     private var backgroundLayers: some View {
         ZStack {
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .fill(ProTheme.Palette.obsidianElevated)
+                .fill(ProTheme.Membership.ctaFill)
 
-            if !reduceMotion {
+            // Pressed-metal highlight along the top edge — reads in both coats.
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(ProTheme.Membership.ctaSheen)
+                .allowsHitTesting(false)
+
+            // Living platinum shimmer is reserved for the obsidian dark coat;
+            // on the warm gold bar the static sheen above carries the highlight.
+            if colorScheme == .dark && !reduceMotion {
                 MercuryShimmerOverlay()
                     .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
                     .blendMode(.plusLighter)

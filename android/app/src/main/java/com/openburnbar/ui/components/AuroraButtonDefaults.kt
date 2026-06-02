@@ -14,9 +14,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -168,17 +170,20 @@ fun AuroraSecondaryButton(
                 modifier = Modifier.size(18.dp),
             )
         } else {
-            ProvideTextStyle(
-                MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (enabled) AuroraColors.ember else AuroraColors.ember.copy(alpha = 0.5f),
-                ),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-                    content = content,
-                )
+            val contentColor = if (enabled) AuroraColors.ember else AuroraColors.ember.copy(alpha = 0.5f)
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                ProvideTextStyle(
+                    MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = contentColor,
+                    ),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                        content = content,
+                    )
+                }
             }
         }
     }

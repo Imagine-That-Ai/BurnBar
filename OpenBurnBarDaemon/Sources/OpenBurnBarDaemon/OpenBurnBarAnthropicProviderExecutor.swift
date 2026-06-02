@@ -642,6 +642,13 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         return nil
     }
 
+    private static func nonNegativeIntValue(_ value: Any?) -> Int? {
+        if let value = value as? Int { return max(0, value) }
+        if let value = value as? NSNumber { return max(0, value.intValue) }
+        if let value = value as? String, let parsed = Int(value) { return max(0, parsed) }
+        return nil
+    }
+
     private static func stopSequences(from value: Any) -> Any {
         if let string = value as? String {
             return [string]
@@ -1005,7 +1012,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         let payload: [String: Any]
     }
 
-    private static func chatCompletionsStreamFromAnthropicStream(
+    static func chatCompletionsStreamFromAnthropicStream(
         _ response: BurnBarProviderProxyResponse,
         modelID: String
     ) throws -> BurnBarProviderProxyResponse {
@@ -1013,20 +1020,98 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         let created = Int(Date().timeIntervalSince1970)
         var finishReason: Any = NSNull()
         var output = Data()
+        var toolBlocks: [Int: AnthropicStreamToolBlock] = [:]
+        var nextToolIndex = 0
         try appendSSEData(chatChunk(id: streamID, modelID: modelID, created: created, delta: ["role": "assistant"], finishReason: NSNull()), to: &output)
         for event in serverSentEvents(from: response.body) {
-            if event.payload["type"] as? String == "content_block_delta",
-               let delta = event.payload["delta"] as? [String: Any],
-               delta["type"] as? String == "text_delta",
-               let text = delta["text"] as? String,
-               !text.isEmpty {
-                try appendSSEData(chatChunk(id: streamID, modelID: modelID, created: created, delta: ["content": text], finishReason: NSNull()), to: &output)
+            let type = event.payload["type"] as? String
+            if type == "content_block_start",
+               let blockIndex = nonNegativeIntValue(event.payload["index"]),
+               let block = event.payload["content_block"] as? [String: Any],
+               block["type"] as? String == "tool_use" {
+                let toolIndex = nextToolIndex
+                nextToolIndex += 1
+                let toolID = (block["id"] as? String) ?? "toolu_\(blockIndex)"
+                let name = (block["name"] as? String) ?? "tool"
+                toolBlocks[blockIndex] = AnthropicStreamToolBlock(
+                    id: toolID,
+                    index: toolIndex,
+                    name: name
+                )
+                var function: [String: Any] = ["name": name]
+                if let input = block["input"] as? [String: Any],
+                   !input.isEmpty,
+                   let arguments = try? jsonString(input) {
+                    function["arguments"] = arguments
+                }
+                try appendSSEData(
+                    chatChunk(
+                        id: streamID,
+                        modelID: modelID,
+                        created: created,
+                        delta: [
+                            "tool_calls": [[
+                                "index": toolIndex,
+                                "id": toolID,
+                                "type": "function",
+                                "function": function
+                            ]]
+                        ],
+                        finishReason: NSNull()
+                    ),
+                    to: &output
+                )
             }
-            if event.payload["type"] as? String == "message_delta",
+            if type == "content_block_delta",
+               let delta = event.payload["delta"] as? [String: Any] {
+                if delta["type"] as? String == "text_delta",
+                   let text = delta["text"] as? String,
+                   !text.isEmpty {
+                    try appendSSEData(chatChunk(id: streamID, modelID: modelID, created: created, delta: ["content": text], finishReason: NSNull()), to: &output)
+                } else if delta["type"] as? String == "input_json_delta",
+                          let partialJSON = delta["partial_json"] as? String,
+                          !partialJSON.isEmpty,
+                          let blockIndex = nonNegativeIntValue(event.payload["index"]) {
+                    let toolBlock: AnthropicStreamToolBlock
+                    if let existing = toolBlocks[blockIndex] {
+                        toolBlock = existing
+                    } else {
+                        let synthesized = AnthropicStreamToolBlock(
+                            id: "toolu_\(blockIndex)",
+                            index: nextToolIndex,
+                            name: "tool"
+                        )
+                        nextToolIndex += 1
+                        toolBlocks[blockIndex] = synthesized
+                        toolBlock = synthesized
+                    }
+                    try appendSSEData(
+                        chatChunk(
+                            id: streamID,
+                            modelID: modelID,
+                            created: created,
+                            delta: [
+                                "tool_calls": [[
+                                    "index": toolBlock.index,
+                                    "id": toolBlock.id,
+                                    "type": "function",
+                                    "function": [
+                                        "name": toolBlock.name,
+                                        "arguments": partialJSON
+                                    ]
+                                ]]
+                            ],
+                            finishReason: NSNull()
+                        ),
+                        to: &output
+                    )
+                }
+            }
+            if type == "message_delta",
                let delta = event.payload["delta"] as? [String: Any] {
                 finishReason = chatFinishReason(from: delta["stop_reason"] as? String)
             }
-            if event.payload["type"] as? String == "error" {
+            if type == "error" {
                 try appendSSEData(["error": event.payload["error"] ?? "Anthropic stream error"], to: &output)
             }
         }
@@ -1038,6 +1123,12 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             body: output,
             usage: response.usage
         )
+    }
+
+    private struct AnthropicStreamToolBlock {
+        let id: String
+        let index: Int
+        let name: String
     }
 
     private static func responsesStreamFromAnthropicStream(

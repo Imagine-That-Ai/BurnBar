@@ -5,6 +5,7 @@ import { runResumeCli, type ResumeMode } from "./resume.js";
 import { runStdioShim } from "./shim.js";
 import { writeAccessToken } from "./oauth.js";
 import { basename } from "node:path";
+import { readFileSync } from "node:fs";
 
 function looksLikeSessionId(s: string | undefined): boolean {
   if (!s) return false;
@@ -96,7 +97,30 @@ Examples:
       return;
     }
   }
-  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> [token] | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
+  if (first === "memory") {
+    process.exit(await runMemoryCli(second, third));
+  }
+  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
+}
+
+async function runMemoryCli(sub: string | undefined, arg: string | undefined): Promise<number> {
+  const { installMemoryHook, runMemorySync } = await import("./memoryHook.js");
+  if (sub === "install") {
+    const path = installMemoryHook({ command: "openburnbar memory run" });
+    process.stdout.write(`Pensieve chat-memory hook installed: ${path}\n`);
+    return 0;
+  }
+  if (sub === "run" || sub === "sync") {
+    // `run` reads a transcript from --transcript <path> or stdin (the SessionEnd hook pipes it).
+    const idx = process.argv.indexOf("--transcript");
+    const transcript = idx >= 0 ? readFileSync(process.argv[idx + 1], "utf8") : readFileSync(0, "utf8");
+    const sourceSlug = arg && !arg.startsWith("--") ? arg : "chat-memory";
+    const batch = await runMemorySync({ transcript, sourceSlug });
+    process.stdout.write(`Pensieve: prepared ${batch.vectors.length} net-new memory chunk(s) for ${batch.sourceSlug}.\n`);
+    return 0;
+  }
+  process.stderr.write("Usage: openburnbar memory <install|run|sync> [sourceSlug] [--transcript <path>]\n");
+  return 2;
 }
 
 function optionValue(name: string, index: number): string | undefined {

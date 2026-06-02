@@ -5,6 +5,7 @@ package com.openburnbar.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,10 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun MediaSettingsKillSwitchBanner(reason: String) {
+    val isDark = isSystemInDarkTheme()
+    val textPrimaryColor = if (isDark) AuroraColors.darkTextPrimary else AuroraColors.lightTextPrimary
+    val textSecondaryColor = if (isDark) AuroraColors.darkTextSecondary else AuroraColors.lightTextSecondary
+
     val mercuryBrush =
         Brush.horizontalGradient(
             listOf(
@@ -61,11 +66,11 @@ internal fun MediaSettingsKillSwitchBanner(reason: String) {
             Text(
                 text = "Mercury Media unavailable",
                 fontWeight = FontWeight.SemiBold,
-                color = AuroraColors.darkTextPrimary,
+                color = textPrimaryColor,
             )
             Text(
                 text = reason,
-                color = AuroraColors.darkTextSecondary,
+                color = textSecondaryColor,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
             )
@@ -75,11 +80,12 @@ internal fun MediaSettingsKillSwitchBanner(reason: String) {
 
 @Composable
 internal fun MediaSettingsSectionLabel(text: String) {
+    val isDark = isSystemInDarkTheme()
     Text(
         text = text,
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
-        color = AuroraColors.darkTextSecondary,
+        color = if (isDark) AuroraColors.darkTextSecondary else AuroraColors.lightTextSecondary,
     )
 }
 
@@ -116,20 +122,23 @@ internal fun LazyListScope.mediaSettingsPartnerItems(
 ) {
     if (partners.isEmpty()) {
         item {
+            val isDark = isSystemInDarkTheme()
             Text(
                 text = "No saved partners yet. The first image you accept from a paired Mac will prompt to choose Photos or Files.",
-                color = AuroraColors.darkTextSecondary,
+                color = if (isDark) AuroraColors.darkTextSecondary else AuroraColors.lightTextSecondary,
             )
         }
         return
     }
     items(partners, key = { it.first }) { (peerId, pref) ->
+        val isDark = isSystemInDarkTheme()
+        val dividerColor = if (isDark) AuroraColors.darkBorderSubtle else AuroraColors.lightBorderSubtle
         MediaSettingsPartnerRow(
             peerId = peerId,
             pref = pref,
             onForget = { scope.launch { store.forget(peerId) } },
         )
-        HorizontalDivider(color = AuroraColors.darkBorderSubtle)
+        HorizontalDivider(color = dividerColor)
     }
     item {
         TextButton(onClick = { scope.launch { store.forgetAll() } }) {
@@ -144,6 +153,7 @@ private fun MediaSettingsPartnerRow(
     pref: MediaPartnerSavePreferenceStore.SavePreference,
     onForget: () -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -152,11 +162,11 @@ private fun MediaSettingsPartnerRow(
             Text(
                 text = peerId.take(16) + "…",
                 fontFamily = FontFamily.Monospace,
-                color = AuroraColors.darkTextPrimary,
+                color = if (isDark) AuroraColors.darkTextPrimary else AuroraColors.lightTextPrimary,
             )
             Text(
                 text = "Saves to: ${pref.raw}",
-                color = AuroraColors.darkTextSecondary,
+                color = if (isDark) AuroraColors.darkTextSecondary else AuroraColors.lightTextSecondary,
                 fontSize = 12.sp,
             )
         }
@@ -171,19 +181,25 @@ private fun MediaSettingsToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
+    val cardBackground = if (isDark) AuroraColors.darkSurfaceElevated.copy(alpha = 0.64f) else AuroraColors.lightSurfaceElevated.copy(alpha = 0.64f)
+    val cardBorder = if (isDark) AuroraColors.darkBorderSubtle else AuroraColors.lightBorderSubtle
+    val textPrimaryColor = if (isDark) AuroraColors.darkTextPrimary else AuroraColors.lightTextPrimary
+    val textSecondaryColor = if (isDark) AuroraColors.darkTextSecondary else AuroraColors.lightTextSecondary
+
     Row(
         modifier =
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(AuroraColors.darkSurfaceElevated.copy(alpha = 0.64f))
-            .border(1.dp, AuroraColors.darkBorderSubtle, RoundedCornerShape(12.dp))
+            .background(cardBackground)
+            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold, color = AuroraColors.darkTextPrimary)
-            Text(detail, color = AuroraColors.darkTextSecondary, fontSize = 12.sp)
+            Text(title, fontWeight = FontWeight.SemiBold, color = textPrimaryColor)
+            Text(detail, color = textSecondaryColor, fontSize = 12.sp)
         }
         Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)

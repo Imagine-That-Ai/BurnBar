@@ -6,7 +6,11 @@ import type { HostedMcpFirestore } from "./firestoreTypes.js";
 const LIMITS: Record<string, { windowMs: number; max: number }> = {
   "search:standard": { windowMs: 60_000, max: 60 },
   "body:standard": { windowMs: 60_000, max: 30 },
-  "metadata:standard": { windowMs: 60_000, max: 120 }
+  "metadata:standard": { windowMs: 60_000, max: 120 },
+  // Pensieve knowledge query buckets. Without these entries the bucket would
+  // silently fall back to metadata:standard (120/min); they MUST be registered.
+  "knowledge:standard": { windowMs: 60_000, max: 60 }, // Pro tier
+  "search:ultra": { windowMs: 60_000, max: 180 } // Ultra tier
 };
 
 export async function enforceRateLimit(db: HostedMcpFirestore, uid: string, clientId: string, bucket: string): Promise<void> {

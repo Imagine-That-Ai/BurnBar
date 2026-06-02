@@ -111,6 +111,7 @@ export const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
 export const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode", "antigravity"]);
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 export const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
+export const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 export const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 export const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 export const REMOTE_MCP_TOKEN_HMAC_SECRET = defineSecret("REMOTE_MCP_TOKEN_HMAC_SECRET");
@@ -678,6 +679,18 @@ export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promi
   throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
 }
 
+/**
+ * Ultra gate. Ultra mirrors proMax (the reconciler dual-writes burnbar_pro_max),
+ * so the Cloud Pro surface stays suspendable; we additionally read the
+ * burnbar_ultra source doc for the 10x Pensieve limits. Throws if not Ultra.
+ */
+export async function assertActiveBurnBarUltraEntitlement(uid: string): Promise<void> {
+  await assertCloudFeatureNotSuspended(db, uid, "burnbar_cloud_pro");
+  const ultraSnap = await db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get();
+  if (isActiveBurnBarUltraEntitlement(ultraSnap.data())) return;
+  throw new HttpsError("permission-denied", "BurnBar Ultra is required for this capability.");
+}
+
 const BURNBAR_CLOUD_PRO_PRODUCT_ALIASES = new Set([
   "com.openburnbar.proMax.v2.monthly",
   "com.openburnbar.proMax.annual",
@@ -725,6 +738,27 @@ export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> 
     productID !== cfg.googlePlayCloudProMonthlyProductID &&
     productID !== cfg.googlePlayCloudProAnnualProductID &&
     !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
+  ) {
+    return false;
+  }
+  const expiry = entitlementExpiryMillis(raw);
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
+
+/**
+ * Strict Ultra check. The burnbar_ultra source doc carries the Ultra SKU
+ * productID (the proMax MIRROR carries it too, but the mirror lives at a
+ * different doc path). Accepts Apple + Google Play Ultra product ids.
+ */
+export function isActiveBurnBarUltraEntitlement(raw: Record<string, unknown> | undefined): boolean {
+  if (!raw || raw.active !== true) return false;
+  const productID = typeof raw.productID === "string" ? raw.productID : "";
+  const cfg = getConfig();
+  if (
+    productID !== cfg.burnBarUltraProductID &&
+    productID !== cfg.burnBarUltraAnnualProductID &&
+    productID !== cfg.googlePlayUltraMonthlyProductID &&
+    productID !== cfg.googlePlayUltraAnnualProductID
   ) {
     return false;
   }
