@@ -51,6 +51,17 @@ enum class AuroraNavDestination(val label: String) {
                 YOU -> AuroraColors.blaze
             }
 
+    val trayLabel: String
+        get() =
+            when (this) {
+                PULSE -> "Pulse"
+                BURN -> "Burn"
+                INSIGHTS -> "Insights"
+                STREAMS -> "Streams"
+                HERMES -> "Agents"
+                YOU -> "Store"
+            }
+
     val gradientColors: List<Color>
         get() =
             when (this) {

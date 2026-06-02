@@ -47,7 +47,7 @@ sealed class BurnBarTab(
     // resolve to the same destination.
     object HERMES : BurnBarTab("hermes", "Assistants", AuroraNavDestination.HERMES)
 
-    object YOU : BurnBarTab("you", "You", AuroraNavDestination.YOU)
+    object YOU : BurnBarTab("you", "Store", AuroraNavDestination.YOU)
 
     companion object {
         val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, STREAMS, HERMES, YOU)

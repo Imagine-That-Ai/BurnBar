@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -36,15 +37,19 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.components.AuroraNavDestination
 import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.HapticBus
 import com.openburnbar.ui.theme.AuroraColors
 
-internal val AuroraTrayPillHeight = 50.dp
-internal val AuroraTrayIconSize = 26.dp
-internal val AuroraTrayTabWidth = 52.dp
+internal val AuroraTrayPillHeight = 62.dp
+internal val AuroraTrayIconSize = 24.dp
+internal val AuroraTrayTabWidth = 56.dp
 internal val AuroraTrayPillBottomInset = 14.dp
 
 internal data class AuroraTrayPillModel(
@@ -73,12 +78,12 @@ internal fun AuroraTabItem(
     onSelected: () -> Unit,
 ) {
     val dotScale by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0.4f,
+        targetValue = if (isSelected) 1f else 0.35f,
         animationSpec = spring(stiffness = 400f, dampingRatio = 0.72f),
         label = "dotScale",
     )
     val dotAlpha by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0f,
+        targetValue = if (isSelected) 1f else 0.35f,
         animationSpec = tween(200),
         label = "dotAlpha",
     )
@@ -117,13 +122,26 @@ internal fun AuroraTabItem(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            Text(
+                text = destination.trayLabel,
+                color = if (isSelected) destination.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 9.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(48.dp),
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
             Box(
                 modifier =
                 Modifier
-                    .size(4.dp)
+                    .width(if (isSelected) 16.dp else 4.dp)
+                    .height(3.dp)
                     .graphicsLayer {
                         scaleX = dotScale
-                        scaleY = dotScale
                         alpha = dotAlpha
                     }
                     .clip(CircleShape)

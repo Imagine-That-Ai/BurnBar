@@ -185,7 +185,6 @@ enum SettingsAnchor {
     static let hermesModels = "hermes.models"
     static let hermesDisplayTPS = "hermes.display.tps"
     static let hermesPretext = "hermes.pretext"
-    static let hermesCloudGateway = "hermes.cloudGateway"
     static let hermesGatewayURL = "hermes.gateway.url"
     static let hermesGatewayToken = "hermes.gateway.token"
 
