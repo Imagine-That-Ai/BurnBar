@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — agent knowledge in mem0 (token-efficient retrieval)
+
+- Mirrored the canonical Droid wiki (`droid-wiki/`) into a dedicated BurnBar mem0 project as verbatim, retrievable chunks via `scripts/wiki/mem0-sync.mjs` (mem0 REST, `infer=false`, scope `user_id=burnbar`), so agents query for the exact knowledge a task needs instead of bulk-loading whole wiki pages or `docs/`.
+- Kept mem0 fresh automatically: a `post-commit` hook in `.pre-commit-config.yaml` syncs only the wiki pages a commit changed, and `.github/workflows/wiki-mem0-reconcile.yml` reconciles the full wiki nightly. An idempotent committed manifest (`droid-wiki/.mem0-manifest.json`) makes re-runs zero-write.
+- Pointed BurnBar agents at the BurnBar mem0 project via repo-scoped `.mcp.json` (`mem0-burnbar`, key from `MEM0_BURNBAR_API_KEY`) and a "query mem0 first" directive in `AGENTS.md` / `CLAUDE.md`; moved the Computer Use phase/flag/budget reference out of `AGENTS.md` into the mem0-backed wiki.
+- Consolidated to a single canonical wiki by archiving the superseded `wiki/` scaffold (recoverable from git history).
+
 ### Security — LLM/GenAI prompt-injection hardening
 
 - Added a dedicated LLM/GenAI agent threat model covering log parsing, RAG, hosted insights, Computer Use, MCP, model routing, tool grants, and budget/loop guardrails.
