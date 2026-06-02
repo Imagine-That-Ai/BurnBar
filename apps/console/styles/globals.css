@@ -1,0 +1,84 @@
+/* Pensieve design tokens (synced verbatim from packages/design-tokens/dist/css/pensieve.css). */
+@import "./pensieve.tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    background: var(--color-ink-void);
+    color: var(--color-text-base);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-height: 100dvh;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(250, 107, 6, 0.05), transparent 60%),
+      radial-gradient(80% 60% at 100% 0%, rgba(60, 214, 192, 0.04), transparent 55%),
+      var(--color-ink-void);
+  }
+
+  ::selection {
+    background: var(--color-brass-glow);
+    color: var(--color-text-bright);
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    color: var(--color-text-bright);
+    letter-spacing: -0.01em;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-brass-core);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+}
+
+@layer components {
+  /* Etched-glass pane — the substance of every basin surface. */
+  .glass-pane {
+    background: var(--color-glass-bg);
+    border: 1px solid var(--color-glass-line);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border-radius: var(--radius-lg);
+  }
+
+  .glass-pane--elevated {
+    background: var(--color-glass-bg-elevated);
+    border-color: var(--color-glass-line-bright);
+  }
+
+  /* The frosted-glass overlay = "what the server sees". */
+  .frost-overlay {
+    background: var(--color-frost-veil);
+    border: 1px solid var(--color-frost-line);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+/* Honour reduced-motion globally; the Basin still renders a static frame. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -2,7 +2,9 @@
   "functions": {
     "source": "functions",
     "runtime": "nodejs22",
-    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+    "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run build"
+    ]
   },
   "firestore": {
     "rules": "firestore.rules",
@@ -11,116 +13,311 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "hosting": {
-    "target": "marketing",
-    "public": "website/dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "cleanUrls": true,
-    "trailingSlash": false,
-    "i18n": {
-      "root": "/"
+  "hosting": [
+    {
+      "target": "marketing",
+      "public": "website/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "i18n": {
+        "root": "/"
+      },
+      "predeploy": [
+        "npm --prefix website run build"
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(html)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/link",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.google.com https://www.gstatic.com; frame-src https://*.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net http://localhost:5001 http://localhost:9099; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/hermes/connect",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-src https://*.google.com https://accounts.google.com https://appleid.apple.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "**/_assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(woff|woff2|ttf|otf)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(svg|png|jpg|jpeg|gif|webp|avif|ico)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=2592000"
+            }
+          ]
+        },
+        {
+          "source": "/downloads/release-metadata.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=300"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "/downloads/*.@(dmg|zip|txt)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "/downloads/sbom-*.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "/sitemap.xml",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=3600"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/xml"
+            }
+          ]
+        },
+        {
+          "source": "/robots.txt",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=3600"
+            }
+          ]
+        }
+      ],
+      "redirects": [
+        {
+          "source": "/docs",
+          "destination": "https://github.com/Imagine-That-Ai/BurnBar",
+          "type": 301
+        },
+        {
+          "source": "/repo",
+          "destination": "https://github.com/Imagine-That-Ai/BurnBar",
+          "type": 301
+        },
+        {
+          "source": "/github",
+          "destination": "https://github.com/Imagine-That-Ai/BurnBar",
+          "type": 301
+        },
+        {
+          "source": "/releases",
+          "destination": "https://github.com/Imagine-That-Ai/BurnBar/releases",
+          "type": 301
+        },
+        {
+          "source": "/changelog",
+          "destination": "https://github.com/Imagine-That-Ai/BurnBar/blob/main/CHANGELOG.md",
+          "type": 301
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/v1/hermes-gateway/**",
+          "function": {
+            "functionId": "burnBarHermesGateway",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "/api/router-rundown/**",
+          "function": {
+            "functionId": "latestRouterRundown",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "/api/cli-link/start",
+          "function": {
+            "functionId": "startCliLink",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "/api/cli-link/poll",
+          "function": {
+            "functionId": "pollCliLink",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/404.html"
+        }
+      ]
     },
-    "predeploy": ["npm --prefix website run build"],
-    "headers": [
-      {
-        "source": "**/*.@(html)",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "X-Frame-Options", "value": "DENY" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Permissions-Policy", "value": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()" },
-          { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
-          { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
-        ]
-      },
-      {
-        "source": "/link",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.google.com https://www.gstatic.com; frame-src https://*.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net http://localhost:5001 http://localhost:9099; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
-          { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
-        ]
-      },
-      {
-        "source": "/hermes/connect",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-src https://*.google.com https://accounts.google.com https://appleid.apple.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com" },
-          { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
-        ]
-      },
-      {
-        "source": "**/_assets/**",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-        ]
-      },
-      {
-        "source": "**/*.@(woff|woff2|ttf|otf)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
-          { "key": "Access-Control-Allow-Origin", "value": "*" }
-        ]
-      },
-      {
-        "source": "**/*.@(svg|png|jpg|jpeg|gif|webp|avif|ico)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=2592000" }
-        ]
-      },
-      {
-        "source": "/downloads/release-metadata.json",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=300" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" }
-        ]
-      },
-      {
-        "source": "/downloads/*.@(dmg|zip|txt)",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" }
-        ]
-      },
-      {
-        "source": "/downloads/sbom-*.json",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" }
-        ]
-      },
-      {
-        "source": "/sitemap.xml",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=3600" },
-          { "key": "Content-Type", "value": "application/xml" }
-        ]
-      },
-      {
-        "source": "/robots.txt",
-        "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=3600" }
-        ]
-      }
-    ],
-    "redirects": [
-      { "source": "/docs", "destination": "https://github.com/Imagine-That-Ai/BurnBar", "type": 301 },
-      { "source": "/repo", "destination": "https://github.com/Imagine-That-Ai/BurnBar", "type": 301 },
-      { "source": "/github", "destination": "https://github.com/Imagine-That-Ai/BurnBar", "type": 301 },
-      { "source": "/releases", "destination": "https://github.com/Imagine-That-Ai/BurnBar/releases", "type": 301 },
-      { "source": "/changelog", "destination": "https://github.com/Imagine-That-Ai/BurnBar/blob/main/CHANGELOG.md", "type": 301 }
-    ],
-    "rewrites": [
-      { "source": "/v1/hermes-gateway/**", "function": { "functionId": "burnBarHermesGateway", "region": "us-central1" } },
-      { "source": "/api/router-rundown/**", "function": { "functionId": "latestRouterRundown", "region": "us-central1" } },
-      { "source": "/api/cli-link/start", "function": { "functionId": "startCliLink", "region": "us-central1" } },
-      { "source": "/api/cli-link/poll", "function": { "functionId": "pollCliLink", "region": "us-central1" } },
-      { "source": "**", "destination": "/404.html" }
-    ]
-  }
+    {
+      "target": "console",
+      "public": "apps/console/out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "predeploy": [
+        "npm --prefix apps/console ci",
+        "npm --prefix apps/console run build"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; base-uri 'self'; object-src 'none'; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com; frame-ancestors 'none'; form-action 'self'"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "no-referrer"
+            },
+            {
+              "key": "Cross-Origin-Opener-Policy",
+              "value": "same-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "accelerometer=(), camera=(), geolocation=(), microphone=(), publickey-credentials-get=(self)"
+            },
+            {
+              "key": "X-Robots-Tag",
+              "value": "noindex, nofollow"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
