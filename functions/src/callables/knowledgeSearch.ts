@@ -91,8 +91,10 @@ export const searchKnowledge = onCall(
 
       const hits = snap.docs.map((doc) => ({
         vectorId: doc.id,
-        // sealed envelopes — opaque to the server; the client decrypts on-device.
-        sealedCiphertext: doc.get("sealedCiphertext"),
+        // Sealed envelopes — opaque to the server; the client decrypts on-device.
+        // Field names match the hosted-MCP burnbar_search_knowledge hit shape AND
+        // the iOS reader (PensieveMemorySearchView): `ciphertext` + `sealedMetadata`.
+        ciphertext: doc.get("sealedCiphertext"),
         sealedMetadata: doc.get("sealedMetadata"),
         sourceKind: doc.get("sourceKind"),
         sourceSlug: doc.get("sourceSlug"),
