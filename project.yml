@@ -491,6 +491,7 @@ targets:
             CFBundleURLName: com.openburnbar.app
             CFBundleURLSchemes:
               - burnbar
+              - openburnbar
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.openburnbar.app.google-sign-in
             CFBundleURLSchemes:
