@@ -186,13 +186,22 @@ async function requireUploadedGatewayAttachments(params: {
         throw new HttpsError("invalid-argument", `Hermes Gateway attachment ${attachmentId} was not found.`);
       }
       if (params.clientId && manifest.clientId !== params.clientId) {
-        throw new HttpsError("permission-denied", `Hermes Gateway attachment ${attachmentId} belongs to another client.`);
+        throw new HttpsError(
+          "permission-denied",
+          `Hermes Gateway attachment ${attachmentId} belongs to another client.`,
+        );
       }
       if (params.destinationId && manifest.destinationId && manifest.destinationId !== params.destinationId) {
-        throw new HttpsError("invalid-argument", `Hermes Gateway attachment ${attachmentId} belongs to another destination.`);
+        throw new HttpsError(
+          "invalid-argument",
+          `Hermes Gateway attachment ${attachmentId} belongs to another destination.`,
+        );
       }
       if (manifest.status !== "uploaded") {
-        throw new HttpsError("invalid-argument", `Hermes Gateway attachment ${attachmentId} must be finalized before use.`);
+        throw new HttpsError(
+          "invalid-argument",
+          `Hermes Gateway attachment ${attachmentId} must be finalized before use.`,
+        );
       }
     }),
   );
@@ -620,7 +629,11 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
     finalizedAt: now,
     sha256,
     storageGeneration:
-      typeof metadata.generation === "string" ? metadata.generation : metadata.generation == null ? undefined : String(metadata.generation),
+      typeof metadata.generation === "string"
+        ? metadata.generation
+        : metadata.generation == null
+          ? undefined
+          : String(metadata.generation),
   });
   await ref.set(finalized, { merge: true });
   sendJSON(res, 200, { attachment: finalized });
