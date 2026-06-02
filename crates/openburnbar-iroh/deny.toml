@@ -5,7 +5,18 @@
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "warn"
-ignore = []
+ignore = [
+  # Transitive Iroh 1.0.0-rc.0 dependency; no direct upgrade path in this
+  # crate. Keep cargo-deny active for new advisories.
+  "RUSTSEC-2023-0089", # atomic-polyfill is unmaintained
+  # Transitive UniFFI/Iroh dependency; upstream notes bincode 1.3.3 is complete
+  # and no safe upgrade is available.
+  "RUSTSEC-2025-0141", # bincode is unmaintained
+  # Transitive Iroh dependency with no safe upgrade available.
+  "RUSTSEC-2024-0436", # paste is unmaintained
+  # Transitive Iroh dependency with no safe upgrade available.
+  "RUSTSEC-2024-0370", # proc-macro-error is unmaintained
+]
 
 [licenses]
 allow = [
@@ -14,8 +25,11 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
+  "MPL-2.0",
+  "Unlicense",
   "Unicode-3.0",
   "Zlib",
+  "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 

@@ -191,6 +191,11 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     var computerUseAuditExportEnabled: Bool { get set }
     var computerUseKillSwitch: Bool { get set }
 
+    /// Defense-in-depth: when `true`, phone-control intents are also checked
+    /// against AX deny-regions. Remote Config
+    /// `computer_use_phone_control_respects_deny_regions`.
+    var computerUsePhoneControlRespectsDenyRegions: Bool { get set }
+
     /// Whether OpenBurnBar should launch Hermes Dashboard and its local gateway on app startup.
     var launchHermesWithOpenBurnBar: Bool { get set }
 

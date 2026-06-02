@@ -50,11 +50,15 @@ final class BurnBarConnectorPlaneURLValidationTests: XCTestCase {
             XCTAssertThrowsError(
                 try BurnBarConnectorPlaneService.validatedConnectorBaseURL(blocked)
             ) { error in
-                // All should fail — either invalidURL, schemeNotHTTPS, or missingHost
-                guard case BurnBarConnectorURLValidationError.schemeNotHTTPS = error
-                        ?? (error as? BurnBarConnectorURLValidationError).self else {
-                    // Some schemes may not parse as URLs at all — that's also fine
-                    return
+                // All should fail — either invalidURL, schemeNotHTTPS, or missingHost.
+                guard let validationError = error as? BurnBarConnectorURLValidationError else {
+                    return XCTFail("Expected connector URL validation error for \(blocked), got \(error)")
+                }
+                switch validationError {
+                case .invalidURL, .schemeNotHTTPS, .missingHost:
+                    break
+                default:
+                    XCTFail("Expected scheme or parse rejection for \(blocked), got \(validationError)")
                 }
             }
         }
