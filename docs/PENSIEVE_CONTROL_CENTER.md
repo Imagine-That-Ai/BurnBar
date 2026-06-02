@@ -5,6 +5,20 @@ member can see, export, control, and delete **every** domain of their data acros
 web, iOS, iPadOS, macOS, and Android. Built over the Pensieve E2EE backend (see
 `docs/PENSIEVE.md`). One coherent design + contract; five surfaces.
 
+## Review hardening (self-review + independent Codex pass)
+
+Two adversarial passes ran over the privacy-critical backend; **neither found a
+[P1]/critical or any IDOR / zero-knowledge leak**. Real findings fixed:
+- **panic** now paginates every revoke surface and reports `{ ok:false, partial, failures[] }`
+  instead of a false "complete" when a surface throws or a Secret-Manager destroy is swallowed.
+- **deleteDomainData** now `recursiveDelete()`s — nested subcollections are purged (no residual PII).
+- **recovery confirm** enforces real re-verification (re-entered key hash must match).
+- **conversations_chat** relabeled `server_readable` (honest — cli_sessions/mobile_assistant_chats are plaintext mirrors).
+- **audit actor** clamps the self-reported platform hint (identity is the server-side authed uid).
+- **escrow web reader** aligned to the real `cloud_vault_key_wrappers` schema.
+Recovery `recovery_contact` confirmation has no in-callable proof re-check — by design, the
+contact's approval is the out-of-band proof; this lives in the deferred recovery client flow (follow-up #8).
+
 ## Architecture (one source of truth → five surfaces)
 
 - **Data-domain registry** — `packages/data-domains/registry.json` is the canonical
