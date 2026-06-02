@@ -140,6 +140,13 @@ Privacy Policy: ${LEGAL_URLS.privacy}
 
 Codex supports Hosted Quota Sync after subscription. Claude Code uses a self-hosted runner; OpenBurnBar does not collect hosted Claude Code OAuth/session tokens.`,
 };
+const APP_REVIEW_NOTES_LIMIT = 4000;
+function appReviewNotesForApple() {
+  const notes = APP_REVIEW.notes || "";
+  if (notes.length <= APP_REVIEW_NOTES_LIMIT) return notes;
+  return notes.slice(0, APP_REVIEW_NOTES_LIMIT - 160).trimEnd() +
+    `\n\n[Notes shortened to fit Apple's ${APP_REVIEW_NOTES_LIMIT}-character App Review limit.]`;
+}
 
 const IOS_METADATA = {
   description: `OpenBurnBar keeps your AI agent burn rate and quota pressure visible across Mac, iPhone, and iPad.
@@ -925,9 +932,9 @@ async function getOrCreateDraftReviewSubmission(versionId) {
       (submission.attributes?.platform === "IOS" || !submission.attributes?.platform)
   );
   if (staleDrafts.length > 0) {
-    for (const staleDraft of staleDrafts) {
-      await deleteReviewSubmission(staleDraft.id);
-    }
+    console.log(
+      `Ignoring ${staleDrafts.length} stale READY_FOR_REVIEW review submission draft(s); Apple does not allow deleting reviewSubmissions through the API.`
+    );
   }
 
   const response = await api(
@@ -1134,7 +1141,7 @@ async function upsertReviewDetail() {
     contactPhone: APP_REVIEW.contactPhone,
     demoAccountRequired: true,
     demoAccountName: APP_REVIEW.email,
-    notes: APP_REVIEW.notes,
+    notes: appReviewNotesForApple(),
   };
   if (hasPassword && passwordFitsAppleLimit) {
     attributes.demoAccountPassword = reviewPassword;
@@ -1236,16 +1243,24 @@ async function uploadReviewAttachment() {
 
 async function updateAppInfoLocalization() {
   const localization = await getAppInfoLocalization();
-  await api(
-    "PATCH",
-    `/appInfoLocalizations/${localization.id}`,
-    data(
-      "appInfoLocalizations",
-      { privacyPolicyUrl: LEGAL_URLS.privacy },
-      undefined,
-      localization.id
-    )
-  );
+  try {
+    await api(
+      "PATCH",
+      `/appInfoLocalizations/${localization.id}`,
+      data(
+        "appInfoLocalizations",
+        { privacyPolicyUrl: LEGAL_URLS.privacy },
+        undefined,
+        localization.id
+      )
+    );
+  } catch (error) {
+    if (!String(error.message).includes("privacyPolicyUrl")) throw error;
+    console.log(
+      `Skipped app info privacy policy URL update because App Store Connect locks it in the current app state (${localization.id})`
+    );
+    return;
+  }
   console.log(`Updated app info privacy policy URL ${localization.id}`);
 }
 
