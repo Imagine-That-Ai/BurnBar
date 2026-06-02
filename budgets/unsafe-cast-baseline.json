@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-01T14:59:42.211Z",
+  "generatedAt": "2026-06-02T14:16:48.937Z",
   "scanner": {
     "tsMode": "typescript-eslint-parser",
     "excluded": {
@@ -38,15 +38,15 @@
       ]
     }
   },
-  "total": 45,
+  "total": 43,
   "byLanguage": {
-    "kotlin": 6,
-    "typescript": 39
+    "kotlin": 5,
+    "typescript": 38
   },
   "byKind": {
-    "kotlin_force_unwrap": 6,
+    "kotlin_force_unwrap": 5,
     "ts_non_null_assertion": 2,
-    "ts_type_assertion": 37
+    "ts_type_assertion": 36
   },
   "violations": [
     {
@@ -92,15 +92,6 @@
       "language": "kotlin",
       "kind": "kotlin_force_unwrap",
       "snippet": "row.preview!!,",
-      "detail": "force unwrap"
-    },
-    {
-      "path": "android/app/src/test/java/com/openburnbar/data/stores/HostedQuotaSubscriptionStoreTest.kt",
-      "line": 155,
-      "column": 25,
-      "language": "kotlin",
-      "kind": "kotlin_force_unwrap",
-      "snippet": "assertTrue(error!!.contains(\"BurnBar product is not configured in Google Play\"))",
       "detail": "force unwrap"
     },
     {
@@ -186,7 +177,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 181,
+      "line": 197,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -195,7 +186,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 189,
+      "line": 205,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -204,7 +195,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 196,
+      "line": 212,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -213,7 +204,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 222,
+      "line": 238,
       "column": 23,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -222,7 +213,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 222,
+      "line": 238,
       "column": 34,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -231,7 +222,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 237,
+      "line": 253,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -240,7 +231,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 266,
+      "line": 294,
       "column": 23,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -249,7 +240,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 266,
+      "line": 294,
       "column": 34,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -258,7 +249,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 274,
+      "line": 302,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -267,7 +258,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 274,
+      "line": 302,
       "column": 29,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -276,7 +267,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 275,
+      "line": 303,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -285,7 +276,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 275,
+      "line": 303,
       "column": 29,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -294,7 +285,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 297,
+      "line": 325,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -303,7 +294,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 393,
+      "line": 421,
       "column": 22,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -312,7 +303,7 @@
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
-      "line": 393,
+      "line": 421,
       "column": 33,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -321,7 +312,7 @@
     },
     {
       "path": "functions/src/appCheckAttestation.ts",
-      "line": 71,
+      "line": 85,
       "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -330,7 +321,7 @@
     },
     {
       "path": "functions/src/appCheckAttestation.ts",
-      "line": 95,
+      "line": 109,
       "column": 17,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -339,7 +330,7 @@
     },
     {
       "path": "functions/src/callables/cliLink.ts",
-      "line": 106,
+      "line": 112,
       "column": 20,
       "language": "typescript",
       "kind": "ts_non_null_assertion",
@@ -348,7 +339,7 @@
     },
     {
       "path": "functions/src/callables/cliLink.ts",
-      "line": 116,
+      "line": 122,
       "column": 25,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -357,7 +348,7 @@
     },
     {
       "path": "functions/src/callables/cliLink.ts",
-      "line": 193,
+      "line": 201,
       "column": 23,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -384,7 +375,7 @@
     },
     {
       "path": "functions/src/callables/shared.ts",
-      "line": 919,
+      "line": 1042,
       "column": 37,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -393,7 +384,7 @@
     },
     {
       "path": "functions/src/callables/stripe.ts",
-      "line": 48,
+      "line": 50,
       "column": 52,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -402,21 +393,12 @@
     },
     {
       "path": "functions/src/callables/stripe.ts",
-      "line": 51,
+      "line": 53,
       "column": 10,
       "language": "typescript",
       "kind": "ts_type_assertion",
       "snippet": "return raw as T;",
       "detail": "T"
-    },
-    {
-      "path": "functions/src/logging.ts",
-      "line": 57,
-      "column": 35,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "scrubbed[key] = scrubFields(value as Record<string, unknown>);",
-      "detail": "Record<string, unknown>"
     },
     {
       "path": "functions/src/tierCogs.ts",
