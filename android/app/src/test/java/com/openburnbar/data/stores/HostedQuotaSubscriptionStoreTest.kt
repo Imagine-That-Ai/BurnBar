@@ -154,7 +154,7 @@ class HostedQuotaSubscriptionStoreTest {
 
         assertFalse(store.isLoading.value)
         assertFalse(store.isActive.value)
-        assertTrue(store.error.value!!.contains("Billing service unavailable"))
+        assertTrue(store.error.value?.contains("Billing service unavailable") == true)
         assertEquals(
             "$7.99",
             store.productDetailsByID.value[HostedQuotaSubscriptionStore.PRODUCT_ID]?.formattedPrice,
@@ -189,9 +189,8 @@ class HostedQuotaSubscriptionStoreTest {
         advanceUntilIdle()
 
         // Assert
-        val error = store.error.value
-        assertNotNull(error)
-        assertTrue(error!!.contains("BurnBar product is not configured in Google Play"))
+        val error = requireNotNull(store.error.value)
+        assertTrue(error.contains("BurnBar product is not configured in Google Play"))
         assertTrue(error.contains("PRODUCT_NOT_FOUND"))
     }
 

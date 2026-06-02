@@ -264,9 +264,9 @@ internal fun BurnViewContent(
                     )
 
                     // 3. Focused provider Focus Banner
-                    if (selectedProvider != null) {
+                    selectedProvider?.let { focusedProvider ->
                         ProviderFocusBanner(
-                            provider = selectedProvider!!,
+                            provider = focusedProvider,
                             accountCount = filteredSnapshots.size,
                             totalProviderCount = sortedSnapshots.map { it.provider }.distinct().size,
                             onClearSelection = { selectedProvider = null }
@@ -974,12 +974,12 @@ fun SubscriptionConstellationHero(
     }
 
     val nextResetSnapshot = snapshots
-        .filter { it.nextResetDate != null }
-        .minByOrNull { it.nextResetDate!! }
+        .mapNotNull { snapshot -> snapshot.nextResetDate?.let { resetDate -> snapshot to resetDate } }
+        .minByOrNull { (_, resetDate) -> resetDate }
     if (nextResetSnapshot != null) {
-        val nextResetDate = nextResetSnapshot.nextResetDate
-        val providerObj = AgentProvider.fromKey(nextResetSnapshot.provider)
-        if (nextResetDate != null && providerObj != null) {
+        val (snapshot, nextResetDate) = nextResetSnapshot
+        val providerObj = AgentProvider.fromKey(snapshot.provider)
+        if (providerObj != null) {
             val formattedRelative = relativeTimeLabel(nextResetDate).uppercase(Locale.getDefault())
             metaItems.add("NEXT RESET · ${providerObj.displayName.uppercase(Locale.getDefault())} · $formattedRelative")
         }
