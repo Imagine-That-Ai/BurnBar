@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { FieldPath, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 export type RemoteMcpGrantMode = "sealed_only" | "local_decrypt_shim" | "remote_readable_explicit_opt_in";
 export type RemoteMcpScope = "search:read" | "conversation:read" | "usage:read" | "index:status" | "knowledge:read";
@@ -130,27 +130,35 @@ export async function revokeAllRemoteMcpGrantsForUser(
   reason = "cloud_feature_suspension",
 ): Promise<{ clientsRevoked: number; grantsRevoked: number }> {
   const now = Timestamp.now();
-  const batch = db.batch();
-  let writes = 0;
+  // Page each collection (ordered by id) and commit per page, so we revoke ALL
+  // clients/grants — not just the first 500 — and never exceed Firestore's
+  // 500-op batch limit (a single combined batch could, silently losing revokes).
+  const PAGE = 400;
+  const revokeCollection = async (collection: string): Promise<number> => {
+    const coll = db.collection(`users/${uid}/${collection}`);
+    let last: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    let revoked = 0;
+    for (;;) {
+      let query = coll.orderBy(FieldPath.documentId()).limit(PAGE);
+      if (last) query = query.startAfter(last);
+      const snap = await query.get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      let writes = 0;
+      for (const doc of snap.docs) {
+        if (doc.get("revokedAt")) continue;
+        batch.set(doc.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
+        writes += 1;
+        revoked += 1;
+      }
+      if (writes > 0) await batch.commit();
+      last = snap.docs[snap.docs.length - 1];
+      if (snap.size < PAGE) break;
+    }
+    return revoked;
+  };
 
-  const clients = await db.collection(`users/${uid}/remote_mcp_clients`).limit(500).get();
-  let clientsRevoked = 0;
-  for (const client of clients.docs) {
-    if (client.get("revokedAt")) continue;
-    batch.set(client.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
-    clientsRevoked += 1;
-    writes += 1;
-  }
-
-  const grants = await db.collection(`users/${uid}/remote_mcp_grants`).limit(500).get();
-  let grantsRevoked = 0;
-  for (const grant of grants.docs) {
-    if (grant.get("revokedAt")) continue;
-    batch.set(grant.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
-    grantsRevoked += 1;
-    writes += 1;
-  }
-
-  if (writes > 0) await batch.commit();
+  const clientsRevoked = await revokeCollection("remote_mcp_clients");
+  const grantsRevoked = await revokeCollection("remote_mcp_grants");
   return { clientsRevoked, grantsRevoked };
 }

@@ -99,3 +99,21 @@ describe("parseRecoveryContactPayload", () => {
     expect(() => parseRecoveryContactPayload({ contacts: tooMany })).toThrow();
   });
 });
+
+describe("verifyRecoveryConfirmation (delayed re-verification)", () => {
+  const { verifyRecoveryConfirmation } = __testing__;
+  const stored = { kind: "recovery_key", recoveryKey: { verificationHash: VALID_HASH } };
+
+  it("accepts a matching re-entered key hash", () => {
+    expect(() => verifyRecoveryConfirmation(stored, VALID_HASH)).not.toThrow();
+  });
+  it("rejects confirmation without a re-entered hash (no flag-flip)", () => {
+    expect(() => verifyRecoveryConfirmation(stored, undefined)).toThrow(/Re-enter/);
+  });
+  it("rejects a wrong key hash", () => {
+    expect(() => verifyRecoveryConfirmation(stored, "b".repeat(64))).toThrow(/verification failed/);
+  });
+  it("recovery_contact methods confirm out-of-band (no hash required)", () => {
+    expect(() => verifyRecoveryConfirmation({ kind: "recovery_contact" }, undefined)).not.toThrow();
+  });
+});

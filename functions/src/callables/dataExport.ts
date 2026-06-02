@@ -65,7 +65,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
     storagePrefixes: [],
   },
   conversations_chat: {
-    encryptionTier: "end_to_end",
+    encryptionTier: "server_readable",
     firestoreCollections: [
       "conversations",
       "chat_threads",

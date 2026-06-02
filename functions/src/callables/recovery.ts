@@ -22,7 +22,7 @@
 
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -108,6 +108,30 @@ function parseRecoveryContactPayload(raw: unknown): { contacts: RecoveryContactS
   return { contacts, threshold };
 }
 
+/**
+ * Enforce proof-of-knowledge before confirming a recovery_key method: the client
+ * must re-enter the recovery key, and the SHA-256 of the derived wrapping key
+ * must match the verificationHash stored at setup. This makes confirmRecovery a
+ * real delayed re-verification (Apple ADP), not a flag flip — catching users who
+ * never saved the key. recovery_contact methods confirm out-of-band per contact.
+ */
+export function verifyRecoveryConfirmation(data: Record<string, unknown>, suppliedHash: string | undefined): void {
+  const kind = typeof data.kind === "string" ? data.kind : "recovery_key";
+  if (kind !== "recovery_key") return;
+  const stored = (data.recoveryKey as Record<string, unknown> | undefined)?.verificationHash;
+  if (typeof stored !== "string") {
+    throw new HttpsError("failed-precondition", "Recovery method is missing its verification hash.");
+  }
+  if (!suppliedHash) {
+    throw new HttpsError("failed-precondition", "Re-enter your recovery key to confirm (verificationHash required).");
+  }
+  const a = Buffer.from(suppliedHash);
+  const b = Buffer.from(stored);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    throw new HttpsError("permission-denied", "Recovery key verification failed.");
+  }
+}
+
 export const setupRecovery = onCall(
   CALLABLE_OPTS,
   wrapCallableHandler(
@@ -162,12 +186,16 @@ export const setupRecovery = onCall(
 
 export const confirmRecovery = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler("confirmRecovery", async (request: CallableRequest<{ recoveryId?: unknown }>) => {
+  wrapCallableHandler("confirmRecovery", async (request: CallableRequest<{ recoveryId?: unknown; verificationHash?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before confirming recovery.");
     enforceAuthAndAppCheck(request, uid);
 
     const recoveryId = boundedTrimmedString(request.data?.recoveryId, "recoveryId", 128, true);
+    const suppliedHash =
+      request.data?.verificationHash !== undefined
+        ? requireHexDigest(request.data.verificationHash, "verificationHash")
+        : undefined;
     const ref = db.doc(`users/${uid}/${RECOVERY_COLLECTION}/${recoveryId}`);
     const now = nowISO();
     await db.runTransaction(async (tx) => {
@@ -175,6 +203,9 @@ export const confirmRecovery = onCall(
       if (!snap.exists) {
         throw new HttpsError("not-found", "Recovery method not found.");
       }
+      // Real re-verification: a recovery_key method requires the re-entered key's
+      // hash to match what was stored at setup before it is marked confirmed.
+      verifyRecoveryConfirmation(snap.data() ?? {}, suppliedHash);
       tx.set(ref, { confirmed: true, confirmedAt: now, updatedAt: now }, { merge: true });
     });
 
@@ -199,6 +230,7 @@ export const __testing__ = {
   requireSealedBlob,
   parseRecoveryKeyPayload,
   parseRecoveryContactPayload,
+  verifyRecoveryConfirmation,
 };
 
 export const listRecovery = onCall(

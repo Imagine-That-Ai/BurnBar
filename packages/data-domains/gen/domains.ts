@@ -20,6 +20,8 @@ export interface DataDomain {
   callables: Record<string, string>;
   entitlementGate: string | null;
   suspensionSurface: string | null;
+  /** Optional reference to a tiered-limits table (e.g. PENSIEVE_LIMITS). */
+  tieredLimits?: string;
 }
 
 export const ENCRYPTION_TIERS = {
@@ -75,17 +77,16 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "id": "conversations_chat",
     "title": "Conversations & Chat",
     "icon": "bubble.left.and.bubble.right.fill",
-    "encryptionTier": "end_to_end",
-    "summary": "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices.",
+    "encryptionTier": "server_readable",
+    "summary": "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices. NOTE: the cross-device mirror (mobile_assistant_chats, cli_sessions) stores text the server can read; only chat_threads bodies are sealed when encrypted cloud backup is on. Labeled server-readable for honesty — sealing these at rest is a tracked hardening.",
     "serverSees": [
+      "assistant + CLI conversation text (mirror)",
       "thread metadata",
       "timestamps",
       "device"
     ],
     "deviceOnly": [
-      "prompt + response text",
-      "code",
-      "file paths"
+      "chat_threads bodies when encrypted cloud backup is enabled"
     ],
     "firestorePaths": [
       "conversations",

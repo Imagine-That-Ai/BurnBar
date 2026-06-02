@@ -17,7 +17,7 @@
  * them. Appends a tamper-evident audit event (auditLog.ts).
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldPath, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -33,50 +33,74 @@ import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js"
 type PanicScope = "sync" | "all";
 
 const REVOKE_REASON = "panic_revoke_all";
-const PAGE_LIMIT = 500;
+// Keep each WriteBatch comfortably under Firestore's 500-op commit limit.
+const PAGE_LIMIT = 400;
+
+/**
+ * Iterate EVERY document in a per-user collection across pages (ordered by id,
+ * startAfter cursor) so the panic button drains the whole collection — not just
+ * the first 500. `handlePage` writes (batched, <=PAGE_LIMIT ops) and returns the
+ * number revoked in that page.
+ */
+async function drainCollection(
+  collectionPath: string,
+  handlePage: (docs: FirebaseFirestore.QueryDocumentSnapshot[]) => Promise<number>,
+): Promise<number> {
+  const coll = db.collection(collectionPath);
+  let last: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  let total = 0;
+  for (;;) {
+    let query = coll.orderBy(FieldPath.documentId()).limit(PAGE_LIMIT);
+    if (last) query = query.startAfter(last);
+    const snap = await query.get();
+    if (snap.empty) break;
+    total += await handlePage(snap.docs);
+    last = snap.docs[snap.docs.length - 1];
+    if (snap.size < PAGE_LIMIT) break;
+  }
+  return total;
+}
 
 /** Flip every non-revoked doc in a connection collection to revoked. Returns count. */
 async function revokeConnectionCollection(uid: string, collection: string): Promise<number> {
   const now = Timestamp.now();
-  let revoked = 0;
-  const snap = await db.collection(`users/${uid}/${collection}`).limit(PAGE_LIMIT).get();
-  const batch = db.batch();
-  let writes = 0;
-  for (const doc of snap.docs) {
-    if (doc.get("status") === "revoked") continue;
-    batch.set(doc.ref, { status: "revoked", updatedAt: now.toDate().toISOString(), revokeReason: REVOKE_REASON }, { merge: true });
-    writes += 1;
-    revoked += 1;
-  }
-  if (writes > 0) await batch.commit();
-  return revoked;
+  return drainCollection(`users/${uid}/${collection}`, async (docs) => {
+    const batch = db.batch();
+    let writes = 0;
+    for (const doc of docs) {
+      if (doc.get("status") === "revoked") continue;
+      batch.set(doc.ref, { status: "revoked", updatedAt: now.toDate().toISOString(), revokeReason: REVOKE_REASON }, { merge: true });
+      writes += 1;
+    }
+    if (writes > 0) await batch.commit();
+    return writes;
+  });
 }
 
 /** Flip every trusted escrow device to revoked (trustState field, not status). */
 async function revokeEscrowDevices(uid: string): Promise<number> {
   const now = Timestamp.now();
-  let revoked = 0;
-  const snap = await db.collection(`users/${uid}/escrow_devices`).limit(PAGE_LIMIT).get();
-  const batch = db.batch();
-  let writes = 0;
-  for (const doc of snap.docs) {
-    if (doc.get("trustState") === "revoked") continue;
-    batch.set(doc.ref, { trustState: "revoked", updatedAt: now }, { merge: true });
-    writes += 1;
-    revoked += 1;
-  }
-  if (writes > 0) await batch.commit();
-  return revoked;
+  return drainCollection(`users/${uid}/escrow_devices`, async (docs) => {
+    const batch = db.batch();
+    let writes = 0;
+    for (const doc of docs) {
+      if (doc.get("trustState") === "revoked") continue;
+      batch.set(doc.ref, { trustState: "revoked", updatedAt: now }, { merge: true });
+      writes += 1;
+    }
+    if (writes > 0) await batch.commit();
+    return writes;
+  });
 }
 
 /** Destroy every provider credential secret + mark the account deleted. Returns count. */
 async function revokeProviderCredentials(uid: string): Promise<number> {
   const now = new Date().toISOString();
-  let revoked = 0;
-  const accounts = await db.collection(`users/${uid}/provider_accounts`).limit(PAGE_LIMIT).get();
-  for (const account of accounts.docs) {
-    if (account.get("status") === "deleted") continue;
-    const accountID = account.id;
+  return drainCollection(`users/${uid}/provider_accounts`, async (docs) => {
+    let revoked = 0;
+    for (const account of docs) {
+      if (account.get("status") === "deleted") continue;
+      const accountID = account.id;
     const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
     const privateSnap = await privateRef.get();
     const secretVersionName = privateSnap.exists
@@ -102,8 +126,9 @@ async function revokeProviderCredentials(uid: string): Promise<number> {
     );
     await batch.commit();
     revoked += 1;
-  }
-  return revoked;
+    }
+    return revoked;
+  });
 }
 
 export const revokeAllAccess = onCall(
