@@ -26,6 +26,24 @@ export interface ClaimedPushDocument {
   attemptCount: number;
 }
 
+export interface TransactionalDocumentSnapshot {
+  exists: boolean;
+  data(): DocumentData | undefined;
+}
+
+export interface TransactionalDocumentTransaction {
+  get(ref: TransactionalDocumentReference): Promise<TransactionalDocumentSnapshot>;
+  update(ref: TransactionalDocumentReference, data: DocumentData): void;
+}
+
+export interface TransactionalDocumentReference {
+  id?: string;
+  path?: string;
+  firestore: {
+    runTransaction<T>(fn: (transaction: TransactionalDocumentTransaction) => Promise<T>): Promise<T>;
+  };
+}
+
 export async function stripeWithResilience<T>(label: string, fn: () => Promise<T>): Promise<T> {
   return withResilience(stripePolicy, `stripe:${label}`, fn);
 }
@@ -71,7 +89,7 @@ export function nextPushRetryAt(nowMs = Date.now(), attemptCount = 1): Timestamp
 }
 
 export async function claimPendingPush(
-  ref: DocumentReference,
+  ref: TransactionalDocumentReference,
   options: { nowMs?: number; leaseMs?: number } = {},
 ): Promise<ClaimedPushDocument | undefined> {
   const nowMs = options.nowMs ?? Date.now();
@@ -121,7 +139,11 @@ export async function claimPendingPush(
   });
 }
 
-export async function finishClaimedPush(ref: DocumentReference, leaseId: string, update: DocumentData): Promise<boolean> {
+export async function finishClaimedPush(
+  ref: TransactionalDocumentReference,
+  leaseId: string,
+  update: DocumentData,
+): Promise<boolean> {
   return ref.firestore.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists) return false;

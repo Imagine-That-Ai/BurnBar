@@ -4,7 +4,8 @@ import type { Breadcrumb, ErrorEvent } from "@sentry/core";
 describe("Sentry telemetry redaction", () => {
   it("scrubs request headers, request body, and extra error data", async () => {
     const { sanitizeSentryEventForTesting } = await import("../sentry.js");
-    const event = {
+    const event: ErrorEvent = {
+      type: undefined,
       message:
         "upstream failed Authorization: Bearer eyJrequestMessageSecretValue123456 https://example.test/cb?token=query-secret",
       request: {
@@ -27,7 +28,7 @@ describe("Sentry telemetry redaction", () => {
           stack: "password=extra-password-value",
         },
       },
-    } as unknown as ErrorEvent;
+    };
 
     const sanitized = sanitizeSentryEventForTesting(event);
     const json = JSON.stringify(sanitized);

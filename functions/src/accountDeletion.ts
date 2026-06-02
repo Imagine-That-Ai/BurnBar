@@ -6,8 +6,6 @@
  * Manager cleanup happen under one audited callable.
  */
 
-import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
-
 export interface AccountDeletionSummary {
   destroyedSecrets: number;
   failedSecretDestroys: number;
@@ -28,6 +26,39 @@ export interface DeleteUserAccountOptions extends AccountDeletionOptions {
   deleteAuthUser: (uid: string) => Promise<void>;
 }
 
+export interface AccountDeletionDocumentReference {
+  listCollections(): Promise<AccountDeletionCollectionReference[]>;
+}
+
+export interface AccountDeletionCollectionReference {
+  listDocuments(): Promise<AccountDeletionDocumentReference[]>;
+}
+
+export interface AccountDeletionSecretSnapshot {
+  id: string;
+  ref: AccountDeletionDocumentReference;
+  get(field: string): unknown;
+}
+
+export interface AccountDeletionSecretQuery {
+  get(): Promise<{ docs: AccountDeletionSecretSnapshot[] }>;
+}
+
+export interface AccountDeletionSecretCollection {
+  where(field: string, op: string, value: string): AccountDeletionSecretQuery;
+}
+
+export interface AccountDeletionWriteBatch {
+  delete(ref: AccountDeletionDocumentReference): void;
+  commit(): Promise<unknown>;
+}
+
+export interface AccountDeletionFirestore {
+  collection(path: string): AccountDeletionSecretCollection;
+  doc(path: string): AccountDeletionDocumentReference;
+  batch(): AccountDeletionWriteBatch;
+}
+
 const BATCH_LIMIT = 400;
 
 export function userWorkspaceID(uid: string): string {
@@ -39,7 +70,7 @@ export function providerSecretRefDocumentID(uid: string, accountID: string): str
 }
 
 export async function eraseUserAccount(
-  db: Firestore,
+  db: AccountDeletionFirestore,
   uid: string,
   options: DeleteUserAccountOptions,
 ): Promise<AccountDeletionResult> {
@@ -72,7 +103,7 @@ export async function eraseUserAccount(
 }
 
 export async function eraseUserCloudData(
-  db: Firestore,
+  db: AccountDeletionFirestore,
   uid: string,
   options: AccountDeletionOptions,
 ): Promise<AccountDeletionSummary> {
@@ -132,7 +163,7 @@ export function isFirebaseAuthUserNotFound(error: unknown): boolean {
   return code === "auth/user-not-found" || nestedCode === "auth/user-not-found";
 }
 
-async function deleteDocumentTree(ref: DocumentReference, batcher: DeleteBatcher): Promise<void> {
+async function deleteDocumentTree(ref: AccountDeletionDocumentReference, batcher: DeleteBatcher): Promise<void> {
   const collections = await ref.listCollections();
   for (const collection of collections) {
     await deleteCollectionTree(collection, batcher);
@@ -140,7 +171,7 @@ async function deleteDocumentTree(ref: DocumentReference, batcher: DeleteBatcher
   await batcher.delete(ref);
 }
 
-async function deleteCollectionTree(collection: CollectionReference, batcher: DeleteBatcher): Promise<void> {
+async function deleteCollectionTree(collection: AccountDeletionCollectionReference, batcher: DeleteBatcher): Promise<void> {
   const docs = await collection.listDocuments();
   for (const doc of docs) {
     await deleteDocumentTree(doc, batcher);
@@ -148,17 +179,17 @@ async function deleteCollectionTree(collection: CollectionReference, batcher: De
 }
 
 class DeleteBatcher {
-  private batch: WriteBatch;
+  private batch: AccountDeletionWriteBatch;
   private pending = 0;
 
   constructor(
-    private readonly db: Firestore,
+    private readonly db: AccountDeletionFirestore,
     private readonly summary: AccountDeletionSummary,
   ) {
     this.batch = db.batch();
   }
 
-  async delete(ref: DocumentReference): Promise<void> {
+  async delete(ref: AccountDeletionDocumentReference): Promise<void> {
     this.batch.delete(ref);
     this.pending += 1;
     this.summary.deletedDocuments += 1;

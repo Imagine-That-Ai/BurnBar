@@ -10,6 +10,7 @@ on:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
+      - ".github/actionlint.yaml"
   push:
     branches:
       - main
@@ -18,6 +19,7 @@ on:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
+      - ".github/actionlint.yaml"
 
 jobs:
   actionlint:
@@ -33,7 +35,7 @@ jobs:
 
       - name: Lint workflow files
         run: |
-          "$HOME/go/bin/actionlint" -color
+          "$HOME/go/bin/actionlint" -color -config-file .github/actionlint.yaml
 
       - name: Validate CI supply-chain invariants
         run: python3 scripts/security/validate-ci-supply-chain.py

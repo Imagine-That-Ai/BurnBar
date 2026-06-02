@@ -98,10 +98,14 @@ export function sanitizeForTelemetry(value: unknown, key = ""): unknown {
       stack: value.stack ? scrubString(value.stack) : undefined,
     };
   }
-  if (typeof value === "object" && value !== null) {
-    return scrubFields(value as Record<string, unknown>);
+  if (isRecord(value)) {
+    return scrubFields(value);
   }
   return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Recursively scrub all string values in a log payload. */

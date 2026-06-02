@@ -66,10 +66,12 @@ class ChartSpecRendererSecurityTest {
                 """.trimIndent(),
             )
 
-        assertTrue(rendering is ChartStudioRendering.Mermaid)
+        if (rendering !is ChartStudioRendering.Mermaid) {
+            throw AssertionError("Expected Mermaid rendering")
+        }
         assertEquals(
             ChartSpecRenderer.SAFE_MERMAID_FALLBACK,
-            (rendering as ChartStudioRendering.Mermaid).spec.source,
+            rendering.spec.source,
         )
     }
 }
