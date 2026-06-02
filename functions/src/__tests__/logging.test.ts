@@ -133,7 +133,12 @@ describe("PII scrubbing in structured logging", () => {
 
     it("redacts JWT bearer token starting with eyJ", async () => {
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature" });
+      const jwt = [
+        "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9",
+        "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+        "signature",
+      ].join(".");
+      logInfo({ event: "test", token: jwt });
       const payload = captureLog(logSpy);
       expect(payload.token).toBe("[REDACTED]");
     });

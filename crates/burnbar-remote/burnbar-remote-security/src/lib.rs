@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +12,7 @@ use burnbar_remote_core::{
     SessionId, SessionMode, TimestampMicros, WorkspaceId,
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -95,6 +96,10 @@ pub struct AuthorizedDeviceRecord {
 pub struct SessionGrant {
     pub grant_id: GrantId,
     pub descriptor: SessionDescriptor,
+    /// Fresh client-generated nonce from the authenticated session request.
+    /// The host signs it into the grant so a valid grant cannot be replayed
+    /// across handshakes or substituted for a different client request.
+    pub handshake_nonce: [u8; 16],
     pub signed_policy_hash: String,
 }
 
@@ -211,11 +216,7 @@ impl SessionGrantSigner for Ed25519SessionGrantSigner {
         &self,
         grant: SessionGrant,
     ) -> Result<SignedSessionGrant, AuthorizationError> {
-        SignedSessionGrant::sign(
-            grant,
-            self.signer_key_id.clone(),
-            *self.signing_key_bytes,
-        )
+        SignedSessionGrant::sign(grant, self.signer_key_id.clone(), *self.signing_key_bytes)
     }
 }
 
@@ -411,10 +412,9 @@ impl SecureKeyStore for MacOsKeychainSecureKeyStore {
         let service = self.service.clone();
         let account = self.account_for_name(name)?;
         let bytes = tokio::task::spawn_blocking(move || {
-            let mut options =
-                security_framework::passwords::PasswordOptions::new_generic_password(
-                    &service, &account,
-                );
+            let mut options = security_framework::passwords::PasswordOptions::new_generic_password(
+                &service, &account,
+            );
             options.set_access_synchronized(Some(false));
             security_framework::passwords::generic_password(options)
         })
@@ -429,10 +429,9 @@ impl SecureKeyStore for MacOsKeychainSecureKeyStore {
         let account = self.account_for_name(name)?;
         let key = Zeroizing::new(key.to_vec());
         tokio::task::spawn_blocking(move || {
-            let mut options =
-                security_framework::passwords::PasswordOptions::new_generic_password(
-                    &service, &account,
-                );
+            let mut options = security_framework::passwords::PasswordOptions::new_generic_password(
+                &service, &account,
+            );
             options.set_access_synchronized(Some(false));
             options.set_label("OpenBurnBar Remote Device Key");
             security_framework::passwords::set_generic_password_options(&key, options)
@@ -446,10 +445,9 @@ impl SecureKeyStore for MacOsKeychainSecureKeyStore {
         let service = self.service.clone();
         let account = self.account_for_name(name)?;
         tokio::task::spawn_blocking(move || {
-            let mut options =
-                security_framework::passwords::PasswordOptions::new_generic_password(
-                    &service, &account,
-                );
+            let mut options = security_framework::passwords::PasswordOptions::new_generic_password(
+                &service, &account,
+            );
             options.set_access_synchronized(Some(false));
             security_framework::passwords::delete_generic_password_options(options)
         })
@@ -466,7 +464,7 @@ impl SecureKeyStore for MacOsKeychainSecureKeyStore {
 }
 
 #[cfg(all(target_os = "macos", feature = "macos-keychain"))]
-fn map_keychain_error(err: security_framework::Error) -> AuthorizationError {
+fn map_keychain_error(err: security_framework::base::Error) -> AuthorizationError {
     if err.code() == ERR_SEC_ITEM_NOT_FOUND {
         AuthorizationError::KeyUnavailable
     } else {
@@ -658,6 +656,7 @@ impl SessionAuthorizer for InMemorySessionAuthorizer {
         Ok(SessionGrant {
             grant_id: GrantId::new(format!("grant-{}", descriptor.session_id.as_str())),
             descriptor,
+            handshake_nonce: [0u8; 16],
             signed_policy_hash: "unsigned-in-memory-policy".to_string(),
         })
     }
@@ -916,14 +915,38 @@ impl TamperEvidentAuditLog {
 #[async_trait]
 impl AuditSink for TamperEvidentAuditLog {
     async fn append(&self, event: AuditEvent) -> Result<(), AuthorizationError> {
-        append_audit_event(&self.path, event)
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || append_audit_event(&path, event))
+            .await
+            .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?
     }
 }
 
 fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), AuthorizationError> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+        fs::create_dir_all(parent)
+            .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    file.lock_exclusive()
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    let result = append_audit_event_locked(path, &mut file, event);
+    let unlock_result = file
+        .unlock()
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()));
+    result.and(unlock_result)
+}
+
+fn append_audit_event_locked(
+    path: &Path,
+    file: &mut File,
+    event: AuditEvent,
+) -> Result<(), AuthorizationError> {
     let report = validate_audit_chain_file(path, None)?;
     if !report.is_valid {
         return Err(AuthorizationError::AuditChain(format!(
@@ -947,11 +970,6 @@ fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), Authorizatio
             .unwrap_or_else(|| AUDIT_GENESIS_PARENT_HASH_HEX.to_string()),
     };
     let bytes = canonical_json_bytes(&entry)?;
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     file.write_all(&bytes)
         .and_then(|_| file.write_all(b"\n"))
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
@@ -980,7 +998,8 @@ fn validate_audit_chain_file(
             entry_count: 0,
             is_valid: expected_head_hash_hex.is_none(),
             first_invalid_entry_index: None,
-            first_invalid_reason: expected_head_hash_hex.map(|_| AuditInvalidReason::HeadHashMismatch),
+            first_invalid_reason: expected_head_hash_hex
+                .map(|_| AuditInvalidReason::HeadHashMismatch),
             head_hash_hex: None,
         });
     }
@@ -993,7 +1012,8 @@ fn validate_audit_chain_file(
             head_hash_hex: None,
         });
     }
-    let text = std::str::from_utf8(&raw).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    let text =
+        std::str::from_utf8(&raw).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     let mut expected_index = 0u64;
     let mut parent_hash = AUDIT_GENESIS_PARENT_HASH_HEX.to_string();
     let mut head_hash = None;
@@ -1069,8 +1089,8 @@ fn invalid_audit_report(
 }
 
 fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, AuthorizationError> {
-    let value =
-        serde_json::to_value(value).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    let value = serde_json::to_value(value)
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     serde_json::to_vec(&value).map_err(|err| AuthorizationError::AuditChain(err.to_string()))
 }
 
@@ -1160,7 +1180,10 @@ mod tests {
     async fn secure_key_store_round_trips_and_deletes() {
         let store = InMemorySecureKeyStore::default();
         store.write_key("device", b"secret").await.unwrap();
-        assert_eq!(store.read_key("device").await.unwrap().as_slice(), b"secret");
+        assert_eq!(
+            store.read_key("device").await.unwrap().as_slice(),
+            b"secret"
+        );
         store.delete_key("device").await.unwrap();
         assert_eq!(
             store.read_key("device").await.unwrap_err(),
@@ -1316,6 +1339,7 @@ mod tests {
         let grant = SessionGrant {
             grant_id: GrantId::new("grant"),
             descriptor,
+            handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
         let payload = grant_signing_payload(&grant).unwrap();
@@ -1339,6 +1363,7 @@ mod tests {
         let grant = SessionGrant {
             grant_id: GrantId::new("grant"),
             descriptor,
+            handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
         let signed = SignedSessionGrant::sign(grant, "test-key", [7u8; 32]).unwrap();
@@ -1348,6 +1373,15 @@ mod tests {
         tampered.grant.signed_policy_hash = "other-policy".into();
         assert_eq!(
             tampered.verify_untrusted_signature_only().unwrap_err(),
+            AuthorizationError::SignatureVerificationFailed
+        );
+
+        let mut tampered_nonce = signed.clone();
+        tampered_nonce.grant.handshake_nonce = [2u8; 16];
+        assert_eq!(
+            tampered_nonce
+                .verify_untrusted_signature_only()
+                .unwrap_err(),
             AuthorizationError::SignatureVerificationFailed
         );
     }
@@ -1368,6 +1402,7 @@ mod tests {
         let grant = SessionGrant {
             grant_id: GrantId::new("grant"),
             descriptor,
+            handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
         let signed = SignedSessionGrant::sign(grant, "attacker", [9u8; 32]).unwrap();
@@ -1395,6 +1430,7 @@ mod tests {
         let grant = SessionGrant {
             grant_id: GrantId::new("grant"),
             descriptor,
+            handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
         let signed = signer.sign_session_grant(grant).unwrap();
@@ -1454,6 +1490,38 @@ mod tests {
         assert!(!report.is_valid);
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn tamper_evident_audit_log_serializes_concurrent_appends() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chain.jsonl");
+        let sink = std::sync::Arc::new(TamperEvidentAuditLog::new(&path));
+        let mut tasks = Vec::new();
+        for index in 0..32u64 {
+            let sink = sink.clone();
+            tasks.push(tokio::spawn(async move {
+                sink.append(AuditEvent {
+                    kind: AuditEventKind::ControlAuthorized,
+                    account_id: AccountId::new("account"),
+                    workspace_id: WorkspaceId::new("workspace"),
+                    session_id: Some(SessionId::new("session")),
+                    device_id: Some(DeviceId::new("device")),
+                    endpoint_id: Some(EndpointId::new("endpoint")),
+                    at: TimestampMicros(index),
+                    detail: format!("event-{index}"),
+                })
+                .await
+            }));
+        }
+
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
+
+        let report = sink.validate(None).unwrap();
+        assert!(report.is_valid);
+        assert_eq!(report.entry_count, 32);
+    }
+
     #[cfg(all(target_os = "macos", feature = "macos-keychain"))]
     #[tokio::test]
     async fn macos_keychain_store_round_trips_and_deletes() {
@@ -1463,7 +1531,10 @@ mod tests {
             .as_nanos();
         let store = MacOsKeychainSecureKeyStore::new(format!("test-{nanos}"));
         store.write_key("device", b"secret").await.unwrap();
-        assert_eq!(store.read_key("device").await.unwrap().as_slice(), b"secret");
+        assert_eq!(
+            store.read_key("device").await.unwrap().as_slice(),
+            b"secret"
+        );
         store.delete_key("device").await.unwrap();
         assert_eq!(
             store.read_key("device").await.unwrap_err(),

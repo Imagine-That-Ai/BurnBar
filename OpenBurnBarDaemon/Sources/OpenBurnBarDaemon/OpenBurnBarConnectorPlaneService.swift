@@ -3,6 +3,39 @@ import Foundation
 
 public typealias BurnBarConnectorTransport = @Sendable (_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 
+// MARK: - Connector URL Validation Errors
+
+/// Errors thrown when a connector base URL fails SSRF or scheme validation.
+///
+/// Connectors attach `Authorization: Bearer` credentials to outbound requests,
+/// so the base URL must be HTTPS-only and must not point to private/reserved IPs
+/// (RFC 1918, link-local, loopback, cloud metadata endpoints).
+public enum BurnBarConnectorURLValidationError: Error, Sendable, Equatable, CustomStringConvertible {
+    case emptyURL
+    case invalidURL(String)
+    case schemeNotHTTPS(String)
+    case missingHost
+    case privateOrReservedIP(String)
+    case cloudMetadataEndpoint
+
+    public var description: String {
+        switch self {
+        case .emptyURL:
+            return "Connector base URL must not be empty."
+        case .invalidURL(let raw):
+            return "Connector base URL is not a valid URL: \(raw)"
+        case .schemeNotHTTPS(let scheme):
+            return "Connector base URL must use HTTPS (got \(scheme)). HTTP is not permitted because credentials are sent in the Authorization header."
+        case .missingHost:
+            return "Connector base URL must have a non-empty hostname."
+        case .privateOrReservedIP(let host):
+            return "Connector base URL must not point to a private or reserved IP address (\(host)). This blocks SSRF attacks that could exfiltrate credentials."
+        case .cloudMetadataEndpoint:
+            return "Connector base URL must not point to a cloud metadata endpoint (169.254.169.254)."
+        }
+    }
+}
+
 private struct BurnBarStoredConnectorConfig: Codable, Hashable {
     let kind: BurnBarConnectorKind
     var isEnabled: Bool
@@ -52,6 +85,73 @@ public actor BurnBarConnectorPlaneService {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
+    // MARK: - Connector URL Validation (SSRF + HTTPS enforcement)
+
+    /// Validates that a connector base URL is HTTPS-only and does not point to
+    /// a private, reserved, or cloud-metadata IP address.
+    ///
+    /// This is stricter than `validatedProviderBaseURL` (which allows HTTP for
+    /// localhost Ollama) because connectors always attach `Authorization: Bearer`
+    /// credentials to outbound requests.
+    ///
+    /// - Parameter rawValue: The raw URL string from the connector config.
+    /// - Returns: A validated `URL`.
+    /// - Throws: `BurnBarConnectorURLValidationError` if validation fails.
+    static func validatedConnectorBaseURL(_ rawValue: String) throws -> URL {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else {
+            throw BurnBarConnectorURLValidationError.emptyURL
+        }
+        guard let url = URL(string: trimmed) else {
+            throw BurnBarConnectorURLValidationError.invalidURL(trimmed)
+        }
+        guard let scheme = url.scheme?.lowercased(), scheme == "https" else {
+            throw BurnBarConnectorURLValidationError.schemeNotHTTPS(url.scheme ?? "(none)")
+        }
+        guard let host = url.host, host.isEmpty == false else {
+            throw BurnBarConnectorURLValidationError.missingHost
+        }
+        let lowerHost = host.lowercased()
+        // Block cloud metadata endpoints
+        if lowerHost == "169.254.169.254" || lowerHost == "metadata.google.internal" {
+            throw BurnBarConnectorURLValidationError.cloudMetadataEndpoint
+        }
+        // Block private/reserved IPs
+        if isPrivateOrReservedIP(host: lowerHost) {
+            throw BurnBarConnectorURLValidationError.privateOrReservedIP(host)
+        }
+        return url
+    }
+
+    /// Returns `true` if the hostname is a private, reserved, or loopback IP.
+    ///
+    /// Covers: loopback (127.x, ::1), RFC 1918 (10.x, 172.16-31.x, 192.168.x),
+    /// link-local (169.254.x except the metadata endpoint handled above),
+    /// and zero address (0.0.0.0).
+    private static func isPrivateOrReservedIP(host: String) -> Bool {
+        // IPv4 check
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        if parts.count == 4, let a = Int(parts[0]), let b = Int(parts[1]) {
+            // 127.x.x.x — loopback
+            if a == 127 { return true }
+            // 10.x.x.x — RFC 1918 Class A
+            if a == 10 { return true }
+            // 172.16.x.x – 172.31.x.x — RFC 1918 Class B
+            if a == 172, (16...31).contains(b) { return true }
+            // 192.168.x.x — RFC 1918 Class C
+            if a == 192, b == 168 { return true }
+            // 169.254.x.x — link-local (metadata endpoint caught above)
+            if a == 169, b == 254 { return true }
+            // 0.0.0.0 — unspecified
+            if a == 0, b == 0 { return true }
+        }
+        // IPv6 loopback
+        if host == "::1" || host == "[::1]" || host == "0:0:0:0:0:0:0:1" { return true }
+        return false
+    }
+
+    // MARK: - Internal
+
     public func snapshot() async throws -> BurnBarConnectorPlaneSnapshot {
         let state = try loadStateIfNeeded()
         var connectors: [BurnBarConnectorConfigSnapshot] = []
@@ -79,10 +179,12 @@ public actor BurnBarConnectorPlaneService {
     public func updateConfig(_ request: BurnBarConnectorConfigUpdateRequest) async throws -> BurnBarConnectorPlaneSnapshot {
         var state = try loadStateIfNeeded()
         let trimmedBaseURL = request.config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        // SSRF gate: validate before persisting
+        let validatedURL = try Self.validatedConnectorBaseURL(trimmedBaseURL)
         state.configs[request.config.kind.rawValue] = BurnBarStoredConnectorConfig(
             kind: request.config.kind,
             isEnabled: request.config.isEnabled,
-            baseURL: trimmedBaseURL,
+            baseURL: validatedURL.absoluteString,
             authKind: request.config.authKind,
             metadata: request.config.metadata
         )
@@ -208,37 +310,31 @@ public actor BurnBarConnectorPlaneService {
         config: BurnBarStoredConnectorConfig,
         secret: String
     ) throws -> URLRequest {
-        let trimmedBaseURL = config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let baseURL = URL(string: trimmedBaseURL), trimmedBaseURL.isEmpty == false else {
-            throw NSError(
-                domain: "BurnBarConnectorPlaneService",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Connector base URL is invalid."]
-            )
-        }
+        // Runtime SSRF defense-in-depth: re-validate on every outbound request
+        let validatedBaseURL = try Self.validatedConnectorBaseURL(config.baseURL)
 
         switch kind {
         case .github:
-            var request = URLRequest(url: baseURL.appendingPathComponent("user"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("user"))
             request.httpMethod = "GET"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
             return request
         case .slack:
-            var request = URLRequest(url: baseURL.appendingPathComponent("auth.test"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("auth.test"))
             request.httpMethod = "POST"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request
         case .linear:
-            var request = URLRequest(url: baseURL)
+            var request = URLRequest(url: validatedBaseURL)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(secret, forHTTPHeaderField: "Authorization")
             request.httpBody = try JSONEncoder().encode(["query": "{ viewer { id name email } }"])
             return request
         case .posthog:
-            var components = URLComponents(url: baseURL.appendingPathComponent("projects"), resolvingAgainstBaseURL: false)
+            var components = URLComponents(url: validatedBaseURL.appendingPathComponent("projects"), resolvingAgainstBaseURL: false)
             components?.queryItems = [URLQueryItem(name: "limit", value: "1")]
             guard let url = components?.url else {
                 throw URLError(.badURL)
@@ -248,12 +344,12 @@ public actor BurnBarConnectorPlaneService {
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request
         case .sentry:
-            var request = URLRequest(url: baseURL.appendingPathComponent("organizations"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("organizations"))
             request.httpMethod = "GET"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request
         case .gmail:
-            var request = URLRequest(url: baseURL.appendingPathComponent("users/me/profile"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("users/me/profile"))
             request.httpMethod = "GET"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request

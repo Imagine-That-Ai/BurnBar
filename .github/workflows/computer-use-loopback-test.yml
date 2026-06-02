@@ -16,13 +16,13 @@ on:
 jobs:
   swiftpm-tests:
     name: SwiftPM — OpenBurnBarComputerUseCoreTests
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Build + test
         run: |
           cd OpenBurnBarCore
-          swift test --filter "OpenBurnBarComputerUseCoreTests"
+          swift test --filter 'OpenBurnBarComputerUseCoreTests/'
       - name: Build daemon
         run: |
           cd OpenBurnBarDaemon
@@ -30,7 +30,7 @@ jobs:
 
   loopback-smoke:
     name: Playwright bridge — loopback smoke
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

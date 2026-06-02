@@ -1,0 +1,51 @@
+title = "OpenBurnBar gitleaks policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Swift key-material parameter labels that reference variables, not committed secrets"
+regexTarget = "match"
+regexes = [
+  '''privateKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
+  '''signingKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
+  '''key:\s+[A-Za-z_][A-Za-z0-9_]*''',
+]
+
+[[allowlists]]
+description = "Swift redaction sentinel assertions that intentionally compare against the literal placeholder"
+regexTarget = "match"
+regexes = [
+  '''creds\.rateLimitTier,\s*"REDACTED"''',
+  '''routePayloadCreds\.rateLimitTier,\s*"REDACTED"''',
+]
+paths = [
+  '''AgentLensTests/Active/ProviderQuotaServiceTests\.swift''',
+]
+
+[[allowlists]]
+description = "Deterministic Hermes relay wire-vector keys used only in checked-in test fixtures"
+regexTarget = "match"
+regexes = [
+  '''symmetricKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector\.json''',
+  '''android/app/src/test/resources/hermes-relay/HermesRelayWireVector\.json''',
+]
+
+[[allowlists]]
+description = "Swift UserDefaults key constants and test lookup keys, not credential material"
+regexTarget = "match"
+regexes = [
+  '''userDefaultsKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+  '''dismissedAtKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+  '''savedQueriesKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+  '''forKey:\s*"[A-Za-z0-9_.:-]+"''',
+]
+paths = [
+  '''OpenBurnBarMobile/Services/ApprovalPolicyStore\.swift''',
+  '''OpenBurnBarMobile/Services/MissionFABResurrectionController\.swift''',
+  '''OpenBurnBarMobile/Models/ActivityStore\.swift''',
+  '''OpenBurnBarMobile/Tests/MissionFABResurrectionControllerTests\.swift''',
+]

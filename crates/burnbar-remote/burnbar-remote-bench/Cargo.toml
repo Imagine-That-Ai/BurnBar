@@ -11,5 +11,6 @@ burnbar-remote-core.workspace = true
 burnbar-remote-media.workspace = true
 burnbar-remote-network.workspace = true
 burnbar-remote-observability.workspace = true
+burnbar-remote-protocol.workspace = true
 burnbar-remote-security.workspace = true
 tokio.workspace = true

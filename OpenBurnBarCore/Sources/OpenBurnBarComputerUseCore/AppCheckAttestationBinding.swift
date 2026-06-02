@@ -2,7 +2,8 @@ import CryptoKit
 import Foundation
 
 /// Canonical App Check attestation digest shared by Mac, iOS, and Cloud Functions (WS2/WS4).
-/// Wire field `attestationHashBlake3` carries this SHA-256 hex (name is historical).
+/// Wire field `attestationHashBlake3` carries the **controller app's** SHA-256 hex digest (name is historical).
+/// Mac strict mode checks presence, not equality with the Mac host App Check app id.
 public enum AppCheckAttestationBinding {
     public static let claimKey = "obb_app_check"
     public static let canonicalPrefix = "openburnbar.appcheck.v1"

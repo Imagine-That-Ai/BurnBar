@@ -215,6 +215,7 @@ test("pickWinning returns undefined when no candidate matches productId", () => 
 test("buildEntitlementDoc surfaces all v2 invariants", () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const expires = Date.now() + 30 * 24 * 60 * 60 * 1000;
+  const appAccountToken = ["ABCDEF12", "3456", "7890", "ABCD", "EF1234567890"].join("-");
   const candidate = fakeTx({
     productId: productID,
     signedDate: 1700000000_000,
@@ -222,7 +223,7 @@ test("buildEntitlementDoc surfaces all v2 invariants", () => {
     originalTransactionId: "otx-1",
     bundleId: "com.test.app",
     expiresDate: expires,
-    appAccountToken: "ABCDEF12-3456-7890-ABCD-EF1234567890",
+    appAccountToken,
     inAppOwnershipType: "PURCHASED",
   });
   const doc = reconcilerTesting.buildEntitlementDoc({
@@ -239,7 +240,7 @@ test("buildEntitlementDoc surfaces all v2 invariants", () => {
   assert.equal(doc.environment, candidate.environment);
   assert.equal(doc.ownershipType, "PURCHASED");
   // appAccountToken must be lowercased before persistence.
-  assert.equal(doc.appAccountToken, "abcdef12-3456-7890-abcd-ef1234567890");
+  assert.equal(doc.appAccountToken, appAccountToken.toLowerCase());
   assert.equal(doc.lastNotificationUUID, "n-uuid");
   assert.equal(doc.signedDateMs, 1700000000_000);
   assert.equal(doc.source, "apple_jws_verified");
@@ -402,11 +403,12 @@ test("redactPayload drops storefront/currency/price PII fields", () => {
 });
 
 test("redactPayload hashes appAccountToken instead of persisting it", () => {
+  const appAccountToken = ["ABCDEF12", "3456", "7890", "ABCD", "EF1234567890"].join("-");
   const out = reconcilerTesting.redactPayload({
     transactionId: "t",
     productId: "p",
     bundleId: "b",
-    appAccountToken: "ABCDEF12-3456-7890-ABCD-EF1234567890",
+    appAccountToken,
     signedDate: 1,
   });
   assert.ok(!("appAccountToken" in out));

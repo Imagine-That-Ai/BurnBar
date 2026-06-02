@@ -13,3 +13,9 @@ send-buffer telemetry.
 
 See `docs/architecture/008-remote-control-engine.md` for the architecture,
 feasibility assessment, performance assumptions, and P0 risks.
+
+Security hardening details and proof commands live in `SECURITY.md`. The short
+version: session authorization is now a wire handshake, signed grants verify
+against trusted workspace signers and the client request nonce, macOS secure
+storage is implemented behind the `macos-keychain` feature, and the file audit
+sink is tamper-evident JSONL with sensitive details stored only as hashes.

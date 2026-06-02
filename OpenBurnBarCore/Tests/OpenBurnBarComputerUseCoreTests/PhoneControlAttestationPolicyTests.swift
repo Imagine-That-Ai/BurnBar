@@ -2,31 +2,28 @@ import XCTest
 @testable import OpenBurnBarComputerUseCore
 
 final class PhoneControlAttestationPolicyTests: XCTestCase {
-    func testPermissiveWhenStrictOffAndMacUnbound() {
+    func testPermissiveNeverRequiresAttestation() {
         XCTAssertEqual(
-            PhoneControlAttestationPolicy.requirement(strictMode: false, macBoundDigest: nil),
+            PhoneControlAttestationPolicy.requirement(strictMode: false, macHostHasBoundClaim: false),
+            .none
+        )
+        XCTAssertEqual(
+            PhoneControlAttestationPolicy.requirement(strictMode: false, macHostHasBoundClaim: true),
             .none
         )
     }
 
-    func testRequiredWhenStrictOffAndMacBound() {
+    func testStrictRequiresMacHostBound() {
         XCTAssertEqual(
-            PhoneControlAttestationPolicy.requirement(strictMode: false, macBoundDigest: "abc"),
-            .required(digest: "abc")
-        )
-    }
-
-    func testRejectUnboundWhenStrictOnAndMacUnbound() {
-        XCTAssertEqual(
-            PhoneControlAttestationPolicy.requirement(strictMode: true, macBoundDigest: nil),
+            PhoneControlAttestationPolicy.requirement(strictMode: true, macHostHasBoundClaim: false),
             .rejectUnboundHost
         )
     }
 
-    func testRequiredWhenStrictOnAndMacBound() {
+    func testStrictRequiresPhoneEnvelopeAttestationWhenMacBound() {
         XCTAssertEqual(
-            PhoneControlAttestationPolicy.requirement(strictMode: true, macBoundDigest: "digest"),
-            .required(digest: "digest")
+            PhoneControlAttestationPolicy.requirement(strictMode: true, macHostHasBoundClaim: true),
+            .requirePresent
         )
     }
 }

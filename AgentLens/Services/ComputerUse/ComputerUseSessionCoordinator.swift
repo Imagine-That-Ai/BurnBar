@@ -34,6 +34,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         public var killSwitch: Bool
         /// Remote Config `computer_use_phone_control_attestation_required`.
         public var phoneControlAttestationRequired: Bool
+        /// Defense-in-depth: when `true`, phone-control intents are also checked
+        /// against AX deny-regions. Remote Config
+        /// `computer_use_phone_control_respects_deny_regions`. Default `false`.
+        public var phoneControlRespectsDenyRegions: Bool
 
         public init(
             userId: String,
@@ -44,7 +48,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             auditBaseDirectory: URL,
             macAppVersion: String,
             killSwitch: Bool = false,
-            phoneControlAttestationRequired: Bool = false
+            phoneControlAttestationRequired: Bool = false,
+            phoneControlRespectsDenyRegions: Bool = false
         ) {
             self.userId = userId
             self.macHostNodeId = macHostNodeId
@@ -55,6 +60,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             self.macAppVersion = macAppVersion
             self.killSwitch = killSwitch
             self.phoneControlAttestationRequired = phoneControlAttestationRequired
+            self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
         }
     }
 
@@ -552,7 +558,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             concurrentSessionActive: false,
             killSwitch: configuration.killSwitch,
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
-            originatedFromPhone: invocation.requestedBy.rawValue == "phone-control"
+            originatedFromPhone: invocation.requestedBy.rawValue == "phone-control",
+            phoneControlRespectsDenyRegions: configuration.phoneControlRespectsDenyRegions
         )
 
         switch gate.check(

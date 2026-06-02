@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "wHNaL8tZfnbR6jll3N1clgvWEPRnJQRS+7DyuZA6kl3nmRKII3ILlrb6Bk181Lc=",
+  "chunkCiphertext" : "V4erVrJk\/mzERGlAw20HERl2Jl8AEV+Ot\/Ro2p6jAYz9BGSV7yqRcGKdclFs+yg=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19IiwicGF0aCI6IlwvdjFcL2NoYXRcL2NvbXBsZXRpb25zIn0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "oX5MoBCq7oM+QO+Va2DLuZ\/om1PRCvYoFuav10Wes77NMus\/Nz\/L6hzCVfJcMdSdxWDXlnzWDLSbSU3vQ\/ZxbzN5qtH186dGciZPPJyXLnZx0VSg5SQOvJd9B7BcvtuLV7xgSKH3rNbQBQKifaKLVbShofnBBqC3ZV6\/taT9X\/V2cAauVdX12r2xDRYNxbnqazjC3GID",
+  "payloadCiphertext" : "sueBkXPIQTl9dsKfEThRLAQ891tm23eSHcVI5511ZT5zSmptSuTiJKjaSCi0xfEJcmuDms7LWToSsD7Z6IxE6BM3xMo6QgHkxocuLKtgrpAItboaWCcqVm4PNisjhpMIZN1dfVEMFrqiU9voinIszDu8exZSiPqlA5cgTEuZzla08cP\/I0BTq+538QMH4F3+QzlrFB5t",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BEeSM+HYIbCm\/eYMG78naclA8+Cs07BrIDiYnV5L7A5gSAu0hoVE8ZVffxZTF4yOjk5zH++v6BQrYUPa38rzLJHXFUodRNVk87R80lNDEZ600pwwV6oQtSojogN12SLH7WaRXGx86csNz2j3yFVc0YRe+767DCIHmy\/7jm8="
+  "wrappedKey" : "BEfNLu5T3w2eleWEp4LV\/IwY4gM0p2uocOLLILaHTRz6c\/NgRSjm6o93F9tLdFw4XlM4EM0LVYNMZB606L4SX6YPsetBrL62MfbcDsGr7Nfz4BvSe6mt8EF7Z\/PNM8H2tHAUjAXp0OqxEJ3ERtvf+tTm2csKre1yHv2vYnw="
 }

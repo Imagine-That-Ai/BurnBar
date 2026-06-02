@@ -121,6 +121,65 @@ function authedDb(uid) {
   return testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
 }
 
+test("credential transfers are encrypted, owner-scoped, expiring one-time codes", async () => {
+  const ownerDb = authedDb("credential-owner");
+  const otherDb = authedDb("credential-attacker");
+  const validCode = "ABCDEFGHJKM2";
+  const validPath = `credential_transfers/${validCode}`;
+  const baseTransfer = {
+    ownerUid: "credential-owner",
+    payload: "v1.c2FsdC1maXh0dXJl.aXYtZml4dHVyZQ.Y2lwaGVydGV4dC1maXh0dXJl",
+    createdAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
+    expiresAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+    consumed: false,
+  };
+
+  await assertSucceeds(setDoc(doc(ownerDb, validPath), baseTransfer));
+  await assertSucceeds(getDoc(doc(ownerDb, validPath)));
+  await assertFails(getDoc(doc(otherDb, validPath)));
+
+  await assertFails(
+    setDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM3"), {
+      ...baseTransfer,
+      payload: JSON.stringify({ token: "plaintext-fixture" }),
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "credential_transfers/too-short"), {
+      ...baseTransfer,
+      ownerUid: "credential-owner",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM4"), {
+      ...baseTransfer,
+      ownerUid: "credential-attacker",
+    })
+  );
+
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, validPath), {
+      consumed: true,
+      consumedAt: Timestamp.fromDate(new Date("2026-06-01T00:05:00.000Z")),
+    })
+  );
+  await assertFails(getDoc(doc(ownerDb, validPath)));
+  await assertFails(
+    updateDoc(doc(ownerDb, validPath), {
+      consumed: true,
+      consumedAt: Timestamp.fromDate(new Date("2026-06-01T00:06:00.000Z")),
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "credential_transfers/ABCDEFGHJKM5"), {
+      ...baseTransfer,
+      expiresAt: Timestamp.fromDate(new Date("2000-01-01T00:00:00.000Z")),
+    });
+  });
+  await assertFails(getDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM5")));
+});
+
 test("owners can publish iroh pairing data and audit events without leaking secrets", async () => {
   const ownerDb = authedDb("iroh-owner");
   const otherDb = authedDb("mallory");

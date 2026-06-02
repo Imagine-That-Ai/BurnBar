@@ -57,7 +57,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         }
     }
 
-    func test_strictMode_rejectsMissingEnvelopeAttestation() throws {
+    func test_requirePresent_rejectsMissingEnvelopeAttestation() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let validator = PhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
@@ -67,13 +67,28 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
             try validator.validate(
                 envelope: intent.authority,
                 intent: intent,
-                attestation: .required(digest: "required-digest")
+                attestation: .requirePresent
             )
         ) { error in
             guard case PhoneControlAuthorityValidator.ValidationError.missingAttestation = error else {
-                XCTFail("Expected missingAttestation, got \(error)")
+                return XCTFail("Expected missingAttestation, got \(error)")
             }
         }
+    }
+
+    func test_requirePresent_acceptsNonEmptyAttestation() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "phone-digest")
+
+        XCTAssertNoThrow(
+            try validator.validate(
+                envelope: intent.authority,
+                intent: intent,
+                attestation: .requirePresent
+            )
+        )
     }
 
     func test_strictMode_rejectsMacUnbound() throws {
@@ -90,7 +105,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
             )
         ) { error in
             guard case PhoneControlAuthorityValidator.ValidationError.macAttestationUnbound = error else {
-                XCTFail("Expected macAttestationUnbound, got \(error)")
+                return XCTFail("Expected macAttestationUnbound, got \(error)")
             }
         }
     }

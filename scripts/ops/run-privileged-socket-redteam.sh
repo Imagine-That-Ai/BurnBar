@@ -48,11 +48,10 @@ fi
 log ""
 log "==> Running PrivilegedSocketRedTeamIntegrationTests"
 set +e
-xcodebuild test \
-  -scheme OpenBurnBarDaemon \
-  -destination 'platform=macOS' \
-  -only-testing:OpenBurnBarRemoteAccessAgentCoreTests/PrivilegedSocketRedTeamIntegrationTests \
-  2>&1 | tee -a "${EVIDENCE_FILE}"
+(
+  cd "${repo_root}/OpenBurnBarDaemon"
+  swift test --filter PrivilegedSocketRedTeamIntegrationTests
+) 2>&1 | tee -a "${EVIDENCE_FILE}"
 XCTEST_EXIT=$?
 set -e
 log "xctest_exit_code=${XCTEST_EXIT}"
