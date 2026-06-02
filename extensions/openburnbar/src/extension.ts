@@ -511,33 +511,25 @@ async function runCursorSmoke({
       throw new Error('OpenBurnBar smoke run completed, but the workspace file did not change.');
     }
 
-    await writeSmokeOutputFile(
-      fs,
-      safeOutputPath,
-      {
-        ok: true,
-        filePath,
-        readCharacters: readResult.content.length,
-        changedCharacters: afterResult.content.length,
-        fileChanged,
-        runID,
-        phase
-      }
-    );
+    await writeSmokeOutputFile(fs, safeOutputPath, {
+      ok: true,
+      filePath,
+      readCharacters: readResult.content.length,
+      changedCharacters: afterResult.content.length,
+      fileChanged,
+      runID,
+      phase
+    });
   } catch (error) {
     const failure = smokeFailureDetails(error);
     if (outputCreated) {
-      await writeSmokeOutputFile(
-        fs,
-        safeOutputPath,
-        {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-          runID: failure.runID,
-          phase: failure.phase,
-          runDetail: failure.runDetail
-        }
-      );
+      await writeSmokeOutputFile(fs, safeOutputPath, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        runID: failure.runID,
+        phase: failure.phase,
+        runDetail: failure.runDetail
+      });
     }
     throw error;
   }
