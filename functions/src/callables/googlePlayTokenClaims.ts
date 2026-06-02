@@ -11,6 +11,10 @@ export const GOOGLE_PLAY_TOKEN_CLAIMS_COLLECTION = "google_play_token_claims";
 
 export type GooglePlayTokenClaimKind = "subscription" | "topup";
 
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+}
+
 export async function claimGooglePlayPurchaseToken(args: {
   uid: string;
   purchaseTokenHash: string;
@@ -27,7 +31,7 @@ export async function claimGooglePlayPurchaseToken(args: {
       schemaVersion: 1,
     });
   } catch (err: unknown) {
-    const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+    const code = errorCode(err);
     if (code !== 6) {
       throw err;
     }

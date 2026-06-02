@@ -23,12 +23,13 @@ import type { Firestore, Query } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { verifyCursor, signCursor } from "./cursors.js";
 import { HttpError } from "./errors.js";
-import type { HostedMcpFirestore } from "./firestoreTypes.js";
 import { KNOWLEDGE_VECTOR_DIM } from "./knowledgeVector.js";
 
 const KNOWLEDGE_RESOURCE_RE = /^burnbar:\/\/knowledge\/([A-Za-z0-9_.:-]+)$/u;
 const SEARCH_READ_CAP = 150;
 const CURSOR_TTL_MS = 15 * 60_000;
+const LOCAL_DECRYPT_MODE = "local_decrypt_shim";
+type KnowledgeQueryVector = ReturnType<typeof FieldValue.vector>;
 
 export interface KnowledgeSearchArgs {
   queryVector?: unknown;
@@ -42,6 +43,93 @@ export interface KnowledgeSearchArgs {
   category?: unknown;
   limit?: unknown;
   cursor?: unknown;
+}
+
+export interface KnowledgeVectorDoc {
+  id: string;
+  get(field: string): unknown;
+}
+
+export interface KnowledgeVectorSnapshot {
+  size: number;
+  docs: KnowledgeVectorDoc[];
+}
+
+export interface KnowledgeVectorQuery {
+  where(field: string, op: "==", value: unknown): KnowledgeVectorQuery;
+  findNearest(options: {
+    vectorField: string;
+    queryVector: KnowledgeQueryVector;
+    limit: number;
+    distanceMeasure: "COSINE";
+    distanceResultField: string;
+  }): { get(): Promise<KnowledgeVectorSnapshot> };
+}
+
+export interface KnowledgeSearchFirestore {
+  collection(collectionPath: string): KnowledgeVectorQuery;
+}
+
+export interface KnowledgeDocumentSnapshot {
+  exists: boolean;
+  data(): Record<string, unknown> | undefined;
+}
+
+export interface KnowledgeDocumentFirestore {
+  doc(documentPath: string): { get(): Promise<KnowledgeDocumentSnapshot> };
+}
+
+export interface KnowledgeSearchHit {
+  vectorId: string;
+  resourceUri: string;
+  ciphertext: unknown;
+  sealedMetadata: unknown;
+  sourceKind: unknown;
+  sourceSlug: unknown;
+  score: number;
+  decryptMode: "local_decrypt_shim";
+}
+
+export interface KnowledgeSearchResult {
+  hits: KnowledgeSearchHit[];
+  nextCursor?: string;
+  storageReads: 0;
+  readBudget: {
+    firestoreDocumentReads: number;
+    storageReads: 0;
+    searchReadCap: number;
+    withinSearchReadBudget: boolean;
+  };
+}
+
+function firestoreKnowledgeQuery(query: Query): KnowledgeVectorQuery {
+  return {
+    where(field, op, value) {
+      return firestoreKnowledgeQuery(query.where(field, op, value));
+    },
+    findNearest(options) {
+      return {
+        async get() {
+          const snap = await query.findNearest(options).get();
+          return {
+            size: snap.size,
+            docs: snap.docs.map((doc) => ({
+              id: doc.id,
+              get: (field: string) => doc.get(field),
+            })),
+          };
+        },
+      };
+    },
+  };
+}
+
+export function knowledgeSearchFirestoreFrom(db: Firestore): KnowledgeSearchFirestore {
+  return {
+    collection(collectionPath) {
+      return firestoreKnowledgeQuery(db.collection(collectionPath));
+    },
+  };
 }
 
 /** Validate the device-cloaked query vector: exactly KNOWLEDGE_VECTOR_DIM finite numbers. */
@@ -63,7 +151,7 @@ function boundedString(raw: unknown, max: number): string | undefined {
   return trimmed.slice(0, max);
 }
 
-export async function searchKnowledge(db: Firestore, uid: string, args: KnowledgeSearchArgs) {
+export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string, args: KnowledgeSearchArgs): Promise<KnowledgeSearchResult> {
   const queryVector = requireQueryVector(args.queryVector);
   const limit = Math.max(1, Math.min(Math.floor(Number(args.limit ?? 10)), 50));
   const offset = args.cursor
@@ -76,7 +164,7 @@ export async function searchKnowledge(db: Firestore, uid: string, args: Knowledg
   const sourceSlug = boundedString(args.sourceSlug ?? filters.sourceSlug, 256);
   const embeddingModelVersion = boundedString(args.embeddingModelVersion ?? filters.embeddingModelVersion, 120);
 
-  let query: Query = db.collection(`users/${uid}/cloud_search_knowledge`);
+  let query: KnowledgeVectorQuery = db.collection(`users/${uid}/cloud_search_knowledge`);
   if (sourceKind) query = query.where("sourceKind", "==", sourceKind);
   if (sourceSlug) query = query.where("sourceSlug", "==", sourceSlug);
   if (embeddingModelVersion) query = query.where("embeddingModelVersion", "==", embeddingModelVersion);
@@ -95,7 +183,7 @@ export async function searchKnowledge(db: Firestore, uid: string, args: Knowledg
     .get();
 
   const firestoreDocumentReads = snap.size;
-  const ranked = snap.docs.map((doc) => {
+  const ranked: KnowledgeSearchHit[] = snap.docs.map((doc) => {
     const distance = Number(doc.get("_distance") ?? 1);
     return {
       vectorId: doc.id,
@@ -105,7 +193,7 @@ export async function searchKnowledge(db: Firestore, uid: string, args: Knowledg
       sourceKind: doc.get("sourceKind"),
       sourceSlug: doc.get("sourceSlug"),
       score: 1 - distance, // COSINE distance -> similarity (higher = closer)
-      decryptMode: "local_decrypt_shim",
+      decryptMode: LOCAL_DECRYPT_MODE,
     };
   });
   const hits = ranked.slice(offset, offset + limit);
@@ -127,7 +215,7 @@ export async function searchKnowledge(db: Firestore, uid: string, args: Knowledg
 }
 
 export async function readKnowledgeDocument(
-  db: HostedMcpFirestore,
+  db: KnowledgeDocumentFirestore,
   uid: string,
   args: { resourceUri?: string },
 ) {
@@ -153,7 +241,7 @@ export async function readKnowledgeDocument(
     sourceKind: data.sourceKind,
     sourceSlug: data.sourceSlug,
     encrypted: true,
-    decryptMode: "local_decrypt_shim",
+    decryptMode: LOCAL_DECRYPT_MODE,
     storageReads: 0,
     readBudget: { firestoreDocumentReads: 1, storageReads: 0, bodyStorageReadCap: 0, withinBodyReadBudget: true },
   };

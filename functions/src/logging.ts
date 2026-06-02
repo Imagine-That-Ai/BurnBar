@@ -78,7 +78,21 @@ function scrubString(value: string): string {
   return result;
 }
 
-export function sanitizeForTelemetry(value: unknown, key = ""): unknown {
+export type LogFieldValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Error
+  | LogFieldValue[]
+  | { [key: string]: LogFieldValue };
+
+function isLogFieldRecord(value: unknown): value is { [key: string]: LogFieldValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function sanitizeForTelemetry(value: unknown, key = ""): LogFieldValue {
   if (typeof value === "string") {
     if (key === "uid" || key === "userId" || key === "user_id") {
       return value.slice(0, 8);
@@ -95,36 +109,20 @@ export function sanitizeForTelemetry(value: unknown, key = ""): unknown {
       stack: value.stack ? scrubString(value.stack) : undefined,
     };
   }
-  if (isRecord(value)) {
+  if (isLogFieldRecord(value)) {
     return scrubFields(value);
   }
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value === "number" || typeof value === "boolean" || value == null) {
+    return value;
+  }
+  return scrubString(String(value));
 }
 
 /** Recursively scrub all string values in a log payload. */
-export function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
-  const scrubbed: Record<string, unknown> = {};
+export function scrubFields(obj: Record<string, unknown>): Record<string, LogFieldValue> {
+  const scrubbed: Record<string, LogFieldValue> = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === "string") {
-      // Never log raw UIDs — always hash/truncate
-      if (key === "uid" || key === "userId" || key === "user_id") {
-        scrubbed[key === "uid" ? "user_id_hash" : key] = value.slice(0, 8);
-      } else if (isSensitiveLogKey(key)) {
-        scrubbed[key] = REDACTED;
-      } else {
-        scrubbed[key] = scrubString(value);
-      }
-    } else if (Array.isArray(value)) {
-      scrubbed[key] = value.map((item) => sanitizeForTelemetry(item, key));
-    } else if (typeof value === "object" && value !== null) {
-      scrubbed[key] = sanitizeForTelemetry(value, key);
-    } else {
-      scrubbed[key] = value;
-    }
+    scrubbed[key === "uid" ? "user_id_hash" : key] = sanitizeForTelemetry(value, key);
   }
   return scrubbed;
 }
@@ -134,7 +132,7 @@ export interface LogFields {
   trace_id?: string;
   session_id?: string;
   user_id_hash?: string;
-  [key: string]: unknown;
+  [key: string]: LogFieldValue;
 }
 
 export function logInfo(fields: LogFields): void {
