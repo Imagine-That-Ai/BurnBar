@@ -6,6 +6,11 @@
 default_language_version:
   python: python3
 
+# Lint/format/secret hooks run at pre-commit only; the wiki->mem0 sync below
+# opts into post-commit explicitly. This keeps `git commit` post-commit fast
+# (just the mem0 sync) instead of re-running every linter after each commit.
+default_stages: [pre-commit]
+
 repos:
   # ── General file hygiene ──────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks

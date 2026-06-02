@@ -20,6 +20,17 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 
 ---
 
+## Repo knowledge lives in mem0 - query it first
+
+Search the BurnBar mem0 project before reading a wiki page or scanning `docs/`. The canonical Droid wiki (`droid-wiki/`) is mirrored there verbatim as retrievable chunks, refreshed on every commit, so a query returns the exact paragraph a task needs: subsystem architecture, data schemas, the RPC surface, feature internals, Computer Use phases, and the glossary instead of a whole page.
+
+- **Claude Code:** call `mcp__mem0-burnbar__search_memories` with a natural-language query and `filters={"AND":[{"user_id":"burnbar"}]}`. Each result carries `metadata.source_path`; open that full `droid-wiki/<path>` page only when you need the entire page.
+- **Other agents (Cursor, Codex, Droid):** query the same mem0 project (user_id `burnbar`); the `mem0-burnbar` server is defined in [`.mcp.json`](.mcp.json).
+
+Export `MEM0_BURNBAR_API_KEY` (the BurnBar mem0 project key) in your shell to read and write the mirror. The sync engine is [`scripts/wiki/mem0-sync.mjs`](scripts/wiki/mem0-sync.mjs); a post-commit hook keeps mem0 current and a nightly job reconciles drift.
+
+---
+
 ## Working in this repo
 
 - **Search the codebase** before adding new types, parsers, or UI; extend what exists unless the task explicitly requires greenfield work.
@@ -141,28 +152,11 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
 **Master plan:** [`plans/2026-05-16-computer-use-master-plan.md`](plans/2026-05-16-computer-use-master-plan.md) · **Wire reference:** [`docs/HERMES_COMPUTER_USE.md`](docs/HERMES_COMPUTER_USE.md) · **Rollout log:** [`docs/runbooks/computer-use-rollout-status.md`](docs/runbooks/computer-use-rollout-status.md)
 
-| Capability | Direction | Phase | Flag |
-|---|---|---|---|
-| Agent Watch — Mac → phone read-only mirror | Mac → iOS/Android | 8 | `computer_use_watch_enabled` |
-| Browser Computer Use — agent drives Playwright Chromium | Agent → daemon | 9 | `computer_use_browser_enabled` |
-| Trust modes + scope rules + audit chain | Mac UI | 10 | `computer_use_trust_modes_enabled` |
-| Mac System Computer Use — CGEvent + AX | Agent → Mac | 11 | `computer_use_system_enabled` |
-| Phone-as-controller — Ed25519-signed intents | Phone → Mac | 12 | `computer_use_phone_control_enabled` |
-| Polish — Trusted scopes, audit export, OpenTimestamps | Cross-cutting | 13 | `computer_use_polish_enabled` |
+Query mem0 for the phase matrix (phases 8–13, capabilities, feature flags), the 13 tool kinds, the Playwright bridge path, and the budget caps — `features/computer-use.md` and `reference/configuration.md` carry the full, current detail.
 
-**Key invariants:**
+**Key safety invariants (always in force):**
 - Approval is the only ground truth at v1. No silent auto-pilot.
-- Trust mode is per-session; never sticky across sessions.
+- Trust mode is per-session; the phone can only downgrade trust (Trusted → Step → Manual), and elevation requires the Mac.
 - The audit chain is content-addressed (SHA-256 today, BLAKE3-swappable). Tamper detection covers every entry including the terminal one when `head.json` is supplied.
-- Three independent panic-kill paths: `⌃⌥⌘.` global hotkey, phone three-finger long-press, NSWorkspace auth gate (loginwindow / SecurityAgent / screen sleep), Remote Config `computer_use_kill_switch`.
+- Three independent panic-kill paths halt a session — `⌃⌥⌘.` global hotkey, phone three-finger long-press, the NSWorkspace auth gate (loginwindow / SecurityAgent / screen sleep) — alongside the Remote Config `computer_use_kill_switch`.
 - Path C (Mac System) ships only via direct download with notarization. The MAS build compiles it out via `#if DISTRIBUTION_MAS`.
-
-**Tool kinds:** `BurnBarToolKind.computerUseToolKinds` (13 kinds). New cases are auto-routed through `ComputerUseRunCoordinator`.
-
-**Bridge script:** `OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js`. The driver pins `playwright@1.49.1` via `OpenBurnBarPlaywrightLifecycle`.
-
-**Budget governance:**
-- Soft cap at projected $1500/mo (envelope tightens to 25 actions/run · 100/day).
-- Hard cap at $2500/mo (Remote Config kill-switch).
-- Per-user daily ceiling $5 (normal) / $2.50 (soft) / $0 (hard).
-- `evaluateComputerUseBudget` Cloud Function evaluates hourly.
