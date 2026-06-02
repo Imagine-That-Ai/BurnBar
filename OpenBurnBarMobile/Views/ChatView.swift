@@ -159,6 +159,13 @@ struct ChatView: View {
                         }
                     }
                 }
+                .onChange(of: service.messages.last?.text.count ?? 0) { _, _ in
+                    if let last = service.messages.last, last.isStreaming {
+                        withAnimation(MobileTheme.Animation.gentle) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
                 .onChange(of: service.isStreaming) { _, new in
                     if new {
                         withAnimation(MobileTheme.Animation.gentle) {
@@ -364,18 +371,8 @@ struct HermesChatBubble: View {
 
     @ViewBuilder
     private var bubble: some View {
-        if !isUser, !message.isError, !message.text.isEmpty, !message.isStreaming {
+        if !isUser, !message.isError, !message.text.isEmpty {
             atomBubble
-        } else if !isUser, !message.isError, message.isStreaming, !message.text.isEmpty {
-            StreamingBubble(
-                text: message.text,
-                isStreaming: true,
-                isError: false,
-                baseSize: 15,
-                lineHeight: 21
-            ) {
-                plainBubble
-            }
         } else {
             plainBubble
         }
@@ -384,12 +381,12 @@ struct HermesChatBubble: View {
     private var atomBubble: some View {
         StreamingBubble(
             text: message.text,
-            isStreaming: false,
+            isStreaming: message.isStreaming,
             isError: false,
             baseSize: 15,
             lineHeight: 21
         ) {
-            HermesRichBubble(text: message.text)
+            HermesRichBubble(text: message.text + (message.isStreaming ? "▍" : ""))
                 .padding(.horizontal, MobileTheme.Spacing.md)
                 .padding(.vertical, MobileTheme.Spacing.sm)
                 .background(

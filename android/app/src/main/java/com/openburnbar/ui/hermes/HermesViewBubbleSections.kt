@@ -160,12 +160,27 @@ private fun ChatBubbleAgentSurface(
         modifier = Modifier.widthIn(max = 320.dp),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(
-                text = if (message.content.isEmpty() && message.isStreaming) "…" else message.content,
-                fontSize = 15.sp,
-                color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
-                lineHeight = 20.sp,
-            )
+            val displayText =
+                when {
+                    message.content.isEmpty() && message.isStreaming -> "…"
+                    message.isStreaming -> message.content + "▍"
+                    else -> message.content
+                }
+            if (!isUser && !message.isError) {
+                HermesRichBubble(
+                    text = displayText,
+                    isStreaming = message.isStreaming,
+                    baseSize = 15f,
+                    baseColor = MaterialTheme.colorScheme.onSurface,
+                )
+            } else {
+                Text(
+                    text = displayText,
+                    fontSize = 15.sp,
+                    color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 20.sp,
+                )
+            }
             if (message.toolCalls.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 ChatBubbleToolCallStrip(toolCalls = message.toolCalls)

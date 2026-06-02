@@ -22,4 +22,10 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 
 ---
 
+## Repo knowledge lives in mem0 — query it first
+
+Search the BurnBar mem0 project before reading a wiki page or scanning `docs/`. The canonical Droid wiki (`droid-wiki/`) is mirrored there verbatim and refreshed on every commit. In Claude Code, call `mcp__mem0-burnbar__search_memories` with `filters={"AND":[{"user_id":"burnbar"}]}` and load only the chunks a query returns; each result's `metadata.source_path` names the full `droid-wiki/<path>` page to open when you need all of it. Export `MEM0_BURNBAR_API_KEY` to read and write the mirror. See [`AGENTS.md`](AGENTS.md) for the full directive.
+
+---
+
 For repository-specific expectations (tests, docs, scope), see [`AGENTS.md`](AGENTS.md).

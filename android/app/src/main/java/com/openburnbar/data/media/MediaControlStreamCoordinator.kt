@@ -16,6 +16,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayLongTermReferenceAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorStop
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
@@ -263,6 +264,7 @@ class MediaControlStreamCoordinator(
     suspend fun requestMirror(
         requesterDisplayName: String,
         remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
+        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = null,
     ): String {
         val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
@@ -280,6 +282,7 @@ class MediaControlStreamCoordinator(
             viewerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
             controlAuthorityPeerNodeId = controlAuthorityPeerNodeIdProvider(),
             remoteUnlockSession = remoteUnlockSession,
+            agentTerminal = agentTerminal,
         )
         send(
             HermesRealtimeRelayFrame(

@@ -32,18 +32,6 @@ enum HermesGenerationDurationSource: String, Equatable {
     case bufferedWallClock
 }
 
-struct HermesTokenUsageStats: Equatable {
-    var promptTokens: Int?
-    var outputTokens: Int?
-    var totalTokens: Int?
-    /// Generation duration (output-only) if the provider reported it. Already
-    /// normalised to seconds. Ollama's `eval_duration` is in nanoseconds and is
-    /// converted before reaching this struct.
-    var generationDurationSeconds: TimeInterval?
-    /// End-to-end provider wall-clock (input + generation), for diagnostics.
-    var totalDurationSeconds: TimeInterval?
-}
-
 struct HermesChatMessage: Identifiable, Equatable {
     /// Wall-clock generation windows shorter than this are treated as buffered
     /// SSE bursts (a relay or proxy delivered the whole answer at once). We
@@ -412,72 +400,6 @@ struct HermesChatMessage: Identifiable, Equatable {
     }
 }
 
-/// First-class classification of an assistant turn so the bubble UI
-/// can render distinct visual treatments (tag, color, retry button)
-/// without parsing prose. `.normal` is the default; the rescue
-/// helper sets the others when a stream finishes without producing
-/// real `content`.
-enum HermesChatMessageOutcome: String, Equatable, Sendable {
-    /// Model returned a real reply. No special chrome.
-    case normal
-    /// Model intentionally declined (OpenAI `delta.refusal`). Not an
-    /// error — the model responded — but worth flagging so users
-    /// don't think their question was misunderstood.
-    case refusal
-    /// Stream produced no `content` but did emit the reasoning
-    /// channel. We hoist the reasoning into `text` so the bubble has
-    /// something to show; the badge tells the user this is raw
-    /// thinking, not a polished answer.
-    case reasoningFallback
-    /// `finish_reason: "length"` with no content — hit the output
-    /// budget before producing the answer.
-    case lengthCap
-    /// `finish_reason: "content_filter"` with no content.
-    case contentFilter
-    /// Model emitted `tool_calls` but no follow-up turn produced a
-    /// real reply.
-    case toolCallNoFollowUp
-    /// Stream closed cleanly with no usable signals at all.
-    case empty
-
-    /// `true` when this outcome should offer the user a "Try again"
-    /// affordance. Refusals are excluded — the model intentionally
-    /// declined; mashing retry won't change that.
-    var supportsRetry: Bool {
-        switch self {
-        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty:
-            return true
-        case .normal, .refusal, .reasoningFallback:
-            return false
-        }
-    }
-
-    /// Short label rendered as a badge above the bubble.
-    var badgeLabel: String? {
-        switch self {
-        case .normal: return nil
-        case .refusal: return "Declined"
-        case .reasoningFallback: return "Reasoning channel"
-        case .lengthCap: return "Reply truncated"
-        case .contentFilter: return "Filtered"
-        case .toolCallNoFollowUp: return "Tool call dropped"
-        case .empty: return "No reply"
-        }
-    }
-
-    /// SF Symbol for the badge.
-    var badgeSymbol: String? {
-        switch self {
-        case .normal: return nil
-        case .refusal: return "hand.raised.fill"
-        case .reasoningFallback: return "brain"
-        case .lengthCap: return "scissors"
-        case .contentFilter: return "shield.lefthalf.filled"
-        case .toolCallNoFollowUp: return "wrench.and.screwdriver"
-        case .empty: return "exclamationmark.bubble"
-        }
-    }
-}
 /// One tool the model decided to invoke in the current assistant turn.
 ///
 /// `name` lands first (the OpenAI streaming protocol sends it on the *first*
@@ -669,6 +591,7 @@ final class HermesService {
     private var runtimeRefreshTask: Task<Void, Never>?
     private var runtimeRefreshGeneration: Int?
     private var visibleCLIObservation: CLIAgentMissionObservation?
+    private var streamEventParser = HermesOpenAICompatibleStreamParser()
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
     private let selectedModelDefaultsKey = "hermes.selectedModelID"
     private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
@@ -1912,6 +1835,7 @@ final class HermesService {
             isStreaming: true,
             responseStartedAt: Date()
         )
+        streamEventParser = HermesOpenAICompatibleStreamParser()
         messages.append(assistantMessage)
 
         var eventLines: [String] = []
@@ -2089,6 +2013,7 @@ final class HermesService {
             isStreaming: true,
             responseStartedAt: Date()
         )
+        streamEventParser = HermesOpenAICompatibleStreamParser()
         messages.append(assistantMessage)
 
         try await relayTransport.sendStreaming(
@@ -2349,27 +2274,16 @@ final class HermesService {
 
         let data = dataLines.joined(separator: "\n")
         guard !data.isEmpty else { return }
-        if data == "[DONE]" { return }
+        if data == "[DONE]" {
+            let parsed = streamEventParser.events(fromDataPayload: data)
+            for event in parsed.events {
+                apply(event, to: &message)
+            }
+            return
+        }
 
         guard let jsonData = data.data(using: .utf8) else { return }
         guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
-
-        if let usage = json["usage"] as? [String: Any],
-           let stats = tokenUsageStats(from: usage) {
-            applyTokenUsage(stats, to: &message)
-        }
-
-        // Ollama emits eval_count / eval_duration / total_duration as
-        // top-level keys on the final chunk rather than under "usage". Treat
-        // them like an inline usage record so the rate stays honest for
-        // local-runtime conversations.
-        if let stats = tokenUsageStats(from: json),
-           stats.outputTokens != nil
-                || stats.totalTokens != nil
-                || stats.generationDurationSeconds != nil
-                || stats.totalDurationSeconds != nil {
-            applyTokenUsage(stats, to: &message)
-        }
 
         if let modelName = modelNameValue(item: json) {
             message.applyResponseModelID(modelName)
@@ -2407,52 +2321,75 @@ final class HermesService {
         // a `.tooLarge` stub instead of corrupting the stream.
         absorbCards(from: json, into: &message)
 
-        guard let choices = json["choices"] as? [[String: Any]],
-              let first = choices.first else { return }
-
-        // Some agents emit cards inside the choice/delta envelope (e.g.,
-        // when the runtime wraps everything in OpenAI's choices[] shape).
-        // Honour both placements.
-        absorbCards(from: first, into: &message)
-        if let delta_ = first["delta"] as? [String: Any] {
-            absorbCards(from: delta_, into: &message)
+        if let choices = json["choices"] as? [[String: Any]],
+           let first = choices.first {
+            // Some agents emit cards inside the choice/delta envelope (e.g.,
+            // when the runtime wraps everything in OpenAI's choices[] shape).
+            // Honour both placements.
+            absorbCards(from: first, into: &message)
+            if let delta_ = first["delta"] as? [String: Any] {
+                absorbCards(from: delta_, into: &message)
+            }
         }
 
-        let delta = first["delta"] as? [String: Any]
-        let finalMessage = first["message"] as? [String: Any]
-
-        if let content = visibleContent(from: delta)
-            ?? visibleContent(from: finalMessage)
-            ?? stringValue(first["text"]) {
-            appendVisibleContent(content, to: &message)
+        let parsed = streamEventParser.events(fromJSONObject: json)
+        for event in parsed.events {
+            apply(event, to: &message)
         }
+    }
 
-        // Capture the OpenAI `refusal` channel so a model decline isn't
-        // swallowed into "Hermes finished without returning text".
-        if let refusal = refusalContent(from: delta) ?? refusalContent(from: finalMessage) {
-            appendStreamedRefusal(refusal, to: &message)
-        }
-
-        // Some thinking models (DeepSeek R1, Qwen3 thinking, certain
-        // MiniMax routes) emit the entire answer on the reasoning
-        // channel and never flush to `content`. Capture it so the
-        // empty-text fallback can hoist it into the bubble.
-        if let reasoning = reasoningContent(from: delta) ?? reasoningContent(from: finalMessage) {
-            appendStreamedReasoning(reasoning, to: &message)
-        }
-
-        if let finishReason = stringValue(first["finish_reason"])
-            ?? stringValue(first["finishReason"]) {
-            if message.lastFinishReason != finishReason {
+    private func apply(_ event: HermesStreamEvent, to message: inout HermesChatMessage) {
+        switch event {
+        case .messageChunk(let text):
+            appendVisibleContent(text, to: &message)
+        case .reasoningChunk(let text):
+            appendStreamedReasoning(text, to: &message)
+        case .refusalChunk(let text):
+            appendStreamedRefusal(text, to: &message)
+        case .toolCallChunk(let id, let index, let name, let argumentsDelta):
+            var raw: [String: Any] = [
+                "id": id,
+                "index": index,
+                "function": ["arguments": argumentsDelta]
+            ]
+            if let name, !name.isEmpty {
+                raw["function"] = [
+                    "name": name,
+                    "arguments": argumentsDelta
+                ]
+            }
+            mergeToolCalls([raw], into: &message)
+        case .toolCallFinished(let id, let name, let arguments):
+            markToolCallFinished(id: id, name: name, arguments: arguments, in: &message)
+        case .messageStop(let finishReason, let outcome, let usage):
+            if let usage {
+                applyTokenUsage(usage, to: &message)
+            }
+            var didUpdateTerminalFields = false
+            if let finishReason, message.lastFinishReason != finishReason {
                 message.lastFinishReason = finishReason
+                didUpdateTerminalFields = true
+            }
+            if outcome != .normal, message.outcome != outcome {
+                message.outcome = outcome
+                didUpdateTerminalFields = true
+            }
+            if didUpdateTerminalFields,
+               let index = messages.firstIndex(where: { $0.id == message.id }) {
+                messages[index] = message
+            }
+        case .notice(let level, let text):
+            if level == "error" {
+                lastError = text
+                message.text = text
+                message.isError = true
+                message.outcome = .empty
                 if let index = messages.firstIndex(where: { $0.id == message.id }) {
                     messages[index] = message
                 }
             }
-        }
-
-        if let toolCalls = toolCalls(from: delta) ?? toolCalls(from: finalMessage) {
-            mergeToolCalls(toolCalls, into: &message)
+        case .toolResult, .longToolHint:
+            break
         }
     }
 
@@ -3339,6 +3276,34 @@ final class HermesService {
                     )
                 )
             }
+        }
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
+    }
+
+    private func markToolCallFinished(id: String, name: String, arguments: String, in message: inout HermesChatMessage) {
+        message.markFirstResponseChunk()
+        if let index = message.toolCalls.firstIndex(where: { $0.id == id }) {
+            if !name.isEmpty {
+                message.toolCalls[index].name = name
+            }
+            if message.toolCalls[index].arguments.isEmpty {
+                message.toolCalls[index].arguments = arguments
+            }
+            message.toolCalls[index].detail = Self.summarizeToolArguments(
+                message.toolCalls[index].arguments
+            ) ?? message.toolCalls[index].detail
+        } else {
+            message.toolCalls.append(
+                HermesToolCall(
+                    id: id,
+                    name: name.isEmpty ? "Hermes tool" : name,
+                    status: "running",
+                    arguments: arguments,
+                    detail: Self.summarizeToolArguments(arguments)
+                )
+            )
         }
         if let index = messages.firstIndex(where: { $0.id == message.id }) {
             messages[index] = message

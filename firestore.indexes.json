@@ -395,6 +395,37 @@
       ]
     },
     {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sourceKind", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "sourceSlug", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
       "collectionGroup": "remote_mcp_grants",
       "queryScope": "COLLECTION",
       "fields": [

@@ -116,6 +116,14 @@ function buildConfig(): EnvConfig {
       process.env.BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID ??
       configString(openburnbar, "burnbar_pro_max_annual_product_id") ??
       "com.openburnbar.proMax.annual",
+    burnBarUltraProductID:
+      process.env.BURNBAR_ULTRA_PRODUCT_ID ??
+      configString(openburnbar, "burnbar_ultra_product_id") ??
+      "com.openburnbar.ultra.monthly",
+    burnBarUltraAnnualProductID:
+      process.env.BURNBAR_ULTRA_ANNUAL_PRODUCT_ID ??
+      configString(openburnbar, "burnbar_ultra_annual_product_id") ??
+      "com.openburnbar.ultra.annual",
     agentControl100ActionsProductID:
       process.env.AGENT_CONTROL_100_ACTIONS_PRODUCT_ID ??
       configString(openburnbar, "agent_control_100_actions_product_id") ??
@@ -177,6 +185,14 @@ function buildConfig(): EnvConfig {
       process.env.GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID ??
       configString(googleplay, "cloud_pro_annual_product_id") ??
       "com.openburnbar.promax.annual",
+    googlePlayUltraMonthlyProductID:
+      process.env.GOOGLE_PLAY_ULTRA_MONTHLY_PRODUCT_ID ??
+      configString(googleplay, "ultra_monthly_product_id") ??
+      "com.openburnbar.ultra.monthly",
+    googlePlayUltraAnnualProductID:
+      process.env.GOOGLE_PLAY_ULTRA_ANNUAL_PRODUCT_ID ??
+      configString(googleplay, "ultra_annual_product_id") ??
+      "com.openburnbar.ultra.annual",
     googlePlayAgentControl100ActionsProductID:
       process.env.GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID ??
       configString(googleplay, "agent_control_100_actions_product_id") ??

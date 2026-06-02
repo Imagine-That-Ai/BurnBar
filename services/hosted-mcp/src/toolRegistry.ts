@@ -6,6 +6,7 @@ import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
 import { listResources, readConversationBody, recentUsage } from "./resources.js";
 import { listResumable, resumeConversation } from "./resume.js";
+import { searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
 
 export type CostClass = "metadata" | "standard" | "body";
 
@@ -122,6 +123,45 @@ export const tools: RegisteredTool[] = [
       max_tokens: { type: "integer", minimum: 1024, maximum: 32000 }
     }),
     handler: async ({ db, claims }, args) => resumeConversation(db, claims.sub, args)
+  },
+  {
+    name: "burnbar_search_knowledge",
+    description:
+      "Search the member's E2EE Pensieve knowledge memory by an on-device-cloaked query vector. Sealed results require the local shim for decryption.",
+    requiredScopes: ["knowledge:read"],
+    costClass: "standard",
+    rateLimitBucket: "knowledge:standard",
+    inputSchema: schema(
+      {
+        queryVector: { type: "array", items: { type: "number" }, minItems: 384, maxItems: 384 },
+        filters: { type: "object", additionalProperties: true },
+        sourceKind: { type: "string", enum: ["repo_docs", "notes", "chat_memory"] },
+        sourceSlug: { type: "string", maxLength: 256 },
+        embeddingModelVersion: { type: "string", maxLength: 120 },
+        // Sealed-only; applied on-device after decrypt (forward-compat).
+        sourcePath: { type: "string", maxLength: 512 },
+        section: { type: "string", maxLength: 256 },
+        category: { type: "string", maxLength: 120 },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
+        cursor: { type: "string" }
+      },
+      ["queryVector"]
+    ),
+    handler: async ({ db, claims }, args) => searchKnowledge(db, claims.sub, args)
+  },
+  {
+    name: "burnbar_get_knowledge_document",
+    description: "Fetch one encrypted Pensieve knowledge chunk (atomic sealed envelope) for a resource returned by burnbar_search_knowledge.",
+    requiredScopes: ["knowledge:read"],
+    costClass: "body",
+    rateLimitBucket: "body:standard",
+    inputSchema: schema(
+      {
+        resourceUri: { type: "string", pattern: "^burnbar://knowledge/" }
+      },
+      ["resourceUri"]
+    ),
+    handler: async ({ db, claims }, args) => readKnowledgeDocument(db, claims.sub, args)
   },
   {
     name: "burnbar_resolve_capabilities",

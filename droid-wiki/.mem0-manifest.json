@@ -1,0 +1,922 @@
+{
+  "schema_version": 1,
+  "project": "burnbar",
+  "scope": {
+    "user_id": "burnbar",
+    "app_id": "burnbar"
+  },
+  "entries": {
+    ".survey-context.md#0": {
+      "memory_id": "022335b9-5e33-4c91-b7ff-d7cb33ac6273",
+      "content_hash": "137eed777f0744f4399d26addc1934c5a9d611f16685d4f6d4f96157c992fff0"
+    },
+    "apps/android-app.md#0": {
+      "memory_id": "1ddff2ff-6ebe-422b-9a9d-74e9306ad727",
+      "content_hash": "9d3c967143a9430a51103b90cdcb7b4ed46becae80b3ea8568098a6d119ae834"
+    },
+    "apps/android-app.md#1": {
+      "memory_id": "0aac8bb1-d81f-4199-a121-bb71ec7f2902",
+      "content_hash": "5553597419c09b3cd87174c23ec51278ca2a3997748b73b2502a7c91dc6c4bb9"
+    },
+    "apps/android-app.md#2": {
+      "memory_id": "9d4a3de3-06bf-4fac-a579-a62c6645d09e",
+      "content_hash": "e393650b706cf813f69ea7f933b9a069305a8d6eb08f052803256dae86bd661c"
+    },
+    "apps/android-app.md#3": {
+      "memory_id": "4587fceb-8c7e-4486-82ff-262353459919",
+      "content_hash": "b8bc6e23ef8225546ed2e9ddabd904a3f4ece189ec2b905aed9b961685b59f71"
+    },
+    "apps/android-app.md#4": {
+      "memory_id": "043e1a9b-6e8b-49b2-8f24-d69b90f48576",
+      "content_hash": "7181eb03a2af92b845393abc968378c27d70bfe7084cdbea8263a3afda3b186a"
+    },
+    "apps/android-app.md#5": {
+      "memory_id": "fe92df40-07ba-4414-962a-9cd005d61715",
+      "content_hash": "b22406c63e8aa24337dbb7a526d05d60435117608ec6032db52633ab800a7d47"
+    },
+    "apps/android-app.md#6": {
+      "memory_id": "90494e3a-789c-44dd-a94a-6b07f9da2b05",
+      "content_hash": "179f01ff25dfc91f2d41d5763f3398b062343920043f9623e144ed93135c676c"
+    },
+    "apps/android-app.md#7": {
+      "memory_id": "21db25b4-8deb-4c2d-88ac-eb9988580465",
+      "content_hash": "a68b983caec88a66ce355f6c48b6662f9fabbe0e0d04adf1451441e92139e5de"
+    },
+    "apps/index.md#0": {
+      "memory_id": "9529f666-a51c-4953-8805-a4136a993b40",
+      "content_hash": "a4db8273cabece10f481bfb14d736fcaf0b40182da1337991ca16f4c1afe09e3"
+    },
+    "apps/ios-app/index.md#0": {
+      "memory_id": "10ad4aa2-a65d-4362-a775-c3f1d1ddd787",
+      "content_hash": "342fbd2c646d01593bd8257c7046c8733a959c794f74e3b770df1a4ae22a226e"
+    },
+    "apps/ios-app/index.md#1": {
+      "memory_id": "b0b0d47f-6485-4064-8692-696d5578a894",
+      "content_hash": "0d66572e64fa3dccce3d990b173381d720c8b89e8d35f2b84f936c41cd3a2bc7"
+    },
+    "apps/ios-app/index.md#2": {
+      "memory_id": "8c6506a5-020d-46d7-ba7d-8852c3b77cd3",
+      "content_hash": "b5365b3ff66a32ab16c913217c267b5ceb5587f51f01b85652c26f44ea39c4fb"
+    },
+    "apps/ios-app/index.md#3": {
+      "memory_id": "0407c732-e420-47ee-b880-d729000b1e5f",
+      "content_hash": "2db11224617eb66bc49af222e7b8cb00ff5f353cb9167efd707919d5e4f231ee"
+    },
+    "apps/ios-app/index.md#4": {
+      "memory_id": "6653c947-d26a-4822-ac0d-12634270bfe2",
+      "content_hash": "e08481c92aecae97b52e278740c58a77f394a8e45104916a797e8ebf66813dae"
+    },
+    "apps/ios-app/index.md#5": {
+      "memory_id": "ce89031f-772b-4d59-9e45-6cf2dcd70831",
+      "content_hash": "b9c6397be5263bb222fb2c59c869025447d253375db8dbd68f59f07a821e660c"
+    },
+    "apps/ios-app/index.md#6": {
+      "memory_id": "f249a3e6-2b69-4b65-bf6d-2b670a772b99",
+      "content_hash": "41a85881b2a549865ac208ec7e74cd7417183f0dd50f3ca6dbdffbcdb6ff73b7"
+    },
+    "apps/macos-app/index.md#0": {
+      "memory_id": "9bba7faf-6c5b-4e6f-822c-877e7bd92ed2",
+      "content_hash": "eb924a76300c0fc51ea2a9ed6bced7a742b9c7d2c663b9732c871741e1d78b30"
+    },
+    "apps/macos-app/index.md#1": {
+      "memory_id": "47ffc7ba-bf27-4531-afe3-1dd07746adc6",
+      "content_hash": "f5e8d704c9031b82420e210b749981bb3088898ed0449bd7a06663c731774f9b"
+    },
+    "apps/macos-app/index.md#2": {
+      "memory_id": "d7ced427-c5b9-4bab-be95-ab392605cc8c",
+      "content_hash": "0e007afc32dd36c74057b5637940e2192dcc8a4049fcf245ed700e1c0a3e7b8b"
+    },
+    "apps/macos-app/index.md#3": {
+      "memory_id": "366407ab-9bcc-4e53-ad43-b2c476ebc95a",
+      "content_hash": "8f1cf5ebb3036905f66e8468107c7511de06da8665d55fc7c77a7b1eed454ebf"
+    },
+    "apps/macos-app/index.md#4": {
+      "memory_id": "5a2daa51-f2ae-45ed-97c1-580e050cb943",
+      "content_hash": "ba393fad7a65c8e4023eae6648f0d5d64a45ecf0f225cb4bd131d94d1a0fa0f6"
+    },
+    "apps/macos-app/index.md#5": {
+      "memory_id": "e644ae9b-ea0b-42b8-b206-02f181b83951",
+      "content_hash": "d09730e3aaadc1d3fd04e381ccf9cd514a0657a2453ddafeab43d72bc7351b8b"
+    },
+    "apps/macos-app/index.md#6": {
+      "memory_id": "d97bdade-0392-4da0-a67b-c51e5bdb1a2a",
+      "content_hash": "48c3979f2009601815618bef2ad956cb0e9bb8d7ce6d1707fd357b7a6c8fac0e"
+    },
+    "apps/macos-app/index.md#7": {
+      "memory_id": "77f72656-0812-4f9e-9e1c-ce37b8248c1b",
+      "content_hash": "0a1fc5bee6e33f5cada8297bab5faa771bb405bcd6282269a1e2f8f4fc961bbe"
+    },
+    "apps/vscode-extension.md#0": {
+      "memory_id": "66c55975-74ca-499b-9347-e29b24ed56cf",
+      "content_hash": "70af96be7b86985e328d4a204e4455aac587c5071ef038ecbdcac05443f3e5c2"
+    },
+    "background/design-decisions.md#0": {
+      "memory_id": "27cf01c1-6b99-4175-921f-81792d68a650",
+      "content_hash": "b822c87373c33b89fef51d8d5b6fbe58257c97b9253158658d1b419c5f20e5a9"
+    },
+    "background/index.md#0": {
+      "memory_id": "29eaa4b4-ad76-4eda-98fb-37d61f08bb08",
+      "content_hash": "593e687810ee16e7707cb660ace111d4f90873494b3cbb729e13a1d9c3b8973c"
+    },
+    "by-the-numbers.md#0": {
+      "memory_id": "8908431b-8ff7-408b-91a0-664ef99d7555",
+      "content_hash": "4460719dfe28a9188d2299f894ccf040dffff2f04637dc5ccf26eebe9357eb69"
+    },
+    "by-the-numbers.md#1": {
+      "memory_id": "1deeb01e-4ce8-45a4-b7a3-d74fa69636b3",
+      "content_hash": "f2f745edf43049b1014db67816aacdfaabdf7aa6e26a14f668986241b54e888d"
+    },
+    "by-the-numbers.md#2": {
+      "memory_id": "e5836c30-eb86-48d4-a722-5baef5d366d7",
+      "content_hash": "3bd7f85c8a4269b8196760e6ae1b66b873f6875c567f444e52ead55477fcd4fa"
+    },
+    "by-the-numbers.md#3": {
+      "memory_id": "36c3c53d-c2a4-4311-9d7f-972dfed0f733",
+      "content_hash": "1c4a913c2a2b7c6d0bcb0ff680884e5f340a56f959725bcd3ea170ff57fea012"
+    },
+    "by-the-numbers.md#4": {
+      "memory_id": "36fc9892-c6fd-4607-a711-61d3f101c8c9",
+      "content_hash": "2aadfa2216b718b73177dd497e8351d896b069f3f91b530afa8702a02b0681df"
+    },
+    "by-the-numbers.md#5": {
+      "memory_id": "e4973131-3a45-4518-85d1-81e0804c5090",
+      "content_hash": "ef616c436a7041d130a672b1e1ced5fbdba29c6c7d05e8065f5cf1ce86e6c39e"
+    },
+    "by-the-numbers.md#6": {
+      "memory_id": "2e24dfa2-26ab-458c-b5b7-b6a39e6fb442",
+      "content_hash": "b3c493d42ed408eb2ec4c4337faa722f98f1787dd0613964057673d96d08de80"
+    },
+    "by-the-numbers.md#7": {
+      "memory_id": "9502e04c-06ab-4e6a-9801-ae958f6ebb47",
+      "content_hash": "90c6ddb0d05be8bbacb197cc260e5d7608af93635a449873bb29dad04fcfe11b"
+    },
+    "cleanup-opportunities/index.md#0": {
+      "memory_id": "4d69f400-4c55-4872-8faa-47a97c478044",
+      "content_hash": "6ef6c11d8c958f83efb4153f6999bb1bbc740c1a018ef62c4bc0c1c5a34107bd"
+    },
+    "features/budget-governance.md#0": {
+      "memory_id": "3287c29a-be03-43d5-94e1-48cede0eabb3",
+      "content_hash": "f74c880907667b804b8e480d0c73da6241367ada13c246dbdfe45ab69084add6"
+    },
+    "features/budget-governance.md#1": {
+      "memory_id": "f56c43eb-e020-449b-adde-b363b5fb849b",
+      "content_hash": "cf8fbc00b180629fd8144b36f842df7cf0aecb1934157637b9591ad8d225fdd2"
+    },
+    "features/budget-governance.md#2": {
+      "memory_id": "4487983c-5363-494d-a602-8c0a4bb66820",
+      "content_hash": "be28c6ff301c284e3cd3ec2639de787b0ff9112fa6edfbcfa5179396873fc6ca"
+    },
+    "features/budget-governance.md#3": {
+      "memory_id": "72fb52a3-35a8-40b0-a0cb-531f409173b5",
+      "content_hash": "0994addab555e406204bc557b91805e2ea8e301faeb25a45f461b43d328c2981"
+    },
+    "features/budget-governance.md#4": {
+      "memory_id": "11b3c5f6-a798-48ea-8ed8-3d377def20ac",
+      "content_hash": "a22a090cef823688a68f655916d30c50aff1121fe895d28b2eeacaae0666ef4b"
+    },
+    "features/budget-governance.md#5": {
+      "memory_id": "89e50303-96c6-4455-8bc9-6c91af1254f9",
+      "content_hash": "2b84aac56511e86ebfc76fe6a103762e2e2e980b4422ee94ff5feb19825e53d2"
+    },
+    "features/budget-governance.md#6": {
+      "memory_id": "87b04e37-75d8-4af7-8cd2-dc3c98af19cc",
+      "content_hash": "760ae8814e7ddb699cd2f0c3056118893ec8d3ac3fb986793b9517a961f2bed3"
+    },
+    "features/cloud-sync.md#0": {
+      "memory_id": "eeee7b7a-dd56-45d7-9a7a-2bdac8a248c1",
+      "content_hash": "f340e019b0e802d07e0f9d2cc7f28c689909e62f823ad9b79c8444fe917f30ac"
+    },
+    "features/cloud-sync.md#1": {
+      "memory_id": "bc36e917-783c-4ab9-bc1c-6f76fc2ab329",
+      "content_hash": "e9b1ed2a30eeb2f4c6b4d7c80e4e2b7a36107f52bfe55d52a80af09cdd40a33f"
+    },
+    "features/cloud-sync.md#2": {
+      "memory_id": "9c36e1c8-80ee-487a-90b6-bf7cb408ec7e",
+      "content_hash": "c8d213faa7c760983d4e9de37457ba101bbfa7b97e8b0548862616f1bb4ac098"
+    },
+    "features/cloud-sync.md#3": {
+      "memory_id": "894cfc69-30c5-4645-9c47-f63a2e9a539d",
+      "content_hash": "5cf410491c689a93f788ba7cd507b9d47a2e0f3d06710e675dcdc7ce82c1d41f"
+    },
+    "features/cloud-sync.md#4": {
+      "memory_id": "3d30a988-fec0-497f-9ac1-abcc87110852",
+      "content_hash": "f0873457ca0d1bc0360499f1552be5e07ad94fe6c6985189589e057b1fa781df"
+    },
+    "features/cloud-sync.md#5": {
+      "memory_id": "97b2eae5-c178-4ed7-8a94-664db5c8217e",
+      "content_hash": "afed7037c7af7fa8a23f1777f3ce1479d84c1f1974759f2d284b47d76148093d"
+    },
+    "features/cloud-sync.md#6": {
+      "memory_id": "2ee62f10-4aed-455d-bce0-3a38327d2b14",
+      "content_hash": "646a15b6d8beeca9e3e03beb36e12f035b57b703a21956f5123cd521cecbbff2"
+    },
+    "features/computer-use.md#0": {
+      "memory_id": "0ba3aff8-8d0d-4d35-b836-17f72eb44b88",
+      "content_hash": "6c74ac749167a28181b950379f75ff8b321d818d096f833fef262031448cdaaf"
+    },
+    "features/computer-use.md#1": {
+      "memory_id": "40a728e0-24c8-4fdf-9731-8d7b3998815f",
+      "content_hash": "4bf9f56a30a99a4981ec1d82142a65be1004415d25bf08d1856df3bb77516c94"
+    },
+    "features/computer-use.md#2": {
+      "memory_id": "108f99e6-fbcf-4630-ac8d-97942d52c003",
+      "content_hash": "5210b810856859cb2693cdf3a9ba1a2f50b5b5997b6d324997404fc31dc67fe0"
+    },
+    "features/computer-use.md#3": {
+      "memory_id": "dee58549-618d-40e4-b968-72990bb80a6a",
+      "content_hash": "612e2c99c4abf94071207c3bd1d7aaa45ea0441dd751b2d2e50eb208da4579ab"
+    },
+    "features/computer-use.md#4": {
+      "memory_id": "38418bc5-6be3-4f3d-a23f-e2e3c0fdad2b",
+      "content_hash": "3fc831f40270d6122d1fe56ad1850a6b84fab1972d6c7a41a1f2720b361fb3fa"
+    },
+    "features/computer-use.md#5": {
+      "memory_id": "59f9ce34-e29c-4483-9f33-45db713d546e",
+      "content_hash": "633cf43c7a2bcd57f39031717cf9c5283746412253943d80d878a2bc11bded46"
+    },
+    "features/computer-use.md#6": {
+      "memory_id": "bcf0d2f8-64f8-4470-8f51-aeee56829ab5",
+      "content_hash": "4628793e264a9ce03cf31a32fd5fb89fb2dd671ad2afc4139b44d1c53a24a554"
+    },
+    "features/hermes-chat.md#0": {
+      "memory_id": "8b618b29-2706-4f9d-99db-3894654e3032",
+      "content_hash": "e6fc10da0c446d393a028515aae9e475ad9726c9e676525cda1febb1e6ebf255"
+    },
+    "features/hermes-chat.md#1": {
+      "memory_id": "eb8ea83b-4cfb-4730-b67e-0ba8a81c3ae9",
+      "content_hash": "bec55e2244a348686aca6038c53c7bf1fe6cc93deb7dc609fdb0b1ebbe7c1309"
+    },
+    "features/hermes-chat.md#2": {
+      "memory_id": "da9f4287-1366-495b-9be8-05cdf87ce66d",
+      "content_hash": "944b467de2162be62c0aafd29661e48d22934890a854293fa280e2fb5c8db004"
+    },
+    "features/hermes-chat.md#3": {
+      "memory_id": "6b6a2ce1-ef43-4cb7-87b6-304e6baea9b4",
+      "content_hash": "ef8562595da0245fbc35314dbf59ce54824571c831f144737a6fcb4978e7c418"
+    },
+    "features/hermes-chat.md#4": {
+      "memory_id": "c88182bd-8280-4a3e-9b5e-454b10768dd9",
+      "content_hash": "7c86d3d177d6893191630fe9459f75a739e809c58c5a8c1f9e31541a5771b1d3"
+    },
+    "features/hermes-chat.md#5": {
+      "memory_id": "fbd69c50-0cc8-49df-9037-e700cec598fb",
+      "content_hash": "52631384a027d27d781c47da7a96ff882f841f70e212437527706628aff66760"
+    },
+    "features/hermes-chat.md#6": {
+      "memory_id": "61ec5fb3-0a06-4e0c-ad2e-73121657728a",
+      "content_hash": "0caea89d9ca3626248e12d9c8c943c70b290e116da0c2a41a0911934751d19e5"
+    },
+    "features/index.md#0": {
+      "memory_id": "12be5887-adb8-4106-bb7f-69022f76459b",
+      "content_hash": "a14c98cc9881d9f0344c9a5a91281cb4b8e4dd8cb9a117199bf312a9d2f27230"
+    },
+    "features/insights.md#0": {
+      "memory_id": "4e9a3f68-13c5-469c-a9b2-419e84dbad00",
+      "content_hash": "41f16881318fc65a423141b7d13de6199e07d46682fc0c0e7d0050c38fec9532"
+    },
+    "features/insights.md#1": {
+      "memory_id": "5da79358-8e36-415e-bfda-57ccf29c69fc",
+      "content_hash": "3c7fb898cb7cf59eb692e5839287f9bdf5e0a3374b8e8d8950684ce49a065dc8"
+    },
+    "features/insights.md#2": {
+      "memory_id": "921ccc7f-9ab0-4792-be37-03b9d843c567",
+      "content_hash": "9f477103696cd166b956b71c553093d295e6f6f045ca967baa67a35b76511a00"
+    },
+    "features/insights.md#3": {
+      "memory_id": "126276a3-77b4-4b63-9b3d-8fabded1f096",
+      "content_hash": "f261b3468349445bb1046dc5a169724e55cabe1c2d1e05519fc97eae06c6bf5a"
+    },
+    "features/insights.md#4": {
+      "memory_id": "0a2da9e3-2ea1-416e-a84e-678485ea631e",
+      "content_hash": "8c337cfb3f08268abc8859ccea2bc3f09a474ab2cc2e4c16ba0db886ddd1c42d"
+    },
+    "features/insights.md#5": {
+      "memory_id": "2ab39717-fcf8-4687-930e-2ab2966305ca",
+      "content_hash": "d4e585b298ff63915ed45cd85f02a089bb608219fd348ea2e7a0566d34f2070e"
+    },
+    "features/insights.md#6": {
+      "memory_id": "37114fc5-6685-4a37-98a1-03ca56d0d35c",
+      "content_hash": "244a6d5ad6a48bc33b3d975b9ec184f24a7a017ab933f4ef4a6ecc695d02b69d"
+    },
+    "features/mercury-media.md#0": {
+      "memory_id": "8f0c0f8c-404d-4105-a270-2fc746773d8b",
+      "content_hash": "fea8b2700ab197c14ef682474b2b5bd67cfcb8c2927ebdc00523e77660adda29"
+    },
+    "features/mercury-media.md#1": {
+      "memory_id": "c9f54eb0-0363-4ff4-88c7-f9b251e2f71f",
+      "content_hash": "561d4f7706b1353f96006d2ed77eea674bb3a4e56cdf890b5e737bbd03c26624"
+    },
+    "features/mercury-media.md#2": {
+      "memory_id": "f32f9892-3515-44ba-8558-c94b9b47d866",
+      "content_hash": "d51e34932f339472788013b9de1f51f974471cbb91b22a39cf50f85ab4ef55d5"
+    },
+    "features/mercury-media.md#3": {
+      "memory_id": "dfac6f97-3b5f-40dd-9016-6753a1a3e796",
+      "content_hash": "182af24818008934d3fb979ebeb03c2d23d10d49079f9549f74bc391498327e0"
+    },
+    "features/mercury-media.md#4": {
+      "memory_id": "0ea6aaa6-f85e-41d9-ad72-6e33691ac2bd",
+      "content_hash": "0682959dc6ce8322f7801d279d48a3a430835e3ba7de20c419c9695e3f9a0450"
+    },
+    "features/mercury-media.md#5": {
+      "memory_id": "681562e9-31f9-459d-8e5d-c44de7057c0e",
+      "content_hash": "a9994db833d78919500f7824d074ec8a1906300228e581420324b68d9c5fd73b"
+    },
+    "features/mercury-media.md#6": {
+      "memory_id": "3a57bcb1-3ed4-4987-baf0-5e707ee20f72",
+      "content_hash": "eb3c52934040dd32ab56d5741c2c0d155b1c1ae177ecbedbbb41bf4c4ed15813"
+    },
+    "features/provider-quota.md#0": {
+      "memory_id": "0c87f72c-c25c-4012-b94d-89c08b5965e2",
+      "content_hash": "8bd3841d880a7cab1e112dd36cac469d11ac40f4adf8f7afbeedb9c76c1b5bd9"
+    },
+    "features/provider-quota.md#1": {
+      "memory_id": "d8a7afa1-f317-4535-bae1-f0eab9df50af",
+      "content_hash": "f19d14f270a20593253f063e7d83e11b3f87f3add5c92db29c9b661e005ff1ed"
+    },
+    "features/provider-quota.md#2": {
+      "memory_id": "61d06984-9b87-41db-b5b1-8779317538f2",
+      "content_hash": "c88e5b01a0b5dd27a9f5565300a926aa2294c666506c4dde03e191776d6e0dc6"
+    },
+    "features/provider-quota.md#3": {
+      "memory_id": "8ab672e2-2d87-445a-8dac-df95753dfd87",
+      "content_hash": "d967aeb9c9aec0011168329535f3b981d3b4300771179d22279ce72c84ec18e6"
+    },
+    "features/provider-quota.md#4": {
+      "memory_id": "9f64727e-67a5-4870-8a87-02017324193c",
+      "content_hash": "2989ae30f08d3cfde7ca99c0a13f56334048e3f9318b890926ebbcf9ff75c562"
+    },
+    "features/provider-quota.md#5": {
+      "memory_id": "dafb3a10-67de-475a-a42b-5e38558d074e",
+      "content_hash": "1c0e05403df1e9e81ee83352de5bd1af0b8bf668206a4a49c9123ce3f45287e2"
+    },
+    "features/provider-quota.md#6": {
+      "memory_id": "81b98b1f-c95b-4fe3-8c40-5a9f45e8b228",
+      "content_hash": "6d91ccd0bde1f1075bb2e210bc0fcd9aa909f316115804a14000b77b48acfd2a"
+    },
+    "features/remote-mcp.md#0": {
+      "memory_id": "fce020d9-6ece-4404-a853-5d35c9123039",
+      "content_hash": "14770724463158908f547d4ff04452c40dcdad6c1b8b0a0d0afb072196001e8d"
+    },
+    "features/remote-mcp.md#1": {
+      "memory_id": "902374ce-3cdf-474e-b59e-dd8f283e6366",
+      "content_hash": "0f3dabebeb444f52c62b176891238f0055c1042fbebde7b9d92dfbf74ee0e2cb"
+    },
+    "features/remote-mcp.md#2": {
+      "memory_id": "e9b66004-162e-4cb6-89a8-636812604a17",
+      "content_hash": "a5974a9a99dff3d387656ddbcb7e51d6ef81b51c18c0891581718dfa4a69fe19"
+    },
+    "features/remote-mcp.md#3": {
+      "memory_id": "ce73723c-ee62-4cc4-ab83-bd2917ea9964",
+      "content_hash": "3a20a6c7718a76a41b3d2e90d23dc28b36f0ee4702c49a5ed6020a9f57d328c6"
+    },
+    "features/remote-mcp.md#4": {
+      "memory_id": "2b18d5bb-7fbc-4a08-b762-870110ae255e",
+      "content_hash": "60baad2c7778855417627b5249cefd604a948ec8619817489badb041169b4765"
+    },
+    "features/remote-mcp.md#5": {
+      "memory_id": "c522b50e-05e4-4879-b6c5-6db8e10e2d77",
+      "content_hash": "960dd454ea4ca4bab5a397d2666e49ce3d74944b5acc72de6525fda1732f9cc0"
+    },
+    "features/remote-mcp.md#6": {
+      "memory_id": "f71a02fc-7c0b-4194-a649-cc9c008f1c58",
+      "content_hash": "79f3eb0698dee05a8cdd6394cbd8dea27c3143c38225df0d797af8f1c4c80bc3"
+    },
+    "features/remote-mcp.md#7": {
+      "memory_id": "42dfa6ff-f2c4-4924-a434-25d990ed4ba5",
+      "content_hash": "c648a4358ca7a6da46763a9e1efaa9b2b0111fc0359c4cee49cc0e178182bf20"
+    },
+    "features/remote-mcp.md#8": {
+      "memory_id": "00017f2d-928e-4ccd-9577-f9c4657f04b6",
+      "content_hash": "0bbce06b9d44acf1271954d7a950805a64a0a3db9682beaaa66295c46e0f1471"
+    },
+    "features/usage-tracking.md#0": {
+      "memory_id": "9355e0fc-0ef6-4e5a-a1e7-1d1dea543199",
+      "content_hash": "914fbcd4190b03e09b7f08cdad35ca60c48a7b54f81538f3ed44a6c71d706ca9"
+    },
+    "features/usage-tracking.md#1": {
+      "memory_id": "1c2b84e8-a964-403f-a098-a91ae91c399c",
+      "content_hash": "29b51daf59bbd3477120bd19daf928b71738db40d689fadc432637c88e1f7119"
+    },
+    "features/usage-tracking.md#2": {
+      "memory_id": "6c1dea7f-2e3b-4385-9c38-ecf6b78e5249",
+      "content_hash": "571539807b6eb7f42c47eadc0532784f80f742692f267ee675afc04ae6b24782"
+    },
+    "features/usage-tracking.md#3": {
+      "memory_id": "6d8ebad2-782e-461e-8b1e-cca665670b0b",
+      "content_hash": "ee5481fb47f3de91b5c1daabdbb41a2d8f28a3ea59e2c907aece541129bda50e"
+    },
+    "features/usage-tracking.md#4": {
+      "memory_id": "24b971d1-7d27-4bbb-a936-b0bd83124a4f",
+      "content_hash": "792bbf4dec4e050bb1f1d8d930c019c89fcf09c492931f87f0d1a3f34c7e7bec"
+    },
+    "features/usage-tracking.md#5": {
+      "memory_id": "6b90feda-ca5f-4fcb-983b-8e3877454bf0",
+      "content_hash": "6ccee571af599e4f23b4c553d3bff5c39f9aad369cbba620e791ba166f85c0d0"
+    },
+    "features/usage-tracking.md#6": {
+      "memory_id": "595bfbf3-5936-487e-8602-abe013a05bf4",
+      "content_hash": "472586b348fc0616c6713baa62ccb9466b974b19ada2b49b254017ac53b0b316"
+    },
+    "fun-facts.md#0": {
+      "memory_id": "1dfc6935-85e3-44f9-8a2c-5ab745885ac6",
+      "content_hash": "261548ac3449921f11764efef30b6b49b8bb20eef91ff615313fe7651f172d72"
+    },
+    "how-to-contribute/debugging.md#0": {
+      "memory_id": "f42c06da-3e2a-4dde-a402-267d6a088114",
+      "content_hash": "185fe3633eb9eedfc2143762d3e5c101a4f175066d23e97a66ac4ffecd5c84c2"
+    },
+    "how-to-contribute/development-workflow.md#0": {
+      "memory_id": "42a9883c-2290-4f3c-b021-3a1e89bfe57d",
+      "content_hash": "9b00be0b0f08423cb31d0962cb1e490499570dd3ebfada957d91c148d906db34"
+    },
+    "how-to-contribute/index.md#0": {
+      "memory_id": "25542db0-a5d2-4c60-9b29-75dd9f011ea1",
+      "content_hash": "d8426691bf74e4c0687e251b659209da1782e23dc41699f7fefa7658e023bd49"
+    },
+    "how-to-contribute/patterns-and-conventions.md#0": {
+      "memory_id": "63d8d179-a647-4080-809f-d4dfccc327eb",
+      "content_hash": "191a30cf67ffd9aa7ed3d9135970b5774cd23ea1b055be0a5fdc3be376cb0ca3"
+    },
+    "how-to-contribute/testing.md#0": {
+      "memory_id": "32236720-ea04-4bf5-bb0a-25ff70db9ba4",
+      "content_hash": "232de6dc50534377c596ea3d1722008ea18fdb1314c5d887dd80dad80ef5eb22"
+    },
+    "how-to-contribute/tooling.md#0": {
+      "memory_id": "458a1484-85dc-4fb6-b799-f9c35f894b23",
+      "content_hash": "8736a077bf845667fb30deb1e68f0f3a2a9d975b9e33fea7e08b84b6c3e336ae"
+    },
+    "lore.md#0": {
+      "memory_id": "e84cd709-1071-43ca-872a-f30f7a640143",
+      "content_hash": "7b975c52a1dcb8555ba87e66ed622e5cad63c4721a80e8d39792cf8147e92f18"
+    },
+    "maintainers.md#0": {
+      "memory_id": "1ba8b3b9-eacc-4512-87f1-11ad6b6e73cc",
+      "content_hash": "4231f2ba6fca94383949ba8fd6ffe8ba69c2cb80099ef52073c121f8bcb79e1a"
+    },
+    "overview/architecture.md#0": {
+      "memory_id": "70d76c79-679f-4b42-b3b8-9addea48c512",
+      "content_hash": "27a24350e16633490828eba49db5d70dec2bda69604a5e7e39eb459bae95e90b"
+    },
+    "overview/architecture.md#1": {
+      "memory_id": "6bc83c71-9e34-46da-b8d6-e68fc5fc30f4",
+      "content_hash": "bb71c0ec83512b18ba9362f0bbcbad71ae518d3cb792123d7e132c8346b62cea"
+    },
+    "overview/architecture.md#2": {
+      "memory_id": "221de27b-312e-4585-aa9b-84e72d9c9983",
+      "content_hash": "527dacc43d2d104fc4a6751342de49229af744752c3f559b7009f863f6c44da8"
+    },
+    "overview/architecture.md#3": {
+      "memory_id": "ddf53542-1546-46ba-9ca0-4fd5f730e60b",
+      "content_hash": "17a13379b7c326ad99acfa787d154e4c73c2d0528f8910e6b99e7af4ee74ed86"
+    },
+    "overview/architecture.md#4": {
+      "memory_id": "5ae4223b-f562-486c-ba11-dbbfeef6824a",
+      "content_hash": "f91a408d26aa07c9fba6aff57a2fedc489cb61d3d5d74a5026030f3f9419295f"
+    },
+    "overview/architecture.md#5": {
+      "memory_id": "a2430a5a-177d-492e-8123-040aff9100fc",
+      "content_hash": "c47016ede8a631dc5ba818d9416cb89500d1116140c5db133f7d968d5f2aab43"
+    },
+    "overview/getting-started.md#0": {
+      "memory_id": "ca813e67-f59f-4151-98a2-bc075c60b67a",
+      "content_hash": "7b82d33bbaae3080573ae4feda845eeb22acfb6db5c913760c36ab61f6345db7"
+    },
+    "overview/getting-started.md#1": {
+      "memory_id": "f6f62028-1f09-449c-9f57-7c5442c699bf",
+      "content_hash": "a5ee5934931f092924e7afb2585dc0aedfc0e5e980e6d0aea1f1eac498e5b844"
+    },
+    "overview/getting-started.md#2": {
+      "memory_id": "8b0069e1-b88c-42f9-a4b4-9e574f257f8f",
+      "content_hash": "9d2bd4385f0af0f5ae279873ee35f2036a1c29bdec998e7ad3c6b0cb26c937bc"
+    },
+    "overview/getting-started.md#3": {
+      "memory_id": "675a5e92-a085-462c-8eac-23b193d72fd7",
+      "content_hash": "848a05c385e996c9505b08ca5c1174659cc02c7299f7f51888d5bed5436b1815"
+    },
+    "overview/getting-started.md#4": {
+      "memory_id": "d6cf8d08-22c4-4d86-a602-3647f920cf4f",
+      "content_hash": "4bde07e196113b8a20a55146550564fa649ad458da2a84f5c01d9ff52ecfd138"
+    },
+    "overview/getting-started.md#5": {
+      "memory_id": "cb19d358-a964-4153-9cfb-5dbe395b3169",
+      "content_hash": "4c829f39ae8ba94d3ef72fe28f5df7051768c08b0683cc006bafaf10b88100c7"
+    },
+    "overview/getting-started.md#6": {
+      "memory_id": "892f96d7-891a-47e5-9633-3f3636bb1dc6",
+      "content_hash": "b67c40f07ef8675b8eb644e8c404625ca9f21c5c35bc541cb7e50108d71070bc"
+    },
+    "overview/glossary.md#0": {
+      "memory_id": "66a9f344-ddda-4003-a2bb-b69f6db3aa7e",
+      "content_hash": "4ae90c7f69f74b1e9bd927f65975395e7ed36aca126653425023d968fbd3391f"
+    },
+    "overview/index.md#0": {
+      "memory_id": "81b0a387-36a0-4fe8-ad0c-ac898b14782b",
+      "content_hash": "277e50be2aa14b78c36f9d08e1fa9d6adfeae2420e592dc469e787d32aa20a6a"
+    },
+    "packages/index.md#0": {
+      "memory_id": "fe135e03-d975-4dd5-9a17-eacbe33fc796",
+      "content_hash": "0655e97f999048dfc3a41ded67818f1906a2548481eacb382890cc24f0b9f53d"
+    },
+    "packages/openburnbar-core.md#0": {
+      "memory_id": "1eefe22a-18c5-4b81-9065-6bb5ebdfad9f",
+      "content_hash": "b17e2e7e420acb0e2303ff2b58d4a8d512bf5fd0889253bf375a83b811daf9cb"
+    },
+    "packages/openburnbar-iroh.md#0": {
+      "memory_id": "d8cfa65f-aacd-4eb1-90f9-b13ad292142b",
+      "content_hash": "5cca36d598765992dbbfb0db7eed97092f5bb35eeeed8dcf6f54c1c5fd3a7bce"
+    },
+    "primitives/agent-provider.md#0": {
+      "memory_id": "42a011db-2ba6-4422-90c5-2202db0a7c6f",
+      "content_hash": "9cb37b3e9b0e779049c42fa4ef04e5e38ce30393803c518d38ba6b3669fd08d1"
+    },
+    "primitives/design-system.md#0": {
+      "memory_id": "f80049e4-fa4a-4357-8fa7-05905ca66fff",
+      "content_hash": "5e6b484a0474513dd2a9eedf7466ec885e2be00a1ec518bef4123105a8e7d9ec"
+    },
+    "primitives/design-system.md#1": {
+      "memory_id": "5b6b1799-7c65-4237-bd17-b22596d77560",
+      "content_hash": "0a15ea23f7239629bcbf47cb17867dba03857e956aa31d2f9112cad094468195"
+    },
+    "primitives/design-system.md#2": {
+      "memory_id": "2e6bf3a0-434b-4b03-b72d-d9d6af29c330",
+      "content_hash": "63d6ec3cdd1757b76c2cc10c3433c446bafbfa319194345d10462bdc4455d1fe"
+    },
+    "primitives/design-system.md#3": {
+      "memory_id": "7b22ec49-7326-48e1-97e9-780e27136977",
+      "content_hash": "994d1c2aa08d3a4d5bc325e723b53056110537db86ea1f4a40e30dd55f20f777"
+    },
+    "primitives/design-system.md#4": {
+      "memory_id": "9db8a7c3-75b4-4831-bc37-cc8fb51bc6a8",
+      "content_hash": "5b44942821910935734b70f7aab629683d245d604689e4e8a6ced03a86eb5803"
+    },
+    "primitives/design-system.md#5": {
+      "memory_id": "e3f8db73-bd85-489f-8cd4-815de55a1480",
+      "content_hash": "ed4041b211d6d1f17559d5d0a1952ba12e0cbfaaf2d8150eccf598c17742ed21"
+    },
+    "primitives/design-system.md#6": {
+      "memory_id": "948ae625-e47f-4a8a-90d5-ea587666b96a",
+      "content_hash": "3185757a018def087dd7d9362750457c18e7a41c3cb8f28c612b70f2dbdff8fe"
+    },
+    "primitives/design-system.md#7": {
+      "memory_id": "22447b76-9715-4f94-8d54-61da865f72fd",
+      "content_hash": "b063ff17c400721192c94fb33172621d928a84ccdb0167b4995c0dfa45c5450a"
+    },
+    "primitives/index.md#0": {
+      "memory_id": "b067fe63-0a7f-4e41-9b61-a935647b9e57",
+      "content_hash": "8b89b3fb8ae6d17d5523e25e3d872be675f0cbb2b940f050c96a23a46108c311"
+    },
+    "primitives/token-usage.md#0": {
+      "memory_id": "39db4c50-bd49-4dcd-823f-efbbf55901d5",
+      "content_hash": "462d7555c8de2fdecea55a8c189371c7397bfdd85dc03a3a08aba1dc3e949cfc"
+    },
+    "reference/configuration.md#0": {
+      "memory_id": "7eb8f709-263d-4ded-a7e0-c1f1a80a5aeb",
+      "content_hash": "0a76f4759470686b3519b02f367dfaad57c1347085cff5f2372b4503d139cf49"
+    },
+    "reference/configuration.md#1": {
+      "memory_id": "3dc1ea42-211a-494b-8c27-93e5ff5a6181",
+      "content_hash": "4eea1dd62b7ad67cc5f3c6762fac0e4840eab7f7bbba5e351faa5414fa895bda"
+    },
+    "reference/configuration.md#2": {
+      "memory_id": "44fed9fa-091e-44d7-9557-a00b044c7eec",
+      "content_hash": "1a0d0d914dd40f4c3ac981ddc82453d111069fcad0687e748c3f5124738fe008"
+    },
+    "reference/configuration.md#3": {
+      "memory_id": "9dc1097f-b1ca-4e87-9d82-4b972b1165c8",
+      "content_hash": "007bc24facc34cbee67f1290d9853ab4552e77c450885366e1771b6b55e27724"
+    },
+    "reference/configuration.md#4": {
+      "memory_id": "b1a5c63f-36b9-46fa-888a-fcbfbe36379a",
+      "content_hash": "96408aad2afc0afc9da6bb86a8190946790c7b871f5309896cc40272371e2019"
+    },
+    "reference/configuration.md#5": {
+      "memory_id": "c247cd37-37e3-4c78-bb9b-4eebbf1ccdc3",
+      "content_hash": "85230626b1576ae184b7e703af73f5b851069f2d5b3e65771a5d2a28c5f02510"
+    },
+    "reference/configuration.md#6": {
+      "memory_id": "ddd47056-8cd2-4daa-a277-1bcfb7be9d54",
+      "content_hash": "6ead617a3f8dd816481b86c675e9f240c56c3e64c4aaaacd641f8d20bdfb152e"
+    },
+    "reference/configuration.md#7": {
+      "memory_id": "89bfce54-1511-4557-8eea-7ff1c14952d5",
+      "content_hash": "42f4a0fbc76e297b1b82dbf11839b8ee111ceccd776225aa9e4fbe6ebc0acf76"
+    },
+    "reference/configuration.md#8": {
+      "memory_id": "ec659226-d66f-47c4-90e9-42c2182ca296",
+      "content_hash": "beac32f88afe8123a5fc2ab3996d92fe85a3ed3f84833ce963cdaeceb7cffb6c"
+    },
+    "reference/data-models.md#0": {
+      "memory_id": "55cdc16c-b875-4b0b-9c8f-0ad04232e06c",
+      "content_hash": "2589f44bdef619a9e3a1dd61fed46314350ed7cb32f8d6fc9b9ec028948b3a84"
+    },
+    "reference/data-models.md#1": {
+      "memory_id": "6ca0a8c2-2a05-4223-a75b-15dcce161357",
+      "content_hash": "ea6a0823a2386556b27670ee42a80a33e558ea67b47acc7c4d59df516fcebfd3"
+    },
+    "reference/data-models.md#2": {
+      "memory_id": "2be39246-f094-4f00-aa17-dd677bac751b",
+      "content_hash": "c8b1cea586c2bf2f579acf2167dfcd4c36c8450cd04f1656ee802a0bcb7e10fe"
+    },
+    "reference/data-models.md#3": {
+      "memory_id": "83711b18-4b66-4a08-b3f3-3a8fec1ca3b1",
+      "content_hash": "f8d0d631b4c41ccb7263f133b517319999e161446855b02dddc3dee51f943901"
+    },
+    "reference/dependencies.md#0": {
+      "memory_id": "a03b4e7e-3def-4b54-ac0e-ee601cdb9b92",
+      "content_hash": "e51ebceda512ec28d5259c763170d68d273ed327d16968e9a71386f07e5d09ed"
+    },
+    "reference/dependencies.md#1": {
+      "memory_id": "8a0482bc-b4b1-487e-b125-5e1815b65433",
+      "content_hash": "c8bbb2a70c5d8bd46429286f485a5daf0da74f2ca47d1b420c31a7ee7dd998df"
+    },
+    "reference/dependencies.md#2": {
+      "memory_id": "bcfdca70-f722-4196-a445-e1e7c72acb70",
+      "content_hash": "eba897efa65f1e5c8b5f63eb0ca7642695f51b55146de95cebc212a45a485ac6"
+    },
+    "reference/dependencies.md#3": {
+      "memory_id": "f9652cf1-e26d-4118-a8e6-53cdad270e3b",
+      "content_hash": "40745300fb9031d47cf80ef78f6fd34019967c6a7430860a9fc716cabbc1d2c5"
+    },
+    "reference/dependencies.md#4": {
+      "memory_id": "20ce5fa3-064f-4284-8ab2-158247cb4aa8",
+      "content_hash": "ccf2eee6019f708001d9d22b342184f145406e523b6104f56f238d2adc87a437"
+    },
+    "reference/dependencies.md#5": {
+      "memory_id": "aafd57cf-2974-45fc-a545-1e7566d0ac8c",
+      "content_hash": "bab8f07eb76c575811efb3865562e2ffa04e21c09dd28216aa6b03d50fbd978f"
+    },
+    "reference/dependencies.md#6": {
+      "memory_id": "7327e70b-0695-4c42-a646-cb37ca1aa530",
+      "content_hash": "8b827fd6f8b0373d134980759c385327faff5904a1773b590f7e551381f8617e"
+    },
+    "reference/index.md#0": {
+      "memory_id": "e8dcfde2-60c1-40ee-a43c-0657de9b684d",
+      "content_hash": "3b5c798a26035e6c9d90aa527bc7e7d92ba0599b6adee43833f30d2510e99393"
+    },
+    "reference/rpc-surface.md#0": {
+      "memory_id": "1b109aaa-29ab-45b1-b806-fc0e5df36d94",
+      "content_hash": "e6a3e4925da434f26ede05660050147f2237a2abe7c228a0cc8db3a9acb2f2c5"
+    },
+    "reference/rpc-surface.md#1": {
+      "memory_id": "cbc51955-2d3c-4793-bab9-3c8bf2fa41c5",
+      "content_hash": "51c7fb5277043eb30d46945fe56cb19ae14a3a3f8a0fa79afeb6b68a518a9e26"
+    },
+    "reference/rpc-surface.md#2": {
+      "memory_id": "60c5adc9-77c2-4e6c-a902-0dc03c44a8dd",
+      "content_hash": "31895b6f3cc6d078767a83da87a4b7896a3d2d9875fb22d964f6f2b2b5f9981e"
+    },
+    "reference/rpc-surface.md#3": {
+      "memory_id": "51de6c5e-318a-44b5-af84-b8a19fb44c41",
+      "content_hash": "c5d530ddc234b6a989a4a1dde6bef3231c0a30fd5bdef0bc379eac98fbd3cc2a"
+    },
+    "reference/rpc-surface.md#4": {
+      "memory_id": "7df5114a-dcc6-4b43-82bb-bf126d270350",
+      "content_hash": "653605fe9c09762293a298c1766e9a9968067def4b7b1fda9743816c75b2b196"
+    },
+    "reference/rpc-surface.md#5": {
+      "memory_id": "8c7ff2b4-79ea-4761-9f49-5d374e895094",
+      "content_hash": "06f558a1d9b7baf1fc1bb4103535208a58d1dee4f5fc0d9e33083b4846c11f0c"
+    },
+    "reference/rpc-surface.md#6": {
+      "memory_id": "51e2d8d7-fc36-4f16-abec-13afdc86cc18",
+      "content_hash": "b7b4969a4fced72a1a57422400b0644b12b5eb71a78b925861a65e4eddca4fdd"
+    },
+    "reference/rpc-surface.md#7": {
+      "memory_id": "da8a14df-98c7-418f-a4bf-a5fff8f9d499",
+      "content_hash": "2830cb7af5edd65a2936e852fe8e35e6b8d595ce1d5a08e6dec5ea4c47da53ca"
+    },
+    "security.md#0": {
+      "memory_id": "584c4b27-fbd2-4b08-8110-12cb0bf5e8dc",
+      "content_hash": "b4d4a4c3ad6c5ccb5922a5b43c91974568e561e9fd10489a2ebe7ba640df0e92"
+    },
+    "systems/cloud-functions.md#0": {
+      "memory_id": "bdc7b00b-ae87-46ac-b5e0-02c33f6f56ce",
+      "content_hash": "dbb476ae2a0e2719a34fa6166d460a47c922d006cda6d42e5796000ee2899202"
+    },
+    "systems/cloud-functions.md#1": {
+      "memory_id": "69c43320-191a-41c1-a15f-e27aca86751f",
+      "content_hash": "a9769670005466a47c5312ba9e8c2c12a84f4d585a756bbde45ca46e0c79f7cb"
+    },
+    "systems/cloud-functions.md#2": {
+      "memory_id": "0ab1a02a-78a5-466f-9ebf-1e682b2b701d",
+      "content_hash": "2e5d0bc0c93a7ec69fc1a3063b78905b8d2bfbe8b421b007e5f3fb141e77def2"
+    },
+    "systems/cloud-functions.md#3": {
+      "memory_id": "d997780d-623b-4112-98fc-a8328409c7fa",
+      "content_hash": "a9207072c735d043dcbe481e6e365bb5d3afdae37997719286105fd7bc063b1c"
+    },
+    "systems/cloud-functions.md#4": {
+      "memory_id": "ce9075e7-8f3b-49f7-8c26-b359d69e29e6",
+      "content_hash": "937453b9f410f49395cb1ce00a6fad0570bf356c86e32ca65b0c0f389aaae376"
+    },
+    "systems/cloud-functions.md#5": {
+      "memory_id": "66f959d8-253e-4d09-b897-0f8a0e289084",
+      "content_hash": "e4bf294bed1652c5fb479c7121fbc727117b6e52db3bde8244034908fd2dfd8c"
+    },
+    "systems/cloud-functions.md#6": {
+      "memory_id": "15c512bd-1e57-4799-b106-7baf759598d1",
+      "content_hash": "ea6520ad436da35a5f262e79ca77b26c279ffee785903981f7a604f1dd8bcbb0"
+    },
+    "systems/cloud-functions.md#7": {
+      "memory_id": "71f19ea8-669a-4b40-997a-75f730a9bd4e",
+      "content_hash": "9a2a1dcb775a3df5346aa600e4dcd529c2456ff364fed49fb66bf69d77a1ee50"
+    },
+    "systems/daemon/index.md#0": {
+      "memory_id": "68a9f738-c456-43a8-898b-a28d43380727",
+      "content_hash": "abbf01a4f57d7283be807f8dbbcdfb278325625d847470ca3fd8c7481dedd630"
+    },
+    "systems/daemon/index.md#1": {
+      "memory_id": "07a5e1a5-a3aa-4362-abdb-684ea9f3830b",
+      "content_hash": "58b72ce2bededdab5553d19ef1da5dbd305a859cec55fb9a72abeafa39f2940b"
+    },
+    "systems/daemon/index.md#2": {
+      "memory_id": "52445b6c-935b-4c92-a02d-fbd3d9b09770",
+      "content_hash": "10244a707d1b6273c556d8576cfa9177789768488255ecaca956beab9188f3f0"
+    },
+    "systems/daemon/index.md#3": {
+      "memory_id": "e1637626-4156-4fe3-a69b-f0855cba37ca",
+      "content_hash": "bd43ea2a819139060ba4c83089b6cae1dfba04870aa3995786a5b39c2d4ddad8"
+    },
+    "systems/daemon/index.md#4": {
+      "memory_id": "5c45b775-756e-4d4f-b943-57c3b5289f24",
+      "content_hash": "59e0c986529af174a45e285eb97f1042bd00bd73f5fe3ed3d4f48e9f91ca43a7"
+    },
+    "systems/daemon/index.md#5": {
+      "memory_id": "cf9ae764-3e0d-494f-b10d-98acf5113c97",
+      "content_hash": "b938c8a1ab236a173bc83eaebd9b2adcb4b6d243ecdef8a81567c4a6a94e1708"
+    },
+    "systems/daemon/index.md#6": {
+      "memory_id": "962cce98-5e53-4be6-be66-5649e764501a",
+      "content_hash": "0dbefeac08de39252900930e7bd41bf8e16cebc1933a524f5420ede5a085ce5e"
+    },
+    "systems/daemon/index.md#7": {
+      "memory_id": "67a7ec57-a2b7-4eaa-a9bb-bbf71d4393fc",
+      "content_hash": "23af35f7e9ac385152b6842ef2ab8507e0762f2a08fff62291d688da51e511c7"
+    },
+    "systems/daemon/mission-control.md#0": {
+      "memory_id": "afebd36a-54f8-48c3-9db3-2fbf6b16cbbb",
+      "content_hash": "b3b4ff614afc08bb27a010a2d94931fd7aa202e141cb1cccb72af99b5069ad85"
+    },
+    "systems/daemon/mission-control.md#1": {
+      "memory_id": "e76ff319-6756-46ca-b935-b85aa0f15faf",
+      "content_hash": "1cb3d7f0dc42b3b83c0930197a937906d6a5bd1735f678af7d74e3aa16a2346a"
+    },
+    "systems/daemon/mission-control.md#2": {
+      "memory_id": "e97c3441-7246-405b-a50f-0286dbe867fc",
+      "content_hash": "92defbea2f288207d594b30c8421cc00eb2f9b6b352ed83ac2a031e12e6062ed"
+    },
+    "systems/daemon/mission-control.md#3": {
+      "memory_id": "97c22be0-45ee-46b6-8082-b9b80f4f1edd",
+      "content_hash": "d7f9403e42d07305048dea35d4174c92fc7e607bfe910177a79bceeef89a24bc"
+    },
+    "systems/daemon/mission-control.md#4": {
+      "memory_id": "cd6bec2c-20c6-49ef-8a82-2efa9a7ee9b2",
+      "content_hash": "d9ad8b6e75fa0b2d73b74c7242c8b7a34548e761200a36a017d5aafb7e39771d"
+    },
+    "systems/daemon/mission-control.md#5": {
+      "memory_id": "18d6a575-5b10-462b-a726-83405ba09013",
+      "content_hash": "780fdb2b5d3593e5a64f31e9affe9455d8fdb1cba2e0eac05952bca5fdf63c6f"
+    },
+    "systems/daemon/mission-control.md#6": {
+      "memory_id": "651ff82f-84ad-4e8e-af2f-a97b730f1f34",
+      "content_hash": "cae8075aaee150c2337fdbde7cf3819f61ee4ce56cf346899b44b8b94545c636"
+    },
+    "systems/daemon/mission-control.md#7": {
+      "memory_id": "4a793b27-b545-49e9-8d96-14aec023427b",
+      "content_hash": "30bead89127f242a3c9fc06cac4354db4fc8e837c10cce32fb838d84ee882fca"
+    },
+    "systems/hermes-relay.md#0": {
+      "memory_id": "dbb81dce-cf75-4112-a6de-9dbeb3cf2932",
+      "content_hash": "09c1d93782b85603451c9e798e0cda9795de7b0232463919058390707f6445d3"
+    },
+    "systems/hermes-relay.md#1": {
+      "memory_id": "d91d5949-5154-45ac-ada8-ad6396b27f7f",
+      "content_hash": "5af39fbeeee47aedcb5112430033a44c8eeafb8e80f700ba6ce3a1a6f870b5f9"
+    },
+    "systems/hermes-relay.md#2": {
+      "memory_id": "9e33b40e-8448-4b72-ade9-555f5eba50a6",
+      "content_hash": "c4762c14bc00b002f67a6556302c665d9d5545e02c5d6b81c98bf0259f32e145"
+    },
+    "systems/hermes-relay.md#3": {
+      "memory_id": "d9bce4bf-e404-4932-88d9-4123c5fa580b",
+      "content_hash": "d43fb8643fc4486bc6d555885deca13e5d534aa446eaf8be80601a976d1e2d67"
+    },
+    "systems/hermes-relay.md#4": {
+      "memory_id": "0141f4eb-5548-447b-803b-1cb7a9538d26",
+      "content_hash": "b264e055e180d56edb52484b357ec824c12b150de362b9dab48d2a515075b35e"
+    },
+    "systems/hermes-relay.md#5": {
+      "memory_id": "6f1de9b8-4fdd-4d4d-80e7-8a9ed03bf4d8",
+      "content_hash": "eca9661606b5a3003c5c8863f7c82d5092227f115e1cfc789bf8c2033b8cfffd"
+    },
+    "systems/hermes-relay.md#6": {
+      "memory_id": "04f6b85e-14d9-49fd-87de-76a0175c5173",
+      "content_hash": "af2a56d703a72c0a4e1d8c00f5fd2c48eae42a983cfd757d221c3ce9304e00cf"
+    },
+    "systems/hermes-relay.md#7": {
+      "memory_id": "e483c1ca-5f23-4a8f-9b06-03a8fe4c92d5",
+      "content_hash": "c701404ec3def98bb732f8b0be0e5e17b017c8448ae8639f1c51e860de77ef23"
+    },
+    "systems/index.md#0": {
+      "memory_id": "3c02896d-7459-42cc-9f65-d7389185f63d",
+      "content_hash": "7a86ba9986233f1570c8d94270791c2bb916cf2971dd7b4333c4a3abb59f7a09"
+    },
+    "systems/iroh-transport.md#0": {
+      "memory_id": "c1469a01-13b5-4983-96ef-25f984e637f4",
+      "content_hash": "20394adf52e470721243fb2f5e30ec4af2bb68955b25315de6be17d42cc46084"
+    },
+    "systems/iroh-transport.md#1": {
+      "memory_id": "64d39d57-00a6-4aa6-9dfd-7a2c13e2d8dd",
+      "content_hash": "14a8a85c4e9c22b7d6819a67fe2f89614fdadaf9cb4aa65282981a05d0627afb"
+    },
+    "systems/iroh-transport.md#2": {
+      "memory_id": "ca9851dc-112e-478b-9d42-336677859342",
+      "content_hash": "d7fd2069dc85894263f959981c1eb45189049d0e00baa165206a85f6da385f58"
+    },
+    "systems/iroh-transport.md#3": {
+      "memory_id": "1744b24f-96e5-4f86-b826-714899167c86",
+      "content_hash": "38c78ddaba6363caf290509139e9dfcd2bc083215de61905a0ef1a76ac055bfa"
+    },
+    "systems/iroh-transport.md#4": {
+      "memory_id": "3f6b80e9-6c92-4b21-b609-c84edcef9c12",
+      "content_hash": "2dd48fa680ffaaf73bd0f92292253d7d4ed945e87dfa594c02326f23c252c564"
+    },
+    "systems/iroh-transport.md#5": {
+      "memory_id": "d55f4a69-2785-4afb-831f-e4e1075099a4",
+      "content_hash": "34423dc13a8ffc6eb85e13601337f6b41bee779d34ad93cacd0677fc07d12aca"
+    },
+    "systems/iroh-transport.md#6": {
+      "memory_id": "e54764d7-3ef8-4cd1-bf37-4439cf1db00d",
+      "content_hash": "42d4e067dd3e105e8231b22dc3c973ea7e3ad8dcac5973e95ae02024e9906aaa"
+    },
+    "systems/iroh-transport.md#7": {
+      "memory_id": "8a48029a-8f37-4942-8b40-8f3d0c0c698e",
+      "content_hash": "833f7813c1a8a16131e308122efe06459e491c4f94131a53558ba325fbae5fb4"
+    },
+    "systems/local-database/index.md#0": {
+      "memory_id": "3d7bbdf7-4879-4596-8877-749672504d8e",
+      "content_hash": "e79cf363bc20921db75aa0a7e575e91ebef465cff61edd2668daaf57a62ee1be"
+    },
+    "systems/local-database/index.md#1": {
+      "memory_id": "3c3915fe-9a5a-407c-9911-58811ccc2082",
+      "content_hash": "bd6ea1ce298d9d2043e0a104df4b144090ece54ab69869514d358ceb3afb23ef"
+    },
+    "systems/local-database/index.md#2": {
+      "memory_id": "f036ecd7-6de1-4743-9514-38b2947a0887",
+      "content_hash": "512e79fe32b81423668df90195f136159b97c2628e3276f88054785de6049695"
+    },
+    "systems/local-database/index.md#3": {
+      "memory_id": "ab87b188-ef61-4084-9be5-ccdf4cfe5d99",
+      "content_hash": "01e94d83af7550c2b561fa2c0b0a0826ab2b81a57eb13c3501b2c73b8e8755dd"
+    },
+    "systems/local-database/index.md#4": {
+      "memory_id": "4b9fe1ab-a424-4503-8c74-f984c7784e80",
+      "content_hash": "20cc6fec097ce1fce7c4809f6f48e29b8d8eebb1d84868e9472765b9caa08361"
+    },
+    "systems/local-database/index.md#5": {
+      "memory_id": "5cc78b0f-de05-4122-a7f7-c5f8eab8d585",
+      "content_hash": "dce96cb1cbe55876977700e2e12dac7da265e710be1a521b3c7ea9ecf7d88365"
+    },
+    "systems/local-database/index.md#6": {
+      "memory_id": "673fb0b2-600f-478a-99e5-fb8799b73be2",
+      "content_hash": "f1bf94a4f8004123ae614aeac2336fd85cb092d62b01a1a9859196f6de410cae"
+    },
+    "systems/local-database/index.md#7": {
+      "memory_id": "8c4a34ba-8e5c-41e1-baf7-e82c852ce9be",
+      "content_hash": "ad22cd2f874bf5ceb4cf0cfffe77983763d2eafddd856cfc62f510f17181c174"
+    },
+    "systems/retrieval/index.md#0": {
+      "memory_id": "62d4d5b9-a95c-4eed-bc10-5a9944b4f62e",
+      "content_hash": "961e9b77ed766a86aa602c058b4a61b998d71baddb49563465bb5ce7f7c5ebb7"
+    },
+    "systems/retrieval/index.md#1": {
+      "memory_id": "13e52007-7e10-449e-ab3a-ade7a6c6dff2",
+      "content_hash": "eda69439e9e1ea05ea14d320c1d26a87691dffa0d11f83d1b3ca069353275186"
+    },
+    "systems/retrieval/index.md#2": {
+      "memory_id": "36cf2e9e-7600-485a-977e-201263b7e2df",
+      "content_hash": "059addcaae2811455164b4549dd85040690ffbda60a8f452cee81e9d4b831c5f"
+    },
+    "systems/retrieval/index.md#3": {
+      "memory_id": "b14c0d11-f3c1-4ee9-a7ea-84a8e358e30c",
+      "content_hash": "baa8785c10dd9da13fdd1746436769b3daa18755397fd45b79a32bb76902847e"
+    },
+    "systems/retrieval/index.md#4": {
+      "memory_id": "a0913c39-9f5a-4cd8-93f8-bd2c6be879bb",
+      "content_hash": "eb26105c8f9ad34cbe2953032aae838e7e5bb7b7557b1033d18c530180c6af98"
+    },
+    "systems/retrieval/index.md#5": {
+      "memory_id": "6c37d214-faa2-4f94-8650-aa77fefc97d2",
+      "content_hash": "5d4b16c09ccd1fecd6ba8368a9073e209cd631d7bdfe267931b011798ce83558"
+    },
+    "systems/retrieval/index.md#6": {
+      "memory_id": "61d4ab38-b0ce-4a7b-98a0-4716a2de4cc6",
+      "content_hash": "4910489a506ed52419535957cff91a7c5ed0aab31c4d2b7aca9edf27987e421b"
+    },
+    "systems/retrieval/index.md#7": {
+      "memory_id": "adc61186-e9b3-4718-92fd-73d24eec7a1b",
+      "content_hash": "39c4f3b709a53a36a6737c850fd56026eeaa6831a94ee933ade03dc3aa940e88"
+    }
+  }
+}

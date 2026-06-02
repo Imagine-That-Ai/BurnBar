@@ -138,6 +138,25 @@ body, and ordering preservation under interleaved regions.
 
 ## Streaming + shrink-wrap
 
+Streaming ingestion now has a typed presentation layer before it reaches the
+rich bubble renderer. Raw OpenAI-compatible SSE remains the default wire
+contract, but each platform reduces chunks through the canonical
+`HermesStreamEvent` vocabulary before mutating message state:
+
+- `messageChunk`, `reasoningChunk`, `refusalChunk`
+- `toolCallChunk`, `toolCallFinished`, `toolResult`
+- `longToolHint`, `notice`, `messageStop`
+
+The shared Swift model lives in
+`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesStreamEvent.swift`;
+the Android mirror lives in
+`android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/HermesRealtimeRelayFrame.kt`.
+`HermesOpenAICompatibleStreamParser` is the canonical OpenAI/Ollama-style SSE
+parser on both platforms. Compatibility helpers such as the Mac
+`OpenAICompatibleSSEParser` and Android `HermesProtocol.extractStreamedText`
+delegate to it so tool-call accumulation, `[DONE]` flushing, reasoning/refusal
+channels, usage, and error notices do not drift.
+
 `StreamingBubble<Content>` (one copy per platform — `OpenBurnBarMobile/Views/
 Components/StreamingBubble.swift` and `AgentLens/Views/Chat/
 HermesAtomComponents.swift`) wraps any inner content view with a measurement-
@@ -238,6 +257,10 @@ macOS (`AgentLens/`):
 - `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesAtomParserTests.swift` —
   markdown-link extraction, regex fallback, mixed runs, malformed URL fallback,
   ordering preservation, `\\[` escape handling, code-span backtick stripping.
+- `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesStreamEventTests.swift` and
+  `HermesOpenAICompatibleStreamParserTests.swift` — shared stream-event JSON
+  vectors, unknown-field tolerance, tool-call delta accumulation, `[DONE]`
+  flush, reasoning/refusal channels, and Ollama usage normalization.
 
 Run with `swift test --package-path OpenBurnBarCore`.
 

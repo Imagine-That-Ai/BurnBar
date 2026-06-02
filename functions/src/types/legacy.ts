@@ -1375,6 +1375,12 @@ export interface EnvConfig {
   /** Annual Cloud Pro product id. */
   burnBarProMaxAnnualProductID: string;
 
+  /** Monthly Ultra product id (Pensieve 10x limits; mirrors Cloud Pro). */
+  burnBarUltraProductID: string;
+
+  /** Annual Ultra product id. */
+  burnBarUltraAnnualProductID: string;
+
   /** Agent Control hosted-action top-up product id. */
   agentControl100ActionsProductID: string;
 
@@ -1428,6 +1434,12 @@ export interface EnvConfig {
 
   /** Google Play BurnBar Cloud Pro annual product id. */
   googlePlayCloudProAnnualProductID: string;
+
+  /** Google Play Ultra monthly product id. */
+  googlePlayUltraMonthlyProductID: string;
+
+  /** Google Play Ultra annual product id. */
+  googlePlayUltraAnnualProductID: string;
 
   /** Google Play Agent Control hosted-action top-up product id. */
   googlePlayAgentControl100ActionsProductID: string;

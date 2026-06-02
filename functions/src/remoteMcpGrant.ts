@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { FieldPath, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 export type RemoteMcpGrantMode = "sealed_only" | "local_decrypt_shim" | "remote_readable_explicit_opt_in";
-export type RemoteMcpScope = "search:read" | "conversation:read" | "usage:read" | "index:status";
+export type RemoteMcpScope = "search:read" | "conversation:read" | "usage:read" | "index:status" | "knowledge:read";
 
 export interface RemoteMcpClientDoc {
   clientId: string;

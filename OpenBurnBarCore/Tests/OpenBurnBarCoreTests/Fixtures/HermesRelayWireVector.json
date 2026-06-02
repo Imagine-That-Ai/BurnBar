@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "V4erVrJk\/mzERGlAw20HERl2Jl8AEV+Ot\/Ro2p6jAYz9BGSV7yqRcGKdclFs+yg=",
+  "chunkCiphertext" : "RlV6ynRwP8u+QLJt2C+tPiBXYKdY+yy5Ml9oY8DLoLuoL1xmfkLOkkXCqpEbRPk=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "sueBkXPIQTl9dsKfEThRLAQ891tm23eSHcVI5511ZT5zSmptSuTiJKjaSCi0xfEJcmuDms7LWToSsD7Z6IxE6BM3xMo6QgHkxocuLKtgrpAItboaWCcqVm4PNisjhpMIZN1dfVEMFrqiU9voinIszDu8exZSiPqlA5cgTEuZzla08cP\/I0BTq+538QMH4F3+QzlrFB5t",
+  "payloadCiphertext" : "qDG+iRdzt96fMF3L7cAsY3LSIaTnW5VtVuoF9p\/GrtZMdzdGi3Iqh5QzYgthQ6OM3HmykCGOYlX37hFK7g7mAP+aKTxmTHjB+2fRX4LvpJoGan7vBzdrxIzJrA36blDSbFomFr36jWIkhLwMegVwTUYM3sf1UbPZTJUbV26vY+0Ur2RIys0EwSm3Gx\/V4I80BwrwJC+3",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BEfNLu5T3w2eleWEp4LV\/IwY4gM0p2uocOLLILaHTRz6c\/NgRSjm6o93F9tLdFw4XlM4EM0LVYNMZB606L4SX6YPsetBrL62MfbcDsGr7Nfz4BvSe6mt8EF7Z\/PNM8H2tHAUjAXp0OqxEJ3ERtvf+tTm2csKre1yHv2vYnw="
+  "wrappedKey" : "BPNZGk1IgZqicMynrUN6vObZR2XaEkVncYzx4jtxRJFYuojO9pvX7JgXaccFPUnuf7h7KhSFsnjgx4qgrhoXFlL7l9OJVij6x8w7sD5kWUUwQcAA9dWpHGC5S3z0sWFrcp0zpeWEUIvhdnEmTisbQsOZCN4NkHpUMAoLA88="
 }

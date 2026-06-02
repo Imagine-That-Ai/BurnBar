@@ -3,9 +3,15 @@
 
 package com.openburnbar
 
+import com.openburnbar.data.hermes.PiChatMessage
+import com.openburnbar.data.hermes.PiConnectionRecord
 import com.openburnbar.data.hermes.PiService
+import com.openburnbar.data.hermes.PiServiceChatStreamSupport
+import com.openburnbar.data.hermes.PiServiceRuntimeSupport
 import com.openburnbar.data.hermes.ToolCall
 import com.openburnbar.ui.hermes.summarizeHermesToolDetail
+import kotlinx.coroutines.flow.MutableStateFlow
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -77,5 +83,67 @@ class PiServiceToolCallTest {
     fun `summarizeHermesToolDetail returns null for empty payload`() {
         val tc = ToolCall(id = "1", name = "noop", arguments = "", result = null)
         assertNull(summarizeHermesToolDetail(tc))
+    }
+
+    @Test
+    fun `Pi stream support consumes typed parser events and done flush`() {
+        val messages = MutableStateFlow(listOf(PiChatMessage(id = "assistant", role = "assistant", isStreaming = true)))
+        val client = OkHttpClient()
+        val selectedModelID = MutableStateFlow<String?>("pi")
+        val support =
+            PiServiceChatStreamSupport(
+                client = client,
+                messages = messages,
+                selectedModelID = { selectedModelID.value },
+                runtimeSupport = PiServiceRuntimeSupport(
+                    client = client,
+                    selectedConnection = { PiConnectionRecord.localDefault },
+                    modelOptions = MutableStateFlow(emptyList()),
+                    selectedModelID = selectedModelID,
+                    isReachable = MutableStateFlow(false),
+                    runtimeError = {},
+                ),
+                appendToAssistant = { assistantId, delta, transform ->
+                    messages.value =
+                        messages.value.map { existing ->
+                            if (existing.id != assistantId) return@map existing
+                            val withDelta = if (delta.isEmpty()) existing else existing.copy(content = existing.content + delta)
+                            transform?.invoke(withDelta) ?: withDelta
+                        }
+                },
+                applyError = { assistantId, text ->
+                    messages.value =
+                        messages.value.map { existing ->
+                            if (existing.id == assistantId) {
+                                existing.copy(content = text, isError = true, isStreaming = false)
+                            } else {
+                                existing
+                            }
+                        }
+                },
+            ).also { it.currentThreadID = { "thread" } }
+
+        support.applySsePayload(
+            """
+            {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search","arguments":"{\"query\":\"burn"}}]},"finish_reason":null}]}
+            """.trimIndent(),
+            "assistant",
+        )
+        support.applySsePayload(
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"bar\"}"}}]},"finish_reason":null}]}""",
+            "assistant",
+        )
+        support.applySsePayload(
+            """{"choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}""",
+            "assistant",
+        )
+        val done = support.applySsePayload("[DONE]", "assistant")
+
+        val assistant = messages.value.single()
+        assertEquals(true, done)
+        assertEquals("Hello ", assistant.content)
+        assertEquals("call_1", assistant.toolCalls.single().id)
+        assertEquals("search", assistant.toolCalls.single().name)
+        assertEquals("""{"query":"burnbar"}""", assistant.toolCalls.single().arguments)
     }
 }

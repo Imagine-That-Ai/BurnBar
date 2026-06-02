@@ -43,6 +43,10 @@ android {
         buildConfig = false
     }
 
+    lint {
+        lintConfig = file("lint.xml")
+    }
+
     sourceSets {
         named("main") {
             // The UniFFI-generated Kotlin bindings land under

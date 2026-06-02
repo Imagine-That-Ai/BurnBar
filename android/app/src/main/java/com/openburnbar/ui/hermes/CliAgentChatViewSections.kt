@@ -191,7 +191,14 @@ internal fun CliAgentChatBody(state: CliAgentChatState, innerPadding: PaddingVal
 @Composable
 internal fun ColumnScope.CliAgentChatMessagePane(state: CliAgentChatState) {
     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-        if (state.activeThread.messages.isEmpty()) {
+        if (state.chatViewMode == ChatViewMode.CLI) {
+            InlineAgentMirrorView(
+                runtime = state.runtime.token,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        } else if (state.activeThread.messages.isEmpty()) {
             EmptyStateHero(
                 runtime = state.runtime,
                 provider = state.provider,

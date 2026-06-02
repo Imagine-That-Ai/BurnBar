@@ -7,6 +7,7 @@ import android.app.Activity
 import android.util.Log
 import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
+import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.ProductDetailsResponseListener
@@ -131,6 +132,33 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.error.value)
         val details = store.productDetailsByID.value[HostedQuotaSubscriptionStore.PRODUCT_ID]
         assertNotNull(details)
+    }
+
+    @Test
+    fun `load falls back when Google Play Billing is unavailable`() = runTest {
+        every { mockBillingClient.isReady } returns false
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.BILLING_UNAVAILABLE
+        every { mockResult.debugMessage } returns "Billing service unavailable on device."
+
+        val listenerSlot = slot<BillingClientStateListener>()
+        every { mockBillingClient.startConnection(capture(listenerSlot)) } answers {
+            listenerSlot.captured.onBillingSetupFinished(mockResult)
+        }
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        store.load()
+        advanceUntilIdle()
+
+        assertFalse(store.isLoading.value)
+        assertFalse(store.isActive.value)
+        assertTrue(store.error.value!!.contains("Billing service unavailable"))
+        assertEquals(
+            "$7.99",
+            store.productDetailsByID.value[HostedQuotaSubscriptionStore.PRODUCT_ID]?.formattedPrice,
+        )
     }
 
     @Test
