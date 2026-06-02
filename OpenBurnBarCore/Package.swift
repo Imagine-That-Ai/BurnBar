@@ -82,6 +82,9 @@ let package = Package(
     name: "OpenBurnBarCore",
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: packageProducts,
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+    ],
     targets: irohBinaryTargets + [
         .target(
             name: "OpenBurnBarCore",
@@ -123,7 +126,11 @@ let package = Package(
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarFirestoreModels"]
+            dependencies: [
+                "OpenBurnBarCore",
+                "OpenBurnBarFirestoreModels",
+                .product(name: "Testing", package: "swift-testing")
+            ]
         ),
         .testTarget(
             name: "OpenBurnBarIrohRelayTests",

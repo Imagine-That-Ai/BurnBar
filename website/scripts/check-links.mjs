@@ -102,6 +102,9 @@ for (const f of files) {
     if (cleaned !== "/" && routes.has(cleaned + "/")) continue;
     if (hasAsset(cleaned)) continue;
 
+    // macOS DMG is published out-of-band (not copied into dist/ on CI).
+    if (/^\/downloads\/OpenBurnBar-.*\.(dmg|zip)$/.test(cleaned)) continue;
+
     // Allow "" empty
     if (h === "") continue;
 
