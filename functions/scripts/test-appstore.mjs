@@ -309,6 +309,16 @@ test("appStoreEntitlementTarget maps locked Cloud product families", () => {
     sourceEntitlementID: "burnbar_pro_max",
     mirrorEntitlementID: "burnbar_pro_max",
   });
+  // Pensieve Ultra: writes its own source doc AND mirrors proMax so it inherits
+  // every Cloud Pro gate; only the Pensieve limit lookup branches on burnbar_ultra.
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget("com.openburnbar.ultra.monthly"), {
+    sourceEntitlementID: "burnbar_ultra",
+    mirrorEntitlementID: "burnbar_pro_max",
+  });
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget("com.openburnbar.ultra.annual"), {
+    sourceEntitlementID: "burnbar_ultra",
+    mirrorEntitlementID: "burnbar_pro_max",
+  });
 });
 
 test("buildEntitlementDoc accepts explicit entitlement ids", () => {

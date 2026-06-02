@@ -60,13 +60,15 @@ test("registry exposes required tool surface and redaction strips raw content", 
   const names = listMcpTools().tools.map((tool) => tool.name).sort();
   assert.deepEqual(names, [
     "burnbar_get_conversation_body",
+    "burnbar_get_knowledge_document",
     "burnbar_list_resumable_conversations",
     "burnbar_list_search_facets",
     "burnbar_list_search_index_status",
     "burnbar_recent_usage",
     "burnbar_resume_conversation",
     "burnbar_resolve_capabilities",
-    "burnbar_search_conversations"
+    "burnbar_search_conversations",
+    "burnbar_search_knowledge"
   ].sort());
   assert.deepEqual(redact({ query: "secret words", nested: { body: "plaintext" } }), {
     query: "[REDACTED]",

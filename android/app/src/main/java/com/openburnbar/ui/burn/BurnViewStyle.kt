@@ -10,10 +10,7 @@ package com.openburnbar.ui.burn
  */
 enum class BurnViewStyle(val key: String, val label: String) {
     CARDS("cards", "Cards"),
-    CONSTELLATION("constellation", "Orbit"),
-    GRID("grid", "Grid"),
-    LEADERBOARD("leaderboard", "Ranked"),
-    TIMELINE("timeline", "Trends"),
+    LIST("list", "List"),
     ;
 
     companion object {

@@ -161,6 +161,7 @@ class HostedQuotaSubscriptionStore(
                     )
                     .build()
         }
+        applyFallbackProductDetails()
         startListeningToCloudEntitlement()
     }
 
@@ -232,6 +233,15 @@ class HostedQuotaSubscriptionStore(
         else -> null
     }
 
+    private fun applyFallbackProductDetails() {
+        if (_productDetailsByID.value.isNotEmpty()) return
+        _productDetailsByID.value =
+            STORE_PRODUCTS.associate { storeProduct ->
+                storeProduct.id to HostedQuotaProductDetails(formattedPrice = storeProduct.fallbackPrice)
+            }
+        _productDetails.value = _productDetailsByID.value[PRODUCT_ID]
+    }
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -242,6 +252,10 @@ class HostedQuotaSubscriptionStore(
                 restorePurchasesInternal()
             } catch (e: FirebaseException) {
                 _error.value = e.localizedMessage ?: "Could not load subscription status."
+            } catch (e: IllegalStateException) {
+                Log.w(LOG_TAG, "Google Play Billing unavailable during load: ${e.localizedMessage}")
+                applyFallbackProductDetails()
+                _error.value = e.localizedMessage ?: "Google Play Billing is unavailable on this device."
             } finally {
                 _isLoading.value = false
             }
@@ -294,6 +308,7 @@ class HostedQuotaSubscriptionStore(
                 _error.value = e.localizedMessage ?: "Could not start purchase."
                 _isLoading.value = false
             } catch (e: IllegalStateException) {
+                applyFallbackProductDetails()
                 _error.value = e.localizedMessage ?: "Could not start purchase."
                 _isLoading.value = false
             }
@@ -309,6 +324,10 @@ class HostedQuotaSubscriptionStore(
                 restorePurchasesInternal()
             } catch (e: FirebaseFunctionsException) {
                 _error.value = e.localizedMessage ?: "Could not restore purchases."
+            } catch (e: IllegalStateException) {
+                Log.w(LOG_TAG, "Google Play Billing unavailable during restore: ${e.localizedMessage}")
+                applyFallbackProductDetails()
+                _error.value = e.localizedMessage ?: "Google Play Billing is unavailable on this device."
             } finally {
                 _isLoading.value = false
             }

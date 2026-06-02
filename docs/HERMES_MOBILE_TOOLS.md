@@ -23,6 +23,7 @@ The wire format is the OpenAI `/v1/chat/completions` `tools` /
 | `OpenBurnBarMobile/Services/Tools/BurnBarRuntimeStatusTool.swift` | `burnbar_runtime_status` — honest snapshot of the active runtime + model. |
 | `OpenBurnBarMobile/Services/HermesService.swift` | Advertises the catalog, parses tool_call deltas, and runs the multi-turn loop. |
 | `OpenBurnBarMobile/Services/PiService.swift` | Sibling of Hermes; same catalog, same loop. |
+| `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesOpenAICompatibleStreamParser.swift` | Canonical typed SSE parser. Emits `HermesStreamEvent.toolCallChunk` / `toolCallFinished` before the mobile services fold them into pills and tool replies. |
 | `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesAttachmentEncoder.swift` | Emits the wire-format `tool_calls` / `tool` messages on subsequent turns. |
 | `OpenBurnBarMobileTests/Tools/` | Catalog + executor + Hermes loop tests. |
 
@@ -129,7 +130,10 @@ The loop lives in `HermesService.runToolUseIterationIfNeeded(...)`
 (Hermes) and `PiService.runStreamingLoop(...)` (Pi). At each upstream
 turn:
 
-1. The streaming response is parsed for `delta.tool_calls`.
+1. The streaming response is parsed into `HermesStreamEvent` values. OpenAI
+   `delta.tool_calls` fragments become `toolCallChunk` events and are flushed
+   as `toolCallFinished` on `finish_reason`, `[DONE]`, or the first visible
+   text chunk after a tool-call-only span.
 2. Once the stream finishes, if `assistant.toolCalls` is non-empty:
    - Each call is executed via `MobileToolExecutor`.
    - The pill's `status` is updated to `"done"` (success) or

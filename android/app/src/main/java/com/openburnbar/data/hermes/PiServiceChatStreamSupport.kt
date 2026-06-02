@@ -3,6 +3,7 @@ package com.openburnbar.data.hermes
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.computeruse.AgentCapabilityGrantState
 import com.openburnbar.data.computeruse.AgentDesktopCapability
+import com.openburnbar.irohrelay.HermesStreamEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,6 +23,8 @@ internal class PiServiceChatStreamSupport(
     private val appendToAssistant: (assistantId: String, delta: String, transform: ((PiChatMessage) -> PiChatMessage)?) -> Unit,
     private val applyError: (assistantId: String, text: String) -> Unit,
 ) {
+    private var streamEventParser = HermesOpenAICompatibleStreamParser()
+
     suspend fun streamDesktopAgentChat(prompt: String, assistantId: String) {
         val threadID = currentThreadID() ?: error("Create a Pi thread before granting desktop permissions.")
         val grant =
@@ -63,6 +66,7 @@ internal class PiServiceChatStreamSupport(
     }
 
     suspend fun streamChat(prompt: String, assistantId: String) {
+        streamEventParser = HermesOpenAICompatibleStreamParser()
         val base = runtimeSupport.resolvedBaseURL() ?: error("Pi base URL missing.")
         val modelID = selectedModelID() ?: "pi"
         val body = buildStreamChatPayload(modelID, prompt, assistantId).toRequestBody("application/json".toMediaType())
@@ -111,32 +115,45 @@ internal class PiServiceChatStreamSupport(
 
     private fun consumeSseChatStream(source: okio.BufferedSource, assistantId: String) {
         while (!source.exhausted()) {
-            val raw = source.readUtf8Line()
-            if (raw != null && raw.isNotBlank() && raw.startsWith("data:")) {
-                val payloadText = raw.removePrefix("data:").trim()
-                if (payloadText == "[DONE]") return
-                applySsePayload(payloadText, assistantId)
-            }
+            val payload = HermesSseChunkReader.parseRelayLine(source.readUtf8Line() ?: continue) ?: continue
+            if (applySsePayload(payload, assistantId)) return
         }
     }
 
-    private fun applySsePayload(payloadText: String, assistantId: String) {
-        runCatching {
-            val json = JSONObject(payloadText)
-            val choices = json.optJSONArray("choices") ?: return@runCatching
-            if (choices.length() == 0) return@runCatching
-            val first = choices.getJSONObject(0)
-            val delta = first.optJSONObject("delta")
-            val finalMessage = first.optJSONObject("message")
-            val content = extractContent(delta) ?: extractContent(finalMessage)
-            if (!content.isNullOrEmpty()) {
-                appendToAssistant(assistantId, content, null)
-            }
-            val toolCallsArr = extractToolCalls(delta) ?: extractToolCalls(finalMessage)
-            if (toolCallsArr != null && toolCallsArr.length() > 0) {
-                mergeToolCallsForAssistant(assistantId, toolCallsArr)
+    internal fun applySsePayload(payloadText: String, assistantId: String): Boolean {
+        val result = streamEventParser.eventsFromPayload(payloadText)
+        result.events.forEach { event ->
+            when (event) {
+                is HermesStreamEvent.MessageChunk -> appendToAssistant(assistantId, event.text, null)
+                is HermesStreamEvent.ToolCallChunk ->
+                    mergeToolCallForAssistant(
+                        assistantId = assistantId,
+                        id = event.id,
+                        index = event.index,
+                        nameFragment = event.name,
+                        argumentsDelta = event.argumentsDelta,
+                    )
+                is HermesStreamEvent.ToolCallFinished ->
+                    markToolCallFinished(
+                        assistantId = assistantId,
+                        id = event.id,
+                        name = event.name,
+                        arguments = event.arguments,
+                    )
+                is HermesStreamEvent.Notice -> {
+                    if (event.level == "error") {
+                        applyError(assistantId, event.text)
+                    }
+                }
+                is HermesStreamEvent.ReasoningChunk,
+                is HermesStreamEvent.RefusalChunk,
+                is HermesStreamEvent.MessageStop,
+                is HermesStreamEvent.ToolResult,
+                is HermesStreamEvent.LongToolHint,
+                -> Unit
             }
         }
+        return result.done
     }
 
     fun mergeToolCallsForAssistant(assistantId: String, calls: JSONArray) {
@@ -193,33 +210,79 @@ internal class PiServiceChatStreamSupport(
         }
     }
 
-    lateinit var currentThreadID: () -> String?
-
-    private fun extractContent(item: JSONObject?): String? {
-        if (item == null) return null
-        val direct = item.optString("content")
-        if (!direct.isNullOrEmpty()) return direct
-        val arr = item.optJSONArray("content") ?: return null
-        val buf = StringBuilder()
-        for (i in 0 until arr.length()) {
-            when (val piece = arr.get(i)) {
-                is String -> buf.append(piece)
-                is JSONObject -> {
-                    piece.optString("text").takeIf { it.isNotEmpty() }?.let { buf.append(it) }
-                        ?: piece.optString("value").takeIf { it.isNotEmpty() }?.let { buf.append(it) }
+    private fun mergeToolCallForAssistant(
+        assistantId: String,
+        id: String,
+        index: Int,
+        nameFragment: String?,
+        argumentsDelta: String,
+    ) {
+        messages.value =
+            messages.value.map { existing ->
+                if (existing.id != assistantId) return@map existing
+                val current = existing.toolCalls.toMutableList()
+                val resolvedID =
+                    when {
+                        index >= 0 && index < current.size -> current[index].id
+                        id.isNotBlank() -> id
+                        else -> "pi-tool-index-$index"
+                    }
+                val existingIdx = current.indexOfFirst { it.id == resolvedID }
+                if (existingIdx >= 0) {
+                    val tc = current[existingIdx]
+                    val newArgs = tc.arguments + argumentsDelta
+                    current[existingIdx] =
+                        tc.copy(
+                            name = nameFragment?.takeIf { it.isNotBlank() } ?: tc.name,
+                            arguments = newArgs,
+                            status = "running",
+                            detail = PiServiceToolArgumentSummarizer.summarize(newArgs) ?: tc.detail,
+                        )
+                } else {
+                    val newArgs = argumentsDelta
+                    current +=
+                        PiToolCall(
+                            id = resolvedID,
+                            name = nameFragment?.takeIf { it.isNotBlank() } ?: "Pi tool",
+                            status = "running",
+                            arguments = newArgs,
+                            detail = PiServiceToolArgumentSummarizer.summarize(newArgs),
+                        )
                 }
+                existing.copy(toolCalls = current)
             }
-        }
-        return buf.toString().ifEmpty { null }
     }
 
-    private fun extractToolCalls(item: JSONObject?): JSONArray? {
-        if (item == null) return null
-        return item.optJSONArray("tool_calls")?.takeIf { it.length() > 0 }
-            ?: item.optJSONArray("toolCalls")?.takeIf { it.length() > 0 }
-            ?: item.optJSONObject("function_call")?.let { JSONArray().put(it) }
-            ?: item.optJSONObject("functionCall")?.let { JSONArray().put(it) }
+    private fun markToolCallFinished(assistantId: String, id: String, name: String, arguments: String) {
+        messages.value =
+            messages.value.map { existing ->
+                if (existing.id != assistantId) return@map existing
+                val current = existing.toolCalls.toMutableList()
+                val existingIdx = current.indexOfFirst { it.id == id }
+                if (existingIdx >= 0) {
+                    val tc = current[existingIdx]
+                    val resolvedArguments = tc.arguments.ifBlank { arguments }
+                    current[existingIdx] =
+                        tc.copy(
+                            name = name.ifBlank { tc.name },
+                            arguments = resolvedArguments,
+                            detail = PiServiceToolArgumentSummarizer.summarize(resolvedArguments) ?: tc.detail,
+                        )
+                } else {
+                    current +=
+                        PiToolCall(
+                            id = id,
+                            name = name.ifBlank { "Pi tool" },
+                            status = "running",
+                            arguments = arguments,
+                            detail = PiServiceToolArgumentSummarizer.summarize(arguments),
+                        )
+                }
+                existing.copy(toolCalls = current)
+            }
     }
+
+    lateinit var currentThreadID: () -> String?
 }
 
 internal object PiServiceToolArgumentSummarizer {

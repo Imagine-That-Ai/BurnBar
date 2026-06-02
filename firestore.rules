@@ -194,7 +194,9 @@ service cloud.firestore {
           "com.openburnbar.pro.annual",
           "com.openburnbar.proMax.bundle.monthly",
           "com.openburnbar.proMax.v2.monthly",
-          "com.openburnbar.proMax.annual"
+          "com.openburnbar.proMax.annual",
+          "com.openburnbar.ultra.monthly",
+          "com.openburnbar.ultra.annual"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -231,7 +233,9 @@ service cloud.firestore {
           "com.openburnbar.hostedMediaSync.monthly",
           "com.openburnbar.proMax.bundle.monthly",
           "com.openburnbar.proMax.v2.monthly",
-          "com.openburnbar.proMax.annual"
+          "com.openburnbar.proMax.annual",
+          "com.openburnbar.ultra.monthly",
+          "com.openburnbar.ultra.annual"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -263,7 +267,9 @@ service cloud.firestore {
 	          "com.openburnbar.hostedComputerUseSync.monthly",
 	          "com.openburnbar.proMax.bundle.monthly",
 	          "com.openburnbar.proMax.v2.monthly",
-	          "com.openburnbar.proMax.annual"
+	          "com.openburnbar.proMax.annual",
+	          "com.openburnbar.ultra.monthly",
+	          "com.openburnbar.ultra.annual"
 	        ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -1504,6 +1510,36 @@ service cloud.firestore {
     match /users/{userId}/cloud_search_index_manifest/{manifestId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
+    }
+
+    // Pensieve E2EE knowledge memory. Vectors + sealed envelopes are written
+    // ONLY by the commitKnowledgeBatch callable (admin SDK, which validates the
+    // Cloud Pro entitlement + tier caps). The client may read its own ciphertext
+    // for defence in depth; recall actually flows through the hosted MCP shim.
+    match /users/{userId}/cloud_search_knowledge/{vectorId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Pensieve sync manifests (no plaintext): chunk/byte counts + sync health,
+    // written by the knowledgeMemory callables. Owner-readable for the UI.
+    match /users/{userId}/knowledge_sync_manifests/{sourceSlug} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+
+      match /entries/{entryKey} {
+        allow read: if ownsUserNamespace(userId);
+        allow write: if false;
+      }
+    }
+
+    // Pensieve repo connections (the dirty-signal source registration). The
+    // client may configure a repo source; secrets are never stored here
+    // (ownerWritableNonSecret forbids apiKey/token/secret fields).
+    match /users/{userId}/knowledge_repos/{repoId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {

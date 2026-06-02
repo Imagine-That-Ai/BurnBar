@@ -306,10 +306,10 @@ struct ChatMessageView: View {
         let shape = isUser ? ChatBubbleStyle.userShape() : ChatBubbleStyle.assistantShape()
         let stroke = isUser ? ChatBubbleStyle.userStroke : (isHermes ? DesignSystem.Colors.hermesMercury : ChatBubbleStyle.assistantStroke)
         let alignment: HorizontalAlignment = isUser ? .trailing : .leading
-        // Use atom-aware Hermes rendering for completed Hermes assistant turns;
-        // fall back to plain `Text` for user messages, error states, and live
-        // streaming chunks (atom layout would thrash on every chunk).
-        let useHermesRichRendering = !isUser && isHermes && !appendCaret && !text.isEmpty
+        // Use atom-aware Hermes rendering for assistant turns even while the
+        // stream is live; the caret is appended inside the rich text so we
+        // don't snap from raw text to atoms at finalize.
+        let useHermesRichRendering = !isUser && isHermes && !text.isEmpty
 
         if !text.isEmpty || appendCaret {
             proseBubbleBody(
@@ -450,14 +450,14 @@ private struct ChatLimitedProseTextView: View {
         let display = presentation.visibleText + (appendCaret ? "▍" : "")
         if useHermesRichRendering {
             StreamingBubble(
-                text: presentation.visibleText,
-                isStreaming: false,
+                text: display,
+                isStreaming: appendCaret,
                 isError: false,
                 baseSize: 14,
                 lineHeight: 20
             ) {
                 HermesRichBubble(
-                    text: presentation.visibleText,
+                    text: display,
                     baseColor: DesignSystem.Colors.textPrimary,
                     mentionColor: DesignSystem.Colors.hermesAureate,
                     codeColor: DesignSystem.Colors.textPrimary,

@@ -1,5 +1,11 @@
 import { decryptSearchResultJson } from "./decrypt.js";
 import { readAccessToken } from "./oauth.js";
+import {
+  prepareKnowledgeRequest,
+  decryptKnowledgeContent,
+  rewriteToolsListForKnowledge,
+  KnowledgeShimError,
+} from "./knowledge.js";
 
 export const DEFAULT_ENDPOINT = "https://mcp.burnbar.ai/mcp";
 const PROTOCOL_VERSION = "2025-11-25";
@@ -34,6 +40,24 @@ export async function forwardMcpMessage(message: unknown, endpoint = process.env
       }
     };
   }
+  // Pensieve: embed + cloak a natural-language knowledge query on device before
+  // it leaves the machine (query text never hits the network).
+  let outgoing = message;
+  let knowledgePostFilter;
+  try {
+    const prepared = await prepareKnowledgeRequest(message);
+    outgoing = prepared.message;
+    knowledgePostFilter = prepared.postFilter;
+  } catch (err) {
+    return {
+      jsonrpc: "2.0",
+      id: (message as { id?: unknown })?.id ?? null,
+      error: {
+        code: -32002,
+        message: err instanceof KnowledgeShimError ? err.message : `Pensieve query preparation failed: ${err instanceof Error ? err.message : String(err)}`
+      }
+    };
+  }
   const res = await fetch(target, {
     method: "POST",
     headers: {
@@ -42,13 +66,17 @@ export async function forwardMcpMessage(message: unknown, endpoint = process.env
       "authorization": `Bearer ${token}`,
       "MCP-Protocol-Version": PROTOCOL_VERSION
     },
-    body: JSON.stringify(message)
+    body: JSON.stringify(outgoing)
   });
   const json = await res.json() as Record<string, unknown>;
+  // Present Pensieve search as a natural-language `query` tool to the agent.
+  rewriteToolsListForKnowledge(json);
   const result = json.result as { content?: Array<{ type: string; text: string }> } | undefined;
   if (result?.content) {
     result.content = result.content.map((item) => item.type === "text"
-      ? { ...item, text: decryptSearchResultJson(item.text) }
+      // decryptSearchResultJson handles conversation hits; decryptKnowledgeContent
+      // handles Pensieve hits/docs. Each is a no-op on the other's payload.
+      ? { ...item, text: decryptKnowledgeContent(decryptSearchResultJson(item.text), knowledgePostFilter) }
       : item);
   }
   return json;

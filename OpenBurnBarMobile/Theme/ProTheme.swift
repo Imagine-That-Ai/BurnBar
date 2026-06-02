@@ -123,6 +123,53 @@ enum ProTheme {
         /// Inner letterpress shadow tint (light mode debossing; near-clear
         /// in dark so obsidian stays flat).
         static let letterpress = Color(light: "1C2014", dark: "000000")
+
+        // MARK: Primary purchase CTA
+        //
+        // The single most important action on the page. In light it becomes
+        // a pressed-gold ember bar — warm, saturated, unmissable against the
+        // parchment certificate. In dark it keeps the obsidian black-card
+        // with platinum ink and a living mercury sheen, so the two-coat
+        // system holds in both appearances. Every value is adaptive, so the
+        // same `FoilCTAButton` reads luxuriously in either mode.
+
+        /// Filled CTA background — pressed-gold ember (light) / obsidian (dark).
+        static let ctaFill = LinearGradient(
+            colors: [
+                Color(light: "F0C45E", dark: "1A1A22"),
+                Color(light: "D29438", dark: "101016"),
+                Color(light: "B26321", dark: "16161D")
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        /// High-contrast ink on the CTA — espresso on gold (light) /
+        /// warm platinum on obsidian (dark).
+        static let ctaInk = Color(light: "3A2408", dark: "F2EEE6")
+        /// Soft CTA ink for the price subtitle.
+        static let ctaInkSoft = Color(light: "4A2D0A", dark: "C3BBB0")
+        /// Warm specular sheen swept across the CTA's top edge — pressed-metal
+        /// highlight (gold sheen light / platinum sheen dark).
+        static let ctaSheen = LinearGradient(
+            colors: [
+                Color(light: "FFF4D6", dark: "D7CFC4").opacity(0.55),
+                Color.clear
+            ],
+            startPoint: .top,
+            endPoint: .center
+        )
+        /// Beveled rim around the CTA — bright top, deep bottom, reads as a
+        /// pressed coin / minted-gold edge (gold light / platinum dark).
+        static let ctaEdge = LinearGradient(
+            colors: [
+                Color(light: "FFE9A8", dark: "D7CFC4").opacity(0.92),
+                Color(light: "9A5A1C", dark: "8A93A0").opacity(0.85)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        /// Warm glow cast beneath the CTA so it floats off the card.
+        static let ctaGlow = Color(light: "D29438", dark: "C8BFB5")
     }
 
     // MARK: - Type voice

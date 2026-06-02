@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  redactSecrets,
+  parseExtractedMemories,
+  prepareMemoriesForCommit,
+  runMemorySync,
+  installMemoryHook,
+  MIN_CONFIDENCE,
+  type ExtractedMemory,
+} from "./memoryHook.js";
+import { createDeterministicHashingEmbedder } from "./embed.js";
+import { decryptSealedText } from "./decrypt.js";
+
+const KEY = Buffer.alloc(32, 5);
+process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = KEY.toString("base64");
+
+test("redactSecrets strips common secret shapes", () => {
+  const dirty = "use sk-ABCDEFGHIJKLMNOPQRSTUVWX and AKIAIOSFODNN7EXAMPLE and password: hunter2 and Bearer abcdefghijklmnopqrstuvwx";
+  const { text, redactions } = redactSecrets(dirty);
+  assert.ok(!text.includes("sk-ABCDEFGHIJKLMNOPQRSTUVWX"));
+  assert.ok(!text.includes("AKIAIOSFODNN7EXAMPLE"));
+  assert.ok(!text.includes("hunter2"));
+  assert.ok(redactions >= 3);
+});
+
+test("parseExtractedMemories handles a raw JSON array", () => {
+  const mems = parseExtractedMemories('[{"title":"T","text":"body","category":"fact","confidence":0.9}]');
+  assert.equal(mems.length, 1);
+  assert.equal(mems[0].text, "body");
+});
+
+test("parseExtractedMemories unwraps the `claude -p --output-format json` envelope", () => {
+  const inner = '[{"title":"T","text":"decision body","category":"decision","confidence":0.8}]';
+  const wrapped = JSON.stringify({ type: "result", result: inner });
+  const mems = parseExtractedMemories(wrapped);
+  assert.equal(mems.length, 1);
+  assert.equal(mems[0].category, "decision");
+});
+
+test("parseExtractedMemories strips a markdown code fence", () => {
+  const mems = parseExtractedMemories('```json\n[{"title":"T","text":"x","category":"fact","confidence":1}]\n```');
+  assert.equal(mems.length, 1);
+});
+
+test("parseExtractedMemories returns [] for garbage", () => {
+  assert.deepEqual(parseExtractedMemories("not json at all"), []);
+  assert.deepEqual(parseExtractedMemories("{}"), []);
+});
+
+test("prepareMemoriesForCommit redacts, filters confidence, dedups, embeds+cloaks+seals", async () => {
+  const embedder = createDeterministicHashingEmbedder();
+  const memories: ExtractedMemory[] = [
+    { title: "Rotate key", text: "rotate the vault key monthly", category: "gotcha", confidence: 0.9 },
+    { title: "dup", text: "rotate the vault key monthly", category: "gotcha", confidence: 0.95 }, // duplicate text
+    { title: "low", text: "ephemeral chatter", category: "fact", confidence: 0.2 }, // below threshold
+    { title: "secret", text: "api_key: sk-SHOULDNOTLEAK0000000000", category: "fact", confidence: 0.9 },
+  ];
+  const prepared = await prepareMemoriesForCommit(memories, "chat-memory", { embedder, vaultKey: KEY });
+
+  // dup collapsed, low-confidence dropped -> 2 remain (the rotate memory + the redacted secret memory)
+  assert.equal(prepared.length, 2);
+  const rotate = prepared[0];
+  assert.equal(rotate.cloakedVector.length, 384);
+  assert.equal(rotate.sourceKind, "chat_memory");
+  assert.equal(decryptSealedText(rotate.sealedCiphertext), "rotate the vault key monthly");
+  const meta = JSON.parse(decryptSealedText(rotate.sealedMetadata) ?? "{}");
+  assert.equal(meta.sourceKind, "chat_memory");
+  assert.equal(meta.category, "gotcha");
+
+  // The secret memory's ciphertext must not contain the raw key.
+  const secretPlain = decryptSealedText(prepared[1].sealedCiphertext) ?? "";
+  assert.ok(!secretPlain.includes("sk-SHOULDNOTLEAK0000000000"));
+});
+
+test("prepareMemoriesForCommit honours the isDuplicate predicate (namespace dedup)", async () => {
+  const embedder = createDeterministicHashingEmbedder();
+  const memories: ExtractedMemory[] = [{ title: "T", text: "already stored memory", category: "fact", confidence: 0.9 }];
+  const prepared = await prepareMemoriesForCommit(memories, "chat-memory", { embedder, vaultKey: KEY }, async () => true);
+  assert.equal(prepared.length, 0, "a memory already in the namespace is skipped");
+});
+
+test("runMemorySync wires extractor -> prepare -> commit with injected IO", async () => {
+  const captured: unknown[] = [];
+  const batch = await runMemorySync({
+    transcript: "session transcript text",
+    sourceSlug: "chat-memory",
+    runExtractor: () => '[{"title":"Decision","text":"we chose Firestore vectors","category":"decision","confidence":0.9}]',
+    loadEmbedder: async () => createDeterministicHashingEmbedder(),
+    vaultKey: () => KEY,
+    commit: (b) => captured.push(b),
+  });
+  assert.equal(batch.vectors.length, 1);
+  assert.equal(batch.embeddingModelVersion, "hashing-bow-v1");
+  assert.equal(captured.length, 1, "commit sink received the batch");
+  assert.equal(decryptSealedText(batch.vectors[0].sealedCiphertext), "we chose Firestore vectors");
+});
+
+test("runMemorySync throws without a vault key and never commits", async () => {
+  let committed = false;
+  await assert.rejects(
+    () =>
+      runMemorySync({
+        transcript: "x",
+        runExtractor: () => "[]",
+        loadEmbedder: async () => createDeterministicHashingEmbedder(),
+        vaultKey: () => undefined,
+        commit: () => {
+          committed = true;
+        },
+      }),
+    /vault key unavailable/,
+  );
+  assert.equal(committed, false);
+});
+
+test("MIN_CONFIDENCE gate value", () => {
+  assert.equal(MIN_CONFIDENCE, 0.6);
+});
+
+test("installMemoryHook merges a SessionEnd hook idempotently", () => {
+  const path = join(tmpdir(), `obb-hook-test-${KEY.toString("hex").slice(0, 8)}.json`);
+  try {
+    installMemoryHook({ settingsPath: path });
+    installMemoryHook({ settingsPath: path }); // second call must not duplicate
+    const settings = JSON.parse(readFileSync(path, "utf8"));
+    const sessionEnd = settings.hooks.SessionEnd;
+    assert.equal(sessionEnd.length, 1, "hook installed exactly once");
+    assert.equal(sessionEnd[0].hooks[0].command, "openburnbar memory run");
+  } finally {
+    rmSync(path, { force: true });
+  }
+});
