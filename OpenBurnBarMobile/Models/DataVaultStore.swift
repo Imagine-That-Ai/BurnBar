@@ -90,7 +90,9 @@ protocol DataVaultServicing: AnyObject {
     func verifyAuditLog() async throws -> (valid: Bool, brokenAt: Int?)
     func listRecovery() async throws -> [RecoveryMethod]
     func setupRecovery(method: String, payload: [String: Any]) async throws -> String
-    func confirmRecovery(recoveryId: String) async throws
+    // recovery_key confirmation requires the re-entered key's verificationHash
+    // (Apple ADP delayed re-verify); recovery_contact passes nil.
+    func confirmRecovery(recoveryId: String, verificationHash: String?) async throws
     func revokeAllAccess(scope: String) async throws -> RevokeAllResult
     /// Drains locally-prepared Pensieve knowledge into the cloud (the documented
     /// "Sync now" action). Returns the number of chunks written, or nil if there
@@ -167,8 +169,10 @@ final class FunctionsDataVaultService: DataVaultServicing {
         return recoveryId
     }
 
-    func confirmRecovery(recoveryId: String) async throws {
-        _ = try await functions.httpsCallable("confirmRecovery").call(["recoveryId": recoveryId])
+    func confirmRecovery(recoveryId: String, verificationHash: String?) async throws {
+        var payload: [String: Any] = ["recoveryId": recoveryId]
+        if let verificationHash { payload["verificationHash"] = verificationHash }
+        _ = try await functions.httpsCallable("confirmRecovery").call(payload)
     }
 
     func revokeAllAccess(scope: String) async throws -> RevokeAllResult {
@@ -363,9 +367,9 @@ final class DataVaultStore {
         }
     }
 
-    func confirmRecovery(_ recoveryId: String) async {
+    func confirmRecovery(_ recoveryId: String, verificationHash: String? = nil) async {
         do {
-            try await service.confirmRecovery(recoveryId: recoveryId)
+            try await service.confirmRecovery(recoveryId: recoveryId, verificationHash: verificationHash)
             await loadRecovery()
         } catch {
             self.error = error.localizedDescription

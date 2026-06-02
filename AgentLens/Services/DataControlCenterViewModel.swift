@@ -332,13 +332,17 @@ final class DataControlCenterViewModel {
         }
     }
 
-    func confirmRecovery(recoveryId: String) async -> Bool {
+    // recovery_key confirmation passes the re-entered key's verificationHash
+    // (Apple ADP delayed re-verify); recovery_contact passes nil.
+    func confirmRecovery(recoveryId: String, verificationHash: String? = nil) async -> Bool {
         guard isSignedIn else { return false }
         isMutating = true
         actionError = nil
         defer { isMutating = false }
         do {
-            _ = try await functions().httpsCallable("confirmRecovery").call(["recoveryId": recoveryId])
+            var payload: [String: Any] = ["recoveryId": recoveryId]
+            if let verificationHash { payload["verificationHash"] = verificationHash }
+            _ = try await functions().httpsCallable("confirmRecovery").call(payload)
             await refreshRecovery()
             return true
         } catch {
