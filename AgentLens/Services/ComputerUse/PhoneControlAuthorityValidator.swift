@@ -124,6 +124,18 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         }
     }
 
+    private func publicKeyForActivePeer(
+        _ envelope: HermesRealtimeRelayAuthorityEnvelope
+    ) throws -> Curve25519.Signing.PublicKey {
+        if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
+            throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
+        }
+        guard let pubKey = queue.sync(execute: { peerPublicKeys[envelope.peerNodeId] }) else {
+            throw ValidationError.missingPeerPubKey
+        }
+        return pubKey
+    }
+
     private static func attestationRequirement(
         fromLegacy requiredAttestationHashBlake3: String?
     ) -> PhoneControlAttestationRequirement {
@@ -144,8 +156,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
         let attestationRequirement = attestation
             ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
         try validateAuthorityEnvelope(envelope, now: now, attestation: attestationRequirement)
@@ -197,8 +208,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         let attestationRequirement = attestation
             ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
@@ -246,8 +256,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         target: HermesRealtimeRelayAgentContextTarget,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 
@@ -290,8 +299,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 
@@ -334,8 +342,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         clipboardRequest: HermesRealtimeRelayClipboardRequest,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 
@@ -378,8 +385,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 

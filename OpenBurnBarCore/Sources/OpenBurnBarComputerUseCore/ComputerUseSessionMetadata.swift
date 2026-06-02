@@ -103,6 +103,10 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
     public let macHostNodeId: String?
     public let phoneViewerNodeId: String?
     public let scopeRuleIds: [String]
+    /// Full scope rules for this session. The daemon resolves scope by
+    /// evaluating these rules against each browser action's URL. Empty
+    /// means no scope restrictions (`.notMatched` → Manual approval).
+    public let scopeRules: [ComputerUseScopeRule]
     public let entitlementProductId: String
     public let actionCap: Int
     public let sessionTimeoutSeconds: Int
@@ -116,6 +120,7 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
         macHostNodeId: String? = nil,
         phoneViewerNodeId: String? = nil,
         scopeRuleIds: [String] = [],
+        scopeRules: [ComputerUseScopeRule] = [],
         entitlementProductId: String,
         actionCap: Int,
         sessionTimeoutSeconds: Int
@@ -128,6 +133,7 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
         self.macHostNodeId = macHostNodeId
         self.phoneViewerNodeId = phoneViewerNodeId
         self.scopeRuleIds = scopeRuleIds
+        self.scopeRules = scopeRules
         self.entitlementProductId = entitlementProductId
         self.actionCap = actionCap
         self.sessionTimeoutSeconds = sessionTimeoutSeconds

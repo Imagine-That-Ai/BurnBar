@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-OpenBurnBar supports the current `main` branch and the version declared in the repo metadata (`1.0` in this source release). Older commits may contain known issues and may not receive fixes.
+OpenBurnBar supports the current `main` branch and the version declared in the repo metadata (`1.0.1` in this source release). Older commits may contain known issues and may not receive fixes.
 
 ## Reporting a Vulnerability
 
