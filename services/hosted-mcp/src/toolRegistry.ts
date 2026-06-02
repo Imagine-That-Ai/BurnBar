@@ -6,7 +6,7 @@ import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
 import { listResources, readConversationBody, recentUsage } from "./resources.js";
 import { listResumable, resumeConversation } from "./resume.js";
-import { searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
+import { knowledgeSearchFirestoreFrom, searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
 
 export type CostClass = "metadata" | "standard" | "body";
 
@@ -147,7 +147,7 @@ export const tools: RegisteredTool[] = [
       },
       ["queryVector"]
     ),
-    handler: async ({ db, claims }, args) => searchKnowledge(db, claims.sub, args)
+    handler: async ({ db, claims }, args) => searchKnowledge(knowledgeSearchFirestoreFrom(db), claims.sub, args)
   },
   {
     name: "burnbar_get_knowledge_document",
