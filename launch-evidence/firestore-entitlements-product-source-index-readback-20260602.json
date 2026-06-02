@@ -1,0 +1,90 @@
+[
+  {
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgJj7z4EK",
+    "state": "READY",
+    "queryScope": "COLLECTION_GROUP",
+    "fields": [
+      {
+        "fieldPath": "id",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "active",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      }
+    ]
+  },
+  {
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgNi47oMK",
+    "state": "READY",
+    "queryScope": "COLLECTION_GROUP",
+    "fields": [
+      {
+        "fieldPath": "id",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "originalTransactionID",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      }
+    ]
+  },
+  {
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgIScuIwK",
+    "state": "READY",
+    "queryScope": "COLLECTION_GROUP",
+    "fields": [
+      {
+        "fieldPath": "productID",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "source",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      }
+    ]
+  },
+  {
+    "name": "projects/burnbar/databases/(default)/collectionGroups/entitlements/indexes/CICAgNir3pgK",
+    "state": "READY",
+    "queryScope": "COLLECTION_GROUP",
+    "fields": [
+      {
+        "fieldPath": "source",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "active",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING",
+        "arrayConfig": null
+      }
+    ]
+  }
+]

@@ -29,13 +29,11 @@ struct AuroraNavigationTray: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Floating-pill geometry. Compact pill — emphasis is on the icon
-    // animation, not the chrome around it. Selection is signaled by an
-    // accent dot under the icon plus the icon's own animated wake-up,
-    // not a heavy capsule highlight.
-    private let pillHeight: CGFloat = 50
-    private let iconSize: CGFloat = 26
-    private let tabWidth: CGFloat = 52
+    // Floating-pill geometry. Labels stay visible so core routes such as
+    // Store are discoverable without relying on icon interpretation.
+    private let pillHeight: CGFloat = 62
+    private let iconSize: CGFloat = 24
+    private let tabWidth: CGFloat = 56
     private let pillSidePadding: CGFloat = 6
     private let pillBottomInset: CGFloat = 14
 
@@ -192,7 +190,7 @@ struct AuroraTabItem: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
                 AuroraNavIcon(
                     destination: destination,
@@ -212,14 +210,17 @@ struct AuroraTabItem: View {
                     .offset(x: 9, y: -6)
             }
 
-            // Tiny accent dot under the active icon — replaces the heavy
-            // capsule highlight so the icon, not the chrome, is the
-            // emphasis when a tab is active.
-            Circle()
+            Text(destination.trayLabel)
+                .font(.system(size: 9, weight: isSelected ? .bold : .semibold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .foregroundStyle(isSelected ? destination.accent : MobileTheme.Colors.textSecondary)
+                .frame(width: 48)
+
+            Capsule(style: .continuous)
                 .fill(destination.accent)
-                .frame(width: 4, height: 4)
-                .opacity(isSelected ? 1 : 0)
-                .scaleEffect(isSelected ? 1 : 0.4)
+                .frame(width: isSelected ? 16 : 4, height: 3)
+                .opacity(isSelected ? 1 : 0.35)
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isSelected)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
