@@ -831,7 +831,7 @@ function describeCloudRunService(name) {
     const error = compactCommandOutput(
       result.stderr || result.stdout || result.error || "",
     );
-    if (/not found|not_found|does not exist|NOT_FOUND/i.test(error)) {
+    if (/not found|not_found|does not exist|cannot find service|NOT_FOUND/i.test(error)) {
       return { name, exists: false, ready: false, url: null };
     }
     return { name, exists: false, ready: false, url: null, error };
