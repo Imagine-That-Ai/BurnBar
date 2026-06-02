@@ -40,8 +40,8 @@ object DataDomains {
         ),
         DataDomain(
             id = "conversations_chat", title = "Conversations & Chat", icon = "bubble.left.and.bubble.right.fill",
-            encryptionTier = EncryptionTier.END_TO_END, summary = "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices.",
-            serverSees = listOf("thread metadata", "timestamps", "device"), deviceOnly = listOf("prompt + response text", "code", "file paths"),
+            encryptionTier = EncryptionTier.SERVER_READABLE, summary = "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices. NOTE: the cross-device mirror (mobile_assistant_chats, cli_sessions) stores text the server can read; only chat_threads bodies are sealed when encrypted cloud backup is on. Labeled server-readable for honesty — sealing these at rest is a tracked hardening.",
+            serverSees = listOf("assistant + CLI conversation text (mirror)", "thread metadata", "timestamps", "device"), deviceOnly = listOf("chat_threads bodies when encrypted cloud backup is enabled"),
             firestorePaths = listOf("conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets"), storagePaths = listOf(),
             countSource = "chat_threads", byteSource = null,
             retention = "until_deleted", actions = listOf("view", "export", "delete"),
