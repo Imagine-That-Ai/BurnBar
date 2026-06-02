@@ -1,6 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 
@@ -879,6 +880,12 @@ actor CloudTranscriptCache {
 
 // MARK: - Cloud Vault Gateway
 
+@MainActor
+protocol CloudConversationVaultGateway {
+    func unlockKey() async throws -> Data?
+    func downloadBody(storagePath: String, bodyHash: String, vaultKey: Data) async throws -> String
+}
+
 /// Shared on-device vault-key unlock + encrypted-body retrieval used by every cloud conversation
 /// surface (encrypted search, the cockpit). Centralizes the keychain → escrow-unwrap → cache flow
 /// and the download → AES-GCM open → body-hash verification so the zero-knowledge spine has a
@@ -994,6 +1001,8 @@ struct CloudVaultGateway {
             && nsError.code == FunctionsErrorCode.notFound.rawValue
     }
 }
+
+extension CloudVaultGateway: CloudConversationVaultGateway {}
 
 // MARK: - Conversation Cockpit Models
 
@@ -1122,8 +1131,12 @@ struct CloudConversationAuthGate {
     var prepareIDToken: @MainActor (_ forcingRefresh: Bool) async -> Bool
 
     static let live = CloudConversationAuthGate(
-        currentUID: { Auth.auth().currentUser?.uid },
+        currentUID: {
+            guard FirebaseApp.app() != nil else { return nil }
+            return Auth.auth().currentUser?.uid
+        },
         prepareIDToken: { forcingRefresh in
+            guard FirebaseApp.app() != nil else { return false }
             guard let user = Auth.auth().currentUser else { return false }
             return await withCheckedContinuation { continuation in
                 user.getIDTokenResult(forcingRefresh: forcingRefresh) { result, error in
@@ -1176,7 +1189,7 @@ final class ConversationCockpitStore {
 
     private let functions: FunctionsRepository
     private let queryClient: any ConversationQueryClient
-    private let vault: CloudVaultGateway
+    private let vault: any CloudConversationVaultGateway
     private let authGate: CloudConversationAuthGate
     private var nextCursor: String?
     private var vaultKey: Data?
@@ -1188,11 +1201,12 @@ final class ConversationCockpitStore {
     init(
         functions: FunctionsRepository = FunctionsRepository(),
         queryClient: (any ConversationQueryClient)? = nil,
+        vault: (any CloudConversationVaultGateway)? = nil,
         authGate: CloudConversationAuthGate = .live
     ) {
         self.functions = functions
         self.queryClient = queryClient ?? functions
-        self.vault = CloudVaultGateway(functions: functions)
+        self.vault = vault ?? CloudVaultGateway(functions: functions)
         self.authGate = authGate
         loadSavedQueries()
     }

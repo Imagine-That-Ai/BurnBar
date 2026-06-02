@@ -1,12 +1,26 @@
 import XCTest
+import FirebaseCore
 @testable import OpenBurnBarMobile
 
 @MainActor
 final class ConversationCockpitAuthTests: XCTestCase {
+    func testLiveAuthGateDoesNotTouchFirebaseAuthWhenFirebaseIsUnavailable() async throws {
+        guard FirebaseApp.app() == nil else {
+            throw XCTSkip("Firebase is configured in this test process.")
+        }
+
+        XCTAssertNil(CloudConversationAuthGate.live.currentUID())
+        let prepared = await CloudConversationAuthGate.live.prepareForCallable()
+        let refreshed = await CloudConversationAuthGate.live.refreshForCallable()
+        XCTAssertFalse(prepared)
+        XCTAssertFalse(refreshed)
+    }
+
     func testRunQueryDoesNotCallCloudWhenAuthTokenIsUnavailable() async {
         let queryClient = FakeConversationQueryClient(results: [.success(.empty)])
         let store = ConversationCockpitStore(
             queryClient: queryClient,
+            vault: NoopCloudConversationVaultGateway(),
             authGate: CloudConversationAuthGate(
                 currentUID: { "uid-1" },
                 prepareIDToken: { _ in false }
@@ -28,6 +42,7 @@ final class ConversationCockpitAuthTests: XCTestCase {
         var tokenRefreshFlags: [Bool] = []
         let store = ConversationCockpitStore(
             queryClient: queryClient,
+            vault: NoopCloudConversationVaultGateway(),
             authGate: CloudConversationAuthGate(
                 currentUID: { "uid-1" },
                 prepareIDToken: { forcingRefresh in
@@ -53,6 +68,7 @@ final class ConversationCockpitAuthTests: XCTestCase {
         ])
         let store = ConversationCockpitStore(
             queryClient: queryClient,
+            vault: NoopCloudConversationVaultGateway(),
             authGate: CloudConversationAuthGate(
                 currentUID: { "uid-1" },
                 prepareIDToken: { _ in true }
@@ -68,6 +84,17 @@ final class ConversationCockpitAuthTests: XCTestCase {
         XCTAssertEqual(store.error, "Sign in again to load cloud conversations.")
         #endif
         XCTAssertTrue(store.rows.isEmpty)
+    }
+}
+
+@MainActor
+private struct NoopCloudConversationVaultGateway: CloudConversationVaultGateway {
+    func unlockKey() async throws -> Data? {
+        nil
+    }
+
+    func downloadBody(storagePath: String, bodyHash: String, vaultKey: Data) async throws -> String {
+        throw FakeLocalizedError("Unexpected transcript download in auth test.")
     }
 }
 
