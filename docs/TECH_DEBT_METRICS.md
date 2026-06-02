@@ -16,11 +16,11 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Empty `catch {}` blocks (app + daemon) | 118 | 0 | 0 |
 | `Task.detached` in `AgentLens/Services/` | 66 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 797 | ≤ 120 | ≤ 50 |
-| Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 45 | 0 | 0 |
+| Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 43 | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3615 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 22 | stable (re-export) | — |
-| `functions/src/types/legacy.ts` LOC | 3009 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 121 | modularize | — |
+| `functions/src/types/legacy.ts` LOC | 3021 | shrinking (TypeSpec migration) | — |
+| `functions/src/index.ts` LOC | 134 | modularize | — |
 | `import SwiftUI` in Services/ + DataStore/ | 19 | ≤ 3 | 0 |
 
 ## Top service files (lines)
