@@ -653,12 +653,13 @@ final class MediaControlStreamCoordinator: ObservableObject {
         )
         let sentAt = Date()
         do {
-            try await send(frame: frame, timeout: timeout)
             pendingHeartbeatSentAt = sentAt
+            try await send(frame: frame, timeout: timeout)
             return true
         } catch {
             // The supervisor owns reconnects; heartbeat failure only means no
             // fresh RTT sample for the HUD.
+            pendingHeartbeatSentAt = nil
             return false
         }
     }

@@ -71,6 +71,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
+import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
 import { wrapCallableHandler } from "./logging.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 
@@ -592,6 +593,7 @@ function parseNumericEnv(name: string, fallback: number): number {
  */
 async function assertActiveBurnBarProEntitlement(uid: string): Promise<void> {
   const productID = getConfig().burnBarProProductID;
+  await assertCloudFeatureNotSuspended(db(), uid, "burnbar_cloud");
   const [proSnap, hostedSnap] = await Promise.all([
     db().doc(`users/${uid}/entitlements/burnbar_pro`).get(),
     db().doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),

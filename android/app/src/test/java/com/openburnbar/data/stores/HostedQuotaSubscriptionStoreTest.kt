@@ -4,6 +4,8 @@
 package com.openburnbar.data.stores
 
 import android.app.Activity
+import android.util.Log
+import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.ProductDetails
@@ -16,6 +18,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FunctionsRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -27,6 +30,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -57,12 +61,17 @@ class HostedQuotaSubscriptionStoreTest {
             val arg = firstArg<CharSequence?>()
             arg.isNullOrEmpty()
         }
+
+        mockkStatic(Log::class)
+        every { Log.i(any(), any()) } returns 0
+        every { Log.w(any(), any<String>()) } returns 0
     }
 
     @After
     fun tearDown() {
         unmockkStatic(FirebaseAuth::class)
         unmockkStatic(android.text.TextUtils::class)
+        unmockkStatic(Log::class)
     }
 
     @Test
@@ -249,5 +258,180 @@ class HostedQuotaSubscriptionStoreTest {
         assertEquals(HostedQuotaSubscriptionStore.PRODUCT_ID, store.activeProductID.value)
         assertEquals(VAL_123456789_L, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
+    }
+
+    @Test
+    fun `restorePurchases treats expired Google Play verifier response as inactive`() = runTest {
+        // Arrange
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+
+        val mockPurchase = mockk<Purchase>()
+        every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { mockPurchase.purchaseToken } returns "expired-purchase-token"
+        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.isAcknowledged } returns true
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(mockPurchase))
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "expired-purchase-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2020-01-01T00:00:00Z",
+            )
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        // Act
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        // Assert
+        assertNull(store.error.value)
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertEquals(VAL_123456789_L, store.purchaseDate.value)
+        assertEquals(java.time.Instant.parse("2020-01-01T00:00:00Z").toEpochMilli(), store.expirationDate.value)
+    }
+
+    @Test
+    fun `restorePurchases verifies Cloud Pro when stale Cloud purchase is also returned`() = runTest {
+        // Arrange
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        every { mockResult.debugMessage } returns ""
+
+        val staleCloudPurchase = mockk<Purchase>()
+        every { staleCloudPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { staleCloudPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { staleCloudPurchase.purchaseToken } returns "stale-cloud-token"
+        every { staleCloudPurchase.purchaseTime } returns VAL_123456789_L
+        every { staleCloudPurchase.isAcknowledged } returns true
+
+        val cloudProPurchase = mockk<Purchase>()
+        every { cloudProPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { cloudProPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        every { cloudProPurchase.purchaseToken } returns "cloud-pro-token"
+        every { cloudProPurchase.purchaseTime } returns VAL_123456789_L + 1
+        every { cloudProPurchase.isAcknowledged } returns false
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(staleCloudPurchase, cloudProPurchase))
+        }
+
+        val acknowledgeListenerSlot = slot<AcknowledgePurchaseResponseListener>()
+        every { mockBillingClient.acknowledgePurchase(any(), capture(acknowledgeListenerSlot)) } answers {
+            acknowledgeListenerSlot.captured.onAcknowledgePurchaseResponse(mockResult)
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "cloud-pro-token",
+                productID = HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2026-06-30T12:00:00Z",
+            )
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "stale-cloud-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2020-01-01T00:00:00Z",
+            )
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        // Act
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        // Assert
+        assertNull(store.error.value)
+        assertTrue(store.isActive.value)
+        assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
+        assertEquals(VAL_123456789_L + 1, store.purchaseDate.value)
+        assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
+        coVerify(exactly = 1) {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "cloud-pro-token",
+                productID = HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+            )
+        }
+        coVerify(exactly = 0) {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "stale-cloud-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        }
+        verify { mockBillingClient.acknowledgePurchase(any(), any()) }
+    }
+
+    @Test
+    fun `restorePurchases acknowledges unacknowledged Google Play purchase`() = runTest {
+        // Arrange
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        every { mockResult.debugMessage } returns ""
+
+        val mockPurchase = mockk<Purchase>()
+        every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
+        every { mockPurchase.purchaseToken } returns "pending-ack-token"
+        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.isAcknowledged } returns false
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(mockPurchase))
+        }
+
+        val acknowledgeListenerSlot = slot<AcknowledgePurchaseResponseListener>()
+        every { mockBillingClient.acknowledgePurchase(any(), capture(acknowledgeListenerSlot)) } answers {
+            acknowledgeListenerSlot.captured.onAcknowledgePurchaseResponse(mockResult)
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "pending-ack-token",
+                productID = HostedQuotaSubscriptionStore.PRODUCT_ID,
+            )
+        } returns
+            mapOf(
+                "active" to true,
+                "expiresAt" to "2026-06-30T12:00:00Z",
+            )
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        // Act
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        // Assert
+        assertNull(store.error.value)
+        assertTrue(store.isActive.value)
+        verify { mockBillingClient.acknowledgePurchase(any(), any()) }
     }
 }

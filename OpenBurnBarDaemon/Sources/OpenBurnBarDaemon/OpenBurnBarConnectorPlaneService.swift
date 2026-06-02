@@ -179,10 +179,12 @@ public actor BurnBarConnectorPlaneService {
     public func updateConfig(_ request: BurnBarConnectorConfigUpdateRequest) async throws -> BurnBarConnectorPlaneSnapshot {
         var state = try loadStateIfNeeded()
         let trimmedBaseURL = request.config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        // SSRF gate: validate before persisting
+        let validatedURL = try Self.validatedConnectorBaseURL(trimmedBaseURL)
         state.configs[request.config.kind.rawValue] = BurnBarStoredConnectorConfig(
             kind: request.config.kind,
             isEnabled: request.config.isEnabled,
-            baseURL: trimmedBaseURL,
+            baseURL: validatedURL.absoluteString,
             authKind: request.config.authKind,
             metadata: request.config.metadata
         )
@@ -308,37 +310,31 @@ public actor BurnBarConnectorPlaneService {
         config: BurnBarStoredConnectorConfig,
         secret: String
     ) throws -> URLRequest {
-        let trimmedBaseURL = config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let baseURL = URL(string: trimmedBaseURL), trimmedBaseURL.isEmpty == false else {
-            throw NSError(
-                domain: "BurnBarConnectorPlaneService",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Connector base URL is invalid."]
-            )
-        }
+        // Runtime SSRF defense-in-depth: re-validate on every outbound request
+        let validatedBaseURL = try Self.validatedConnectorBaseURL(config.baseURL)
 
         switch kind {
         case .github:
-            var request = URLRequest(url: baseURL.appendingPathComponent("user"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("user"))
             request.httpMethod = "GET"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
             return request
         case .slack:
-            var request = URLRequest(url: baseURL.appendingPathComponent("auth.test"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("auth.test"))
             request.httpMethod = "POST"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request
         case .linear:
-            var request = URLRequest(url: baseURL)
+            var request = URLRequest(url: validatedBaseURL)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(secret, forHTTPHeaderField: "Authorization")
             request.httpBody = try JSONEncoder().encode(["query": "{ viewer { id name email } }"])
             return request
         case .posthog:
-            var components = URLComponents(url: baseURL.appendingPathComponent("projects"), resolvingAgainstBaseURL: false)
+            var components = URLComponents(url: validatedBaseURL.appendingPathComponent("projects"), resolvingAgainstBaseURL: false)
             components?.queryItems = [URLQueryItem(name: "limit", value: "1")]
             guard let url = components?.url else {
                 throw URLError(.badURL)
@@ -348,12 +344,12 @@ public actor BurnBarConnectorPlaneService {
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request
         case .sentry:
-            var request = URLRequest(url: baseURL.appendingPathComponent("organizations"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("organizations"))
             request.httpMethod = "GET"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request
         case .gmail:
-            var request = URLRequest(url: baseURL.appendingPathComponent("users/me/profile"))
+            var request = URLRequest(url: validatedBaseURL.appendingPathComponent("users/me/profile"))
             request.httpMethod = "GET"
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
             return request

@@ -54,6 +54,20 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertFalse(source.contains("Continue on iPhone"))
     }
 
+    func testIOSActiveCloudMembersCanRestorePurchasesFromMemberCard() throws {
+        let sourceURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Store")
+            .appendingPathComponent("CloudStoreView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("CloudStoreMemberCard(store: store)"))
+        XCTAssertTrue(source.contains("Task { await store.restorePurchases() }"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"cloudStore.member.restore\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Restore purchases\")"))
+    }
+
     func testMacAccountUpgradeRoutesToInAppCloudPurchaseSurface() throws {
         let settingsURL = repoRoot()
             .appendingPathComponent("AgentLens")
