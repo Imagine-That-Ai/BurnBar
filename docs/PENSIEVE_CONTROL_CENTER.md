@@ -42,6 +42,12 @@ the build-wiring below before they run.
 ## Native build-wiring (requires Xcode / Gradle)
 
 ### Xcode (macOS + iOS) — target membership (blocking)
+> ⚠️ Do this **in Xcode** (drag the files into the target). An automated
+> `project.pbxproj` mutation was attempted during the build and **reverted in
+> review** because it silently dropped 4 existing files (e.g.
+> `BurnBarConnectorPlaneURLValidationTests.swift`) from the project — do not
+> re-run a blind pbxproj rewrite.
+
 Add to the relevant app/test targets in `OpenBurnBar.xcodeproj`:
 - `packages/data-domains/gen/DataDomains.swift` + `packages/design-tokens/dist/swift/PensieveTokens.swift` → **both** AgentLens (macOS) and OpenBurnBarMobile (iOS) targets (or a shared framework).
 - macOS: `AgentLens/Views/Settings/DataControlCenter/*.swift` + `AgentLens/Services/DataControlCenterViewModel.swift` → macOS target.
