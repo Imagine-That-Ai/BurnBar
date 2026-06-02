@@ -97,6 +97,12 @@ export {
   reconcileKnowledgeMemoryDaily,
 } from "./callables/knowledgeSync.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
+export { exportUserData } from "./callables/dataExport.js";
+export { deleteDomainData } from "./callables/dataDeletion.js";
+export { setupRecovery, confirmRecovery, listRecovery } from "./callables/recovery.js";
+export { revokeAllAccess } from "./callables/panic.js";
+export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
+export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";
 
 export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {

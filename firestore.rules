@@ -1542,6 +1542,23 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    // Tamper-evident unified access-audit log (server-only writer). Per-user
+    // SHA-256 hash chain written exclusively by Cloud Functions (appendAuditEvent)
+    // for the Access Audit Timeline. Clients must never write or the chain could
+    // be forged; owner-read only.
+    match /users/{userId}/unified_audit_log/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Account recovery methods for zero-knowledge mode (server-only writer).
+    // Holds ONLY sealed wrapped-vault-key blobs + verification hashes (Apple ADP
+    // delayed-confirm pattern), written exclusively via setupRecovery/confirmRecovery.
+    match /users/{userId}/account_recovery_methods/{recoveryId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableHostedCloudBackup(userId)

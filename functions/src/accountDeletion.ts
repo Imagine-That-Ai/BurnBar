@@ -7,6 +7,7 @@
  */
 
 import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 export interface AccountDeletionSummary {
   destroyedSecrets: number;
@@ -109,6 +110,18 @@ export async function eraseUserCloudData(
   await deleteDocumentTree(db.doc(`users/${uid}`), batcher);
   await deleteDocumentTree(db.doc(`workspaces/${userWorkspaceID(uid)}`), batcher);
   await batcher.flush();
+
+  // Purge the user's Cloud Storage objects too — sealed session-log bodies,
+  // Hermes gateway attachments, and the avatar. Without this, account erase left
+  // orphaned ciphertext blobs behind (the Firestore manifests were gone but the
+  // bytes remained). Best-effort: a storage failure must not fail the erase.
+  for (const prefix of [`users/${uid}/`, `avatars/${uid}`]) {
+    try {
+      await getStorage().bucket().deleteFiles({ prefix, force: true });
+    } catch (error) {
+      logger.warn(`Failed to delete Cloud Storage objects (${prefix}) for ${uid}:`, error);
+    }
+  }
 
   return summary;
 }
