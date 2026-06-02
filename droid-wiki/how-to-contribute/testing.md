@@ -1,88 +1,44 @@
 # Testing
 
-## Test organisation
+## Test frameworks
 
-**Active tests** live in `AgentLensTests/Active/` and are compiled by the `OpenBurnBarTests` Xcode target. These are gated by CI and must stay green.
+| Surface | Framework | Entry point |
+|---------|-----------|-------------|
+| Swift packages | XCTest | `swift test --package-path OpenBurnBarCore` / `OpenBurnBarDaemon` |
+| macOS app | XCTest (`OpenBurnBarTests`) | `./scripts/test-openburnbar-app.sh` |
+| iOS mobile | XCTest (`OpenBurnBarMobileTests`) | `./scripts/test-openburnbar-mobile.sh` |
+| Android | JVM + Compose UI tests | `./scripts/test-openburnbar-android.sh` |
+| Firebase Functions | Jest | `npm test --prefix functions` |
+| Firestore rules | `@firebase/rules-unit-testing` | `npm test --prefix firestore-rules-tests` |
+| Extension | `npm test` in `extensions/openburnbar/` | `npm test` |
+| Retrieval evals | Custom golden-suite runner | `./scripts/test-openburnbar-retrieval-evals.sh` |
 
-**Quarantined tests** live in `AgentLensTests/Quarantine/` and are excluded from all CI targets. Move a test there when it is long-lived but temporarily broken; delete it if it is permanently irrelevant. See `AgentLensTests/README.md` for the full policy.
+## Active vs quarantined tests
 
-## Running tests by surface
+- **Active:** `AgentLensTests/Active/**` + `AgentLensTests/Support/**` — compiled into `OpenBurnBarTests`.
+- **Quarantine:** `AgentLensTests/Quarantine/**` — archival, not compiled by default. Move back to `Active/` after fixing.
 
-### macOS app
+## N+1 query detection
 
-```bash
-./scripts/test-openburnbar-app.sh
-```
-
-### Daemon (Swift package)
-
-```bash
-swift test --package-path OpenBurnBarDaemon
-```
-
-### Core package
-
-```bash
-swift test --package-path OpenBurnBarCore
-```
-
-### iOS / mobile
-
-```bash
-./scripts/test-openburnbar-mobile.sh
-```
-
-Runs `OpenBurnBarMobileTests` on a connected physical iPhone locally. CI uses a Simulator fallback.
-
-### Android JVM unit tests (~253 tests)
-
-```bash
-./scripts/test-openburnbar-android.sh
-# or directly:
-cd android && ./gradlew :app:testDebugUnitTest --no-daemon
-```
-
-Covers relay, media, missions, and atom parser.
-
-### iroh relay library tests
-
-```bash
-cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon
-```
-
-Codec, pairing, and loopback transport.
-
-### Firebase Functions and Firestore rules
-
-```bash
-cd firestore-rules-tests && npm test
-```
-
-Requires the Firebase emulator (`firebase emulators:start`).
-
-### Full CI
-
-```bash
-make ci
-```
-
-Runs all of the above plus lint, evals, and supply-chain checks.
-
-## Diff coverage
-
-To check coverage on lines you changed:
-
-```bash
-OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/diff-coverage-all.sh origin/main
-```
-
-## GRDB in-memory databases
-
-Every test that touches GRDB must create a **fresh in-memory database** for that test case:
+Configure `OpenBurnBarQueryTracer` before opening a database, then assert query counts in tests:
 
 ```swift
-let db = try DatabaseQueue()
-try db.write { try YourSchema.create(in: $0) }
+// In setUp
+OpenBurnBarQueryTracer.configure(in: &configuration)
+OpenBurnBarQueryTracer.resetLog()
+
+// After the operation under test
+OpenBurnBarQueryTracer.assertMaxQueries(count: 3)
 ```
 
-Never share a database instance between tests. Shared state causes ordering-dependent failures.
+## Test patterns
+
+- Prefer deterministic tests; avoid time-dependent assertions.
+- Use `make ci` before any PR to catch cross-surface failures.
+- Diff coverage: run `./scripts/diff-coverage-all.sh origin/main` after tests with `OPENBURNBAR_ENABLE_COVERAGE=YES`.
+
+## Related pages
+
+- [Development workflow](development-workflow.md) — branch and PR cycle
+- [Debugging](debugging.md) — logs and troubleshooting
+- [Patterns and conventions](patterns-and-conventions.md) — coding style

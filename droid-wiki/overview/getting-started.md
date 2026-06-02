@@ -2,145 +2,82 @@
 
 ## Prerequisites
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| Xcode | 16+ | Required for macOS and iOS builds |
-| Swift | 5.10+ | Included with Xcode |
-| XcodeGen | any | `brew install xcodegen` — regenerates `OpenBurnBar.xcodeproj` from `project.yml` |
-| Node.js | 18+ | Required for Firebase Functions, extension, and tooling |
-| Java | 21 | Required for Android builds (`brew install openjdk@21`) |
-| Android SDK | API 29+ | Set `ANDROID_HOME=$HOME/Library/Android` |
-| Rust + cargo | stable | Required only when rebuilding `crates/openburnbar-iroh` |
+- macOS 14 Sonoma or later
+- Xcode 16+ with command line tools
+- Swift 5.10
+- Node + npm (only for the editor extension)
+- Java 21 + Android SDK (only for Android builds)
 
-## Clone and bootstrap
+## Quick start
+
+### 1. Clone and build the macOS app
 
 ```bash
 git clone https://github.com/Imagine-That-Ai/BurnBar.git
 cd BurnBar
+make preflight   # verify tooling
+make build       # build Release .app into .derived-data/
+make install     # copy to /Applications
 ```
 
-## Build the macOS app
+### 2. Run tests
 
 ```bash
-# Quick build from source (debug + Release, no signing)
-make build
-
-# Build and install to /Applications
-make install
+make test        # all test suites
+make ci          # lint + tests (full CI parity)
 ```
 
-The `Makefile` also builds the daemon helper (`OpenBurnBarDaemon`) and embeds it inside the `.app` bundle at `Contents/Helpers/OpenBurnBarDaemon`.
-
-If `project.yml` changes since your last clone, regenerate the Xcode project first:
+### 3. Build the daemon and CLI
 
 ```bash
-xcodegen generate
-```
-
-## Run the macOS app
-
-```bash
-open /Applications/OpenBurnBar.app
-# or from DerivedData after a build:
-open .derived-data/Build/Products/Release/OpenBurnBar.app
-```
-
-After launch, OpenBurnBar appears in the menu bar. Open Settings to configure provider log paths and optional cloud sync.
-
-## Build and run the daemon directly
-
-```bash
-swift build --package-path OpenBurnBarDaemon -c release
-./.build/release/OpenBurnBarDaemon
-```
-
-The daemon opens a Unix socket at `~/.burnbar.sock` by default.
-
-## CLI
-
-```bash
+swift build --package-path OpenBurnBarDaemon
 swift run --package-path OpenBurnBarDaemon OpenBurnBarCLI -- help
 ```
 
-Available commands: `health`, `controller`, `questions`, `followups`, `missions`, `mission-approve`, `simulator-runs`, `simulator-replay`.
-
-## Run tests
+### 4. Build the VS Code extension (optional)
 
 ```bash
-# macOS app tests
-./scripts/test-openburnbar-app.sh
-
-# Daemon Swift package tests
-swift test --package-path OpenBurnBarDaemon
-
-# Shared core tests
-swift test --package-path OpenBurnBarCore
-
-# Mobile (iOS) tests — needs Xcode Simulator or connected iPhone
-./scripts/test-openburnbar-mobile.sh
-
-# Android JVM unit tests
-./scripts/test-openburnbar-android.sh
-
-# Full CI parity
-make ci
+cd extensions/openburnbar
+npm install
+npm run build
 ```
 
-## Build the iOS companion app
-
-Use Xcode (scheme `OpenBurnBarMobile`) or the cross-platform helper:
+### 5. Build the Android app (optional)
 
 ```bash
-./scripts/cross-platform/run-ios
+cd android
+./gradlew assembleDebug
 ```
 
-Defaults to iPhone 17 Pro Max Simulator. Override with:
+## Daily development workflow
 
-```bash
-OPENBURNBAR_IOS_DESTINATION="platform=iOS Simulator,name=iPhone 16" ./scripts/test-openburnbar-mobile.sh
-```
+1. Edit `project.yml` if you add/remove Swift files, then run `xcodegen generate`.
+2. Use `make build` for fast iteration; `make install` only when testing the full app bundle.
+3. Run `./scripts/test-openburnbar-app.sh` before pushing changes that touch `AgentLens/`.
+4. Run `make ci` before any PR that touches multiple surfaces.
 
-## Build the Android app
+## Clearing stale caches
 
-```bash
-cd android && ./gradlew assembleDebug
-```
-
-Environment variables required:
-
-```bash
-export JAVA_HOME="$HOME/.homebrew/opt/openjdk@21"
-export ANDROID_HOME="$HOME/Library/Android"
-export ANDROID_SDK_ROOT="$ANDROID_HOME"
-```
-
-For a connected emulator or device:
-
-```bash
-./scripts/cross-platform/run-android
-```
-
-## Firebase local setup
-
-```bash
-cd functions && npm install
-firebase emulators:start
-```
-
-For the Android app, copy `google-services.json` from the Firebase Console to `android/app/google-services.json` (never committed; see `android/app/google-services.json.template`).
-
-## Stale build caches
-
-After large `OpenBurnBarCore` changes, Xcode may hold stale binary artifacts. Clear them with:
+After large `OpenBurnBarCore` migrations, Xcode may hold stale binary artifacts. If you see ghost errors like *"value of type 'X' has no member 'Y'"*, run:
 
 ```bash
 ./scripts/clear-xcode-caches.sh
-# Preview first:
-./scripts/clear-xcode-caches.sh --dry-run
 ```
 
-## Next steps
+## Useful scripts
 
-- [Architecture](architecture.md) — understand the component boundaries
-- [Adding a parser](../how-to-contribute/development-workflow.md) — add a new AI provider
-- [Log parsers](../apps/macos-app/parsers.md) — explore the existing parsers
+| Script | Purpose |
+|--------|---------|
+| `scripts/test-openburnbar-swift.sh` | Swift package tests |
+| `scripts/test-openburnbar-app.sh` | macOS app tests |
+| `scripts/test-openburnbar-mobile.sh` | iOS mobile tests |
+| `scripts/test-openburnbar-android.sh` | Android JVM tests |
+| `scripts/build-iroh-android-aar.sh` | Build `Vendor/openburnbar-iroh.aar` |
+| `scripts/e2e/android-iroh-chat.sh` | Android iroh chat instrumented suite |
+| `scripts/ci/inject-firebase-config.sh` | iOS CI: inject `GoogleService-Info.plist` |
+
+## Related pages
+
+- [Patterns and conventions](../how-to-contribute/patterns-and-conventions.md) — coding style and conventions
+- [Testing](../how-to-contribute/testing.md) — test frameworks and patterns
+- [Tooling](../how-to-contribute/tooling.md) — build system and CI

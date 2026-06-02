@@ -1,70 +1,41 @@
-# TokenUsage
+# Token usage
 
-The fundamental data model representing one AI session's token consumption event. Every parser produces `TokenUsage` records; every usage chart, rollup, and Firestore sync doc derives from them.
+The unified token and cost ledger that powers every spending surface in OpenBurnBar.
 
-## Canonical location
+## Purpose
 
-```
-OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift
-```
+Store per-session token counts and estimated costs from 17+ AI agents in a single GRDB-backed SQLite table so the dashboard, Insights, and Hermes chat can query it consistently.
 
-The macOS app re-exports it via `typealias TokenUsage = OpenBurnBarCore.TokenUsage` in `AgentLens/Models/AgentProvider.swift`.
+## Key models
 
-## Fields
+| Model | File | Fields |
+|-------|------|--------|
+| `TokenUsage` | `AgentLens/Models/TokenUsage.swift` | provider, model, inputTokens, outputTokens, totalTokens, cost, timestamp |
+| `UsageRollups` | `AgentLens/Models/UsageRollups.swift` | today, 7d, 30d, 90d, allTime aggregated windows |
+| `ModelPricing` | `AgentLens/Services/UsageAggregator.swift` | public pricing table lookups per provider/model |
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `UUID` | Stable record identifier |
-| `provider` | `AgentProvider` | Which AI provider generated this usage |
-| `sessionId` | `String` | Provider session or conversation ID |
-| `projectName` | `String` | Workspace / project folder name |
-| `model` | `String` | Model identifier string (e.g. `"claude-sonnet-4-5"`) |
-| `inputTokens` | `Int` | Prompt tokens |
-| `outputTokens` | `Int` | Completion tokens |
-| `cacheCreationTokens` | `Int` | Anthropic cache-write tokens (default 0) |
-| `cacheReadTokens` | `Int` | Anthropic cache-hit tokens (default 0) |
-| `reasoningTokens` | `Int` | Extended thinking tokens (default 0) |
-| `totalTokens` | `Int` | Computed: sum of all billed token types |
-| `cost` | `Double` | USD cost (exposed also as `costUSD`) |
-| `startTime` | `Date` | Session start |
-| `endTime` | `Date` | Session end |
-| `createdAt` | `Date` | When the record was created locally |
-| `usageSource` | `UsageSource` | `providerLog`, `inAppChat`, `cursorBridge`, `billingAPI`, `daemon`, `unknown` |
-| `sourceDeviceId` | `String?` | Device ID if synced from another device |
-| `sourceDeviceName` | `String?` | Device name for display |
-| `isRemote` | `Bool` | Whether the record originated on another device |
-| `providerID` | `ProviderID` | Routing-layer provider ID (defaults to `provider.providerID`) |
-| `providerAccountID` | `String?` | Specific account within the provider |
-| `providerAccountLabel` | `String?` | Display label for the account |
-| `provenanceMethod` | `UsageProvenanceMethod` | How usage was obtained |
-| `provenanceConfidence` | `UsageProvenanceConfidence` | Confidence level of the values |
-| `estimatorVersion` | `String` | Version of the heuristic estimator used (if any) |
+## How it works
 
-## Provenance enums
+1. **Parsing** — `UsageAggregator` calls each registered parser for its file pattern. Parsers return `TokenUsage` rows.
+2. **Cost calculation** — `ModelPricing` applies public pricing tables (not invoice data) to compute estimated cost. For providers without per-token pricing, costs are estimated with assumptions (e.g., Codex 50/50 input/output split).
+3. **Storage** — rows are written to GRDB via `DataStore.swift`. The daemon writes its own usage ledger in the support directory for routed provider traffic.
+4. **Rollups** — Cloud Functions write 5 separate `usage_rollups` documents (today, 7d, 30d, 90d, all_time) to Firestore. The app merges them into a single flat `UsageRollups` client model.
 
-**`UsageProvenanceMethod`** (ordered by precedence, highest first):
-`providerLog` (6), `billingAPI` (5), `connectorBridge` / `daemonBridge` (4), `inAppChat` (3), `cloudSync` (2), `heuristicEstimate` (1), `unknown` (0)
+## Integration points
 
-**`UsageProvenanceConfidence`** (ordered by precedence):
-`exact` (4), `derivedExact` (3), `highConfidenceEstimate` (2), `lowConfidenceEstimate` (1), `unknown` (0)
+- **Dashboard** — queries rollups for the popover chart and per-provider breakdown.
+- **Insights** — feeds `InsightEngine` for spend patterns and anomalies.
+- **Hermes chat** — injected as system prompt context for usage-related questions.
+- **Budget governance** — `BudgetGate` reads rollups to enforce daily/monthly caps.
 
-## Lifecycle
+## Entry points for modification
 
-```
-Parser reads log file
-  → TokenUsage(provider:, model:, inputTokens:, outputTokens:, ...)
-    → UsageAggregator deduplicates and merges
-      → UsageStore persists to SQLite (GRDB)
-        → UI reads from ConversationStore / DataStore
-        → Firestore sync writes UsageEventDoc (optional)
-```
+- Add new pricing rules in `AgentLens/Services/UsageAggregator.swift` or `ModelPricing.swift`.
+- Change rollup window logic in `AgentLens/Models/UsageRollups.swift`.
+- Update the Firestore schema in `functions/src/types.ts` if adding new usage fields.
 
-## Firestore schema
+## Related pages
 
-`UsageEventDoc` in `functions/src/types.ts` mirrors the fields above. Key Firestore path: `users/{uid}/usage/{docId}`.
-
-Rollups aggregate into 5 documents per user at `users/{uid}/usage_rollups/{today,7d,30d,90d,all_time}`. See [Cloud Functions](../systems/cloud-functions.md).
-
-## Android equivalent
-
-`android/app/src/main/java/…/data/models/TokenUsage.kt` — annotated `@IgnoreExtraProperties`, `@PropertyName` for camelCase↔snake_case mismatches. Computed properties (`get()`) live in the class body, not the primary constructor. Timestamps converted from `com.google.firebase.Timestamp` via `seconds * 1000 + nanoseconds / 1_000_000`.
+- [Usage tracking](../features/usage-tracking.md)
+- [Budget governance](../features/budget-governance.md)
+- [macOS app](../apps/macos-app/index.md)
