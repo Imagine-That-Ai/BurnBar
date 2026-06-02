@@ -448,110 +448,43 @@ enum OpenAICompatibleUsageParser {
 }
 
 struct OpenAICompatibleSSEParser {
-    /// Accumulates tool_call argument fragments across streaming deltas.
-    /// OpenAI-compatible APIs send tool_calls as multiple deltas: the first has the
-    /// function name, subsequent deltas carry incremental `arguments` strings for the
-    /// same index. We buffer these and flush completed tool calls when content appears
-    /// or the stream ends.
-    private var pendingToolCalls: [Int: PendingToolCall] = [:]
-
-    private struct PendingToolCall {
-        let index: Int
-        var name: String
-        var arguments: String
-    }
+    private var parser = HermesOpenAICompatibleStreamParser()
 
     mutating func events(fromLine line: String) -> (events: [CLIChatStreamEvent], done: Bool, streamedText: Bool) {
-        guard line.hasPrefix("data: ") else { return ([], false, false) }
-        let payload = String(line.dropFirst(6))
-        guard payload != "[DONE]" else {
-            // Stream finished — flush any buffered tool calls.
-            let flushed = flushPendingToolCalls()
-            return (flushed, true, false)
-        }
-
-        guard let data = payload.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], false, false)
-        }
-
+        let result = parser.events(fromSSELine: line)
         var events: [CLIChatStreamEvent] = []
-        if let usage = OpenAICompatibleUsageParser.usage(from: obj) {
+        if let payload = Self.payload(fromSSELine: line),
+           payload != "[DONE]",
+           let data = payload.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let usage = OpenAICompatibleUsageParser.usage(from: obj) {
             events.append(.usage(usage))
         }
 
-        guard let choices = obj["choices"] as? [[String: Any]],
-              let choice = choices.first,
-              let delta = choice["delta"] as? [String: Any] else {
-            return (events, false, false)
-        }
-
-        if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
-            for tc in toolCalls {
-                let index = tc["index"] as? Int ?? 0
-                let function = tc["function"] as? [String: Any] ?? [:]
-                let name = function["name"] as? String ?? ""
-                let argsFragment = function["arguments"] as? String ?? ""
-
-                if var existing = pendingToolCalls[index] {
-                    // Subsequent delta — append arguments.
-                    if !name.isEmpty && existing.name.isEmpty {
-                        existing.name = name
-                    }
-                    existing.arguments += argsFragment
-                    pendingToolCalls[index] = existing
-                } else if !name.isEmpty {
-                    // First delta for this tool call — has the name.
-                    pendingToolCalls[index] = PendingToolCall(
-                        index: index,
-                        name: name,
-                        arguments: argsFragment
-                    )
-                } else if !argsFragment.isEmpty {
-                    // Argument-only delta for a tool call we haven't seen a name for yet.
-                    // Create a placeholder — the name should arrive in an earlier or
-                    // concurrent delta. If it never does, we'll synthesize a generic name
-                    // at flush time.
-                    pendingToolCalls[index] = PendingToolCall(
-                        index: index,
-                        name: "",
-                        arguments: argsFragment
-                    )
-                }
+        for event in result.events {
+            switch event {
+            case .messageChunk(let text), .reasoningChunk(let text), .refusalChunk(let text):
+                events.append(.text(text))
+            case .toolCallFinished(_, let name, let arguments):
+                events.append(.toolUse(name: name, detail: summarizeToolArguments(arguments)))
+            case .toolResult(_, let name, let detail):
+                events.append(.toolResult(name: name, detail: detail))
+            case .toolCallChunk, .longToolHint, .notice, .messageStop:
+                break
             }
         }
 
-        // When the model switches from tool calls to text content, all pending tool calls
-        // are complete — flush them before the text event.
-        if let content = delta["content"] as? String, !content.isEmpty {
-            events.append(contentsOf: flushPendingToolCalls())
-            events.append(.text(content))
-            return (events, false, true)
-        }
-
-        // Also flush if finish_reason indicates the assistant is done with tool calls but
-        // hasn't started emitting text yet (some APIs set finish_reason on a delta that
-        // only carries content or is empty).
-        if let finishReason = choice["finish_reason"] as? String, finishReason == "stop" || finishReason == "tool_calls" {
-            events.append(contentsOf: flushPendingToolCalls())
-        }
-
-        return (events, false, false)
+        return (events, result.done, result.streamedText)
     }
 
-    /// Emits `.toolUse` events for all buffered tool calls and clears the buffer.
-    private mutating func flushPendingToolCalls() -> [CLIChatStreamEvent] {
-        guard !pendingToolCalls.isEmpty else { return [] }
-        let sorted = pendingToolCalls.keys.sorted()
-        var events: [CLIChatStreamEvent] = []
-        for index in sorted {
-            guard let tc = pendingToolCalls[index] else { continue }
-            let name = tc.name.isEmpty ? "tool" : tc.name
-            let detail = summarizeToolArguments(tc.arguments)
-            events.append(.toolUse(name: name, detail: detail))
+    private static func payload(fromSSELine line: String) -> String? {
+        if line.hasPrefix("data: ") {
+            return String(line.dropFirst("data: ".count))
         }
-        pendingToolCalls.removeAll()
-        return events
+        if line.hasPrefix("data:") {
+            return String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
     }
 
     /// Extracts a human-readable summary from raw JSON arguments.

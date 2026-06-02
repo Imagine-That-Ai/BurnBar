@@ -52,7 +52,7 @@ export async function issueRemoteMcpGrantForSignedInUser(
   const clientId = input.clientId?.trim() || `obbc_${randomBytes(12).toString("hex")}`;
   const scopes: RemoteMcpScope[] = input.scopes?.length
     ? input.scopes
-    : ["search:read", "conversation:read", "usage:read", "index:status"];
+    : ["search:read", "conversation:read", "usage:read", "index:status", "knowledge:read"];
   const grantMode = input.grantMode ?? "local_decrypt_shim";
   await upsertRemoteMcpClient(db, uid, {
     clientId,

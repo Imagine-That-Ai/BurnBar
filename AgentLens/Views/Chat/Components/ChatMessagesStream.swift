@@ -76,6 +76,15 @@ struct ChatMessagesStream: View {
                     }
                 }
             }
+            .onChange(of: controller.messages.last?.content.count ?? 0) { _, _ in
+                if let last = controller.messages.last {
+                    Task { @MainActor in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -201,6 +201,113 @@ enum class HermesRelayChunkKind(val wireValue: String) {
 }
 
 @Serializable
+data class HermesTokenUsageStats(
+    val promptTokens: Int? = null,
+    val outputTokens: Int? = null,
+    val totalTokens: Int? = null,
+    val generationDurationSeconds: Double? = null,
+    val totalDurationSeconds: Double? = null,
+)
+
+@Serializable
+enum class HermesChatMessageOutcome(val rawValue: String) {
+    @SerialName("normal")
+    NORMAL("normal"),
+
+    @SerialName("refusal")
+    REFUSAL("refusal"),
+
+    @SerialName("reasoningFallback")
+    REASONING_FALLBACK("reasoningFallback"),
+
+    @SerialName("lengthCap")
+    LENGTH_CAP("lengthCap"),
+
+    @SerialName("contentFilter")
+    CONTENT_FILTER("contentFilter"),
+
+    @SerialName("toolCallNoFollowUp")
+    TOOL_CALL_NO_FOLLOW_UP("toolCallNoFollowUp"),
+
+    @SerialName("empty")
+    EMPTY("empty"),
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+sealed class HermesStreamEvent {
+    @Serializable
+    @SerialName("messageChunk")
+    data class MessageChunk(val text: String) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("reasoningChunk")
+    data class ReasoningChunk(val text: String) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("refusalChunk")
+    data class RefusalChunk(val text: String) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("toolCallChunk")
+    data class ToolCallChunk(
+        val id: String,
+        val index: Int,
+        val name: String? = null,
+        val argumentsDelta: String,
+    ) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("toolCallFinished")
+    data class ToolCallFinished(
+        val id: String,
+        val name: String,
+        val arguments: String,
+    ) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("toolResult")
+    data class ToolResult(
+        val id: String? = null,
+        val name: String,
+        val detail: String? = null,
+    ) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("longToolHint")
+    data class LongToolHint(
+        val toolName: String,
+        val message: String,
+    ) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("notice")
+    data class Notice(
+        val level: String,
+        val text: String,
+    ) : HermesStreamEvent()
+
+    @Serializable
+    @SerialName("messageStop")
+    data class MessageStop(
+        val finishReason: String? = null,
+        val outcome: HermesChatMessageOutcome,
+        val usage: HermesTokenUsageStats? = null,
+    ) : HermesStreamEvent()
+
+    companion object {
+        @OptIn(ExperimentalSerializationApi::class)
+        val json: Json =
+            Json {
+                ignoreUnknownKeys = true
+                classDiscriminator = "type"
+                encodeDefaults = false
+                explicitNulls = false
+            }
+    }
+}
+
+@Serializable
 data class HermesRealtimeRelayMediaPayload(
     val streamClass: String? = null,
     val attachment: HermesRealtimeRelayAttachmentManifest? = null,
@@ -308,6 +415,14 @@ data class HermesRealtimeRelayMediaAck(
 }
 
 @Serializable
+data class HermesRealtimeRelayAgentTerminalRequest(
+    val runtimeId: String,
+    val workingDirectory: String? = null,
+    val interactive: Boolean = true,
+    val modelID: String? = null,
+)
+
+@Serializable
 data class HermesRealtimeRelayMirrorRequest(
     val requestId: String,
     /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
@@ -320,6 +435,7 @@ data class HermesRealtimeRelayMirrorRequest(
     val viewerDeviceId: String? = null,
     val controlAuthorityPeerNodeId: String? = null,
     val remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
+    val agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = null,
 )
 
 @Serializable

@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pensieve — Personal Knowledge Memory (E2EE per-member semantic memory) - Implementation Notes</title>
+  <style>
+    body {
+      color: #202124;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      margin: 0 auto;
+      max-width: 920px;
+      padding: 40px 24px;
+    }
+    h1, h2 { line-height: 1.2; }
+    code {
+      background: #f1f3f4;
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+    .meta {
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .timeline {
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      max-height: 360px;
+      overflow: auto;
+      padding: 8px;
+    }
+    .timeline-note {
+      color: #5f6368;
+      margin-bottom: 10px;
+    }
+    .event {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      margin: 8px 0;
+      padding: 12px 14px;
+    }
+    .event-head {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .event-summary {
+      margin: 0;
+    }
+    .event time {
+      color: #5f6368;
+      font-size: 13px;
+    }
+    .badge, .phase, .actor {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 5px 8px;
+      text-transform: uppercase;
+    }
+    .badge { background: #e8f0fe; color: #174ea6; }
+    .status-done, .status-validated { background: #e6f4ea; color: #137333; }
+    .status-blocked, .status-failed { background: #fce8e6; color: #c5221f; }
+    .status-decision { background: #fef7e0; color: #b06000; }
+    .phase, .actor {
+      background: #f1f3f4;
+      color: #3c4043;
+      font-weight: 600;
+    }
+    li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <h1>Pensieve — Personal Knowledge Memory (E2EE per-member semantic memory)</h1>
+  <div class="meta">
+    <p><strong>Goal ID:</strong> <code>pensieve-mnemo-2026-06-02</code></p>
+    <p><strong>Started:</strong> 2026-06-02T12:33:04Z</p>
+    <p><strong>Parent goal:</strong> none</p>
+    <p><strong>Mode:</strong> full</p>
+    <p><strong>Objective:</strong> Implement the Pensieve plan: productize the maintainer mem0 flow into a per-paying-member end-to-end-encrypted semantic memory across backend, MCP, client bridge, daemon, mobile/desktop UX, and Ultra tier.</p>
+  </div>
+
+  <h2>Resume Here</h2>
+  <ul>
+    <li><strong>Status:</strong> <strong>ALL VERIFIABLE WORK COMPLETE + GREEN.</strong> Phases 1–4, 6, 8, 9 fully done + tested; P5 functions-half done + tested. Final sweep: chunker 10/10, shim 40/40, hosted-mcp 28/28, appstore 48/48, Pensieve vitest 12/12, functions tsc+lint clean, indexes/CI/harness valid. The complete E2EE loop + BYO-inference core + Ultra tier + security harness + docs all land and verify. Remaining: native UI (P7) + Swift ingestion (P5-native) — <code>[incomplete]</code> (see below).</li>
+    <li><strong>Current phase:</strong> Finalized. Native layer handed off via specs in <code>docs/PENSIEVE.md</code>.</li>
+    <li><strong>[incomplete] P5-native + P7-native</strong> — reason: Swift/Kotlin can't be compiled in this environment (no Xcode/Gradle), AND the target store/view files (<code>CloudTierComponents.swift</code>, <code>CloudStoreViewPlanSections.kt</code>, etc.) are already modified in the working tree — editing them risks clobbering in-flight work I can't verify. proof: initial git status shows those files Modified; no native toolchain. attempted: grounded the patterns; chose not to ship unverifiable native code into a conflicting branch ("test before shipping" + careful-mode). impact: backend is fully functional + tested; members can't yet add notes via UI or auto-watch a repo folder until the native layer lands. next human/agent decision: implement the new files (KnowledgeSyncService.swift, PensieveKnowledgeWatcher.swift, PensieveSections.swift, CloudStorePensieveSections.kt) + integration edits in an Xcode/Gradle env per <code>docs/PENSIEVE.md</code> "Remaining work".</li>
+    <li><strong>Completed:</strong> P1, P2 (Node foundations). P4-server (hosted-mcp query surface, 28/28). <strong>P3</strong>: <code>functions/src/callables/knowledgeMemory.ts</code> (commitKnowledgeBatch/configure/delete/purge — Cloud Pro gate, 384-dim cloaked-vector + requireSealedText validation, FieldValue.vector writes, tier chunk/byte/source caps via count+sum aggregates, idempotent by contentHash); <code>firestore.rules</code> (owner-only cloud_search_knowledge/manifests/repos, admin-only writes); <code>firestore.indexes.json</code> (4× 384-dim COSINE vector indexes); <code>knowledge:read</code> scope in remoteMcpGrant/remoteMcp/remoteMcpOAuth; index.ts exports.</li>
+    <li><strong>Active work:</strong> P4-client shim <code>knowledge.ts</code>.</li>
+    <li><strong>Blockers:</strong> None for code. External: App Store/Play Ultra SKUs, GitHub App, cloud deploy. (Cloud SQL removed by Firestore-vector pivot.)</li>
+    <li><strong>Next action:</strong> Write shim <code>src/knowledge.ts</code>: load embedder + vault key, embed+cloak the query (isQuery=true), POST burnbar_search_knowledge via the existing forward path, decrypt each hit's sealed envelopes with <code>decryptSealedText</code>. Wire a <code>memory search</code> CLI subcommand. Then P5–P9.</li>
+    <li><strong>Protected paths / user-owned work:</strong> Pre-existing uncommitted changes on branch <code>gtm-live-proof-after-190</code> (Hermes streaming, media, store UI) are NOT mine — do not touch. <code>droid-wiki/.mem0-manifest.json</code> is the golden fixture: never regenerate it as a "fix".</li>
+    <li><strong>Verification limits:</strong> Node/TS phases are fully testable here. Swift (Xcode) / Kotlin (Gradle) phases are written grounded in real repo patterns; native compilation may not be runnable in this environment — will document what was/wasn't compiled.</li>
+  </ul>
+
+  <h2>Progress Timeline</h2>
+  <p class="timeline-note">Progress is rendered directly in this file from the inline <code>progressEvents</code> array below. Append a new event to that array whenever execution reality changes meaningfully.</p>
+  <div id="progress-timeline" class="timeline"></div>
+
+  <h2>Decisions Outside The Spec</h2>
+  <ul>
+    <li><strong>Shim sources are TypeScript, not JS.</strong> Plan says "edit <code>tools/openburnbar-mcp-remote/lib/embed.js</code>", but <code>lib/</code> is <em>gitignored compiled output</em> (<code>tsc</code>, <code>src→lib</code>). Real source is <code>src/*.ts</code>. Decision: write all shim pieces (<code>embed.ts</code>, <code>knowledge.ts</code>, <code>memoryHook.ts</code>) as TypeScript in <code>src/</code>. (PRD-vs-repo mismatch; followed repo per escape hatch.)</li>
+    <li><strong>Generalized <code>buildDesired</code> via an options arg</strong> (<code>{sourceLabel, sourceKind, sourceSlug}</code>) instead of forking the function, so the maintainer wiki sync and member Pensieve ingestion share one chunker. Defaults reproduce the wiki output exactly; member tags are added only when provided.</li>
+    <li><strong><code>planActions</code> gained an <code>idField</code> param</strong> (default <code>"memory_id"</code>) so the same diff engine threads <code>memory_id</code> for the wiki mem0 mirror and <code>vectorId</code> for Pensieve. Default keeps wiki behavior identical.</li>
+    <li><strong>Golden test placed at <code>scripts/lib/verbatim-chunker.test.mjs</code></strong> (no root package.json / no prior <code>scripts/*.test</code>); runs via <code>node --test</code>, wired into <code>fast-feedback.yml</code> as the <code>chunker-parity</code> job.</li>
+    <li><strong>P2 cloak = product of 24 Householder reflections</strong>, not a full random matrix (no linalg dep) and not a signed permutation (which a test proves leaks the coordinate-magnitude multiset). Exactly orthogonal → cosine/ranking preserved to FP precision; mixes every coordinate. Seed = HKDF(vaultKey, "Pensieve-Cloak" salt, info=modelVersion).</li>
+    <li><strong>P2 embedder lazy-loaded, NOT a package dependency.</strong> The shim is deliberately <code>"dependencies": {}</code>. Pulling <code>onnxruntime-node</code> (native binaries) into its lockfile is a supply-chain cost for every user, most of whom won't use Pensieve. Chose lazy <code>import(variableSpecifier)</code> from the user's env (tries <code>@huggingface/transformers</code> then <code>@xenova/transformers</code>), with an actionable install error. Keeps tsc build dep-free; Pensieve embedding runtime is opt-in.</li>
+    <li><strong>P2 ships a <code>createDeterministicHashingEmbedder</code></strong> tagged <code>modelVersion: "hashing-bow-v1"</code> for offline/CI tests of the encrypt→cloak→commit→search plumbing. The version-match guard quarantines it from real bge vectors, so it can never poison production recall.</li>
+    <li><strong>★ ARCHITECTURE PIVOT (P3/P4): Firestore native vector search, NOT Cloud SQL pgvector.</strong> Grounding revealed the hosted-MCP already does per-uid retrieval over <code>users/{uid}/…</code> Firestore subcollections, and Firestore now supports <code>findNearest</code> + <code>FieldValue.vector</code> (384-dim COSINE). The plan's residual-open decision #1 explicitly leaves the vector engine open (pgvector = default only). Firestore is strictly better here: (1) eliminates the Cloud SQL provisioning <code>[blocked]</code> item entirely; (2) isolation reuses the proven owner-only <code>firestore.rules</code> + <code>users/{uid}/</code> namespacing (no namespace-bug risk); (3) <code>commitKnowledgeBatch</code> writes ONE store (Firestore) not two (no cross-service DB sharing); (4) the vector index is declarative in <code>firestore.indexes.json</code> — deployable, not external infra. pgvector kept as a documented future scale lever in the runbook. Vectors live at <code>users/{uid}/cloud_search_knowledge/{vectorId}</code>; ciphertext stored INLINE (per plan intent + encryptedSearch precedent), no Cloud Storage coupling.</li>
+    <li><strong>Server honors only plaintext filters (sourceKind, sourceSlug, modelVersion).</strong> sourcePath/section/category are in the SEALED metadata (encrypted) → the server cannot filter on them; the shim applies those client-side after decrypt. The tool schema still accepts them (forward-compat + client post-filter).</li>
+    <li><strong>Pensieve gates on Cloud Pro (<code>assertActiveBurnBarCloudProEntitlement</code>, proMax-strict), not the permissive <code>assertActiveBurnBarProEntitlement</code></strong> — matches the plan ("$24.99 Cloud Pro + only"). Ultra (P8) mirrors proMax via <code>appStoreEntitlementTarget</code> so it inherits the gate; only the limit lookup branches on <code>burnbar_ultra</code>.</li>
+  </ul>
+
+  <h2>Changes And Tradeoffs</h2>
+  <ul>
+    <li><strong>P1:</strong> Moved chunker/manifest-diff/pool out of <code>mem0-sync.mjs</code> into the shared lib; <code>mem0-sync.mjs</code> dropped from 385→239 lines, imports the 3 fns it uses. Removed now-unused imports (<code>createHash</code>, <code>basename</code>, <code>readdirSync</code>, <code>statSync</code>). Behavior verified unchanged by zero-write dry-run reconcile (228 chunks).</li>
+  </ul>
+
+  <h2>Validation</h2>
+  <ul>
+    <li><strong>P1 chunker parity:</strong> <code>node --test scripts/lib/verbatim-chunker.test.mjs</code> → 10/10 pass (golden key-set + content-hash match vs committed manifest; planActions zero-op; chunk-boundary unit tests).</li>
+    <li><strong>P1 behavior preservation:</strong> <code>node scripts/wiki/mem0-sync.mjs --all --dry-run</code> → "0 create, 0 update, 0 delete … already in sync - zero writes" (228 chunks).</li>
+    <li><strong>P1 hygiene:</strong> <code>node --check</code> both files OK; no dangling symbol references; <code>fast-feedback.yml</code> parses as valid YAML.</li>
+    <li><strong>P2 cloaking:</strong> <code>npm run build && node --test lib/embed.test.js</code> → 9/9 (cosine drift &lt;1e-9, exact NN ranking match, norm preserved, deterministic, distinct keys → distinct cloaks, coordinate-mixing &gt;1e-3, embed→cloak round-trip).</li>
+    <li><strong>P2 regression:</strong> full shim suite <code>node --test lib/*.test.js</code> → 22/22 (no break to resume/installers/shim).</li>
+    <li><strong>P2 build:</strong> <code>tsc</code> strict-clean — confirms the lazy variable-specifier import keeps the package zero-dependency.</li>
+    <li><em>Not yet verifiable here:</em> real bge-small-en-v1.5 embeddings (needs the model lib + weights download). Cloaking math + plumbing fully proven via the deterministic embedder.</li>
+    <li><strong>FINAL SWEEP (all green):</strong> P1 chunker 10/10 + zero-write reconcile · shim (P2/P4-client/P6) 40/40 · hosted-mcp (P4-server) 28/28 · functions (P3/P5/P8) tsc+lint clean, Pensieve vitest 12/12, test:appstore 48/48 (incl. Ultra-mirrors-proMax) · firestore.indexes.json valid · security harness <code>bash -n</code> clean · fast-feedback.yml valid YAML. ≈126 tests passing.</li>
+    <li><em>Not verifiable here (documented):</em> live Firestore findNearest (needs deployed vector index), real bge embeddings, the 8 live adversarial cases (need a live endpoint + tokens), native Swift/Kotlin compilation.</li>
+  </ul>
+
+  <h2>Evidence</h2>
+  <ul>
+    <li><strong>docs/PENSIEVE.md</strong> — the canonical as-built spec + verification commands + deployment checklist + remaining-work.</li>
+    <li>Reproduce verification: see docs/PENSIEVE.md § Verification (each suite's exact command). All green as of this checkpoint.</li>
+    <li>Backend grounding map (6-agent fan-out) captured during execution; key signatures + gotchas folded into the implementation.</li>
+  </ul>
+
+  <h2>Next Goal Candidates</h2>
+  <ul>
+    <li><strong>pensieve-native-ux</strong> — implement P7 (iOS/macOS/Android Pensieve cards + Sync-now) + P5-native (KnowledgeSyncService.swift, PensieveKnowledgeWatcher.swift) in an Xcode/Gradle env, reconciling with the in-flight branch changes. Per docs/PENSIEVE.md "Remaining work".</li>
+    <li><strong>pensieve-tiercogs-ultra</strong> — add the Ultra COGS bucket + Pensieve unit costs to tierCogs.ts and update the test:tier-cogs snapshot.</li>
+    <li><strong>pensieve-deploy</strong> — deploy firestore.indexes.json (vector indexes), functions, hosted-mcp; create Ultra SKUs; optional GitHub App.</li>
+  </ul>
+  <script>
+    const progressEvents = [
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "created",
+        phase: "start",
+        actor: "agent",
+        summary: "Goal ledger created."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "decision",
+        phase: "grounding",
+        actor: "agent",
+        summary: "Grounded the chunker + shim. Key finding: mcp-remote lib/ is gitignored compiled output; real source is src/*.ts — all shim pieces will be TypeScript, not the lib/*.js the plan names."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "done",
+        phase: "p1-chunker-refactor",
+        actor: "agent",
+        summary: "P1 complete: extracted scripts/lib/verbatim-chunker.mjs (chunkMarkdown/firstH1/deriveCategory/sha256/buildDesired/planActions/runPool/listMarkdown), refactored mem0-sync.mjs to import it, generalized buildDesired (sourceLabel/sourceKind/sourceSlug) + planActions (idField) for Pensieve reuse."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p1-chunker-refactor",
+        actor: "agent",
+        summary: "P1 verified: golden+unit test 10/10 (byte-identical to committed manifest), dry-run reconcile = zero writes (228 chunks), node --check clean. CI job chunker-parity added to fast-feedback.yml."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "done",
+        phase: "p2-embed-cloak",
+        actor: "agent",
+        summary: "P2 complete: src/embed.ts — vault-key Householder-product cloak (HKDF-seeded, exactly orthogonal), lazy bge-small-en-v1.5 embedder (zero-dep, opt-in), deterministic hashing test embedder, cosine/l2 helpers, embedAndCloak."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p2-embed-cloak",
+        actor: "agent",
+        summary: "P2 verified: 9/9 cloaking tests (cosine drift <1e-9, exact NN ranking preserved, norm preserved, deterministic, key-isolated, genuine coordinate mixing). Full shim suite 22/22. tsc strict-clean (build stays dependency-free)."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "done",
+        phase: "grounding-backend",
+        actor: "agent",
+        summary: "6-agent parallel fan-out mapped functions (entitlements, encryptedSearch commit template, config/scope wiring), hosted-mcp (auth/rate/toolRegistry/search/resources/cursors), firestore.rules, reconciler, tierCogs — exact signatures + how-to-extend + gotchas. Surfaced the Firestore-vector pivot."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "done",
+        phase: "p4-mcp-query-server",
+        actor: "agent",
+        summary: "P4 server: knowledge.ts (searchKnowledge findNearest COSINE + readKnowledgeDocument atomic envelope, per-uid claims.sub isolation, plaintext-only filters, signed cursors, read budget), knowledgeVector.ts (types+cosine+in-memory store), 2 tools registered, knowledge:standard/search:ultra buckets."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p4-mcp-query-server",
+        actor: "agent",
+        summary: "P4 server verified: hosted-mcp suite 28/28 (ranking, distance->score, per-namespace isolation, plaintext filters, query-vector validation, cursor pagination + tool-scope rejection, atomic envelope read, cross-namespace 404). tsc strict-clean."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "done",
+        phase: "p3-backend-store",
+        actor: "agent",
+        summary: "P3: knowledgeMemory.ts 4 callables (Cloud Pro gate, cloaked-vector+sealed validation, FieldValue.vector writes, tier chunk/byte/source caps via aggregates, idempotent by contentHash); firestore.rules owner-only knowledge collections; firestore.indexes.json 4 vector indexes; knowledge:read scope in 3 sites; index.ts exports."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p3-backend-store",
+        actor: "agent",
+        summary: "P3 verified: functions tsc --noEmit clean, eslint clean on all touched files, vitest 12/12 on Pensieve helpers (tier caps match plan, source-kind enum, 384-dim+finite vector validation, slugify), firestore.indexes.json valid JSON. Milestone-1 server loop complete."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "done",
+        phase: "p4-shim-client",
+        actor: "agent",
+        summary: "P4 client: shim src/knowledge.ts — prepareKnowledgeRequest (embed+cloak query text -> 384-dim queryVector on device, pin model version, strip raw query), rewriteToolsListForKnowledge (agent sees a `query` string), decryptKnowledgeContent (decrypt sealed hits/doc + apply sealed-only sourcePath/section/category filters). Wired into shim.ts forward path."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p4-shim-client",
+        actor: "agent",
+        summary: "MILESTONE-1 E2EE LOOP CODE-COMPLETE + verified end-to-end (unit): shim suite 29/29 (7 new knowledge tests: on-device embed+cloak, query-text never leaves device, vault-key-required, tools/list rewrite, hit/doc decrypt, sealed-only post-filter). tsc strict-clean."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p6-byo-inference-hook",
+        actor: "agent",
+        summary: "P6 done + verified: seal.ts (AES-GCM encrypt counterpart), memoryHook.ts (BYO-inference: EXTRACT_PROMPT, redactSecrets, parseExtractedMemories incl claude -p envelope, prepareMemoriesForCommit redact+confidence+dedup+embed+cloak+seal, runMemorySync injectable IO, installMemoryHook idempotent SessionEnd merge), CLI `memory install|run|sync`. Shim suite 40/40."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p8-ultra-tier",
+        actor: "agent",
+        summary: "P8 functional Ultra tier: config+legacy.ts Ultra SKUs (Apple+Play), shared.ts BURNBAR_ULTRA_ENTITLEMENT_ID + isActiveBurnBarUltraEntitlement + assertActiveBurnBarUltraEntitlement, reconciler.ts Ultra->mirror(proMax) branch, firestore.rules Ultra SKUs in all 3 premium/media/computerUse allowlists, resolvePensieveTier strict. Verified: tsc clean, lint 0 errors, test:appstore 48/48 (+2 Ultra-mirrors-proMax assertions), Pensieve vitest 12/12."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "decision",
+        phase: "p8-ultra-tier",
+        actor: "agent",
+        summary: "DEFERRED (documented follow-ups, non-functional): (1) tierCogs.ts Ultra COGS bucket + Pensieve unit costs + schemaVersion bump — skipped to avoid blind-breaking the test:tier-cogs snapshot; analytics only, doesn't gate features. (2) Client HostedQuotaSubscriptionStore isActiveUltra (iOS+Android) — folded into the P7 native layer."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p9-security-docs",
+        actor: "agent",
+        summary: "P9 done: test-hosted-mcp-security.sh extended with 8 Pensieve adversarial cases (loud-skip when env absent; bash -n clean). docs/PENSIEVE.md: full as-built architecture, Firestore-vector deviation rationale, threat model, DPA-not-needed note, file map, verification commands, deployment checklist, remaining-work."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "p5-ingestion-functions",
+        actor: "agent",
+        summary: "P5 functions: knowledgeSync.ts — onKnowledgeRepoPush (GitHub HMAC webhook, enqueue-only, never reads contents → E2EE preserved), connectKnowledgeRepo/disconnectKnowledgeRepo (gated), reconcileKnowledgeMemoryDaily (onSchedule drift backstop, flags stale manifests for device re-sync). tsc+lint clean, exported from index.ts."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "validated",
+        phase: "final-sweep",
+        actor: "agent",
+        summary: "FINAL VERIFICATION SWEEP all green: chunker 10/10 + zero-write reconcile, shim 40/40, hosted-mcp 28/28, functions tsc+lint clean + Pensieve vitest 12/12 + appstore 48/48, firestore.indexes.json valid, security harness bash -n clean, fast-feedback.yml valid YAML. ~126 tests passing across the verifiable surface."
+      },
+      {
+        ts: "2026-06-02T12:33:04Z",
+        status: "blocked",
+        phase: "native-layer",
+        actor: "agent",
+        summary: "P5-native (KnowledgeSyncService.swift, PensieveKnowledgeWatcher.swift) + P7 (iOS/macOS/Android Pensieve UI) marked [incomplete]: no Xcode/Gradle to verify, and target files are already modified in the working tree (conflict risk). Precise specs in docs/PENSIEVE.md 'Remaining work'."
+      }
+    ];
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function renderEvent(event) {
+      const status = escapeHtml(event.status || "event");
+      const phase = escapeHtml(event.phase || "general");
+      const actor = escapeHtml(event.actor || "agent");
+      const timestamp = escapeHtml(event.ts || "");
+      const summary = escapeHtml(event.summary || "");
+      return `
+        <article class="event">
+          <div class="event-head">
+            <span class="badge status-${status}">${status}</span>
+            <span class="phase">${phase}</span>
+            <span class="actor">${actor}</span>
+            <time datetime="${timestamp}">${timestamp}</time>
+          </div>
+          <p class="event-summary">${summary}</p>
+        </article>
+      `;
+    }
+
+    function renderProgressTimeline() {
+      const target = document.getElementById("progress-timeline");
+      const events = Array.isArray(progressEvents) ? progressEvents : [];
+      if (events.length === 0) {
+        target.innerHTML = "<p>No progress events recorded yet.</p>";
+        return;
+      }
+      target.innerHTML = events.map(renderEvent).join("");
+    }
+    renderProgressTimeline();
+  </script>
+</body>
+</html>

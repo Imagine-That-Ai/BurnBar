@@ -84,6 +84,19 @@ export {
   queryConversations,
 } from "./callables/encryptedSearch.js";
 
+export {
+  commitKnowledgeBatch,
+  configureKnowledgeSource,
+  deleteKnowledgeSource,
+  purgeKnowledgeMemory,
+} from "./callables/knowledgeMemory.js";
+export {
+  onKnowledgeRepoPush,
+  connectKnowledgeRepo,
+  disconnectKnowledgeRepo,
+  reconcileKnowledgeMemoryDaily,
+} from "./callables/knowledgeSync.js";
+
 export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {
   bindAppCheckAttestation,

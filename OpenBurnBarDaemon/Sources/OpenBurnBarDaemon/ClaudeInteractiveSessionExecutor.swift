@@ -313,9 +313,9 @@ public final class ClaudeInteractiveSessionExecutor: @unchecked Sendable {
                 environment[key] = value
             }
         }
-        if environment["PATH"] == nil {
-            environment["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-        }
+        environment["PATH"] = ClaudeInteractiveMeterExperiment
+            .claudeRuntimePathEntries(environment: current)
+            .joined(separator: ":")
         environment["HOME"] = NSHomeDirectory()
         environment["TERM"] = "xterm-256color"
         return environment

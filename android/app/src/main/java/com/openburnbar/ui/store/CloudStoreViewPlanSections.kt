@@ -3,7 +3,10 @@
 
 package com.openburnbar.ui.store
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.painterResource
+import com.openburnbar.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -153,7 +157,7 @@ internal fun LazyListScope.cloudPaidTierLazyItems(
                     label = "Cloud",
                     title = "BurnBar Cloud",
                     summary = "Quota sync, encrypted history, search, and memory across every device.",
-                    icon = Icons.Filled.Cloud,
+                    drawableRes = R.drawable.cloud_tier_crest,
                     accent = CloudStorePal.ember,
                     featureChips = listOf("Quota sync", "History", "Memory"),
                 ),
@@ -172,7 +176,7 @@ internal fun LazyListScope.cloudPaidTierLazyItems(
                     label = "Cloud Pro",
                     title = "BurnBar Cloud Pro",
                     summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
-                    icon = Icons.Filled.AutoAwesome,
+                    drawableRes = R.drawable.cloud_tier_crest_pro,
                     accent = CloudStorePal.whimsy,
                     featureChips = listOf("Floo", "Agent Control", "Relay"),
                     featured = true,
@@ -229,7 +233,7 @@ private fun CloudPaidTierColumn(
                 label = "Cloud",
                 title = "BurnBar Cloud",
                 summary = "Quota sync, encrypted history, search, and memory across every device.",
-                icon = Icons.Filled.Cloud,
+                drawableRes = R.drawable.cloud_tier_crest,
                 accent = CloudStorePal.ember,
                 featureChips = listOf("Quota sync", "History", "Memory"),
             ),
@@ -244,7 +248,7 @@ private fun CloudPaidTierColumn(
                 label = "Cloud Pro",
                 title = "BurnBar Cloud Pro",
                 summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
-                icon = Icons.Filled.AutoAwesome,
+                drawableRes = R.drawable.cloud_tier_crest_pro,
                 accent = CloudStorePal.whimsy,
                 featureChips = listOf("Floo", "Agent Control", "Relay"),
                 featured = true,
@@ -348,7 +352,7 @@ internal fun CloudPaidTierPlans(args: CloudPaidTierPlansArgs) {
             label = "Cloud",
             title = "BurnBar Cloud",
             summary = "Quota sync, encrypted history, search, and memory across every device.",
-            icon = Icons.Filled.Cloud,
+            drawableRes = R.drawable.cloud_tier_crest,
             accent = CloudStorePal.ember,
             featureChips = listOf("Quota sync", "History", "Memory"),
         ),
@@ -366,7 +370,7 @@ internal fun CloudPaidTierPlans(args: CloudPaidTierPlansArgs) {
             label = "Cloud Pro",
             title = "BurnBar Cloud Pro",
             summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
-            icon = Icons.Filled.AutoAwesome,
+            drawableRes = R.drawable.cloud_tier_crest_pro,
             accent = CloudStorePal.whimsy,
             featureChips = listOf("Floo", "Agent Control", "Relay"),
             featured = true,
@@ -440,7 +444,7 @@ internal data class TierPlanPresentation(
     val label: String,
     val title: String,
     val summary: String,
-    val icon: ImageVector,
+    val drawableRes: Int,
     val accent: Color,
     val featureChips: List<String>,
     val featured: Boolean = false,
@@ -534,7 +538,7 @@ internal fun TierPlanCardBody(
 internal fun TierPlanCardHeader(presentation: TierPlanPresentation) {
     val accent = presentation.accent
     Row(verticalAlignment = Alignment.CenterVertically) {
-        PlanIconChip(presentation.icon, accent)
+        PlanIconChip(presentation.drawableRes, accent)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -558,7 +562,7 @@ internal fun TierPlanCardHeader(presentation: TierPlanPresentation) {
 }
 
 @Composable
-internal fun PlanIconChip(icon: ImageVector, accent: Color) {
+internal fun PlanIconChip(drawableRes: Int, accent: Color) {
     Box(
         modifier =
         Modifier
@@ -567,10 +571,15 @@ internal fun PlanIconChip(icon: ImageVector, accent: Color) {
             .background(
                 brush = Brush.linearGradient(listOf(accent.copy(alpha = 0.95f), accent.copy(alpha = 0.55f))),
             )
-            .border(0.7.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(15.dp)),
+            .border(0.7.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(15.dp))
+            .padding(6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
+        Image(
+            painter = painterResource(id = drawableRes),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -678,7 +687,7 @@ internal fun TopUpPlanRail(
             TopUpPurchaseRow(
                 title = if (agentControl) "100 Agent Control actions" else "50 GB Floo relay",
                 detail = "One-time Cloud Pro top-up",
-                icon = if (agentControl) Icons.Filled.Bolt else Icons.Filled.Wifi,
+                drawableRes = if (agentControl) R.drawable.cloud_chip_agent else R.drawable.cloud_chip_floo,
                 price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
                 enabled = enabled,
                 purchaseTestTag = cloudStorePurchaseTag(product.id),
@@ -692,7 +701,7 @@ internal fun TopUpPlanRail(
 internal fun TopUpPurchaseRow(
     title: String,
     detail: String,
-    icon: ImageVector,
+    drawableRes: Int,
     price: String,
     enabled: Boolean,
     purchaseTestTag: String? = null,
@@ -712,7 +721,7 @@ internal fun TopUpPurchaseRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PlanIconChip(icon, CloudStorePal.amberDark)
+        PlanIconChip(drawableRes, CloudStorePal.amberDark)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = CloudStorePal.textPrimary)
             Text(detail, fontSize = 12.sp, color = CloudStorePal.textSecondary)
@@ -824,29 +833,25 @@ internal fun CloudCapabilityLineup(isActive: Boolean) {
             }
         }
         CapabilityRow(
-            icon = Icons.Filled.Cloud,
-            tint = CloudStorePal.ember,
+            drawableRes = R.drawable.cloud_cap_quota_refresh,
             title = "Hosted Codex quota",
             detail = "Refresh Codex quota from any signed-in device. We run the runner; you get the dial.",
             isActive = isActive,
         )
         CapabilityRow(
-            icon = Icons.Filled.Sync,
-            tint = CloudStorePal.amber,
+            drawableRes = R.drawable.cloud_cap_cross_device,
             title = "Conversation backup & resume",
             detail = "Encrypted in transit, restored across iPhone, iPad, and Mac. Pick up exactly where you left off.",
             isActive = isActive,
         )
         CapabilityRow(
-            icon = Icons.Filled.Description,
-            tint = CloudStorePal.blaze,
+            drawableRes = R.drawable.cloud_cap_session_search,
             title = "Full session-log sync",
             detail = "Every tool call, every chunk, every cost line — mirrored to the cloud and searchable on every device.",
             isActive = isActive,
         )
         CapabilityRow(
-            icon = Icons.Filled.Wifi,
-            tint = CloudStorePal.whimsy,
+            drawableRes = R.drawable.cloud_cap_remote_relay,
             title = "Hermes remote relay",
             detail = "Reach your Mac's Hermes from anywhere over a verified WebSocket. App Check + Apple JWS, end-to-end.",
             isActive = isActive,
@@ -855,7 +860,7 @@ internal fun CloudCapabilityLineup(isActive: Boolean) {
 }
 
 @Composable
-internal fun CapabilityRow(icon: ImageVector, tint: Color, title: String, detail: String, isActive: Boolean) {
+internal fun CapabilityRow(drawableRes: Int, title: String, detail: String, isActive: Boolean) {
     AuroraGlassCard(cornerRadius = 16) {
         Row(
             verticalAlignment = Alignment.Top,
@@ -868,13 +873,17 @@ internal fun CapabilityRow(icon: ImageVector, tint: Color, title: String, detail
                 contentAlignment = Alignment.Center,
                 modifier =
                 Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        brush = Brush.linearGradient(listOf(tint, tint.copy(alpha = 0.7f))),
-                    ),
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(CloudStorePal.surface.copy(alpha = 0.50f))
+                    .border(0.9.dp, CloudStorePal.border.copy(alpha = 0.45f), CircleShape)
+                    .padding(7.dp),
             ) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Image(
+                    painter = painterResource(id = drawableRes),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

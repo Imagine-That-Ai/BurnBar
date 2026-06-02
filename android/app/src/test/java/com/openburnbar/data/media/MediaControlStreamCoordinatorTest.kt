@@ -3,6 +3,7 @@
 
 package com.openburnbar.data.media
 
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
@@ -73,6 +74,43 @@ class MediaControlStreamCoordinatorTest {
             mirror.media?.mirrorRequest?.streamingCapabilities?.toMercury()?.mediaFrameVersions,
         )
         assertNotNull(mirror.media?.mirrorRequest?.requestedAt)
+    }
+
+    @Test
+    fun requestMirror_sendsAgentTerminalRequestWhenProvided() = runTest {
+        val stream = RecordingStream()
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+                scope = backgroundScope,
+                peerDeviceIdProvider = { "android-device-1" },
+                controlAuthorityPeerNodeIdProvider = { "android-peer-node-1" },
+            )
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        val agentTerminal = HermesRealtimeRelayAgentTerminalRequest(
+            runtimeId = "hermes",
+            workingDirectory = "/path/to/work",
+            interactive = true,
+            modelID = "gemini-1.5-pro",
+        )
+        val requestID = coordinator.requestMirror(
+            requesterDisplayName = "Alberto's Android",
+            agentTerminal = agentTerminal,
+        )
+
+        val mirror = stream.sent[1]
+        assertEquals(HermesRealtimeRelayFrameType.MEDIA_MIRROR_REQUEST, mirror.type)
+        assertEquals("uid-1", mirror.uid)
+        assertEquals("conn-1", mirror.connectionId)
+        assertEquals(requestID, mirror.requestId)
+        assertEquals(requestID, mirror.media?.mirrorRequest?.requestId)
+        assertNotNull(mirror.media?.mirrorRequest?.agentTerminal)
+        val term = mirror.media?.mirrorRequest?.agentTerminal
+        assertEquals("hermes", term?.runtimeId)
+        assertEquals("/path/to/work", term?.workingDirectory)
+        assertEquals(true, term?.interactive)
+        assertEquals("gemini-1.5-pro", term?.modelID)
     }
 
     @Test

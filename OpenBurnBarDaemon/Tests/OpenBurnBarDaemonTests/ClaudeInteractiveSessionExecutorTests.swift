@@ -210,6 +210,40 @@ final class ClaudeInteractiveSessionExecutorTests: XCTestCase {
         XCTAssertTrue(args.contains("--append-system-prompt"))
     }
 
+    func test_claudeDiscoveryIncludesNvmInstallWhenPathIsLaunchdMinimal() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-claude-discovery-\(UUID().uuidString)", isDirectory: true)
+        let nvmBin = home
+            .appendingPathComponent(".nvm", isDirectory: true)
+            .appendingPathComponent("versions", isDirectory: true)
+            .appendingPathComponent("node", isDirectory: true)
+            .appendingPathComponent("v20.20.2", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: nvmBin, withIntermediateDirectories: true)
+        try Data().write(to: nvmBin.appendingPathComponent("claude"))
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let launchdEnvironment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+        let candidates = ClaudeInteractiveMeterExperiment.claudeExecutableCandidatePaths(
+            environment: launchdEnvironment,
+            homeDirectory: home
+        )
+        let runtimePath = ClaudeInteractiveMeterExperiment.claudeRuntimePathEntries(
+            environment: launchdEnvironment,
+            homeDirectory: home
+        )
+
+        let expectedClaude = nvmBin
+            .appendingPathComponent("claude")
+            .resolvingSymlinksInPath()
+            .path
+        let expectedBin = nvmBin
+            .resolvingSymlinksInPath()
+            .path
+        XCTAssertTrue(candidates.contains(expectedClaude))
+        XCTAssertTrue(runtimePath.contains(expectedBin))
+    }
+
     // MARK: - AsyncSemaphore
 
     func test_asyncSemaphore_boundsConcurrency() async {

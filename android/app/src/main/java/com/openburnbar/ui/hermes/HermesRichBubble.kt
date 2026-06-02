@@ -33,10 +33,6 @@ import com.openburnbar.ui.theme.AuroraColors
 //   3. A single `Text(buildAnnotatedString)` renders the whole bubble so
 //      prose flows naturally and chips never break mid-line.
 //
-// While the message is mid-stream this renderer falls back to a plain
-// `Text(text)` so the latest chunk is always painted without waiting on
-// parse / layout.
-
 @Suppress("UnusedParameter")
 @Composable
 fun HermesRichBubble(
@@ -50,20 +46,6 @@ fun HermesRichBubble(
     codeBackground: Color = MaterialTheme.colorScheme.surfaceVariant,
     onAtomTap: ((HermesAtom) -> Unit)? = null,
 ) {
-    // Streaming path — plain text only. We avoid re-parsing every
-    // character to keep the bubble fluid; the parser kicks in once the
-    // stream completes and the surrounding view re-renders with
-    // `isStreaming = false`.
-    if (isStreaming) {
-        Text(
-            text = text,
-            color = baseColor,
-            fontSize = baseSize.sp,
-            modifier = modifier,
-        )
-        return
-    }
-
     val runs = remember(text) { HermesAtomParser.parse(text) }
     val inlineContent =
         remember(text, baseSize) {

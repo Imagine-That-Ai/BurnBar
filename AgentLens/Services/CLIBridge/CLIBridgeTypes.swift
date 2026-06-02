@@ -7,17 +7,53 @@ enum CLIChatStreamEvent: Hashable {
     case toolUse(name: String, detail: String?)
     case toolResult(name: String, detail: String?)
     case usage(CLIUsageSnapshot)
-}
 
-struct CLIUsageSnapshot: Hashable {
-    let inputTokens: Int
-    let outputTokens: Int
-    let cacheCreationTokens: Int
-    let cacheReadTokens: Int
-    let reasoningTokens: Int
+    init?(_ event: HermesStreamEvent) {
+        switch event {
+        case .messageChunk(let text), .reasoningChunk(let text), .refusalChunk(let text):
+            self = .text(text)
+        case .toolCallChunk(_, _, let name, let argumentsDelta):
+            self = .toolUse(
+                name: Self.nonEmpty(name) ?? "tool",
+                detail: Self.nonEmpty(argumentsDelta)
+            )
+        case .toolCallFinished(_, let name, let arguments):
+            self = .toolUse(name: name, detail: Self.nonEmpty(arguments))
+        case .toolResult(_, let name, let detail):
+            self = .toolResult(name: name, detail: detail)
+        case .messageStop(_, _, let usage):
+            guard let usage else { return nil }
+            self = .usage(CLIUsageSnapshot(
+                inputTokens: usage.promptTokens ?? 0,
+                outputTokens: usage.outputTokens ?? 0,
+                cacheCreationTokens: 0,
+                cacheReadTokens: 0,
+                reasoningTokens: 0
+            ))
+        case .longToolHint, .notice:
+            return nil
+        }
+    }
 
-    var totalTokens: Int {
-        inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens + reasoningTokens
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    var hermesStreamEvent: HermesStreamEvent {
+        switch self {
+        case .text(let text):
+            return .messageChunk(text: text)
+        case .toolUse(let name, let detail):
+            return .toolCallChunk(id: name, index: 0, name: name, argumentsDelta: detail ?? "")
+        case .toolResult(let name, let detail):
+            return .toolResult(id: nil, name: name, detail: detail)
+        case .usage(let usage):
+            return .messageStop(finishReason: nil, outcome: .normal, usage: usage.hermesTokenUsage)
+        }
     }
 }
 

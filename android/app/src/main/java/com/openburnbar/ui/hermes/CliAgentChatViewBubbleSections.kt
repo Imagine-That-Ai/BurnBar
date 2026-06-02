@@ -352,13 +352,25 @@ private fun AgentMessageBubbleBody(message: AssistantChatMessage, provider: Agen
             ),
         ),
     ) {
-        if (isStreaming) {
-            StreamingDots(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
+        val displayText =
+            when {
+                message.text.isBlank() && isStreaming -> "…"
+                isStreaming -> message.text + "▍"
+                else -> message.text
+            }
+        if (!message.isError) {
+            HermesRichBubble(
+                text = displayText,
+                isStreaming = isStreaming,
+                baseSize = 15f,
+                baseColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.widthIn(max = 320.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+            )
         } else {
             Text(
-                text = message.text,
+                text = displayText,
                 fontSize = 15.sp,
-                color = if (message.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.widthIn(max = 320.dp).padding(horizontal = 16.dp, vertical = 12.dp),
             )
         }
@@ -450,4 +462,3 @@ private fun RowScope.AssistantToolCallLabels(tool: AssistantChatToolCall, isDone
         }
     }
 }
-

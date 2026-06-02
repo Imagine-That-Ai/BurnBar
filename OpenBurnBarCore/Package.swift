@@ -130,6 +130,9 @@ let package = Package(
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
                 .product(name: "Testing", package: "swift-testing")
+            ],
+            resources: [
+                .process("Fixtures")
             ]
         ),
         .testTarget(
