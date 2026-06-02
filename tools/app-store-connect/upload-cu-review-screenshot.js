@@ -13,6 +13,8 @@
  * Usage:
  *   node tools/app-store-connect/upload-cu-review-screenshot.js \
  *       --image /path/to/1024.png --apply
+ *   node tools/app-store-connect/upload-cu-review-screenshot.js \
+ *       --top-ups-only --apply
  */
 'use strict';
 
@@ -34,6 +36,7 @@ const IMAGE_OVERRIDE = (() => {
   return i >= 0 ? args[i + 1] : null;
 })();
 const APPLY = args.includes('--apply');
+const TOP_UPS_ONLY = args.includes('--top-ups-only');
 
 const TARGET_PRODUCT_IDS = [
   'com.openburnbar.pro.monthly',
@@ -61,12 +64,6 @@ const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.agentControl.actions100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
   'com.openburnbar.floo.relay50gb': 'review-final/burnbar-cloud-pro-topups-review.jpg',
 };
-const TRUSTED_UPLOAD_HOST_SUFFIXES = [
-  '.apple.com',
-  '.mzstatic.com',
-  '.icloud-content.com',
-  '.amazonaws.com',
-];
 const TRUSTED_UPLOAD_HOST_SUFFIXES = [
   '.apple.com',
   '.mzstatic.com',
@@ -343,17 +340,19 @@ async function uploadInAppPurchaseScreenshotFor(iap, imagePath, token, dryRun) {
   }
   const token = makeToken();
   console.log(`mode: ${APPLY ? 'APPLY' : 'DRY-RUN'}  app=${APP_ID}`);
-  const targets = await listCommercialSubscriptions(token);
-  for (const target of targets) {
-    if (target.missing) {
-      console.log(`\n→ ${target.productId}`);
-      console.log('  missing subscription; skipping review screenshot upload');
-      continue;
+  if (!TOP_UPS_ONLY) {
+    const targets = await listCommercialSubscriptions(token);
+    for (const target of targets) {
+      if (target.missing) {
+        console.log(`\n→ ${target.productId}`);
+        console.log('  missing subscription; skipping review screenshot upload');
+        continue;
+      }
+      const imagePath = defaultImagePath(target.productId);
+      if (!fs.existsSync(imagePath)) throw new Error(`image not found: ${imagePath}`);
+      console.log(`  target ${target.productId} (${target.name || 'unnamed'}, state=${target.state || 'unknown'})`);
+      await uploadFor(target.id, imagePath, token, !APPLY);
     }
-    const imagePath = defaultImagePath(target.productId);
-    if (!fs.existsSync(imagePath)) throw new Error(`image not found: ${imagePath}`);
-    console.log(`  target ${target.productId} (${target.name || 'unnamed'}, state=${target.state || 'unknown'})`);
-    await uploadFor(target.id, imagePath, token, !APPLY);
   }
   const topUps = await listCommercialInAppPurchases(token);
   for (const topUp of topUps) {
