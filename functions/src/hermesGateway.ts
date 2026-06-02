@@ -249,7 +249,11 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
     typeof record.byteCount === "number" &&
     Number.isFinite(record.byteCount) &&
     typeof record.storagePath === "string" &&
-    (status === "pending_upload" || status === "uploaded" || status === "failed" || status === "expired" || status === "rejected") &&
+    (status === "pending_upload" ||
+      status === "uploaded" ||
+      status === "failed" ||
+      status === "expired" ||
+      status === "rejected") &&
     typeof record.createdAt === "string" &&
     (typeof record.updatedAt === "string" || record.updatedAt === undefined) &&
     typeof record.expiresAt === "string" &&
@@ -330,15 +334,18 @@ export function sanitizeHermesGatewayModelOptions(raw: unknown): HermesGatewayMo
     if (!record) continue;
     const modelId = sanitizeHermesGatewayModelId(record.modelId);
     if (!modelId || seen.has(modelId.toLowerCase())) continue;
-    const providerId = typeof record.providerId === "string" && record.providerId.trim()
-      ? record.providerId.trim().slice(0, 80)
-      : "hermes";
-    const providerName = typeof record.providerName === "string" && record.providerName.trim()
-      ? record.providerName.trim().slice(0, 120)
-      : providerId;
-    const displayName = typeof record.displayName === "string" && record.displayName.trim()
-      ? record.displayName.trim().slice(0, 180)
-      : modelId;
+    const providerId =
+      typeof record.providerId === "string" && record.providerId.trim()
+        ? record.providerId.trim().slice(0, 80)
+        : "hermes";
+    const providerName =
+      typeof record.providerName === "string" && record.providerName.trim()
+        ? record.providerName.trim().slice(0, 120)
+        : providerId;
+    const displayName =
+      typeof record.displayName === "string" && record.displayName.trim()
+        ? record.displayName.trim().slice(0, 180)
+        : modelId;
     seen.add(modelId.toLowerCase());
     options.push({ providerId, providerName, modelId, displayName });
     if (options.length >= 100) break;

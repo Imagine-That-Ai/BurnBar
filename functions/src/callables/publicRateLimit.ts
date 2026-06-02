@@ -78,10 +78,7 @@ async function incrementRateLimit(
   });
 }
 
-export async function checkPublicHttpRateLimit(
-  keyMaterial: string,
-  action: PublicHttpRateLimitAction,
-): Promise<void> {
+export async function checkPublicHttpRateLimit(keyMaterial: string, action: PublicHttpRateLimitAction): Promise<void> {
   const limit = PUBLIC_HTTP_LIMITS[action];
   await incrementRateLimit(rateLimitDocId(keyMaterial, action), action, limit);
 }
