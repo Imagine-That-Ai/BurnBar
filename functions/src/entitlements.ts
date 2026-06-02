@@ -65,6 +65,23 @@ export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> 
   return Number.isFinite(expiry) && expiry > Date.now();
 }
 
+export function isActiveBurnBarUltraEntitlement(raw: Record<string, unknown> | undefined): boolean {
+  if (!raw || raw.active !== true) return false;
+  if (!isProductionEntitlementEnvironment(raw)) return false;
+  const productID = typeof raw.productID === "string" ? raw.productID : "";
+  const cfg = getConfig();
+  if (
+    productID !== cfg.burnBarUltraProductID &&
+    productID !== cfg.burnBarUltraAnnualProductID &&
+    productID !== cfg.googlePlayUltraMonthlyProductID &&
+    productID !== cfg.googlePlayUltraAnnualProductID
+  ) {
+    return false;
+  }
+  const expiry = entitlementExpiryMillis(raw);
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
+
 export function entitlementExpiryMillis(raw: Record<string, unknown>): number {
   const expireAt = raw.expireAt;
   if (expireAt instanceof Timestamp) {
