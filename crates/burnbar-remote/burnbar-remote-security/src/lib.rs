@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use std::time::Duration;
@@ -10,9 +13,17 @@ use burnbar_remote_core::{
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 const SESSION_GRANT_SIGNING_CONTEXT: &[u8] = b"openburnbar.remote.session-grant.v1";
+const AUDIT_CHAIN_SCHEMA_VERSION: u16 = 1;
+pub const AUDIT_GENESIS_PARENT_HASH_HEX: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
+
+#[cfg(all(target_os = "macos", feature = "macos-keychain"))]
+const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AuthorizationError {
@@ -40,12 +51,24 @@ pub enum AuthorizationError {
     SignatureVerificationFailed,
     #[error("signature material is invalid")]
     InvalidSignatureMaterial,
+    #[error("session grant signer is not trusted")]
+    UntrustedSigner,
+    #[error("session grant signer has been revoked")]
+    RevokedSigner,
+    #[error("session grant signer binding does not match grant account/workspace")]
+    SignerBindingMismatch,
     #[error("rate limit exceeded for {scope}")]
     RateLimited { scope: String },
     #[error("high-risk action requires explicit confirmation")]
     HighRiskActionRequiresConfirmation,
     #[error("local kill switch is active")]
     KillSwitchActive,
+    #[error("secure key name is invalid")]
+    InvalidKeyName,
+    #[error("secure storage failed: {0}")]
+    SecureStorage(String),
+    #[error("audit chain failed: {0}")]
+    AuditChain(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,10 +123,37 @@ impl SignedSessionGrant {
         })
     }
 
-    pub fn verify(&self) -> Result<(), AuthorizationError> {
-        let public_key: [u8; 32] = self
-            .public_key
-            .as_slice()
+    /// Verifies cryptographic integrity against the public key embedded in the
+    /// envelope. This is not authorization; callers must use
+    /// `verify_with_trusted_signer` or a `SessionGrantVerifier` before accepting
+    /// a grant for a control session.
+    pub fn verify_untrusted_signature_only(&self) -> Result<(), AuthorizationError> {
+        self.verify_with_public_key(&self.public_key)
+    }
+
+    pub fn verify_with_trusted_signer(
+        &self,
+        signer: &TrustedSignerRecord,
+    ) -> Result<(), AuthorizationError> {
+        if signer.revoked {
+            return Err(AuthorizationError::RevokedSigner);
+        }
+        if self.signer_key_id != signer.signer_key_id {
+            return Err(AuthorizationError::UntrustedSigner);
+        }
+        if self.grant.descriptor.account_id != signer.account_id
+            || self.grant.descriptor.workspace_id != signer.workspace_id
+        {
+            return Err(AuthorizationError::SignerBindingMismatch);
+        }
+        if self.public_key != signer.public_key {
+            return Err(AuthorizationError::SignatureVerificationFailed);
+        }
+        self.verify_with_public_key(&signer.public_key)
+    }
+
+    fn verify_with_public_key(&self, public_key: &[u8]) -> Result<(), AuthorizationError> {
+        let public_key: [u8; 32] = public_key
             .try_into()
             .map_err(|_| AuthorizationError::InvalidSignatureMaterial)?;
         let signature: [u8; 64] = self
@@ -117,6 +167,103 @@ impl SignedSessionGrant {
         verifying_key
             .verify(&grant_signing_payload(&self.grant)?, &signature)
             .map_err(|_| AuthorizationError::SignatureVerificationFailed)
+    }
+}
+
+pub trait SessionGrantSigner: Send + Sync {
+    fn sign_session_grant(
+        &self,
+        grant: SessionGrant,
+    ) -> Result<SignedSessionGrant, AuthorizationError>;
+}
+
+pub trait SessionGrantVerifier: Send + Sync {
+    fn verify_session_grant(&self, grant: &SignedSessionGrant) -> Result<(), AuthorizationError>;
+}
+
+pub struct Ed25519SessionGrantSigner {
+    signer_key_id: String,
+    signing_key_bytes: Zeroizing<[u8; 32]>,
+}
+
+impl Ed25519SessionGrantSigner {
+    pub fn new(signer_key_id: impl Into<String>, signing_key_bytes: [u8; 32]) -> Self {
+        Self {
+            signer_key_id: signer_key_id.into(),
+            signing_key_bytes: Zeroizing::new(signing_key_bytes),
+        }
+    }
+
+    pub fn signer_key_id(&self) -> &str {
+        &self.signer_key_id
+    }
+
+    pub fn public_key(&self) -> Vec<u8> {
+        SigningKey::from_bytes(&self.signing_key_bytes)
+            .verifying_key()
+            .to_bytes()
+            .to_vec()
+    }
+}
+
+impl SessionGrantSigner for Ed25519SessionGrantSigner {
+    fn sign_session_grant(
+        &self,
+        grant: SessionGrant,
+    ) -> Result<SignedSessionGrant, AuthorizationError> {
+        SignedSessionGrant::sign(
+            grant,
+            self.signer_key_id.clone(),
+            *self.signing_key_bytes,
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustedSignerRecord {
+    pub signer_key_id: String,
+    pub public_key: Vec<u8>,
+    pub account_id: AccountId,
+    pub workspace_id: WorkspaceId,
+    pub revoked: bool,
+}
+
+#[derive(Default)]
+pub struct InMemoryTrustedSignerStore {
+    signers_by_key_id: RwLock<HashMap<String, TrustedSignerRecord>>,
+}
+
+impl InMemoryTrustedSignerStore {
+    pub fn upsert_signer(&self, signer: TrustedSignerRecord) -> Result<(), AuthorizationError> {
+        self.signers_by_key_id
+            .write()
+            .map_err(|_| AuthorizationError::StorePoisoned)?
+            .insert(signer.signer_key_id.clone(), signer);
+        Ok(())
+    }
+
+    pub fn revoke_signer(&self, signer_key_id: &str) -> Result<(), AuthorizationError> {
+        let mut guard = self
+            .signers_by_key_id
+            .write()
+            .map_err(|_| AuthorizationError::StorePoisoned)?;
+        if let Some(record) = guard.get_mut(signer_key_id) {
+            record.revoked = true;
+        }
+        Ok(())
+    }
+}
+
+impl SessionGrantVerifier for InMemoryTrustedSignerStore {
+    fn verify_session_grant(&self, grant: &SignedSessionGrant) -> Result<(), AuthorizationError> {
+        let signer = self
+            .signers_by_key_id
+            .read()
+            .map_err(|_| AuthorizationError::StorePoisoned)?
+            .get(&grant.signer_key_id)
+            .cloned()
+            .ok_or(AuthorizationError::UntrustedSigner)?;
+        grant.verify_with_trusted_signer(&signer)
     }
 }
 
@@ -181,7 +328,7 @@ impl PairingTicket {
 
 #[async_trait]
 pub trait SecureKeyStore: Send + Sync {
-    async fn read_key(&self, name: &str) -> Result<Vec<u8>, AuthorizationError>;
+    async fn read_key(&self, name: &str) -> Result<Zeroizing<Vec<u8>>, AuthorizationError>;
     async fn write_key(&self, name: &str, key: &[u8]) -> Result<(), AuthorizationError>;
     async fn delete_key(&self, name: &str) -> Result<(), AuthorizationError>;
 }
@@ -193,16 +340,19 @@ pub struct InMemorySecureKeyStore {
 
 #[async_trait]
 impl SecureKeyStore for InMemorySecureKeyStore {
-    async fn read_key(&self, name: &str) -> Result<Vec<u8>, AuthorizationError> {
+    async fn read_key(&self, name: &str) -> Result<Zeroizing<Vec<u8>>, AuthorizationError> {
+        validate_secure_key_name(name)?;
         self.keys
             .read()
             .map_err(|_| AuthorizationError::StorePoisoned)?
             .get(name)
             .cloned()
+            .map(Zeroizing::new)
             .ok_or(AuthorizationError::KeyUnavailable)
     }
 
     async fn write_key(&self, name: &str, key: &[u8]) -> Result<(), AuthorizationError> {
+        validate_secure_key_name(name)?;
         self.keys
             .write()
             .map_err(|_| AuthorizationError::StorePoisoned)?
@@ -211,6 +361,7 @@ impl SecureKeyStore for InMemorySecureKeyStore {
     }
 
     async fn delete_key(&self, name: &str) -> Result<(), AuthorizationError> {
+        validate_secure_key_name(name)?;
         self.keys
             .write()
             .map_err(|_| AuthorizationError::StorePoisoned)?
@@ -219,9 +370,114 @@ impl SecureKeyStore for InMemorySecureKeyStore {
     }
 }
 
+fn validate_secure_key_name(name: &str) -> Result<(), AuthorizationError> {
+    if name.is_empty()
+        || name.len() > 128
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+    {
+        return Err(AuthorizationError::InvalidKeyName);
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "macos", feature = "macos-keychain"))]
+#[derive(Clone, Debug)]
+pub struct MacOsKeychainSecureKeyStore {
+    service: String,
+    account_prefix: String,
+}
+
+#[cfg(all(target_os = "macos", feature = "macos-keychain"))]
+impl MacOsKeychainSecureKeyStore {
+    pub fn new(account_prefix: impl Into<String>) -> Self {
+        Self {
+            service: "com.openburnbar.remote".to_string(),
+            account_prefix: account_prefix.into(),
+        }
+    }
+
+    fn account_for_name(&self, name: &str) -> Result<String, AuthorizationError> {
+        validate_secure_key_name(name)?;
+        Ok(format!("{}:{name}", self.account_prefix))
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "macos-keychain"))]
+#[async_trait]
+impl SecureKeyStore for MacOsKeychainSecureKeyStore {
+    async fn read_key(&self, name: &str) -> Result<Zeroizing<Vec<u8>>, AuthorizationError> {
+        let service = self.service.clone();
+        let account = self.account_for_name(name)?;
+        let bytes = tokio::task::spawn_blocking(move || {
+            let mut options =
+                security_framework::passwords::PasswordOptions::new_generic_password(
+                    &service, &account,
+                );
+            options.set_access_synchronized(Some(false));
+            security_framework::passwords::generic_password(options)
+        })
+        .await
+        .map_err(|err| AuthorizationError::SecureStorage(err.to_string()))?
+        .map_err(map_keychain_error)?;
+        Ok(Zeroizing::new(bytes))
+    }
+
+    async fn write_key(&self, name: &str, key: &[u8]) -> Result<(), AuthorizationError> {
+        let service = self.service.clone();
+        let account = self.account_for_name(name)?;
+        let key = Zeroizing::new(key.to_vec());
+        tokio::task::spawn_blocking(move || {
+            let mut options =
+                security_framework::passwords::PasswordOptions::new_generic_password(
+                    &service, &account,
+                );
+            options.set_access_synchronized(Some(false));
+            options.set_label("OpenBurnBar Remote Device Key");
+            security_framework::passwords::set_generic_password_options(&key, options)
+        })
+        .await
+        .map_err(|err| AuthorizationError::SecureStorage(err.to_string()))?
+        .map_err(map_keychain_error)
+    }
+
+    async fn delete_key(&self, name: &str) -> Result<(), AuthorizationError> {
+        let service = self.service.clone();
+        let account = self.account_for_name(name)?;
+        tokio::task::spawn_blocking(move || {
+            let mut options =
+                security_framework::passwords::PasswordOptions::new_generic_password(
+                    &service, &account,
+                );
+            options.set_access_synchronized(Some(false));
+            security_framework::passwords::delete_generic_password_options(options)
+        })
+        .await
+        .map_err(|err| AuthorizationError::SecureStorage(err.to_string()))?
+        .or_else(|err| {
+            if err.code() == ERR_SEC_ITEM_NOT_FOUND {
+                Ok(())
+            } else {
+                Err(map_keychain_error(err))
+            }
+        })
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "macos-keychain"))]
+fn map_keychain_error(err: security_framework::Error) -> AuthorizationError {
+    if err.code() == ERR_SEC_ITEM_NOT_FOUND {
+        AuthorizationError::KeyUnavailable
+    } else {
+        AuthorizationError::SecureStorage(format!("keychain status {}", err.code()))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PeerAuthorizationRequest {
     pub remote_endpoint_id: EndpointId,
+    pub requested_device_id: DeviceId,
     pub requested_account_id: AccountId,
     pub requested_workspace_id: WorkspaceId,
     pub host_device_id: DeviceId,
@@ -368,6 +624,7 @@ impl SessionAuthorizer for InMemorySessionAuthorizer {
         }
         if record.account_id != request.requested_account_id
             || record.workspace_id != request.requested_workspace_id
+            || record.device_id != request.requested_device_id
         {
             return Err(AuthorizationError::BindingMismatch);
         }
@@ -582,6 +839,251 @@ impl AuditSink for InMemoryAuditSink {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditChainEntry {
+    pub schema_version: u16,
+    pub entry_index: u64,
+    pub kind: AuditEventKind,
+    pub account_id: AccountId,
+    pub workspace_id: WorkspaceId,
+    pub session_id: Option<SessionId>,
+    pub device_id: Option<DeviceId>,
+    pub endpoint_id: Option<EndpointId>,
+    pub timestamp_micros: TimestampMicros,
+    pub detail_hash_hex: String,
+    pub parent_entry_hash_hex: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditChainHead {
+    pub schema_version: u16,
+    pub hash_algorithm: String,
+    pub entry_count: u64,
+    pub head_hash_hex: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AuditInvalidReason {
+    DecodeFailure,
+    UnsupportedSchema,
+    UnexpectedEntryIndex,
+    ParentHashMismatch,
+    TruncatedFile,
+    HeadHashMismatch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditValidationReport {
+    pub entry_count: u64,
+    pub is_valid: bool,
+    pub first_invalid_entry_index: Option<u64>,
+    pub first_invalid_reason: Option<AuditInvalidReason>,
+    pub head_hash_hex: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TamperEvidentAuditLog {
+    path: PathBuf,
+}
+
+impl TamperEvidentAuditLog {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn validate(
+        &self,
+        expected_head_hash_hex: Option<&str>,
+    ) -> Result<AuditValidationReport, AuthorizationError> {
+        validate_audit_chain_file(&self.path, expected_head_hash_hex)
+    }
+
+    pub fn head(&self) -> Result<AuditChainHead, AuthorizationError> {
+        let report = self.validate(None)?;
+        Ok(AuditChainHead {
+            schema_version: AUDIT_CHAIN_SCHEMA_VERSION,
+            hash_algorithm: "sha256".to_string(),
+            entry_count: report.entry_count,
+            head_hash_hex: report.head_hash_hex,
+        })
+    }
+}
+
+#[async_trait]
+impl AuditSink for TamperEvidentAuditLog {
+    async fn append(&self, event: AuditEvent) -> Result<(), AuthorizationError> {
+        append_audit_event(&self.path, event)
+    }
+}
+
+fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), AuthorizationError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    }
+    let report = validate_audit_chain_file(path, None)?;
+    if !report.is_valid {
+        return Err(AuthorizationError::AuditChain(format!(
+            "refusing to append to invalid audit chain: {:?}",
+            report.first_invalid_reason
+        )));
+    }
+    let entry = AuditChainEntry {
+        schema_version: AUDIT_CHAIN_SCHEMA_VERSION,
+        entry_index: report.entry_count,
+        kind: event.kind,
+        account_id: event.account_id,
+        workspace_id: event.workspace_id,
+        session_id: event.session_id,
+        device_id: event.device_id,
+        endpoint_id: event.endpoint_id,
+        timestamp_micros: event.at,
+        detail_hash_hex: sha256_hex(event.detail.as_bytes()),
+        parent_entry_hash_hex: report
+            .head_hash_hex
+            .unwrap_or_else(|| AUDIT_GENESIS_PARENT_HASH_HEX.to_string()),
+    };
+    let bytes = canonical_json_bytes(&entry)?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    file.write_all(&bytes)
+        .and_then(|_| file.write_all(b"\n"))
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
+}
+
+fn validate_audit_chain_file(
+    path: &Path,
+    expected_head_hash_hex: Option<&str>,
+) -> Result<AuditValidationReport, AuthorizationError> {
+    let raw = match fs::read(path) {
+        Ok(raw) => raw,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(AuditValidationReport {
+                entry_count: 0,
+                is_valid: expected_head_hash_hex.is_none(),
+                first_invalid_entry_index: None,
+                first_invalid_reason: expected_head_hash_hex
+                    .map(|_| AuditInvalidReason::HeadHashMismatch),
+                head_hash_hex: None,
+            });
+        }
+        Err(err) => return Err(AuthorizationError::AuditChain(err.to_string())),
+    };
+    if raw.is_empty() {
+        return Ok(AuditValidationReport {
+            entry_count: 0,
+            is_valid: expected_head_hash_hex.is_none(),
+            first_invalid_entry_index: None,
+            first_invalid_reason: expected_head_hash_hex.map(|_| AuditInvalidReason::HeadHashMismatch),
+            head_hash_hex: None,
+        });
+    }
+    if !raw.ends_with(b"\n") {
+        return Ok(AuditValidationReport {
+            entry_count: 0,
+            is_valid: false,
+            first_invalid_entry_index: None,
+            first_invalid_reason: Some(AuditInvalidReason::TruncatedFile),
+            head_hash_hex: None,
+        });
+    }
+    let text = std::str::from_utf8(&raw).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    let mut expected_index = 0u64;
+    let mut parent_hash = AUDIT_GENESIS_PARENT_HASH_HEX.to_string();
+    let mut head_hash = None;
+    for line in text.lines().filter(|line| !line.is_empty()) {
+        let entry: AuditChainEntry = match serde_json::from_str(line) {
+            Ok(entry) => entry,
+            Err(_) => {
+                return Ok(invalid_audit_report(
+                    expected_index,
+                    AuditInvalidReason::DecodeFailure,
+                    head_hash,
+                ));
+            }
+        };
+        if entry.schema_version != AUDIT_CHAIN_SCHEMA_VERSION {
+            return Ok(invalid_audit_report(
+                expected_index,
+                AuditInvalidReason::UnsupportedSchema,
+                head_hash,
+            ));
+        }
+        if entry.entry_index != expected_index {
+            return Ok(invalid_audit_report(
+                expected_index,
+                AuditInvalidReason::UnexpectedEntryIndex,
+                head_hash,
+            ));
+        }
+        if entry.parent_entry_hash_hex != parent_hash {
+            return Ok(invalid_audit_report(
+                expected_index,
+                AuditInvalidReason::ParentHashMismatch,
+                head_hash,
+            ));
+        }
+        let entry_hash = sha256_hex(&canonical_json_bytes(&entry)?);
+        parent_hash = entry_hash.clone();
+        head_hash = Some(entry_hash);
+        expected_index = expected_index.saturating_add(1);
+    }
+    if let Some(expected) = expected_head_hash_hex {
+        if head_hash.as_deref() != Some(expected) {
+            return Ok(AuditValidationReport {
+                entry_count: expected_index,
+                is_valid: false,
+                first_invalid_entry_index: expected_index.checked_sub(1),
+                first_invalid_reason: Some(AuditInvalidReason::HeadHashMismatch),
+                head_hash_hex: head_hash,
+            });
+        }
+    }
+    Ok(AuditValidationReport {
+        entry_count: expected_index,
+        is_valid: true,
+        first_invalid_entry_index: None,
+        first_invalid_reason: None,
+        head_hash_hex: head_hash,
+    })
+}
+
+fn invalid_audit_report(
+    entry_index: u64,
+    reason: AuditInvalidReason,
+    head_hash_hex: Option<String>,
+) -> AuditValidationReport {
+    AuditValidationReport {
+        entry_count: entry_index,
+        is_valid: false,
+        first_invalid_entry_index: Some(entry_index),
+        first_invalid_reason: Some(reason),
+        head_hash_hex,
+    }
+}
+
+fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, AuthorizationError> {
+    let value =
+        serde_json::to_value(value).map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    serde_json::to_vec(&value).map_err(|err| AuthorizationError::AuditChain(err.to_string()))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut out, "{byte:02x}");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -611,6 +1113,7 @@ mod tests {
         let err = auth
             .authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: EndpointId::new("endpoint"),
+                requested_device_id: DeviceId::new("client"),
                 requested_account_id: AccountId::new("account"),
                 requested_workspace_id: WorkspaceId::new("workspace"),
                 host_device_id: DeviceId::new("host"),
@@ -657,7 +1160,7 @@ mod tests {
     async fn secure_key_store_round_trips_and_deletes() {
         let store = InMemorySecureKeyStore::default();
         store.write_key("device", b"secret").await.unwrap();
-        assert_eq!(store.read_key("device").await.unwrap(), b"secret");
+        assert_eq!(store.read_key("device").await.unwrap().as_slice(), b"secret");
         store.delete_key("device").await.unwrap();
         assert_eq!(
             store.read_key("device").await.unwrap_err(),
@@ -723,6 +1226,7 @@ mod tests {
         let grant = auth
             .authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: EndpointId::new("endpoint"),
+                requested_device_id: DeviceId::new("client"),
                 requested_account_id: AccountId::new("account"),
                 requested_workspace_id: WorkspaceId::new("workspace"),
                 host_device_id: DeviceId::new("host"),
@@ -762,6 +1266,7 @@ mod tests {
         let grant = auth
             .authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: EndpointId::new("endpoint"),
+                requested_device_id: DeviceId::new("client"),
                 requested_account_id: AccountId::new("account"),
                 requested_workspace_id: WorkspaceId::new("workspace"),
                 host_device_id: DeviceId::new("host"),
@@ -837,13 +1342,132 @@ mod tests {
             signed_policy_hash: "policy".into(),
         };
         let signed = SignedSessionGrant::sign(grant, "test-key", [7u8; 32]).unwrap();
-        signed.verify().unwrap();
+        signed.verify_untrusted_signature_only().unwrap();
 
         let mut tampered = signed.clone();
         tampered.grant.signed_policy_hash = "other-policy".into();
         assert_eq!(
-            tampered.verify().unwrap_err(),
+            tampered.verify_untrusted_signature_only().unwrap_err(),
             AuthorizationError::SignatureVerificationFailed
+        );
+    }
+
+    #[test]
+    fn trusted_signer_store_rejects_self_signed_grant() {
+        let descriptor = SessionDescriptor {
+            session_id: SessionId::new("session"),
+            account_id: AccountId::new("account"),
+            workspace_id: WorkspaceId::new("workspace"),
+            host_device_id: DeviceId::new("host"),
+            client_device_id: DeviceId::new("client"),
+            mode: SessionMode::ViewOnly,
+            permissions: PermissionSet::from_iter([Permission::ViewScreen]),
+            issued_at: TimestampMicros(1),
+            expires_at: TimestampMicros(2),
+        };
+        let grant = SessionGrant {
+            grant_id: GrantId::new("grant"),
+            descriptor,
+            signed_policy_hash: "policy".into(),
+        };
+        let signed = SignedSessionGrant::sign(grant, "attacker", [9u8; 32]).unwrap();
+        let store = InMemoryTrustedSignerStore::default();
+        assert_eq!(
+            store.verify_session_grant(&signed).unwrap_err(),
+            AuthorizationError::UntrustedSigner
+        );
+    }
+
+    #[test]
+    fn trusted_signer_store_verifies_and_revokes_grant() {
+        let signer = Ed25519SessionGrantSigner::new("host-signer", [7u8; 32]);
+        let descriptor = SessionDescriptor {
+            session_id: SessionId::new("session"),
+            account_id: AccountId::new("account"),
+            workspace_id: WorkspaceId::new("workspace"),
+            host_device_id: DeviceId::new("host"),
+            client_device_id: DeviceId::new("client"),
+            mode: SessionMode::ViewOnly,
+            permissions: PermissionSet::from_iter([Permission::ViewScreen]),
+            issued_at: TimestampMicros(1),
+            expires_at: TimestampMicros(2),
+        };
+        let grant = SessionGrant {
+            grant_id: GrantId::new("grant"),
+            descriptor,
+            signed_policy_hash: "policy".into(),
+        };
+        let signed = signer.sign_session_grant(grant).unwrap();
+        let store = InMemoryTrustedSignerStore::default();
+        store
+            .upsert_signer(TrustedSignerRecord {
+                signer_key_id: signer.signer_key_id().to_string(),
+                public_key: signer.public_key(),
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                revoked: false,
+            })
+            .unwrap();
+        store.verify_session_grant(&signed).unwrap();
+        store.revoke_signer("host-signer").unwrap();
+        assert_eq!(
+            store.verify_session_grant(&signed).unwrap_err(),
+            AuthorizationError::RevokedSigner
+        );
+    }
+
+    #[tokio::test]
+    async fn secure_key_store_rejects_invalid_key_names() {
+        let store = InMemorySecureKeyStore::default();
+        assert_eq!(
+            store.write_key("../secret", b"secret").await.unwrap_err(),
+            AuthorizationError::InvalidKeyName
+        );
+    }
+
+    #[tokio::test]
+    async fn tamper_evident_audit_log_validates_and_hides_details() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chain.jsonl");
+        let sink = TamperEvidentAuditLog::new(&path);
+        sink.append(AuditEvent {
+            kind: AuditEventKind::ControlAuthorized,
+            account_id: AccountId::new("account"),
+            workspace_id: WorkspaceId::new("workspace"),
+            session_id: Some(SessionId::new("session")),
+            device_id: Some(DeviceId::new("device")),
+            endpoint_id: Some(EndpointId::new("endpoint")),
+            at: TimestampMicros(1),
+            detail: "clipboard secret text".into(),
+        })
+        .await
+        .unwrap();
+        let report = sink.validate(None).unwrap();
+        assert!(report.is_valid);
+        assert_eq!(report.entry_count, 1);
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("clipboard secret text"));
+
+        let head = report.head_hash_hex.unwrap();
+        std::fs::write(path, raw.replace("ControlAuthorized", "ControlDenied")).unwrap();
+        let report = sink.validate(Some(&head)).unwrap();
+        assert!(!report.is_valid);
+    }
+
+    #[cfg(all(target_os = "macos", feature = "macos-keychain"))]
+    #[tokio::test]
+    async fn macos_keychain_store_round_trips_and_deletes() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let store = MacOsKeychainSecureKeyStore::new(format!("test-{nanos}"));
+        store.write_key("device", b"secret").await.unwrap();
+        assert_eq!(store.read_key("device").await.unwrap().as_slice(), b"secret");
+        store.delete_key("device").await.unwrap();
+        assert_eq!(
+            store.read_key("device").await.unwrap_err(),
+            AuthorizationError::KeyUnavailable
         );
     }
 }

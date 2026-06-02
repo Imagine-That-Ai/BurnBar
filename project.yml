@@ -79,12 +79,6 @@ targets:
       - path: AgentLens
         excludes:
           - "**/.DS_Store"
-          # Local split drafts that duplicate still-compiled root files. Keep
-          # them out of generated projects until their owning refactors land.
-          - Services/ProjectionPipeline/ProjectionPipelineService*.swift
-          - "**/Services/ProjectionPipeline/ProjectionPipelineService*.swift"
-          - Services/Search/SearchService*.swift
-          - "**/Services/Search/SearchService*.swift"
           # Local Chat UI shim that duplicates types still declared by the main
           # chat surface. Keep it out until the owning refactor lands.
           - Views/Chat/ChatEngineUIStubs.swift
@@ -262,6 +256,8 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
 
   OpenBurnBarVirtualHIDBridge:
     type: tool
@@ -295,6 +291,7 @@ targets:
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - sdk: CoreGraphics.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
@@ -524,6 +521,8 @@ targets:
         product: FirebaseAppCheck
       - package: Firebase
         product: FirebaseMessaging
+      - package: Firebase
+        product: FirebaseStorage
       - package: GoogleSignIn
         product: GoogleSignIn
       - package: Sentry

@@ -29,6 +29,7 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
         "computer_use_budget_soft_usd": NSNumber(value: 1_500),
         "computer_use_budget_hard_usd": NSNumber(value: 2_500),
         "computer_use_kill_switch": NSNumber(value: false),
+        "computer_use_phone_control_attestation_required": NSNumber(value: false),
         "computer_use_actions_per_run_normal": NSNumber(value: 50),
         "computer_use_actions_per_day_normal": NSNumber(value: 200),
         "computer_use_usd_per_user_day_normal": NSNumber(value: 5),

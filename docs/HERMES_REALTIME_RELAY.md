@@ -66,6 +66,15 @@ In OpenBurnBar for macOS:
 4. Optionally turn on **Launch Hermes Dashboard and gateway when OpenBurnBar opens**.
 5. Turn on Remote Relay.
 
+Each Mac Remote Relay publishes under a per-installation connection ID
+(`relay-host-...`) rather than the legacy `relay-{deviceId}` shape. That
+installation ID is stored in macOS `UserDefaults`, so a Mac mini and a MacBook
+Pro that inherited the same app device ID from migration or restore do not
+overwrite each other's `users/{uid}/hermes_connections` document. Current Mac
+builds also mark the legacy document with `replacedByConnectionId`, and iOS/iPadOS
+coalesces that alias onto the new relay record when restoring a previously
+selected Mac.
+
 Current OpenBurnBar builds ship with a blank hosted relay endpoint. Older builds shipped the hosted relay endpoint built in; normal users did not paste infrastructure URLs. The endpoint field is kept behind Advanced relay endpoint for development and self-hosted staging only.
 
 Hermes Remote Relay is a premium capability. The Mac can run Hermes locally without a subscription, but advertising a hosted relay connection and sending mobile relay traffic require the Apple-verified `hosted_quota_sync` entitlement for `com.openburnbar.hostedQuotaSync.cloud.monthly`. Firestore rules, callable functions, and the WebSocket relay all enforce that gate so hosted relay cost is tied to paid accounts.

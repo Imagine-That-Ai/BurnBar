@@ -113,6 +113,7 @@ tools/burnbar-mcp/.venv/
 derived-data/
 
 # Local service installs/build outputs
+/node_modules/
 services/**/node_modules/
 services/**/lib/
 tools/**/node_modules/

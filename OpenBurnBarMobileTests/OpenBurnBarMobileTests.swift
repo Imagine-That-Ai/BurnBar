@@ -145,6 +145,20 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(record?.text, "Hermes received the test.")
     }
 
+    func testHermesGatewayQueuedEventParsesTargetClientId() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "id": "evt_123",
+            "sequence": 42,
+            "targetClientId": "hgw_macbook"
+        ])
+
+        let event = try JSONDecoder().decode(HermesGatewayQueuedEvent.self, from: data)
+
+        XCTAssertEqual(event.id, "evt_123")
+        XCTAssertEqual(event.sequence, 42)
+        XCTAssertEqual(event.targetClientId, "hgw_macbook")
+    }
+
     func testHermesGatewayMessageResolverShowsThreadReplyWithoutPendingEvent() {
         let newest = hermesGatewayMessage(
             id: "msg_newest",
@@ -174,7 +188,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
     }
 
     func testHermesGatewayMessageResolverPrefersExactPendingEventReply() {
-        let event = HermesGatewayQueuedEvent(id: "evt_expected", sequence: 7)
+        let event = HermesGatewayQueuedEvent(id: "evt_expected", sequence: 7, targetClientId: nil)
         let unrelatedThreadReply = hermesGatewayMessage(
             id: "msg_unrelated",
             threadId: HermesGatewayMessageResolver.defaultThreadID,
@@ -200,10 +214,126 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(reply?.replyToEventId, event.id)
     }
 
-    private func hermesGatewayClient(status: String = "active", lastSeenAt: String?) -> HermesGatewayClientRecord {
+    func testHermesGatewayMessageResolverFiltersRepliesByTargetClient() {
+        let event = HermesGatewayQueuedEvent(id: "evt_expected", sequence: 7, targetClientId: "hgw_macbook")
+        let wrongClientExactReply = hermesGatewayMessage(
+            id: "msg_wrong",
+            clientId: "hgw_macmini",
+            threadId: HermesGatewayMessageResolver.defaultThreadID,
+            replyToEventId: event.id,
+            text: "Wrong Mac",
+            createdAt: "2026-06-01T10:52:00Z"
+        )
+        let expectedReply = hermesGatewayMessage(
+            id: "msg_expected",
+            clientId: "hgw_macbook",
+            threadId: HermesGatewayMessageResolver.defaultThreadID,
+            replyToEventId: event.id,
+            text: "Right Mac",
+            createdAt: "2026-06-01T10:51:43.304Z"
+        )
+
+        let reply = HermesGatewayMessageResolver.newestReply(
+            for: event,
+            in: [wrongClientExactReply, expectedReply].compactMap(\.self),
+            pendingEventSentAt: ISO8601DateFormatter().date(from: "2026-06-01T10:51:00Z")
+        )
+
+        XCTAssertEqual(reply?.id, "msg_expected")
+        XCTAssertEqual(reply?.clientId, "hgw_macbook")
+    }
+
+    func testHermesGatewaySettingsStorePersistsSelectedClientAndTargetsQueuedMessages() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(id: "hgw_macmini", displayName: "Mac mini Hermes", lastSeenAt: now),
+            hermesGatewayClient(id: "hgw_macbook", displayName: "MacBook Pro Hermes", lastSeenAt: nil)
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+        XCTAssertEqual(store.selectedClient?.id, "hgw_macmini")
+
+        guard let macBook = store.activeClients.first(where: { $0.id == "hgw_macbook" }) else {
+            XCTFail("Expected MacBook client fixture")
+            return
+        }
+        store.selectClient(macBook)
+
+        XCTAssertEqual(defaults.string(forKey: "hermesGateway.selectedClientId"), "hgw_macbook")
+        XCTAssertEqual(store.selectedClient?.id, "hgw_macbook")
+
+        let sent = await store.sendGatewayMessage(
+            text: "Run this on the MacBook",
+            senderDisplayName: "OpenBurnBar iPhone",
+            threadId: HermesGatewayMessageResolver.defaultThreadID
+        )
+
+        XCTAssertEqual(sent?.targetClientId, "hgw_macbook")
+        XCTAssertEqual(repository.enqueuedEvents.last?.targetClientId, "hgw_macbook")
+        XCTAssertEqual(repository.enqueuedEvents.last?.text, "Run this on the MacBook")
+    }
+
+    func testHermesGatewaySettingsStoreRepairsMissingSelectedClientToOnlineFallback() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set("hgw_missing", forKey: "hermesGateway.selectedClientId")
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(id: "hgw_offline", displayName: "Offline Mac", lastSeenAt: nil),
+            hermesGatewayClient(id: "hgw_online", displayName: "Online Mac", lastSeenAt: now)
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+
+        XCTAssertEqual(store.selectedClient?.id, "hgw_online")
+        XCTAssertEqual(defaults.string(forKey: "hermesGateway.selectedClientId"), "hgw_online")
+    }
+
+    func testHermesGatewaySettingsStoreRepairsSelectionAfterRevokingSelectedClient() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(id: "hgw_macmini", displayName: "Mac mini Hermes", lastSeenAt: now),
+            hermesGatewayClient(id: "hgw_macbook", displayName: "MacBook Pro Hermes", lastSeenAt: now)
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+        guard let macBook = store.activeClients.first(where: { $0.id == "hgw_macbook" }) else {
+            XCTFail("Expected MacBook client fixture")
+            return
+        }
+        store.selectClient(macBook)
+        await store.revoke(macBook)
+
+        XCTAssertEqual(repository.revokedClientIds, ["hgw_macbook"])
+        XCTAssertEqual(store.selectedClient?.id, "hgw_macmini")
+        XCTAssertEqual(defaults.string(forKey: "hermesGateway.selectedClientId"), "hgw_macmini")
+    }
+
+    private func hermesGatewayClient(
+        id: String? = nil,
+        displayName: String = "Hermes Agent",
+        status: String = "active",
+        lastSeenAt: String?
+    ) -> HermesGatewayClientRecord {
         HermesGatewayClientRecord(
-            id: "hgw_test_\(status)_\(lastSeenAt ?? "never")",
-            displayName: "Hermes Agent",
+            id: id ?? "hgw_test_\(status)_\(lastSeenAt ?? "never")",
+            displayName: displayName,
             status: status,
             tokenPreview: "obb_hgw_...test",
             scopes: [
@@ -222,6 +352,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     private func hermesGatewayMessage(
         id: String,
+        clientId: String = "hgw_abc",
         threadId: String?,
         replyToEventId: String? = nil,
         text: String?,
@@ -229,7 +360,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
     ) -> HermesGatewayMessageRecord? {
         var data: [String: Any] = [
             "id": id,
-            "clientId": "hgw_abc",
+            "clientId": clientId,
             "kind": "agent_message",
             "destinationId": "burnbar:home",
             "text": text as Any,
@@ -1311,6 +1442,111 @@ final class OpenBurnBarMobileTests: XCTestCase {
             costUSD: costUSD,
             startTime: startTime,
             endTime: endTime
+        )
+    }
+}
+
+@MainActor
+private final class MockHermesGatewayRepository: HermesGatewayRepository {
+    struct EnqueuedEvent: Equatable {
+        let text: String
+        let threadId: String
+        let targetClientId: String?
+        let senderDisplayName: String
+    }
+
+    struct EnqueuedModelSwitch: Equatable {
+        let modelId: String
+        let threadId: String
+        let targetClientId: String?
+        let senderDisplayName: String
+    }
+
+    var clients: [HermesGatewayClientRecord] = []
+    private(set) var enqueuedEvents: [EnqueuedEvent] = []
+    private(set) var enqueuedModelSwitches: [EnqueuedModelSwitch] = []
+    private(set) var revokedClientIds: [String] = []
+    private var sequence = 0
+
+    func approveHermesGatewayDeviceGrant(
+        userCode: String,
+        displayName: String?,
+        destinationId: String,
+        scopes: [String]
+    ) async throws -> HermesGatewayClientRecord {
+        let client = HermesGatewayClientRecord(
+            id: "hgw_approved",
+            displayName: displayName ?? "Hermes Agent",
+            status: "active",
+            tokenPreview: "obb_hgw_...test",
+            scopes: scopes,
+            homeDestinationId: destinationId,
+            lastSeenAt: nil,
+            revokedAt: nil,
+            createdAt: "2026-06-01T08:00:00Z",
+            updatedAt: "2026-06-01T08:00:00Z",
+            schemaVersion: 1,
+            runtimeModelId: nil,
+            runtimeProviderId: nil,
+            runtimeModelOptions: [],
+            runtimeUpdatedAt: nil
+        )
+        clients.insert(client, at: 0)
+        return client
+    }
+
+    func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord] {
+        includeRevoked ? clients : clients.filter(\.isActive)
+    }
+
+    func revokeHermesGatewayClient(clientId: String) async throws {
+        revokedClientIds.append(clientId)
+        clients.removeAll { $0.id == clientId }
+    }
+
+    func enqueueHermesGatewayEvent(
+        text: String,
+        destinationId: String,
+        threadId: String,
+        targetClientId: String?,
+        senderDisplayName: String
+    ) async throws -> HermesGatewayQueuedEvent {
+        sequence += 1
+        enqueuedEvents.append(
+            EnqueuedEvent(
+                text: text,
+                threadId: threadId,
+                targetClientId: targetClientId,
+                senderDisplayName: senderDisplayName
+            )
+        )
+        return HermesGatewayQueuedEvent(
+            id: "evt_test_\(sequence)",
+            sequence: sequence,
+            targetClientId: targetClientId
+        )
+    }
+
+    func enqueueHermesGatewayModelSwitch(
+        modelId: String,
+        destinationId: String,
+        threadId: String,
+        targetClientId: String?,
+        senderDisplayName: String
+    ) async throws -> HermesGatewayQueuedEvent {
+        sequence += 1
+        enqueuedModelSwitches.append(
+            EnqueuedModelSwitch(
+                modelId: modelId,
+                threadId: threadId,
+                targetClientId: targetClientId,
+                senderDisplayName: senderDisplayName
+            )
+        )
+        return HermesGatewayQueuedEvent(
+            id: "evt_model_\(sequence)",
+            sequence: sequence,
+            targetClientId: targetClientId
         )
     }
 }

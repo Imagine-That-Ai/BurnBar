@@ -233,6 +233,11 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
     /// the local gateway. Defaults to `.openaiCompat` for backward compatibility
     /// with catalogs that predate the two-pool routing model.
     public let formatFamily: BurnBarProviderFormatFamily
+    /// Whether this provider runs as a local, credential-less server (e.g. a
+    /// local Ollama daemon at `localhost:11434`). Local providers are route-
+    /// eligible without an API key and discover their models live from the
+    /// machine rather than relying on static catalog rows. Defaults to `false`.
+    public let local: Bool
 
     public init(
         id: String,
@@ -242,7 +247,8 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         capabilities: [BurnBarProviderCapability],
         logoKey: String? = nil,
         models: [BurnBarCatalogModel],
-        formatFamily: BurnBarProviderFormatFamily = .openaiCompat
+        formatFamily: BurnBarProviderFormatFamily = .openaiCompat,
+        local: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -252,6 +258,7 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         self.logoKey = logoKey
         self.models = models
         self.formatFamily = formatFamily
+        self.local = local
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -263,6 +270,7 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         case logoKey
         case models
         case formatFamily
+        case local
     }
 
     public init(from decoder: Decoder) throws {
@@ -278,6 +286,7 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
             BurnBarProviderFormatFamily.self,
             forKey: .formatFamily
         ) ?? .openaiCompat
+        self.local = try container.decodeIfPresent(Bool.self, forKey: .local) ?? false
     }
 
     /// Asset catalog image name for this provider's bundled logo.
@@ -323,7 +332,7 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
             return "KimiProviderLogo"
         case "mlx":
             return "MLXLogo"
-        case "ollama":
+        case "ollama", "ollama-local":
             return "OllamaLogo"
         default:
             return nil
@@ -515,7 +524,12 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
                 throw BurnBarCatalogError.duplicateProviderID(provider.id)
             }
 
-            if provider.capabilities.contains(.routing) && provider.models.filter({ $0.visibility == .public }).isEmpty {
+            // Local, credential-less providers (e.g. a local Ollama daemon)
+            // carry no static models — every model is discovered live from the
+            // machine — so they are exempt from the visible-model requirement.
+            if provider.capabilities.contains(.routing)
+                && !provider.local
+                && provider.models.filter({ $0.visibility == .public }).isEmpty {
                 throw BurnBarCatalogError.providerMissingVisibleModels(provider.id)
             }
 

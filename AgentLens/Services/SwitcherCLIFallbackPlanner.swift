@@ -42,6 +42,10 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
     }
 
     func eligibility(for profile: SwitcherProfileRecord) async -> CLIFallbackEligibility {
+        if profile.isDisabled {
+            return .ineligible(reason: "\(profile.displayName) is disabled.")
+        }
+
         if let metadata = profile.cliMetadata,
            let exhaustedUntil = metadata.exhaustedUntil,
            exhaustedUntil > Date() {

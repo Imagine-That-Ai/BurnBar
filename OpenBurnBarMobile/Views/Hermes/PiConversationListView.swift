@@ -512,7 +512,7 @@ struct PiChatThreadView: View {
                     piRetryPill(for: msg)
                 }
                 if !isUser, !msg.toolCalls.isEmpty {
-                    piToolCallStrip(msg.toolCalls)
+                    UnifiedToolCallAccordion(calls: unifiedToolCalls(for: msg), accent: .pi)
                 }
             }
             if !isUser { Spacer(minLength: 32) }
@@ -612,69 +612,21 @@ struct PiChatThreadView: View {
         return trailing == msg.id
     }
 
-    /// Horizontally scrollable strip of tool pills, most-recent on the left.
-    @ViewBuilder
-    private func piToolCallStrip(_ toolCalls: [PiToolCall]) -> some View {
-        let reversed = Array(toolCalls.reversed())
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(reversed) { tool in
-                    piToolCallPill(tool)
-                }
-            }
+    /// Maps a Pi turn's tool calls into the shared display model. The most
+    /// recent call becomes the collapsed accordion row, and pulses while the
+    /// service is still streaming this turn.
+    private func unifiedToolCalls(for msg: PiChatMessage) -> [UnifiedToolCallDisplay] {
+        let lastID = msg.toolCalls.last?.id
+        return msg.toolCalls.map { tool in
+            UnifiedToolCallDisplay(
+                id: tool.id,
+                name: tool.name,
+                statusRaw: tool.status,
+                detail: tool.detail,
+                arguments: tool.arguments,
+                isRunning: service.isStreaming && tool.id == lastID
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func piToolCallPill(_ tool: PiToolCall) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: PiChatThreadView.toolIcon(for: tool.name))
-                    .font(.system(size: 13, weight: .bold))
-                Text(tool.name)
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                Spacer(minLength: 8)
-                Text(tool.status)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            if let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !detail.isEmpty {
-                Text(detail)
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .truncationMode(.middle)
-                    .accessibilityLabel("Tool detail: \(detail)")
-            }
-        }
-        .foregroundStyle(MobileTheme.whimsy)
-        .frame(maxWidth: 240, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(MobileTheme.Colors.surface.opacity(0.75))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(MobileTheme.piGradient, lineWidth: 0.75)
-        )
-    }
-
-    static func toolIcon(for name: String) -> String {
-        let n = name.lowercased()
-        if n.contains("read") || n.contains("file") || n.contains("write") { return "doc.text" }
-        if n.contains("bash") || n.contains("exec") || n.contains("run") || n.contains("terminal") { return "terminal" }
-        if n.contains("search") || n.contains("grep") || n.contains("glob") || n.contains("find") { return "magnifyingglass" }
-        if n.contains("web") || n.contains("browser") || n.contains("fetch") || n.contains("http") { return "globe" }
-        if n.contains("edit") || n.contains("patch") || n.contains("replace") { return "pencil.and.outline" }
-        if n.contains("memory") || n.contains("skill") || n.contains("learn") { return "brain" }
-        if n.contains("image") || n.contains("vision") || n.contains("screenshot") { return "photo" }
-        return "wrench.and.screwdriver.fill"
     }
 
     private var composer: some View {

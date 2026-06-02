@@ -455,6 +455,7 @@ data class FirestoreHermesGatewayDestinationDoc(
   sequence: number;
   kind: string;
   destinationId: string;
+  targetClientId?: string;
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
@@ -469,6 +470,7 @@ data class FirestoreHermesGatewayDestinationDoc(
     public var sequence: Int
     public var kind: String
     public var destinationId: String
+    public var targetClientId: String?
     public var threadId: String?
     public var senderId: String
     public var senderDisplayName: String?
@@ -485,6 +487,7 @@ data class FirestoreHermesGatewayEventDoc(
     val sequence: Long = 0,
     val kind: String = "",
     val destinationId: String = "",
+    val targetClientId: String? = null,
     val threadId: String? = null,
     val senderId: String = "",
     val senderDisplayName: String? = null,

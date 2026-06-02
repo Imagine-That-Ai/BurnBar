@@ -1,12 +1,57 @@
 # BurnBar as a VibeProxy Replacement
 
-BurnBar exposes an OpenAI-compatible local gateway from the Mac daemon. Point clients at:
+OpenBurnBar replaces the public VibeProxy app (`automazeio/vibeproxy`) with the
+same easy local endpoint plus OpenBurnBar-owned account rotation, health checks,
+and CLI config management. OpenBurnBar exposes an OpenAI-compatible local
+gateway from the Mac daemon. Point generic clients at:
 
 ```text
 http://127.0.0.1:8317/v1
 ```
 
-## Setup
+## One-click migration from VibeProxy
+
+1. Open OpenBurnBar on the Mac.
+2. Go to Settings -> Agents -> CLIs.
+3. Press `Scan` in the `Move from VibeProxy` card.
+4. Press `Import & Switch`.
+
+The migration reads VibeProxy credential files from `~/.cli-proxy-api/*.json`,
+imports supported API-key credentials into OpenBurnBar provider slots,
+starts the local gateway if needed, and rewrites detected VibeProxy CLI configs
+to OpenBurnBar-owned entries.
+
+Supported automatic imports:
+
+- Z.ai / GLM API keys -> OpenBurnBar `zai` credential slots.
+- Anthropic API keys -> `anthropic` slots.
+- OpenAI API keys -> `openai` slots.
+- Qwen / DashScope keys -> `alibaba` slots.
+- Google Gemini API keys, xAI keys, MiniMax keys, DeepSeek keys, Mistral keys,
+  Ollama Cloud keys, MiMo keys, and Moonshot API keys where the saved file
+  contains a real API key.
+
+Local OAuth/session-only records such as Codex ChatGPT login, GitHub Copilot,
+Claude OAuth, Gemini OAuth, Antigravity, and Kimi browser sessions are detected
+but intentionally marked for reconnect. Those are app-local sessions, not
+portable API keys, and OpenBurnBar needs its guided reconnect path to wire quota
+mirroring correctly.
+
+Detected app configs that are switched automatically:
+
+- Claude Code: `~/.claude/settings.json`
+- Codex CLI: `~/.codex/config.toml`
+- OpenCode CLI: `~/.config/opencode/opencode.json`
+- Forge CLI: `~/forge/.forge.toml`
+- Droid / Factory CLI: `~/.factory/settings.local.json`,
+  `~/.factory/settings.json`, `~/.factory/config.json`
+- Grok Build: `~/.grok/config.toml`
+
+OpenBurnBar creates timestamped backups before rewriting existing config files.
+VibeProxy provider blocks and `localhost:8317` entries are replaced with
+OpenBurnBar-managed entries; unrelated user profiles and settings are preserved.
+
+## Manual setup
 
 1. Open BurnBar on the Mac.
 2. Go to Settings -> Connections.

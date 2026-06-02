@@ -8,10 +8,14 @@ use burnbar_remote_core::{
 };
 use burnbar_remote_observability::{NetworkTelemetry, PathKind, PathState};
 use burnbar_remote_protocol::{
-    encode_control, HeartbeatMessage, MessageKind, ReliableFramePrefix, StreamClass,
-    RELIABLE_PREFIX_LEN, REMOTE_ALPN,
+    decode_control, encode_control, HeartbeatMessage, MessageKind, ReliableFramePrefix,
+    SessionDeniedMessage, SessionRequestMessage, StreamClass, RELIABLE_PREFIX_LEN, REMOTE_ALPN,
+    WIRE_VERSION,
 };
-use burnbar_remote_security::{PeerAuthorizationRequest, SessionAuthorizer, SessionGrant};
+use burnbar_remote_security::{
+    PeerAuthorizationRequest, SessionAuthorizer, SessionGrant, SessionGrantSigner,
+    SessionGrantVerifier, SignedSessionGrant,
+};
 use bytes::Bytes;
 use iroh::endpoint::{presets, Connection, QuicTransportConfig, RecvStream, SendStream, VarInt};
 use iroh::{
@@ -42,6 +46,8 @@ pub enum TransportError {
     DatagramCongested { available: usize, needed: usize },
     #[error("authorization failed: {0}")]
     Authorization(#[from] burnbar_remote_security::AuthorizationError),
+    #[error("session denied by remote host: {code}: {message}")]
+    SessionDenied { code: String, message: String },
     #[error("protocol failed: {0}")]
     Protocol(#[from] burnbar_remote_protocol::ProtocolError),
 }
@@ -110,25 +116,38 @@ pub struct RemoteEndpointAddress {
 }
 
 #[derive(Clone, Debug)]
-pub struct SessionRequestContext {
+pub struct ClientSessionRequestContext {
     pub account_id: AccountId,
     pub workspace_id: WorkspaceId,
-    pub host_device_id: DeviceId,
+    pub client_device_id: DeviceId,
     pub requested_mode: SessionMode,
+    pub now: TimestampMicros,
+}
+
+#[derive(Clone, Debug)]
+pub struct HostSessionAuthorizationContext {
+    pub host_device_id: DeviceId,
     pub local_consent_granted: bool,
     pub now: TimestampMicros,
 }
 
+#[derive(Clone)]
+pub struct IrohTransportSecurity {
+    pub authorizer: Arc<dyn SessionAuthorizer>,
+    pub grant_signer: Arc<dyn SessionGrantSigner>,
+    pub grant_verifier: Arc<dyn SessionGrantVerifier>,
+}
+
 pub struct IrohTransportManager {
     endpoint: Endpoint,
-    authorizer: Arc<dyn SessionAuthorizer>,
+    security: IrohTransportSecurity,
     config: IrohTransportConfig,
 }
 
 impl IrohTransportManager {
     pub async fn bind(
         config: IrohTransportConfig,
-        authorizer: Arc<dyn SessionAuthorizer>,
+        security: IrohTransportSecurity,
     ) -> Result<Self, TransportError> {
         let mut builder = Endpoint::builder(presets::N0)
             .alpns(vec![config.alpn.clone()])
@@ -151,11 +170,13 @@ impl IrohTransportManager {
             .bind()
             .await
             .map_err(|err| TransportError::Endpoint(err.to_string()))?;
-        endpoint.online().await;
+        if !matches!(config.relay, RelayConfig::Disabled) {
+            endpoint.online().await;
+        }
         info!(endpoint_id = %endpoint.id(), "burnbar remote iroh endpoint online");
         Ok(Self {
             endpoint,
-            authorizer,
+            security,
             config,
         })
     }
@@ -172,7 +193,7 @@ impl IrohTransportManager {
     pub async fn connect(
         &self,
         remote: RemoteEndpointAddress,
-        request: SessionRequestContext,
+        request: ClientSessionRequestContext,
     ) -> Result<AuthorizedConnection, TransportError> {
         let addr = endpoint_addr(remote)?;
         let conn = self
@@ -180,12 +201,12 @@ impl IrohTransportManager {
             .connect(addr, &self.config.alpn)
             .await
             .map_err(|err| TransportError::Connect(err.to_string()))?;
-        self.authorize_connection(conn, request).await
+        self.client_session_handshake(conn, request).await
     }
 
     pub async fn accept_next(
         &self,
-        request: SessionRequestContext,
+        request: HostSessionAuthorizationContext,
     ) -> Result<AuthorizedConnection, TransportError> {
         let incoming = self
             .endpoint
@@ -195,37 +216,196 @@ impl IrohTransportManager {
         let conn = incoming
             .await
             .map_err(|err| TransportError::Accept(err.to_string()))?;
-        self.authorize_connection(conn, request).await
+        self.host_session_handshake(conn, request).await
     }
 
     pub async fn shutdown(self) {
         self.endpoint.close().await;
     }
 
-    async fn authorize_connection(
+    async fn client_session_handshake(
         &self,
         conn: Connection,
-        request: SessionRequestContext,
+        request: ClientSessionRequestContext,
     ) -> Result<AuthorizedConnection, TransportError> {
         let remote_id = conn.remote_id().to_string();
-        let grant = self
+        let mut channel =
+            open_reliable_channel(&conn, StreamClass::Control, self.config.max_control_frame_bytes)
+                .await?;
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce)
+            .map_err(|err| TransportError::Connect(format!("nonce generation failed: {err}")))?;
+        let request_message = SessionRequestMessage {
+            version: WIRE_VERSION,
+            client_endpoint_id: CoreEndpointId::new(self.endpoint.id().to_string()),
+            client_device_id: request.client_device_id,
+            account_id: request.account_id,
+            workspace_id: request.workspace_id,
+            requested_mode: request.requested_mode,
+            nonce,
+            requested_at: request.now,
+        };
+        let mut scratch = Vec::with_capacity(256);
+        encode_control(&request_message, &mut scratch)?;
+        channel
+            .send_frame(
+                ReliableFramePrefix {
+                    payload_len: scratch.len() as u32,
+                    kind: MessageKind::SessionRequest,
+                    flags: 0,
+                },
+                &scratch,
+            )
+            .await?;
+        let (prefix, payload) = channel
+            .recv_frame()
+            .await?
+            .ok_or_else(|| TransportError::Accept("session handshake closed".into()))?;
+        match prefix.kind {
+            MessageKind::SessionGrant => {
+                let signed: SignedSessionGrant = decode_control(&payload)?;
+                self.security.grant_verifier.verify_session_grant(&signed)?;
+                Ok(AuthorizedConnection {
+                    conn,
+                    grant: signed.grant,
+                    remote_endpoint_id: CoreEndpointId::new(remote_id),
+                    max_control_frame_bytes: self.config.max_control_frame_bytes,
+                })
+            }
+            MessageKind::SessionDenied | MessageKind::ErrorReport => {
+                let denied: SessionDeniedMessage = decode_control(&payload)?;
+                Err(TransportError::SessionDenied {
+                    code: denied.code,
+                    message: denied.message,
+                })
+            }
+            other => Err(TransportError::Stream(format!(
+                "unexpected session handshake response: {other:?}"
+            ))),
+        }
+    }
+
+    async fn host_session_handshake(
+        &self,
+        conn: Connection,
+        request: HostSessionAuthorizationContext,
+    ) -> Result<AuthorizedConnection, TransportError> {
+        let remote_id = conn.remote_id().to_string();
+        let mut channel =
+            accept_reliable_channel(&conn, self.config.max_control_frame_bytes).await?;
+        if channel.class != StreamClass::Control {
+            return Err(TransportError::Stream(format!(
+                "session handshake used {:?} stream",
+                channel.class
+            )));
+        }
+        let (prefix, payload) = channel
+            .recv_frame()
+            .await?
+            .ok_or_else(|| TransportError::Accept("session request stream closed".into()))?;
+        if prefix.kind != MessageKind::SessionRequest {
+            return Err(TransportError::Stream(format!(
+                "expected session request, got {:?}",
+                prefix.kind
+            )));
+        }
+        let session_request: SessionRequestMessage = decode_control(&payload)?;
+        if session_request.version != WIRE_VERSION {
+            self.send_session_denied(
+                &mut channel,
+                "unsupported_version",
+                "unsupported remote protocol version",
+            )
+            .await?;
+            return Err(TransportError::Protocol(
+                burnbar_remote_protocol::ProtocolError::Serialization(format!(
+                    "unsupported protocol version {}",
+                    session_request.version
+                )),
+            ));
+        }
+        if session_request.client_endpoint_id.as_str() != remote_id {
+            self.send_session_denied(
+                &mut channel,
+                "endpoint_mismatch",
+                "session request endpoint does not match Iroh peer identity",
+            )
+            .await?;
+            return Err(TransportError::Authorization(
+                burnbar_remote_security::AuthorizationError::BindingMismatch,
+            ));
+        }
+        let grant = match self
+            .security
             .authorizer
             .authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: CoreEndpointId::new(remote_id.clone()),
-                requested_account_id: request.account_id,
-                requested_workspace_id: request.workspace_id,
+                requested_device_id: session_request.client_device_id,
+                requested_account_id: session_request.account_id,
+                requested_workspace_id: session_request.workspace_id,
                 host_device_id: request.host_device_id,
-                requested_mode: request.requested_mode,
+                requested_mode: session_request.requested_mode,
                 local_consent_granted: request.local_consent_granted,
                 now: request.now,
             })
+            .await
+        {
+            Ok(grant) => grant,
+            Err(err) => {
+                self.send_session_denied(&mut channel, "authorization_failed", &err.to_string())
+                    .await?;
+                return Err(err.into());
+            }
+        };
+        let signed = self.security.grant_signer.sign_session_grant(grant)?;
+        let mut scratch = Vec::with_capacity(512);
+        encode_control(&signed, &mut scratch)?;
+        channel
+            .send_frame(
+                ReliableFramePrefix {
+                    payload_len: scratch.len() as u32,
+                    kind: MessageKind::SessionGrant,
+                    flags: 0,
+                },
+                &scratch,
+            )
             .await?;
         Ok(AuthorizedConnection {
             conn,
-            grant,
+            grant: signed.grant,
             remote_endpoint_id: CoreEndpointId::new(remote_id),
             max_control_frame_bytes: self.config.max_control_frame_bytes,
         })
+    }
+
+    async fn send_session_denied(
+        &self,
+        channel: &mut ReliableChannel,
+        code: &str,
+        message: &str,
+    ) -> Result<(), TransportError> {
+        let denied = SessionDeniedMessage {
+            code: code.to_string(),
+            message: message.to_string(),
+        };
+        let mut scratch = Vec::with_capacity(128);
+        encode_control(&denied, &mut scratch)?;
+        channel
+            .send_frame(
+                ReliableFramePrefix {
+                    payload_len: scratch.len() as u32,
+                    kind: MessageKind::SessionDenied,
+                    flags: 0,
+                },
+                &scratch,
+            )
+            .await?;
+        channel
+            .send
+            .finish()
+            .map_err(|err| TransportError::Stream(err.to_string()))?;
+        let _ = tokio::time::timeout(Duration::from_millis(250), channel.send.stopped()).await;
+        Ok(())
     }
 }
 
@@ -246,41 +426,11 @@ impl AuthorizedConnection {
     }
 
     pub async fn open_stream(&self, class: StreamClass) -> Result<ReliableChannel, TransportError> {
-        let (mut send, recv) = self
-            .conn
-            .open_bi()
-            .await
-            .map_err(|err| TransportError::Stream(err.to_string()))?;
-        send.write_all(&[u8::from(class)])
-            .await
-            .map_err(|err| TransportError::Stream(err.to_string()))?;
-        send.flush()
-            .await
-            .map_err(|err| TransportError::Stream(err.to_string()))?;
-        Ok(ReliableChannel {
-            class,
-            send,
-            recv,
-            max_frame_bytes: self.max_control_frame_bytes,
-        })
+        open_reliable_channel(&self.conn, class, self.max_control_frame_bytes).await
     }
 
     pub async fn accept_stream(&self) -> Result<ReliableChannel, TransportError> {
-        let (send, mut recv) = self
-            .conn
-            .accept_bi()
-            .await
-            .map_err(|err| TransportError::Stream(err.to_string()))?;
-        let mut class = [0u8; 1];
-        recv.read_exact(&mut class)
-            .await
-            .map_err(|err| TransportError::Stream(err.to_string()))?;
-        Ok(ReliableChannel {
-            class: StreamClass::try_from(class[0])?,
-            send,
-            recv,
-            max_frame_bytes: self.max_control_frame_bytes,
-        })
+        accept_reliable_channel(&self.conn, self.max_control_frame_bytes).await
     }
 
     pub fn try_send_media_datagram(&self, bytes: Bytes) -> Result<(), TransportError> {
@@ -418,6 +568,49 @@ impl AuthorizedConnection {
     pub fn close(&self, reason: &'static [u8]) {
         self.conn.close(0u32.into(), reason);
     }
+}
+
+async fn open_reliable_channel(
+    conn: &Connection,
+    class: StreamClass,
+    max_frame_bytes: usize,
+) -> Result<ReliableChannel, TransportError> {
+    let (mut send, recv) = conn
+        .open_bi()
+        .await
+        .map_err(|err| TransportError::Stream(err.to_string()))?;
+    send.write_all(&[u8::from(class)])
+        .await
+        .map_err(|err| TransportError::Stream(err.to_string()))?;
+    send.flush()
+        .await
+        .map_err(|err| TransportError::Stream(err.to_string()))?;
+    Ok(ReliableChannel {
+        class,
+        send,
+        recv,
+        max_frame_bytes,
+    })
+}
+
+async fn accept_reliable_channel(
+    conn: &Connection,
+    max_frame_bytes: usize,
+) -> Result<ReliableChannel, TransportError> {
+    let (send, mut recv) = conn
+        .accept_bi()
+        .await
+        .map_err(|err| TransportError::Stream(err.to_string()))?;
+    let mut class = [0u8; 1];
+    recv.read_exact(&mut class)
+        .await
+        .map_err(|err| TransportError::Stream(err.to_string()))?;
+    Ok(ReliableChannel {
+        class: StreamClass::try_from(class[0])?,
+        send,
+        recv,
+        max_frame_bytes,
+    })
 }
 
 pub struct ReliableChannel {
@@ -593,5 +786,222 @@ fn classify_addr(addr: &TransportAddr) -> PathKind {
     } else {
         warn!(?addr, "unknown iroh path transport kind");
         PathKind::Unknown
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burnbar_remote_core::{Permission, PermissionSet};
+    use burnbar_remote_protocol::decode_control;
+    use burnbar_remote_security::{
+        AuthorizedDeviceRecord, DeviceTrustState, Ed25519SessionGrantSigner,
+        InMemorySessionAuthorizer, InMemoryTrustedSignerStore, TrustedSignerRecord,
+    };
+
+    fn security(
+        authorizer: Arc<InMemorySessionAuthorizer>,
+        signer: Arc<Ed25519SessionGrantSigner>,
+        verifier: Arc<InMemoryTrustedSignerStore>,
+    ) -> IrohTransportSecurity {
+        IrohTransportSecurity {
+            authorizer,
+            grant_signer: signer,
+            grant_verifier: verifier,
+        }
+    }
+
+    fn config() -> IrohTransportConfig {
+        IrohTransportConfig {
+            relay: RelayConfig::Disabled,
+            keep_alive_interval: Duration::from_millis(250),
+            max_idle_timeout: Duration::from_secs(10),
+            ..IrohTransportConfig::default()
+        }
+    }
+
+    fn remote_address(identity: &LocalEndpointIdentity) -> RemoteEndpointAddress {
+        let direct_addresses = identity
+            .direct_addresses
+            .iter()
+            .filter_map(|addr| addr.parse().ok())
+            .collect::<Vec<SocketAddr>>();
+        assert!(
+            !direct_addresses.is_empty(),
+            "loopback endpoint must advertise at least one direct address"
+        );
+        RemoteEndpointAddress {
+            endpoint_id: identity.endpoint_id.clone(),
+            relay_url: None,
+            direct_addresses,
+        }
+    }
+
+    async fn loopback_managers() -> (
+        Arc<IrohTransportManager>,
+        Arc<IrohTransportManager>,
+        Arc<InMemorySessionAuthorizer>,
+    ) {
+        let signer = Arc::new(Ed25519SessionGrantSigner::new("host-signer", [7u8; 32]));
+        let verifier = Arc::new(InMemoryTrustedSignerStore::default());
+        verifier
+            .upsert_signer(TrustedSignerRecord {
+                signer_key_id: signer.signer_key_id().to_string(),
+                public_key: signer.public_key(),
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                revoked: false,
+            })
+            .unwrap();
+        let server_auth = Arc::new(InMemorySessionAuthorizer::default());
+        let client_auth = Arc::new(InMemorySessionAuthorizer::default());
+        let server = Arc::new(
+            IrohTransportManager::bind(
+                config(),
+                security(server_auth.clone(), signer.clone(), verifier.clone()),
+            )
+            .await
+            .unwrap(),
+        );
+        let client = Arc::new(
+            IrohTransportManager::bind(config(), security(client_auth, signer, verifier))
+                .await
+                .unwrap(),
+        );
+        server_auth
+            .upsert_device(AuthorizedDeviceRecord {
+                device_id: DeviceId::new("client-device"),
+                endpoint_id: client.identity().endpoint_id,
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                trust_state: DeviceTrustState::Trusted,
+                allowed_modes: vec![SessionMode::ViewOnly, SessionMode::Control],
+                permissions: PermissionSet::from_iter([
+                    Permission::ViewScreen,
+                    Permission::InjectInput,
+                ]),
+                local_consent_required: true,
+                max_session_ttl_micros: 5_000_000,
+            })
+            .unwrap();
+        (server, client, server_auth)
+    }
+
+    #[tokio::test]
+    async fn iroh_loopback_authorizes_streams_datagrams_and_paths() {
+        let (server, client, _server_auth) = loopback_managers().await;
+        let remote = remote_address(&server.identity());
+        let accept = server.accept_next(HostSessionAuthorizationContext {
+            host_device_id: DeviceId::new("host-device"),
+            local_consent_granted: true,
+            now: TimestampMicros(1),
+        });
+        let connect = client.connect(
+            remote,
+            ClientSessionRequestContext {
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                client_device_id: DeviceId::new("client-device"),
+                requested_mode: SessionMode::Control,
+                now: TimestampMicros(1),
+            },
+        );
+        let (server_conn, client_conn) =
+            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(accept, connect) })
+                .await
+                .expect("loopback session handshake timed out");
+        let server_conn = server_conn.unwrap();
+        let client_conn = client_conn.unwrap();
+        assert_eq!(
+            client_conn.grant().descriptor.client_device_id,
+            DeviceId::new("client-device")
+        );
+
+        let (server_channel, client_channel) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(
+                server_conn.accept_stream(),
+                client_conn.open_stream(StreamClass::Telemetry)
+            )
+        })
+        .await
+        .expect("loopback stream open timed out");
+        let mut server_channel = server_channel.unwrap();
+        let mut client_channel = client_channel.unwrap();
+        HeartbeatDriver::new()
+            .send_now(&mut client_channel, TimestampMicros(2))
+            .await
+            .unwrap();
+        let (prefix, payload) = server_channel.recv_frame().await.unwrap().unwrap();
+        assert_eq!(prefix.kind, MessageKind::Heartbeat);
+        let heartbeat: HeartbeatMessage = decode_control(&payload).unwrap();
+        assert_eq!(heartbeat.sequence, SequenceNumber(1));
+
+        client_conn
+            .try_send_media_datagram(Bytes::from_static(b"video"))
+            .unwrap();
+        assert_eq!(
+            server_conn.recv_datagram().await.unwrap().as_ref(),
+            b"video"
+        );
+        assert!(!client_conn.path_snapshot().is_empty());
+        assert!(client_conn.network_telemetry(0).datagram_send_buffer_space > 0);
+    }
+
+    #[tokio::test]
+    async fn iroh_loopback_denies_unknown_peer_before_authorized_connection() {
+        let signer = Arc::new(Ed25519SessionGrantSigner::new("host-signer", [7u8; 32]));
+        let verifier = Arc::new(InMemoryTrustedSignerStore::default());
+        verifier
+            .upsert_signer(TrustedSignerRecord {
+                signer_key_id: signer.signer_key_id().to_string(),
+                public_key: signer.public_key(),
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                revoked: false,
+            })
+            .unwrap();
+        let server_auth = Arc::new(InMemorySessionAuthorizer::default());
+        let client_auth = Arc::new(InMemorySessionAuthorizer::default());
+        let server = IrohTransportManager::bind(
+            config(),
+            security(server_auth, signer.clone(), verifier.clone()),
+        )
+        .await
+        .unwrap();
+        let client = IrohTransportManager::bind(config(), security(client_auth, signer, verifier))
+            .await
+            .unwrap();
+        let remote = remote_address(&server.identity());
+        let accept = server.accept_next(HostSessionAuthorizationContext {
+            host_device_id: DeviceId::new("host-device"),
+            local_consent_granted: true,
+            now: TimestampMicros(1),
+        });
+        let connect = client.connect(
+            remote,
+            ClientSessionRequestContext {
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                client_device_id: DeviceId::new("client-device"),
+                requested_mode: SessionMode::Control,
+                now: TimestampMicros(1),
+            },
+        );
+        let (server_result, client_result) =
+            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(accept, connect) })
+                .await
+                .expect("loopback denial handshake timed out");
+        match server_result {
+            Err(TransportError::Authorization(
+                burnbar_remote_security::AuthorizationError::UnknownPeer,
+            )) => {}
+            Err(err) => panic!("unexpected server error: {err}"),
+            Ok(_) => panic!("server unexpectedly authorized unknown peer"),
+        }
+        match client_result {
+            Err(TransportError::SessionDenied { .. }) => {}
+            Err(err) => panic!("unexpected client error: {err}"),
+            Ok(_) => panic!("client unexpectedly received a grant"),
+        }
     }
 }

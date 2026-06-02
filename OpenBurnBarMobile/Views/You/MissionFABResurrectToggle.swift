@@ -21,7 +21,7 @@ struct MissionFABResurrectToggle: View {
                 if newValue {
                     resurrection.restoreFromSettings()
                 } else {
-                    resurrection.dismiss()
+                    resurrection.dismissFromSettings()
                 }
             }
         )) {

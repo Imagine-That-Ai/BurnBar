@@ -2,7 +2,10 @@ use bytes::{BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use burnbar_remote_core::{FrameId, SequenceNumber, SessionId, TimestampMicros};
+use burnbar_remote_core::{
+    AccountId, DeviceId, EndpointId, FrameId, SequenceNumber, SessionId, SessionMode,
+    TimestampMicros, WorkspaceId,
+};
 
 pub const REMOTE_ALPN: &[u8] = b"openburnbar/remote/1";
 pub const WIRE_VERSION: u16 = 1;
@@ -22,6 +25,8 @@ pub enum ProtocolError {
     PayloadTooLarge { actual: usize, max: usize },
     #[error("buffer is too short: expected at least {expected}, got {actual}")]
     BufferTooShort { expected: usize, actual: usize },
+    #[error("buffer has trailing bytes: expected exactly {expected}, got {actual}")]
+    TrailingBytes { expected: usize, actual: usize },
     #[error("postcard serialization failed: {0}")]
     Serialization(String),
 }
@@ -68,6 +73,8 @@ pub enum MessageKind {
     KeyframeRequest = 8,
     GracefulShutdown = 9,
     ErrorReport = 10,
+    SessionRequest = 11,
+    SessionDenied = 12,
 }
 
 impl TryFrom<u16> for MessageKind {
@@ -85,6 +92,8 @@ impl TryFrom<u16> for MessageKind {
             8 => Ok(Self::KeyframeRequest),
             9 => Ok(Self::GracefulShutdown),
             10 => Ok(Self::ErrorReport),
+            11 => Ok(Self::SessionRequest),
+            12 => Ok(Self::SessionDenied),
             other => Err(ProtocolError::UnknownMessageKind(other)),
         }
     }
@@ -226,6 +235,12 @@ pub fn decode_media_datagram(bytes: Bytes) -> Result<(MediaDatagramHeader, Bytes
             actual: bytes.len(),
         });
     }
+    if bytes.len() != expected {
+        return Err(ProtocolError::TrailingBytes {
+            expected,
+            actual: bytes.len(),
+        });
+    }
     let payload = bytes.slice(MEDIA_DATAGRAM_HEADER_LEN..expected);
     Ok((header, payload))
 }
@@ -237,6 +252,24 @@ pub struct HelloMessage {
     pub endpoint_id: String,
     pub supported_codecs: Vec<String>,
     pub features: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionRequestMessage {
+    pub version: u16,
+    pub client_endpoint_id: EndpointId,
+    pub client_device_id: DeviceId,
+    pub account_id: AccountId,
+    pub workspace_id: WorkspaceId,
+    pub requested_mode: SessionMode,
+    pub nonce: [u8; 16],
+    pub requested_at: TimestampMicros,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionDeniedMessage {
+    pub code: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -308,5 +341,25 @@ mod tests {
         let (decoded, payload) = decode_media_datagram(encoded.bytes).unwrap();
         assert_eq!(decoded.payload_len, 3);
         assert_eq!(payload.as_ref(), b"abc");
+    }
+
+    #[test]
+    fn media_datagram_rejects_trailing_bytes() {
+        let header = MediaDatagramHeader {
+            class: DatagramClass::Video,
+            flags: 0,
+            stream_id: 1,
+            frame_id: FrameId(1),
+            packet_index: 0,
+            packet_count: 1,
+            capture_timestamp: TimestampMicros(1),
+            payload_len: 0,
+        };
+        let mut bytes = encode_media_datagram(header, b"abc").unwrap().bytes.to_vec();
+        bytes.push(0);
+        assert!(matches!(
+            decode_media_datagram(Bytes::from(bytes)),
+            Err(ProtocolError::TrailingBytes { .. })
+        ));
     }
 }
