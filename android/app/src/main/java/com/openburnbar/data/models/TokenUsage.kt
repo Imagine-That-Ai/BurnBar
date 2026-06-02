@@ -2,6 +2,7 @@ package com.openburnbar.data.models
 
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
+import com.openburnbar.data.stores.QuotaWindowKind
 import kotlin.math.roundToInt
 
 private const val PERCENT_SCALE = 1_000_000_000
@@ -213,6 +214,84 @@ data class ProviderQuotaSnapshot(
     val isUnlimited: Boolean
         get() = buckets.any { it.limit < 0 }
 }
+
+val ProviderQuotaSnapshot.hourlyBucket: QuotaBucket?
+    get() = buckets.firstOrNull { it.isDisplayableQuotaSignal() && QuotaWindowKind.infer(it) == QuotaWindowKind.FIVE_HOUR }
+
+val ProviderQuotaSnapshot.weeklyBucket: QuotaBucket?
+    get() = buckets.firstOrNull { it.isDisplayableQuotaSignal() && (QuotaWindowKind.infer(it) == QuotaWindowKind.SEVEN_DAY) }
+
+val ProviderQuotaSnapshot.weeklyOrMonthlyBucket: QuotaBucket?
+    get() = weeklyBucket ?: buckets.firstOrNull { it.isDisplayableQuotaSignal() && QuotaWindowKind.infer(it) == QuotaWindowKind.MONTHLY }
+
+val ProviderQuotaSnapshot.displayableQuotaBuckets: List<QuotaBucket>
+    get() = buckets.filter { it.isDisplayableQuotaSignal() }
+
+private fun ProviderQuotaSnapshot.primaryBucketPriority(bucket: QuotaBucket): Int {
+    if (provider.lowercase() != "zai") return 0
+    val lowercased = bucket.label.lowercase()
+    if (lowercased.contains("token") || lowercased.contains("api")) {
+        return 0
+    }
+    if (lowercased.contains("mcp") || lowercased.contains("tool") || lowercased.contains("time_limit") || lowercased.contains("time limit")) {
+        return 2
+    }
+    if (lowercased == "limits" || lowercased == "limit") {
+        return 3
+    }
+    return 1
+}
+
+fun ProviderQuotaSnapshot.primaryDisplayableBucket(defaultWindow: QuotaWindowKind? = null): QuotaBucket? {
+    val displayable = displayableQuotaBuckets
+    if (displayable.isEmpty()) return null
+
+    if (defaultWindow != null) {
+        val preferred = when (defaultWindow) {
+            QuotaWindowKind.FIVE_HOUR -> displayable.firstOrNull { QuotaWindowKind.infer(it) == QuotaWindowKind.FIVE_HOUR }
+            QuotaWindowKind.DAILY -> displayable.firstOrNull { QuotaWindowKind.infer(it) == QuotaWindowKind.DAILY }
+            QuotaWindowKind.SEVEN_DAY -> displayable.firstOrNull { QuotaWindowKind.infer(it) == QuotaWindowKind.SEVEN_DAY }
+            QuotaWindowKind.MONTHLY -> displayable.firstOrNull { QuotaWindowKind.infer(it) == QuotaWindowKind.MONTHLY }
+            QuotaWindowKind.REQUEST -> displayable.firstOrNull { QuotaWindowKind.infer(it) == QuotaWindowKind.REQUEST }
+            QuotaWindowKind.OTHER -> null
+        }
+        if (preferred != null) return preferred
+    }
+
+    return displayable.sortedWith { lhs, rhs ->
+        val lhsPriority = primaryBucketPriority(lhs)
+        val rhsPriority = primaryBucketPriority(rhs)
+        if (lhsPriority != rhsPriority) {
+            lhsPriority.compareTo(rhsPriority)
+        } else {
+            val lhsRemaining = lhs.displayRemainingPercent ?: Double.POSITIVE_INFINITY
+            val rhsRemaining = rhs.displayRemainingPercent ?: Double.POSITIVE_INFINITY
+            if (lhsRemaining == rhsRemaining) {
+                val lhsResets = lhs.effectiveResetsAt ?: java.time.Instant.MAX
+                val rhsResets = rhs.effectiveResetsAt ?: java.time.Instant.MAX
+                lhsResets.compareTo(rhsResets)
+            } else {
+                lhsRemaining.compareTo(rhsRemaining)
+            }
+        }
+    }.firstOrNull()
+}
+
+val ProviderQuotaSnapshot.pressure: Double
+    get() {
+        val displayable = displayableQuotaBuckets
+        val primary = primaryDisplayableBucket()
+        val primaryFraction = primary?.progressFraction ?: 0.0
+        val maxDisplayableFraction = displayable.map { it.progressFraction }.maxOrNull() ?: 0.0
+        return maxOf(primaryFraction, maxDisplayableFraction)
+    }
+
+val ProviderQuotaSnapshot.nextResetDate: java.time.Instant?
+    get() {
+        val displayable = displayableQuotaBuckets
+        val upcomingResets = displayable.mapNotNull { it.effectiveResetsAt }.filter { it.isAfter(java.time.Instant.now()) }
+        return upcomingResets.minOrNull()
+    }
 
 /** One bucket in a QuotaSnapshotDoc. */
 @IgnoreExtraProperties

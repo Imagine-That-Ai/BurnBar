@@ -38,39 +38,14 @@
  * Exit codes: 0 success or graceful skip, 1 unexpected error.
  */
 
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import {
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  statSync,
-  existsSync,
-} from "node:fs";
-import { join, relative, dirname, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildDesired, planActions, runPool } from "../lib/verbatim-chunker.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MEM0_BASE = "https://api.mem0.ai";
-
-// -- Chunking thresholds (tuned to the observed wiki: consistent H2 schema, no front-matter) --
-const WHOLE_FILE_MAX_LINES = 70; // pages below this stay a single chunk
-const MIN_H2_FOR_SPLIT = 3; // pages with fewer H2s than this stay a single chunk
-
-// section (first path segment) -> coarse category for metadata filtering
-const SECTION_CATEGORY = {
-  overview: "orientation",
-  systems: "architecture",
-  apps: "architecture",
-  packages: "architecture",
-  primitives: "architecture",
-  features: "product",
-  reference: "api-reference",
-  "how-to-contribute": "contributor",
-  background: "decisions",
-  "cleanup-opportunities": "tech-debt",
-  security: "security",
-};
 
 function parseArgs(argv) {
   const args = {
@@ -100,99 +75,10 @@ function parseArgs(argv) {
 }
 
 const log = (...m) => console.log("[wiki->mem0]", ...m);
-const sha256 = (s) => createHash("sha256").update(s, "utf8").digest("hex");
 
-// -- Wiki discovery + chunking ------------------------------------------------
-
-function listMarkdown(rootAbs) {
-  const out = [];
-  const walk = (dir) => {
-    for (const name of readdirSync(dir)) {
-      const abs = join(dir, name);
-      if (statSync(abs).isDirectory()) {
-        walk(abs);
-      } else if (name.endsWith(".md")) {
-        out.push(abs);
-      }
-    }
-  };
-  walk(rootAbs);
-  return out.sort();
-}
-
-function deriveCategory(section, sourcePath) {
-  if (basename(sourcePath) === ".survey-context.md") return "orientation";
-  return SECTION_CATEGORY[section] || "reference";
-}
-
-/**
- * Split one markdown file into lossless, verbatim chunks.
- * Segment 0 = everything before the first H2 (H1 + intro). Segments 1..n = each H2 section.
- * Small / shallow pages stay a single whole-file chunk.
- * Returns [{ chunk_index, chunk_heading, text }] covering every line exactly once.
- */
-function chunkMarkdown(text) {
-  const lines = text.split("\n");
-  const h2Idx = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+\S/.test(lines[i])) h2Idx.push(i);
-  }
-  if (lines.length < WHOLE_FILE_MAX_LINES || h2Idx.length < MIN_H2_FOR_SPLIT) {
-    return [{ chunk_index: 0, chunk_heading: null, text: text.trimEnd() }];
-  }
-  const bounds = [0, ...h2Idx, lines.length];
-  const chunks = [];
-  for (let s = 0; s < bounds.length - 1; s++) {
-    const seg = lines.slice(bounds[s], bounds[s + 1]).join("\n").trim();
-    if (!seg) continue; // skip an empty preamble (file starting directly with an H2)
-    const headingLine = lines[bounds[s]];
-    const chunk_heading = /^##\s+/.test(headingLine) ? headingLine.replace(/^##\s+/, "").trim() : null;
-    chunks.push({ chunk_index: chunks.length, chunk_heading, text: seg });
-  }
-  return chunks;
-}
-
-function firstH1(text) {
-  for (const line of text.split("\n")) {
-    if (/^#\s+\S/.test(line)) return line.replace(/^#\s+/, "").trim();
-  }
-  return null;
-}
-
-/** Build the desired chunk set keyed by "<source_path>#<chunk_index>". */
-function buildDesired(wikiRootAbs, fileFilter) {
-  const desired = new Map();
-  for (const abs of listMarkdown(wikiRootAbs)) {
-    const sourcePath = relative(wikiRootAbs, abs).split("\\").join("/");
-    if (fileFilter && !fileFilter.has(sourcePath)) continue;
-    const raw = readFileSync(abs, "utf8");
-    const pageTitle = firstH1(raw) || sourcePath;
-    const segments = sourcePath.split("/");
-    const section = basename(sourcePath) === ".survey-context.md" ? "root" : segments[0];
-    const subsection = segments.length > 2 ? segments[1] : null;
-    const fileHash = sha256(raw);
-    for (const c of chunkMarkdown(raw)) {
-      const key = `${sourcePath}#${c.chunk_index}`;
-      desired.set(key, {
-        key,
-        text: c.text,
-        contentHash: sha256(c.text),
-        metadata: {
-          source: "droid-wiki",
-          source_path: sourcePath,
-          page_title: pageTitle,
-          section,
-          subsection,
-          chunk_heading: c.chunk_heading,
-          chunk_index: c.chunk_index,
-          category: deriveCategory(section, sourcePath),
-          file_hash: fileHash,
-        },
-      });
-    }
-  }
-  return desired;
-}
+// Wiki discovery + chunking + manifest-diff + worker pool now live in the shared
+// `scripts/lib/verbatim-chunker.mjs` so per-member Pensieve ingestion reuses the
+// exact same lossless chunker. See that file's golden test for parity proof.
 
 // -- Manifest -----------------------------------------------------------------
 
@@ -250,38 +136,6 @@ function makeClient(apiKey) {
     },
     delete: (id) => call("DELETE", `/v1/memories/${id}/`),
   };
-}
-
-// -- Reconcile ----------------------------------------------------------------
-
-function planActions(desired, manifest, fileFilter) {
-  const creates = [];
-  const updates = []; // content changed -> delete old + create new
-  const deletes = []; // present in manifest, gone from desired
-
-  for (const [key, d] of desired) {
-    const prev = manifest.entries[key];
-    if (!prev) creates.push(d);
-    else if (prev.content_hash !== d.contentHash) updates.push({ ...d, oldId: prev.memory_id });
-  }
-  for (const [key, prev] of Object.entries(manifest.entries)) {
-    if (desired.has(key)) continue;
-    // In incremental mode only reconcile deletes for files we actually examined.
-    if (fileFilter && !fileFilter.has(key.split("#")[0])) continue;
-    deletes.push({ key, memory_id: prev.memory_id });
-  }
-  return { creates, updates, deletes };
-}
-
-async function runPool(items, concurrency, worker) {
-  let i = 0;
-  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      await worker(items[idx]);
-    }
-  });
-  await Promise.all(runners);
 }
 
 // -- Main ---------------------------------------------------------------------

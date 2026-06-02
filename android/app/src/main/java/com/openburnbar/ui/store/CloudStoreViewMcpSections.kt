@@ -3,7 +3,10 @@
 
 package com.openburnbar.ui.store
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.painterResource
+import com.openburnbar.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -409,14 +412,14 @@ internal fun CloudComparisonRows(rows: List<Triple<String, String, String>>) {
 internal fun CloudTrustCard() {
     val bullets =
         listOf(
-            Triple(Icons.Filled.VerifiedUser, "Play-verified", "Every purchase token is checked server-side before an entitlement or top-up is credited."),
-            Triple(Icons.Filled.Backup, "UID-bound", "Each purchase launches with a Firebase UID hash and verifies against your signed-in account."),
-            Triple(Icons.Filled.Cloud, "Cancel anytime", "Subscriptions are managed by Google Play. We never store payment details."),
+            Triple(R.drawable.cloud_seal_google, "Play-verified", "Every purchase token is checked server-side before an entitlement or top-up is credited."),
+            Triple(R.drawable.cloud_seal_uid, "UID-bound", "Each purchase launches with a Firebase UID hash and verifies against your signed-in account."),
+            Triple(R.drawable.cloud_seal_cancel, "Cancel anytime", "Subscriptions are managed by Google Play. We never store payment details."),
         )
     AuroraGlassCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
                 "THE TRUST MODEL",
@@ -425,13 +428,28 @@ internal fun CloudTrustCard() {
                 letterSpacing = 2.4.sp,
                 color = CloudStorePal.ember,
             )
-            bullets.forEach { (icon, title, detail) ->
-                Row(verticalAlignment = Alignment.Top) {
-                    Icon(icon, null, tint = CloudStorePal.amber, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = CloudStorePal.textPrimary)
-                        Text(detail, fontSize = 12.sp, color = CloudStorePal.textSecondary)
+            bullets.forEach { (drawableRes, title, detail) ->
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Image(
+                        painter = painterResource(id = drawableRes),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                        Text(
+                            title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = CloudStorePal.textPrimary,
+                        )
+                        Text(
+                            detail,
+                            fontSize = 12.sp,
+                            color = CloudStorePal.textSecondary,
+                        )
                     }
                 }
             }

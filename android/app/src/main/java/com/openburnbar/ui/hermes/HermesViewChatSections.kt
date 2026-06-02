@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -97,30 +98,40 @@ private fun ColumnScope.HermesChatMessagePane(
     actions: HermesChatActions,
     local: HermesChatViewLocalState,
 ) {
-    LazyColumn(
-        modifier = Modifier.weight(1f),
-        state = local.listState,
-        contentPadding = PaddingValues(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-    ) {
-        item {
-            WelcomeBlock(
-                runtimeInfo = content.runtimeInfo,
-                selectedModel = local.selectedModel,
-                availableModels = local.visibleModels,
-                onModelSelect = { model ->
-                    applyModelSelection(
-                        model = model,
-                        tilePreferences = content.tilePreferences,
-                        onTilePreferencesChange = actions.onTilePreferencesChange,
-                        setSelectedModel = local.setSelectedModel,
-                    )
-                },
-                onTriggerPrompt = { prompt -> actions.onSend(prompt, local.selectedModel) },
-            )
-        }
-        items(content.messages) { message ->
-            ChatBubble(message = message, threadId = content.threadId, viewMode = local.chatViewMode)
+    if (local.chatViewMode == ChatViewMode.CLI) {
+        InlineAgentMirrorView(
+            runtime = "hermes",
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)
+        )
+    } else {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            state = local.listState,
+            contentPadding = PaddingValues(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        ) {
+            item {
+                WelcomeBlock(
+                    runtimeInfo = content.runtimeInfo,
+                    selectedModel = local.selectedModel,
+                    availableModels = local.visibleModels,
+                    onModelSelect = { model ->
+                        applyModelSelection(
+                            model = model,
+                            tilePreferences = content.tilePreferences,
+                            onTilePreferencesChange = actions.onTilePreferencesChange,
+                            setSelectedModel = local.setSelectedModel,
+                        )
+                    },
+                    onTriggerPrompt = { prompt -> actions.onSend(prompt, local.selectedModel) },
+                )
+            }
+            items(content.messages) { message ->
+                ChatBubble(message = message, threadId = content.threadId, viewMode = local.chatViewMode)
+            }
         }
     }
 }

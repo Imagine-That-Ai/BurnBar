@@ -1,5 +1,6 @@
 package com.openburnbar.data.hermes
 
+import com.openburnbar.irohrelay.HermesStreamEvent
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -90,23 +91,11 @@ object HermesProtocol {
      * should treat that as "skip this chunk and keep listening".
      */
     fun extractStreamedText(json: JSONObject): String {
-        val choices = json.optJSONArray("choices")
-        val fromChoice =
-            if (choices != null && choices.length() > 0) {
-                val choice = choices.optJSONObject(0)
-                extractContentValue(choice?.optJSONObject("delta")?.opt("content"))
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: extractContentValue(choice?.optJSONObject("message")?.opt("content"))
-                        ?.takeIf { it.isNotEmpty() }
-                    ?: choice?.optString("text")?.takeIf { it.isNotEmpty() }
-            } else {
-                null
-            }
-        return fromChoice
-            ?: extractContentValue(json.opt("content"))?.takeIf { it.isNotEmpty() }
-            ?: json.optString("output_text").takeIf { it.isNotEmpty() }
-            ?: json.optString("text").takeIf { it.isNotEmpty() }
-            ?: ""
+        val parser = HermesOpenAICompatibleStreamParser()
+        return parser.eventsFromJson(json)
+            .events
+            .filterIsInstance<HermesStreamEvent.MessageChunk>()
+            .joinToString(separator = "") { it.text }
     }
 
     /** Recursively extract text from `String`, `{text|content|value}`, or arrays of those. */

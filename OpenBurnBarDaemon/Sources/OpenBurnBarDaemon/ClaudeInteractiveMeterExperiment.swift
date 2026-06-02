@@ -282,20 +282,85 @@ public struct ClaudeInteractiveMeterExperiment: Sendable {
     // MARK: - Discovery helpers
 
     static func resolveClaudeExecutable() throws -> URL {
-        var candidates = [
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/claude").path,
-            "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude",
-            "/usr/bin/claude"
-        ]
-        let pathEntries = (ProcessInfo.processInfo.environment["PATH"] ?? "")
-            .split(separator: ":")
-            .map { URL(fileURLWithPath: String($0)).appendingPathComponent("claude").path }
-        candidates.append(contentsOf: pathEntries)
+        let candidates = claudeExecutableCandidatePaths()
         for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
             return URL(fileURLWithPath: candidate)
         }
         throw PTYInteractiveSessionError.executableNotFound("claude (not found on PATH or common install locations)")
+    }
+
+    static func claudeExecutableCandidatePaths(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        var candidates = [
+            homeDirectory.appendingPathComponent(".local/bin/claude").path,
+            homeDirectory.appendingPathComponent(".homebrew/bin/claude").path,
+            homeDirectory.appendingPathComponent(".bun/bin/claude").path,
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            "/usr/bin/claude"
+        ]
+        candidates.append(contentsOf: nvmClaudeCandidatePaths(homeDirectory: homeDirectory, fileManager: fileManager))
+        let pathEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map { URL(fileURLWithPath: String($0)).appendingPathComponent("claude").path }
+        candidates.append(contentsOf: pathEntries)
+        return dedupe(candidates)
+    }
+
+    static func claudeRuntimePathEntries(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        var entries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        entries.append(contentsOf: [
+            homeDirectory.appendingPathComponent(".local/bin").path,
+            homeDirectory.appendingPathComponent(".homebrew/bin").path,
+            homeDirectory.appendingPathComponent(".bun/bin").path,
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin"
+        ])
+        entries.append(contentsOf: nvmClaudeCandidatePaths(homeDirectory: homeDirectory, fileManager: fileManager).map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent().path
+        })
+        return dedupe(entries)
+    }
+
+    private static func nvmClaudeCandidatePaths(homeDirectory: URL, fileManager: FileManager) -> [String] {
+        let nodeVersions = homeDirectory
+            .appendingPathComponent(".nvm", isDirectory: true)
+            .appendingPathComponent("versions", isDirectory: true)
+            .appendingPathComponent("node", isDirectory: true)
+        guard let versionNames = try? fileManager.contentsOfDirectory(atPath: nodeVersions.path) else {
+            return []
+        }
+        return versionNames
+            .filter { !$0.hasPrefix(".") }
+            .map { nodeVersions.appendingPathComponent($0, isDirectory: true) }
+            .filter { url in
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            .map { $0.appendingPathComponent("bin", isDirectory: true).appendingPathComponent("claude").path }
+    }
+
+    private static func dedupe(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.filter { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { return false }
+            seen.insert(trimmed)
+            return true
+        }
     }
 
     static func discoverOAuthAccessToken() -> String? {
