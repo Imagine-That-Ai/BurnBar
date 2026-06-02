@@ -1,0 +1,23 @@
+{
+  "recipientPublicX963B64" : "BBn7M6w4IBr\/iUaIbUD7Ev9xJ9r71g84DX5OLTpw01MSUHYuvPU0oXA80sEqkwW+b922zem6sOpEkS6GTXIf0sg=",
+  "wrappedVaultKeyB64" : "BGN1Hgthx8wwh\/MFejs1eQgkiKpdyqE+hxfuwDdka+qS+phjvC7wuPp+YH1pk7gc0DUWFekmYD83NkrhWc0Lw0rWu2g6tLFa+HsqYojPZ9wiJV9fOkbVt\/k70MaNr0Y6O++PNNVEo3nkQBdk6fZoTelIfDpIvluRlXtORmc=",
+  "vaultKeyB64" : "hE7fDHVLxguqZHfu5oA8EFjA7fFMdoCrjPzxDtsAwbE=",
+  "blob" : {
+    "createdAt" : "2026-06-02T15:52:09Z",
+    "plaintextSHA256" : "d3c8312b0f62beb87c05159a17d62e889079e67eab9f83f1538b82daa7a2ecf9",
+    "keyVersion" : 1,
+    "algorithm" : "AES-256-GCM",
+    "expectedPlaintext" : "Swift sealed this for the browser",
+    "schemaVersion" : 1,
+    "sealedBoxBase64" : "XlQmL429dWoTe\/SzoXlsVMKeCDsZKt+ha9UXT3BQjalVIN2EokLR8CHEN+qwZP2gG3FT8GLPskBjPmzC\/w=="
+  },
+  "text" : {
+    "keyVersion" : 1,
+    "nonce" : "ajzWZ9T038tJtTdc",
+    "tag" : "oafoXdVQiSFz29NxA9EXZA==",
+    "ciphertext" : "vzVy2I6LaLQDImuiyFyjCKfy2qvnOGZfmfsDFw==",
+    "algorithm" : "AES-256-GCM",
+    "expectedPlaintext" : "conversation body from swift"
+  },
+  "recipientPrivatePKCS8B64" : "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgG8aZUbUU3G60CK5n7VK0hxftuBAsyee5vpErnbLl3myhRANCAAQZ+zOsOCAa\/4lGiG1A+xL\/cSfa+9YPOA1+Ti06cNNTElB2Lrz1NKFwPNLBKpMFvm\/dts3purDqRJEuhk1yH9LI"
+}
