@@ -43,10 +43,9 @@ const PAGE_LIMIT = 400;
  * number revoked in that page.
  */
 async function drainCollection(
-  collectionPath: string,
+  coll: FirebaseFirestore.Query,
   handlePage: (docs: FirebaseFirestore.QueryDocumentSnapshot[]) => Promise<number>,
 ): Promise<number> {
-  const coll = db.collection(collectionPath);
   let last: FirebaseFirestore.QueryDocumentSnapshot | undefined;
   let total = 0;
   for (;;) {
@@ -61,10 +60,13 @@ async function drainCollection(
   return total;
 }
 
+/** Test-only surface for the pagination invariant (the panic-completeness fix). */
+export const __testing__ = { drainCollection, PAGE_LIMIT };
+
 /** Flip every non-revoked doc in a connection collection to revoked. Returns count. */
 async function revokeConnectionCollection(uid: string, collection: string): Promise<number> {
   const now = Timestamp.now();
-  return drainCollection(`users/${uid}/${collection}`, async (docs) => {
+  return drainCollection(db.collection(`users/${uid}/${collection}`), async (docs) => {
     const batch = db.batch();
     let writes = 0;
     for (const doc of docs) {
@@ -80,7 +82,7 @@ async function revokeConnectionCollection(uid: string, collection: string): Prom
 /** Flip every trusted escrow device to revoked (trustState field, not status). */
 async function revokeEscrowDevices(uid: string): Promise<number> {
   const now = Timestamp.now();
-  return drainCollection(`users/${uid}/escrow_devices`, async (docs) => {
+  return drainCollection(db.collection(`users/${uid}/escrow_devices`), async (docs) => {
     const batch = db.batch();
     let writes = 0;
     for (const doc of docs) {
@@ -96,7 +98,7 @@ async function revokeEscrowDevices(uid: string): Promise<number> {
 /** Destroy every provider credential secret + mark the account deleted. Returns count. */
 async function revokeProviderCredentials(uid: string): Promise<number> {
   const now = new Date().toISOString();
-  return drainCollection(`users/${uid}/provider_accounts`, async (docs) => {
+  return drainCollection(db.collection(`users/${uid}/provider_accounts`), async (docs) => {
     let revoked = 0;
     for (const account of docs) {
       if (account.get("status") === "deleted") continue;
