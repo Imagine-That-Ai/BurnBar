@@ -23,11 +23,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { wrapCallableHandler } from "../logging.js";
 import { runScheduledJob } from "../scheduledOps.js";
-import {
-  assertActiveBurnBarCloudProEntitlement,
-  boundedTrimmedString,
-  safeCloudDocumentID,
-} from "./shared.js";
+import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString, safeCloudDocumentID } from "./shared.js";
 
 export const KNOWLEDGE_GITHUB_WEBHOOK_SECRET = defineSecret("KNOWLEDGE_GITHUB_WEBHOOK_SECRET");
 
@@ -79,10 +75,9 @@ export const onKnowledgeRepoPush = onRequest(
       const uid = repoDoc.ref.parent.parent?.id;
       const sourceSlug = repoDoc.get("sourceSlug");
       if (!uid || typeof sourceSlug !== "string") continue;
-      await db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`).set(
-        { needsResync: true, lastDirtyAt: now, schemaVersion: 1 },
-        { merge: true },
-      );
+      await db
+        .doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`)
+        .set({ needsResync: true, lastDirtyAt: now, schemaVersion: 1 }, { merge: true });
       flagged += 1;
     }
     res.status(200).json({ ok: true, flagged });
@@ -105,10 +100,12 @@ export const connectKnowledgeRepo = onCall(
       const installId = boundedTrimmedString(request.data.installId, "installId", 128, false);
       const repoId = safeCloudDocumentID(repoFullName.replace(/[^A-Za-z0-9_.-]/g, "_"), "repoId");
 
-      await db.doc(`users/${uid}/knowledge_repos/${repoId}`).set(
-        { uid, repoId, repoFullName, sourceSlug, installId, connectedAt: Timestamp.now(), schemaVersion: 1 },
-        { merge: true },
-      );
+      await db
+        .doc(`users/${uid}/knowledge_repos/${repoId}`)
+        .set(
+          { uid, repoId, repoFullName, sourceSlug, installId, connectedAt: Timestamp.now(), schemaVersion: 1 },
+          { merge: true },
+        );
       return { ok: true, repoId };
     },
   ),
