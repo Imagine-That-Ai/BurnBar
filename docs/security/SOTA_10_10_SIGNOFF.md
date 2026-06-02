@@ -22,7 +22,7 @@ Use this checklist before marketing or investor diligence claims **“SOTA secur
 - [x] `VirtualHIDBridgeCapabilityGate` unit tests
 - [x] Phone control 300s authority TTL + optional attestation digest binding
 - [x] Mac desktop grant requires LocalAuthentication for high-risk presets
-- [ ] **Ops:** Privileged socket red-team on RC ([`docs/runbooks/privileged-socket-redteam-rc.md`](../runbooks/privileged-socket-redteam-rc.md) → `launch-evidence/privileged-redteam-rc-*.txt`)
+- [x] **Ops:** Privileged socket red-team on RC ([`docs/runbooks/privileged-socket-redteam-rc.md`](../runbooks/privileged-socket-redteam-rc.md) → `launch-evidence/privileged-redteam-rc-20260602T003648Z.txt`, probe rejected + `PrivilegedSocketRedTeamIntegrationTests` passed)
 - [ ] **Ops:** Enable `computer_use_phone_control_attestation_required` per rollout ring after RC validation
 
 ## Phase 3 — AI agency

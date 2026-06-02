@@ -79,6 +79,11 @@ export interface HermesGatewayAttachmentManifestDoc {
   storagePath: string;
   status: string;
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  sha256?: string;
+  storageGeneration?: string;
   schemaVersion: number;
 }

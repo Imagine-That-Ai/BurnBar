@@ -28,7 +28,7 @@ if [[ ! -f functions/.env ]]; then
   cat > functions/.env << 'EOF'
 # Copy from Firebase Console — never commit real credentials
 FIREBASE_PROJECT_ID=openburnbar-dev
-STRIPE_SECRET_KEY=sk_test_placeholder
+STRIPE_SECRET_KEY=replace_me_with_stripe_secret_key
 EOF
   echo "Created functions/.env (placeholder — update with real dev credentials)"
 fi

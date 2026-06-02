@@ -120,6 +120,20 @@ Real public API used:
 - `Connection::{send_datagram,read_datagram,max_datagram_size,datagram_send_buffer_space}`
 - `Connection::{paths,path_events,close}`
 
+`AuthorizedConnection` is not a raw connected socket. The manager first runs a
+post-Iroh session handshake over a reliable control stream:
+
+```text
+client -> host: SessionRequest(version, endpoint_id, device_id, account, workspace, mode, nonce, timestamp)
+host   -> client: SignedSessionGrant | SessionDenied
+```
+
+The host verifies the request against the Iroh remote endpoint id and the
+application authorizer before signing a grant. The client accepts the grant
+only if it verifies against a trusted workspace/account signer and the signed
+grant matches the fresh request nonce, account, workspace, device id, requested
+mode, and expiry; the embedded public key in the grant is not trusted by itself.
+
 Traffic separation:
 
 | Traffic | Channel | Delivery |
@@ -151,8 +165,9 @@ The traits explicitly allow `TrueZeroCopy`, `GpuToGpuZeroCopy`, `SingleCopyFallb
 
 - Iroh endpoint identity is not authorization.
 - A relay ticket, endpoint ID, or URL is not authorization.
-- Remote control requires a short-lived `SessionGrant`.
-- Session grants bind account, workspace, host device, client device, mode, permissions, issue time, and expiry.
+- Remote control requires a short-lived signed `SessionGrant`.
+- Session grants bind account, workspace, host device, client device, mode, permissions, issue time, expiry, and the fresh session request nonce.
+- Session grants verify against a trusted signer store; self-signed grants are rejected.
 - View-only and control are separate modes.
 - Control events require permission checks and anti-replay sequence validation.
 - Revoked devices cannot reconnect.
@@ -162,24 +177,27 @@ The traits explicitly allow `TrueZeroCopy`, `GpuToGpuZeroCopy`, `SingleCopyFallb
 - `ControlPolicyGate` enforces kill switch, high-risk confirmation, anti-replay, rate limiting, and grant permission checks before OS input injection.
 - `PairingTicket` is short-lived and converts into a paired device record only before expiry.
 - `SignedSessionGrant` signs a domain-separated postcard-serialized grant with Ed25519 and rejects tampered grant payloads.
-- `SecureKeyStore` is a trait boundary; production implementations must use Keychain, DPAPI, Secret Service/KWallet, Secure Enclave, Android Keystore, or equivalent OS-native storage where available.
-- `AuditSink` is append-only at the trait boundary; production sinks must be content-addressed and tamper-evident before high-risk control is enabled by default.
+- `SecureKeyStore` returns zeroizing key material and rejects unsafe key names. The macOS implementation uses Security.framework generic password items with iCloud sync disabled behind the `macos-keychain` feature.
+- `TamperEvidentAuditLog` is append-only JSONL with SHA-256 parent chaining. Sensitive details are stored as hashes, not raw text. Appends take an advisory file lock across validation and write to prevent concurrent index/parent races.
 
 ## Test And Benchmark Plan
 
 Implemented now:
 
-- `cargo test --workspace` covers bounded media queues, binary protocol framing, datagram packetization/reassembly, same-frame-id multi-stream reassembly, stale partial-frame discard, codec target filtering, adaptive downshift/recovery, pairing expiry, key storage, consent, replay, rate limiting, high-risk confirmation, signed-grant domain separation and tamper rejection, audit append, and kill switch.
+- `cargo test --workspace` covers bounded media queues, binary protocol framing, strict datagram decoding, datagram packetization/reassembly, same-frame-id multi-stream reassembly, stale partial-frame discard, codec target filtering, adaptive downshift/recovery, pairing expiry, zeroizing key storage, consent, replay, rate limiting, high-risk confirmation, trusted-signer grant verification, signed-grant nonce/domain separation and tamper rejection, tamper-evident audit validation, concurrent audit appends, client grant binding checks, relay-only misconfiguration rejection, Iroh loopback authorization, denial, reliable streams, datagrams, path telemetry, and kill switch.
+- `cargo test -p burnbar-remote-security --features macos-keychain macos_keychain -- --nocapture` covers the macOS Keychain-backed secure key store.
 - `burnbar-remote-bench` produces synthetic P50/P95/P99 upper-bound summaries for capture, encode, packetize, network send, network receive, decode, render, input-to-effect, and glass-to-glass stages.
+- `BURNBAR_REMOTE_LIVE_RELAY=1 cargo run -p burnbar-remote-bench --bin iroh-smoke` runs an explicit live Iroh smoke path and reports app-level heartbeat echo percentiles plus selected path kind. Add `BURNBAR_REMOTE_FORCE_RELAY=1` to omit direct addresses and require relay dialing.
+- `./scripts/e2e/burnbar-remote-hardening-proof.sh` orchestrates deterministic checks, optional live smoke, Iroh Services smoke when secrets are present, and read-only physical-device inventory.
 
 Required before production:
 
 - Hardware capture timestamp probe per platform.
 - Encoder queue-depth and encode-latency probe per codec/vendor.
-- Iroh direct-vs-relay benchmark with packet loss and jitter injection.
+- Iroh relay benchmark with packet loss and jitter injection beyond the lightweight live smoke.
 - End-to-end glass-to-glass camera rig or OS compositor timestamp correlation.
 - Allocation profiling for capture/encode/packetize/send and receive/decode/render hot paths after platform implementations land.
-- Remote-control safety harness proving no input injection occurs without consent, grant, replay acceptance, rate-limit allowance, and inactive kill switch.
+- Platform input-injection safety harness proving no OS injection occurs without consent, grant, replay acceptance, rate-limit allowance, active focus, platform permission, and inactive kill switch.
 
 ## Assumptions Requiring Verification
 
@@ -200,7 +218,7 @@ Required before production:
 5. Authorization drift between local device trust, account/workspace RBAC, and transport identity.
 6. Replay protection gaps during reconnect/resume.
 7. Platform permission UX allows confusing or silent control.
-8. Incomplete audit chain around high-impact actions.
+8. Platform adapters fail to write high-impact actions into the audit chain.
 9. Controller oscillation under jitter if receiver reports are noisy.
 10. Cross-platform codec negotiation picks AV1 where encode latency or decode support is worse than HEVC/H264.
 
@@ -211,6 +229,7 @@ The first implementation is not a full remote desktop product. It is the compile
 The next production steps are platform-specific:
 
 - macOS ScreenCaptureKit + VideoToolbox prototype with IOSurface lifetime tests.
-- Real audit sink and OS keychain-backed device identity.
+- Windows/Linux secure key-store implementations equivalent to macOS Keychain.
+- Audit-chain integration with platform input-injection adapters and UI export.
 - End-to-end LAN benchmark harness with real capture/encode/network/decode/render timestamps.
 - Platform input-injection adapters with permission prompt/state detection and host-visible session indicator.

@@ -355,11 +355,48 @@ mod tests {
             capture_timestamp: TimestampMicros(1),
             payload_len: 0,
         };
-        let mut bytes = encode_media_datagram(header, b"abc").unwrap().bytes.to_vec();
+        let mut bytes = encode_media_datagram(header, b"abc")
+            .unwrap()
+            .bytes
+            .to_vec();
         bytes.push(0);
         assert!(matches!(
             decode_media_datagram(Bytes::from(bytes)),
             Err(ProtocolError::TrailingBytes { .. })
         ));
+    }
+
+    #[test]
+    fn media_datagram_rejects_unknown_class_and_short_header() {
+        assert!(matches!(
+            decode_media_datagram(Bytes::from_static(b"short")),
+            Err(ProtocolError::BufferTooShort { .. })
+        ));
+        let mut bytes = [0u8; MEDIA_DATAGRAM_HEADER_LEN];
+        bytes[0] = 99;
+        assert!(matches!(
+            decode_media_datagram(Bytes::copy_from_slice(&bytes)),
+            Err(ProtocolError::UnknownDatagramClass(99))
+        ));
+    }
+
+    #[test]
+    fn session_request_round_trips_with_version_and_nonce() {
+        let request = SessionRequestMessage {
+            version: WIRE_VERSION,
+            client_endpoint_id: EndpointId::new("endpoint"),
+            client_device_id: DeviceId::new("device"),
+            account_id: AccountId::new("account"),
+            workspace_id: WorkspaceId::new("workspace"),
+            requested_mode: SessionMode::Control,
+            nonce: [7u8; 16],
+            requested_at: TimestampMicros(42),
+        };
+        let mut scratch = Vec::new();
+        encode_control(&request, &mut scratch).unwrap();
+        assert_eq!(
+            decode_control::<SessionRequestMessage>(&scratch).unwrap(),
+            request
+        );
     }
 }

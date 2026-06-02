@@ -1,9 +1,0 @@
-{"event":"mac_entitlement_active","timestamp":"2026-05-21T12:31:05Z","timestampMillis":"1779366665362"}
-{"event":"mac_accessibility_trusted","timestamp":"2026-05-21T12:31:05Z","timestampMillis":"1779366665369"}
-{"auditHead":"7453dcf532d03451e7fe298c85478dff5b8d2f592c68c176d8322524a0ede5c3","event":"mac_session_started","sessionId":"DC84C0D1-D030-4F3D-A6E7-631F63D75940","timestamp":"2026-05-21T12:31:05Z","timestampMillis":"1779366665372"}
-{"event":"mac_entitlement_active","timestamp":"2026-05-21T12:31:24Z","timestampMillis":"1779366684609"}
-{"event":"mac_accessibility_trusted","timestamp":"2026-05-21T12:31:24Z","timestampMillis":"1779366684616"}
-{"auditHead":"d54c73d5006500126bdf26c81bda99fb03e5ab3947e0976ba3795834f6c22b99","event":"mac_session_started","sessionId":"D9D5D29D-F4AB-4142-BEED-95C940CEB478","timestamp":"2026-05-21T12:31:24Z","timestampMillis":"1779366684617"}
-{"event":"mac_entitlement_active","timestamp":"2026-05-21T12:32:47Z","timestampMillis":"1779366767704"}
-{"event":"mac_accessibility_trusted","timestamp":"2026-05-21T12:32:47Z","timestampMillis":"1779366767712"}
-{"auditHead":"6fc2a07d3a940419b50874dfa3e590951d352ce6d153f0925e239cb504619e75","event":"mac_session_started","sessionId":"47DEBDFB-B2EA-4300-93BE-EDB0400989AB","timestamp":"2026-05-21T12:32:47Z","timestampMillis":"1779366767713"}

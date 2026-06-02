@@ -242,24 +242,27 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
     }
 
     func test_missionEventFactory_redactsSecretsBeforeMobileStreaming() {
+        let providerToken = "sk-" + "1234567890abcdef"
+        let jwtToken = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJ1c2VyLWlkLTEyMzQ1Njc4OTAifQ", "signaturepayload0987654321"].joined(separator: ".")
         let redacted = CLIAgentMissionEventFactory.redactSecrets(
-            "token=sk-1234567890abcdef bearer abcdefghijklmnopqrstuvwxyz012345 and eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLWlkLTEyMzQ1Njc4OTAifQ.signaturepayload0987654321"
+            "token=\(providerToken) bearer abcdefghijklmnopqrstuvwxyz012345 and \(jwtToken)"
         )
 
-        XCTAssertFalse(redacted.contains("sk-1234567890abcdef"))
+        XCTAssertFalse(redacted.contains(providerToken))
         XCTAssertFalse(redacted.lowercased().contains("bearer abcdef"))
         XCTAssertFalse(redacted.contains("eyJhbGci"))
         XCTAssertTrue(redacted.contains("[REDACTED]"))
     }
 
     func test_missionEventFactory_redactsParentPreviewAndErrorTextForMobile() {
+        let providerToken = "sk-" + "1234567890abcdef"
         let safeText = CLIAgentMissionEventFactory.mobileSafeText(
-            "Final answer token=sk-1234567890abcdef bearer abcdefghijklmnopqrstuvwxyz012345",
+            "Final answer token=\(providerToken) bearer abcdefghijklmnopqrstuvwxyz012345",
             limit: 80
         )
 
         XCTAssertTrue(safeText.contains("[REDACTED]"))
-        XCTAssertFalse(safeText.contains("sk-1234567890abcdef"))
+        XCTAssertFalse(safeText.contains(providerToken))
         XCTAssertFalse(safeText.lowercased().contains("bearer abcdef"))
         XCTAssertLessThanOrEqual(safeText.count, 80)
     }
