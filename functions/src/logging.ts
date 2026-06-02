@@ -56,24 +56,44 @@ function scrubString(value: string): string {
   return result;
 }
 
-/** Recursively scrub all string values in a log payload. */
-function scrubFields(obj: Record<string, unknown>): Record<string, unknown> {
-  const scrubbed: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === "string") {
-      // Never log raw UIDs — always hash/truncate
-      if (key === "uid" || key === "userId" || key === "user_id") {
-        scrubbed[key === "uid" ? "user_id_hash" : key] = value.slice(0, 8);
-      } else if (isSensitiveLogKey(key)) {
-        scrubbed[key] = "[REDACTED]";
-      } else {
-        scrubbed[key] = scrubString(value);
-      }
-    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      scrubbed[key] = scrubFields(value as Record<string, unknown>);
-    } else {
-      scrubbed[key] = value;
+export type LogFieldValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | LogFieldValue[]
+  | { [key: string]: LogFieldValue };
+
+function isLogFieldRecord(value: LogFieldValue): value is { [key: string]: LogFieldValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function scrubValue(key: string, value: LogFieldValue): LogFieldValue {
+  if (typeof value === "string") {
+    // Never log raw UIDs — always hash/truncate
+    if (key === "uid" || key === "userId" || key === "user_id") {
+      return value.slice(0, 8);
     }
+    if (isSensitiveLogKey(key)) {
+      return "[REDACTED]";
+    }
+    return scrubString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => scrubValue(key, item));
+  }
+  if (isLogFieldRecord(value)) {
+    return scrubFields(value);
+  }
+  return value;
+}
+
+/** Recursively scrub all string values in a log payload. */
+function scrubFields(obj: { [key: string]: LogFieldValue }): { [key: string]: LogFieldValue } {
+  const scrubbed: { [key: string]: LogFieldValue } = {};
+  for (const [key, value] of Object.entries(obj)) {
+    scrubbed[key === "uid" ? "user_id_hash" : key] = scrubValue(key, value);
   }
   return scrubbed;
 }
@@ -83,7 +103,7 @@ export interface LogFields {
   trace_id?: string;
   session_id?: string;
   user_id_hash?: string;
-  [key: string]: string | number | boolean | undefined;
+  [key: string]: LogFieldValue;
 }
 
 export function logInfo(fields: LogFields): void {

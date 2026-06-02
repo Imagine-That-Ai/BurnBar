@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
+import {
+  searchKnowledge,
+  readKnowledgeDocument,
+  type KnowledgeDocumentFirestore,
+  type KnowledgeSearchFirestore,
+  type KnowledgeVectorQuery,
+} from "./knowledge.js";
 import { cosineSimilarity } from "./knowledgeVector.js";
 import { signCursor } from "./cursors.js";
 
@@ -12,15 +18,29 @@ interface StubRow {
   fields: Record<string, unknown>;
 }
 
+type StubDb = KnowledgeSearchFirestore & KnowledgeDocumentFirestore;
+
+function vectorArray(raw: unknown): number[] {
+  if (Array.isArray(raw)) return raw.map(Number);
+  if (typeof raw === "object" && raw !== null) {
+    const toArray = Reflect.get(raw, "toArray");
+    if (typeof toArray === "function") {
+      const vector = Reflect.apply(toArray, raw, []);
+      if (Array.isArray(vector)) return vector.map(Number);
+    }
+  }
+  return [];
+}
+
 /** A Firestore stub supporting collection().where().findNearest().get() and doc().get(). */
-function makeStubDb(rows: StubRow[]) {
-  function makeQuery(ns: string, filtered: StubRow[]): any {
+function makeStubDb(rows: StubRow[]): StubDb {
+  function makeQuery(ns: string, filtered: StubRow[]): KnowledgeVectorQuery {
     return {
-      where(field: string, _op: string, value: unknown) {
+      where(field: string, _op: "==", value: unknown) {
         return makeQuery(ns, filtered.filter((r) => r.fields[field] === value));
       },
-      findNearest({ queryVector, limit, distanceResultField }: any) {
-        const qv: number[] = typeof queryVector?.toArray === "function" ? queryVector.toArray() : queryVector;
+      findNearest({ queryVector, limit, distanceResultField }) {
+        const qv = vectorArray(queryVector);
         const ranked = filtered
           .map((r) => ({ r, sim: cosineSimilarity(qv, r.embedding) }))
           .sort((a, b) => b.sim - a.sim)
@@ -58,7 +78,7 @@ function makeStubDb(rows: StubRow[]) {
         },
       };
     },
-  } as any;
+  };
 }
 
 function row(ns: string, id: string, embedding: number[], over: Record<string, unknown> = {}): StubRow {
@@ -87,8 +107,9 @@ test("searchKnowledge ranks by cosine, converts distance->score, shapes sealed h
     row("uidA", "far", Q384([0, 1, 0])),
   ]);
   const res = await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), limit: 10 });
-  assert.deepEqual(res.hits.map((h: any) => h.vectorId), ["near", "mid", "far"]);
-  const top = res.hits[0] as any;
+  assert.deepEqual(res.hits.map((h) => h.vectorId), ["near", "mid", "far"]);
+  const top = res.hits[0];
+  assert.ok(top);
   assert.equal(top.resourceUri, "burnbar://knowledge/near");
   assert.equal(top.ciphertext, "ct-near");
   assert.equal(top.sealedMetadata, "meta-near");
@@ -99,8 +120,8 @@ test("searchKnowledge ranks by cosine, converts distance->score, shapes sealed h
 
 test("searchKnowledge is isolated per namespace", async () => {
   const db = makeStubDb([row("uidA", "a1", Q384([1, 0, 0])), row("uidB", "b1", Q384([1, 0, 0]))]);
-  assert.deepEqual((await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]) })).hits.map((h: any) => h.vectorId), ["a1"]);
-  assert.deepEqual((await searchKnowledge(db, "uidB", { queryVector: Q384([1, 0, 0]) })).hits.map((h: any) => h.vectorId), ["b1"]);
+  assert.deepEqual((await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]) })).hits.map((h) => h.vectorId), ["a1"]);
+  assert.deepEqual((await searchKnowledge(db, "uidB", { queryVector: Q384([1, 0, 0]) })).hits.map((h) => h.vectorId), ["b1"]);
   assert.deepEqual((await searchKnowledge(db, "uidC", { queryVector: Q384([1, 0, 0]) })).hits, []);
 });
 
@@ -110,11 +131,11 @@ test("searchKnowledge honours plaintext server filters", async () => {
     row("uidA", "d1", Q384([1, 0, 0]), { sourceKind: "repo_docs", sourceSlug: "repoX" }),
   ]);
   assert.deepEqual(
-    (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), sourceKind: "repo_docs" })).hits.map((h: any) => h.vectorId),
+    (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), sourceKind: "repo_docs" })).hits.map((h) => h.vectorId),
     ["d1"],
   );
   assert.deepEqual(
-    (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), filters: { sourceSlug: "journal" } })).hits.map((h: any) => h.vectorId),
+    (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), filters: { sourceSlug: "journal" } })).hits.map((h) => h.vectorId),
     ["n1"],
   );
 });
@@ -135,7 +156,7 @@ test("searchKnowledge paginates with a signed cursor", async () => {
   assert.equal(page1.hits.length, 2);
   assert.ok(page1.nextCursor, "expected a nextCursor when more results remain");
   const page2 = await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), limit: 2, cursor: page1.nextCursor });
-  assert.deepEqual(page2.hits.map((h: any) => h.vectorId), ["v3"]);
+  assert.deepEqual(page2.hits.map((h) => h.vectorId), ["v3"]);
   assert.equal(page2.nextCursor, undefined);
 });
 
