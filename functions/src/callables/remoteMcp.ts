@@ -56,7 +56,9 @@ export const issueRemoteMcpGrant = onCall(
       const scopes = Array.isArray(request.data.scopes)
         ? request.data.scopes.filter(
             (scope): scope is "search:read" | "conversation:read" | "usage:read" | "index:status" | "knowledge:read" =>
-              ["search:read", "conversation:read", "usage:read", "index:status", "knowledge:read"].includes(String(scope)),
+              ["search:read", "conversation:read", "usage:read", "index:status", "knowledge:read"].includes(
+                String(scope),
+              ),
           )
         : undefined;
       const grantModeRaw = typeof request.data.grantMode === "string" ? request.data.grantMode : "local_decrypt_shim";
