@@ -27,7 +27,7 @@ Search the BurnBar mem0 project before reading a wiki page or scanning `docs/`. 
 - **Claude Code:** call `mcp__mem0-burnbar__search_memories` with a natural-language query and `filters={"AND":[{"user_id":"burnbar"}]}`. Each result carries `metadata.source_path`; open that full `droid-wiki/<path>` page only when you need the entire page.
 - **Other agents (Cursor, Codex, Droid):** query the same mem0 project (user_id `burnbar`); the `mem0-burnbar` server is defined in [`.mcp.json`](.mcp.json).
 
-Export `MEM0_BURNBAR_API_KEY` (the BurnBar mem0 project key) in your shell to read and write the mirror. The sync engine is [`scripts/wiki/mem0-sync.mjs`](scripts/wiki/mem0-sync.mjs); a post-commit hook keeps mem0 current and a nightly job reconciles drift.
+Export `MEM0_BURNBAR_API_KEY` (the BurnBar mem0 project key) in your shell to read and write the mirror, then run `bash scripts/wiki/install-hooks.sh` once. The sync engine is [`scripts/wiki/mem0-sync.mjs`](scripts/wiki/mem0-sync.mjs); the post-commit hook keeps mem0 current and a nightly job reconciles drift.
 
 ---
 
