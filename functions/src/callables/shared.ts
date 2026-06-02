@@ -54,6 +54,7 @@ import {
   type CloudProTopUpKind,
 } from "../cloudProAllowanceCore.js";
 import { loadCloudProAllowanceConfig } from "../cloudProAllowanceRemoteConfig.js";
+import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 
 // ---------------------------------------------------------------------------
 // Provider adapter registry
@@ -646,6 +647,7 @@ export function assertSelfHostedProvider(provider: string): asserts provider is 
 }
 
 export async function assertActiveHostedQuotaEntitlement(uid: string): Promise<void> {
+  await assertCloudFeatureNotSuspended(db, uid, "hosted_quota");
   const [hostedSnap, proSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
@@ -656,6 +658,7 @@ export async function assertActiveHostedQuotaEntitlement(uid: string): Promise<v
 }
 
 export async function assertActiveBurnBarProEntitlement(uid: string): Promise<void> {
+  await assertCloudFeatureNotSuspended(db, uid, "burnbar_cloud");
   const [proSnap, hostedSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
@@ -669,10 +672,19 @@ export async function assertActiveBurnBarProEntitlement(uid: string): Promise<vo
 }
 
 export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promise<void> {
+  await assertCloudFeatureNotSuspended(db, uid, "burnbar_cloud_pro");
   const proMaxSnap = await db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get();
   if (isActiveBurnBarCloudProEntitlement(proMaxSnap.data())) return;
   throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
 }
+
+const BURNBAR_CLOUD_PRO_PRODUCT_ALIASES = new Set([
+  "com.openburnbar.proMax.v2.monthly",
+  "com.openburnbar.proMax.annual",
+  "com.openburnbar.promax.v2.monthly",
+  "com.openburnbar.promax.annual",
+  "com.openburnbar.proMax.bundle.monthly",
+]);
 
 export function isActiveHostedQuotaEntitlement(raw: Record<string, unknown> | undefined): boolean {
   if (!raw || raw.active !== true) return false;
@@ -694,7 +706,8 @@ export function isActivePremiumEntitlement(raw: Record<string, unknown> | undefi
     productID !== getConfig().googlePlayCloudMonthlyProductID &&
     productID !== getConfig().googlePlayCloudAnnualProductID &&
     productID !== getConfig().googlePlayCloudProMonthlyProductID &&
-    productID !== getConfig().googlePlayCloudProAnnualProductID
+    productID !== getConfig().googlePlayCloudProAnnualProductID &&
+    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
   ) {
     return false;
   }
@@ -711,7 +724,7 @@ export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> 
     productID !== cfg.burnBarProMaxAnnualProductID &&
     productID !== cfg.googlePlayCloudProMonthlyProductID &&
     productID !== cfg.googlePlayCloudProAnnualProductID &&
-    productID !== "com.openburnbar.proMax.bundle.monthly"
+    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
   ) {
     return false;
   }

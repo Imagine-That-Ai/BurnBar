@@ -93,6 +93,7 @@ internal class HermesServiceConnectionActions(
         relayKeyVersion = relayKeyVersion,
         relayEncryption = relayEncryption,
         realtimeRelayURL = null,
+        updatedAt = updatedAt ?: System.currentTimeMillis(),
     )
 }
 

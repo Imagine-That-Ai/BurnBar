@@ -9,7 +9,9 @@ import {
   COMMERCIAL_PRODUCTS,
   GOOGLE_PLAY_PRODUCTS,
   evaluateAppStoreProductReadiness,
+  evaluateCloudRunServiceReadiness,
   evaluateEnvRequirements,
+  evaluateRetiredCloudRunServiceAbsence,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
   verdict,
@@ -276,6 +278,61 @@ function passingChecks(overrides = {}) {
   });
   assert.equal(evaluated.ok, false);
   assert.equal(evaluated.checks[0].actual, "500");
+}
+
+{
+  const service = {
+    status: {
+      url: "https://openburnbar-quota-runner.example.run.app",
+      conditions: [
+        { type: "ConfigurationsReady", status: "True" },
+        { type: "Ready", status: "True" },
+      ],
+    },
+  };
+  const readiness = evaluateCloudRunServiceReadiness(
+    "openburnbar-quota-runner",
+    service,
+  );
+  assert.deepEqual(readiness, {
+    name: "openburnbar-quota-runner",
+    ready: true,
+    url: "https://openburnbar-quota-runner.example.run.app",
+  });
+}
+
+{
+  const readiness = evaluateCloudRunServiceReadiness(
+    "openburnbar-quota-runner",
+    {
+      status: {
+        conditions: [{ type: "Ready", status: "False" }],
+      },
+    },
+  );
+  assert.equal(readiness.ready, false);
+}
+
+{
+  const retired = evaluateRetiredCloudRunServiceAbsence(
+    "hermes-realtime-relay",
+    { ok: true, missing: true, name: "hermes-realtime-relay" },
+  );
+  assert.equal(retired.absent, true);
+}
+
+{
+  const retired = evaluateRetiredCloudRunServiceAbsence(
+    "hermes-realtime-relay",
+    {
+      ok: true,
+      missing: false,
+      name: "hermes-realtime-relay",
+      service: { status: { url: "https://relay.example.run.app" } },
+    },
+  );
+  assert.equal(retired.absent, false);
+  assert.equal(retired.url, "https://relay.example.run.app");
 }
 
 console.log("commercial-launch-gate commercial evaluator tests passed");

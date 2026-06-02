@@ -8,11 +8,6 @@ export default defineConfig({
 
     // Explicit parallel execution — isolate each test file in a separate worker
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: false,
-      },
-    },
 
     // Report test results verbosely and emit JSON for CI timing analysis
     reporters: ["verbose", "json"],

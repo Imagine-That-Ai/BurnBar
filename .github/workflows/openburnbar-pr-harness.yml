@@ -493,7 +493,7 @@ jobs:
         with:
           node-version: 22
       - name: Hermes relay unit tests (Functions)
-        run: npm ci --prefix functions && node functions/scripts/test-hermes.mjs
+        run: npm ci --prefix functions && npm --prefix functions run test:hermes
       - name: Hermes core Swift tests
         run: |
           cd OpenBurnBarCore

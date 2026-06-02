@@ -28,7 +28,7 @@ if (import.meta.env.DEV) {
       connectFunctionsEmulator(functions, "localhost", 5001);
       console.log("Connected to Firebase Auth & Functions Emulators.");
     }
-  } catch (err) {
+  } catch {
     // Quietly catch HMR re-connect errors
   }
 }

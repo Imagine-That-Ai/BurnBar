@@ -380,8 +380,12 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     try {
       showState("checking");
       await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      if (errorMessage) errorMessage.textContent = err.message || "Authentication failed.";
+    } catch (err: unknown) {
+      const errorLike = err as { message?: unknown };
+      if (errorMessage) {
+        errorMessage.textContent =
+          typeof errorLike.message === "string" ? errorLike.message : "Authentication failed.";
+      }
       showState("error");
     }
   });
@@ -409,15 +413,18 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       const completeCliLink = httpsCallable(functions, "completeCliLink");
       await completeCliLink({ userCode: codeInput.value.trim() });
       showState("success");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Linking error", err);
-      let friendlyMessage = err.message || "An unexpected error occurred.";
-      if (err.code === "functions/not-found" || err.code === "not-found") {
+      const errorLike = err as { code?: unknown; message?: unknown };
+      const errorCode = String(errorLike.code || "");
+      let friendlyMessage =
+        typeof errorLike.message === "string" ? errorLike.message : "An unexpected error occurred.";
+      if (errorCode === "functions/not-found" || errorCode === "not-found") {
         friendlyMessage =
           "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
       } else if (
-        err.code === "functions/failed-precondition" ||
-        err.code === "failed-precondition"
+        errorCode === "functions/failed-precondition" ||
+        errorCode === "failed-precondition"
       ) {
         friendlyMessage =
           "BurnBar Pro is required for Remote MCP access. Please subscribe to continue.";
