@@ -1,6 +1,7 @@
 #if canImport(AppKit)
 import CryptoKit
 import FirebaseAuth
+import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
 import OpenBurnBarComputerUseCore
@@ -21,6 +22,7 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
 
     func start() {
         guard authHandle == nil else { return }
+        guard FirebaseApp.app() != nil else { return }
         authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             self?.restart(uid: user?.uid)
         }
@@ -29,6 +31,13 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
 
     func stop() {
         if let authHandle {
+            guard FirebaseApp.app() != nil else {
+                self.authHandle = nil
+                listener?.remove()
+                listener = nil
+                activeUID = nil
+                return
+            }
             Auth.auth().removeStateDidChangeListener(authHandle)
         }
         authHandle = nil

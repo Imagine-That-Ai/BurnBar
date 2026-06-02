@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFunctions
 import Foundation
 
@@ -23,10 +24,15 @@ enum ComputerUseSecurityCallableClient {
         Functions.functions(region: "us-central1")
     }
 
+    private static var signedInUser: User? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser
+    }
+
     /// Binds the signed-in user's Auth custom claims to the current App Check app id.
     /// Call after sign-in when cloud sync is enabled and before high-risk CU actions.
     static func bindAppCheckAttestation() async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         _ = try await functions.httpsCallable("bindAppCheckAttestation").call([:])
@@ -42,7 +48,7 @@ enum ComputerUseSecurityCallableClient {
         publicKeyFingerprint: String? = nil,
         keyVersion: Int? = nil
     ) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         var payload: [String: Any] = [
@@ -63,7 +69,7 @@ enum ComputerUseSecurityCallableClient {
 
     /// Forces an ID token refresh so `obb_app_check` custom claims propagate before high-risk callables.
     private static func refreshAuthClaimsAfterBind() async throws {
-        guard let user = Auth.auth().currentUser else {
+        guard let user = signedInUser else {
             throw ClientError.notAuthenticated
         }
         _ = try await user.getIDTokenResult(forcingRefresh: true)
@@ -71,7 +77,7 @@ enum ComputerUseSecurityCallableClient {
 
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call([
@@ -84,7 +90,7 @@ enum ComputerUseSecurityCallableClient {
 
     /// Revokes escrow device trust and active grants server-side.
     static func revokeEscrowDeviceTrust(deviceId: String) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([

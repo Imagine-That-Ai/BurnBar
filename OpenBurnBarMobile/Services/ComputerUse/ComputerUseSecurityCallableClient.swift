@@ -1,4 +1,5 @@
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFunctions
 import Foundation
 
@@ -22,8 +23,13 @@ enum ComputerUseSecurityCallableClient {
         Functions.functions(region: "us-central1")
     }
 
+    private static var signedInUser: User? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser
+    }
+
     static func bindAppCheckAttestation() async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         _ = try await functions.httpsCallable("bindAppCheckAttestation").call([:])
@@ -38,7 +44,7 @@ enum ComputerUseSecurityCallableClient {
         publicKeyFingerprint: String? = nil,
         keyVersion: Int? = nil
     ) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         var payload: [String: Any] = [
@@ -58,7 +64,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func approveEscrowDeviceTrust(deviceId: String) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call([
@@ -70,7 +76,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func revokeEscrowDeviceTrust(deviceId: String) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard signedInUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
@@ -82,7 +88,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     private static func refreshAuthClaimsAfterBind() async throws {
-        guard let user = Auth.auth().currentUser else {
+        guard let user = signedInUser else {
             throw ClientError.notAuthenticated
         }
         _ = try await user.getIDTokenResult(forcingRefresh: true)

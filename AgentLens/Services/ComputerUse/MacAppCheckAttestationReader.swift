@@ -1,11 +1,13 @@
 #if canImport(AppKit)
 import FirebaseAuth
+import FirebaseCore
 import Foundation
 import OpenBurnBarComputerUseCore
 
 /// Reads the bound `obb_app_check` claim from the signed-in Mac user's ID token.
 enum MacAppCheckAttestationReader {
     static func currentRequiredAttestationDigest() async -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
         guard let user = Auth.auth().currentUser, !user.isAnonymous else { return nil }
         do {
             let result = try await user.getIDTokenResult(forcingRefresh: false)

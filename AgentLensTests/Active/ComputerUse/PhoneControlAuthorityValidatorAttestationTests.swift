@@ -1,12 +1,23 @@
 #if canImport(AppKit)
 import XCTest
 import CryptoKit
+import FirebaseCore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
 
 final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     private let phoneSigner = ComputerUsePhoneControlSigner()
+
+    func testMacAppCheckReaderTreatsMissingFirebaseAsUnboundHost() async throws {
+        guard FirebaseApp.app() == nil else {
+            throw XCTSkip("Firebase is configured in this test process.")
+        }
+
+        let requirement = await MacAppCheckAttestationReader.attestationRequirement(strictMode: true)
+
+        XCTAssertEqual(requirement, .rejectUnboundHost)
+    }
 
     func test_rejectsAttestationMismatchWhenRequired() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
