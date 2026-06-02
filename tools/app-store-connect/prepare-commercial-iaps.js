@@ -450,6 +450,18 @@ async function ensureInAppPurchaseLocalization(iap, target, token) {
     token,
   );
   const current = localizations.find((entry) => entry.attributes.locale === 'en-US');
+  const patchLocalization = (localization) => maybeWrite(`PATCH IAP localization ${localization.id}`, () => api(
+    'PATCH',
+    `/v1/inAppPurchaseLocalizations/${localization.id}`,
+    {
+      data: {
+        id: localization.id,
+        type: 'inAppPurchaseLocalizations',
+        attributes: { name: target.name, description: target.description },
+      },
+    },
+    token,
+  ));
   const createLocalization = (locale) => maybeWrite(`POST IAP localization ${locale}`, () => api(
     'POST',
     '/v1/inAppPurchaseLocalizations',
@@ -465,48 +477,11 @@ async function ensureInAppPurchaseLocalization(iap, target, token) {
     token,
   ));
   if (current && current.attributes.state === 'REJECTED') {
-    const temporaryLocale = 'en-GB';
-    const temporary = localizations.find((entry) => entry.attributes.locale === temporaryLocale);
-    if (!temporary) {
-      await createLocalization(temporaryLocale);
-    }
-    await maybeWrite(`DELETE rejected IAP localization ${current.id}`, () => api(
-      'DELETE',
-      `/v1/inAppPurchaseLocalizations/${current.id}`,
-      undefined,
-      token,
-    ));
-    await createLocalization('en-US');
-    const refreshed = await listAll(
-      `/v2/inAppPurchases/${iap.id}/inAppPurchaseLocalizations?limit=20`,
-      token,
-    );
-    const temporaryAfterRepair = refreshed.find(
-      (entry) => entry.attributes.locale === temporaryLocale,
-    );
-    if (temporaryAfterRepair) {
-      await maybeWrite(`DELETE temporary IAP localization ${temporaryAfterRepair.id}`, () => api(
-        'DELETE',
-        `/v1/inAppPurchaseLocalizations/${temporaryAfterRepair.id}`,
-        undefined,
-        token,
-      ));
-    }
+    console.log(`  ${target.productId} en-US localization is REJECTED; App Store Connect locks rejected IAP localizations, so leaving it for inAppPurchaseSubmissions resubmission`);
     return;
   }
   if (current) {
-    await maybeWrite(`PATCH IAP localization ${current.id}`, () => api(
-      'PATCH',
-      `/v1/inAppPurchaseLocalizations/${current.id}`,
-      {
-        data: {
-          id: current.id,
-          type: 'inAppPurchaseLocalizations',
-          attributes: { name: target.name, description: target.description },
-        },
-      },
-      token,
-    ));
+    await patchLocalization(current);
   } else {
     await createLocalization('en-US');
   }
