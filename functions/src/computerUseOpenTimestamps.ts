@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
@@ -54,6 +55,7 @@ export type ComputerUseOpenTimestampsServerHeadLookup = (
 ) => Promise<{
   status: ComputerUseOpenTimestampsValidationStatus | "server_head_matched";
   serverAuditHeadHashHex?: string;
+  sessionManifestHashHex?: string;
 }>;
 
 export interface ComputerUseOpenTimestampsValidationDependencies {
@@ -270,7 +272,8 @@ export async function serverHeadStatus(
   }
   const session = doc.data();
   const serverHead = isRecord(session) ? stringField(session, "auditHeadHashHex") : undefined;
-  if (!serverHead) {
+  const manifestHash = isRecord(session) ? stringField(session, "manifestHashHex") : undefined;
+  if (!serverHead || !manifestHash) {
     return { status: "server_head_missing" };
   }
   if (serverHead !== claimedHead) {
@@ -282,7 +285,46 @@ export async function serverHeadStatus(
   return {
     status: "server_head_matched",
     serverAuditHeadHashHex: serverHead,
+    sessionManifestHashHex: manifestHash,
   };
+}
+
+interface DerivedAuditHead {
+  ok: boolean;
+  headHashHex?: string;
+  reason?: string;
+}
+
+export function deriveComputerUseAuditHeadFromChainBytes(
+  chainBytes: Buffer,
+  sessionManifestHashHex: string,
+): DerivedAuditHead {
+  if (!/^[a-fA-F0-9]{64}$/.test(sessionManifestHashHex)) {
+    return { ok: false, reason: "invalid_manifest_hash" };
+  }
+  const text = chainBytes.toString("utf8");
+  let expectedIndex = 0;
+  let parentHashHex = sessionManifestHashHex.toLowerCase();
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  for (const line of lines) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return { ok: false, reason: "decode_failure" };
+    }
+    const entry = isRecord(parsed) ? parsed : undefined;
+    if (!entry) return { ok: false, reason: "decode_failure" };
+    const schemaVersion = typeof entry.schemaVersion === "number" ? entry.schemaVersion : undefined;
+    if (schemaVersion !== 1) return { ok: false, reason: "unsupported_schema" };
+    const entryIndex = typeof entry.entryIndex === "number" ? entry.entryIndex : undefined;
+    if (entryIndex !== expectedIndex) return { ok: false, reason: "unexpected_entry_index" };
+    const parent = typeof entry.parentEntryHashHex === "string" ? entry.parentEntryHashHex.toLowerCase() : "";
+    if (parent !== parentHashHex) return { ok: false, reason: "parent_hash_mismatch" };
+    parentHashHex = createHash("sha256").update(Buffer.from(line, "utf8")).digest("hex");
+    expectedIndex += 1;
+  }
+  return { ok: true, headHashHex: parentHashHex };
 }
 
 export async function validateComputerUseOpenTimestampsProofForRequest(
@@ -309,6 +351,35 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
       serverAuditHeadHashHex: head.serverAuditHeadHashHex,
       proofSizeBytes: proofBytes.length,
       checkedAt,
+    };
+  }
+  const shouldBindChainToHead = head.sessionManifestHashHex !== undefined || dependencies.serverHeadStatus === undefined;
+  if (shouldBindChainToHead && !chainBytes) {
+    return {
+      status: "head_mismatch",
+      verified: false,
+      sessionId: request.sessionId,
+      auditHeadHashHex: request.auditHeadHashHex,
+      serverAuditHeadHashHex: head.serverAuditHeadHashHex,
+      proofSizeBytes: proofBytes.length,
+      checkedAt,
+      otsVerifierOutput: "chainFileBase64 is required to bind the OpenTimestamps proof to the claimed audit head.",
+    };
+  }
+  const derived =
+    shouldBindChainToHead && chainBytes
+      ? deriveComputerUseAuditHeadFromChainBytes(chainBytes, head.sessionManifestHashHex ?? "")
+      : undefined;
+  if (derived && (!derived.ok || derived.headHashHex !== request.auditHeadHashHex.toLowerCase())) {
+    return {
+      status: "head_mismatch",
+      verified: false,
+      sessionId: request.sessionId,
+      auditHeadHashHex: request.auditHeadHashHex,
+      serverAuditHeadHashHex: head.serverAuditHeadHashHex,
+      proofSizeBytes: proofBytes.length,
+      checkedAt,
+      otsVerifierOutput: `submitted chain does not derive the claimed audit head (${derived.reason ?? "head_hash_mismatch"}).`,
     };
   }
 

@@ -64,7 +64,7 @@ export const APP_STORE_BUNDLE_ID: StringParam = defineString("APP_STORE_BUNDLE_I
 
 /** Default environment override (`"Production"`, `"Sandbox"`, …). */
 export const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
-  default: "Sandbox",
+  default: "Production",
 });
 
 /** StoreKit product id for hosted quota sync. */

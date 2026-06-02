@@ -40,9 +40,11 @@ final class HermesSquareApplierAuditTests: XCTestCase {
 final class HermesSquareCSPAuditTests: XCTestCase {
 
     func testCSPRejectsCrossOriginFrames() {
-        let csp = MiniProgramHostCallValidator.contentSecurityPolicy(
-            sandboxURL: "https://scout.example.com/v1/index.html"
+        let policy = MiniProgramHostCallValidator.approvedSandboxPolicy(
+            sandboxURL: "https://scout.example.com/v1/index.html",
+            approvedOrigins: ["https://scout.example.com"]
         )
+        let csp = MiniProgramHostCallValidator.contentSecurityPolicy(policy: policy)
         // The clamps must include frame-ancestors 'none' so the
         // mini-program can't iframe a privileged origin.
         XCTAssertTrue(csp.contains("frame-ancestors 'none'"))
@@ -51,9 +53,12 @@ final class HermesSquareCSPAuditTests: XCTestCase {
     }
 
     func testCSPHandlesPortAndScheme() {
-        let csp = MiniProgramHostCallValidator.contentSecurityPolicy(
-            sandboxURL: "http://localhost:8080/dev/sandbox.html"
+        let policy = MiniProgramHostCallValidator.approvedSandboxPolicy(
+            sandboxURL: "http://localhost:8080/dev/sandbox.html",
+            approvedOrigins: [],
+            allowLocalDevelopment: true
         )
+        let csp = MiniProgramHostCallValidator.contentSecurityPolicy(policy: policy)
         XCTAssertTrue(csp.contains("http://localhost:8080"))
     }
 

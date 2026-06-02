@@ -3,6 +3,7 @@
  */
 
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { Timestamp } from "firebase-admin/firestore";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -21,6 +22,8 @@ import {
 } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
+
+const SEARCH_STREAMS_RATE_LIMIT_MS = 10_000;
 
 export const issueRemoteMcpGrant = onCall(
   {
@@ -117,6 +120,8 @@ export const searchStreams = onCall(
     }
     enforceAuthAndAppCheck(request, uid);
     await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
+    await assertActiveBurnBarProEntitlement(uid);
+    await checkSearchStreamsRateLimit(uid);
 
     const query = boundedTrimmedString(request.data.query, "query", 200, true) ?? "";
     const limitRaw = typeof request.data.limit === "number" ? request.data.limit : 25;
@@ -197,3 +202,21 @@ export const searchStreams = onCall(
     return { hits };
   }),
 );
+
+async function checkSearchStreamsRateLimit(uid: string): Promise<void> {
+  const ref = db.doc(`users/${uid}/remote_mcp_rate_limits/search_streams`);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const lastAt = snap.get("lastAt");
+    if (lastAt instanceof Timestamp) {
+      const elapsed = Date.now() - lastAt.toMillis();
+      if (elapsed < SEARCH_STREAMS_RATE_LIMIT_MS) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `Please wait ${Math.ceil((SEARCH_STREAMS_RATE_LIMIT_MS - elapsed) / 1000)}s before searching streams again.`,
+        );
+      }
+    }
+    tx.set(ref, { lastAt: Timestamp.now(), windowMs: SEARCH_STREAMS_RATE_LIMIT_MS }, { merge: true });
+  });
+}

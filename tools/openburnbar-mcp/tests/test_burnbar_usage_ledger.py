@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from typing import Any  # noqa: F401  — re-imported for clarity at top level
 from datetime import datetime, timezone
 from http.client import HTTPConnection
@@ -175,6 +176,62 @@ class UsageLedgerTests(unittest.TestCase):
         finally:
             os.environ.pop("OPENBURNBAR_USAGE_LEDGER_PATH", None)
 
+    def test_socket_auth_token_reads_keychain_when_env_tokens_are_absent(self) -> None:
+        names = [
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN",
+            "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN",
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE",
+            "BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE",
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT",
+            "BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT",
+        ]
+        previous = {name: os.environ.get(name) for name in names}
+        for name in names:
+            os.environ.pop(name, None)
+        os.environ["OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE"] = "test.service"
+        os.environ["OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT"] = "test.account"
+
+        calls: list[tuple[list[str], dict[str, Any]]] = []
+
+        def fake_run(args: list[str], **kwargs: Any):
+            calls.append((args, kwargs))
+            return ledger_mod.subprocess.CompletedProcess(
+                args,
+                0,
+                stdout="keychain-token\n",
+                stderr="",
+            )
+
+        try:
+            with patch.object(ledger_mod.sys, "platform", "darwin"), patch.object(
+                ledger_mod.subprocess,
+                "run",
+                fake_run,
+            ):
+                self.assertEqual(ledger_mod._resolve_socket_auth_token(), "keychain-token")
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+        self.assertEqual(
+            calls[0][0],
+            [
+                "security",
+                "find-generic-password",
+                "-s",
+                "test.service",
+                "-a",
+                "test.account",
+                "-w",
+            ],
+        )
+        self.assertEqual(calls[0][1]["stdin"], ledger_mod.subprocess.DEVNULL)
+        self.assertEqual(calls[0][1]["stderr"], ledger_mod.subprocess.DEVNULL)
+        self.assertEqual(calls[0][1]["stdout"], ledger_mod.subprocess.PIPE)
+
 
 class DaemonSocketRoutingTests(unittest.TestCase):
     """When the daemon socket is available, the writer must prefer it over a
@@ -185,9 +242,7 @@ class DaemonSocketRoutingTests(unittest.TestCase):
         self._tmp = TemporaryDirectory()
         self.ledger_path = Path(self._tmp.name) / "usage-events.jsonl"
         self.socket_path = Path(self._tmp.name) / "openburnbar-daemon.sock"
-        self._server_thread, self._stop_event, self.captured = self._start_fake_daemon(
-            self.socket_path
-        )
+        self._server_thread, self._stop_event, self.captured = self._start_fake_daemon(self.socket_path)
         # Point the writer at our fake socket without leaning on the user's
         # real `~/Library/Application Support/OpenBurnBar` directory.
         os.environ["OPENBURNBAR_DAEMON_SOCKET_PATH"] = str(self.socket_path)
@@ -211,7 +266,7 @@ class DaemonSocketRoutingTests(unittest.TestCase):
         self._tmp.cleanup()
 
     @staticmethod
-    def _start_fake_daemon(path: Path):
+    def _start_fake_daemon(path: Path, *, response_error: dict[str, Any] | None = None):
         captured: dict[str, Any] = {}
         stop_event = threading.Event()
 
@@ -250,15 +305,22 @@ class DaemonSocketRoutingTests(unittest.TestCase):
                             continue
                         captured["last_request"] = request
                         params = request.get("params") or {}
-                        envelope = {
-                            "id": request.get("id"),
-                            "protocolVersion": 1,
-                            "result": {
-                                "idempotencyKey": params.get("idempotencyKey"),
-                                "inserted": True,
-                                "event": params.get("event"),
-                            },
-                        }
+                        if response_error is not None:
+                            envelope = {
+                                "id": request.get("id"),
+                                "protocolVersion": 1,
+                                "error": response_error,
+                            }
+                        else:
+                            envelope = {
+                                "id": request.get("id"),
+                                "protocolVersion": 1,
+                                "result": {
+                                    "idempotencyKey": params.get("idempotencyKey"),
+                                    "inserted": True,
+                                    "event": params.get("event"),
+                                },
+                            }
                         client.sendall((json.dumps(envelope) + "\n").encode("utf-8"))
             finally:
                 srv.close()
@@ -299,6 +361,43 @@ class DaemonSocketRoutingTests(unittest.TestCase):
         params = last_request.get("params") or {}
         self.assertEqual(params.get("idempotencyKey"), "daemon-key-1")
         self.assertEqual(params.get("event", {}).get("providerID"), "hermes")
+
+    def test_writer_does_not_fallback_after_daemon_rejection(self) -> None:
+        rejecting_socket = Path(self._tmp.name) / "rejecting-daemon.sock"
+        thread, stop_event, captured = self._start_fake_daemon(
+            rejecting_socket,
+            response_error={
+                "code": -32001,
+                "message": "Unauthorized OpenBurnBar RPC request.",
+            },
+        )
+        os.environ["OPENBURNBAR_DAEMON_SOCKET_PATH"] = str(rejecting_socket)
+        try:
+            with self.assertRaises(RuntimeError) as raised:
+                ledger_mod.append_usage_record(
+                    event=ledger_mod.UsageEvent(
+                        provider_id="hermes",
+                        model_id="minimax-m2.7-highspeed",
+                        input_tokens=10,
+                        output_tokens=5,
+                        cost=0.001,
+                    ),
+                    idempotency_key="daemon-key-rejected",
+                    ledger_path=self.ledger_path,
+                    prefer_daemon=True,
+                )
+            self.assertIn("code=-32001", str(raised.exception))
+            self.assertFalse(self.ledger_path.exists())
+            self.assertEqual(captured.get("last_request", {}).get("method"), "daemon.usage.record")
+        finally:
+            stop_event.set()
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as poke:
+                    poke.settimeout(0.5)
+                    poke.connect(str(rejecting_socket))
+            except OSError:
+                pass
+            thread.join(timeout=2)
 
 
 class HermesProxyTests(unittest.TestCase):

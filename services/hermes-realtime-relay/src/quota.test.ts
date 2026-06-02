@@ -101,3 +101,22 @@ test("keeps request, byte, and in-flight quotas isolated by relay runtime", asyn
   assert.ok(keys.has("hermes:quota:user-1:inflight"));
   assert.ok(keys.has("pi:quota:user-1:inflight"));
 });
+
+test("counts scoped in-flight members even when client request IDs are reused", async () => {
+  const redis = new FakeRedis();
+  const quota = new RedisRelayQuotaStore(redis, {
+    ...limits,
+    maxInFlightRequestsPerUser: 1,
+  });
+
+  await quota.reserveInFlight("user-1", "session-a:req-1", "hermes");
+  await assert.rejects(
+    () => quota.reserveInFlight("user-1", "session-b:req-1", "hermes"),
+    /in-flight request limit reached/
+  );
+
+  const releaseCall = redis.calls.find(
+    (call) => call.command === "zrem" && call.args[0] === "session-b:req-1"
+  );
+  assert.equal(releaseCall?.key, "hermes:quota:user-1:inflight");
+});

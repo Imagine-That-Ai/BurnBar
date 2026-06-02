@@ -22,6 +22,7 @@ const mockApi: BurnBarWorkspaceApi = {
   remoteName: 'cursor',
   workspaceFolders: [createMockWorkspaceFolder('/test/workspace')],
   isWritableFileSystem: (scheme: string) => scheme === 'file',
+  stat: vi.fn(() => Promise.resolve({ size: 0 })),
   readFile: vi.fn(() => Promise.resolve(new Uint8Array())),
   findFiles: vi.fn(() => Promise.resolve([])),
   openTextDocument: vi.fn(() => Promise.resolve({ getText: () => 'test' })),
@@ -53,6 +54,7 @@ vi.mock('vscode', () => ({
     workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }],
     fs: {
       isWritableFileSystem: vi.fn(() => true),
+      stat: vi.fn(() => Promise.resolve({ size: 0 })),
       readFile: vi.fn(() => Promise.resolve(new Uint8Array()))
     },
     findFiles: vi.fn(() => Promise.resolve([])),

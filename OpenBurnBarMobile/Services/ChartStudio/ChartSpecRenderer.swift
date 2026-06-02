@@ -322,8 +322,15 @@ public enum ChartSpecRenderer {
         let bannedPatterns = [
             "(?i)<\\s*script[^>]*>[\\s\\S]*?<\\s*/\\s*script\\s*>",
             "(?i)<\\s*iframe[^>]*>[\\s\\S]*?<\\s*/\\s*iframe\\s*>",
+            "(?i)<\\s*img[^>]*>",
+            "(?im)^\\s*click\\s+.*$",
+            "(?im)^\\s*href\\s+.*$",
+            "(?i)@import\\s+[^;]+;",
+            "(?i)https?://[^\\s\"')]+",
             "(?i)javascript:",
             "(?i)data:[^,]*",
+            "(?i)(?:src|href|xlink:href)\\s*=\\s*\"[^\"]*\"",
+            "(?i)(?:src|href|xlink:href)\\s*=\\s*'[^']*'",
             "(?i)on[a-z]+\\s*=\\s*\"[^\"]*\"",
             "(?i)on[a-z]+\\s*=\\s*'[^']*'"
         ]

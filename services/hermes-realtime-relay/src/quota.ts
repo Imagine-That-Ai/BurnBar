@@ -36,8 +36,8 @@ export interface RelayQuotaStore {
   ): Promise<void>;
   checkFrameBytes(uid: string, bytes: number, runtime?: HermesRelayRuntime): Promise<void>;
   checkRequestStart(uid: string, runtime: HermesRelayRuntime): Promise<void>;
-  reserveInFlight(uid: string, requestID: string, runtime: HermesRelayRuntime): Promise<void>;
-  releaseInFlight(uid: string, requestID: string, runtime: HermesRelayRuntime): Promise<void>;
+  reserveInFlight(uid: string, member: string, runtime: HermesRelayRuntime): Promise<void>;
+  releaseInFlight(uid: string, member: string, runtime: HermesRelayRuntime): Promise<void>;
 }
 
 export class RedisRelayQuotaStore implements RelayQuotaStore {
@@ -131,21 +131,21 @@ export class RedisRelayQuotaStore implements RelayQuotaStore {
     }
   }
 
-  async reserveInFlight(uid: string, requestID: string, runtime: HermesRelayRuntime): Promise<void> {
+  async reserveInFlight(uid: string, member: string, runtime: HermesRelayRuntime): Promise<void> {
     const key = inFlightKey(uid, runtime);
     const now = Date.now();
     await this.redis.zremrangebyscore(key, 0, now - this.limits.inFlightLeaseSeconds * 1_000);
-    await this.redis.zadd(key, now, requestID);
+    await this.redis.zadd(key, now, member);
     await this.redis.expire(key, this.limits.inFlightLeaseSeconds);
     const count = await this.redis.zcard(key);
     if (count > this.limits.maxInFlightRequestsPerUser) {
-      await this.redis.zrem(key, requestID);
+      await this.redis.zrem(key, member);
       throw new RelayLimitError("in_flight_limit", `Realtime ${runtime} in-flight request limit reached.`);
     }
   }
 
-  async releaseInFlight(uid: string, requestID: string, runtime: HermesRelayRuntime): Promise<void> {
-    await this.redis.zrem(inFlightKey(uid, runtime), requestID);
+  async releaseInFlight(uid: string, member: string, runtime: HermesRelayRuntime): Promise<void> {
+    await this.redis.zrem(inFlightKey(uid, runtime), member);
   }
 }
 

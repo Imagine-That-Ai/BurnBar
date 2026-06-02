@@ -86,17 +86,33 @@ Examples:
     process.exit(await doctor());
   }
   if (first === "mcp" && second === "login") {
-    if (third) {
-      writeAccessToken(third);
-      process.stdout.write("OpenBurnBar MCP token stored.\n");
+    if (third === "--stdin") {
+      writeAccessToken(await readTokenFromStdin());
+      process.stdout.write("OpenBurnBar MCP token stored from stdin.\n");
       return;
+    }
+    if (third === "--env") {
+      const token = process.env.OPENBURNBAR_MCP_ACCESS_TOKEN;
+      if (!token) {
+        process.stderr.write("Error: OPENBURNBAR_MCP_ACCESS_TOKEN is not set.\n");
+        process.exit(2);
+      }
+      writeAccessToken(token);
+      process.stdout.write("OpenBurnBar MCP token stored from environment.\n");
+      return;
+    }
+    if (third) {
+      process.stderr.write(
+        "Error: refusing to accept an MCP bearer token in argv. Use `openburnbar mcp login`, `openburnbar mcp login --stdin`, or `OPENBURNBAR_MCP_ACCESS_TOKEN=... openburnbar mcp login --env`.\n"
+      );
+      process.exit(2);
     } else {
       const { runLoginFlow } = await import("./login.js");
       await runLoginFlow();
       return;
     }
   }
-  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> [token] | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
+  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> [--stdin|--env] | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
 }
 
 function optionValue(name: string, index: number): string | undefined {
@@ -107,6 +123,15 @@ function optionValue(name: string, index: number): string | undefined {
     process.exit(2);
   }
   return next;
+}
+
+async function readTokenFromStdin(): Promise<string> {
+  process.stdin.setEncoding("utf8");
+  let input = "";
+  for await (const chunk of process.stdin) {
+    input += chunk;
+  }
+  return input.trim();
 }
 
 void main().catch((err) => {

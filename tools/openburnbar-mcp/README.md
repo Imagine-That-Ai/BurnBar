@@ -157,12 +157,15 @@ with session-log recall:
 ```bash
 export OPENBURNBAR_FIREBASE_PROJECT_ID=burnbar
 export OPENBURNBAR_FIREBASE_ID_TOKEN="<Firebase Auth ID token>"
+export OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN="<Firebase App Check token>"
 export OPENBURNBAR_CLOUD_VAULT_KEY_BASE64="<32-byte vault key, base64>"
 ```
 
 The MCP process keeps the plaintext query and vault key local. Firebase
-receives only keyed token/semantic hashes, returns encrypted result envelopes,
-and this MCP process decrypts titles, snippets, and requested bodies on-device.
+receives only keyed token/semantic hashes plus the Firebase Auth/App Check
+assertions required by production callables, returns encrypted result
+envelopes, and this MCP process decrypts titles, snippets, and requested
+bodies on-device.
 
 `burnbar_resume_conversation` is print-only by default and returns either a
 native command hint, a rendered cross-harness briefing, or a structured error.

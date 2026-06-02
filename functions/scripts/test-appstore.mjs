@@ -320,6 +320,7 @@ test("buildEntitlementDoc accepts explicit entitlement ids", () => {
       transactionId: "tx-pro",
       originalTransactionId: "otx-pro",
       expiresDate: Date.now() + 86_400_000,
+      signedDate: 1_800_000_000_000,
     }),
   });
   assert.equal(doc.id, "burnbar_pro_max");
@@ -716,6 +717,86 @@ test("reconcileEntitlement rejects on bundleId mismatch", async () => {
   assert.equal(writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync")).length, 0);
 });
 
+test("reconcileEntitlement rejects Sandbox transactions for production grants", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app", environment: "Production" });
+  const writes = [];
+  const reads = new Map();
+  const token = "44444444-4444-4444-4444-444444444444";
+  reads.set(`users/uid-sandbox/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid: "uid-sandbox",
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1700000000_000,
+    transactionId: "tx-sandbox",
+    originalTransactionId: "otx-sandbox",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
+    environment: "Sandbox",
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-sandbox",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive },
+    ),
+    /non_production_transaction/,
+  );
+  assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
+});
+
+test("reconcileEntitlement rejects unsigned transactions without existing server ownership", async () => {
+  const productID = LEGACY_HOSTED_PRODUCT_ID;
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1700000000_000,
+    transactionId: "tx-unsigned",
+    originalTransactionId: "otx-unsigned",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-attacker",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive },
+    ),
+    /uid_unresolved/,
+  );
+  assert.equal(writes.filter((w) => w.path.includes("/entitlements/")).length, 0);
+});
+
 test("reconcileEntitlement rejects when claimedUid disagrees with binding", async () => {
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
@@ -770,6 +851,17 @@ test("reconcileEntitlement is idempotent on replay (no extra writes)", async () 
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
   const reads = new Map();
+  const token = "66666666-6666-6666-6666-666666666666";
+  reads.set(`users/uid-7/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid: "uid-7",
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
   // Simulate the second call: existing doc with NEWER lastVerifiedAt.
   reads.set("users/uid-7/entitlements/hosted_quota_sync", {
     exists: true,
@@ -781,7 +873,7 @@ test("reconcileEntitlement is idempotent on replay (no extra writes)", async () 
       productID,
       transactionID: "tx-A",
       originalTransactionID: "otx-A",
-      environment: "Sandbox",
+      environment: "Production",
       signedTransactionHash: "0".repeat(64),
       source: "apple_jws_verified",
       verificationVersion: 2,
@@ -798,6 +890,7 @@ test("reconcileEntitlement is idempotent on replay (no extra writes)", async () 
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
   });
   const verifier = fakeVerifier({ seed });
   const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
@@ -825,7 +918,19 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
   const productID = LEGACY_HOSTED_PRODUCT_ID;
   const cfg = stubCfg({ bundleId: "com.test.app" });
   const writes = [];
-  const db = makeReconcilerDb(writes, new Map());
+  const reads = new Map();
+  const token = "55555555-5555-5555-5555-555555555555";
+  reads.set(`users/uid-7/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid: "uid-7",
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
 
   const oldTx = fakeTx({
     productId: productID,
@@ -834,6 +939,7 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
   });
   const newerTx = fakeTx({
     productId: productID,
@@ -842,6 +948,7 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
     originalTransactionId: "otx-A",
     bundleId: "com.test.app",
     expiresDate: Date.now() + 60 * 86_400_000,
+    appAccountToken: token,
   });
   // Seed sees old; ASC returns the newer one. Reconciler must pick newer.
   const verifier = fakeVerifier({
@@ -1001,6 +1108,7 @@ function fakeTx({
   revocationReason,
   appAccountToken,
   inAppOwnershipType,
+  environment = "Production",
 }) {
   const payload = {
     productId,
@@ -1017,7 +1125,7 @@ function fakeTx({
   return {
     raw: `raw-${transactionId}-${signedDate}`,
     payload,
-    environment: "Sandbox",
+    environment,
   };
 }
 
@@ -1029,7 +1137,7 @@ function stubDoc(overrides = {}) {
     transactionID: "tx",
     originalTransactionID: "otx",
     expiresAt: "2099-01-01T00:00:00.000Z",
-    environment: "Sandbox",
+    environment: "Production",
     signedTransactionHash: "0".repeat(64),
     signedDateMs: 1700000000_000,
     lastVerifiedAt: "2026-01-01T00:00:00.000Z",
@@ -1074,7 +1182,8 @@ function makeFakeFirestore(writes, opts = {}) {
 function stubCfg(overrides = {}) {
   return {
     bundleId: "com.test.app",
-    environment: "Sandbox",
+    environment: "Production",
+    appAppleId: 1234567890,
     enableOnlineChecks: false,
     autoFallbackEnvironment: false,
     asc: { keyId: "k", issuerId: "i", privateKeyP8: "p" },
@@ -1219,7 +1328,7 @@ function fakeVerifier({ seed, extraVerifyTransaction = {} }) {
     byRaw.set(raw, tx);
   }
   return {
-    defaultEnvironment: "Sandbox",
+    defaultEnvironment: "Production",
     async verifyTransaction(jws) {
       const tx = byRaw.get(jws);
       if (!tx) {
@@ -1230,12 +1339,12 @@ function fakeVerifier({ seed, extraVerifyTransaction = {} }) {
       return tx;
     },
     async verifyRenewalInfo() {
-      return { payload: {}, environment: "Sandbox", raw: "" };
+      return { payload: {}, environment: "Production", raw: "" };
     },
     async verifyNotification(jws) {
       const tx = byRaw.get(jws);
       if (!tx) throw new Error("not implemented");
-      return { payload: { data: {} }, environment: "Sandbox" };
+      return { payload: { data: {} }, environment: "Production" };
     },
     warmUp() {},
   };

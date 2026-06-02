@@ -1552,6 +1552,7 @@
 		FF2193EC287F315EF5B4959B /* DataStoreCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1332856DEA3C1BE127FCBC /* DataStoreCoordinator.swift */; };
 		FFA7903A67AE17FD933C644C /* CursorLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A6AD6AE1CB3C1474E6099D /* CursorLoginHelper.swift */; };
 		FFAB5E091DCFBFA9AB908725 /* RemoteUnlockCapabilitySigningKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8DD874C9F507F7F4987336 /* RemoteUnlockCapabilitySigningKeyStore.swift */; };
+		EAF9B1A0CF13D0437DF8C20D /* BurnBarDaemonServer+RPCValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D7D1BF39A83566DBB201683 /* BurnBarDaemonServer+RPCValidation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -3191,6 +3192,7 @@
 		FF3C2FB3F574C07FF79E1B37 /* DashboardProjectSpendLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProjectSpendLaneView.swift; sourceTree = "<group>"; };
 		FFB4C714340AB5C7EF8AB2BE /* MobileInsightAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInsightAggregator.swift; sourceTree = "<group>"; };
 		FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesLiveGlyph.swift; sourceTree = "<group>"; };
+		8D7D1BF39A83566DBB201683 /* BurnBarDaemonServer+RPCValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RPC/BurnBarDaemonServer+RPCValidation.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -4475,6 +4477,7 @@
 				1B239189C81956B658413D54 /* OpenBurnBarWorkspaceBridgeBroker.swift */,
 				51D506CC529E5A51217012BD /* PTYInteractiveSession.swift */,
 				68B813B1B6CA55D1EC1FB14A /* SecKeychainInteractionGate.swift */,
+				8D7D1BF39A83566DBB201683 /* BurnBarDaemonServer+RPCValidation.swift */,
 			);
 			name = OpenBurnBarDaemon;
 			path = OpenBurnBarDaemon/Sources/OpenBurnBarDaemon;
@@ -6875,6 +6878,7 @@
 				623DED4A892656C9B18B9794 /* PTYInteractiveSession.swift in Sources */,
 				E7AB73D876052D8A44D8D6D2 /* SecKeychainInteractionGate.swift in Sources */,
 				80292A85645869D81D50A2BB /* TelegramBotBridge.swift in Sources */,
+				EAF9B1A0CF13D0437DF8C20D /* BurnBarDaemonServer+RPCValidation.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

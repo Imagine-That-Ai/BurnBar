@@ -50,6 +50,7 @@ interface ResumeConversationArgs {
 
 const NATIVE_HOSTED_PROVIDERS = new Set(["Claude Code", "Codex"]);
 const HEX_32_128 = /^[a-f0-9]{32,128}$/u;
+const SEALED_TEXT_KEYS = ["algorithm", "keyVersion", "nonce", "ciphertext", "tag"] as const;
 
 export async function listResumable(db: ResumeFirestore, uid: string, args: ResumeArgs) {
   const limit = boundedInt(args.limit, 20, 1, 50);
@@ -83,7 +84,7 @@ export async function listResumable(db: ResumeFirestore, uid: string, args: Resu
         started_at: timestampISO(data.startTime),
         last_message_at: timestampISO(data.endTime),
         can_resume_native: NATIVE_HOSTED_PROVIDERS.has(provider) && !!sessionID && !sessionID.includes("/"),
-        summary_title_sealed: data.sealedTitle,
+        summary_title_sealed: canonicalSealedText(data.sealedTitle),
         decrypt_mode: "local_decrypt_shim"
       };
     })
@@ -127,6 +128,7 @@ export async function resumeConversation(db: ResumeFirestore, uid: string, args:
 
   const sealedTrail = chunks.docs
     .map((chunk) => chunk.get("sealedSnippet"))
+    .map((value) => canonicalSealedText(value))
     .filter((value) => value !== undefined);
 
   return {
@@ -141,17 +143,27 @@ export async function resumeConversation(db: ResumeFirestore, uid: string, args:
       last_message_at: timestampISO(data.endTime)
     },
     sealed: {
-      summary: data.sealedSummary ?? data.sealedBodyPreview,
-      summary_title: data.sealedTitle,
-      context: data.sealedContext ?? data.sealedBodyPreview,
+      summary: canonicalSealedText(data.sealedSummary ?? data.sealedBodyPreview),
+      summary_title: canonicalSealedText(data.sealedTitle),
+      context: canonicalSealedText(data.sealedContext ?? data.sealedBodyPreview),
       trail_chunks: sealedTrail,
-      hand_off: data.sealedHandOff ?? data.sealedBodyPreview
+      hand_off: canonicalSealedText(data.sealedHandOff ?? data.sealedBodyPreview)
     },
     trail_chunk_count: sealedTrail.length,
     body_hashes: sealedTrail.map((chunk) => sha256StableJSON(chunk)),
     decrypt_mode: "local_decrypt_shim",
     max_tokens: boundedInt(args.max_tokens, 8000, 1024, 32000)
   };
+}
+
+function canonicalSealedText(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const envelope = value as Record<string, unknown>;
+  if (envelope.algorithm !== "AES-256-GCM" || typeof envelope.keyVersion !== "number") return undefined;
+  for (const key of ["nonce", "ciphertext", "tag"] as const) {
+    if (typeof envelope[key] !== "string") return undefined;
+  }
+  return Object.fromEntries(SEALED_TEXT_KEYS.map((key) => [key, envelope[key]]));
 }
 
 async function findConversation(db: ResumeFirestore, uid: string, sessionID: string): Promise<

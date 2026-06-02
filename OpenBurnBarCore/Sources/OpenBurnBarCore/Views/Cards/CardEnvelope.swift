@@ -147,8 +147,24 @@ public struct CardImage: Codable, Sendable, Hashable {
     public init(url: String, alt: String, widthHint: Int? = nil, heightHint: Int? = nil) {
         self.url = url
         self.alt = alt
-        self.widthHint = widthHint
-        self.heightHint = heightHint
+        self.widthHint = CardPresentationHintBounds.sanitizedImageDimension(widthHint)
+        self.heightHint = CardPresentationHintBounds.sanitizedImageDimension(heightHint)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case url, alt, widthHint, heightHint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decode(String.self, forKey: .url)
+        alt = try container.decode(String.self, forKey: .alt)
+        widthHint = CardPresentationHintBounds.sanitizedImageDimension(
+            try container.decodeIfPresent(Int.self, forKey: .widthHint)
+        )
+        heightHint = CardPresentationHintBounds.sanitizedImageDimension(
+            try container.decodeIfPresent(Int.self, forKey: .heightHint)
+        )
     }
 }
 
@@ -224,7 +240,36 @@ public struct CardCustom: Codable, Sendable, Hashable {
     public init(schemaURL: String, sandboxURL: String, heightHint: Int = 240) {
         self.schemaURL = schemaURL
         self.sandboxURL = sandboxURL
-        self.heightHint = heightHint
+        self.heightHint = CardPresentationHintBounds.sanitizedCustomHeight(heightHint)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaURL, sandboxURL, heightHint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaURL = try container.decode(String.self, forKey: .schemaURL)
+        sandboxURL = try container.decode(String.self, forKey: .sandboxURL)
+        heightHint = CardPresentationHintBounds.sanitizedCustomHeight(
+            try container.decodeIfPresent(Int.self, forKey: .heightHint) ?? 240
+        )
+    }
+}
+
+private enum CardPresentationHintBounds {
+    private static let minImageDimension = 1
+    private static let maxImageDimension = 4_096
+    private static let minCustomHeight = 96
+    private static let maxCustomHeight = 720
+
+    static func sanitizedImageDimension(_ value: Int?) -> Int? {
+        guard let value else { return nil }
+        return min(max(value, minImageDimension), maxImageDimension)
+    }
+
+    static func sanitizedCustomHeight(_ value: Int) -> Int {
+        min(max(value, minCustomHeight), maxCustomHeight)
     }
 }
 

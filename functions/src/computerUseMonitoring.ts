@@ -17,6 +17,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
 import type { ComputerUseSessionDailyRollupDoc } from "./types.js";
+import { trustedComputerUseTotalSpendUSD } from "./computerUseSpendGuards.js";
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -63,6 +64,7 @@ export const rollupComputerUseDaily = onSchedule(
     const actions = actionSnap.docs.map((d) => {
       const data = d.data();
       return {
+        uid: uidFromActionPath(d.ref.path),
         approvalLatencyMillis: numberField(data, "approvalLatencyMillis"),
         status: stringField(data, "status"),
         denyReason: stringField(data, "denyReason"),
@@ -79,7 +81,7 @@ export const rollupComputerUseDaily = onSchedule(
 
     const scopeViolations = actions.filter((a) => a.status === "denied" && a.denyReason === "scope_denied").length;
     const panicHalts = sessions.filter((s) => (s.endReason ?? "").startsWith("panic_")).length;
-    const visionSpend = actions.reduce((acc, a) => acc + (a.visionTokensCostUSD ?? 0), 0);
+    const visionSpend = trustedComputerUseTotalSpendUSD(actions);
 
     const rollup: ComputerUseSessionDailyRollupDoc = {
       dayKey,
@@ -112,3 +114,8 @@ export const rollupComputerUseDaily = onSchedule(
     await firestore.doc(`ops/computer_use_session_daily_rollups/days/${dayKey}`).set(rollup, { merge: true });
   },
 );
+
+function uidFromActionPath(path: string): string {
+  const parts = path.split("/");
+  return parts[0] === "users" && parts[1] ? parts[1] : "";
+}

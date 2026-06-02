@@ -38,19 +38,23 @@ export async function readConversationBody(
   const data = snap.data() ?? {};
   const storagePath = typeof data.storagePath === "string" ? data.storagePath : "";
   const bodyHash = typeof data.bodyHash === "string" ? data.bodyHash : "";
-  if (!storagePath.startsWith(`users/${uid}/session_logs/${docId}/bodies/`) || !bodyHash) {
+  const expectedStoragePath = `users/${uid}/session_logs/${docId}/bodies/${bodyHash}.json.aesgcm`;
+  if (!bodyHash || storagePath !== expectedStoragePath) {
     throw new HttpError(403, "Conversation body path is not owner-scoped.", "invalid_storage_path");
   }
-  const [bytes] = await getStorage().bucket().file(storagePath).download();
+  const [bytes] = await getStorage()
+    .bucket()
+    .file(storagePath)
+    .download({ start: offset, end: offset + maxChars });
   const encoded = bytes.toString("utf8");
-  const page = encoded.slice(offset, offset + maxChars);
+  const page = encoded.slice(0, maxChars);
   return {
     resourceUri: uri,
     bodyHash,
     encryptedBodyPage: page,
     encrypted: true,
     decryptMode: "local_decrypt_shim",
-    nextCursor: offset + maxChars < encoded.length
+    nextCursor: encoded.length > maxChars
       ? signCursor({ uid, tool: "burnbar_get_conversation_body", offset: offset + maxChars, resourceUri: uri, exp: Date.now() + 15 * 60_000 })
       : undefined,
     storageReads: 1,

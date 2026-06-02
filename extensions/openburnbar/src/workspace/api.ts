@@ -7,6 +7,10 @@ import { OpenBurnBarWorkspaceRpcError, type BurnBarWorkspaceHostKind } from './t
 export interface BurnBarWorkspaceUri {
   scheme: string;
   fsPath: string;
+  authority?: string;
+  path?: string;
+  query?: string;
+  fragment?: string;
   toString(): string;
 }
 
@@ -46,6 +50,7 @@ export interface BurnBarWorkspaceApi {
   readonly isTrusted: boolean;
   readonly workspaceFolders: readonly BurnBarWorkspaceFolder[] | undefined;
   isWritableFileSystem(scheme: string): boolean | undefined;
+  stat(uri: BurnBarWorkspaceUri): Thenable<{ size: number }>;
   readFile(uri: BurnBarWorkspaceUri): Thenable<Uint8Array>;
   findFiles(include: string, exclude: string | undefined, maxResults: number): Thenable<readonly BurnBarWorkspaceUri[]>;
   openTextDocument(uri: BurnBarWorkspaceUri): Thenable<BurnBarWorkspaceTextDocument>;
@@ -67,6 +72,7 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     isTrusted: vscode.workspace.isTrusted,
     workspaceFolders: vscode.workspace.workspaceFolders,
     isWritableFileSystem: (scheme) => vscode.workspace.fs.isWritableFileSystem(scheme),
+    stat: (uri) => vscode.workspace.fs.stat(toVSCodeUri(uri)),
     readFile: (uri) => vscode.workspace.fs.readFile(toVSCodeUri(uri)),
     findFiles: (include, exclude, maxResults) => vscode.workspace.findFiles(include, exclude, maxResults),
     openTextDocument: (uri) => vscode.workspace.openTextDocument(toVSCodeUri(uri)),
@@ -168,7 +174,7 @@ function isWithinWorkspaceRoot(candidate: BurnBarWorkspaceUri, root: BurnBarWork
     return isWithinFileRoot(candidate.fsPath, root.fsPath);
   }
 
-  return isUriDescendant(candidate.toString(), root.toString());
+  return isUriDescendant(candidate, root);
 }
 
 function isWithinFileRoot(candidatePath: string, rootPath: string): boolean {
@@ -183,7 +189,91 @@ function isWithinFileRoot(candidatePath: string, rootPath: string): boolean {
   return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
 
-function isUriDescendant(candidate: string, root: string): boolean {
-  const normalizedRoot = root.endsWith('/') ? root.slice(0, -1) : root;
-  return candidate === normalizedRoot || candidate.startsWith(`${normalizedRoot}/`);
+interface WorkspaceUriParts {
+  authority: string;
+  path: string;
+  query: string;
+  fragment: string;
+}
+
+function isUriDescendant(candidate: BurnBarWorkspaceUri, root: BurnBarWorkspaceUri): boolean {
+  const candidateParts = uriParts(candidate);
+  const rootParts = uriParts(root);
+  if (
+    candidateParts.authority !== rootParts.authority ||
+    candidateParts.query !== rootParts.query ||
+    candidateParts.fragment !== rootParts.fragment
+  ) {
+    return false;
+  }
+
+  const candidateSegments = normalizedUriSegments(candidateParts.path);
+  const rootSegments = normalizedUriSegments(rootParts.path);
+  if (!candidateSegments || !rootSegments || candidateSegments.length < rootSegments.length) {
+    return false;
+  }
+
+  return rootSegments.every((segment, index) => candidateSegments[index] === segment);
+}
+
+function uriParts(uri: BurnBarWorkspaceUri): WorkspaceUriParts {
+  if (
+    typeof uri.authority === 'string' ||
+    typeof uri.path === 'string' ||
+    typeof uri.query === 'string' ||
+    typeof uri.fragment === 'string'
+  ) {
+    return {
+      authority: uri.authority ?? '',
+      path: uri.path ?? uri.fsPath,
+      query: uri.query ?? '',
+      fragment: uri.fragment ?? ''
+    };
+  }
+
+  return parseUriParts(uri.toString());
+}
+
+function parseUriParts(value: string): WorkspaceUriParts {
+  const match = /^([a-z][a-z0-9+.-]*:)(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/iu.exec(value);
+  return {
+    authority: match?.[2] ?? '',
+    path: match?.[3] ?? '',
+    query: match?.[4] ?? '',
+    fragment: match?.[5] ?? ''
+  };
+}
+
+function normalizedUriSegments(rawPath: string): string[] | undefined {
+  const stack: string[] = [];
+  for (const segment of rawPath.split('/')) {
+    if (!segment) {
+      continue;
+    }
+
+    const decoded = safeDecodeURIComponent(segment);
+    if (decoded === undefined || decoded.includes('/') || decoded.includes('\\')) {
+      return undefined;
+    }
+    if (decoded === '.') {
+      continue;
+    }
+    if (decoded === '..') {
+      if (stack.length === 0) {
+        return undefined;
+      }
+      stack.pop();
+      continue;
+    }
+    stack.push(decoded);
+  }
+  return stack;
+}
+
+function safeDecodeURIComponent(value: string): string | undefined {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
 }

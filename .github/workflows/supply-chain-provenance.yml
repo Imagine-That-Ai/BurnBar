@@ -11,7 +11,6 @@ on:
   workflow_run:
     workflows: ["OpenBurnBar Release"]
     types: [completed]
-    branches: [main]
 
 permissions:
   contents: read
@@ -25,80 +24,153 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve release tag
         id: tag
         env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
           RUN_HEAD: ${{ github.event.workflow_run.head_branch }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${INPUT_TAG}"
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            export INPUT_TAG="${DISPATCH_TAG}"
           else
-            TAG="${RUN_HEAD}"
+            export INPUT_TAG="${RUN_HEAD}"
           fi
-          if [[ ! "$TAG" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
-            echo "::error::Invalid tag: $TAG"
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          scripts/security/resolve-trusted-release-tag.sh
+
+      - name: Require GitHub Release for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
+        run: gh release view "$TAG_NAME" --json tagName,url,targetCommitish
+
+      - name: Check out attested release tree
+        env:
+          COMMIT_SHA: ${{ steps.tag.outputs.commit_sha }}
+        run: git checkout --detach "$COMMIT_SHA"
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
           path: ${{ runner.temp }}/release-artifacts
         if: github.event_name == 'workflow_run'
 
+      - name: Download GitHub Release assets
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/release-artifacts"
+          gh release download "$TAG_NAME" \
+            --dir "${RUNNER_TEMP}/release-artifacts" \
+            --clobber
+
+      - name: Bind provenance to release artifacts
+        id: artifacts
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/release-artifacts
+          COMMIT_SHA: ${{ steps.tag.outputs.commit_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          root = pathlib.Path(os.environ["ARTIFACT_DIR"])
+          tag_name = os.environ["TAG_NAME"]
+          version = os.environ["VERSION"]
+          commit_sha = os.environ["COMMIT_SHA"]
+          event_name = os.environ["EVENT_NAME"]
+          workflow_head_sha = os.environ.get("WORKFLOW_RUN_HEAD_SHA", "")
+
+          if not root.is_dir():
+              raise SystemExit(f"::error::Release artifact directory is missing: {root}")
+
+          def find_one(label: str, pattern: str) -> pathlib.Path:
+              matches = sorted(path for path in root.rglob(pattern) if path.is_file())
+              if len(matches) != 1:
+                  rendered = ", ".join(str(path) for path in matches[:10]) or "none"
+                  raise SystemExit(f"::error::Expected exactly one {label} matching {pattern}; found {len(matches)}: {rendered}")
+              return matches[0]
+
+          metadata_path = find_one("release metadata", "release-metadata.json")
+          metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          metadata_tag = str(metadata.get("tag", ""))
+          metadata_commit = str(metadata.get("commit", ""))
+          if metadata_tag != tag_name:
+              raise SystemExit(f"::error::Release metadata tag {metadata_tag!r} does not match resolved tag {tag_name!r}.")
+          if metadata_commit != commit_sha:
+              raise SystemExit(
+                  f"::error::Release metadata commit {metadata_commit} does not match resolved tag commit {commit_sha}."
+              )
+          if event_name == "workflow_run" and metadata_commit != workflow_head_sha:
+              raise SystemExit(
+                  f"::error::Release metadata commit {metadata_commit} does not match workflow_run.head_sha {workflow_head_sha}."
+              )
+
+          expected = {
+              "dmg_path": f"OpenBurnBar-{version}-macOS.dmg",
+              "zip_path": f"OpenBurnBar-{version}-macOS.zip",
+              "checksums_path": f"checksums-v{version}*.txt",
+              "sbom_path": f"*.spdx.json",
+              "vex_path": f"*.vex.json",
+          }
+          resolved = {key: find_one(key, pattern) for key, pattern in expected.items()}
+          resolved["metadata_path"] = metadata_path
+
+          output_path = os.environ.get("GITHUB_OUTPUT")
+          lines = [f"{key}={value}" for key, value in resolved.items()]
+          if output_path:
+              with open(output_path, "a", encoding="utf-8") as output:
+                  output.write("\n".join(lines) + "\n")
+          else:
+              print("\n".join(lines))
+
+          print(f"Validated release assets for {tag_name} at {commit_sha}.")
+          PY
+
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
 
-      - name: Generate SBOM (PR-style fallback when artifacts missing)
-        id: sbom
+      - name: Attest release artifacts (cosign / GitHub attestations)
         env:
-          VERSION: ${{ steps.tag.outputs.version }}
+          CHECKSUMS_PATH: ${{ steps.artifacts.outputs.checksums_path }}
+          DMG_PATH: ${{ steps.artifacts.outputs.dmg_path }}
+          SBOM_PATH: ${{ steps.artifacts.outputs.sbom_path }}
+          VEX_PATH: ${{ steps.artifacts.outputs.vex_path }}
+          ZIP_PATH: ${{ steps.artifacts.outputs.zip_path }}
         run: |
-          SBOM="${{ runner.temp }}/openburnbar-${VERSION}.spdx.json"
-          python3 scripts/generate-sbom.py \
-            --version "$VERSION" \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --output "$SBOM"
-          echo "path=$SBOM" >> "$GITHUB_OUTPUT"
-
-      - name: Generate OpenVEX sidecar
-        id: vex
-        env:
-          VERSION: ${{ steps.tag.outputs.version }}
-          SBOM_PATH: ${{ steps.sbom.outputs.path }}
-        run: |
-          VEX="${{ runner.temp }}/openburnbar-${VERSION}.vex.json"
-          python3 scripts/supply-chain/generate-vex.py \
-            --sbom "$SBOM_PATH" \
-            --output "$VEX" \
-            --product-version "$VERSION"
-          echo "path=$VEX" >> "$GITHUB_OUTPUT"
-
-      - name: Attest SBOM and VEX (cosign / GitHub attestations)
-        env:
-          SBOM_PATH: ${{ steps.sbom.outputs.path }}
-          VEX_PATH: ${{ steps.vex.outputs.path }}
-        run: |
-          cosign attest --yes \
-            --predicate-type https://slsa.dev/provenance/v1 \
-            --type slsaprovenance \
-            "$SBOM_PATH" || cosign attest --yes "$SBOM_PATH"
-          cosign attest --yes "$VEX_PATH"
+          for artifact in "$DMG_PATH" "$ZIP_PATH" "$CHECKSUMS_PATH" "$SBOM_PATH" "$VEX_PATH"; do
+            test -f "$artifact"
+            cosign attest --yes "$artifact"
+          done
 
       - name: Upload provenance bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: supply-chain-provenance-${{ steps.tag.outputs.version }}
           path: |
-            ${{ steps.sbom.outputs.path }}
-            ${{ steps.vex.outputs.path }}
+            ${{ steps.artifacts.outputs.dmg_path }}
+            ${{ steps.artifacts.outputs.zip_path }}
+            ${{ steps.artifacts.outputs.checksums_path }}
+            ${{ steps.artifacts.outputs.sbom_path }}
+            ${{ steps.artifacts.outputs.vex_path }}
+            ${{ steps.artifacts.outputs.metadata_path }}
 
       - name: Ecosystem deny checks
         run: bash scripts/supply-chain/run-ecosystem-deny-checks.sh
@@ -108,7 +180,7 @@ jobs:
           {
             echo "### Supply chain provenance"
             echo ""
-            echo "- Tag: \`${{ steps.tag.outputs.tag }}\`"
-            echo "- SBOM + OpenVEX generated and cosign-attested"
+            echo "- Tag: \`${{ steps.tag.outputs.tag_name }}\`"
+            echo "- Release DMG, ZIP, checksums, SBOM, and OpenVEX verified against release metadata and cosign-attested"
             echo "- Bit-reproducible **notarized** builds: de-scoped (see docs/security/SUPPLY_CHAIN_PROVENANCE.md)"
           } >> "$GITHUB_STEP_SUMMARY"

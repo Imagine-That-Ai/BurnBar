@@ -182,8 +182,8 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.equal(summary.destroyedSecrets, 0);
   assert.equal(summary.failedSecretDestroys, 1);
   assert.equal(warnings.length, 1);
-  assert.ok(db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
-  assert.ok(db.deletedPaths.includes("users/alice"));
+  assert.ok(!db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
+  assert.ok(!db.deletedPaths.includes("users/alice"));
 }
 
 {
@@ -233,6 +233,8 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.equal(summary.failedSecretDestroys, 1);
   assert.equal(summary.deletedAuthUser, false);
   assert.equal(summary.authUserAlreadyMissing, false);
+  assert.ok(!db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
+  assert.ok(!db.deletedPaths.includes("users/alice"));
 }
 
 {

@@ -1,5 +1,22 @@
 import Foundation
 
+enum CursorCredentialStore {
+    static let cookieAccount = "cursor_cookie"
+
+    @MainActor
+    static func resolvedCookieHeader(
+        providerKeyStore: ProviderAPIKeyStore,
+        connectorKeychain: KeychainStore
+    ) -> String? {
+        connectorCookieHeader(from: connectorKeychain)
+            ?? quotaNonEmpty(providerKeyStore.apiKey(for: cookieAccount, allowUserInteraction: false))
+    }
+
+    static func connectorCookieHeader(from keychain: KeychainStore) -> String? {
+        quotaNonEmpty(try? keychain.string(for: cookieAccount, allowUserInteraction: false))
+    }
+}
+
 // MARK: - Cursor Quota Adapter
 
 /// Fetches real Cursor usage/quota from `cursor.com/api/usage-summary`.
@@ -15,7 +32,7 @@ import Foundation
 /// ## Resolution chain (first wins)
 /// 1. `CURSOR_COOKIE_HEADER` environment variable
 /// 2. Keychain-stored `cursor_cookie` value
-/// 3. Auto-extract JWT from `state.vscdb` via `CursorCookieExtractor.readSession()`
+/// 3. Auto-extract JWT from `state.vscdb`, migrate it into Keychain, then use it
 ///
 /// If no source yields a session: returns `confidence: .unavailable` (NOT estimated).
 ///
@@ -93,8 +110,15 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        // 3. Auto-extract from Cursor's SQLite database (zero-config, no FDA needed)
+        // 3. Auto-extract from Cursor's SQLite database, then migrate into
+        // OpenBurnBar's Keychain namespace before using it.
         if let session = CursorCookieExtractor.readSession() {
+            do {
+                try KeychainStore().set(session.cookieHeader, for: CursorCredentialStore.cookieAccount)
+            } catch {
+                AppLogger.dataStore.silentFailure("CursorQuotaAdapter: Failed to migrate Cursor session to keychain", error: error)
+                return nil
+            }
             return ResolvedCursorCookie(cookieHeader: session.cookieHeader, source: .extracted)
         }
 

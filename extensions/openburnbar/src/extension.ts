@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { basename, isAbsolute, relative, resolve as resolvePath } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, relative, resolve as resolvePath } from 'node:path';
 
 import * as vscode from 'vscode';
 
@@ -310,10 +311,7 @@ async function maybeRunCursorSmoke(
   workspaceClient: OpenBurnBarControllerDependencies['workspaceClient'],
   daemonClient: OpenBurnBarControllerDependencies['client']
 ): Promise<void> {
-  const smokeConfig =
-    typeof vscode.workspace.getConfiguration === 'function' ? vscode.workspace.getConfiguration() : undefined;
-  const outputPath =
-    process.env.BURNBAR_CURSOR_SMOKE_OUTPUT ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath');
+  const outputPath = process.env.BURNBAR_CURSOR_SMOKE_OUTPUT;
   if (!outputPath) {
     return;
   }
@@ -321,9 +319,8 @@ async function maybeRunCursorSmoke(
   try {
     await runCursorSmoke({
       outputPath,
-      filePath:
-        process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath'),
-      modelID: process.env.BURNBAR_CURSOR_SMOKE_MODEL ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.modelID'),
+      filePath: process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH,
+      modelID: process.env.BURNBAR_CURSOR_SMOKE_MODEL,
       workspaceClient,
       daemonClient,
       getRunDetail: async (runID) => controller.getRunDetail(runID),
@@ -352,10 +349,7 @@ async function maybeRunCursorSmokeWithoutUI(
   daemonClient: OpenBurnBarControllerDependencies['client'],
   workspaceClient: OpenBurnBarControllerDependencies['workspaceClient']
 ): Promise<void> {
-  const smokeConfig =
-    typeof vscode.workspace.getConfiguration === 'function' ? vscode.workspace.getConfiguration() : undefined;
-  const outputPath =
-    process.env.BURNBAR_CURSOR_SMOKE_OUTPUT ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath');
+  const outputPath = process.env.BURNBAR_CURSOR_SMOKE_OUTPUT;
   if (!outputPath) {
     return;
   }
@@ -377,9 +371,8 @@ async function maybeRunCursorSmokeWithoutUI(
   try {
     await runCursorSmoke({
       outputPath,
-      filePath:
-        process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath'),
-      modelID: process.env.BURNBAR_CURSOR_SMOKE_MODEL ?? smokeConfig?.get<string>('openburnbar.cursorSmoke.modelID'),
+      filePath: process.env.BURNBAR_CURSOR_SMOKE_FILE_PATH,
+      modelID: process.env.BURNBAR_CURSOR_SMOKE_MODEL,
       workspaceClient,
       daemonClient,
       getRunDetail: async (runID) =>
@@ -447,9 +440,11 @@ async function runCursorSmoke({
 }): Promise<void> {
   const fs = await import('node:fs/promises');
   const safeOutputPath = sanitizeSmokeOutputPath(outputPath);
+  let outputCreated = false;
 
   try {
-    await fs.writeFile(safeOutputPath, JSON.stringify({ ok: false, stage: 'starting' }, null, 2), 'utf8');
+    await createSmokeOutputFile(fs, safeOutputPath, { ok: false, stage: 'starting' });
+    outputCreated = true;
 
     const capabilities = await workspaceClient.capabilities();
     if (!capabilities.hasWorkspace) {
@@ -516,40 +511,34 @@ async function runCursorSmoke({
       throw new Error('OpenBurnBar smoke run completed, but the workspace file did not change.');
     }
 
-    await fs.writeFile(
+    await writeSmokeOutputFile(
+      fs,
       safeOutputPath,
-      JSON.stringify(
-        {
-          ok: true,
-          filePath,
-          readCharacters: readResult.content.length,
-          changedCharacters: afterResult.content.length,
-          fileChanged,
-          runID,
-          phase
-        },
-        null,
-        2
-      ),
-      'utf8'
+      {
+        ok: true,
+        filePath,
+        readCharacters: readResult.content.length,
+        changedCharacters: afterResult.content.length,
+        fileChanged,
+        runID,
+        phase
+      }
     );
   } catch (error) {
     const failure = smokeFailureDetails(error);
-    await fs.writeFile(
-      safeOutputPath,
-      JSON.stringify(
+    if (outputCreated) {
+      await writeSmokeOutputFile(
+        fs,
+        safeOutputPath,
         {
           ok: false,
           error: error instanceof Error ? error.message : String(error),
           runID: failure.runID,
           phase: failure.phase,
           runDetail: failure.runDetail
-        },
-        null,
-        2
-      ),
-      'utf8'
-    );
+        }
+      );
+    }
     throw error;
   }
 }
@@ -577,24 +566,79 @@ function isRunDetailResponse(value: unknown): value is BurnBarRunDetailResponse 
 /**
  * Validate a developer-supplied smoke-output path before passing it to fs APIs.
  *
- * The path comes from a CI-controlled env var or workspace setting, but we still
- * constrain it to (a) absolute, (b) no NUL bytes, (c) basename limited to a
- * conservative character set ending in `.json`. This neutralizes the
- * `js/path-injection` taint flow CodeQL traces from the env var into writeFile.
+ * The path comes only from a test harness environment variable. Keep it inside
+ * the dedicated Cursor smoke temp directory so opening a workspace cannot turn
+ * extension activation into an arbitrary JSON overwrite.
  */
 function sanitizeSmokeOutputPath(raw: string): string {
   if (typeof raw !== 'string' || raw.length === 0 || raw.includes('\0')) {
     throw new Error('Invalid smoke output path.');
   }
-  const resolved = resolvePath(raw);
-  if (!isAbsolute(resolved)) {
-    throw new Error('Smoke output path must resolve to an absolute path.');
+  if (!isAbsolute(raw)) {
+    throw new Error('Smoke output path must be absolute.');
   }
+  const resolved = resolvePath(raw);
   const base = basename(resolved);
   if (!/^[A-Za-z0-9._-]+\.json$/.test(base)) {
     throw new Error('Smoke output basename must match [A-Za-z0-9._-]+\\.json');
   }
+  assertSmokeOutputDirectoryAllowed(resolved);
   return resolved;
+}
+
+function assertSmokeOutputDirectoryAllowed(resolvedPath: string): void {
+  const parent = dirname(resolvedPath);
+  const override = process.env.BURNBAR_CURSOR_SMOKE_ALLOWED_DIR?.trim();
+  if (override) {
+    if (!isAbsolute(override) || override.includes('\0')) {
+      throw new Error('Smoke output allowlist directory must be absolute.');
+    }
+    const allowedRoot = resolvePath(override);
+    if (isWithinDirectory(parent, allowedRoot)) {
+      return;
+    }
+    throw new Error('Smoke output path must stay inside BURNBAR_CURSOR_SMOKE_ALLOWED_DIR.');
+  }
+
+  const tempRoot = resolvePath(tmpdir());
+  if (!isWithinDirectory(parent, tempRoot) || !basename(parent).startsWith('openburnbar-cursor-smoke-')) {
+    throw new Error('Smoke output path must stay inside an OpenBurnBar Cursor smoke temp directory.');
+  }
+}
+
+function isWithinDirectory(candidate: string, root: string): boolean {
+  const relativePath = relative(root, candidate);
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+async function createSmokeOutputFile(
+  fs: typeof import('node:fs/promises'),
+  outputPath: string,
+  payload: unknown
+): Promise<void> {
+  const parentStat = await fs.lstat(dirname(outputPath));
+  if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) {
+    throw new Error('Smoke output directory must be a real directory.');
+  }
+
+  const handle = await fs.open(outputPath, 'wx', 0o600);
+  try {
+    await handle.writeFile(JSON.stringify(payload, null, 2), 'utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+async function writeSmokeOutputFile(
+  fs: typeof import('node:fs/promises'),
+  outputPath: string,
+  payload: unknown
+): Promise<void> {
+  const outputStat = await fs.lstat(outputPath);
+  if (!outputStat.isFile() || outputStat.isSymbolicLink()) {
+    throw new Error('Smoke output path must be a regular file.');
+  }
+  await fs.writeFile(outputPath, JSON.stringify(payload, null, 2), 'utf8');
 }
 
 // Reserved for future use when extension activation waits on daemon

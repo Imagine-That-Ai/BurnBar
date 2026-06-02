@@ -466,7 +466,9 @@ public actor BurnBarDaemonServer {
             )
             return encodeErrorResponse(
                 id: "invalid-request",
-                code: error is DecodingError ? BurnBarRPCErrorCode.invalidParams : BurnBarRPCErrorCode.internalError,
+                code: (error is DecodingError || error is BurnBarRPCValidationError)
+                    ? BurnBarRPCErrorCode.invalidParams
+                    : BurnBarRPCErrorCode.internalError,
                 message: error.localizedDescription
             )
         }

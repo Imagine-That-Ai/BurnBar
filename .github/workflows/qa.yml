@@ -29,13 +29,14 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
-      INTERNAL_RUN: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      TRUSTED_SECRET_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve PR metadata
         id: pr
@@ -64,7 +65,7 @@ jobs:
           fi
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: npm
@@ -76,15 +77,19 @@ jobs:
       - name: Install OpenBurnBar extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
+      - name: Restrict secret-backed QA
+        if: github.event_name == 'workflow_dispatch' && env.TRUSTED_SECRET_CONTEXT != 'true'
+        run: echo "::notice::Secret-backed Droid QA only runs from the trusted main ref."
+
       - name: Install Droid CLI
-        if: env.INTERNAL_RUN == 'true'
-        run: curl -fsSL https://app.factory.ai/cli | sh
+        if: env.TRUSTED_SECRET_CONTEXT == 'true'
+        run: bash scripts/supply-chain/install-factory-droid.sh
 
       # Defense-in-depth: GitHub redacts secrets for fork PRs on pull_request,
       # but the if: guard skips droid exec entirely to avoid wasting runner
       # minutes and prevent any edge-case exfiltration via a compromised CLI.
       - name: Run QA
-        if: env.INTERNAL_RUN == 'true'
+        if: env.TRUSTED_SECRET_CONTEXT == 'true'
         id: qa
         continue-on-error: true
         timeout-minutes: 20
@@ -140,7 +145,7 @@ jobs:
 
       - name: Upload QA artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: qa-results-${{ github.run_number }}
           path: qa-results/**

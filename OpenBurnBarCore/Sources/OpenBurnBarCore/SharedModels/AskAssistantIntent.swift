@@ -38,7 +38,7 @@ public enum AssistantRuntimeOption: String, AppEnum {
 //      flips the pill and routes the user.
 //   3. `HermesConversationListView` / `PiConversationListView` observe the
 //      pending-prompt slot and either focus the composer (empty prompt)
-//      or auto-send (prefilled prompt).
+//      or submit the trusted AppIntent prompt.
 
 @available(iOS 17.0, macOS 14.0, *)
 public struct AskAssistantIntent: AppIntent {
@@ -64,7 +64,7 @@ public struct AskAssistantIntent: AppIntent {
     @MainActor
     public func perform() async throws -> some IntentResult {
         let runtime = assistant.runtimeID
-        AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: prompt)
+        AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: prompt, source: .appIntent)
 
         var userInfo: [AnyHashable: Any] = ["runtime": runtime.rawValue]
         if let trimmed = prompt?.trimmingCharacters(in: .whitespacesAndNewlines),

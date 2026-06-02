@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { installer } from "./installers.js";
 import { decryptSearchResultJson } from "./decrypt.js";
@@ -20,6 +21,8 @@ test("codex installer emits hosted + local + http TOML blocks", () => {
   assert.match(out, /# \[mcp_servers\.openburnbar-http\]/);
   assert.match(out, /# url = "https:\/\/mcp\.burnbar\.ai\/mcp"/);
   assert.match(out, /# bearer_token_env_var = "OPENBURNBAR_MCP_ACCESS_TOKEN"/);
+  assert.match(out, /openburnbar mcp login --stdin/);
+  assert.doesNotMatch(out, /mcp login <bearer>/);
   assert.match(out, /\[mcp_servers\.openburnbar-local\]/);
   assert.match(out, /server\.py/);
   assert.match(out, /codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve/);
@@ -53,6 +56,36 @@ test("non-codex installers stay byte-identical", () => {
     assert.equal(parsed.mcpServers.openburnbar.command, "openburnbar-mcp-remote");
     assert.deepEqual(parsed.mcpServers.openburnbar.args, ["mcp", "serve"]);
     assert.equal(parsed.mcpServers.openburnbar.env.OPENBURNBAR_MCP_ENDPOINT, "https://mcp.burnbar.ai/mcp");
+  }
+});
+
+test("mcp login refuses bearer tokens in argv", async () => {
+  const child = spawn(process.execPath, ["lib/index.js", "mcp", "login", "eyJargvSecretTokenValue123456"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const exitCode = await new Promise<number | null>((resolve) => {
+    child.on("exit", (code) => resolve(code));
+  });
+
+  assert.equal(exitCode, 2);
+  assert.match(stderr, /refusing to accept an MCP bearer token in argv/);
+  assert.doesNotMatch(stderr, /eyJargvSecretTokenValue123456/);
+});
+
+test("macOS keychain writes keep secrets out of security argv", () => {
+  const oauthSource = readFileSync("src/oauth.ts", "utf8");
+  const vaultSource = readFileSync("src/vaultStore.ts", "utf8");
+
+  for (const source of [oauthSource, vaultSource]) {
+    assert.match(source, /"add-generic-password", "-U", "-s", service, "-a", account, "-w"/);
+    assert.match(source, /input: `\$\{secret\}\\n\$\{secret\}\\n`/);
+    assert.doesNotMatch(source, /"add-generic-password"[\s\S]*"-w",\s*(safeToken|base64Key|secret)/);
   }
 });
 

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-PROJ = REPO / "OpenBurnBar.xcodeproj/project.pbxproj"
+REPO = Path(os.environ.get("OPENBURNBAR_REPO", Path(__file__).resolve().parents[1]))
+PROJ = Path(os.environ.get("OPENBURNBAR_XCODEPROJ", REPO / "OpenBurnBar.xcodeproj/project.pbxproj"))
 
 MAC_APP_SOURCES = "EF7D3D6CF9326CBCD20C7DF5"
 MAC_TESTS_SOURCES = "E35F1758B10CAD71B485DA35"

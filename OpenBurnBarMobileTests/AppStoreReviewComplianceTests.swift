@@ -36,6 +36,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         }
 
         XCTAssertTrue(schemes.contains("burnbar"))
+        XCTAssertTrue(schemes.contains("openburnbar"))
         XCTAssertTrue(schemes.contains(where: { $0.hasPrefix("com.googleusercontent.apps.") }))
     }
 
@@ -59,10 +60,11 @@ final class AppStoreReviewComplianceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("import GoogleSignIn"))
         XCTAssertTrue(source.contains("GIDSignIn.sharedInstance.handle(url)"))
-        XCTAssertTrue(source.contains("guard url.scheme == \"burnbar\" else { return }"))
+        XCTAssertTrue(source.contains("guard isOpenBurnBarAppDeepLink(url) else { return }"))
+        XCTAssertTrue(source.contains("case \"burnbar\", \"openburnbar\""))
         XCTAssertLessThan(
             try XCTUnwrap(source.range(of: "GIDSignIn.sharedInstance.handle(url)")?.lowerBound),
-            try XCTUnwrap(source.range(of: "guard url.scheme == \"burnbar\" else { return }")?.lowerBound)
+            try XCTUnwrap(source.range(of: "guard isOpenBurnBarAppDeepLink(url) else { return }")?.lowerBound)
         )
     }
 

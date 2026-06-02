@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-generate-sbom.py — Merge SPM and npm dependency data into an SPDX SBOM for OpenBurnBar.
+generate-sbom.py — Merge lockfile dependency data into an SPDX SBOM for OpenBurnBar.
 
 Usage:
     scripts/generate-sbom.py --version VERSION [--repo-root PATH] [--output PATH]
 
 Collects dependency information from:
-  - Swift Package Manager (OpenBurnBarCore, OpenBurnBarDaemon Package.swift)
-  - npm (extensions/openburnbar package.json + package-lock.json)
+  - Swift Package Manager Package.resolved files
+  - npm package-lock.json files across app, functions, services, tools, and website
+  - Cargo.lock files for Rust crates
 
 Produces an SPDX 2.3 JSON SBOM with:
   - The OpenBurnBar application as the top-level package
@@ -15,13 +16,11 @@ Produces an SPDX 2.3 JSON SBOM with:
 
 Prerequisites:
     - Python 3.9+ (no external dependencies)
-    - Swift tools (for `swift package dump-package`)
-    - Node.js (for `npm ls --json`)
 """
 
 import argparse
 import json
-import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -40,99 +39,181 @@ def run(cmd: list[str], cwd: str | None = None, check: bool = True) -> str:
     return result.stdout.strip()
 
 
-def collect_spm_dependencies(repo_root: Path) -> list[dict]:
-    """Collect dependencies from SPM Package.swift files."""
-    packages = []
-    spm_dirs = [
-        repo_root / "OpenBurnBarCore",
-        repo_root / "OpenBurnBarDaemon",
-    ]
-
-    for spm_dir in spm_dirs:
-        pkg_manifest = spm_dir / "Package.swift"
-        if not pkg_manifest.exists():
-            continue
-
-        output = run(
-            ["swift", "package", "dump-package"],
-            cwd=str(spm_dir),
-            check=False,
-        )
-        if not output:
-            continue
-
-        try:
-            pkg_data = json.loads(output)
-        except json.JSONDecodeError:
-            print(f"WARNING: Could not parse dump-package output for {spm_dir}", file=sys.stderr)
-            continue
-
-        name = pkg_data.get("name", spm_dir.name)
-        for dep in pkg_data.get("dependencies", []):
-            # Package.swift dependency format
-            for req in dep.get("product", [dep]):
-                dep_name = req.get("name", "") or dep.get("identity", "")
-                url = dep.get("url", dep.get("location", ""))
-                if isinstance(url, dict):
-                    url = url.get("url", "")
-                if not dep_name and url:
-                    dep_name = url.split("/")[-1].replace(".git", "")
-                packages.append({
-                    "name": dep_name,
-                    "version": "unknown",
-                    "url": url,
-                    "type": "spm",
-                })
-
-    return packages
-
-
-def collect_npm_dependencies(repo_root: Path) -> list[dict]:
-    """Collect dependencies from the npm extension."""
-    ext_dir = repo_root / "extensions" / "openburnbar"
-    packages = []
-
-    pkg_json = ext_dir / "package.json"
-    if not pkg_json.exists():
-        return packages
-
+def relative_to_repo(repo_root: Path, path: Path) -> str:
     try:
-        with open(pkg_json) as f:
-            pkg_data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return packages
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        return str(path)
 
-    # Collect from dependencies and devDependencies
-    for dep_type in ("dependencies", "devDependencies"):
-        for dep_name, dep_version_spec in pkg_data.get(dep_type, {}).items():
-            # Try to resolve exact version from package-lock.json
-            lock_file = ext_dir / "package-lock.json"
-            exact_version = dep_version_spec
-            if lock_file.exists():
-                try:
-                    with open(lock_file) as lf:
-                        lock_data = json.load(lf)
-                    # package-lock v3 format
-                    locked = lock_data.get("packages", {}).get(f"node_modules/{dep_name}", {})
-                    exact_version = locked.get("version", dep_version_spec)
-                except (json.JSONDecodeError, OSError, KeyError):
-                    pass
 
+def collect_spm_dependencies(repo_root: Path) -> list[dict]:
+    """Collect dependencies from SwiftPM Package.resolved lockfiles."""
+    packages = []
+    for lock_file in sorted(repo_root.rglob("Package.resolved")):
+        if ".build" in lock_file.parts:
+            continue
+        try:
+            lock_data = json.loads(lock_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"WARNING: Could not parse {lock_file}: {exc}", file=sys.stderr)
+            continue
+
+        source_path = relative_to_repo(repo_root, lock_file)
+        for pin in lock_data.get("pins", []):
+            state = pin.get("state", {})
+            url = pin.get("location", "")
+            name = pin.get("identity") or Path(str(url).removesuffix(".git")).name
+            version = state.get("version") or state.get("revision") or state.get("branch") or "unknown"
             packages.append({
-                "name": dep_name,
-                "version": exact_version.lstrip("^~><= "),
-                "url": f"https://www.npmjs.com/package/{dep_name}",
-                "type": "npm",
+                "name": name,
+                "version": version,
+                "url": url or "NOASSERTION",
+                "type": "spm",
+                "source_path": source_path,
             })
 
     return packages
 
 
+def collect_npm_dependencies(repo_root: Path) -> list[dict]:
+    """Collect dependencies from every npm package-lock.json in the repo."""
+    packages = []
+
+    for lock_file in sorted(repo_root.rglob("package-lock.json")):
+        if "node_modules" in lock_file.parts:
+            continue
+        try:
+            lock_data = json.loads(lock_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"WARNING: Could not parse {lock_file}: {exc}", file=sys.stderr)
+            continue
+
+        source_path = relative_to_repo(repo_root, lock_file)
+        lock_packages = lock_data.get("packages", {})
+        if lock_packages:
+            for package_path, package_data in lock_packages.items():
+                if not package_path or "node_modules/" not in package_path:
+                    continue
+                dep_name = package_path.rsplit("node_modules/", 1)[1]
+                version = str(package_data.get("version", "")).strip()
+                if not dep_name or not version:
+                    continue
+                packages.append({
+                    "name": dep_name,
+                    "version": version,
+                    "url": package_data.get("resolved") or f"https://www.npmjs.com/package/{dep_name}",
+                    "type": "npm",
+                    "license": package_data.get("license"),
+                    "integrity": package_data.get("integrity"),
+                    "source_path": source_path,
+                })
+            continue
+
+        # package-lock v1 fallback.
+        def visit_dependencies(dependencies: dict) -> None:
+            for dep_name, dep_data in dependencies.items():
+                version = str(dep_data.get("version", "")).strip()
+                if version:
+                    packages.append({
+                        "name": dep_name,
+                        "version": version,
+                        "url": dep_data.get("resolved") or f"https://www.npmjs.com/package/{dep_name}",
+                        "type": "npm",
+                        "integrity": dep_data.get("integrity"),
+                        "source_path": source_path,
+                    })
+                visit_dependencies(dep_data.get("dependencies", {}))
+
+        visit_dependencies(lock_data.get("dependencies", {}))
+
+    return packages
+
+
+def collect_cargo_dependencies(repo_root: Path) -> list[dict]:
+    """Collect dependencies from Cargo.lock files."""
+    packages = []
+    assignment = re.compile(r'^([A-Za-z0-9_-]+)\s*=\s*"(.*)"$')
+
+    for lock_file in sorted(repo_root.rglob("Cargo.lock")):
+        if "target" in lock_file.parts:
+            continue
+        source_path = relative_to_repo(repo_root, lock_file)
+        current: dict | None = None
+
+        def flush() -> None:
+            if not current:
+                return
+            name = current.get("name")
+            version = current.get("version")
+            if not name or not version:
+                return
+            source = current.get("source", "")
+            url = source
+            if source.startswith("registry+https://github.com/rust-lang/crates.io-index"):
+                url = f"https://crates.io/crates/{name}"
+            packages.append({
+                "name": name,
+                "version": version,
+                "url": url or "NOASSERTION",
+                "type": "cargo",
+                "checksum": current.get("checksum"),
+                "source_path": source_path,
+            })
+
+        try:
+            lines = lock_file.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            print(f"WARNING: Could not read {lock_file}: {exc}", file=sys.stderr)
+            continue
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped == "[[package]]":
+                flush()
+                current = {}
+                continue
+            if current is None:
+                continue
+            match = assignment.match(stripped)
+            if match:
+                current[match.group(1)] = match.group(2)
+        flush()
+
+    return packages
+
+
+def deduplicate_dependencies(deps: list[dict]) -> list[dict]:
+    """Merge duplicate package manager entries while preserving source lockfiles."""
+    merged: dict[tuple[str, str, str], dict] = {}
+    for dep in deps:
+        name = str(dep.get("name", "")).strip()
+        version = str(dep.get("version", "unknown")).strip() or "unknown"
+        dep_type = str(dep.get("type", "unknown")).strip()
+        if not name:
+            continue
+        key = (dep_type, name, version)
+        target = merged.setdefault(key, {
+            "type": dep_type,
+            "name": name,
+            "version": version,
+            "url": dep.get("url") or "NOASSERTION",
+            "sources": [],
+        })
+        if target["url"] == "NOASSERTION" and dep.get("url"):
+            target["url"] = dep["url"]
+        for optional in ("license", "integrity", "checksum"):
+            if optional not in target and dep.get(optional):
+                target[optional] = dep[optional]
+        source_path = dep.get("source_path")
+        if source_path and source_path not in target["sources"]:
+            target["sources"].append(source_path)
+    return sorted(merged.values(), key=lambda dep: (dep["type"], dep["name"], dep["version"]))
+
+
 def build_spdx_document(
     version: str,
     repo_root: Path,
-    spm_deps: list[dict],
-    npm_deps: list[dict],
+    deps: list[dict],
 ) -> dict:
     """Build an SPDX 2.3 JSON document."""
     spdx_id = "SPDXRef-DOCUMENT"
@@ -168,10 +249,19 @@ def build_spdx_document(
         }
     ]
 
-    for i, dep in enumerate(spm_deps + npm_deps, start=1):
+    purl_types = {
+        "cargo": "cargo",
+        "npm": "npm",
+        "spm": "swift",
+    }
+
+    for i, dep in enumerate(deps, start=1):
         dep_spdx_id = f"SPDXRef-Package-dep-{i:04d}"
-        purl_type = "swift" if dep["type"] == "spm" else "npm"
-        purl = f"pkg:{purl_type}/{quote(dep['name'], safe='')}@{quote(dep['version'], safe='')}"
+        purl_type = purl_types.get(dep["type"], "generic")
+        purl_name = quote(dep["name"], safe="/" if purl_type == "npm" else "")
+        purl = f"pkg:{purl_type}/{purl_name}"
+        if dep["version"] != "unknown":
+            purl += f"@{quote(dep['version'], safe='')}"
 
         pkg = {
             "SPDXID": dep_spdx_id,
@@ -181,8 +271,19 @@ def build_spdx_document(
             "filesAnalyzed": False,
             "copyrightText": "NOASSERTION",
             "licenseConcluded": "NOASSERTION",
-            "licenseDeclared": "NOASSERTION",
+            "licenseDeclared": dep.get("license") or "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceType": "purl",
+                    "referenceLocator": purl,
+                }
+            ],
+            "comment": f"Package manager: {dep['type']}; observed in: {', '.join(dep.get('sources') or ['unknown'])}",
         }
+        checksum = dep.get("checksum")
+        if checksum and re.fullmatch(r"[0-9a-fA-F]{64}", checksum):
+            pkg["checksums"] = [{"algorithm": "SHA256", "checksumValue": checksum.lower()}]
         packages.append(pkg)
 
         relationships.append({
@@ -191,13 +292,13 @@ def build_spdx_document(
             "relatedSpdxElement": dep_spdx_id,
         })
 
-    ns = "https://spdx.org/rdf/3.0.0"
+    commit_for_ns = commit if re.fullmatch(r"[0-9a-f]{40}", commit) else "unknown"
     return {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": spdx_id,
         "name": f"OpenBurnBar v{version}",
-        "documentNamespace": f"https://github.com/Ajnunezg/BurnBar/sbom/v{version}",
+        "documentNamespace": f"https://github.com/Ajnunezg/BurnBar/sbom/v{version}/{commit_for_ns}",
         "creationInfo": {
             "created": now,
             "creators": [
@@ -230,7 +331,13 @@ def main() -> None:
     npm_deps = collect_npm_dependencies(repo_root)
     print(f"  npm dependencies: {len(npm_deps)}")
 
-    doc = build_spdx_document(version, repo_root, spm_deps, npm_deps)
+    cargo_deps = collect_cargo_dependencies(repo_root)
+    print(f"  Cargo dependencies: {len(cargo_deps)}")
+
+    deps = deduplicate_dependencies(spm_deps + npm_deps + cargo_deps)
+    print(f"  Deduplicated dependency packages: {len(deps)}")
+
+    doc = build_spdx_document(version, repo_root, deps)
 
     with open(output, "w") as f:
         json.dump(doc, f, indent=2, sort_keys=False)

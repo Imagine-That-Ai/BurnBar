@@ -70,6 +70,10 @@ private enum BurnBarDaemonCommandLine {
             ?? environment["BURNBAR_GATEWAY_AUTH_TOKEN"]
         var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+        var socketAuthKeychainService = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE"]
+            ?? BurnBarDaemonSocketAuthKeychain.defaultService
+        var socketAuthKeychainAccount = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT"]
+            ?? BurnBarDaemonSocketAuthKeychain.defaultAccount
 
         var index = 0
         while index < arguments.count {
@@ -119,6 +123,18 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 socketAuthToken = arguments[index]
+            case "--socket-auth-keychain-service":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                socketAuthKeychainService = arguments[index]
+            case "--socket-auth-keychain-account":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                socketAuthKeychainAccount = arguments[index]
             case "--help":
                 print(
                     """
@@ -132,7 +148,11 @@ private enum BurnBarDaemonCommandLine {
                       --gateway-host HOST          Gateway bind host (default 127.0.0.1)
                       --gateway-port PORT          Gateway port (default 8317)
                       --gateway-auth-token TOKEN   Bearer token for gateway auth
-                      --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
+                      --socket-auth-token TOKEN    Auth token for daemon socket RPC (dev/test only)
+                      --socket-auth-keychain-service SERVICE
+                                                   Keychain service for daemon socket auth token
+                      --socket-auth-keychain-account ACCOUNT
+                                                   Keychain account for daemon socket auth token
 
                     Environment overrides:
                       OPENBURNBAR_DAEMON_SOCKET_PATH
@@ -143,6 +163,8 @@ private enum BurnBarDaemonCommandLine {
                       OPENBURNBAR_GATEWAY_PORT
                       OPENBURNBAR_GATEWAY_AUTH_TOKEN
                       OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN
+                      OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE
+                      OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT
                     """
                 )
                 Darwin.exit(EXIT_SUCCESS)
@@ -153,6 +175,13 @@ private enum BurnBarDaemonCommandLine {
         }
 
         let trimmedIndexPath = indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSocketAuthToken = socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedSocketAuthToken?.isEmpty != false {
+            socketAuthToken = try BurnBarDaemonSocketAuthKeychain.readToken(
+                service: socketAuthKeychainService,
+                account: socketAuthKeychainAccount
+            )
+        }
         let gateway = BurnBarGatewayConfiguration(
             isEnabled: gatewayEnabled,
             host: gatewayHost,

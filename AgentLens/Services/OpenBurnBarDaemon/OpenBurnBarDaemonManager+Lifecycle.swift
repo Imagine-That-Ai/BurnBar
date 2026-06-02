@@ -196,12 +196,11 @@ extension OpenBurnBarDaemonManager {
 
     func writeLaunchAgentPlist() throws {
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
-        let daemonSocketAuthToken = try rotateDaemonSocketAuthToken()
+        _ = try rotateDaemonSocketAuthToken()
 
-        // SECURITY: Pass secrets via EnvironmentVariables, not ProgramArguments.
-        // CLI arguments are visible to any local user via `ps aux`, so the auth
-        // token and gateway auth token must be passed as environment variables
-        // which are only visible to processes in the same Mach bootstrap context.
+        // SECURITY: the daemon socket auth token stays in Keychain. The launchd
+        // plist carries only nonsecret lookup coordinates so same-user local
+        // processes cannot scrape the RPC bearer token from LaunchAgents.
         var programArguments = [
             paths.installedBinaryURL.path,
             "--socket-path", paths.socketURL.path,
@@ -209,7 +208,8 @@ extension OpenBurnBarDaemonManager {
         ]
 
         var environmentVariables: [String: String] = [
-            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": daemonSocketAuthToken
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE": OpenBurnBarIdentity.controllerRuntimeKeychainService,
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT": OpenBurnBarIdentity.daemonSocketAuthTokenAccount
         ]
 
         // Propagate Sentry DSN to the daemon so crash reports are captured.

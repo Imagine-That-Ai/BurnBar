@@ -291,6 +291,7 @@ struct HermesConversationListView: View {
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedLibrarySession: HermesLibrarySession?
     @State private var presentedChatRoute: PresentedHermesChatRoute?
+    @State private var pendingExternalHermesPrompt: AssistantPendingPrompt.Request?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
     init(
@@ -457,8 +458,8 @@ struct HermesConversationListView: View {
         }
         // Pending-prompt consumer — picks up prompts stashed by the
         // "Ask Hermes" widget chip AppIntent or a `burnbar://hermes?prompt=…`
-        // deep link. Non-empty values auto-send; an empty slot left over from
-        // a "focus the composer" widget tap is ignored at the list level
+        // deep link. URL-origin values require confirmation; empty slots left
+        // over from a "focus the composer" widget tap are ignored at the list level
         // (the user already landed here, and tapping into a session focuses
         // the input).
         .task(id: AssistantPendingPrompt.shared.hermes) {
@@ -490,6 +491,19 @@ struct HermesConversationListView: View {
         .onChange(of: gatewayStore.latestReply?.id) { _, _ in
             applyPendingGatewayReplyIfNeeded()
         }
+        .alert("Send prompt from link?", isPresented: pendingExternalHermesPromptPresented) {
+            Button("Cancel", role: .cancel) {
+                pendingExternalHermesPrompt = nil
+            }
+            Button("Send") {
+                if let prompt = pendingExternalHermesPrompt?.prompt {
+                    submitHermesPrompt(prompt)
+                }
+                pendingExternalHermesPrompt = nil
+            }
+        } message: {
+            Text("OpenBurnBar will send the prompt only after you confirm.")
+        }
     }
 
     private func presentSetupWizardIfNeeded() {
@@ -515,6 +529,17 @@ struct HermesConversationListView: View {
         )
     }
 
+    private var pendingExternalHermesPromptPresented: Binding<Bool> {
+        Binding(
+            get: { pendingExternalHermesPrompt != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingExternalHermesPrompt = nil
+                }
+            }
+        )
+    }
+
     private func reconcileSetupWizardCompletion() {
         guard hasUsableHermesSetup else { return }
         hasCompletedHermesSetupWizard = true
@@ -535,16 +560,24 @@ struct HermesConversationListView: View {
 
     @MainActor
     private func consumePendingHermesPrompt() async {
-        guard let pending = AssistantPendingPrompt.shared.consume(.hermes),
-              !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard let request = AssistantPendingPrompt.shared.consumeRequest(.hermes),
+              !request.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
+        if request.requiresConfirmation {
+            pendingExternalHermesPrompt = request
+            return
+        }
         // Small delay so the conversation list has settled before we
         // create a new session and start streaming.
         try? await Task.sleep(nanoseconds: 250_000_000)
+        submitHermesPrompt(request.prompt)
+    }
+
+    private func submitHermesPrompt(_ text: String) {
         if shouldSendViaBurnBarGateway {
-            sendViaBurnBarGateway(pending)
+            sendViaBurnBarGateway(text)
         } else {
-            service.sendMessage(pending)
+            service.sendMessage(text)
         }
     }
 
@@ -1791,19 +1824,24 @@ struct HermesChatView: View {
     @MainActor
     private func consumePendingHermesPromptIfNeeded() async {
         guard case .new = route,
-              let pending = AssistantPendingPrompt.shared.consume(.hermes),
-              !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              let request = AssistantPendingPrompt.shared.consumeRequest(.hermes),
+              !request.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
+        if request.requiresConfirmation {
+            input = request.prompt
+            inputFocused = true
+            return
+        }
         try? await Task.sleep(nanoseconds: 250_000_000)
-        let commandBias = wikiCommandContext(for: pending)
+        let commandBias = wikiCommandContext(for: request.prompt)
         let context = mergedContextPrompt(
             dashboardContext: dashboardContextPrompt,
             commandBias: commandBias
         )
         if shouldSendViaBurnBarGateway {
-            sendViaBurnBarGateway(pending, context: context)
+            sendViaBurnBarGateway(request.prompt, context: context)
         } else {
-            service.sendMessage(pending, context: context)
+            service.sendMessage(request.prompt, context: context)
         }
     }
 

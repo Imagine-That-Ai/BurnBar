@@ -47,6 +47,8 @@ import { buildCloudSearchPostingEdges, cloudSearchFallbackHashes } from "./encry
 // Callable: encrypted hosted session logs + cloud search
 // ---------------------------------------------------------------------------
 
+const MAX_CLOUD_SEARCH_WRITES_PER_COMMIT = 4_500;
+
 export const beginEncryptedSessionBlobUpload = onCall(
   {
     region: "us-central1",
@@ -89,6 +91,9 @@ export const beginEncryptedSessionBlobUpload = onCall(
         action: "write",
         expires: expiresAt,
         contentType,
+        extensionHeaders: {
+          "content-length": String(encryptedByteCount),
+        },
       });
 
       return {
@@ -174,6 +179,15 @@ export const commitEncryptedSearchIndexBatch = onCall(
       const documentsRef = db.collection(`users/${uid}/cloud_search_documents`);
       const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
       const postingsRef = db.collection(`users/${uid}/cloud_search_postings`);
+      const reserveWrites = (count: number) => {
+        if (writeCount + count > MAX_CLOUD_SEARCH_WRITES_PER_COMMIT) {
+          throw new HttpsError(
+            "resource-exhausted",
+            `Search index commit exceeds ${MAX_CLOUD_SEARCH_WRITES_PER_COMMIT} writes. Split the upload into smaller batches.`,
+          );
+        }
+        writeCount += count;
+      };
 
       for (const raw of documents) {
         const documentID = safeCloudDocumentID(raw.documentID, "document.documentID");
@@ -222,7 +236,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
           encryptedByteCount: requestedEncryptedByteCount,
         });
         writes.push((batch) => batch.set(documentsRef.doc(documentID), stripUndefinedObject(doc), { merge: true }));
-        writeCount += 1;
+        reserveWrites(1);
       }
 
       for (const raw of chunks) {
@@ -267,8 +281,8 @@ export const commitEncryptedSearchIndexBatch = onCall(
         };
         assertUserStoragePath(uid, chunk.storagePath, chunk.bodyHash, documentID);
         writes.push((batch) => batch.set(chunksRef.doc(chunkID), stripUndefinedObject(chunk), { merge: true }));
-        writeCount += 1;
-        for (const edge of buildCloudSearchPostingEdges({
+        reserveWrites(1);
+        const postingEdges = buildCloudSearchPostingEdges({
           source: {
             uid,
             chunkID,
@@ -287,11 +301,12 @@ export const commitEncryptedSearchIndexBatch = onCall(
           },
           tokenHashes,
           semanticHashes,
-        })) {
+        });
+        reserveWrites(postingEdges.length);
+        for (const edge of postingEdges) {
           writes.push((batch) =>
             batch.set(postingsRef.doc(edge.edgeID), stripUndefinedObject(edge.data), { merge: true }),
           );
-          writeCount += 1;
         }
       }
 
@@ -312,7 +327,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
           { merge: true },
         ),
       );
-      writeCount += 1;
+      reserveWrites(1);
 
       await commitBatchedWrites(writes);
       return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length, commitID };

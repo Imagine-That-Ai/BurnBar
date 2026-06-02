@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0, minimum-scale=1.0, user-scalable=yes" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <style>
   html, body {
     margin: 0;
@@ -28,7 +29,7 @@
     padding: 24px;
   }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="./mermaid.min.js"></script>
 </head>
 <body>
 <div id="stage"><div id="placeholder">Waiting for a diagram…</div></div>
@@ -49,20 +50,61 @@
         secondaryColor: "#161B22",
         tertiaryColor: "#1F2630"
       },
-      securityLevel: "loose",
+      securityLevel: "strict",
+      htmlLabels: false,
+      flowchart: { htmlLabels: false },
       fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif"
     });
+  }
+
+  function isExternalReference(value) {
+    const raw = String(value || "").trim().toLowerCase();
+    return raw && !raw.startsWith("#");
+  }
+
+  function sanitizeSvg(svg) {
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString(svg, "image/svg+xml");
+    const root = parsed.documentElement;
+    if (!root || root.nodeName.toLowerCase() !== "svg") {
+      throw new Error("Mermaid returned invalid SVG");
+    }
+    const blocked = ["script", "foreignObject", "iframe", "object", "embed", "link", "meta"];
+    for (const selector of blocked) {
+      for (const node of Array.from(root.querySelectorAll(selector))) {
+        node.remove();
+      }
+    }
+    for (const node of Array.from(root.querySelectorAll("*"))) {
+      for (const attr of Array.from(node.attributes)) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || "";
+        if (name.startsWith("on")) {
+          node.removeAttribute(attr.name);
+        } else if ((name === "href" || name === "xlink:href" || name === "src") && isExternalReference(value)) {
+          node.removeAttribute(attr.name);
+        } else if (name === "style" && /url\s*\(/i.test(value)) {
+          node.removeAttribute(attr.name);
+        }
+      }
+    }
+    return root;
+  }
+
+  function showError(message) {
+    const placeholder = document.createElement("div");
+    placeholder.id = "placeholder";
+    placeholder.textContent = "Mermaid render failed: " + message;
+    document.getElementById("stage").replaceChildren(placeholder);
   }
 
   async function renderInternal(payload) {
     try {
       applyTheme(payload.accent, payload.theme);
       const { svg } = await mermaid.render("diagram-" + Date.now(), payload.source);
-      document.getElementById("stage").innerHTML = svg;
+      document.getElementById("stage").replaceChildren(sanitizeSvg(svg));
     } catch (err) {
-      document.getElementById("stage").innerHTML =
-        '<div id="placeholder">Mermaid render failed:<br/><code>' +
-        (err && err.message ? err.message : err) + '</code></div>';
+      showError(err && err.message ? err.message : String(err));
     }
   }
 

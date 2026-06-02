@@ -307,6 +307,35 @@ final class HermesAtomParserTests: XCTestCase {
         XCTAssertNil(HermesAtomURL.decode(url))
     }
 
+    func testURLCodecRejectsDuplicateQueryKeys() {
+        let url = URL(string: "burnbar://session?id=abc&id=def")!
+        XCTAssertNil(HermesAtomURL.decode(url))
+    }
+
+    func testURLCodecRejectsOversizedAndUnsafeValues() {
+        let huge = String(repeating: "a", count: 2_049)
+        XCTAssertNil(HermesAtomURL.decode("burnbar://session?id=\(huge)"))
+        XCTAssertNil(HermesAtomURL.decode("burnbar://quota?provider=anthropic&percent=101"))
+        XCTAssertNil(HermesAtomURL.decode("burnbar://tokens?value=1000000001"))
+        XCTAssertNil(HermesAtomURL.decode("burnbar://burn?amount=nan"))
+    }
+
+    func testMarkdownAtomParserRejectsOversizedURLAndTruncatesLabel() {
+        let hugeID = String(repeating: "a", count: 2_049)
+        let rejected = "Open [session](burnbar://session?id=\(hugeID))"
+        XCTAssertTrue(HermesAtomParser.parse(rejected).allSatisfy { $0.atom == nil })
+
+        let longLabel = String(repeating: "L", count: 500)
+        let accepted = "Open [\(longLabel)](burnbar://session?id=abc)"
+        let runs = HermesAtomParser.parse(accepted)
+        guard case let .atom(_, label) = runs[1].kind else {
+            XCTFail("Expected atom")
+            return
+        }
+        XCTAssertEqual(label.count, 120)
+        XCTAssertTrue(label.hasSuffix("..."))
+    }
+
     // MARK: - Router contract
 
     func testNoopNavigatorIsCallableFromAnyContext() {

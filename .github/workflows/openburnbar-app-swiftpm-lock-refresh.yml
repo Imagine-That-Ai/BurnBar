@@ -16,9 +16,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Refresh app SwiftPM lockfile
         run: |
@@ -42,7 +43,9 @@ jobs:
           git switch -c "$branch_name"
           git add OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           git commit -m "deps: refresh app SwiftPM lockfile"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --set-upstream origin "$branch_name"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
 
           gh pr create \
             --title "deps: refresh app SwiftPM lockfile" \

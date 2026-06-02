@@ -28,25 +28,20 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
 
-    env:
-      # The iroh services API key is required for production relay
-      # provisioning (scripts/deploy-iroh-relay.sh). The xcframework build
-      # does NOT need it — we declare it here so CI consumers downstream
-      # (release.yml) can read it without re-plumbing the secret.
-      IROH_SERVICES_API_SECRET: ${{ secrets.IROH_SERVICES_API_SECRET }}
-
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
         with:
           toolchain: stable
           targets: aarch64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Cache cargo registry + target
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
         with:
           path: |
             ~/.cargo/registry
@@ -71,7 +66,7 @@ jobs:
           file Vendor/OpenBurnBarIroh.xcframework/*/libopenburnbar_iroh.a | head -5 || true
 
       - name: Upload xcframework artifact
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
           name: OpenBurnBarIroh.xcframework
           path: Vendor/OpenBurnBarIroh.xcframework

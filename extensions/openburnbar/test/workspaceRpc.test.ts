@@ -205,16 +205,76 @@ describe("OpenBurnBar workspace RPC", () => {
 
     companion.dispose();
   });
+
+  it("rejects read_file when the target exceeds the hard byte cap", async () => {
+    const api = createFakeWorkspaceApi({
+      initialFiles: {
+        "file:///workspace/src/large.txt": "x".repeat(1_000_001)
+      }
+    });
+    const companion = new OpenBurnBarWorkspaceCompanion(api);
+    const client = new OpenBurnBarWorkspaceRpcClient({
+      executeCommand: async (_command, request: BurnBarWorkspaceRpcRequest) => companion.handle(request)
+    });
+
+    await expect(client.readFile({ path: "src/large.txt" })).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "READ_FILE_TOO_LARGE"
+    });
+
+    companion.dispose();
+  });
+
+  it("clamps broad workspace search requests to the hard result cap", async () => {
+    const files = Object.fromEntries(
+      Array.from({ length: 300 }, (_, index) => [
+        `file:///workspace/src/match-${index}.ts`,
+        `export const value${index} = "needle";\n`
+      ])
+    );
+    const api = createFakeWorkspaceApi({ initialFiles: files });
+    const companion = new OpenBurnBarWorkspaceCompanion(api);
+    const client = new OpenBurnBarWorkspaceRpcClient({
+      executeCommand: async (_command, request: BurnBarWorkspaceRpcRequest) => companion.handle(request)
+    });
+
+    const result = await client.searchWorkspace({
+      query: "needle",
+      maxFiles: 10_000,
+      maxResults: 10_000,
+      maxFileBytes: 10_000_000
+    });
+
+    expect(result.matches).toHaveLength(100);
+    companion.dispose();
+  });
+
+  it("rejects invalid workspace search bounds instead of coercing them", async () => {
+    const api = createFakeWorkspaceApi();
+    const companion = new OpenBurnBarWorkspaceCompanion(api);
+    const client = new OpenBurnBarWorkspaceRpcClient({
+      executeCommand: async (_command, request: BurnBarWorkspaceRpcRequest) => companion.handle(request)
+    });
+
+    await expect(client.searchWorkspace({ query: "value", maxFiles: -1 })).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "INVALID_PARAMS"
+    });
+
+    companion.dispose();
+  });
 });
 
 function createFakeWorkspaceApi(options: {
   isTrusted?: boolean;
   persistOnlyIfOpenedBeforeApply?: boolean;
   terminalConfirmation?: boolean;
+  initialFiles?: Record<string, string>;
 } = {}): BurnBarWorkspaceApi & {
   terminals: Array<FakeTerminal & BurnBarWorkspaceTerminal>;
 } {
-  const files = new Map<string, string>([["file:///workspace/src/example.ts", "const value = 1;\nconsole.log(value);\n"]]);
+  const files = new Map<string, string>([
+    ["file:///workspace/src/example.ts", "const value = 1;\nconsole.log(value);\n"],
+    ...Object.entries(options.initialFiles ?? {})
+  ]);
   const openDocuments = new Map<string, FakeDocument>();
   const terminals: Array<FakeTerminal & BurnBarWorkspaceTerminal> = [];
 
@@ -229,6 +289,12 @@ function createFakeWorkspaceApi(options: {
     ],
     terminals,
     isWritableFileSystem: () => true,
+    async stat(uri) {
+      const content = files.get(uri.toString()) ?? "";
+      return {
+        size: new TextEncoder().encode(content).byteLength
+      };
+    },
     async readFile(uri) {
       const content = files.get(uri.toString()) ?? "";
       return new TextEncoder().encode(content);

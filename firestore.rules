@@ -187,6 +187,7 @@ service cloud.firestore {
 
     function activePremiumEntitlementData(entitlement) {
       return entitlement.active == true
+        && (!("environment" in entitlement) || entitlement.environment == "Production")
         && entitlement.productID in [
           "com.openburnbar.hostedQuotaSync.cloud.monthly",
           "com.openburnbar.hostedQuotaSync.monthly",
@@ -258,6 +259,7 @@ service cloud.firestore {
 
     function activeComputerUseEntitlementData(entitlement) {
 	      return entitlement.active == true
+	        && (!("environment" in entitlement) || entitlement.environment == "Production")
 	        && entitlement.productID in [
 	          "com.openburnbar.computerUse.monthly",
 	          "com.openburnbar.hostedComputerUseSync.monthly",
@@ -415,6 +417,137 @@ service cloud.firestore {
       return value is list
         && value.size() > 0
         && value.size() <= 250;
+    }
+
+    function validProviderAccountID(accountId) {
+      return accountId is string
+        && accountId.size() > 0
+        && accountId.size() <= 256
+        && accountId.matches("^[A-Za-z0-9._:-]+$");
+    }
+
+    function validProviderID(providerID) {
+      return providerID is string
+        && providerID.size() > 0
+        && providerID.size() <= 128
+        && providerID.matches("^[A-Za-z0-9._:-]+$");
+    }
+
+    function validClientProviderAccount(userId, accountId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "providerID",
+          "label",
+          "identityHint",
+          "status",
+          "credentialKind",
+          "storageScope",
+          "redactedLabel",
+          "sourceDeviceID",
+          "deviceId",
+          "linkedSwitcherProfileID",
+          "isDefault",
+          "sortKey",
+          "lastValidatedAt",
+          "lastRefreshAt",
+          "lastErrorCode",
+          "endpointProfileID",
+          "region",
+          "tokenPlanTier",
+          "tokenPlanBillingCycle",
+          "authMethodID",
+          "schemaVersion",
+          "createdAt",
+          "updatedAt",
+          "syncedAt"
+        ])
+        && request.resource.data.id == accountId
+        && validProviderAccountID(accountId)
+        && validProviderID(request.resource.data.providerID)
+        && request.resource.data.label is string
+        && request.resource.data.label.size() > 0
+        && request.resource.data.label.size() <= 160
+        && (!("identityHint" in request.resource.data) || (request.resource.data.identityHint is string && request.resource.data.identityHint.size() <= 320))
+        && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted", "local_only"]
+        && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
+        && request.resource.data.storageScope in ["local_only", "device_keychain"]
+        && request.resource.data.redactedLabel is string
+        && request.resource.data.redactedLabel.size() <= 320
+        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
+        && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 160))
+        && (!("linkedSwitcherProfileID" in request.resource.data) || (request.resource.data.linkedSwitcherProfileID is string && request.resource.data.linkedSwitcherProfileID.size() <= 256))
+        && request.resource.data.isDefault is bool
+        && request.resource.data.sortKey is number
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.schemaVersion <= 20
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && (!("lastValidatedAt" in request.resource.data) || request.resource.data.lastValidatedAt is timestamp)
+        && (!("lastRefreshAt" in request.resource.data) || request.resource.data.lastRefreshAt is timestamp)
+        && (!("lastErrorCode" in request.resource.data) || (request.resource.data.lastErrorCode is string && request.resource.data.lastErrorCode.size() <= 128))
+        && (!("endpointProfileID" in request.resource.data) || (request.resource.data.endpointProfileID is string && request.resource.data.endpointProfileID.size() <= 128))
+        && (!("region" in request.resource.data) || request.resource.data.region in ["cn", "sgp", "ams", "global"])
+        && (!("tokenPlanTier" in request.resource.data) || request.resource.data.tokenPlanTier in ["lite", "standard", "pro", "max"])
+        && (!("tokenPlanBillingCycle" in request.resource.data) || request.resource.data.tokenPlanBillingCycle in ["monthly", "annual"])
+        && (!("authMethodID" in request.resource.data) || (request.resource.data.authMethodID is string && request.resource.data.authMethodID.size() <= 128))
+        && (!("syncedAt" in request.resource.data) || request.resource.data.syncedAt == request.time);
+    }
+
+    function clientProviderAccountUpdatePreservesAuthority() {
+      return resource.data.storageScope in ["local_only", "device_keychain"]
+        && request.resource.data.providerID == resource.data.providerID
+        && request.resource.data.storageScope == resource.data.storageScope
+        && request.resource.data.credentialKind == resource.data.credentialKind;
+    }
+
+    function validClientQuotaSnapshot(userId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "sourceKind",
+          "sourceId",
+          "sourceID",
+          "provider",
+          "providerID",
+          "accountID",
+          "accountLabel",
+          "accountStorageScope",
+          "fetchedAt",
+          "source",
+          "sourceLabel",
+          "confidence",
+          "managementURL",
+          "statusMessage",
+          "buckets",
+          "resetAt",
+          "planTier",
+          "schemaVersion",
+          "updatedAt",
+          "syncedAt"
+        ])
+        && request.resource.data.sourceKind == "provider"
+        && request.resource.data.sourceId is string
+        && request.resource.data.sourceId.size() > 0
+        && request.resource.data.sourceId.size() <= 256
+        && validProviderID(request.resource.data.provider)
+        && (!("providerID" in request.resource.data) || validProviderID(request.resource.data.providerID))
+        && (!("accountID" in request.resource.data) || validProviderAccountID(request.resource.data.accountID))
+        && (!("accountLabel" in request.resource.data) || (request.resource.data.accountLabel is string && request.resource.data.accountLabel.size() <= 160))
+        && (!("accountStorageScope" in request.resource.data) || request.resource.data.accountStorageScope in ["local_only", "device_keychain"])
+        && request.resource.data.fetchedAt is timestamp
+        && request.resource.data.source is string
+        && request.resource.data.source.size() <= 160
+        && request.resource.data.confidence in ["high", "medium", "low", "stale"]
+        && (!("managementURL" in request.resource.data) || (request.resource.data.managementURL is string && request.resource.data.managementURL.size() <= 1024 && request.resource.data.managementURL.matches("^https://[^\\s]+$")))
+        && (!("statusMessage" in request.resource.data) || (request.resource.data.statusMessage is string && request.resource.data.statusMessage.size() <= 512))
+        && request.resource.data.buckets is list
+        && request.resource.data.buckets.size() <= 32
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.schemaVersion <= 20
+        && request.resource.data.updatedAt is timestamp
+        && (!("syncedAt" in request.resource.data) || request.resource.data.syncedAt == request.time);
     }
 
     function chatThreadIncludesBackedUpContent() {
@@ -1602,7 +1735,9 @@ service cloud.firestore {
 
     match /users/{userId}/quota_snapshots/{snapshotId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create: if validClientQuotaSnapshot(userId);
+      allow update: if validClientQuotaSnapshot(userId)
+        && (!("accountStorageScope" in resource.data) || resource.data.accountStorageScope in ["local_only", "device_keychain"]);
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1614,8 +1749,11 @@ service cloud.firestore {
 
     match /users/{userId}/provider_accounts/{accountId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
-      allow delete: if ownsUserNamespace(userId);
+      allow create: if validClientProviderAccount(userId, accountId);
+      allow update: if validClientProviderAccount(userId, accountId)
+        && clientProviderAccountUpdatePreservesAuthority();
+      allow delete: if ownsUserNamespace(userId)
+        && resource.data.storageScope in ["local_only", "device_keychain"];
     }
 
     // Provider account device links. Canonical top-level collection used by
@@ -2081,10 +2219,30 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "sessionId",
+          "entryIndex",
+          "toolKind",
+          "actionKind",
+          "status",
+          "approvedBy",
+          "scopeRuleId",
+          "denyReason",
+          "parentEntryHashHex",
+          "approvalLatencyMillis",
+          "recordedAt",
+          "schemaVersion"
+        ])
         && request.resource.data.id == actionId
         && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() <= 256
         && request.resource.data.entryIndex is int
+        && request.resource.data.entryIndex >= 0
+        && request.resource.data.entryIndex <= 1000000
         && request.resource.data.toolKind is string
+        && request.resource.data.toolKind.size() <= 128
+        && (!("actionKind" in request.resource.data) || (request.resource.data.actionKind is string && request.resource.data.actionKind.size() <= 128))
         && request.resource.data.status in [
           "executed", "denied", "rejected", "awaiting_approval", "error"
         ]
@@ -2092,12 +2250,20 @@ service cloud.firestore {
           "mac", "phone", "trusted_scope", "step", "denied", "panic"
         ]
         && request.resource.data.parentEntryHashHex is string
+        && request.resource.data.parentEntryHashHex.matches("^[a-fA-F0-9]{32,128}$")
+        && (!("scopeRuleId" in request.resource.data) || (request.resource.data.scopeRuleId is string && request.resource.data.scopeRuleId.size() <= 256))
+        && (!("denyReason" in request.resource.data) || (request.resource.data.denyReason is string && request.resource.data.denyReason.size() <= 512))
+        && (!("approvalLatencyMillis" in request.resource.data) || (request.resource.data.approvalLatencyMillis is number && request.resource.data.approvalLatencyMillis >= 0 && request.resource.data.approvalLatencyMillis <= 86400000))
+        && request.resource.data.recordedAt is timestamp
         && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.schemaVersion <= 20
         && !("body" in request.resource.data)
         && !("selector" in request.resource.data)
         && !("text" in request.resource.data)
         && !("url" in request.resource.data)
         && !("screenshot" in request.resource.data)
+        && !("visionTokensCostUSD" in request.resource.data)
         && !("ciphertext" in request.resource.data);
       allow update: if false;
       allow delete: if false;
@@ -2108,6 +2274,20 @@ service cloud.firestore {
     match /users/{userId}/computer_use_quota_usage/{day} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "dayKey",
+          "browserActionsExecuted",
+          "browserActionsRejected",
+          "systemActionsExecuted",
+          "systemActionsRejected",
+          "phoneControlIntentsExecuted",
+          "phoneControlIntentsRejected",
+          "sessionsStarted",
+          "sessionsCompleted",
+          "totalSessionSeconds",
+          "updatedAt",
+          "schemaVersion"
+        ])
         && request.resource.data.dayKey == day
         && request.resource.data.browserActionsExecuted is number
         && request.resource.data.browserActionsRejected is number
@@ -2115,7 +2295,17 @@ service cloud.firestore {
         && request.resource.data.systemActionsRejected is number
         && request.resource.data.phoneControlIntentsExecuted is number
         && request.resource.data.phoneControlIntentsRejected is number
-        && request.resource.data.visionModelSpendUSD is number;
+        && request.resource.data.browserActionsExecuted >= 0
+        && request.resource.data.browserActionsRejected >= 0
+        && request.resource.data.systemActionsExecuted >= 0
+        && request.resource.data.systemActionsRejected >= 0
+        && request.resource.data.phoneControlIntentsExecuted >= 0
+        && request.resource.data.phoneControlIntentsRejected >= 0
+        && (!("sessionsStarted" in request.resource.data) || (request.resource.data.sessionsStarted is number && request.resource.data.sessionsStarted >= 0))
+        && (!("sessionsCompleted" in request.resource.data) || (request.resource.data.sessionsCompleted is number && request.resource.data.sessionsCompleted >= 0))
+        && (!("totalSessionSeconds" in request.resource.data) || (request.resource.data.totalSessionSeconds is number && request.resource.data.totalSessionSeconds >= 0))
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
+        && (!("schemaVersion" in request.resource.data) || (request.resource.data.schemaVersion is int && request.resource.data.schemaVersion >= 1 && request.resource.data.schemaVersion <= 20));
       allow delete: if false;
     }
 

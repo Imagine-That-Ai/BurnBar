@@ -55,6 +55,17 @@ import {
 } from "../cloudProAllowanceCore.js";
 import { loadCloudProAllowanceConfig } from "../cloudProAllowanceRemoteConfig.js";
 import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
+import {
+  isActiveBurnBarCloudProEntitlement,
+  isActiveHostedQuotaEntitlement,
+  isActivePremiumEntitlement,
+} from "../entitlements.js";
+export {
+  entitlementExpiryMillis,
+  isActiveBurnBarCloudProEntitlement,
+  isActiveHostedQuotaEntitlement,
+  isActivePremiumEntitlement,
+} from "../entitlements.js";
 
 // ---------------------------------------------------------------------------
 // Provider adapter registry
@@ -343,14 +354,19 @@ export function requireSealedText(raw: unknown, fieldName: string): Record<strin
   if (algorithm !== "AES-256-GCM") {
     throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
   }
-  requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  const keyVersion = requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  const sealedText: Record<string, unknown> = {
+    algorithm,
+    keyVersion,
+  };
   for (const key of ["nonce", "ciphertext", "tag"]) {
     const value = boundedTrimmedString(envelope[key], `${fieldName}.${key}`, 8192, true);
     if (!/^[A-Za-z0-9+/=]+$/u.test(value)) {
       throw new HttpsError("invalid-argument", `${fieldName}.${key} must be base64.`);
     }
+    sealedText[key] = value;
   }
-  return envelope;
+  return sealedText;
 }
 
 export function requireISODateString(raw: unknown, fieldName: string): string {
@@ -678,75 +694,6 @@ export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promi
   throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
 }
 
-const BURNBAR_CLOUD_PRO_PRODUCT_ALIASES = new Set([
-  "com.openburnbar.proMax.v2.monthly",
-  "com.openburnbar.proMax.annual",
-  "com.openburnbar.promax.v2.monthly",
-  "com.openburnbar.promax.annual",
-  "com.openburnbar.proMax.bundle.monthly",
-]);
-
-export function isActiveHostedQuotaEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  if (raw.productID !== getConfig().hostedQuotaProductID) return false;
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
-}
-
-export function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  if (
-    productID !== getConfig().hostedQuotaProductID &&
-    productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().burnBarProAnnualProductID &&
-    productID !== getConfig().burnBarProMaxProductID &&
-    productID !== getConfig().burnBarProMaxAnnualProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID &&
-    productID !== getConfig().googlePlayCloudMonthlyProductID &&
-    productID !== getConfig().googlePlayCloudAnnualProductID &&
-    productID !== getConfig().googlePlayCloudProMonthlyProductID &&
-    productID !== getConfig().googlePlayCloudProAnnualProductID &&
-    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
-  ) {
-    return false;
-  }
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
-}
-
-export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  const cfg = getConfig();
-  if (
-    productID !== cfg.burnBarProMaxProductID &&
-    productID !== cfg.burnBarProMaxAnnualProductID &&
-    productID !== cfg.googlePlayCloudProMonthlyProductID &&
-    productID !== cfg.googlePlayCloudProAnnualProductID &&
-    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
-  ) {
-    return false;
-  }
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
-}
-
-export function entitlementExpiryMillis(raw: Record<string, unknown>): number {
-  const expireAt = raw.expireAt;
-  if (expireAt instanceof Timestamp) {
-    return expireAt.toMillis();
-  }
-  if (isTimestampWithToMillis(expireAt)) {
-    return expireAt.toMillis();
-  }
-  if (raw.expiresAt) {
-    const parsed = Date.parse(String(raw.expiresAt));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
 export function burnBarProFeatures(): Record<string, boolean> {
   return {
     hostedQuota: true,
@@ -849,10 +796,51 @@ export function boundedHttpsURL(raw: unknown, fieldName: string): string {
   } catch {
     throw new HttpsError("invalid-argument", `${fieldName} must be a valid URL.`);
   }
-  if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
+  if (isLocalRedirectURL(url)) {
+    return url.toString();
+  }
+  if (url.protocol !== "https:") {
     throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
   }
+  const allowedOrigins = allowedStripeRedirectOrigins();
+  if (!allowedOrigins.has(normalizedOrigin(url))) {
+    throw new HttpsError("invalid-argument", `${fieldName} origin is not allowed for Stripe redirects.`);
+  }
   return url.toString();
+}
+
+const DEFAULT_STRIPE_REDIRECT_ORIGINS = [
+  "https://burnbar.ai",
+  "https://www.burnbar.ai",
+  "https://openburnbar.ai",
+  "https://www.openburnbar.ai",
+  "https://openburnbar.app",
+] as const;
+
+function allowedStripeRedirectOrigins(): Set<string> {
+  const configured = getConfig().stripeAllowedRedirectOrigins;
+  return new Set([...DEFAULT_STRIPE_REDIRECT_ORIGINS, ...configured].flatMap((origin) => normalizeAllowedOrigin(origin)));
+}
+
+function normalizeAllowedOrigin(raw: string): string[] {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return [];
+    return [normalizedOrigin(url)];
+  } catch {
+    return [];
+  }
+}
+
+function normalizedOrigin(url: URL): string {
+  return `${url.protocol}//${url.host}`.toLowerCase();
+}
+
+function isLocalRedirectURL(url: URL): boolean {
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1")
+  );
 }
 
 export async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Promise<string> {
@@ -1370,8 +1358,8 @@ export async function connectProviderAccountInternal(params: {
 export async function checkRefreshRateLimit(db: Firestore, uid: string, provider: string): Promise<void> {
   const { refreshRateLimitSeconds } = getConfig();
   const ref = db.doc(`users/${uid}/_rate_limits/refresh_${provider}`);
-  const snap = await ref.get();
-  if (snap.exists) {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
     const ts = snap.get("lastRefreshAt");
     if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
@@ -1383,14 +1371,14 @@ export async function checkRefreshRateLimit(db: Firestore, uid: string, provider
         );
       }
     }
-  }
-  await ref.set({ lastRefreshAt: Timestamp.now() }, { merge: true });
+    tx.set(ref, { lastRefreshAt: Timestamp.now() }, { merge: true });
+  });
 }
 
 export async function checkHermesRateLimit(uid: string, action: string, windowSeconds: number): Promise<void> {
   const ref = db.doc(`users/${uid}/_rate_limits/hermes_${action}`);
-  const snap = await ref.get();
-  if (snap.exists) {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
     const ts = snap.get("lastAt");
     if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
@@ -1401,14 +1389,14 @@ export async function checkHermesRateLimit(uid: string, action: string, windowSe
         );
       }
     }
-  }
-  await ref.set({ lastAt: Timestamp.now() }, { merge: true });
+    tx.set(ref, { lastAt: Timestamp.now() }, { merge: true });
+  });
 }
 
 export async function checkPiAgentRateLimit(uid: string, action: string, windowSeconds: number): Promise<void> {
   const ref = db.doc(`users/${uid}/_rate_limits/pi_agent_${action}`);
-  const snap = await ref.get();
-  if (snap.exists) {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
     const ts = snap.get("lastAt");
     if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
@@ -1419,8 +1407,8 @@ export async function checkPiAgentRateLimit(uid: string, action: string, windowS
         );
       }
     }
-  }
-  await ref.set({ lastAt: Timestamp.now() }, { merge: true });
+    tx.set(ref, { lastAt: Timestamp.now() }, { merge: true });
+  });
 }
 
 HOSTED_QUOTA_PROVIDERS.add("claude-code");

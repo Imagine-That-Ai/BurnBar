@@ -59,6 +59,7 @@ const BINDING_SCHEMA_VERSION = 1;
 const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
+const DEFAULT_ASC_LIVE_STATUS_RATE_LIMIT_SECONDS = 60;
 
 export interface AppStoreEntitlementTarget {
   sourceEntitlementID: string;
@@ -75,7 +76,7 @@ export interface ReconcileInput {
   /** Optional notification type/subtype, surfaced in the audit log. */
   notificationType?: string;
   notificationSubtype?: string;
-  /** Caller-asserted UID. Trusted only when no `appAccountToken` is present. */
+  /** Caller UID used only to constrain binding lookup and reject cross-user replay. */
   claimedUid?: string;
   /** Trust path that originated the call. */
   source: "client_callable" | "apple_s2s" | "scheduled_reconcile";
@@ -102,6 +103,7 @@ export interface ReconcileResult {
 export interface ReconcileOverrides {
   verifier?: AppleJWSVerifier;
   fetchLive?: typeof fetchLiveSubscriptionStatus;
+  rateLimitLiveStatus?: boolean;
 }
 
 export class EntitlementReconcileError extends Error {
@@ -125,10 +127,12 @@ export async function reconcileEntitlement(
 ): Promise<ReconcileResult> {
   const verifier = overrides.verifier ?? getAppleJWSVerifier(cfg);
   const fetchLive = overrides.fetchLive ?? fetchLiveSubscriptionStatus;
+  const rateLimitLiveStatus = overrides.rateLimitLiveStatus ?? overrides.fetchLive === undefined;
 
   // 1) Verify the supplied JWS.
   const seedTx = await verifier.verifyTransaction(input.signedTransactionJWS);
   assertBundle(cfg, seedTx);
+  assertProductionGrantEnvironment(seedTx);
 
   if (input.signedRenewalInfoJWS) {
     // We don't currently use renewal info for the entitlement decision —
@@ -142,7 +146,7 @@ export async function reconcileEntitlement(
   const uid = await resolveUid(db, input, seedTx);
 
   // 3+4) Live truth: re-verify every JWS Apple returns.
-  const live = await fetchLiveStatusVerified(verifier, cfg, seedTx, fetchLive);
+  const live = await fetchLiveStatusVerified(db, uid, verifier, cfg, seedTx, fetchLive, rateLimitLiveStatus);
 
   const productID = input.productID ?? requireString(seedTx.payload.productId, "productId");
   const target = appStoreEntitlementTarget(productID);
@@ -155,6 +159,7 @@ export async function reconcileEntitlement(
       `No verified transaction matched productId ${productID}.`,
     );
   }
+  assertProductionGrantEnvironment(candidate);
 
   // 6) Build & persist.
   const docPath = `users/${uid}/entitlements/${target.sourceEntitlementID}`;
@@ -343,13 +348,10 @@ async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTrans
     return bindingUid;
   }
 
-  // No appAccountToken on the JWS. Two legitimate cases:
-  //   - Pre-binding migration: existing user with a verified callable.
-  //   - S2S notification for a legacy purchase pre-migration.
-  if (input.claimedUid) return input.claimedUid;
-
-  // Last resort: look up the entitlement doc that already references this
-  // originalTransactionId; if exactly one user owns it, attribute there.
+  // Legacy transactions without appAccountToken are only accepted when
+  // an existing server-owned entitlement already binds the original
+  // transaction to exactly one user. Never trust the in-flight caller UID
+  // as the first ownership proof for an unsigned transaction.
   const fallbackUid = await findUidByOriginalTransaction(
     db,
     requireString(tx.payload.originalTransactionId, "originalTransactionId"),
@@ -357,7 +359,13 @@ async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTrans
   if (!fallbackUid) {
     throw new EntitlementReconcileError(
       "uid_unresolved",
-      "JWS has no appAccountToken and no caller UID; cannot attribute.",
+      "JWS has no appAccountToken and no existing server entitlement binding; cannot attribute.",
+    );
+  }
+  if (input.claimedUid && input.claimedUid !== fallbackUid) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS originalTransactionId belongs to a different user.",
     );
   }
   return fallbackUid;
@@ -429,10 +437,13 @@ async function findUidByOriginalTransaction(db: Firestore, originalTransactionId
 // ---------------------------------------------------------------------------
 
 async function fetchLiveStatusVerified(
+  db: Firestore,
+  uid: string,
   verifier: AppleJWSVerifier,
   cfg: AppStoreConfig,
   seed: DecodedTransaction,
   fetchLive: typeof fetchLiveSubscriptionStatus,
+  rateLimitLiveStatus: boolean,
 ): Promise<DecodedTransaction[]> {
   const original = seed.payload.originalTransactionId;
   if (!original) return [];
@@ -440,8 +451,14 @@ async function fetchLiveStatusVerified(
   // The seed environment drives which ASC base URL we hit.
   let live;
   try {
+    if (rateLimitLiveStatus) {
+      await consumeAppStoreLiveStatusRateLimit(db, uid, original);
+    }
     live = await fetchLive(cfg, seed.environment, original);
   } catch (err) {
+    if (err instanceof EntitlementReconcileError) {
+      throw err;
+    }
     throw new EntitlementReconcileError(
       "asc_live_status_unavailable",
       `App Store live subscription status unavailable: ${err instanceof Error ? err.message : "unknown ASC error"}`,
@@ -453,6 +470,7 @@ async function fetchLiveStatusVerified(
     try {
       const tx = await verifier.verifyTransaction(pair.signedTransactionInfo, seed.environment);
       assertBundle(cfg, tx);
+      assertProductionGrantEnvironment(tx);
       verified.push(tx);
     } catch (err) {
       logWarn({
@@ -476,7 +494,7 @@ function pickWinning(candidates: DecodedTransaction[], productID: string): Decod
       best = c;
       continue;
     }
-    if (rank(c) > rank(best)) {
+    if (compareTransactions(c, best) > 0) {
       best = c;
     }
   }
@@ -484,8 +502,27 @@ function pickWinning(candidates: DecodedTransaction[], productID: string): Decod
 }
 
 /** Order: most recent signedDate wins. Tie-break on transactionId. */
-function rank(c: DecodedTransaction): number {
-  return c.payload.signedDate ?? 0;
+function compareTransactions(a: DecodedTransaction, b: DecodedTransaction): number {
+  const signedDateDelta = signedDateMs(a.payload) - signedDateMs(b.payload);
+  if (signedDateDelta !== 0) return signedDateDelta;
+  return transactionIDForCompare(a.payload).localeCompare(transactionIDForCompare(b.payload));
+}
+
+function signedDateMs(payload: JWSTransactionDecodedPayload): number {
+  const raw = payload.signedDate;
+  return typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : Number.NEGATIVE_INFINITY;
+}
+
+function requireSignedDateMs(payload: JWSTransactionDecodedPayload): number {
+  const raw = signedDateMs(payload);
+  if (!Number.isFinite(raw) || raw < 0) {
+    throw new EntitlementReconcileError("missing_field", "JWS payload is missing signedDate");
+  }
+  return raw;
+}
+
+function transactionIDForCompare(payload: JWSTransactionDecodedPayload): string {
+  return typeof payload.transactionId === "string" ? payload.transactionId : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -541,9 +578,7 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
   if (typeof p.appAccountToken === "string" && p.appAccountToken) {
     doc.appAccountToken = p.appAccountToken.toLowerCase();
   }
-  if (typeof p.signedDate === "number") {
-    doc.signedDateMs = Math.floor(p.signedDate);
-  }
+  doc.signedDateMs = requireSignedDateMs(p);
   if (notificationUUID !== undefined) {
     doc.lastNotificationUUID = notificationUUID;
   }
@@ -557,10 +592,23 @@ function shouldOverwrite(existing: HostedQuotaEntitlementDoc, next: HostedQuotaE
   // replay protection must key off the signed payload date so a stale
   // event processed later cannot revive an expired or revoked state.
   if (typeof existing.signedDateMs === "number" && typeof next.signedDateMs === "number") {
-    return next.signedDateMs >= existing.signedDateMs;
+    return compareEntitlementWatermarks(next, existing) >= 0;
   }
   if (!existing.lastVerifiedAt) return true;
   return next.lastVerifiedAt >= existing.lastVerifiedAt;
+}
+
+function compareEntitlementWatermarks(
+  next: Pick<HostedQuotaEntitlementDoc, "signedDateMs" | "transactionID">,
+  existing: Pick<HostedQuotaEntitlementDoc, "signedDateMs" | "transactionID">,
+): number {
+  const nextSignedDate =
+    typeof next.signedDateMs === "number" ? Math.floor(next.signedDateMs) : Number.NEGATIVE_INFINITY;
+  const existingSignedDate =
+    typeof existing.signedDateMs === "number" ? Math.floor(existing.signedDateMs) : Number.NEGATIVE_INFINITY;
+  const signedDateDelta = nextSignedDate - existingSignedDate;
+  if (signedDateDelta !== 0) return signedDateDelta;
+  return next.transactionID.localeCompare(existing.transactionID);
 }
 
 function mergeWithExisting(
@@ -587,6 +635,53 @@ function assertBundle(cfg: AppStoreConfig, tx: DecodedTransaction): void {
   if (tx.payload.bundleId && tx.payload.bundleId !== cfg.bundleId) {
     throw new EntitlementReconcileError("bundle_id_mismatch", `JWS bundleId ${tx.payload.bundleId} != ${cfg.bundleId}`);
   }
+}
+
+function assertProductionGrantEnvironment(tx: DecodedTransaction): void {
+  if (tx.environment !== "Production") {
+    throw new EntitlementReconcileError(
+      "non_production_transaction",
+      `Non-production App Store transaction environment ${tx.environment} cannot grant production entitlement.`,
+    );
+  }
+}
+
+export async function consumeAppStoreLiveStatusRateLimit(
+  db: Firestore,
+  uid: string,
+  originalTransactionId: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  const configuredWindow = Number.parseInt(process.env.APP_STORE_LIVE_STATUS_RATE_LIMIT_SECONDS ?? "", 10);
+  const windowMs =
+    Math.max(1, Number.isFinite(configuredWindow) ? configuredWindow : DEFAULT_ASC_LIVE_STATUS_RATE_LIMIT_SECONDS) *
+    1000;
+  const originalTransactionHash = createHash("sha256").update(originalTransactionId).digest("hex").slice(0, 32);
+  const ref = db.doc(`users/${uid}/_rate_limits/appstore_live_${originalTransactionHash}`);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const lastAttemptAt = snap.get("lastAttemptAt");
+    const lastAttemptMs =
+      lastAttemptAt && typeof lastAttemptAt === "object" && "toMillis" in lastAttemptAt
+        ? Number((lastAttemptAt as { toMillis: () => number }).toMillis())
+        : undefined;
+    if (lastAttemptMs !== undefined && Number.isFinite(lastAttemptMs) && nowMs - lastAttemptMs < windowMs) {
+      throw new EntitlementReconcileError(
+        "asc_live_status_rate_limited",
+        `App Store live status was checked recently; retry in ${Math.ceil((windowMs - (nowMs - lastAttemptMs)) / 1000)}s.`,
+      );
+    }
+    tx.set(
+      ref,
+      {
+        lastAttemptAt: Timestamp.fromMillis(nowMs),
+        windowMs,
+        originalTransactionHash,
+      },
+      { merge: true },
+    );
+  });
 }
 
 function requireString(value: unknown, field: string): string {
@@ -645,9 +740,12 @@ export const __testing__ = {
   buildEntitlementDoc,
   mergeWithExisting,
   shouldOverwrite,
+  compareEntitlementWatermarks,
   redactPayload,
   redactToken,
   auditEventId,
+  assertProductionGrantEnvironment,
+  consumeAppStoreLiveStatusRateLimit,
   appStoreEntitlementTarget,
   ENTITLEMENT_SCHEMA_VERSION,
   VERIFICATION_VERSION,

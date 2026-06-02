@@ -14,17 +14,24 @@ import { errorMessage, isRecord, stringValue } from "./guards.js";
  *   transient failure (5xx, network) → status: "pending" with retryAt
  *   permanent failure (410 BadDeviceToken etc.) → status: "rejected"
  *
- * Idempotency: APNs `apns-id` header is the Firestore document id, so
- * Apple coalesces duplicate sends if a retry fires before the previous
- * Firestore commit lands.
+ * Idempotency: Firestore delivery is claimed with a transactional lease before
+ * APNs I/O starts. Duplicate Eventarc deliveries and scheduler races see the
+ * `sending` lease and do not send a second push.
  */
 
 import { createSign, randomUUID } from "node:crypto";
 import { connect as http2Connect, type ClientHttp2Session } from "node:http2";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, getFirestore, type Firestore } from "firebase-admin/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { pushWithResilience } from "./resilienceHelpers.js";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import {
+  claimPendingPush,
+  collectRetryablePushRefs,
+  finishClaimedPush,
+  nextPushRetryAt,
+  pushWithResilience,
+} from "./resilienceHelpers.js";
 
 const APNS_KEY_ID = defineSecret("APNS_KEY_ID");
 const APNS_TEAM_ID = defineSecret("APNS_TEAM_ID");
@@ -161,10 +168,8 @@ async function sendVoipPush(args: {
     // Apple's apns-id MUST be a canonical UUID (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
     // or Apple returns 400 BadMessageId. The Firestore docId is *not* a
     // UUID — passing it raw bricked every push during the smoke test.
-    // Generate a fresh UUID per request; idempotency against duplicate
-    // Eventarc fires is already handled by the Firestore status guard
-    // (`if (data.status !== "pending") return;`) so we don't need the
-    // apns-id to be deterministic for dedupe.
+    // Generate a fresh UUID per request; duplicate Firestore/Eventarc work is
+    // deduped by the transactional `sending` lease before this I/O starts.
     const apnsId = randomUUID();
     const req = session.request({
       ":method": "POST",
@@ -222,11 +227,9 @@ async function sendVoipPush(args: {
  * written by `triggerVoIPCall`. Pushes via APNs and updates the source
  * document with the outcome.
  *
- * Retry policy: transient failures leave the document with
- * `status: "pending"` and `retryAt = now + 30 s`. A scheduled function
- * (`retryStuckVoIPPushes`) — left to a follow-up commit — picks them
- * back up. Permanent failures are sealed with `status: "rejected"` so
- * dashboards can detect token rot.
+ * Retry policy: transient failures leave the document with `status: "pending"`
+ * and an exponential `retryAt`. `retryPendingVoIPOutbound` picks due retries
+ * and expired leases back up.
  */
 export const sendVoIPOutbound = onDocumentCreated(
   {
@@ -235,50 +238,85 @@ export const sendVoIPOutbound = onDocumentCreated(
     secrets: [APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8],
   },
   async (event) => {
-    const data = event.data?.data();
-    if (!isRecord(data)) return;
-    if (data.status && data.status !== "pending") return;
-    const deviceToken = stringValue(data.voipDeviceToken);
-    if (!deviceToken) {
-      await event.data?.ref.update({
-        status: "rejected",
-        reason: "missing voipDeviceToken",
-        rejectedAt: Timestamp.now(),
-      });
-      return;
-    }
+    if (!event.data) return;
+    await processVoIPOutboundRef(event.data.ref, event.params.docId);
+  },
+);
 
-    const result = await pushToAPNs({
-      deviceTokenHex: deviceToken,
-      payload: isRecord(data.payload) ? data.payload : {},
-      documentId: event.params.docId,
+export async function processVoIPOutboundRef(
+  ref: FirebaseFirestore.DocumentReference,
+  documentId = ref.id,
+): Promise<"sent" | "rejected" | "retry" | "skipped"> {
+  const claim = await claimPendingPush(ref);
+  if (!claim) return "skipped";
+  const data = claim.data;
+  if (!isRecord(data)) return "skipped";
+
+  const deviceToken = stringValue(data.voipDeviceToken);
+  if (!deviceToken) {
+    await finishClaimedPush(ref, claim.leaseId, {
+      status: "rejected",
+      reason: "missing voipDeviceToken",
+      rejectedAt: Timestamp.now(),
     });
+    return "rejected";
+  }
 
-    switch (result.status) {
-      case "sent":
-        await event.data?.ref.update({
-          status: "sent",
-          deliveredAt: Timestamp.now(),
-          apnsStatusCode: result.apnsStatusCode ?? 200,
-        });
-        return;
-      case "rejected":
-        await event.data?.ref.update({
-          status: "rejected",
-          rejectedAt: Timestamp.now(),
-          apnsStatusCode: result.apnsStatusCode ?? null,
-          reason: result.reason ?? null,
-        });
-        return;
-      case "retry":
-        await event.data?.ref.update({
-          status: "pending",
-          lastAttemptAt: Timestamp.now(),
-          lastFailureReason: result.reason ?? null,
-          retryAt: Timestamp.fromMillis(Date.now() + 30_000),
-          attemptCount: (typeof data.attemptCount === "number" ? data.attemptCount : 0) + 1,
-        });
-        return;
-    }
+  const result = await pushToAPNs({
+    deviceTokenHex: deviceToken,
+    payload: isRecord(data.payload) ? data.payload : {},
+    documentId,
+  });
+
+  switch (result.status) {
+    case "sent":
+      await finishClaimedPush(ref, claim.leaseId, {
+        status: "sent",
+        deliveredAt: Timestamp.now(),
+        apnsStatusCode: result.apnsStatusCode ?? 200,
+        retryAt: null,
+        lastFailureReason: null,
+      });
+      return "sent";
+    case "rejected":
+      await finishClaimedPush(ref, claim.leaseId, {
+        status: "rejected",
+        rejectedAt: Timestamp.now(),
+        apnsStatusCode: result.apnsStatusCode ?? null,
+        reason: result.reason ?? null,
+        retryAt: null,
+      });
+      return "rejected";
+    case "retry":
+      await finishClaimedPush(ref, claim.leaseId, {
+        status: "pending",
+        lastFailureReason: result.reason ?? null,
+        retryAt: nextPushRetryAt(Date.now(), claim.attemptCount),
+      });
+      return "retry";
+  }
+}
+
+export async function retryPendingVoIPPushes(
+  firestore: Firestore = getFirestore(),
+  limit = 50,
+): Promise<number> {
+  const refs = await collectRetryablePushRefs(firestore, "voip_outbound", { limit });
+  let processed = 0;
+  for (const ref of refs) {
+    const result = await processVoIPOutboundRef(ref, ref.id);
+    if (result !== "skipped") processed += 1;
+  }
+  return processed;
+}
+
+export const retryPendingVoIPOutbound = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: "us-central1",
+    secrets: [APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8],
+  },
+  async () => {
+    await retryPendingVoIPPushes();
   },
 );

@@ -243,6 +243,19 @@ function stableErrorCode(status: VerificationStatus): string {
   }
 }
 
+function assertDecodedEnvironment(
+  where: string,
+  expected: AppStoreEnvironment,
+  actual: AppStoreEnvironment,
+): void {
+  if (actual !== expected) {
+    throw new JWSVerificationFailure(
+      VerificationStatus.INVALID_ENVIRONMENT,
+      `apple-jws-env_mismatch: ${where}`,
+    );
+  }
+}
+
 /**
  * Verifier façade. One instance is created per Apple environment we
  * care about and reused across calls.
@@ -347,10 +360,12 @@ export class AppleJWSVerifier {
   ): Promise<DecodedTransaction> {
     try {
       const payload = await this.verifierFor(env).verifyAndDecodeTransaction(signedTransaction);
+      const environment = fromLibEnvironment(payload.environment) ?? env;
+      assertDecodedEnvironment("verifyTransaction", env, environment);
       return {
         raw: signedTransaction,
         payload,
-        environment: fromLibEnvironment(payload.environment) ?? env,
+        environment,
       };
     } catch (err) {
       if (
@@ -362,10 +377,12 @@ export class AppleJWSVerifier {
         const fallback: AppStoreEnvironment = env === "Production" ? "Sandbox" : "Production";
         try {
           const payload = await this.verifierFor(fallback).verifyAndDecodeTransaction(signedTransaction);
+          const environment = fromLibEnvironment(payload.environment) ?? fallback;
+          assertDecodedEnvironment("verifyTransaction[fallback]", env, environment);
           return {
             raw: signedTransaction,
             payload,
-            environment: fromLibEnvironment(payload.environment) ?? fallback,
+            environment,
           };
         } catch (e2) {
           rethrow(e2, "verifyTransaction[fallback]");
@@ -381,10 +398,12 @@ export class AppleJWSVerifier {
   ): Promise<DecodedRenewalInfo> {
     try {
       const payload = await this.verifierFor(env).verifyAndDecodeRenewalInfo(signedRenewalInfo);
+      const environment = fromLibEnvironment(payload.environment) ?? env;
+      assertDecodedEnvironment("verifyRenewalInfo", env, environment);
       return {
         raw: signedRenewalInfo,
         payload,
-        environment: fromLibEnvironment(payload.environment) ?? env,
+        environment,
       };
     } catch (err) {
       if (
@@ -396,10 +415,12 @@ export class AppleJWSVerifier {
         const fallback: AppStoreEnvironment = env === "Production" ? "Sandbox" : "Production";
         try {
           const payload = await this.verifierFor(fallback).verifyAndDecodeRenewalInfo(signedRenewalInfo);
+          const environment = fromLibEnvironment(payload.environment) ?? fallback;
+          assertDecodedEnvironment("verifyRenewalInfo[fallback]", env, environment);
           return {
             raw: signedRenewalInfo,
             payload,
-            environment: fromLibEnvironment(payload.environment) ?? fallback,
+            environment,
           };
         } catch (e2) {
           rethrow(e2, "verifyRenewalInfo[fallback]");

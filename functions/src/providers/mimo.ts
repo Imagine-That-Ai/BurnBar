@@ -285,6 +285,15 @@ export const mimoAdapter: ProviderAdapter = {
     const kind = keyKind(trimmed);
 
     if (kind === "payg") {
+      const validation = await validateModelsEndpoint(PAYG_BASE, trimmed);
+      if (!validation.ok) {
+        return {
+          ok: false,
+          errorCode: validation.errorCode ?? "fetch_failed",
+          errorMessage: validation.error ?? "MiMo pay-as-you-go key validation failed.",
+        };
+      }
+
       return {
         ok: true,
         snapshot: {

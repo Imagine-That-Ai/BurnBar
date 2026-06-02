@@ -531,6 +531,9 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     action: "write",
     expires: expiresAt,
     contentType,
+    extensionHeaders: {
+      "content-length": String(byteCount),
+    },
   });
   const now = nowISO();
   const manifest = {

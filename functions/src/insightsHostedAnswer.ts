@@ -1,4 +1,4 @@
-import { errorMessage, isRecord, isTimestampWithToMillis } from "./guards.js";
+import { errorMessage, isRecord } from "./guards.js";
 /**
  * @fileoverview BurnBar-hosted Intelligence Brief fallback callable.
  *
@@ -65,13 +65,14 @@ import { errorMessage, isRecord, isTimestampWithToMillis } from "./guards.js";
  *     `MiniMax 2.7 · BurnBar Hosted`.
  */
 
-import { getFirestore } from "firebase-admin/firestore";
+import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
 import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
+import { isActivePremiumEntitlement } from "./entitlements.js";
 import { wrapCallableHandler } from "./logging.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 
@@ -107,6 +108,9 @@ const DEFAULT_DISPLAY_NAME = "MiniMax 2.7 · BurnBar Hosted";
  */
 const DEFAULT_INPUT_PRICE_PER_MTOKEN = 0.255;
 const DEFAULT_OUTPUT_PRICE_PER_MTOKEN = 1.0;
+const HOSTED_ANSWER_MAX_OUTPUT_TOKENS = 1400;
+const DEFAULT_HOSTED_ANSWER_DAILY_REQUEST_LIMIT = 50;
+const DEFAULT_HOSTED_ANSWER_DAILY_SPEND_LIMIT_USD = 5;
 
 // Stable error-code marker for the client. The Firebase callable
 // error envelope ships `details` as a JSON-safe payload alongside
@@ -333,7 +337,7 @@ async function callOpenRouter(args: {
     ],
     response_format: { type: "json_object" },
     temperature: 0.2,
-    max_tokens: 1400,
+    max_tokens: HOSTED_ANSWER_MAX_OUTPUT_TOKENS,
   };
 
   let response: Response;
@@ -443,6 +447,127 @@ function sanitizeEnvelope(rawContent: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Per-user hosted budget
+// ---------------------------------------------------------------------------
+
+interface HostedAnswerBudgetReservation {
+  dayKey: string;
+  reservationID: string;
+  reservedCostUSD: number;
+}
+
+function hostedAnswerDailyRequestLimit(): number {
+  return positiveIntegerEnv("INSIGHTS_HOSTED_DAILY_REQUEST_LIMIT", DEFAULT_HOSTED_ANSWER_DAILY_REQUEST_LIMIT);
+}
+
+function hostedAnswerDailySpendLimitUSD(): number {
+  return positiveNumberEnv("INSIGHTS_HOSTED_DAILY_SPEND_LIMIT_USD", DEFAULT_HOSTED_ANSWER_DAILY_SPEND_LIMIT_USD);
+}
+
+function hostedAnswerDayKey(date: Date): string {
+  return date.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function estimateHostedAnswerReserveCostUSD(args: {
+  systemPrompt: string;
+  userPrompt: string;
+  inputPricePerMToken: number;
+  outputPricePerMToken: number;
+}): number {
+  const estimatedInputTokens = Math.ceil((args.systemPrompt.length + args.userPrompt.length) / 3);
+  return (
+    (estimatedInputTokens / 1_000_000) * args.inputPricePerMToken +
+    (HOSTED_ANSWER_MAX_OUTPUT_TOKENS / 1_000_000) * args.outputPricePerMToken
+  );
+}
+
+async function reserveHostedAnswerBudget(
+  uid: string,
+  reserveCostUSD: number,
+  now: Date,
+): Promise<HostedAnswerBudgetReservation> {
+  const dayKey = hostedAnswerDayKey(now);
+  const requestLimit = hostedAnswerDailyRequestLimit();
+  const spendLimitUSD = hostedAnswerDailySpendLimitUSD();
+  const safeReserveCostUSD = Math.max(0, reserveCostUSD);
+  if (safeReserveCostUSD > spendLimitUSD) {
+    throw new HttpsError("resource-exhausted", "Hosted Intelligence Brief spend limit reached for today.", {
+      code: "hosted-llm-spend-limit",
+      dayKey,
+      spendLimitUSD,
+    });
+  }
+  const reservationID = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const ref = db().doc(`users/${uid}/_rate_limits/insights_hosted_${dayKey}`);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const requests = finiteNumberField(snap.get("requests"));
+    const spentCostUSD = finiteNumberField(snap.get("spentCostUSD"));
+    const reservedCostUSD = finiteNumberField(snap.get("reservedCostUSD"));
+    if (requests >= requestLimit) {
+      throw new HttpsError("resource-exhausted", "Hosted Intelligence Brief request limit reached for today.", {
+        code: "hosted-llm-request-limit",
+        dayKey,
+        requestLimit,
+      });
+    }
+    if (spentCostUSD + reservedCostUSD + safeReserveCostUSD > spendLimitUSD) {
+      throw new HttpsError("resource-exhausted", "Hosted Intelligence Brief spend limit reached for today.", {
+        code: "hosted-llm-spend-limit",
+        dayKey,
+        spendLimitUSD,
+      });
+    }
+    tx.set(
+      ref,
+      {
+        dayKey,
+        requests: requests + 1,
+        spentCostUSD,
+        reservedCostUSD: reservedCostUSD + safeReserveCostUSD,
+        requestLimit,
+        spendLimitUSD,
+        updatedAt: Timestamp.fromDate(now),
+        expireAt: Timestamp.fromMillis(now.getTime() + 8 * 24 * 60 * 60 * 1000),
+        schemaVersion: 1,
+      },
+      { merge: true },
+    );
+  });
+  return { dayKey, reservationID, reservedCostUSD: safeReserveCostUSD };
+}
+
+async function settleHostedAnswerBudget(
+  uid: string,
+  reservation: HostedAnswerBudgetReservation,
+  actualCostUSD: number,
+  now: Date,
+): Promise<void> {
+  const ref = db().doc(`users/${uid}/_rate_limits/insights_hosted_${reservation.dayKey}`);
+  const safeActualCostUSD = Math.max(0, actualCostUSD);
+  await db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const spentCostUSD = finiteNumberField(snap.get("spentCostUSD"));
+    const reservedCostUSD = finiteNumberField(snap.get("reservedCostUSD"));
+    tx.set(
+      ref,
+      {
+        spentCostUSD: spentCostUSD + safeActualCostUSD,
+        reservedCostUSD: Math.max(0, reservedCostUSD - reservation.reservedCostUSD),
+        lastReservationID: reservation.reservationID,
+        updatedAt: Timestamp.fromDate(now),
+      },
+      { merge: true },
+    );
+  });
+}
+
+function finiteNumberField(raw: unknown): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+// ---------------------------------------------------------------------------
 // Callable
 // ---------------------------------------------------------------------------
 
@@ -511,11 +636,30 @@ export const insightsHostedAnswer = onCall(
       const digestSummary = digestSummaryFor(rawRequest);
       const systemPrompt = systemPromptText();
       const userPrompt = userPromptText({ prompt, digestSummary });
+      const inputPrice = parseNumericEnv(
+        "INSIGHTS_HOSTED_FALLBACK_INPUT_PRICE_PER_MTOKEN",
+        DEFAULT_INPUT_PRICE_PER_MTOKEN,
+      );
+      const outputPrice = parseNumericEnv(
+        "INSIGHTS_HOSTED_FALLBACK_OUTPUT_PRICE_PER_MTOKEN",
+        DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
+      );
+      const reservation = await reserveHostedAnswerBudget(
+        uid,
+        estimateHostedAnswerReserveCostUSD({
+          systemPrompt,
+          userPrompt,
+          inputPricePerMToken: inputPrice,
+          outputPricePerMToken: outputPrice,
+        }),
+        new Date(startedAtISO),
+      );
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 45_000);
       let openRouterContent: string;
       let openRouterRaw: OpenRouterResponse;
+      let estimatedCostUSD = 0;
       try {
         const result = await callOpenRouter({
           apiKey,
@@ -527,41 +671,36 @@ export const insightsHostedAnswer = onCall(
         });
         openRouterContent = result.content;
         openRouterRaw = result.raw;
+        const inputTokens = openRouterRaw.usage?.prompt_tokens ?? 0;
+        const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
+        estimatedCostUSD = (inputTokens / 1_000_000) * inputPrice + (outputTokens / 1_000_000) * outputPrice;
+        const envelope = sanitizeEnvelope(openRouterContent);
+        const completedAtISO = isoNow();
+        await settleHostedAnswerBudget(uid, reservation, estimatedCostUSD, new Date(completedAtISO));
+
+        return {
+          envelope,
+          providerKey: "burnbar-hosted",
+          modelSlug,
+          modelDisplayName,
+          egressTier: "hosted",
+          tokenUsage: {
+            providerKey: "burnbar-hosted",
+            modelID: modelSlug,
+            inputTokens,
+            outputTokens,
+            estimatedCostUSD,
+            startedAt: startedAtISO,
+            completedAt: completedAtISO,
+          },
+          ranAt: completedAtISO,
+        };
+      } catch (error) {
+        await settleHostedAnswerBudget(uid, reservation, estimatedCostUSD, new Date());
+        throw error;
       } finally {
         clearTimeout(timer);
       }
-
-      const envelope = sanitizeEnvelope(openRouterContent);
-      const completedAtISO = isoNow();
-      const inputTokens = openRouterRaw.usage?.prompt_tokens ?? 0;
-      const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
-      const inputPrice = parseNumericEnv(
-        "INSIGHTS_HOSTED_FALLBACK_INPUT_PRICE_PER_MTOKEN",
-        DEFAULT_INPUT_PRICE_PER_MTOKEN,
-      );
-      const outputPrice = parseNumericEnv(
-        "INSIGHTS_HOSTED_FALLBACK_OUTPUT_PRICE_PER_MTOKEN",
-        DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
-      );
-      const estimatedCostUSD = (inputTokens / 1_000_000) * inputPrice + (outputTokens / 1_000_000) * outputPrice;
-
-      return {
-        envelope,
-        providerKey: "burnbar-hosted",
-        modelSlug,
-        modelDisplayName,
-        egressTier: "hosted",
-        tokenUsage: {
-          providerKey: "burnbar-hosted",
-          modelID: modelSlug,
-          inputTokens,
-          outputTokens,
-          estimatedCostUSD,
-          startedAt: startedAtISO,
-          completedAt: completedAtISO,
-        },
-        ranAt: completedAtISO,
-      };
     },
   ),
 );
@@ -576,6 +715,22 @@ function parseNumericEnv(name: string, fallback: number): number {
   if (!raw) return fallback;
   const parsed = Number.parseFloat(raw);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = (process.env[name] ?? "").trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function positiveNumberEnv(name: string, fallback: number): number {
+  const raw = (process.env[name] ?? "").trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 }
 
@@ -607,27 +762,16 @@ async function assertActiveBurnBarProEntitlement(uid: string): Promise<void> {
   if (!proSnap.exists && !hostedSnap.exists) {
     failWithSubscriptionRequired("Active BurnBar Pro subscription required for hosted Intelligence Brief answers.");
   }
-  if (!isActiveBurnBarProEntitlement(proSnap.data()) && !isActiveBurnBarProEntitlement(hostedSnap.data())) {
+  if (!isActivePremiumEntitlement(proSnap.data()) && !isActivePremiumEntitlement(hostedSnap.data())) {
     failWithSubscriptionRequired(
       "BurnBar Pro subscription is inactive — restore your purchase or resubscribe to use hosted Intelligence Brief answers.",
     );
   }
 }
 
-function isActiveBurnBarProEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  if (
-    productID !== getConfig().hostedQuotaProductID &&
-    productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID
-  ) {
-    return false;
-  }
-  const expireAt = raw.expireAt;
-  if (isTimestampWithToMillis(expireAt)) {
-    return expireAt.toMillis() > Date.now();
-  }
-  const expiresAt = raw.expiresAt ? Date.parse(String(raw.expiresAt)) : 0;
-  return Number.isFinite(expiresAt) && expiresAt > Date.now();
-}
+export const __testing__ = {
+  estimateHostedAnswerReserveCostUSD,
+  hostedAnswerDayKey,
+  hostedAnswerDailyRequestLimit,
+  hostedAnswerDailySpendLimitUSD,
+};

@@ -21,8 +21,8 @@ export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloud
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
-export { sendVoIPOutbound } from "./apnsSender.js";
-export { sendFcmOutbound } from "./fcmAndroidSender.js";
+export { retryPendingVoIPOutbound, sendVoIPOutbound } from "./apnsSender.js";
+export { retryPendingFcmOutbound, sendFcmOutbound } from "./fcmAndroidSender.js";
 export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification } from "./agentNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
 

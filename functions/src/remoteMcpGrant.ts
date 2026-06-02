@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { FieldPath, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 export type RemoteMcpGrantMode = "sealed_only" | "local_decrypt_shim" | "remote_readable_explicit_opt_in";
 export type RemoteMcpScope = "search:read" | "conversation:read" | "usage:read" | "index:status";
@@ -130,27 +130,42 @@ export async function revokeAllRemoteMcpGrantsForUser(
   reason = "cloud_feature_suspension",
 ): Promise<{ clientsRevoked: number; grantsRevoked: number }> {
   const now = Timestamp.now();
-  const batch = db.batch();
-  let writes = 0;
-
-  const clients = await db.collection(`users/${uid}/remote_mcp_clients`).limit(500).get();
-  let clientsRevoked = 0;
-  for (const client of clients.docs) {
-    if (client.get("revokedAt")) continue;
-    batch.set(client.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
-    clientsRevoked += 1;
-    writes += 1;
-  }
-
-  const grants = await db.collection(`users/${uid}/remote_mcp_grants`).limit(500).get();
-  let grantsRevoked = 0;
-  for (const grant of grants.docs) {
-    if (grant.get("revokedAt")) continue;
-    batch.set(grant.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
-    grantsRevoked += 1;
-    writes += 1;
-  }
-
-  if (writes > 0) await batch.commit();
+  const clientsRevoked = await revokeAllInCollection(db, `users/${uid}/remote_mcp_clients`, now, reason);
+  const grantsRevoked = await revokeAllInCollection(db, `users/${uid}/remote_mcp_grants`, now, reason);
   return { clientsRevoked, grantsRevoked };
+}
+
+async function revokeAllInCollection(
+  db: Firestore,
+  collectionPath: string,
+  now: FirebaseFirestore.Timestamp,
+  reason: string,
+): Promise<number> {
+  const pageSize = 450;
+  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  let revoked = 0;
+
+  while (true) {
+    let query = db.collection(collectionPath).orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) query = query.startAfter(lastDoc);
+    const page = await query.get();
+    if (page.empty) break;
+
+    const batch = db.batch();
+    let writes = 0;
+    for (const doc of page.docs) {
+      if (doc.get("revokedAt")) continue;
+      batch.set(doc.ref, { revokedAt: now, updatedAt: now, revokeReason: reason }, { merge: true });
+      writes += 1;
+    }
+    if (writes > 0) {
+      await batch.commit();
+      revoked += writes;
+    }
+
+    lastDoc = page.docs[page.docs.length - 1];
+    if (page.docs.length < pageSize) break;
+  }
+
+  return revoked;
 }

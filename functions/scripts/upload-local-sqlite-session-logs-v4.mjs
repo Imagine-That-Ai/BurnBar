@@ -15,8 +15,11 @@ import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import os from "node:os";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 import admin from "firebase-admin";
+
+import { buildCloudSearchPostingEdges } from "../lib/callables/encryptedSearchIndex.js";
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "burnbar";
 const STORAGE_BUCKET = process.env.OPENBURNBAR_STORAGE_BUCKET || "burnbar-hosted-mcp-bodies-246956661961";
@@ -458,19 +461,25 @@ function markRowsSynced(sqlitePath, ids) {
   if (result.status !== 0) throw new Error(result.stderr || `sqlite3 exited ${result.status}`);
 }
 
-function readLocalRows(sqlitePath, batchSize, contains, includeSynced) {
+const LOCAL_ROW_ORDER_EXPR = "COALESCE(endTime, startTime, indexedAt, fileModifiedAt, id)";
+
+function readLocalRows(sqlitePath, batchSize, contains, includeSynced, cursor = undefined) {
   const containsClause = contains
     ? `AND (lower(fullText) LIKE ${sqlString(`%${contains.toLowerCase()}%`)} OR lower(inferredTaskTitle) LIKE ${sqlString(`%${contains.toLowerCase()}%`)} OR lower(summaryTitle) LIKE ${sqlString(`%${contains.toLowerCase()}%`)} OR lower(projectName) LIKE ${sqlString(`%${contains.toLowerCase()}%`)} OR lower(workingDirectory) LIKE ${sqlString(`%${contains.toLowerCase()}%`)})`
     : "";
   const syncClause = includeSynced ? "" : "logSyncedAt IS NULL AND";
+  const cursorClause = cursor
+    ? `AND (${LOCAL_ROW_ORDER_EXPR} > ${sqlString(cursor.sortKey)} OR (${LOCAL_ROW_ORDER_EXPR} = ${sqlString(cursor.sortKey)} AND id > ${sqlString(cursor.id)}))`
+    : "";
   return sqliteJSON(sqlitePath, `
     SELECT id, provider, sessionId, projectName, startTime, endTime,
            messageCount, userWordCount, assistantWordCount, inferredTaskTitle,
            lastAssistantMessage, fullText, indexedAt, fileModifiedAt, summary,
-           sourceType, summaryTitle, workingDirectory
+           sourceType, summaryTitle, workingDirectory,
+           ${LOCAL_ROW_ORDER_EXPR} AS uploadSortKey
     FROM conversations
-    WHERE ${syncClause} isRemote = 0 ${containsClause}
-    ORDER BY COALESCE(endTime, startTime, indexedAt) ASC
+    WHERE ${syncClause} isRemote = 0 ${containsClause} ${cursorClause}
+    ORDER BY uploadSortKey ASC, id ASC
     LIMIT ${Number(batchSize)}
   `);
 }
@@ -537,7 +546,7 @@ async function commitBatch(db, writes, apply) {
   }
 }
 
-async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
+function buildUploadPlan({ db, uid, deviceId, vaultKey, row }) {
   const docId = safeDocID(deviceId, row.id);
   const markdown = markdownFor(row);
   const bodyData = Buffer.from(markdown, "utf8");
@@ -555,6 +564,7 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
   const chunkHashes = chunks.map((chunk) => sha256Hex(Buffer.from(chunk, "utf8")));
   const manifestRef = db.doc(`users/${uid}/session_logs/${docId}`);
   const writes = [];
+  let postings = 0;
 
   const manifest = {
     id: row.id,
@@ -656,6 +666,30 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
       schemaVersion: 1,
     };
     writes.push({ ref: db.collection(`users/${uid}/cloud_search_chunks`).doc(chunkID), data: chunkData });
+    const edges = buildCloudSearchPostingEdges({
+      source: {
+        uid,
+        chunkID,
+        documentID: docId,
+        sourceKind: "conversation",
+        sourceID: row.id,
+        provider,
+        projectName,
+        ordinal: index,
+        bodyHash,
+        storagePath,
+        sealedSnippet,
+        indexVersion: INDEX_VERSION,
+        commitID: COMMIT_ID,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      tokenHashes: tokenHashList,
+      semanticHashes: semanticHashList,
+    });
+    for (const edge of edges) {
+      writes.push({ ref: db.collection(`users/${uid}/cloud_search_postings`).doc(edge.edgeID), data: edge.data });
+    }
+    postings += edges.length;
     offset += Buffer.byteLength(chunk, "utf8");
   }
 
@@ -671,11 +705,32 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
     },
   });
 
+  return {
+    docId,
+    storagePath,
+    sealedBodyData,
+    writes,
+    chunks: chunks.length,
+    postings,
+    bytes: bodyData.length,
+    encryptedBytes: sealedBodyData.length,
+  };
+}
+
+async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
+  const plan = buildUploadPlan({ db, uid, deviceId, vaultKey, row });
+
   if (apply) {
-    await bucket.file(storagePath).save(sealedBodyData, { contentType: "application/octet-stream", resumable: false });
-    await commitBatch(db, writes, true);
+    await bucket.file(plan.storagePath).save(plan.sealedBodyData, { contentType: "application/octet-stream", resumable: false });
+    await commitBatch(db, plan.writes, true);
   }
-  return { chunks: chunks.length, writes: writes.length, bytes: bodyData.length, encryptedBytes: sealedBodyData.length };
+  return {
+    chunks: plan.chunks,
+    postings: plan.postings,
+    writes: plan.writes.length,
+    bytes: plan.bytes,
+    encryptedBytes: plan.encryptedBytes,
+  };
 }
 
 async function main() {
@@ -692,9 +747,11 @@ async function main() {
     uploaded: 0,
     chunks: 0,
     writes: 0,
+    postings: 0,
     bytes: 0,
     encryptedBytes: 0,
   };
+  let cursor;
 
   console.log(JSON.stringify({
     apply: args.apply,
@@ -711,7 +768,7 @@ async function main() {
 
   while (totals.uploaded < maxRecords) {
     const remaining = maxRecords - totals.uploaded;
-    const rows = readLocalRows(args.sqlitePath, Math.min(args.batchSize, remaining), args.contains, args.includeSynced);
+    const rows = readLocalRows(args.sqlitePath, Math.min(args.batchSize, remaining), args.contains, args.includeSynced, cursor);
     if (rows.length === 0) break;
     const syncedIDs = [];
     for (const row of rows) {
@@ -727,6 +784,7 @@ async function main() {
       });
       totals.uploaded += 1;
       totals.chunks += result.chunks;
+      totals.postings += result.postings;
       totals.writes += result.writes;
       totals.bytes += result.bytes;
       totals.encryptedBytes += result.encryptedBytes;
@@ -735,6 +793,11 @@ async function main() {
         console.log(`${args.apply ? "uploaded" : "dry-run"} ${totals.uploaded}/${maxRecords} local rows...`);
       }
     }
+    const lastRow = rows[rows.length - 1];
+    cursor = {
+      sortKey: String(lastRow.uploadSortKey ?? lastRow.id),
+      id: String(lastRow.id),
+    };
     if (args.apply && args.markSynced && !args.includeSynced) markRowsSynced(args.sqlitePath, syncedIDs);
     if (!args.apply) break;
   }
@@ -743,9 +806,20 @@ async function main() {
   await db.terminate();
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+export {
+  buildUploadPlan,
+  commitBatch,
+  localPendingCount,
+  parseArgs,
+  readLocalRows,
+  uploadRow,
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

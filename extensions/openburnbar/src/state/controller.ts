@@ -735,8 +735,6 @@ export class OpenBurnBarExtensionController {
     error?: BurnBarToolExecutionError;
     completedAt: number;
   }> {
-    const completedAt = toBurnBarTimestamp();
-
     try {
       const output = await this.invokeWorkspaceTool(toolCall);
       return {
@@ -744,7 +742,7 @@ export class OpenBurnBarExtensionController {
         callID: toolCall.callID,
         succeeded: true,
         output,
-        completedAt
+        completedAt: toBurnBarTimestamp()
       };
     } catch (error) {
       return {
@@ -752,7 +750,7 @@ export class OpenBurnBarExtensionController {
         callID: toolCall.callID,
         succeeded: false,
         error: mapToolError(error, toolCall.tool),
-        completedAt
+        completedAt: toBurnBarTimestamp()
       };
     }
   }

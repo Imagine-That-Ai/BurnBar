@@ -15,6 +15,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
 import type { ComputerUseQuotaUsageDoc } from "./types.js";
+import { trustedComputerUseSpendByUser } from "./computerUseSpendGuards.js";
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -46,6 +47,7 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
     updatedAt: Timestamp.fromDate(new Date()),
   };
 
+  const spendInputs: Array<{ uid: string; visionTokensCostUSD: number | undefined }> = [];
   for (const docSnap of snap.docs) {
     const action = docSnap.data();
     const toolKind = stringField(action, "toolKind") ?? "";
@@ -63,8 +65,9 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
       else if (isSystem) counters.systemActionsRejected += 1;
       if (isPhone) counters.phoneControlIntentsRejected += 1;
     }
-    counters.visionModelSpendUSD += numberField(action, "visionTokensCostUSD") ?? 0;
+    spendInputs.push({ uid, visionTokensCostUSD: numberField(action, "visionTokensCostUSD") });
   }
+  counters.visionModelSpendUSD = trustedComputerUseSpendByUser(spendInputs).get(uid) ?? 0;
 
   await firestore.doc(`users/${uid}/computer_use_quota_usage/${dayKey}`).set(counters, { merge: true });
 }

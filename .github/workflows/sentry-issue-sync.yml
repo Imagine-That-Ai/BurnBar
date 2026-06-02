@@ -47,6 +47,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Create GitHub issues for new Sentry errors
         env:
@@ -56,10 +58,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
           LOOKBACK_HOURS: ${{ inputs.lookback_hours || '4' }}
           MIN_OCCURRENCES: ${{ inputs.min_occurrences || '1' }}
-        run: python3 scripts/sentry_issue_sync.py
+        run: |
+          set -euo pipefail
+          if [[ ! "$LOOKBACK_HOURS" =~ ^[0-9]+$ || ! "$MIN_OCCURRENCES" =~ ^[0-9]+$ ]]; then
+            echo "::error::lookback_hours and min_occurrences must be positive integers." >&2
+            exit 1
+          fi
+          python3 scripts/sentry_issue_sync.py
 
       - name: Post summary
         if: always()
+        env:
+          LOOKBACK_HOURS: ${{ inputs.lookback_hours || '4' }}
         run: |
           {
             echo "### Sentry -> GitHub Issue Sync"
@@ -71,5 +81,5 @@ jobs:
             echo "- openburnbar-android (Android app)"
             echo "- burnbar-website (landing site)"
             echo ""
-            echo "Lookback: ${{ inputs.lookback_hours || '4' }} hours"
+            echo "Lookback: ${LOOKBACK_HOURS} hours"
           } >> "$GITHUB_STEP_SUMMARY"

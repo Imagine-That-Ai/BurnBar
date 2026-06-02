@@ -22,10 +22,17 @@ import { errorCode, errorMessage, isRecord, stringValue } from "./guards.js";
  * isolation so APNs flows stay unchanged.
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { pushWithResilience } from "./resilienceHelpers.js";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import {
+  claimPendingPush,
+  collectRetryablePushRefs,
+  finishClaimedPush,
+  nextPushRetryAt,
+  pushWithResilience,
+} from "./resilienceHelpers.js";
 
 export interface SendResult {
   status: "sent" | "rejected" | "retry";
@@ -111,56 +118,90 @@ export const sendFcmOutbound = onDocumentCreated(
     region: "us-central1",
   },
   async (event) => {
-    const data = event.data?.data();
-    if (!isRecord(data)) return;
-    if (data.status && data.status !== "pending") return;
-    const fcmToken = stringValue(data.fcmToken);
-    if (!fcmToken) {
-      await event.data?.ref.update({
-        status: "rejected",
-        reason: "missing fcmToken",
-        rejectedAt: Timestamp.now(),
-      });
-      return;
-    }
+    if (!event.data) return;
+    await processFcmOutboundRef(event.data.ref, event.params.docId);
+  },
+);
 
-    const payload = isRecord(data.payload)
-      ? Object.fromEntries(
-          Object.entries(data.payload).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
-        )
-      : {};
+export async function processFcmOutboundRef(
+  ref: FirebaseFirestore.DocumentReference,
+  documentId = ref.id,
+): Promise<"sent" | "rejected" | "retry" | "skipped"> {
+  const claim = await claimPendingPush(ref);
+  if (!claim) return "skipped";
+  const data = claim.data;
+  if (!isRecord(data)) return "skipped";
 
-    const result = await pushAndroidFcm({
-      fcmToken,
-      data: payload,
-      documentId: event.params.docId,
+  const fcmToken = stringValue(data.fcmToken);
+  if (!fcmToken) {
+    await finishClaimedPush(ref, claim.leaseId, {
+      status: "rejected",
+      reason: "missing fcmToken",
+      rejectedAt: Timestamp.now(),
     });
+    return "rejected";
+  }
 
-    switch (result.status) {
-      case "sent":
-        await event.data?.ref.update({
-          status: "sent",
-          deliveredAt: Timestamp.now(),
-          fcmMessageId: result.messageId ?? null,
-        });
-        return;
-      case "rejected":
-        await event.data?.ref.update({
-          status: "rejected",
-          rejectedAt: Timestamp.now(),
-          errorCode: result.errorCode ?? null,
-          reason: result.reason ?? null,
-        });
-        return;
-      case "retry":
-        await event.data?.ref.update({
-          status: "pending",
-          lastAttemptAt: Timestamp.now(),
-          lastFailureReason: result.reason ?? null,
-          retryAt: Timestamp.fromMillis(Date.now() + 30_000),
-          attemptCount: (typeof data.attemptCount === "number" ? data.attemptCount : 0) + 1,
-        });
-        return;
-    }
+  const payload = isRecord(data.payload)
+    ? Object.fromEntries(
+        Object.entries(data.payload).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
+      )
+    : {};
+
+  const result = await pushAndroidFcm({
+    fcmToken,
+    data: payload,
+    documentId,
+  });
+
+  switch (result.status) {
+    case "sent":
+      await finishClaimedPush(ref, claim.leaseId, {
+        status: "sent",
+        deliveredAt: Timestamp.now(),
+        fcmMessageId: result.messageId ?? null,
+        retryAt: null,
+        lastFailureReason: null,
+      });
+      return "sent";
+    case "rejected":
+      await finishClaimedPush(ref, claim.leaseId, {
+        status: "rejected",
+        rejectedAt: Timestamp.now(),
+        errorCode: result.errorCode ?? null,
+        reason: result.reason ?? null,
+        retryAt: null,
+      });
+      return "rejected";
+    case "retry":
+      await finishClaimedPush(ref, claim.leaseId, {
+        status: "pending",
+        lastFailureReason: result.reason ?? null,
+        retryAt: nextPushRetryAt(Date.now(), claim.attemptCount),
+      });
+      return "retry";
+  }
+}
+
+export async function retryPendingFcmPushes(
+  firestore: Firestore = getFirestore(),
+  limit = 50,
+): Promise<number> {
+  const refs = await collectRetryablePushRefs(firestore, "fcm_outbound", { limit });
+  let processed = 0;
+  for (const ref of refs) {
+    const result = await processFcmOutboundRef(ref, ref.id);
+    if (result !== "skipped") processed += 1;
+  }
+  return processed;
+}
+
+export const retryPendingFcmOutbound = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: "us-central1",
+  },
+  async () => {
+    await retryPendingFcmPushes();
   },
 );

@@ -11,6 +11,7 @@ export function createMockWorkspaceUri(
   return {
     scheme,
     fsPath,
+    path: fsPath,
     toString: () => (scheme === 'file' ? `file://${fsPath}` : `${scheme}:${fsPath}`)
   };
 }

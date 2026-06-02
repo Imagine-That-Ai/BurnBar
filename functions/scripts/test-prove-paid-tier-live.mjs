@@ -11,8 +11,24 @@ const past = new Date(Date.now() - 86_400_000).toISOString();
 
 assert.equal(selfTest().ok, true);
 assert.deepEqual(parseArgs(["--self-test"]).selfTest, true);
-assert.equal(parseArgs(["--uid", "u1", "--tier", "cloud-pro", "--channel", "stripe"]).requireAllowanceLedger, true);
-assert.equal(parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple"]).requireAllowanceLedger, false);
+assert.equal(
+  parseArgs(["--uid", "u1", "--tier", "cloud-pro", "--channel", "stripe", "--environment", "Production"])
+    .requireAllowanceLedger,
+  true,
+);
+assert.equal(
+  parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple", "--environment", "Production"])
+    .requireAllowanceLedger,
+  false,
+);
+assert.throws(
+  () => parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple"]),
+  /environment.*required/,
+);
+assert.throws(
+  () => parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple", "--environment", "Staging"]),
+  /Production or Sandbox/,
+);
 
 {
   const proof = assertPaidTierEntitlement(
@@ -177,6 +193,27 @@ assert.throws(
       { tier: "cloud", channel: "apple", environment: "Production", allowSandbox: false },
     ),
   /expired/,
+);
+
+assert.throws(
+  () =>
+    assertPaidTierEntitlement(
+      {
+        id: "burnbar_pro",
+        active: true,
+        productID: "com.openburnbar.pro.monthly",
+        source: "apple_jws_verified",
+        expiresAt: future,
+        features: {
+          hostedQuota: true,
+          hostedLLM: true,
+          encryptedSessionLogBackup: true,
+          cloudConversationSearch: true,
+        },
+      },
+      { tier: "cloud", channel: "apple", environment: "Production", allowSandbox: false },
+    ),
+  /environment is missing/,
 );
 
 console.log("prove-paid-tier-live tests passed");

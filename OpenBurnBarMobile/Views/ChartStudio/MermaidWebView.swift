@@ -16,6 +16,7 @@ struct MermaidWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
@@ -96,12 +97,10 @@ struct MermaidWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-            // Block off-app navigation. Mermaid SVG is rendered inline; no anchor-tap nav allowed.
-            if navigationAction.navigationType == .linkActivated {
-                decisionHandler(.cancel)
-                return
-            }
-            decisionHandler(.allow)
+            decisionHandler(Self.navigationPolicy(
+                for: navigationAction.request.url,
+                navigationType: navigationAction.navigationType
+            ))
         }
 
         // MARK: Inline fallback
@@ -140,13 +139,24 @@ struct MermaidWebView: UIViewRepresentable {
             return out
         }
 
+        static func navigationPolicy(for url: URL?, navigationType: WKNavigationType) -> WKNavigationActionPolicy {
+            guard navigationType != .linkActivated else { return .cancel }
+            guard let url, let scheme = url.scheme?.lowercased() else { return .allow }
+            switch scheme {
+            case "file", "about":
+                return .allow
+            default:
+                return .cancel
+            }
+        }
+
         static func inlineFallback(for source: String) -> String {
             let escaped = source
                 .replacingOccurrences(of: "&", with: "&amp;")
                 .replacingOccurrences(of: "<", with: "&lt;")
                 .replacingOccurrences(of: ">", with: "&gt;")
             return """
-            <!doctype html><html><body style="background:#171510;color:#F0EBE2;font-family:-apple-system,sans-serif;padding:16px">
+            <!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'"></head><body style="background:#171510;color:#F0EBE2;font-family:-apple-system,sans-serif;padding:16px">
             <h3 style="font-weight:600">Mermaid runtime missing</h3>
             <pre style="white-space:pre-wrap;background:rgba(255,255,255,0.06);padding:12px;border-radius:8px;">\(escaped)</pre>
             </body></html>

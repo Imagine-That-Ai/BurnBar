@@ -140,9 +140,7 @@ export function parseFrame(
     throw new Error("Frame exceeds realtime relay size limit.");
   }
 
-  const text = Array.isArray(raw)
-    ? Buffer.concat(raw).toString("utf8")
-    : Buffer.from(raw).toString("utf8");
+  const text = bufferFromFrame(raw).toString("utf8");
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -169,6 +167,12 @@ export function parseFrame(
   };
   assertFrameShape(frame);
   return frame;
+}
+
+function bufferFromFrame(raw: Buffer | ArrayBuffer | Buffer[]): Buffer {
+  if (Array.isArray(raw)) return Buffer.concat(raw);
+  if (Buffer.isBuffer(raw)) return raw;
+  return Buffer.from(new Uint8Array(raw));
 }
 
 export function serializeFrame(frame: HermesRealtimeFrame): string {

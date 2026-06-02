@@ -1,13 +1,14 @@
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { OpenBurnBarDaemonClient } from "../src/daemon/client";
 
 const socketsToClean = new Set<string>();
+const itOnDarwin = process.platform === "darwin" ? it : it.skip;
 
 afterEach(() => {
   for (const socketPath of socketsToClean) {
@@ -80,6 +81,123 @@ describe("OpenBurnBarDaemonClient", () => {
     });
 
     await close(server);
+  });
+
+  it("uses env auth tokens without scraping LaunchAgent plists", async () => {
+    const socketPath = makeSocketPath("env-auth-token");
+    const previous = {
+      openBurnBar: process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN,
+      legacy: process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN
+    };
+    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN = "env-socket-secret";
+    delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+    const server = createServer((socket) => {
+      socket.on("data", (chunk) => {
+        const request = JSON.parse(chunk.toString("utf8").trim());
+        expect(request.method).toBe("daemon.health");
+        expect(request.authToken).toBe("env-socket-secret");
+        socket.end(
+          JSON.stringify({
+            id: request.id,
+            protocolVersion: 1,
+            result: {
+              ok: true,
+              daemonVersion: "0.1.0",
+              protocolVersion: 1,
+              socketPath
+            }
+          }) + "\n"
+        );
+      });
+    });
+
+    await listen(server, socketPath);
+    try {
+      const client = new OpenBurnBarDaemonClient({ socketPath });
+      await expect(client.health()).resolves.toMatchObject({ ok: true });
+    } finally {
+      if (typeof previous.openBurnBar === "string") {
+        process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN = previous.openBurnBar;
+      } else {
+        delete process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+      }
+      if (typeof previous.legacy === "string") {
+        process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN = previous.legacy;
+      } else {
+        delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+      }
+      await close(server);
+    }
+  });
+
+  itOnDarwin("uses the daemon auth token from Keychain coordinates when env tokens are absent", async () => {
+    const socketPath = makeSocketPath("keychain-auth-token");
+    const binDir = mkdtempSync(join(tmpdir(), "openburnbar-security-"));
+    const fakeSecurity = join(binDir, "security");
+    writeFileSync(
+      fakeSecurity,
+      [
+        "#!/bin/sh",
+        "if [ \"$1\" != \"find-generic-password\" ] || [ \"$2\" != \"-s\" ] || [ \"$3\" != \"test.service\" ] || [ \"$4\" != \"-a\" ] || [ \"$5\" != \"test.account\" ] || [ \"$6\" != \"-w\" ]; then",
+        "  exit 64",
+        "fi",
+        "printf '%s\\n' 'keychain-socket-secret'"
+      ].join("\n")
+    );
+    chmodSync(fakeSecurity, 0o700);
+
+    const previous = {
+      path: process.env.PATH,
+      openBurnBarToken: process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN,
+      legacyToken: process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN,
+      service: process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE,
+      legacyService: process.env.BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE,
+      account: process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT,
+      legacyAccount: process.env.BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT
+    };
+    process.env.PATH = `${binDir}:${previous.path ?? ""}`;
+    delete process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+    delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE = "test.service";
+    delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE;
+    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT = "test.account";
+    delete process.env.BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT;
+
+    const server = createServer((socket) => {
+      socket.on("data", (chunk) => {
+        const request = JSON.parse(chunk.toString("utf8").trim());
+        expect(request.method).toBe("daemon.health");
+        expect(request.authToken).toBe("keychain-socket-secret");
+        socket.end(
+          JSON.stringify({
+            id: request.id,
+            protocolVersion: 1,
+            result: {
+              ok: true,
+              daemonVersion: "0.1.0",
+              protocolVersion: 1,
+              socketPath
+            }
+          }) + "\n"
+        );
+      });
+    });
+
+    await listen(server, socketPath);
+    try {
+      const client = new OpenBurnBarDaemonClient({ socketPath });
+      await expect(client.health()).resolves.toMatchObject({ ok: true });
+    } finally {
+      restoreEnv("PATH", previous.path);
+      restoreEnv("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN", previous.openBurnBarToken);
+      restoreEnv("BURNBAR_DAEMON_SOCKET_AUTH_TOKEN", previous.legacyToken);
+      restoreEnv("OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE", previous.service);
+      restoreEnv("BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE", previous.legacyService);
+      restoreEnv("OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT", previous.account);
+      restoreEnv("BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT", previous.legacyAccount);
+      rmSync(binDir, { recursive: true, force: true });
+      await close(server);
+    }
   });
 
   it("rejects requests above the configured in-flight limit", async () => {
@@ -320,4 +438,12 @@ async function close(server: ReturnType<typeof createServer>): Promise<void> {
       resolve();
     });
   });
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (typeof value === "string") {
+    process.env[name] = value;
+  } else {
+    delete process.env[name];
+  }
 }

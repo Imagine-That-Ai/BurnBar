@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -62,13 +62,9 @@ export const DEFAULT_BURNBAR_SOCKET_PATH = join(
   'OpenBurnBar',
   'openburnbar-daemon.sock'
 );
-export const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(
-  homedir(),
-  'Library',
-  'LaunchAgents',
-  'com.openburnbar.daemon.plist'
-);
 const DEFAULT_MAX_IN_FLIGHT = 8;
+const DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE = 'com.openburnbar.controller-runtime';
+const DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT = 'daemon.socket.authToken';
 
 function resolveDefaultSocketPath(): string {
   return (
@@ -81,11 +77,39 @@ function resolveDefaultAuthToken(): string | undefined {
   if (envToken?.trim()) {
     return envToken.trim();
   }
+  return readSocketAuthTokenFromKeychain();
+}
 
+function resolveKeychainSetting(primary: string, legacy: string, fallback: string): string {
+  const value = process.env[primary] ?? process.env[legacy];
+  return value?.trim() || fallback;
+}
+
+function readSocketAuthTokenFromKeychain(): string | undefined {
+  if (process.platform !== 'darwin') {
+    return undefined;
+  }
+  const service = resolveKeychainSetting(
+    'OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE',
+    'BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE',
+    DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_SERVICE
+  );
+  const account = resolveKeychainSetting(
+    'OPENBURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT',
+    'BURNBAR_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT',
+    DEFAULT_DAEMON_SOCKET_AUTH_KEYCHAIN_ACCOUNT
+  );
   try {
-    const plist = readFileSync(DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST, 'utf8');
-    const match = plist.match(/<key>OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN<\/key>\s*<string>([^<]+)<\/string>/);
-    return match?.[1]?.trim() || undefined;
+    const token = execFileSync(
+      'security',
+      ['find-generic-password', '-s', service, '-a', account, '-w'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 750
+      }
+    ).trim();
+    return token || undefined;
   } catch {
     return undefined;
   }

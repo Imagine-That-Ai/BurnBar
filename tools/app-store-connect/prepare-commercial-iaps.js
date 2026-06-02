@@ -511,6 +511,30 @@ async function findInAppPurchasePricePoint(iapId, priceUSD, token) {
   return points.find((point) => Number(point.attributes.customerPrice) === targetPrice);
 }
 
+function buildInAppPurchasePriceScheduleBody(iapId, pricePointId) {
+  const manualPriceId = 'manual-price-0';
+  return {
+    data: {
+      type: 'inAppPurchasePriceSchedules',
+      relationships: {
+        inAppPurchase: { data: { type: 'inAppPurchases', id: iapId } },
+        baseTerritory: { data: { type: 'territories', id: 'USA' } },
+        manualPrices: { data: [{ type: 'inAppPurchasePrices', id: manualPriceId }] },
+      },
+    },
+    included: [{
+      type: 'inAppPurchasePrices',
+      id: manualPriceId,
+      attributes: { startDate: null },
+      relationships: {
+        inAppPurchasePricePoint: {
+          data: { type: 'inAppPurchasePricePoints', id: pricePointId },
+        },
+      },
+    }],
+  };
+}
+
 async function ensureInAppPurchasePriceSchedule(iap, target, token) {
   try {
     await api('GET', `/v2/inAppPurchases/${iap.id}/iapPriceSchedule`, undefined, token);
@@ -526,26 +550,7 @@ async function ensureInAppPurchasePriceSchedule(iap, target, token) {
   await maybeWrite(`POST IAP price schedule $${target.priceUSD}`, () => api(
     'POST',
     '/v1/inAppPurchasePriceSchedules',
-    {
-      data: {
-        type: 'inAppPurchasePriceSchedules',
-        relationships: {
-          inAppPurchase: { data: { type: 'inAppPurchases', id: iap.id } },
-          baseTerritory: { data: { type: 'territories', id: 'USA' } },
-          manualPrices: { data: [{ type: 'inAppPurchasePrices', id: '${p0}' }] },
-        },
-      },
-      included: [{
-        type: 'inAppPurchasePrices',
-        id: '${p0}',
-        attributes: { startDate: null },
-        relationships: {
-          inAppPurchasePricePoint: {
-            data: { type: 'inAppPurchasePricePoints', id: pricePoint.id },
-          },
-        },
-      }],
-    },
+    buildInAppPurchasePriceScheduleBody(iap.id, pricePoint.id),
     token,
   ));
 }
@@ -599,6 +604,7 @@ async function main() {
 module.exports = {
   SUBSCRIPTIONS,
   TOP_UPS,
+  buildInAppPurchasePriceScheduleBody,
   main,
 };
 

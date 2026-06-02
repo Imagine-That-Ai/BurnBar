@@ -189,21 +189,6 @@
     "configuration": {
       "title": "OpenBurnBar",
       "properties": {
-        "openburnbar.cursorSmoke.outputPath": {
-          "type": "string",
-          "default": "",
-          "description": "Internal smoke-test output path for OpenBurnBar Cursor validation."
-        },
-        "openburnbar.cursorSmoke.filePath": {
-          "type": "string",
-          "default": "",
-          "description": "Internal smoke-test workspace file path for OpenBurnBar Cursor validation."
-        },
-        "openburnbar.cursorSmoke.modelID": {
-          "type": "string",
-          "default": "",
-          "description": "Internal smoke-test model identifier for OpenBurnBar Cursor validation."
-        },
         "openburnbar.sidebar.statusLine": {
           "type": "string",
           "enum": [

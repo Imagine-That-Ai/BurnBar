@@ -16,7 +16,7 @@ import { getFirestore } from "firebase-admin/firestore";
 
 import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
-import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
+import { consumeAppStoreLiveStatusRateLimit, EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { JWSVerificationFailure } from "./verifier.js";
 
 const REGION = "us-central1";
@@ -51,8 +51,11 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
       if (!data) continue;
       const original = data.originalTransactionID;
       if (!original) continue;
+      const uid = doc.ref.path.split("/")[1];
+      if (!uid) continue;
       try {
         const env = data.environment ?? cfg.environment;
+        await consumeAppStoreLiveStatusRateLimit(db, uid, original);
         const live = await fetchLiveSubscriptionStatus(cfg, env, original);
         const seedJWS = live.pairs[0]?.signedTransactionInfo;
         if (!seedJWS) {
@@ -65,6 +68,9 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
           signedRenewalInfoJWS: live.pairs[0]?.signedRenewalInfo,
           source: "scheduled_reconcile",
           productID: data.productID,
+        }, {
+          fetchLive: async () => live,
+          rateLimitLiveStatus: false,
         });
         ok += 1;
         if (result.changed) updated += 1;

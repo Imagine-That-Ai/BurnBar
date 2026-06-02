@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-PROJ = REPO / "OpenBurnBar.xcodeproj/project.pbxproj"
+REPO = Path(os.environ.get("OPENBURNBAR_REPO", Path(__file__).resolve().parents[1]))
+PROJ = Path(os.environ.get("OPENBURNBAR_XCODEPROJ", REPO / "OpenBurnBar.xcodeproj/project.pbxproj"))
 DAEMON_SOURCES_PHASE = "137235B3719724E24A2C431E"
 DAEMON_SOURCES_GROUP = "5FA17595EB355C9E729FAE16"
 RPC_DIR = REPO / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC"

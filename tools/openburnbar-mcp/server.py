@@ -343,11 +343,17 @@ def _cloud_config() -> dict[str, Any]:
     project_id = os.environ.get("OPENBURNBAR_FIREBASE_PROJECT_ID", OPENBURNBAR_FIREBASE_PROJECT_ID).strip()
     region = os.environ.get("OPENBURNBAR_FUNCTIONS_REGION", OPENBURNBAR_FUNCTIONS_REGION).strip()
     id_token = os.environ.get("OPENBURNBAR_FIREBASE_ID_TOKEN", "").strip()
+    app_check_token = os.environ.get("OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN", "").strip()
     vault_key_raw = os.environ.get("OPENBURNBAR_CLOUD_VAULT_KEY_BASE64", "").strip()
     if not id_token:
         return _unavailable_payload(
             "CLOUD_AUTH_UNCONFIGURED",
             "set OPENBURNBAR_FIREBASE_ID_TOKEN to a Firebase Auth ID token for the signed-in user",
+        )
+    if not app_check_token:
+        return _unavailable_payload(
+            "CLOUD_APP_CHECK_UNCONFIGURED",
+            "set OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN to a Firebase App Check token for this client",
         )
     if not vault_key_raw:
         return _unavailable_payload(
@@ -365,6 +371,7 @@ def _cloud_config() -> dict[str, Any]:
         "projectID": project_id,
         "region": region,
         "idToken": id_token,
+        "appCheckToken": app_check_token,
         "vaultKey": vault_key,
     }
 
@@ -378,6 +385,7 @@ def _call_firebase_callable(function_name: str, payload: dict[str, Any], config:
         headers={
             "Authorization": f"Bearer {config['idToken']}",
             "Content-Type": "application/json",
+            "X-Firebase-AppCheck": config["appCheckToken"],
         },
         method="POST",
     )
@@ -935,7 +943,8 @@ def burnbar_cloud_semantic_search_conversations(
     The MCP process derives token/semantic trapdoors locally from the cloud
     vault key, sends only opaque hashes to Firebase Functions, and decrypts
     returned titles/snippets on this device. Required env:
-    OPENBURNBAR_FIREBASE_ID_TOKEN and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64.
+    OPENBURNBAR_FIREBASE_ID_TOKEN, OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN,
+    and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64.
     """
     config = _cloud_config()
     if config.get("status") != "ok":
@@ -1207,7 +1216,8 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
     Encrypt and upload one local Project Memory snapshot to cloud storage.
 
     Requires local project_memory_snapshots data plus cloud auth env
-    (OPENBURNBAR_FIREBASE_ID_TOKEN and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64).
+    (OPENBURNBAR_FIREBASE_ID_TOKEN, OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN,
+    and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64).
     """
     slug = project_slug.strip()
     if not slug:

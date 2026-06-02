@@ -35,16 +35,32 @@ public final class PretextEngine: NSObject {
 
     private let logger = Logger(subsystem: "com.openburnbar.core", category: "PretextEngine")
 
+    private static let readinessTimeoutNanoseconds: UInt64 = 5_000_000_000
+    private static let bridgeCallTimeoutNanoseconds: UInt64 = 5_000_000_000
+    private static let maxPreparedCacheEntries = 128
+    private static let maxPreparedTextCharacters = 32_768
+    private static let maxFontCharacters = 256
+    private static let maxRichInlineItems = 512
+    private static let maxRichInlineTextCharacters = 32_768
+    private static let maxLayoutWidth: CGFloat = 100_000
+    private static let maxLineHeight: CGFloat = 2_000
+
     private var webView: WKWebView!
     private var nextRequestID: Int = 1
+    private var nextReadyWaiterID: Int = 1
     private var pendingRequests: [Int: CheckedContinuation<Any, Error>] = [:]
-    private var readyContinuations: [CheckedContinuation<Void, Error>] = []
+    private var pendingRequestTimeouts: [Int: Task<Void, Never>] = [:]
+    private var readyContinuations: [Int: CheckedContinuation<Void, Error>] = [:]
+    private var readyTimeouts: [Int: Task<Void, Never>] = [:]
     private var isReady: Bool = false
     private var didStartLoad: Bool = false
+    private var startupError: PretextError?
 
     /// Cache of `PreparedText` handles keyed by their input contract.
     private var preparedCache: [PreparedKey: PretextHandle] = [:]
     private var preparedSegmentsCache: [PreparedKey: PretextHandle] = [:]
+    private var preparedCacheOrder: [PreparedKey] = []
+    private var preparedSegmentsCacheOrder: [PreparedKey] = []
 
     private struct PreparedKey: Hashable {
         let text: String
@@ -82,8 +98,12 @@ public final class PretextEngine: NSObject {
         didStartLoad = true
         guard let resourceDir = bundleURL else {
             logger.error("Pretext resources missing from package bundle.")
+            startupError = .engineUnavailable
+            didStartLoad = false
+            failReadyWaiters(.engineUnavailable)
             return
         }
+        startupError = nil
         let indexURL = resourceDir.appendingPathComponent("index.html")
         webView.loadFileURL(indexURL, allowingReadAccessTo: resourceDir)
     }
@@ -118,10 +138,19 @@ public final class PretextEngine: NSObject {
     /// if the bundle resources are missing.
     private func awaitReady() async throws {
         if isReady { return }
+        if let startupError { throw startupError }
         start()
+        if let startupError { throw startupError }
         guard didStartLoad else { throw PretextError.engineUnavailable }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            readyContinuations.append(cont)
+            let waiterID = nextReadyWaiterID
+            nextReadyWaiterID += 1
+            readyContinuations[waiterID] = cont
+            readyTimeouts[waiterID] = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: Self.readinessTimeoutNanoseconds)
+                guard !Task.isCancelled else { return }
+                await self?.timeoutReadyWaiter(waiterID)
+            }
         }
     }
 
@@ -134,14 +163,23 @@ public final class PretextEngine: NSObject {
         font: String,
         options: PretextOptions = .normal
     ) async throws -> PretextHandle {
+        try validatePreparedInput(text: text, font: font, options: options)
         let key = PreparedKey(text: text, font: font, options: options)
-        if let cached = preparedCache[key] { return cached }
+        if let cached = preparedCache[key] {
+            Self.markPreparedKeyRecentlyUsed(key, in: &preparedCacheOrder)
+            return cached
+        }
         let handle = try await callForHandle("prepare", params: [
             "text": text,
             "font": font,
             "options": optionsJSON(options)
         ])
-        preparedCache[key] = handle
+        releaseEvictedPreparedHandles(Self.cachePreparedHandle(
+            handle,
+            key: key,
+            cache: &preparedCache,
+            order: &preparedCacheOrder
+        ))
         return handle
     }
 
@@ -151,14 +189,23 @@ public final class PretextEngine: NSObject {
         font: String,
         options: PretextOptions = .normal
     ) async throws -> PretextHandle {
+        try validatePreparedInput(text: text, font: font, options: options)
         let key = PreparedKey(text: text, font: font, options: options)
-        if let cached = preparedSegmentsCache[key] { return cached }
+        if let cached = preparedSegmentsCache[key] {
+            Self.markPreparedKeyRecentlyUsed(key, in: &preparedSegmentsCacheOrder)
+            return cached
+        }
         let handle = try await callForHandle("prepareWithSegments", params: [
             "text": text,
             "font": font,
             "options": optionsJSON(options)
         ])
-        preparedSegmentsCache[key] = handle
+        releaseEvictedPreparedHandles(Self.cachePreparedHandle(
+            handle,
+            key: key,
+            cache: &preparedSegmentsCache,
+            order: &preparedSegmentsCacheOrder
+        ))
         return handle
     }
 
@@ -168,6 +215,7 @@ public final class PretextEngine: NSObject {
         maxWidth: CGFloat,
         lineHeight: CGFloat
     ) async throws -> PretextLayoutResult {
+        try validateLayout(maxWidth: maxWidth, lineHeight: lineHeight)
         let value = try await call("layout", params: [
             "handle": handle.id,
             "maxWidth": Double(maxWidth),
@@ -187,6 +235,7 @@ public final class PretextEngine: NSObject {
         maxWidth: CGFloat,
         lineHeight: CGFloat
     ) async throws -> PretextLinesResult {
+        try validateLayout(maxWidth: maxWidth, lineHeight: lineHeight)
         let value = try await call("layoutWithLines", params: [
             "handle": handle.id,
             "maxWidth": Double(maxWidth),
@@ -211,6 +260,7 @@ public final class PretextEngine: NSObject {
         handle: PretextHandle,
         maxWidth: CGFloat
     ) async throws -> PretextLineStats {
+        try validateWidth(maxWidth)
         let value = try await call("measureLineStats", params: [
             "handle": handle.id,
             "maxWidth": Double(maxWidth)
@@ -238,6 +288,7 @@ public final class PretextEngine: NSObject {
 
     /// `prepareRichInline(items)` for mixed-font inline layout.
     public func prepareRichInline(items: [PretextRichInlineItem]) async throws -> PretextRichHandle {
+        try validateRichInlineItems(items)
         let payload = items.map { item -> [String: Any] in
             var entry: [String: Any] = [
                 "text": item.text,
@@ -262,6 +313,7 @@ public final class PretextEngine: NSObject {
         handle: PretextRichHandle,
         maxWidth: CGFloat
     ) async throws -> [PretextRichLine] {
+        try validateWidth(maxWidth)
         let value = try await call("layoutRichInline", params: [
             "handle": handle.id,
             "maxWidth": Double(maxWidth)
@@ -330,13 +382,13 @@ public final class PretextEngine: NSObject {
         // Readiness heartbeat (id == 0).
         if id == 0 {
             isReady = true
-            let waiters = readyContinuations
-            readyContinuations.removeAll()
-            for cont in waiters { cont.resume() }
+            startupError = nil
+            resumeReadyWaiters()
             return
         }
 
         guard let cont = pendingRequests.removeValue(forKey: id) else { return }
+        pendingRequestTimeouts.removeValue(forKey: id)?.cancel()
         let okFlag = (dict["ok"] as? NSNumber)?.boolValue ?? false
         if okFlag {
             cont.resume(returning: dict["value"] ?? [String: Any]())
@@ -357,6 +409,11 @@ public final class PretextEngine: NSObject {
         }
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Any, Error>) in
             pendingRequests[id] = cont
+            pendingRequestTimeouts[id] = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: Self.bridgeCallTimeoutNanoseconds)
+                guard !Task.isCancelled else { return }
+                await self?.timeoutPendingRequest(id)
+            }
             let escaped = jsonString
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
@@ -367,10 +424,9 @@ public final class PretextEngine: NSObject {
                 .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
             let script = "window.__pretextDispatch && window.__pretextDispatch(\"\(escaped)\");"
             webView.evaluateJavaScript(script) { [weak self] _, error in
-                guard let self else { return }
                 if let error = error {
-                    if let pending = self.pendingRequests.removeValue(forKey: id) {
-                        pending.resume(throwing: PretextError.bridgeError(error.localizedDescription))
+                    Task { @MainActor [weak self] in
+                        self?.failPendingRequest(id, with: .bridgeError(error.localizedDescription))
                     }
                 }
             }
@@ -393,6 +449,127 @@ public final class PretextEngine: NSObject {
         if let ls = options.letterSpacing { dict["letterSpacing"] = ls }
         return dict
     }
+
+    private func validatePreparedInput(text: String, font: String, options: PretextOptions) throws {
+        guard !text.isEmpty else { throw PretextError.inputRejected("text is empty") }
+        guard text.count <= Self.maxPreparedTextCharacters else {
+            throw PretextError.inputRejected("text exceeds \(Self.maxPreparedTextCharacters) characters")
+        }
+        guard !font.isEmpty, font.count <= Self.maxFontCharacters else {
+            throw PretextError.inputRejected("font descriptor is invalid")
+        }
+        if let letterSpacing = options.letterSpacing,
+           (!letterSpacing.isFinite || abs(letterSpacing) > 256) {
+            throw PretextError.inputRejected("letter spacing is invalid")
+        }
+    }
+
+    private func validateRichInlineItems(_ items: [PretextRichInlineItem]) throws {
+        guard !items.isEmpty else { throw PretextError.inputRejected("rich inline input is empty") }
+        guard items.count <= Self.maxRichInlineItems else {
+            throw PretextError.inputRejected("rich inline item count exceeds \(Self.maxRichInlineItems)")
+        }
+        let totalText = items.reduce(0) { $0 + $1.text.count }
+        guard totalText <= Self.maxRichInlineTextCharacters else {
+            throw PretextError.inputRejected("rich inline text exceeds \(Self.maxRichInlineTextCharacters) characters")
+        }
+        for item in items {
+            guard !item.font.isEmpty, item.font.count <= Self.maxFontCharacters else {
+                throw PretextError.inputRejected("font descriptor is invalid")
+            }
+            guard item.extraWidth.isFinite, item.extraWidth >= 0, item.extraWidth <= Self.maxLayoutWidth else {
+                throw PretextError.inputRejected("extra width is invalid")
+            }
+        }
+    }
+
+    private func validateLayout(maxWidth: CGFloat, lineHeight: CGFloat) throws {
+        try validateWidth(maxWidth)
+        guard lineHeight.isFinite, lineHeight > 0, lineHeight <= Self.maxLineHeight else {
+            throw PretextError.inputRejected("line height is invalid")
+        }
+    }
+
+    private func validateWidth(_ maxWidth: CGFloat) throws {
+        guard maxWidth.isFinite, maxWidth > 0, maxWidth <= Self.maxLayoutWidth else {
+            throw PretextError.inputRejected("max width is invalid")
+        }
+    }
+
+    private static func markPreparedKeyRecentlyUsed(_ key: PreparedKey, in order: inout [PreparedKey]) {
+        order.removeAll { $0 == key }
+        order.append(key)
+    }
+
+    private static func cachePreparedHandle(
+        _ handle: PretextHandle,
+        key: PreparedKey,
+        cache: inout [PreparedKey: PretextHandle],
+        order: inout [PreparedKey]
+    ) -> [PretextHandle] {
+        var evictedHandles: [PretextHandle] = []
+        cache[key] = handle
+        markPreparedKeyRecentlyUsed(key, in: &order)
+        while order.count > Self.maxPreparedCacheEntries, let evictedKey = order.first {
+            order.removeFirst()
+            if let evicted = cache.removeValue(forKey: evictedKey) {
+                evictedHandles.append(evicted)
+            }
+        }
+        return evictedHandles
+    }
+
+    private func releaseEvictedPreparedHandles(_ handles: [PretextHandle]) {
+        for handle in handles {
+            Task { @MainActor [weak self] in
+                await self?.release(handle: handle)
+            }
+        }
+    }
+
+    private func resumeReadyWaiters() {
+        let waiters = readyContinuations
+        readyContinuations.removeAll()
+        for task in readyTimeouts.values { task.cancel() }
+        readyTimeouts.removeAll()
+        for (_, cont) in waiters { cont.resume() }
+    }
+
+    private func failReadyWaiters(_ error: PretextError) {
+        let waiters = readyContinuations
+        readyContinuations.removeAll()
+        for task in readyTimeouts.values { task.cancel() }
+        readyTimeouts.removeAll()
+        for (_, cont) in waiters {
+            cont.resume(throwing: error)
+        }
+    }
+
+    private func failPendingRequests(_ error: PretextError) {
+        let pending = pendingRequests
+        pendingRequests.removeAll()
+        for task in pendingRequestTimeouts.values { task.cancel() }
+        pendingRequestTimeouts.removeAll()
+        for (_, cont) in pending {
+            cont.resume(throwing: error)
+        }
+    }
+
+    private func failPendingRequest(_ id: Int, with error: PretextError) {
+        guard let pending = pendingRequests.removeValue(forKey: id) else { return }
+        pendingRequestTimeouts.removeValue(forKey: id)?.cancel()
+        pending.resume(throwing: error)
+    }
+
+    private func timeoutPendingRequest(_ id: Int) {
+        failPendingRequest(id, with: .timeout)
+    }
+
+    private func timeoutReadyWaiter(_ id: Int) {
+        guard let waiter = readyContinuations.removeValue(forKey: id) else { return }
+        readyTimeouts.removeValue(forKey: id)?.cancel()
+        waiter.resume(throwing: PretextError.timeout)
+    }
 }
 
 // MARK: - Navigation Delegate
@@ -400,16 +577,11 @@ public final class PretextEngine: NSObject {
 extension PretextEngine: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         logger.error("Pretext shell failed to load: \(error.localizedDescription)")
-        let pending = pendingRequests
-        pendingRequests.removeAll()
-        for (_, cont) in pending {
-            cont.resume(throwing: PretextError.bridgeError(error.localizedDescription))
-        }
-        let waiters = readyContinuations
-        readyContinuations.removeAll()
-        for cont in waiters {
-            cont.resume(throwing: PretextError.engineUnavailable)
-        }
+        startupError = .engineUnavailable
+        isReady = false
+        didStartLoad = false
+        failPendingRequests(.bridgeError(error.localizedDescription))
+        failReadyWaiters(.engineUnavailable)
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {

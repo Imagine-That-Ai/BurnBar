@@ -13,12 +13,13 @@ Idempotent: re-runs detect existing entries by path and skip.
 """
 from __future__ import annotations
 import hashlib
+import os
 import sys
 import re
 from pathlib import Path
 
-REPO = Path("/Users/albertonunez/Documents/Windsurf/BurnBar")
-PROJ = REPO / "OpenBurnBar.xcodeproj/project.pbxproj"
+REPO = Path(os.environ.get("OPENBURNBAR_REPO", Path(__file__).resolve().parents[1]))
+PROJ = Path(os.environ.get("OPENBURNBAR_XCODEPROJ", REPO / "OpenBurnBar.xcodeproj/project.pbxproj"))
 
 MAC_SOURCES_PHASE = "EF7D3D6CF9326CBCD20C7DF5"
 IOS_SOURCES_PHASE = "989FB439884BAD69F857287F"
