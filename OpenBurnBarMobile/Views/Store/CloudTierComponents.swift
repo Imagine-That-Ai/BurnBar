@@ -139,10 +139,11 @@ struct CloudBillingPeriodToggle: View {
 struct CloudTierLineup: View {
     @Bindable var store: HostedQuotaSubscriptionStore
     let billingPeriod: CloudBillingPeriod
+    var showsCloudPlan = true
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
-            if let cloud = plan(title: "BurnBar Cloud") {
+            if showsCloudPlan, let cloud = plan(title: "BurnBar Cloud") {
                 CloudTierCard(
                     plan: cloud,
                     priceText: store.displayPrice(for: cloud),

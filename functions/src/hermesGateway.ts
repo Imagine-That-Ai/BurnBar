@@ -24,6 +24,7 @@ export type HermesGatewayDeviceSessionStatus = "pending" | "approved" | "denied"
 export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
 export type HermesGatewayEventKind = "message" | "model_switch";
 export type HermesGatewayMessageKind = "agent_message" | "typing";
+export type HermesGatewayAttachmentStatus = "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
 
 export interface HermesGatewayModelOptionDoc {
   providerId: string;
@@ -100,9 +101,14 @@ export interface HermesGatewayAttachmentManifestDoc {
   contentType: string;
   byteCount: number;
   storagePath: string;
-  status: "pending_upload" | "uploaded" | "failed";
+  status: HermesGatewayAttachmentStatus;
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  sha256?: string;
+  storageGeneration?: string;
   schemaVersion: number;
 }
 
@@ -226,6 +232,31 @@ export function isHermesGatewayClientDoc(raw: unknown): raw is HermesGatewayClie
     typeof record.homeDestinationId === "string" &&
     typeof record.createdAt === "string" &&
     typeof record.updatedAt === "string" &&
+    typeof record.schemaVersion === "number"
+  );
+}
+
+export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is HermesGatewayAttachmentManifestDoc {
+  const record = recordOrUndefined(raw);
+  if (!record) return false;
+  const status = record.status;
+  return (
+    typeof record.id === "string" &&
+    typeof record.clientId === "string" &&
+    (typeof record.destinationId === "string" || record.destinationId === undefined) &&
+    typeof record.fileName === "string" &&
+    typeof record.contentType === "string" &&
+    typeof record.byteCount === "number" &&
+    Number.isFinite(record.byteCount) &&
+    typeof record.storagePath === "string" &&
+    (status === "pending_upload" || status === "uploaded" || status === "failed" || status === "expired" || status === "rejected") &&
+    typeof record.createdAt === "string" &&
+    (typeof record.updatedAt === "string" || record.updatedAt === undefined) &&
+    typeof record.expiresAt === "string" &&
+    (typeof record.uploadedAt === "string" || record.uploadedAt === undefined) &&
+    (typeof record.finalizedAt === "string" || record.finalizedAt === undefined) &&
+    (isSha256Hex(record.sha256) || record.sha256 === undefined) &&
+    (typeof record.storageGeneration === "string" || record.storageGeneration === undefined) &&
     typeof record.schemaVersion === "number"
   );
 }

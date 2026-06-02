@@ -13,10 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrapped untrusted RAG snippets, transcript summaries, CLI chat user messages, and hosted insight questions with provenance-tagged untrusted-content blocks so prompt-injection payloads remain data, not instructions.
 - Added prompt-injection hardening tests for the wrapper and CLI prompt assembly paths.
 
-### Added — macOS beta prep
+### Added — macOS 1.0.1 beta
 
-- Prepared the Developer ID direct-download beta path for macOS with refreshed
-  website provenance surfaces and brand assets.
+- Cut a new Developer ID direct-download beta for macOS with unique `1.0.1`
+  website artifacts, notarized DMG/ZIP provenance, checksums, and SBOM.
 - Added the BurnBar Cloud profile avatar upload path for mobile account
   settings, including Firebase Storage rules and refreshed avatar rendering.
 - Replaced Cloud badge PDF assets with source SVG vectors shared by the Mac,
@@ -551,7 +551,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and Android locked-Mac certification without collecting or logging the Mac
   password.
 
-## [1.0] — 2026-05-26
+## [1.0.1] — 2026-05-26
 
 ### Added — macOS release channels
 - Prepared the macOS `1.0` release for both channels: a sandboxed Mac App Store

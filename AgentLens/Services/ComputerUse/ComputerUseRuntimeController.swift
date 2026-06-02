@@ -178,17 +178,34 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     }
     #endif
 
+    /// Refreshes the entitlement snapshot from `MacCloudEntitlementStore` and
+    /// pushes it to the session coordinator.
+    ///
+    /// - Important: The `allows*` booleans below are feature bits for the bundled
+    ///   single-SKU model (`com.openburnbar.hostedComputerUseSync.monthly`). The
+    ///   real enforcement gate is `isActive`, populated from Firestore via
+    ///   `MacCloudEntitlementStore`. When active, all features are enabled — the
+    ///   hardcoded `true` values mean "if the SKU is active, all features are
+    ///   enabled." When the SKU model evolves to support individual feature gating,
+    ///   replace these with Remote Config values:
+    ///   `computer_use_browser_allowed`, `computer_use_system_allowed`,
+    ///   `computer_use_phone_control_allowed`, `computer_use_trusted_scopes_allowed`,
+    ///   `computer_use_audit_export_allowed`.
     func refreshEntitlement() {
         MacCloudEntitlementStore.shared.start()
         let entitlement = ComputerUseEntitlementSnapshot(
             isActive: MacCloudEntitlementStore.shared.hostedComputerUseIsActive,
             productId: Self.computerUseProductId,
             expireAt: MacCloudEntitlementStore.shared.hostedComputerUseExpirationDate,
-            allowsBrowser: true,
-            allowsSystem: true,
-            allowsPhoneControl: true,
-            allowsTrustedScopes: true,
-            allowsAuditExport: true
+            // Single-SKU model: all features enabled when entitlement is active.
+            // The real authorization gate is `isActive` (populated from Firestore
+            // via MacCloudEntitlementStore). When the SKU model evolves to support
+            // individual feature gating, replace these with Remote Config values.
+            allowsBrowser: true,          // SKU default: on
+            allowsSystem: true,           // SKU default: on
+            allowsPhoneControl: true,     // SKU default: on
+            allowsTrustedScopes: true,    // SKU default: on
+            allowsAuditExport: true       // SKU default: on
         )
         coordinator.updateEntitlement(entitlement)
     }
@@ -334,17 +351,19 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
                 entitlement: ComputerUseEntitlementSnapshot(
                     isActive: false,
                     productId: computerUseProductId,
-                    allowsBrowser: true,
-                    allowsSystem: true,
-                    allowsPhoneControl: true,
-                    allowsTrustedScopes: true,
-                    allowsAuditExport: true
+                    // Single-SKU model: all features enabled when entitlement is active.
+                    allowsBrowser: true,          // SKU default: on
+                    allowsSystem: true,           // SKU default: on
+                    allowsPhoneControl: true,     // SKU default: on
+                    allowsTrustedScopes: true,    // SKU default: on
+                    allowsAuditExport: true       // SKU default: on
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: Self.todayKey()),
                 auditBaseDirectory: auditDirectory,
                 macAppVersion: version,
                 killSwitch: settingsManager.computerUseKillSwitch,
-                phoneControlAttestationRequired: settingsManager.computerUsePhoneControlAttestationRequired
+                phoneControlAttestationRequired: settingsManager.computerUsePhoneControlAttestationRequired,
+                phoneControlRespectsDenyRegions: settingsManager.computerUsePhoneControlRespectsDenyRegions
             ),
             scopeRulesProvider: { ComputerUseDenyRegistry.builtInRules },
             approvalPresenter: { request, screenshot in

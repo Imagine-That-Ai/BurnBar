@@ -111,6 +111,10 @@ public actor ComputerUseService {
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
+        // TODO: Wire `phoneControlRespectsDenyRegions` from Remote Config when
+        // the config infrastructure is extended to the daemon. Currently the
+        // daemon only supports browser (Path B) sessions which do not involve
+        // phone control, so the default `false` is safe.
         let capability = ComputerUseCapabilityContext(
             entitlement: entitlement(for: manifest.mode),
             envelope: .initialNormal,
@@ -120,11 +124,26 @@ public actor ComputerUseService {
             killSwitch: false,
             accessibilityTrusted: false
         )
+
+        // CU-021 fix: resolve scope rules against the browser action URL.
+        // When the manifest carries scope rules (populated by the Mac app at
+        // session start), the daemon evaluates them here instead of hardcoding
+        // `.notMatched`. Empty rules → `.notMatched` → Manual approval (same
+        // as before this fix).
+        let scopeContext = Self.resolveScopeContext(from: request.invocation)
+        let scopeOutcome: ComputerUseScopeOutcome
+        if manifest.scopeRules.isEmpty {
+            scopeOutcome = .notMatched
+        } else {
+            let matcher = ComputerUseScopeMatcher()
+            scopeOutcome = matcher.evaluate(rules: manifest.scopeRules, context: scopeContext)
+        }
+
         return await coordinator.invoke(
             sessionId: sessionId,
             invocation: request.invocation,
-            scopeContext: ComputerUseScopeContext(),
-            scopeOutcome: .notMatched,
+            scopeContext: scopeContext,
+            scopeOutcome: scopeOutcome,
             accessibilityDeny: nil,
             capability: capability
         )
@@ -263,16 +282,54 @@ public actor ComputerUseService {
         )
     }
 
+    /// Builds an entitlement snapshot for the given mode.
+    ///
+    /// - Note: Phone control bypasses AX deny-region and scope-rule checks
+    ///   by design. The phone user is the authenticated human operator
+    ///   (Ed25519-signed authority via `PhoneControlAuthorityValidator`).
+    ///   The capability gate in `DefaultComputerUseCapabilityGate` short-circuits
+    ///   deny-region evaluation for direct phone-control intents. If the threat
+    ///   model changes, enable `computerUse_phoneControlRespectsDenyRegions` in
+    ///   Remote Config (requires wiring Remote Config into the daemon path;
+    ///   see TODO below).
+    ///
+    /// - Important: The `allows*` booleans are feature bits for the bundled
+    ///   single-SKU model. The real enforcement gate is `isActive`. When active,
+    ///   all features are enabled. See `ComputerUseRuntimeController.refreshEntitlement()`
+    ///   for the app-side counterpart and the full rationale.
     private func entitlement(for mode: ComputerUseMode) -> ComputerUseEntitlementSnapshot {
         ComputerUseEntitlementSnapshot(
             isActive: true,
             productId: Self.computerUseProductId,
             allowsBrowser: mode == .browser,
             allowsSystem: mode == .system,
-            allowsPhoneControl: true,
-            allowsTrustedScopes: true,
-            allowsAuditExport: true
+            // Single-SKU model: all features enabled when entitlement is active.
+            allowsPhoneControl: true,     // SKU default: on
+            allowsTrustedScopes: true,    // SKU default: on
+            allowsAuditExport: true       // SKU default: on
         )
+    }
+
+    /// Extracts a scope context from a tool invocation for browser-mode scope
+    /// resolution. Browser actions carry an optional `url` in their arguments;
+    /// we extract it here so `ComputerUseScopeMatcher` can evaluate allow/deny
+    /// rules against the target URL.
+    private static func resolveScopeContext(from invocation: BurnBarToolInvocation) -> ComputerUseScopeContext {
+        // Extract URL from the invocation arguments JSON.
+        // Only `browserGoto` carries a URL today, but other browser actions
+        // may also be constrained by URL-prefix rules (the URL is the *current*
+        // page, not just the navigation target). For now, extract the explicit
+        // URL from arguments; a future iteration should track the current page URL.
+        let url: String? = {
+            switch invocation.arguments {
+            case .object(let dict):
+                if case .string(let u) = dict["url"] { return u }
+                return nil
+            default:
+                return nil
+            }
+        }()
+        return ComputerUseScopeContext(url: url)
     }
 
     private static func todayKey(now: Date = Date()) -> String {

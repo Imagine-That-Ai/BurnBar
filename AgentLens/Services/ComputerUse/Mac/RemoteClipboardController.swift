@@ -205,7 +205,8 @@ public final class RemoteClipboardController {
             concurrentSessionActive: false,
             killSwitch: context.configuration.killSwitch,
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
-            originatedFromPhone: true
+            originatedFromPhone: true,
+            phoneControlRespectsDenyRegions: context.configuration.phoneControlRespectsDenyRegions
         )
 
         switch gate.check(

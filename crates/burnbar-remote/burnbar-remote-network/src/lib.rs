@@ -48,6 +48,8 @@ pub enum TransportError {
     Authorization(#[from] burnbar_remote_security::AuthorizationError),
     #[error("session denied by remote host: {code}: {message}")]
     SessionDenied { code: String, message: String },
+    #[error("session grant does not match the client handshake request")]
+    SessionGrantMismatch,
     #[error("protocol failed: {0}")]
     Protocol(#[from] burnbar_remote_protocol::ProtocolError),
 }
@@ -84,6 +86,7 @@ pub struct IrohTransportConfig {
     pub max_control_frame_bytes: usize,
     pub max_concurrent_bi_streams: u32,
     pub max_concurrent_uni_streams: u32,
+    pub relay_only: bool,
 }
 
 impl Default for IrohTransportConfig {
@@ -97,6 +100,7 @@ impl Default for IrohTransportConfig {
             max_control_frame_bytes: 64 * 1024,
             max_concurrent_bi_streams: 16,
             max_concurrent_uni_streams: 8,
+            relay_only: false,
         }
     }
 }
@@ -149,9 +153,17 @@ impl IrohTransportManager {
         config: IrohTransportConfig,
         security: IrohTransportSecurity,
     ) -> Result<Self, TransportError> {
+        if config.relay_only && matches!(config.relay, RelayConfig::Disabled) {
+            return Err(TransportError::Endpoint(
+                "relay_only requires relay configuration".into(),
+            ));
+        }
         let mut builder = Endpoint::builder(presets::N0)
             .alpns(vec![config.alpn.clone()])
             .relay_mode(config.relay.clone().into_iroh()?);
+        if config.relay_only {
+            builder = builder.clear_ip_transports();
+        }
         if let Some(secret) = config.secret_key {
             builder = builder.secret_key(SecretKey::from_bytes(&secret));
         }
@@ -229,18 +241,21 @@ impl IrohTransportManager {
         request: ClientSessionRequestContext,
     ) -> Result<AuthorizedConnection, TransportError> {
         let remote_id = conn.remote_id().to_string();
-        let mut channel =
-            open_reliable_channel(&conn, StreamClass::Control, self.config.max_control_frame_bytes)
-                .await?;
+        let mut channel = open_reliable_channel(
+            &conn,
+            StreamClass::Control,
+            self.config.max_control_frame_bytes,
+        )
+        .await?;
         let mut nonce = [0u8; 16];
         getrandom::fill(&mut nonce)
             .map_err(|err| TransportError::Connect(format!("nonce generation failed: {err}")))?;
         let request_message = SessionRequestMessage {
             version: WIRE_VERSION,
             client_endpoint_id: CoreEndpointId::new(self.endpoint.id().to_string()),
-            client_device_id: request.client_device_id,
-            account_id: request.account_id,
-            workspace_id: request.workspace_id,
+            client_device_id: request.client_device_id.clone(),
+            account_id: request.account_id.clone(),
+            workspace_id: request.workspace_id.clone(),
             requested_mode: request.requested_mode,
             nonce,
             requested_at: request.now,
@@ -265,6 +280,7 @@ impl IrohTransportManager {
             MessageKind::SessionGrant => {
                 let signed: SignedSessionGrant = decode_control(&payload)?;
                 self.security.grant_verifier.verify_session_grant(&signed)?;
+                validate_client_grant_binding(&signed.grant, &request, &nonce)?;
                 Ok(AuthorizedConnection {
                     conn,
                     grant: signed.grant,
@@ -335,7 +351,7 @@ impl IrohTransportManager {
                 burnbar_remote_security::AuthorizationError::BindingMismatch,
             ));
         }
-        let grant = match self
+        let mut grant = match self
             .security
             .authorizer
             .authorize_peer(PeerAuthorizationRequest {
@@ -357,6 +373,7 @@ impl IrohTransportManager {
                 return Err(err.into());
             }
         };
+        grant.handshake_nonce = session_request.nonce;
         let signed = self.security.grant_signer.sign_session_grant(grant)?;
         let mut scratch = Vec::with_capacity(512);
         encode_control(&signed, &mut scratch)?;
@@ -789,10 +806,29 @@ fn classify_addr(addr: &TransportAddr) -> PathKind {
     }
 }
 
+fn validate_client_grant_binding(
+    grant: &SessionGrant,
+    request: &ClientSessionRequestContext,
+    nonce: &[u8; 16],
+) -> Result<(), TransportError> {
+    let descriptor = &grant.descriptor;
+    if grant.handshake_nonce != *nonce
+        || descriptor.account_id != request.account_id
+        || descriptor.workspace_id != request.workspace_id
+        || descriptor.client_device_id != request.client_device_id
+        || descriptor.mode != request.requested_mode
+        || request.now > descriptor.expires_at
+        || descriptor.issued_at > descriptor.expires_at
+    {
+        return Err(TransportError::SessionGrantMismatch);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burnbar_remote_core::{Permission, PermissionSet};
+    use burnbar_remote_core::{GrantId, Permission, PermissionSet, SessionDescriptor};
     use burnbar_remote_protocol::decode_control;
     use burnbar_remote_security::{
         AuthorizedDeviceRecord, DeviceTrustState, Ed25519SessionGrantSigner,
@@ -888,6 +924,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn relay_only_requires_relay_configuration() {
+        let signer = Arc::new(Ed25519SessionGrantSigner::new("host-signer", [7u8; 32]));
+        let verifier = Arc::new(InMemoryTrustedSignerStore::default());
+        let auth = Arc::new(InMemorySessionAuthorizer::default());
+        let result = IrohTransportManager::bind(
+            IrohTransportConfig {
+                relay: RelayConfig::Disabled,
+                relay_only: true,
+                ..IrohTransportConfig::default()
+            },
+            security(auth, signer, verifier),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(TransportError::Endpoint(message)) if message.contains("relay_only"))
+        );
+    }
+
+    #[test]
+    fn client_grant_binding_rejects_nonce_and_request_substitution() {
+        let request = ClientSessionRequestContext {
+            account_id: AccountId::new("account"),
+            workspace_id: WorkspaceId::new("workspace"),
+            client_device_id: DeviceId::new("client-device"),
+            requested_mode: SessionMode::Control,
+            now: TimestampMicros(10),
+        };
+        let nonce = [7u8; 16];
+        let mut grant = SessionGrant {
+            grant_id: GrantId::new("grant"),
+            descriptor: SessionDescriptor {
+                session_id: burnbar_remote_core::SessionId::new("session"),
+                account_id: request.account_id.clone(),
+                workspace_id: request.workspace_id.clone(),
+                host_device_id: DeviceId::new("host-device"),
+                client_device_id: request.client_device_id.clone(),
+                mode: request.requested_mode,
+                permissions: PermissionSet::from_iter([
+                    Permission::ViewScreen,
+                    Permission::InjectInput,
+                ]),
+                issued_at: TimestampMicros(10),
+                expires_at: TimestampMicros(20),
+            },
+            handshake_nonce: nonce,
+            signed_policy_hash: "policy".to_string(),
+        };
+        validate_client_grant_binding(&grant, &request, &nonce).unwrap();
+
+        grant.handshake_nonce = [8u8; 16];
+        assert!(matches!(
+            validate_client_grant_binding(&grant, &request, &nonce),
+            Err(TransportError::SessionGrantMismatch)
+        ));
+
+        grant.handshake_nonce = nonce;
+        grant.descriptor.client_device_id = DeviceId::new("other-client");
+        assert!(matches!(
+            validate_client_grant_binding(&grant, &request, &nonce),
+            Err(TransportError::SessionGrantMismatch)
+        ));
+    }
+
+    #[tokio::test]
     async fn iroh_loopback_authorizes_streams_datagrams_and_paths() {
         let (server, client, _server_auth) = loopback_managers().await;
         let remote = remote_address(&server.identity());
@@ -906,25 +1006,32 @@ mod tests {
                 now: TimestampMicros(1),
             },
         );
-        let (server_conn, client_conn) =
-            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(accept, connect) })
-                .await
-                .expect("loopback session handshake timed out");
+        let (server_conn, client_conn) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(accept, connect)
+        })
+        .await
+        .expect("loopback session handshake timed out");
         let server_conn = server_conn.unwrap();
         let client_conn = client_conn.unwrap();
         assert_eq!(
             client_conn.grant().descriptor.client_device_id,
             DeviceId::new("client-device")
         );
+        assert_ne!(client_conn.grant().handshake_nonce, [0u8; 16]);
+        assert_eq!(
+            client_conn.grant().handshake_nonce,
+            server_conn.grant().handshake_nonce
+        );
 
-        let (server_channel, client_channel) = tokio::time::timeout(Duration::from_secs(5), async {
-            tokio::join!(
-                server_conn.accept_stream(),
-                client_conn.open_stream(StreamClass::Telemetry)
-            )
-        })
-        .await
-        .expect("loopback stream open timed out");
+        let (server_channel, client_channel) =
+            tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(
+                    server_conn.accept_stream(),
+                    client_conn.open_stream(StreamClass::Telemetry)
+                )
+            })
+            .await
+            .expect("loopback stream open timed out");
         let mut server_channel = server_channel.unwrap();
         let mut client_channel = client_channel.unwrap();
         HeartbeatDriver::new()
@@ -987,21 +1094,20 @@ mod tests {
                 now: TimestampMicros(1),
             },
         );
-        let (server_result, client_result) =
-            tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(accept, connect) })
-                .await
-                .expect("loopback denial handshake timed out");
-        match server_result {
+        let (server_result, client_result) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(accept, connect)
+        })
+        .await
+        .expect("loopback denial handshake timed out");
+        assert!(matches!(
+            server_result,
             Err(TransportError::Authorization(
-                burnbar_remote_security::AuthorizationError::UnknownPeer,
-            )) => {}
-            Err(err) => panic!("unexpected server error: {err}"),
-            Ok(_) => panic!("server unexpectedly authorized unknown peer"),
-        }
-        match client_result {
-            Err(TransportError::SessionDenied { .. }) => {}
-            Err(err) => panic!("unexpected client error: {err}"),
-            Ok(_) => panic!("client unexpectedly received a grant"),
-        }
+                burnbar_remote_security::AuthorizationError::UnknownPeer
+            ))
+        ));
+        assert!(matches!(
+            client_result,
+            Err(TransportError::SessionDenied { .. })
+        ));
     }
 }

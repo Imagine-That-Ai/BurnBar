@@ -792,43 +792,84 @@ function pickCheck(check) {
 }
 
 function checkCloudRun() {
+  const required = ["openburnbar-quota-runner"];
+  const serviceStates = required.map(describeCloudRunService);
+  const retiredRelay = describeCloudRunService(
+    RETIRED_HERMES_REALTIME_RELAY_SERVICE,
+  );
+  const retiredRelayAbsent = !retiredRelay.exists && !retiredRelay.error;
+  return {
+    ok:
+      serviceStates.every((service) => service.exists && service.ready) &&
+      retiredRelayAbsent,
+    services: serviceStates,
+    retiredServices: [
+      {
+        name: RETIRED_HERMES_REALTIME_RELAY_SERVICE,
+        absent: retiredRelayAbsent,
+        ready: retiredRelay.exists ? retiredRelay.ready : null,
+        url: retiredRelay.url || null,
+        error: retiredRelay.error,
+      },
+    ],
+  };
+}
+
+function describeCloudRunService(name) {
   const result = run("gcloud", [
     "run",
     "services",
-    "list",
+    "describe",
+    name,
     "--project",
     PROJECT,
     "--region",
     REGION,
     "--format=json",
   ]);
-  if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
-  const services = JSON.parse(result.stdout);
-  const required = ["openburnbar-quota-runner"];
-  const byName = new Map(
-    services.map((service) => [service.metadata?.name, service]),
-  );
-  const serviceStates = required.map((name) => {
-    const service = byName.get(name);
-    const ready = (service?.status?.conditions || []).some(
-      (condition) => condition.type === "Ready" && condition.status === "True",
+  if (!result.ok) {
+    const error = compactCommandOutput(
+      result.stderr || result.stdout || result.error || "",
     );
-    return { name, ready, url: service?.status?.url || null };
-  });
-  const retiredRelay =
-    byName.get(RETIRED_HERMES_REALTIME_RELAY_SERVICE) || null;
+    if (/not found|not_found|does not exist|NOT_FOUND/i.test(error)) {
+      return { name, exists: false, ready: false, url: null };
+    }
+    return { name, exists: false, ready: false, url: null, error };
+  }
+  let service;
+  try {
+    service = JSON.parse(result.stdout);
+  } catch (error) {
+    return {
+      name,
+      exists: false,
+      ready: false,
+      url: null,
+      error: `invalid Cloud Run service JSON: ${error.message}`,
+    };
+  }
+  const ready = (service?.status?.conditions || []).some(
+    (condition) => condition.type === "Ready" && condition.status === "True",
+  );
   return {
-    ok:
-      serviceStates.every((service) => service.ready) && retiredRelay === null,
-    services: serviceStates,
-    retiredServices: [
-      {
-        name: RETIRED_HERMES_REALTIME_RELAY_SERVICE,
-        absent: retiredRelay === null,
-        url: retiredRelay?.status?.url || null,
-      },
-    ],
+    name,
+    exists: true,
+    ready,
+    url: service?.status?.url || null,
+    serviceAccount: service?.spec?.template?.spec?.serviceAccountName || null,
+    ingress: service?.metadata?.annotations?.["run.googleapis.com/ingress"] ||
+      null,
   };
+}
+
+function compactCommandOutput(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .join("\n")
+    .slice(0, 1200);
 }
 
 function checkRunnerReadyz() {

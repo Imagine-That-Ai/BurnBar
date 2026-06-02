@@ -1,8 +1,7 @@
-import type { Firestore } from "firebase-admin/firestore";
 import { MCP_PROTOCOL_VERSION, MAX_OUTPUT_BYTES } from "./config.js";
 import type { AccessTokenClaims } from "./auth.js";
 import { requireScope } from "./auth.js";
-import { requireActiveBurnBarPro, requireActiveRemoteMcpClient } from "./entitlements.js";
+import { requireActiveBurnBarPro, requireActiveRemoteMcpAccess } from "./entitlements.js";
 import { enforceRateLimit } from "./rateLimits.js";
 import { callTool, listMcpTools } from "./toolRegistry.js";
 import { jsonRpcError, McpError } from "./errors.js";
@@ -35,6 +34,7 @@ export async function handleMcpRequest(db: HostedMcpFirestore, claims: AccessTok
 async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: JsonRpcRequest): Promise<unknown> {
   switch (req.method) {
     case "initialize":
+      await requireMcpSessionAccess(db, claims, "metadata:standard");
       return {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {}, resources: {} },
@@ -42,6 +42,7 @@ async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: 
         instructions: "Search encrypted OpenBurnBar session memory. Use the local shim for device-side decryption."
       };
     case "tools/list":
+      await requireMcpSessionAccess(db, claims, "metadata:standard");
       return listMcpTools();
     case "tools/call": {
       const name = typeof req.params?.name === "string" ? req.params.name : "";
@@ -51,6 +52,7 @@ async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: 
       if (!isFullFirestore(db)) {
         throw new McpError(-32603, "Tool execution requires a full Firestore client.");
       }
+      await requireMcpSessionAccess(db, claims, "metadata:standard");
       return callTool({ db, claims }, name, args);
     }
     case "resources/list":
@@ -84,7 +86,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function requireResourceAccess(db: HostedMcpFirestore, claims: AccessTokenClaims, scope: string, rateLimitBucket: string) {
   requireScope(claims, scope);
-  await requireActiveRemoteMcpClient(claims.sub, claims.client_id, db);
+  await requireActiveRemoteMcpAccess(claims.sub, claims.client_id, claims.scopes, db);
+  await requireActiveBurnBarPro(claims.sub, db);
+  await enforceRateLimit(db, claims.sub, claims.client_id, rateLimitBucket);
+}
+
+async function requireMcpSessionAccess(db: HostedMcpFirestore, claims: AccessTokenClaims, rateLimitBucket: string) {
+  await requireActiveRemoteMcpAccess(claims.sub, claims.client_id, claims.scopes, db);
   await requireActiveBurnBarPro(claims.sub, db);
   await enforceRateLimit(db, claims.sub, claims.client_id, rateLimitBucket);
 }

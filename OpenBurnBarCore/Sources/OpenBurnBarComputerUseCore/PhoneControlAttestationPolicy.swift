@@ -2,9 +2,11 @@ import Foundation
 
 /// Remote Config `computer_use_phone_control_attestation_required` drives strict mode.
 public enum PhoneControlAttestationRequirement: Equatable, Sendable {
-    /// Permissive: enforce digest only when Mac has a bound claim (legacy behavior).
+    /// No attestation gate on the authority envelope.
     case none
-    /// Envelope `attestationHashBlake3` must equal the Mac user's bound digest.
+    /// Envelope must include a non-empty `attestationHashBlake3` (phone-side App Check bind).
+    case requirePresent
+    /// Envelope must match an exact digest (same-device or pre-registered peer digest).
     case required(digest: String)
     /// Strict RC on but Mac host has no fresh `obb_app_check` binding — reject all phone control.
     case rejectUnboundHost
@@ -13,20 +15,18 @@ public enum PhoneControlAttestationRequirement: Equatable, Sendable {
 public enum PhoneControlAttestationPolicy {
     public static let remoteConfigKey = "computer_use_phone_control_attestation_required"
 
-    /// Maps RC strict flag + Mac-bound digest into validator input.
-    public static func requirement(
-        strictMode: Bool,
-        macBoundDigest: String?
-    ) -> PhoneControlAttestationRequirement {
+    /// Maps RC strict flag + Mac host bind state into validator input.
+    ///
+    /// Phone envelopes carry the **controller app's** App Check digest (iOS/Android app id).
+    /// The Mac host digest uses a different App Check app id, so strict mode requires
+    /// presence of phone attestation, not equality with the Mac digest.
+    public static func requirement(strictMode: Bool, macHostHasBoundClaim: Bool) -> PhoneControlAttestationRequirement {
         guard strictMode else {
-            guard let macBoundDigest, !macBoundDigest.isEmpty else {
-                return .none
-            }
-            return .required(digest: macBoundDigest)
+            return .none
         }
-        guard let macBoundDigest, !macBoundDigest.isEmpty else {
+        guard macHostHasBoundClaim else {
             return .rejectUnboundHost
         }
-        return .required(digest: macBoundDigest)
+        return .requirePresent
     }
 }

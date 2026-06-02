@@ -11,6 +11,10 @@ export interface EntitlementState {
   expiresAt?: string;
 }
 
+export interface RemoteMcpClientState {
+  allowedScopes: string[];
+}
+
 const cache = new Map<string, { state: EntitlementState; expiresAtMs: number }>();
 const lastUsedWriteCache = new Map<string, number>();
 
@@ -73,7 +77,7 @@ export async function requireActiveRemoteMcpClient(
   uid: string,
   clientId: string,
   db: RemoteMcpClientFirestore = firestore()
-): Promise<void> {
+): Promise<RemoteMcpClientState> {
   const ref = db.doc(`users/${uid}/remote_mcp_clients/${clientId}`);
   const snap = await ref.get();
   if (!snap.exists) {
@@ -83,6 +87,7 @@ export async function requireActiveRemoteMcpClient(
   if (dateFromRaw(data.revokedAt)) {
     throw new HttpError(403, "OpenBurnBar MCP client has been revoked.", "client_revoked");
   }
+  const allowedScopes = normalizeAllowedScopes(data.allowedScopes);
   const cacheKey = `${uid}:${clientId}`;
   const now = Date.now();
   const lastWriteAt = lastUsedWriteCache.get(cacheKey) ?? 0;
@@ -92,4 +97,31 @@ export async function requireActiveRemoteMcpClient(
       lastUsedWriteCache.delete(cacheKey);
     });
   }
+  return { allowedScopes };
+}
+
+function normalizeAllowedScopes(raw: unknown): string[] {
+  if (!Array.isArray(raw) || !raw.every((scope): scope is string => typeof scope === "string" && scope.length > 0)) {
+    throw new HttpError(403, "OpenBurnBar MCP client scope policy is missing.", "client_scope_policy_missing");
+  }
+  return [...new Set(raw)];
+}
+
+export function assertTokenScopesAllowedByClient(tokenScopes: readonly string[], client: RemoteMcpClientState): void {
+  const allowed = new Set(client.allowedScopes);
+  const disallowed = tokenScopes.filter((scope) => !allowed.has(scope));
+  if (disallowed.length > 0) {
+    throw new HttpError(403, "OpenBurnBar MCP token scopes exceed the registered client grant.", "client_scope_downgraded");
+  }
+}
+
+export async function requireActiveRemoteMcpAccess(
+  uid: string,
+  clientId: string,
+  tokenScopes: readonly string[],
+  db: RemoteMcpClientFirestore = firestore()
+): Promise<RemoteMcpClientState> {
+  const client = await requireActiveRemoteMcpClient(uid, clientId, db);
+  assertTokenScopesAllowedByClient(tokenScopes, client);
+  return client;
 }

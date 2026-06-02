@@ -10,7 +10,7 @@ if [[ ! -f "${GENERATED}" ]]; then
   exit 1
 fi
 
-if ! rg -q 'func remoteNodeId\(\)' "${GENERATED}"; then
+if ! grep -q 'func remoteNodeId()' "${GENERATED}"; then
   echo "verify-iroh-remote-node-id-binding: rebuild Vendor/OpenBurnBarIroh.xcframework (missing remoteNodeId)" >&2
   exit 1
 fi

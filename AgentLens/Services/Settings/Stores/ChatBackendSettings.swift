@@ -112,6 +112,19 @@ final class ChatBackendSettings {
         didSet { persistence.set(computerUseKillSwitch, forKey: "computerUseKillSwitch") }
     }
 
+    /// Defense-in-depth: when `true`, phone-control intents are also checked
+    /// against AX deny-regions. Default `false` because the phone user IS the
+    /// authenticated human operator. Mirrors Remote Config
+    /// `computer_use_phone_control_respects_deny_regions`.
+    var computerUsePhoneControlRespectsDenyRegions: Bool = false {
+        didSet {
+            persistence.set(
+                computerUsePhoneControlRespectsDenyRegions,
+                forKey: "computerUsePhoneControlRespectsDenyRegions"
+            )
+        }
+    }
+
     var mediaKillSwitch: Bool = false {
         didSet { persistence.set(mediaKillSwitch, forKey: "mediaKillSwitch") }
     }
@@ -276,6 +289,9 @@ final class ChatBackendSettings {
         self.computerUseTrustedScopesEnabled = persistence.bool(forKey: "computerUseTrustedScopesEnabled")
         self.computerUseAuditExportEnabled = persistence.bool(forKey: "computerUseAuditExportEnabled")
         self.computerUseKillSwitch = persistence.bool(forKey: "computerUseKillSwitch")
+        self.computerUsePhoneControlRespectsDenyRegions = persistence.bool(
+            forKey: "computerUsePhoneControlRespectsDenyRegions"
+        )
         self.mediaKillSwitch = persistence.bool(forKey: "mediaKillSwitch")
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")

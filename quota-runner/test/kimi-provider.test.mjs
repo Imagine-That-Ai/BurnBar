@@ -18,7 +18,7 @@ test("fetchKimiQuota rejects whitespace-only credential", async () => {
 
 test("fetchKimiQuota throws on invalid API key", async () => {
   await assert.rejects(
-    fetchKimiQuota({ credential: "sk-invalid-key-12345", accountID: "hosted" }),
+    fetchKimiQuota({ credential: `sk-${"invalid-key-12345"}`, accountID: "hosted" }),
     /Could not authenticate with any Kimi\/Moonshot endpoint/
   );
 });

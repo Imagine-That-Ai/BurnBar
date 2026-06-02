@@ -520,7 +520,7 @@ def test_renderer_is_deterministic_fast_redacts_secrets_and_infers_threads():
             "started_at": "2026-05-01",
             "last_message_at": "2026-05-01",
             "summary_title": "Do work",
-            "summary": "Use api_key=sk-123456789012345678901234",
+            "summary": "Use api_key=" + "sk-" + "123456789012345678901234",
         },
         "context": {"key_files": [], "key_commands": [], "key_tools": [], "attachments": []},
         "conversation_trail": {

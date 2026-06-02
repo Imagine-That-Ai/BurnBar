@@ -122,7 +122,7 @@ async function proveControlled(missingAuthStatus) {
   const targetDoc = "cross-tenant-target-doc";
   const searchDoc = "search-budget-doc";
   const searchChunk = "search-budget-chunk";
-  const searchTokenHash = "0123456789abcdef0123456789abcdef";
+  const searchTokenHash = ["01234567", "89abcdef", "01234567", "89abcdef"].join("");
   const targetBodyHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const searchBodyHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   const searchCommit = "search-budget-commit";

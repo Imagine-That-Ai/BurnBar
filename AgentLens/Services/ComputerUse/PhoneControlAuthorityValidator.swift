@@ -7,6 +7,16 @@ import OpenBurnBarComputerUseCore
 /// Mac-side validator for phone-issued `PhoneControlAuthority`
 /// envelopes. Phase 12.
 ///
+/// - Important: Phone control is a trust-delegated path where the phone
+///   IS the authenticated human operator. The Ed25519-signed authority
+///   envelope establishes that a paired, verified peer device issued the
+///   intent — not an autonomous agent. This is the foundation for the
+///   deny-region bypass in `DefaultComputerUseCapabilityGate`: the operator
+///   is trusted to interact with any UI region on their own Mac, including
+///   login windows and secure text fields. If the threat model changes,
+///   set `computerUse_phoneControlRespectsDenyRegions = true` in Remote Config
+///   to re-enable deny-region checking for phone control intents.
+///
 /// Threat model — three structural validations, all of which must pass:
 ///   1. Ed25519 signature verifies against the paired peer pubkey.
 ///   2. Monotonic counter strictly greater than the last counter
@@ -110,6 +120,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             break
         case .rejectUnboundHost:
             throw ValidationError.macAttestationUnbound
+        case .requirePresent:
+            guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
+                throw ValidationError.missingAttestation
+            }
         case .required(let digest):
             guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
                 throw ValidationError.missingAttestation
@@ -118,6 +132,18 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
                 throw ValidationError.attestationMismatch(expected: digest, observed: observed)
             }
         }
+    }
+
+    private func publicKeyForActivePeer(
+        _ envelope: HermesRealtimeRelayAuthorityEnvelope
+    ) throws -> Curve25519.Signing.PublicKey {
+        if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
+            throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
+        }
+        guard let pubKey = queue.sync(execute: { peerPublicKeys[envelope.peerNodeId] }) else {
+            throw ValidationError.missingPeerPubKey
+        }
+        return pubKey
     }
 
     private static func attestationRequirement(
@@ -140,8 +166,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
         let attestationRequirement = attestation
             ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
         try validateAuthorityEnvelope(envelope, now: now, attestation: attestationRequirement)
@@ -193,8 +218,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         let attestationRequirement = attestation
             ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
@@ -242,8 +266,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         target: HermesRealtimeRelayAgentContextTarget,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 
@@ -286,8 +309,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 
@@ -330,8 +352,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         clipboardRequest: HermesRealtimeRelayClipboardRequest,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 
@@ -374,8 +395,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
         now: Date = Date()
     ) throws -> ValidationResult {
-        let pubKey: Curve25519.Signing.PublicKey? = queue.sync { peerPublicKeys[envelope.peerNodeId] }
-        guard let pubKey else { throw ValidationError.missingPeerPubKey }
+        let pubKey = try publicKeyForActivePeer(envelope)
 
         try validateAuthorityEnvelope(envelope, now: now)
 

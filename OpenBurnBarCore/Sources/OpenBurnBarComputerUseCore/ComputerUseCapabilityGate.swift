@@ -145,6 +145,12 @@ public struct ComputerUseCapabilityContext: Sendable {
     public let killSwitch: Bool
     public let accessibilityTrusted: Bool
     public let originatedFromPhone: Bool
+    /// Defense-in-depth: when `true`, phone-control intents are also checked
+    /// against AX deny-regions. Default `false` because the phone user IS
+    /// the authenticated human operator (Ed25519-signed authority). Flip to
+    /// `true` via Remote Config `computer_use_phone_control_respects_deny_regions`
+    /// if the threat model changes.
+    public let phoneControlRespectsDenyRegions: Bool
 
     public init(
         entitlement: ComputerUseEntitlementSnapshot,
@@ -154,7 +160,8 @@ public struct ComputerUseCapabilityContext: Sendable {
         concurrentSessionActive: Bool,
         killSwitch: Bool,
         accessibilityTrusted: Bool,
-        originatedFromPhone: Bool = false
+        originatedFromPhone: Bool = false,
+        phoneControlRespectsDenyRegions: Bool = false
     ) {
         self.entitlement = entitlement
         self.envelope = envelope
@@ -164,6 +171,7 @@ public struct ComputerUseCapabilityContext: Sendable {
         self.killSwitch = killSwitch
         self.accessibilityTrusted = accessibilityTrusted
         self.originatedFromPhone = originatedFromPhone
+        self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
     }
 }
 
@@ -253,7 +261,13 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         //    from clicking/typing on their own locked login screen. The phone
         //    path has already passed signed-authority validation, kill switch,
         //    entitlement bit, concurrency, and action-cap checks.
-        if directPhoneControl {
+        //
+        //    Defense-in-depth override: if `phoneControlRespectsDenyRegions` is
+        //    set to `true` (via Remote Config
+        //    `computer_use_phone_control_respects_deny_regions`), phone-control
+        //    intents fall through to the normal deny-region and scope checks
+        //    below instead of short-circuiting here.
+        if directPhoneControl && !context.phoneControlRespectsDenyRegions {
             switch action {
             case .macInput, .phoneIntent:
                 return .allowed(approvedBy: .phone)
