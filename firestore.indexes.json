@@ -443,6 +443,14 @@
       ]
     },
     {
+      "collectionGroup": "entitlements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "productID", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "provider_accounts",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
