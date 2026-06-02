@@ -16,7 +16,7 @@
     "firebase-admin": "13.10.0"
   },
   "devDependencies": {
-    "@types/node": "^24.6.0",
+    "@types/node": "^25.9.1",
     "typescript": "^5.9.3"
   },
   "overrides": {
