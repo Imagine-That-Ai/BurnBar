@@ -179,6 +179,30 @@ jobs:
           node scripts/wiki/mem0-sync.mjs --all --dry-run | tee /tmp/reconcile.log
           grep -q "already in sync - zero writes" /tmp/reconcile.log
 
+  # ── Control Center foundations (data-domain registry + design tokens) ──────
+  control-center-foundations:
+    name: Control Center foundations (registry + tokens)
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      # Registry validation + codegen freshness + firestore.rules drift check:
+      # every users/{uid}/ collection must be registered or explicitly excluded.
+      - name: Data-domain registry (codegen + drift)
+        run: cd packages/data-domains && node codegen.mjs && node driftcheck.mjs && node --test
+
+      # DTCG tokens build to CSS/Swift/Kotlin and stay one source of truth.
+      - name: Design tokens (Style Dictionary build + tests)
+        run: |
+          cd packages/design-tokens
+          npm ci
+          npm test
+
   # ── Version consistency ────────────────────────────────────────────────────
   version-consistency:
     name: Version consistency
