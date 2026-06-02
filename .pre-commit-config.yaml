@@ -1,5 +1,5 @@
 # OpenBurnBar pre-commit hooks
-# Install: brew install pre-commit && pre-commit install
+# Install: brew install pre-commit && pre-commit install && pre-commit install --hook-type post-commit
 # Run manually: pre-commit run --all-files
 # Docs: https://pre-commit.com
 
@@ -157,3 +157,17 @@ repos:
           - .secrets.baseline
           - --exclude-files
           - '.*package-lock\.json$|.*\.pbxproj$|.*\.xcscheme$|.*firestore\.rules$'
+
+  # Wiki -> mem0 sync (runs after each commit; keeps the BurnBar mem0 project fresh)
+  # Mirrors any droid-wiki/ pages the commit changed into mem0 (verbatim, infer=false).
+  # Fast: early-exits when the commit touched no wiki markdown, and skips entirely when
+  # MEM0_BURNBAR_API_KEY is absent. Enable with: pre-commit install --hook-type post-commit
+  - repo: local
+    hooks:
+      - id: wiki-mem0-sync
+        name: Sync droid-wiki to mem0
+        language: system
+        entry: node scripts/wiki/mem0-sync.mjs --changed-from-commit HEAD
+        pass_filenames: false
+        always_run: true
+        stages: [post-commit]
