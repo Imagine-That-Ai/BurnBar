@@ -23,7 +23,8 @@ final class ComputerUseBudgetStatusStore {
     init(
         documentPath: String = "ops/computer_use_budget_status/state/current",
         isSignedInProvider: @escaping () -> Bool = {
-            Auth.auth().currentUser != nil
+            guard FirebaseApp.app() != nil else { return false }
+            return Auth.auth().currentUser != nil
         }
     ) {
         self.documentPath = documentPath

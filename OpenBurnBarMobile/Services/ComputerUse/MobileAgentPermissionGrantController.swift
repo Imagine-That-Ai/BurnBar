@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import CryptoKit
 import FirebaseAuth
+import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
 import LocalAuthentication
@@ -47,13 +48,18 @@ final class MobileAgentPermissionGrantController {
         self.firestoreProvider = firestoreProvider
     }
 
+    private var currentUID: String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
+
     func grant(
         runtimeID: AssistantRuntimeID,
         threadID: String,
         preset: AgentPermissionPreset,
         deliveryMode: AgentGrantDeliveryMode = .liveThenQueued
     ) async throws -> AgentCapabilityGrantReceipt {
-        guard let uid = Auth.auth().currentUser?.uid else { throw GrantError.notSignedIn }
+        guard let uid = currentUID else { throw GrantError.notSignedIn }
         let deviceID = MobileDeviceIdentity.loadOrCreateDeviceId()
         try await ensureTrustedDevice(uid: uid, sourceDeviceID: deviceID)
         let authenticated = try await authenticateIfNeeded(for: preset)
@@ -162,7 +168,7 @@ final class MobileAgentPermissionGrantController {
     }
 
     private func queue(_ request: AgentCapabilityGrantRequest) async throws {
-        guard let uid = Auth.auth().currentUser?.uid else { throw GrantError.notSignedIn }
+        guard let uid = currentUID else { throw GrantError.notSignedIn }
         let signedWire = try signedWireRequest(for: request)
         try await publishAuthority(uid: uid, sourceDeviceID: request.sourceDeviceID)
         var payload = try jsonObject(from: signedWire)
