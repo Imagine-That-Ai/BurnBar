@@ -802,11 +802,87 @@ export async function writeBurnBarProEntitlement(args: {
     lastVerifiedAt: now,
     updatedAt: now,
   });
-  await db.doc(`users/${args.uid}/entitlements/${entitlementID}`).set(doc, { merge: true });
+  const ref = db.doc(`users/${args.uid}/entitlements/${entitlementID}`);
+  const existing = await ref.get();
+  if (
+    paidEntitlementWriteWouldDowngrade(existing.data(), {
+      source: args.source,
+      expiresAtMillis: args.expiresAtMillis,
+      active,
+      externalSubscriptionID: args.externalSubscriptionID,
+      purchaseTokenHash: args.purchaseTokenHash,
+    })
+  ) {
+    return existing.data() || doc;
+  }
+
+  const writeDoc = {
+    ...doc,
+    externalSubscriptionID: args.externalSubscriptionID ?? FieldValue.delete(),
+    externalCustomerID: args.externalCustomerID ?? FieldValue.delete(),
+    purchaseTokenHash: args.purchaseTokenHash ?? FieldValue.delete(),
+  };
+  await ref.set(writeDoc, { merge: true });
   if (entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID && active) {
     await ensureCloudProAllowanceLedger(args.uid);
   }
   return doc;
+}
+
+export function paidEntitlementWriteWouldDowngrade(
+  existing: Record<string, unknown> | undefined,
+  incoming: {
+    source: string;
+    expiresAtMillis: number;
+    active: boolean;
+    externalSubscriptionID?: string;
+    purchaseTokenHash?: string;
+    nowMillis?: number;
+  },
+): boolean {
+  if (!existing || existing.active !== true) return false;
+  const existingExpiresAtMillis = entitlementExpiresAtMillis(existing);
+  const nowMillis = incoming.nowMillis ?? Date.now();
+  if (!existingExpiresAtMillis || existingExpiresAtMillis <= nowMillis) return false;
+  if (sameEntitlementWriteSource(existing, incoming)) return false;
+  return !incoming.active || incoming.expiresAtMillis < existingExpiresAtMillis;
+}
+
+function entitlementExpiresAtMillis(existing: Record<string, unknown>): number | undefined {
+  const expireAt = existing.expireAt;
+  if (isTimestampWithToMillis(expireAt)) return expireAt.toMillis();
+  const expiresAt = existing.expiresAt;
+  if (typeof expiresAt === "string") {
+    const parsed = Date.parse(expiresAt);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function sameEntitlementWriteSource(
+  existing: Record<string, unknown>,
+  incoming: {
+    source: string;
+    externalSubscriptionID?: string;
+    purchaseTokenHash?: string;
+  },
+): boolean {
+  if (existing.source !== incoming.source) return false;
+  if (
+    incoming.externalSubscriptionID &&
+    typeof existing.externalSubscriptionID === "string" &&
+    existing.externalSubscriptionID === incoming.externalSubscriptionID
+  ) {
+    return true;
+  }
+  if (
+    incoming.purchaseTokenHash &&
+    typeof existing.purchaseTokenHash === "string" &&
+    existing.purchaseTokenHash === incoming.purchaseTokenHash
+  ) {
+    return true;
+  }
+  return !incoming.externalSubscriptionID && !incoming.purchaseTokenHash;
 }
 
 async function ensureCloudProAllowanceLedger(uid: string): Promise<void> {
