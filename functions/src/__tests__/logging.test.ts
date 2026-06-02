@@ -55,6 +55,13 @@ describe("PII scrubbing in structured logging", () => {
     return parseConsolePayload(spy.mock.calls[0]?.[0]);
   }
 
+  function recordField(value: unknown, fieldName: string): Record<string, unknown> {
+    if (!isRecord(value)) {
+      throw new Error(`Expected ${fieldName} to be a structured object`);
+    }
+    return value;
+  }
+
   // ── Email redaction ─────────────────────────────────────────────────────
 
   describe("email redaction", () => {
@@ -270,10 +277,10 @@ describe("PII scrubbing in structured logging", () => {
         event: "test",
         nested: {
           privateKey: "not-patterned-but-sensitive",
-        } as unknown as string,
+        },
       });
       const payload = captureLog(logSpy);
-      expect((payload.nested as { privateKey: string }).privateKey).toBe("[REDACTED]");
+      expect(recordField(payload.nested, "nested").privateKey).toBe("[REDACTED]");
     });
 
     it("recursively scrubs arrays inside nested objects", async () => {
