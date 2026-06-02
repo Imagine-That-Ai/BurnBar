@@ -123,7 +123,7 @@ object DataDomains {
             id = "device_trust_keys", title = "Device Trust & Vault Keys", icon = "lock.shield.fill",
             encryptionTier = EncryptionTier.END_TO_END, summary = "Which devices are trusted to decrypt your data, and the wrapped vault keys that make zero-knowledge possible. The crux of the whole E2EE model.",
             serverSees = listOf("device trust state", "public key fingerprints", "wrapped (ciphertext) key blobs"), deviceOnly = listOf("the vault key itself (Keychain / 0600 file, never uploaded)"),
-            firestorePaths = listOf("cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events"), storagePaths = listOf(),
+            firestorePaths = listOf("cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"), storagePaths = listOf(),
             countSource = "escrow_devices", byteSource = null,
             retention = "until_revoked", actions = listOf("view", "approve", "revoke", "recover"),
             entitlementGate = null, suspensionSurface = null,
