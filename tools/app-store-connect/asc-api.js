@@ -16,7 +16,8 @@ const fs = require("fs");
 const path = require("path");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
-const API_BASE = "https://api.appstoreconnect.apple.com/v1";
+const API_ROOT = "https://api.appstoreconnect.apple.com";
+const API_BASE = `${API_ROOT}/v1`;
 const STOREKIT_BASES = {
   Production: "https://api.storekit.apple.com",
   Sandbox: "https://api.storekit-sandbox.apple.com",
@@ -276,7 +277,8 @@ function query(params) {
 }
 
 async function api(method, resourcePath, body = undefined) {
-  const response = await fetch(`${API_BASE}${resourcePath}`, {
+  const base = resourcePath.startsWith("/v2/") ? API_ROOT : API_BASE;
+  const response = await fetch(`${base}${resourcePath}`, {
     method,
     headers: {
       Authorization: `Bearer ${makeToken()}`,
@@ -1493,6 +1495,63 @@ async function getAllInAppPurchases() {
     .sort((a, b) => a.productId.localeCompare(b.productId));
 }
 
+async function printTopUpDiagnostics() {
+  const inAppPurchases = await getAllInAppPurchases();
+  const byProductId = new Map(
+    inAppPurchases.map((purchase) => [purchase.productId, purchase])
+  );
+  const diagnostics = [];
+
+  for (const productId of COMMERCIAL_TOP_UP_PRODUCT_IDS) {
+    const purchase = byProductId.get(productId);
+    if (!purchase?.id) {
+      diagnostics.push({ productId, missing: true });
+      continue;
+    }
+    const detail = await api(
+      "GET",
+      `/v2/inAppPurchases/${purchase.id}${query({
+        include:
+          "appStoreReviewScreenshot,inAppPurchaseAvailability,inAppPurchaseLocalizations,iapPriceSchedule",
+      })}`
+    );
+    const localizations = await api(
+      "GET",
+      `/v2/inAppPurchases/${purchase.id}/inAppPurchaseLocalizations${query({
+        limit: 20,
+      })}`
+    );
+    const included = detail.included || [];
+    diagnostics.push({
+      productId,
+      id: purchase.id,
+      attributes: {
+        productId: detail.data?.attributes?.productId,
+        name: detail.data?.attributes?.name,
+        state: detail.data?.attributes?.state,
+        type: detail.data?.attributes?.inAppPurchaseType,
+        familySharable: detail.data?.attributes?.familySharable,
+        reviewNote: detail.data?.attributes?.reviewNote || null,
+      },
+      relationships: detail.data?.relationships || {},
+      localizations: (localizations.data || []).map((localization) => ({
+        id: localization.id,
+        locale: localization.attributes?.locale,
+        name: localization.attributes?.name,
+        description: localization.attributes?.description,
+        state: localization.attributes?.state,
+      })),
+      included: included.map((entry) => ({
+        id: entry.id,
+        type: entry.type,
+        attributes: entry.attributes || {},
+      })),
+    });
+  }
+
+  console.log(JSON.stringify({ inAppPurchases: diagnostics }, null, 2));
+}
+
 const SUBSCRIPTION_LOCALIZATION = {
   name: "Hosted Quota Sync Monthly",
   description: "Hosted Codex quota refresh for OpenBurnBar Cloud.",
@@ -1908,6 +1967,7 @@ async function main() {
   if (command === "submit-subscription-review") return submitSubscriptionReview();
   if (command === "submit-subscription-group-review") return submitSubscriptionGroupReview({ force: true });
   if (command === "submit-top-up-review") return submitCommercialTopUpReviews();
+  if (command === "top-up-diagnostics") return printTopUpDiagnostics();
   if (command === "submit-review") return submitReview();
   if (command === "review-submissions") return printReviewSubmissions();
   if (command === "repair-subscription-localization") return repairSubscriptionLocalization();
