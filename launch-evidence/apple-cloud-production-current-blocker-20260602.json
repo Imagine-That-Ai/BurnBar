@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "generatedAt": "2026-06-02T04:24:00.000Z",
+  "channel": "apple",
+  "tier": "cloud",
+  "blocker": "Production Apple paid proof is still missing. The collection-group proof query now works, but the only Apple-sourced Cloud entitlements found are Sandbox entitlements.",
+  "fixedInfrastructure": [
+    "Deployed Firestore collection-group index on entitlements(productID ASC, source ASC).",
+    "Verified the index reached READY state before rerunning the Apple entitlement source query."
+  ],
+  "evidence": [
+    {
+      "kind": "firestore-index-readback",
+      "path": "firestore-entitlements-product-source-index-readback-20260602.json"
+    },
+    {
+      "kind": "redacted-firestore-query",
+      "path": "apple-cloud-entitlement-source-query-20260602.json"
+    }
+  ],
+  "nextRequiredAction": "Complete or restore BurnBar Cloud purchase on a production App Store account/device, then rerun prove:paid-tier with --channel apple --tier cloud and no --allow-sandbox."
+}

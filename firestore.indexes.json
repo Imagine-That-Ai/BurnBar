@@ -443,6 +443,14 @@
       ]
     },
     {
+      "collectionGroup": "entitlements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "productID", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "provider_accounts",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -630,6 +638,34 @@
     {
       "collectionGroup": "entitlements",
       "fieldPath": "source",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "entitlements",
+      "fieldPath": "productID",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "entitlements",
+      "fieldPath": "externalSubscriptionID",
       "indexes": [
         {
           "order": "ASCENDING",

@@ -4,7 +4,12 @@
  */
 
 import assert from "node:assert/strict";
-import { assertPaidTierEntitlement, parseArgs, selfTest } from "./prove-paid-tier-live.mjs";
+import {
+  assertGooglePlayAuditRecord,
+  assertPaidTierEntitlement,
+  parseArgs,
+  selfTest,
+} from "./prove-paid-tier-live.mjs";
 
 const future = new Date(Date.now() + 86_400_000).toISOString();
 const past = new Date(Date.now() - 86_400_000).toISOString();
@@ -28,6 +33,54 @@ assert.throws(
 assert.throws(
   () => parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple", "--environment", "Staging"]),
   /Production or Sandbox/,
+);
+assert.equal(
+  parseArgs([
+    "--uid",
+    "u1",
+    "--tier",
+    "cloud-pro",
+    "--channel",
+    "google_play",
+    "--purchase-token-hash",
+    "hash_123",
+    "--environment",
+    "Production",
+    "--google-play-audit-record",
+  ]).googlePlayAuditRecord,
+  true,
+);
+assert.throws(
+  () =>
+    parseArgs([
+      "--uid",
+      "u1",
+      "--tier",
+      "cloud-pro",
+      "--channel",
+      "stripe",
+      "--purchase-token-hash",
+      "hash_123",
+      "--environment",
+      "Production",
+      "--google-play-audit-record",
+    ]),
+  /requires --channel google_play/,
+);
+assert.throws(
+  () =>
+    parseArgs([
+      "--uid",
+      "u1",
+      "--tier",
+      "cloud-pro",
+      "--channel",
+      "google_play",
+      "--environment",
+      "Production",
+      "--google-play-audit-record",
+    ]),
+  /requires --purchase-token-hash/,
 );
 
 {
@@ -100,6 +153,26 @@ assert.throws(
       },
     },
     { tier: "cloud-pro", channel: "google_play", environment: "Production", allowSandbox: false },
+  );
+  assert.equal(proof.productID, "com.openburnbar.promax.v2.monthly");
+}
+
+{
+  const proof = assertGooglePlayAuditRecord(
+    {
+      productID: "com.openburnbar.promax.v2.monthly",
+      lineItemProductID: "com.openburnbar.promax.v2.monthly",
+      entitlementID: "burnbar_pro_max",
+      purchaseTokenHash: "token_hash",
+      subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+      expiresAt: future,
+    },
+    {
+      tier: "cloud-pro",
+      channel: "google_play",
+      productID: "",
+      purchaseTokenHash: "token_hash",
+    },
   );
   assert.equal(proof.productID, "com.openburnbar.promax.v2.monthly");
 }
@@ -214,6 +287,26 @@ assert.throws(
       { tier: "cloud", channel: "apple", environment: "Production", allowSandbox: false },
     ),
   /environment is missing/,
+);
+
+assert.throws(
+  () =>
+    assertGooglePlayAuditRecord(
+      {
+        productID: "com.openburnbar.promax.v2.monthly",
+        entitlementID: "burnbar_pro_max",
+        purchaseTokenHash: "token_hash",
+        subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+        expiresAt: past,
+      },
+      {
+        tier: "cloud-pro",
+        channel: "google_play",
+        productID: "",
+        purchaseTokenHash: "token_hash",
+      },
+    ),
+  /expired/,
 );
 
 console.log("prove-paid-tier-live tests passed");

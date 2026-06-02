@@ -33,6 +33,7 @@ assert.doesNotMatch(
 );
 
 for (const expected of [
+  "OpenBurnBar Local",
   "BurnBar Cloud",
   "BurnBar Cloud Pro",
   "com.openburnbar.pro.monthly",
