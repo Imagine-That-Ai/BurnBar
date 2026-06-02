@@ -20,13 +20,11 @@
 
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import type { Query, WriteBatch } from "firebase-admin/firestore";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
-import { commitBatchedWrites } from "./shared.js";
 import { DATA_DOMAIN_PATHS } from "./dataExport.js";
 import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 
@@ -49,19 +47,6 @@ export const UNDELETABLE_DOMAINS = new Set<string>([
   "entitlements_billing",
   "audit_timeline",
 ]);
-
-/** Delete every doc matched by `query`, in Firestore-batch-sized pages. */
-async function deleteQueryInBatches(query: Query): Promise<number> {
-  let deleted = 0;
-  for (;;) {
-    const snap = await query.limit(400).get();
-    if (snap.empty) break;
-    await commitBatchedWrites(snap.docs.map((doc) => (batch: WriteBatch) => batch.delete(doc.ref)));
-    deleted += snap.size;
-    if (snap.size < 400) break;
-  }
-  return deleted;
-}
 
 export const deleteDomainData = onCall(
   {
@@ -93,9 +78,16 @@ export const deleteDomainData = onCall(
         throw new HttpsError("failed-precondition", "Set confirm: true to delete this domain's data.");
       }
 
+      // Recursive delete so nested subcollections are purged too (e.g.
+      // knowledge_sync_manifests/{slug}/entries, cli_sessions/{id}/snapshots).
+      // A top-level query-delete would orphan descendants — residual PII after a
+      // "delete my data" call. recursiveDelete handles batching + descendants.
       let firestoreDocs = 0;
       for (const collection of paths.firestoreCollections) {
-        firestoreDocs += await deleteQueryInBatches(db.collection(`users/${uid}/${collection}`));
+        const collRef = db.collection(`users/${uid}/${collection}`);
+        const agg = await collRef.count().get();
+        firestoreDocs += Number(agg.data().count ?? 0);
+        await db.recursiveDelete(collRef);
       }
 
       let storageObjects = 0;

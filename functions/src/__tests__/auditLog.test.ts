@@ -4,9 +4,28 @@ import { createHash } from "node:crypto";
 import {
   canonicalAuditPayload,
   computeAuditHash,
+  auditActorLabel,
   AUDIT_GENESIS_PREV_HASH,
   type AuditEventCore,
 } from "../callables/auditLog.js";
+
+describe("auditActorLabel — self-reported platform hint is clamped", () => {
+  const withHeader = (v: unknown) =>
+    auditActorLabel({ rawRequest: { headers: { "x-burnbar-platform": v } } } as never);
+
+  it("accepts a clean platform hint", () => {
+    expect(withHeader("web")).toBe("user:web");
+    expect(withHeader("macos-26.1")).toBe("user:macos-26.1");
+  });
+  it("strips control chars / markup from a spoofed header (no audit-log injection)", () => {
+    expect(withHeader("web\n<script>alert(1)</script>")).toBe("user:webscriptalert1script");
+    expect(withHeader("../../etc")).toBe("user:....etc");
+  });
+  it("falls back to plain user when absent or fully stripped", () => {
+    expect(withHeader(undefined)).toBe("user");
+    expect(withHeader("！＠＃")).toBe("user");
+  });
+});
 
 function makeEvent(seq: number, prevHash: string): AuditEventCore {
   return {
