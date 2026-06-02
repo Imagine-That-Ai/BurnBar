@@ -13,7 +13,11 @@ enum CursorCredentialStore {
     }
 
     static func connectorCookieHeader(from keychain: KeychainStore) -> String? {
-        quotaNonEmpty(try? keychain.string(for: cookieAccount, allowUserInteraction: false))
+        do {
+            return quotaNonEmpty(try keychain.string(for: cookieAccount, allowUserInteraction: false))
+        } catch {
+            return nil
+        }
     }
 }
 
