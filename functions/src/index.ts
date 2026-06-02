@@ -96,6 +96,7 @@ export {
   disconnectKnowledgeRepo,
   reconcileKnowledgeMemoryDaily,
 } from "./callables/knowledgeSync.js";
+export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
 
 export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {

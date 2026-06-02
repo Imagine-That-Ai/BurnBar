@@ -45,14 +45,14 @@ const MAX_BATCH_VECTORS = 800;
 const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
 
 type PensieveTier = "pro" | "ultra";
-interface PensieveLimits {
+export interface PensieveLimits {
   sources: number;
   chunks: number;
   bytes: number;
 }
 
 /** Per-tier hard caps (see the Pensieve plan's tier table). User-level, not per-source. */
-const PENSIEVE_LIMITS: Record<PensieveTier, PensieveLimits> = {
+export const PENSIEVE_LIMITS: Record<PensieveTier, PensieveLimits> = {
   pro: { sources: 3, chunks: 5_000, bytes: 25 * 1024 * 1024 },
   ultra: { sources: 15, chunks: 50_000, bytes: 250 * 1024 * 1024 },
 };
