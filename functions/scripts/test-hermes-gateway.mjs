@@ -9,6 +9,7 @@ import {
   hashHermesGatewayBearerToken,
   hashHermesGatewayDeviceSecret,
   HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
+  isHermesGatewayAttachmentManifestDoc,
   isHermesGatewayClientDoc,
   isSha256Hex,
   makeHermesGatewaySSE,
@@ -50,7 +51,6 @@ assert.deepEqual(sanitizeHermesGatewayScopes(["hermes.gateway.read", "bad", "her
 assert.deepEqual(sanitizeHermesGatewayScopes([]), [
   "hermes.gateway.read",
   "hermes.gateway.write",
-  "hermes.gateway.manage",
 ]);
 assert.equal(sanitizeHermesGatewayDestinationId(undefined), HERMES_GATEWAY_DEFAULT_DESTINATION_ID);
 assert.equal(sanitizeHermesGatewayDestinationId("burnbar:ops"), "burnbar:ops");
@@ -126,6 +126,29 @@ assert.equal(modelSwitchEvent?.modelId, "minimax-m2.7-highspeed");
 assert.match(makeHermesGatewaySSE([event], 1), /event: cursor/);
 
 assert.equal(
+  isHermesGatewayAttachmentManifestDoc({
+    id: "att_1",
+    clientId: "hgw_client",
+    destinationId: "burnbar:home",
+    fileName: "image.png",
+    contentType: "image/png",
+    byteCount: 42,
+    storagePath: "users/u/hermes_gateway_attachments/hgw_client/att_1/image.png",
+    status: "uploaded",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:01.000Z",
+    expiresAt: "2026-06-01T00:10:00.000Z",
+    uploadedAt: "2026-06-01T00:00:01.000Z",
+    finalizedAt: "2026-06-01T00:00:01.000Z",
+    sha256: "a".repeat(64),
+    storageGeneration: "123",
+    schemaVersion: 1,
+  }),
+  true,
+);
+assert.equal(isHermesGatewayAttachmentManifestDoc({ id: "att_1", status: "pending_upload" }), false);
+
+assert.equal(
   isHermesGatewayClientDoc({
     id: "c",
     uid: "u",
@@ -159,6 +182,7 @@ assert.match(source, /\/destinations/);
 assert.match(source, /\/events/);
 assert.match(source, /\/messages/);
 assert.match(source, /\/attachments\/init/);
+assert.match(source, /\/attachments\/finalize/);
 assert.match(source, /hermes_gateway_token_index/);
 assert.match(source, /assertActiveHermesGatewayEntitlement/);
 assert.match(source, /assertActiveHermesGatewayClient/);
@@ -166,6 +190,9 @@ assert.match(source, /targetClientId/);
 assert.match(source, /event\.targetClientId === grant\.client\.id/);
 assert.match(source, /await assertActiveHermesGatewayEntitlement\(index\.uid\);/);
 assert.match(source, /getSignedUrl\(\{/);
+assert.match(source, /attachment_size_mismatch/);
+assert.match(source, /sha256ForStorageFile/);
+assert.match(source, /must be finalized before use/);
 
 const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
 for (const name of [

@@ -5,7 +5,7 @@
 import { Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { db } from "../adminRuntime.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -28,6 +28,7 @@ import {
   HERMES_GATEWAY_MAX_MESSAGE_TEXT,
   HERMES_GATEWAY_SCHEMA_VERSION,
   isHermesGatewayClientDoc,
+  isHermesGatewayAttachmentManifestDoc,
   isSha256Hex,
   makeHermesGatewaySSE,
   parseHermesGatewayCursor,
@@ -42,6 +43,7 @@ import {
   sanitizedGatewayDisplayName,
   serializeHermesGatewayEvent,
   tokenPreview,
+  type HermesGatewayAttachmentManifestDoc,
   type HermesGatewayClientDoc,
   type HermesGatewayScope,
 } from "../hermesGateway.js";
@@ -92,6 +94,9 @@ interface GatewayHttpError {
   detail?: string;
 }
 
+type StorageBucket = ReturnType<ReturnType<typeof getStorage>["bucket"]>;
+type StorageFile = ReturnType<StorageBucket["file"]>;
+
 function httpError(status: number, error: string, detail?: string): GatewayHttpError {
   return { status, error, detail };
 }
@@ -110,7 +115,7 @@ function setNoStore(res: HttpResponse): void {
 }
 
 function assertSafeAttachmentContentType(contentType: string): void {
-  const mediaType = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const mediaType = baseAttachmentContentType(contentType);
   const blocked = new Set([
     "text/html",
     "text/javascript",
@@ -124,6 +129,73 @@ function assertSafeAttachmentContentType(contentType: string): void {
   if (!mediaType || blocked.has(mediaType)) {
     throw httpError(400, "unsafe_content_type");
   }
+}
+
+function baseAttachmentContentType(contentType: string): string {
+  return contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function requiredHttpIdentifier(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 160, true);
+  if (!/^[A-Za-z0-9_.:-]+$/u.test(value)) {
+    throw httpError(400, `invalid_${fieldName}`);
+  }
+  return value;
+}
+
+function requestedAttachmentHash(raw: unknown): string | undefined {
+  if (raw == null) return undefined;
+  if (!isSha256Hex(raw)) {
+    throw httpError(400, "invalid_sha256");
+  }
+  return raw.trim().toLowerCase();
+}
+
+function statusCodeForAttachmentManifest(status: HermesGatewayAttachmentManifestDoc["status"]): number {
+  if (status === "expired") return 410;
+  if (status === "rejected" || status === "failed") return 409;
+  return 400;
+}
+
+async function sha256ForStorageFile(file: StorageFile): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    file
+      .createReadStream()
+      .on("data", (chunk: Buffer | string) => {
+        hash.update(chunk);
+      })
+      .on("error", reject)
+      .on("end", () => {
+        resolve(hash.digest("hex"));
+      });
+  });
+}
+
+async function requireUploadedGatewayAttachments(params: {
+  uid: string;
+  clientId?: string;
+  destinationId?: string;
+  attachmentIds: string[];
+}): Promise<void> {
+  await Promise.all(
+    params.attachmentIds.map(async (attachmentId) => {
+      const snap = await db.doc(`users/${params.uid}/hermes_gateway_attachments/${attachmentId}`).get();
+      const manifest = snap.data();
+      if (!snap.exists || !isHermesGatewayAttachmentManifestDoc(manifest)) {
+        throw new HttpsError("invalid-argument", `Hermes Gateway attachment ${attachmentId} was not found.`);
+      }
+      if (params.clientId && manifest.clientId !== params.clientId) {
+        throw new HttpsError("permission-denied", `Hermes Gateway attachment ${attachmentId} belongs to another client.`);
+      }
+      if (params.destinationId && manifest.destinationId && manifest.destinationId !== params.destinationId) {
+        throw new HttpsError("invalid-argument", `Hermes Gateway attachment ${attachmentId} belongs to another destination.`);
+      }
+      if (manifest.status !== "uploaded") {
+        throw new HttpsError("invalid-argument", `Hermes Gateway attachment ${attachmentId} must be finalized before use.`);
+      }
+    }),
+  );
 }
 
 function gatewayPath(req: HttpRequest): string {
@@ -361,6 +433,7 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
   if (!text && attachmentIds.length === 0) {
     throw httpError(400, "empty_message");
   }
+  await requireUploadedGatewayAttachments({ uid: grant.uid, clientId: grant.client.id, destinationId, attachmentIds });
   const now = nowISO();
   const id = safeIdentifier(body.messageId, "msg");
   const doc = stripUndefinedObject({
@@ -468,6 +541,91 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   sendJSON(res, 200, { attachment: manifest, uploadURL, maxBytes: HERMES_GATEWAY_MAX_ATTACHMENT_BYTES });
 }
 
+async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
+  const body = requestBody(req);
+  const attachmentId = requiredHttpIdentifier(body.attachmentId, "attachmentId");
+  const expectedSha256 = requestedAttachmentHash(body.sha256);
+  const requestedDestinationId =
+    body.destinationId == null ? undefined : sanitizeHermesGatewayDestinationId(body.destinationId);
+  const ref = db.doc(`users/${grant.uid}/hermes_gateway_attachments/${attachmentId}`);
+  const snap = await ref.get();
+  const manifest = snap.data();
+  if (!snap.exists || !isHermesGatewayAttachmentManifestDoc(manifest) || manifest.id !== attachmentId) {
+    throw httpError(404, "attachment_not_found");
+  }
+  if (manifest.clientId !== grant.client.id) {
+    throw httpError(403, "attachment_client_mismatch");
+  }
+  if (requestedDestinationId && manifest.destinationId && manifest.destinationId !== requestedDestinationId) {
+    throw httpError(400, "attachment_destination_mismatch");
+  }
+  const expectedPathPrefix = `users/${grant.uid}/hermes_gateway_attachments/${grant.client.id}/${attachmentId}/`;
+  if (!manifest.storagePath.startsWith(expectedPathPrefix)) {
+    throw httpError(403, "attachment_storage_path_mismatch");
+  }
+  if (manifest.status === "uploaded") {
+    if (expectedSha256 && manifest.sha256 && manifest.sha256 !== expectedSha256) {
+      throw httpError(409, "attachment_hash_mismatch");
+    }
+    sendJSON(res, 200, { attachment: manifest });
+    return;
+  }
+  if (manifest.status !== "pending_upload") {
+    throw httpError(statusCodeForAttachmentManifest(manifest.status), "attachment_not_uploadable", manifest.status);
+  }
+  const expiresAtMs = Date.parse(manifest.expiresAt);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    await ref.set({ status: "expired", updatedAt: nowISO() }, { merge: true });
+    throw httpError(410, "attachment_upload_expired");
+  }
+  if (manifest.byteCount < 1 || manifest.byteCount > HERMES_GATEWAY_MAX_ATTACHMENT_BYTES) {
+    await ref.set({ status: "rejected", updatedAt: nowISO() }, { merge: true });
+    throw httpError(400, "invalid_attachment_manifest");
+  }
+
+  const file = getStorage().bucket().file(manifest.storagePath);
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw httpError(404, "attachment_object_missing");
+  }
+  const [metadata] = await file.getMetadata();
+  const observedByteCount = Number(metadata.size);
+  const observedContentType = typeof metadata.contentType === "string" ? metadata.contentType : "";
+  const declaredMediaType = baseAttachmentContentType(manifest.contentType);
+  const observedMediaType = baseAttachmentContentType(observedContentType);
+  if (!Number.isFinite(observedByteCount) || observedByteCount !== manifest.byteCount) {
+    await ref.set({ status: "rejected", updatedAt: nowISO() }, { merge: true });
+    throw httpError(400, "attachment_size_mismatch");
+  }
+  if (!observedMediaType || observedMediaType !== declaredMediaType) {
+    await ref.set({ status: "rejected", updatedAt: nowISO() }, { merge: true });
+    throw httpError(400, "attachment_content_type_mismatch");
+  }
+  assertSafeAttachmentContentType(observedContentType);
+
+  const sha256 = await sha256ForStorageFile(file);
+  if (expectedSha256 && sha256 !== expectedSha256) {
+    await ref.set({ status: "rejected", updatedAt: nowISO() }, { merge: true });
+    throw httpError(409, "attachment_hash_mismatch");
+  }
+
+  const now = nowISO();
+  const finalized = stripUndefinedObject({
+    ...manifest,
+    status: "uploaded",
+    updatedAt: now,
+    uploadedAt: now,
+    finalizedAt: now,
+    sha256,
+    storageGeneration:
+      typeof metadata.generation === "string" ? metadata.generation : metadata.generation == null ? undefined : String(metadata.generation),
+  });
+  await ref.set(finalized, { merge: true });
+  sendJSON(res, 200, { attachment: finalized });
+}
+
 export const burnBarHermesGateway = onRequest(
   {
     region: "us-central1",
@@ -489,6 +647,7 @@ export const burnBarHermesGateway = onRequest(
       if (path === "/typing") return await handleTyping(req, res);
       if (path === "/runtime") return await handleRuntimeStatus(req, res);
       if (path === "/attachments/init") return await handleAttachmentInit(req, res);
+      if (path === "/attachments/finalize") return await handleAttachmentFinalize(req, res);
       sendJSON(res, 404, { error: "not_found" });
     } catch (err) {
       if (isGatewayHttpError(err)) {
@@ -691,6 +850,8 @@ export const enqueueHermesGatewayEvent = onCall(
         await assertActiveHermesGatewayClient(uid, targetClientId);
       }
       const destinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
+      const attachmentIds = sanitizedAttachmentIds(request.data.attachmentIds);
+      await requireUploadedGatewayAttachments({ uid, clientId: targetClientId, destinationId, attachmentIds });
       const eventId = `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
       let sequence = 0;
@@ -717,7 +878,7 @@ export const enqueueHermesGatewayEvent = onCall(
             senderDisplayName: boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
             text,
             modelId: requestedModelId,
-            attachmentIds: sanitizedAttachmentIds(request.data.attachmentIds),
+            attachmentIds,
             createdAt: now,
             schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
           }),

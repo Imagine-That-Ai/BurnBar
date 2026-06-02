@@ -77,9 +77,14 @@ jobs:
         run: npm ci --prefix extensions/openburnbar
 
       - name: Install Droid CLI
+        if: env.INTERNAL_RUN == 'true'
         run: curl -fsSL https://app.factory.ai/cli | sh
 
+      # Defense-in-depth: GitHub redacts secrets for fork PRs on pull_request,
+      # but the if: guard skips droid exec entirely to avoid wasting runner
+      # minutes and prevent any edge-case exfiltration via a compromised CLI.
       - name: Run QA
+        if: env.INTERNAL_RUN == 'true'
         id: qa
         continue-on-error: true
         timeout-minutes: 20

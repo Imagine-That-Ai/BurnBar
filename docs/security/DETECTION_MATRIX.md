@@ -12,7 +12,7 @@ Maps controls to observable signals and operator gates. Complements [`PRIVILEGED
 | Privileged socket P0 | `privileged_socket_peer_rejected` audit events | Mac daemons | RC runbook + `launch-evidence/privileged-redteam-rc-*.txt` |
 | Capability token at leaf | `VirtualHIDBridgeCapabilityGate` deny without token | VirtualHID bridge | `VirtualHIDBridgeCapabilityGateTests` |
 | Phone control TTL | `expiredAuthority` / 300s `authorityMaxLifetime` | Mac validator | `PhoneControlAuthorityValidatorAttestationTests` |
-| Phone attestation fail-closed | RC `computer_use_phone_control_attestation_required` | Mac/iOS | `PhoneControlAttestationPolicyTests` + strict validator tests |
+| Phone attestation fail-closed | RC `computer_use_phone_control_attestation_required` (Mac bound + phone envelope digest present) | Mac/iOS | `PhoneControlAttestationPolicyTests` + strict validator tests |
 | App Check attestation bind | `obb_app_check` claim + `attestationHashBlake3` on envelopes | Mac/iOS + Functions | `npm run test:security` (golden digest) + `bindAppCheckAttestation` |
 | Iroh UniFFI peer id | `remoteNodeId()` in Generated Swift | Release build | `scripts/ci/verify-iroh-remote-node-id-binding.sh` |
 | RAG injection | `<UNTRUSTED_CONTENT>` wrappers in evidence + user blocks | Mac chat | `PromptInjectionHardeningTests` |

@@ -657,9 +657,14 @@ export interface HermesGatewayAttachmentManifestDoc {
   contentType: string;
   byteCount: number;
   storagePath: string;
-  status: "pending_upload" | "uploaded" | "failed";
+  status: "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  sha256?: string;
+  storageGeneration?: string;
   schemaVersion: number;
 }
 

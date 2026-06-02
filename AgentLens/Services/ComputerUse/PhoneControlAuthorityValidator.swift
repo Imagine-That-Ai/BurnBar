@@ -110,6 +110,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             break
         case .rejectUnboundHost:
             throw ValidationError.macAttestationUnbound
+        case .requirePresent:
+            guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
+                throw ValidationError.missingAttestation
+            }
         case .required(let digest):
             guard let observed = envelope.attestationHashBlake3, !observed.isEmpty else {
                 throw ValidationError.missingAttestation

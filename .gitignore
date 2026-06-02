@@ -91,6 +91,11 @@ default.profraw
 firebase-debug.log
 firestore-rules-tests/node_modules/
 firestore-rules-tests/firestore-debug.log
+artifacts/
+.asc/
+functions/lib/
+website/public/downloads/*.dmg
+website/public/downloads/*.zip
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/

@@ -51,6 +51,15 @@ Mac/iOS/Android clients must call `bindAppCheckAttestation` after sign-in (when 
 Check is enabled) and route device trust approval through `approveEscrowDeviceTrust`
 instead of writing `trustState: trusted` directly to Firestore.
 
+### Phone control (iroh `control.input`)
+
+When Remote Config `computer_use_phone_control_attestation_required` is **true**, the
+Mac host must have a fresh `obb_app_check` claim and each phone authority envelope must
+include a non-empty `attestationHashBlake3` digest from the **controller app's** bind
+(iOS/Android App Check app id). The Mac does **not** compare that digest to the Mac
+host digest (different App Check app ids per platform). Future hardening may pin
+expected controller digests on the paired device document.
+
 ## Security rules and App Check
 
 The checked-in **Firestore rules** do not duplicate App Check: **enforcement is expected at the Firestore product** in App Check, as [documented by Firebase](https://firebase.google.com/docs/app-check/enable-enforcement). The rules file header in [firestore.rules](../firestore.rules) notes this, so a rules-only review is not misread as the full story.
