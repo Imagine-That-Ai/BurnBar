@@ -1,0 +1,57 @@
+name: Wiki mem0 Reconcile
+
+# Nightly safety net for the droid-wiki -> mem0 mirror. The per-commit hook keeps
+# mem0 fresh during normal development; this job re-reconciles the whole canonical
+# wiki against mem0 so any drift (a commit landed without the hook installed, a CI
+# wiki regeneration, a manually deleted memory) is corrected within a day.
+#
+# Requires repository secret MEM0_BURNBAR_API_KEY (the BurnBar mem0 project key).
+# Without it the sync logs a skip and the job is a no-op.
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # 02:00 America/Los_Angeles
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki-mem0-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconcile droid-wiki to mem0
+        run: node scripts/wiki/mem0-sync.mjs --all --verbose
+        env:
+          MEM0_BURNBAR_API_KEY: ${{ secrets.MEM0_BURNBAR_API_KEY }}
+
+      - name: Commit refreshed manifest
+        continue-on-error: true # tolerate branch protection; mem0 is already reconciled
+        run: |
+          if git diff --quiet -- droid-wiki/.mem0-manifest.json; then
+            echo "Manifest unchanged - mem0 already in sync." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add droid-wiki/.mem0-manifest.json
+          git commit -m "chore(wiki): reconcile mem0 manifest [skip ci]"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main || {
+            echo "## mem0 manifest push skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "mem0 was reconciled, but pushing the updated manifest failed (likely branch protection). The next developer commit will carry it." >> "$GITHUB_STEP_SUMMARY"
+          }
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
