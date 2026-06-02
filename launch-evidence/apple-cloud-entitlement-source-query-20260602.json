@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "count": 2,
+  "rows": [
+    {
+      "id": "burnbar_pro",
+      "path": "users/<uid>/entitlements/burnbar_pro",
+      "uidHash16": "da261f1959f7c871",
+      "source": "apple_jws_verified",
+      "productID": "com.openburnbar.pro.monthly",
+      "active": true,
+      "expiresAt": "2026-06-02T18:39:50.000Z",
+      "environment": "Sandbox"
+    },
+    {
+      "id": "hosted_quota_sync",
+      "path": "users/<uid>/entitlements/hosted_quota_sync",
+      "uidHash16": "da261f1959f7c871",
+      "source": "apple_jws_verified",
+      "productID": "com.openburnbar.pro.monthly",
+      "active": true,
+      "expiresAt": "2026-06-02T18:39:50.000Z",
+      "environment": "Sandbox"
+    }
+  ]
+}
