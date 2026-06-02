@@ -1,0 +1,14 @@
+{
+  "name": "@openburnbar/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "'The Pensieve' DTCG design tokens → CSS / Swift / Compose via Style Dictionary v5.",
+  "scripts": {
+    "build": "node config.mjs",
+    "test": "node config.mjs && node --test"
+  },
+  "devDependencies": {
+    "style-dictionary": "^5.0.0"
+  }
+}
