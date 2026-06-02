@@ -363,10 +363,7 @@ async function resolveUid(db: Firestore, input: ReconcileInput, tx: DecodedTrans
     );
   }
   if (input.claimedUid && input.claimedUid !== fallbackUid) {
-    throw new EntitlementReconcileError(
-      "binding_mismatch",
-      "JWS originalTransactionId belongs to a different user.",
-    );
+    throw new EntitlementReconcileError("binding_mismatch", "JWS originalTransactionId belongs to a different user.");
   }
   return fallbackUid;
 }
@@ -682,12 +679,7 @@ export async function consumeAppStoreLiveStatusRateLimit(
 }
 
 function hasToMillis(value: unknown): value is { toMillis: () => number } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "toMillis" in value &&
-    typeof value.toMillis === "function"
-  );
+  return typeof value === "object" && value !== null && "toMillis" in value && typeof value.toMillis === "function";
 }
 
 function requireString(value: unknown, field: string): string {

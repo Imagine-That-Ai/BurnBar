@@ -63,15 +63,20 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
           // but do not flip `active` blindly here.
           continue;
         }
-        const result = await reconcileEntitlement(db, cfg, {
-          signedTransactionJWS: seedJWS,
-          signedRenewalInfoJWS: live.pairs[0]?.signedRenewalInfo,
-          source: "scheduled_reconcile",
-          productID: data.productID,
-        }, {
-          fetchLive: async () => live,
-          rateLimitLiveStatus: false,
-        });
+        const result = await reconcileEntitlement(
+          db,
+          cfg,
+          {
+            signedTransactionJWS: seedJWS,
+            signedRenewalInfoJWS: live.pairs[0]?.signedRenewalInfo,
+            source: "scheduled_reconcile",
+            productID: data.productID,
+          },
+          {
+            fetchLive: async () => live,
+            rateLimitLiveStatus: false,
+          },
+        );
         ok += 1;
         if (result.changed) updated += 1;
       } catch (err) {

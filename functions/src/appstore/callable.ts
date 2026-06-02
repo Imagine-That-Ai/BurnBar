@@ -176,7 +176,10 @@ export const verifyCloudProTopUp = onCall(
         throw httpsError("permission-denied", "transaction bundleID does not match this app");
       }
       if (decoded.environment !== "Production") {
-        throw httpsError("permission-denied", `Non-production App Store transaction environment ${decoded.environment} cannot grant production top-up.`);
+        throw httpsError(
+          "permission-denied",
+          `Non-production App Store transaction environment ${decoded.environment} cannot grant production top-up.`,
+        );
       }
       const kind = appStoreTopUpKind(transactionProductID);
       if (!kind) {
@@ -313,16 +316,21 @@ export const restoreHostedQuotaEntitlement = onCall(
         throw httpsError("failed-precondition", "ASC returned no signed transactions for this subscription");
       }
       try {
-        const result = await reconcileEntitlement(db, cfg, {
-          signedTransactionJWS: seedJWS,
-          signedRenewalInfoJWS: live.pairs[0]?.signedRenewalInfo,
-          claimedUid: uid,
-          source: "client_callable",
-          productID,
-        }, {
-          fetchLive: async () => live,
-          rateLimitLiveStatus: false,
-        });
+        const result = await reconcileEntitlement(
+          db,
+          cfg,
+          {
+            signedTransactionJWS: seedJWS,
+            signedRenewalInfoJWS: live.pairs[0]?.signedRenewalInfo,
+            claimedUid: uid,
+            source: "client_callable",
+            productID,
+          },
+          {
+            fetchLive: async () => live,
+            rateLimitLiveStatus: false,
+          },
+        );
         return result.entitlement;
       } catch (err) {
         throw mapReconcileError(err);

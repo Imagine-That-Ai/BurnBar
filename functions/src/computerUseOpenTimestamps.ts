@@ -353,7 +353,8 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
       checkedAt,
     };
   }
-  const shouldBindChainToHead = head.sessionManifestHashHex !== undefined || dependencies.serverHeadStatus === undefined;
+  const shouldBindChainToHead =
+    head.sessionManifestHashHex !== undefined || dependencies.serverHeadStatus === undefined;
   if (shouldBindChainToHead && !chainBytes) {
     return {
       status: "head_mismatch",

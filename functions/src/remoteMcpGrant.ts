@@ -53,11 +53,7 @@ export interface RemoteMcpRevocationQuery {
 }
 
 export interface RemoteMcpRevocationBatch {
-  set(
-    ref: RemoteMcpRevocationDocumentReference,
-    data: Record<string, unknown>,
-    options: { merge: true },
-  ): void;
+  set(ref: RemoteMcpRevocationDocumentReference, data: Record<string, unknown>, options: { merge: true }): void;
   commit(): Promise<void>;
 }
 

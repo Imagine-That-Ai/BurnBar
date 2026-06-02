@@ -530,15 +530,18 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   const attachmentId = safeIdentifier(body.attachmentId, `att_${randomBytes(8).toString("hex")}`);
   const storagePath = `users/${grant.uid}/hermes_gateway_attachments/${grant.client.id}/${attachmentId}/${fileName}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  const [uploadURL] = await getStorage().bucket().file(storagePath).getSignedUrl({
-    version: "v4",
-    action: "write",
-    expires: expiresAt,
-    contentType,
-    extensionHeaders: {
-      "content-length": String(byteCount),
-    },
-  });
+  const [uploadURL] = await getStorage()
+    .bucket()
+    .file(storagePath)
+    .getSignedUrl({
+      version: "v4",
+      action: "write",
+      expires: expiresAt,
+      contentType,
+      extensionHeaders: {
+        "content-length": String(byteCount),
+      },
+    });
   const now = nowISO();
   const manifest = {
     id: attachmentId,

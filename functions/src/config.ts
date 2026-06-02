@@ -33,7 +33,10 @@ function parseAppStoreEnvironmentValue(raw: unknown): EnvConfig["appStore"]["env
 function parseDelimitedStrings(raw: unknown): string[] {
   if (raw === undefined || raw === null) return [];
   if (Array.isArray(raw)) {
-    return raw.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean);
+    return raw
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
   }
   if (typeof raw !== "string") return [];
   return raw

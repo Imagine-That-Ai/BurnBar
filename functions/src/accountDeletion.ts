@@ -134,7 +134,10 @@ export async function eraseUserCloudData(
         secretDestroyedOrMissing = true;
       } catch (error) {
         summary.failedSecretDestroys += 1;
-        logger.warn(`Failed to destroy provider credential secret for uid:${uid.slice(0, 8)}/${doc.id}; keeping ref for retry.`, error);
+        logger.warn(
+          `Failed to destroy provider credential secret for uid:${uid.slice(0, 8)}/${doc.id}; keeping ref for retry.`,
+          error,
+        );
       }
     }
     if (secretDestroyedOrMissing) {
@@ -171,7 +174,10 @@ async function deleteDocumentTree(ref: AccountDeletionDocumentReference, batcher
   await batcher.delete(ref);
 }
 
-async function deleteCollectionTree(collection: AccountDeletionCollectionReference, batcher: DeleteBatcher): Promise<void> {
+async function deleteCollectionTree(
+  collection: AccountDeletionCollectionReference,
+  batcher: DeleteBatcher,
+): Promise<void> {
   const docs = await collection.listDocuments();
   for (const doc of docs) {
     await deleteDocumentTree(doc, batcher);
