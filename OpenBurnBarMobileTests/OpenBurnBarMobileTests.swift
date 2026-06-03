@@ -34,6 +34,15 @@ private final class InMemoryGatewayPinBacking: HermesGatewayPinBacking, @uncheck
     }
 }
 
+/// A pin backing whose reads always fail (e.g. errSecMissingEntitlement -34018 on
+/// an unsigned simulator, or a transiently-locked Keychain). Used to prove the
+/// downgrade gate is fail-CLOSED on a read error rather than fail-open.
+private struct UnreadableGatewayPinBacking: HermesGatewayPinBacking, @unchecked Sendable {
+    func load(account: String) -> HermesGatewayPinLoad { .unreadable(errSecMissingEntitlement) }
+    @discardableResult func save(_ value: String, account: String) -> OSStatus { errSecMissingEntitlement }
+    func delete(account: String) {}
+}
+
 @MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
 
@@ -971,6 +980,39 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(opened.chatRenderText(), legacyText)
     }
 
+    /// Fail-CLOSED on a Keychain read error: when the pin store cannot be read
+    /// (locked/entitlement-missing Keychain), an unsealed reply must STILL be
+    /// refused — a security gate must never fail open. Mirrors `verifyOrPin`'s
+    /// write-side fail-closed posture. Without this, a transient Keychain failure
+    /// would silently re-open the server-injected-plaintext path.
+    func testGatewayUnsealedReplyFailsClosedWhenPinStoreUnreadable() throws {
+        let uid = "uid_unreadable"
+        let clientId = "hgw_unreadable"
+        let pinStore = HermesGatewayAgentKeyPinStore(backing: UnreadableGatewayPinBacking())
+        // Sanity: the store reports a read it cannot satisfy as "must seal".
+        XCTAssertTrue(pinStore.requiresSealedReplies(uid: uid, clientId: clientId))
+
+        let forged = try XCTUnwrap(HermesGatewayMessageRecord(
+            documentID: "msg_unreadable",
+            data: [
+                "id": "msg_unreadable", "clientId": clientId, "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "threadId": HermesGatewayMessageResolver.defaultThreadID,
+                "text": "Forged while the Keychain was unreadable.",
+                "createdAt": "2026-06-02T08:08:04.968Z", "schemaVersion": 1
+            ]
+        ))
+        let opened = forged.decodedText(
+            using: HermesGatewayRelayKeypair.loadOrCreate(),
+            uid: uid,
+            pinStore: pinStore
+        )
+        XCTAssertTrue(opened.requiresSealedReply)
+        XCTAssertTrue(opened.isRefusedUnsealedReply)
+        XCTAssertNil(opened.displayText)
+        XCTAssertEqual(opened.chatRenderText(), HermesGatewayMessageRecord.unverifiedReplyText)
+    }
+
     // MARK: Gateway sealed attachment open (HIGH — write-only-dead opener)
 
     /// Seals an attachment EXACTLY as the Python adapter's `seal_attachment`
@@ -1127,10 +1169,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
         let grant = repository.approvalGrants.last
         XCTAssertEqual(grant?.userCode, "AB12-CD34")
-        XCTAssertEqual(grant?.relayEncryption, HermesRelayCrypto.algorithm)
-        XCTAssertEqual(grant?.relayKeyVersion, HermesRelayCrypto.keyVersion)
+        XCTAssertEqual(grant?.phoneRelayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(grant?.phoneRelayKeyVersion, HermesRelayCrypto.keyVersion)
         // The published pubkey decodes as a 65-byte X9.63 P-256 point (0x04 || X || Y).
-        let pubkey = grant?.relayPublicKey ?? ""
+        let pubkey = grant?.phoneRelayPublicKey ?? ""
         XCTAssertFalse(pubkey.isEmpty)
         let decoded = Data(base64Encoded: pubkey)
         XCTAssertEqual(decoded?.count, 65)
@@ -2477,9 +2519,9 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
 
     struct ApprovalGrant: Equatable {
         let userCode: String
-        let relayPublicKey: String?
-        let relayKeyVersion: Int?
-        let relayEncryption: String?
+        let phoneRelayPublicKey: String?
+        let phoneRelayKeyVersion: Int?
+        let phoneRelayEncryption: String?
     }
 
     struct OversightModeChange: Equatable {
@@ -2507,16 +2549,16 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         displayName: String?,
         destinationId: String,
         scopes: [String],
-        relayPublicKey: String?,
-        relayKeyVersion: Int?,
-        relayEncryption: String?
+        phoneRelayPublicKey: String?,
+        phoneRelayKeyVersion: Int?,
+        phoneRelayEncryption: String?
     ) async throws -> HermesGatewayClientRecord {
         approvalGrants.append(
             ApprovalGrant(
                 userCode: userCode,
-                relayPublicKey: relayPublicKey,
-                relayKeyVersion: relayKeyVersion,
-                relayEncryption: relayEncryption
+                phoneRelayPublicKey: phoneRelayPublicKey,
+                phoneRelayKeyVersion: phoneRelayKeyVersion,
+                phoneRelayEncryption: phoneRelayEncryption
             )
         )
         let client = HermesGatewayClientRecord(
