@@ -131,7 +131,12 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
   },
   external_mcp: {
     encryptionTier: "server_readable",
-    firestoreCollections: ["remote_mcp_clients", "remote_mcp_grants", "remote_mcp_audit_events", "remote_mcp_rate_limits"],
+    firestoreCollections: [
+      "remote_mcp_clients",
+      "remote_mcp_grants",
+      "remote_mcp_audit_events",
+      "remote_mcp_rate_limits",
+    ],
     storagePrefixes: [],
   },
   computer_use: {
@@ -223,7 +228,12 @@ function serializeDoc(data: FirebaseFirestore.DocumentData): Record<string, unkn
 }
 
 function serializeValue(value: unknown): unknown {
-  if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate: unknown }).toDate === "function") {
+  if (
+    value &&
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof (value as { toDate: unknown }).toDate === "function"
+  ) {
     try {
       return (value as { toDate: () => Date }).toDate().toISOString();
     } catch {

@@ -72,7 +72,11 @@ async function revokeConnectionCollection(uid: string, collection: string): Prom
     let writes = 0;
     for (const doc of docs) {
       if (doc.get("status") === "revoked") continue;
-      batch.set(doc.ref, { status: "revoked", updatedAt: now.toDate().toISOString(), revokeReason: REVOKE_REASON }, { merge: true });
+      batch.set(
+        doc.ref,
+        { status: "revoked", updatedAt: now.toDate().toISOString(), revokeReason: REVOKE_REASON },
+        { merge: true },
+      );
       writes += 1;
     }
     if (writes > 0) await batch.commit();
@@ -113,7 +117,9 @@ async function revokeProviderCredentials(uid: string): Promise<{ revoked: number
       const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
       const privateSnap = await privateRef.get();
       const secretVersionName = privateSnap.exists
-        ? (typeof privateSnap.get("secretVersionName") === "string" ? privateSnap.get("secretVersionName") : undefined)
+        ? typeof privateSnap.get("secretVersionName") === "string"
+          ? privateSnap.get("secretVersionName")
+          : undefined
         : undefined;
       if (secretVersionName) {
         try {
@@ -176,7 +182,10 @@ export const revokeAllAccess = onCall(
     };
 
     const [mcp, hermes, hermesGateway, pi, escrowDevices] = await Promise.all([
-      safe("mcp", () => revokeAllRemoteMcpGrantsForUser(db, uid, REVOKE_REASON), { clientsRevoked: 0, grantsRevoked: 0 }),
+      safe("mcp", () => revokeAllRemoteMcpGrantsForUser(db, uid, REVOKE_REASON), {
+        clientsRevoked: 0,
+        grantsRevoked: 0,
+      }),
       safe("hermes", () => revokeConnectionCollection(uid, "hermes_connections"), 0),
       safe("hermes_gateway", () => revokeConnectionCollection(uid, "hermes_gateway_clients"), 0),
       safe("pi_agent", () => revokeConnectionCollection(uid, "pi_agent_connections"), 0),

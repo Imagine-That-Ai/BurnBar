@@ -100,9 +100,7 @@ export const registerBrowserEscrowDevice = onCall(
   },
   wrapCallableHandler(
     "registerBrowserEscrowDevice",
-    async (
-      request: CallableRequest<{ publicKeyJwk?: unknown; recaptchaToken?: unknown; deviceName?: unknown }>,
-    ) => {
+    async (request: CallableRequest<{ publicKeyJwk?: unknown; recaptchaToken?: unknown; deviceName?: unknown }>) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before registering a browser for escrow.");
       // App Check (reCAPTCHA Enterprise on web) is the primary attestation; the

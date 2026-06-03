@@ -29,13 +29,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { stripUndefinedObject } from "../guards.js";
-import {
-  boundedTrimmedString,
-  requireHexDigest,
-  requireBoundedNumber,
-  requireRecordArray,
-  nowISO,
-} from "./shared.js";
+import { boundedTrimmedString, requireHexDigest, requireBoundedNumber, requireRecordArray, nowISO } from "./shared.js";
 import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -98,12 +92,13 @@ function parseRecoveryContactPayload(raw: unknown): { contacts: RecoveryContactS
   if (rawContacts.length === 0) {
     throw new HttpsError("invalid-argument", "At least one recovery contact is required.");
   }
-  const contacts: RecoveryContactShare[] = rawContacts.map((contact, idx) =>
-    stripUndefinedObject({
-      contactId: boundedTrimmedString(contact.contactId, `payload.contacts[${idx}].contactId`, 160, true),
-      sealedShare: requireSealedBlob(contact.sealedShare, `payload.contacts[${idx}].sealedShare`),
-      contactHint: boundedTrimmedString(contact.contactHint, `payload.contacts[${idx}].contactHint`, 256, false),
-    }) as RecoveryContactShare,
+  const contacts: RecoveryContactShare[] = rawContacts.map(
+    (contact, idx) =>
+      stripUndefinedObject({
+        contactId: boundedTrimmedString(contact.contactId, `payload.contacts[${idx}].contactId`, 160, true),
+        sealedShare: requireSealedBlob(contact.sealedShare, `payload.contacts[${idx}].sealedShare`),
+        contactHint: boundedTrimmedString(contact.contactHint, `payload.contacts[${idx}].contactHint`, 256, false),
+      }) as RecoveryContactShare,
   );
   const threshold = requireBoundedNumber(payload.threshold ?? contacts.length, "payload.threshold", 1, contacts.length);
   return { contacts, threshold };
@@ -135,92 +130,92 @@ export function verifyRecoveryConfirmation(data: Record<string, unknown>, suppli
 
 export const setupRecovery = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler(
-    "setupRecovery",
-    async (request: CallableRequest<{ method?: unknown; payload?: unknown }>) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before setting up recovery.");
-      enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler("setupRecovery", async (request: CallableRequest<{ method?: unknown; payload?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before setting up recovery.");
+    enforceAuthAndAppCheck(request, uid);
 
-      const method = boundedTrimmedString(request.data?.method, "method", 40, true) as RecoveryMethodKind;
-      if (method !== "recovery_key" && method !== "recovery_contact") {
-        throw new HttpsError("invalid-argument", "method must be recovery_key or recovery_contact.");
-      }
+    const method = boundedTrimmedString(request.data?.method, "method", 40, true) as RecoveryMethodKind;
+    if (method !== "recovery_key" && method !== "recovery_contact") {
+      throw new HttpsError("invalid-argument", "method must be recovery_key or recovery_contact.");
+    }
 
-      const recoveryId = `rec_${Date.now().toString(36)}_${randomBytes(8).toString("hex")}`;
-      const now = nowISO();
-      const base = {
-        recoveryId,
-        kind: method,
-        confirmed: false,
-        createdAt: now,
-        updatedAt: now,
-        schemaVersion: RECOVERY_SCHEMA_VERSION,
-        createdAtTs: Timestamp.now(),
-      };
+    const recoveryId = `rec_${Date.now().toString(36)}_${randomBytes(8).toString("hex")}`;
+    const now = nowISO();
+    const base = {
+      recoveryId,
+      kind: method,
+      confirmed: false,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: RECOVERY_SCHEMA_VERSION,
+      createdAtTs: Timestamp.now(),
+    };
 
-      let doc: Record<string, unknown>;
-      if (method === "recovery_key") {
-        const payload = parseRecoveryKeyPayload(request.data?.payload);
-        doc = { ...base, recoveryKey: payload };
-      } else {
-        const payload = parseRecoveryContactPayload(request.data?.payload);
-        doc = { ...base, recoveryContacts: payload.contacts, threshold: payload.threshold };
-      }
+    let doc: Record<string, unknown>;
+    if (method === "recovery_key") {
+      const payload = parseRecoveryKeyPayload(request.data?.payload);
+      doc = { ...base, recoveryKey: payload };
+    } else {
+      const payload = parseRecoveryContactPayload(request.data?.payload);
+      doc = { ...base, recoveryContacts: payload.contacts, threshold: payload.threshold };
+    }
 
-      await db.doc(`users/${uid}/${RECOVERY_COLLECTION}/${recoveryId}`).set(stripUndefinedObject(doc));
+    await db.doc(`users/${uid}/${RECOVERY_COLLECTION}/${recoveryId}`).set(stripUndefinedObject(doc));
 
-      try {
-        await appendAuditEvent(uid, {
-          actor: auditActorLabel(request),
-          action: AUDIT_ACTIONS.recoverySetup,
-          domain: "device_trust_keys",
-        });
-      } catch {
-        // best-effort audit
-      }
+    try {
+      await appendAuditEvent(uid, {
+        actor: auditActorLabel(request),
+        action: AUDIT_ACTIONS.recoverySetup,
+        domain: "device_trust_keys",
+      });
+    } catch {
+      // best-effort audit
+    }
 
-      return { ok: true, recoveryId };
-    },
-  ),
+    return { ok: true, recoveryId };
+  }),
 );
 
 export const confirmRecovery = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler("confirmRecovery", async (request: CallableRequest<{ recoveryId?: unknown; verificationHash?: unknown }>) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before confirming recovery.");
-    enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler(
+    "confirmRecovery",
+    async (request: CallableRequest<{ recoveryId?: unknown; verificationHash?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before confirming recovery.");
+      enforceAuthAndAppCheck(request, uid);
 
-    const recoveryId = boundedTrimmedString(request.data?.recoveryId, "recoveryId", 128, true);
-    const suppliedHash =
-      request.data?.verificationHash !== undefined
-        ? requireHexDigest(request.data.verificationHash, "verificationHash")
-        : undefined;
-    const ref = db.doc(`users/${uid}/${RECOVERY_COLLECTION}/${recoveryId}`);
-    const now = nowISO();
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) {
-        throw new HttpsError("not-found", "Recovery method not found.");
-      }
-      // Real re-verification: a recovery_key method requires the re-entered key's
-      // hash to match what was stored at setup before it is marked confirmed.
-      verifyRecoveryConfirmation(snap.data() ?? {}, suppliedHash);
-      tx.set(ref, { confirmed: true, confirmedAt: now, updatedAt: now }, { merge: true });
-    });
+      const recoveryId = boundedTrimmedString(request.data?.recoveryId, "recoveryId", 128, true);
+      const suppliedHash =
+        request.data?.verificationHash !== undefined
+          ? requireHexDigest(request.data.verificationHash, "verificationHash")
+          : undefined;
+      const ref = db.doc(`users/${uid}/${RECOVERY_COLLECTION}/${recoveryId}`);
+      const now = nowISO();
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) {
+          throw new HttpsError("not-found", "Recovery method not found.");
+        }
+        // Real re-verification: a recovery_key method requires the re-entered key's
+        // hash to match what was stored at setup before it is marked confirmed.
+        verifyRecoveryConfirmation(snap.data() ?? {}, suppliedHash);
+        tx.set(ref, { confirmed: true, confirmedAt: now, updatedAt: now }, { merge: true });
+      });
 
-    // Fail-CLOSED: confirming a recovery method arms an irreversible account-
-    // recovery path, so the record must commit. If the audit write fails the
-    // error propagates rather than the confirmation going unlogged.
-    await appendAuditEventRequired(uid, {
-      actor: auditActorLabel(request),
-      action: AUDIT_ACTIONS.recoveryConfirm,
-      domain: "device_trust_keys",
-    });
+      // Fail-CLOSED: confirming a recovery method arms an irreversible account-
+      // recovery path, so the record must commit. If the audit write fails the
+      // error propagates rather than the confirmation going unlogged.
+      await appendAuditEventRequired(uid, {
+        actor: auditActorLabel(request),
+        action: AUDIT_ACTIONS.recoveryConfirm,
+        domain: "device_trust_keys",
+      });
 
-    return { ok: true };
-  }),
+      return { ok: true };
+    },
+  ),
 );
 
 /** Test-only surface for the pure validators (no Firestore). */

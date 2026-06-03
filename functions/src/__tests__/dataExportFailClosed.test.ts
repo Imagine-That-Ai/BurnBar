@@ -65,9 +65,7 @@ describe("exportUserData — fail-closed on required audit write", () => {
   });
 
   it("propagates the error when the required audit write fails", async () => {
-    await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(
-      /audit append failed/,
-    );
+    await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(/audit append failed/);
     expect(appendAuditEventRequired).toHaveBeenCalledTimes(1);
   });
 });

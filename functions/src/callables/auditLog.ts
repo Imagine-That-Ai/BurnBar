@@ -189,40 +189,37 @@ export async function appendAuditEventRequired(
  */
 export const getAuditLog = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler(
-    "getAuditLog",
-    async (request: CallableRequest<{ cursor?: unknown; limit?: unknown }>) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in to view your access audit timeline.");
-      enforceAuthAndAppCheck(request, uid);
+  wrapCallableHandler("getAuditLog", async (request: CallableRequest<{ cursor?: unknown; limit?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in to view your access audit timeline.");
+    enforceAuthAndAppCheck(request, uid);
 
-      const limit = requireBoundedNumber(request.data?.limit ?? 50, "limit", 1, 200);
-      const cursor = request.data?.cursor == null ? 0 : requireBoundedNumber(request.data.cursor, "cursor", 0, 2 ** 50);
+    const limit = requireBoundedNumber(request.data?.limit ?? 50, "limit", 1, 200);
+    const cursor = request.data?.cursor == null ? 0 : requireBoundedNumber(request.data.cursor, "cursor", 0, 2 ** 50);
 
-      const snap = await db
-        .collection(`users/${uid}/${AUDIT_LOG_COLLECTION}`)
-        .orderBy("seq", "asc")
-        .where("seq", ">=", cursor)
-        .limit(limit)
-        .get();
+    const snap = await db
+      .collection(`users/${uid}/${AUDIT_LOG_COLLECTION}`)
+      .orderBy("seq", "asc")
+      .where("seq", ">=", cursor)
+      .limit(limit)
+      .get();
 
-      const events = snap.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          seq: Number(data.seq ?? 0),
-          ts: typeof data.ts === "string" ? data.ts : "",
-          actor: typeof data.actor === "string" ? data.actor : "",
-          action: typeof data.action === "string" ? data.action : "",
-          domain: typeof data.domain === "string" ? data.domain : "",
-          prevHash: typeof data.prevHash === "string" ? data.prevHash : "",
-          hash: typeof data.hash === "string" ? data.hash : "",
-        };
-      });
+    const events = snap.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        seq: Number(data.seq ?? 0),
+        ts: typeof data.ts === "string" ? data.ts : "",
+        actor: typeof data.actor === "string" ? data.actor : "",
+        action: typeof data.action === "string" ? data.action : "",
+        domain: typeof data.domain === "string" ? data.domain : "",
+        prevHash: typeof data.prevHash === "string" ? data.prevHash : "",
+        hash: typeof data.hash === "string" ? data.hash : "",
+      };
+    });
 
-      const nextCursor = snap.size === limit ? (events[events.length - 1].seq + 1) : undefined;
-      return stripUndefinedObject({ ok: true, events, nextCursor });
-    },
-  ),
+    const nextCursor = snap.size === limit ? events[events.length - 1].seq + 1 : undefined;
+    return stripUndefinedObject({ ok: true, events, nextCursor });
+  }),
 );
 
 /** Outcome of {@link verifyAuditChain}: a broken link, a truncated tail, or valid. */
@@ -286,8 +283,7 @@ async function readAuditHead(uid: string): Promise<AuditHead | null> {
     headHash: typeof data.headHash === "string" ? data.headHash : AUDIT_GENESIS_PREV_HASH,
     anchoredSeq: typeof data.anchoredSeq === "number" ? data.anchoredSeq : undefined,
     anchoredHash: typeof data.anchoredHash === "string" ? data.anchoredHash : undefined,
-    anchoredOtsProofBase64:
-      typeof data.anchoredOtsProofBase64 === "string" ? data.anchoredOtsProofBase64 : undefined,
+    anchoredOtsProofBase64: typeof data.anchoredOtsProofBase64 === "string" ? data.anchoredOtsProofBase64 : undefined,
   };
 }
 

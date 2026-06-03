@@ -159,7 +159,12 @@ export const verifyPasskeyRegistration = onCall(
 
     const challengeSnap = await challengeRef.get();
     const challengeData = challengeSnap.data();
-    if (!challengeSnap.exists || !challengeData || challengeData.consumedAt || challengeExpired(challengeData.createdAt)) {
+    if (
+      !challengeSnap.exists ||
+      !challengeData ||
+      challengeData.consumedAt ||
+      challengeExpired(challengeData.createdAt)
+    ) {
       throw new HttpsError("failed-precondition", "Passkey registration challenge expired or was already used.");
     }
 
@@ -241,7 +246,12 @@ export const verifyPasskeyAssertion = onCall(
     const token = await db.runTransaction(async (tx) => {
       const challengeSnap = await tx.get(challengeRef);
       const challengeData = challengeSnap.data();
-      if (!challengeSnap.exists || !challengeData || challengeData.consumedAt || challengeExpired(challengeData.createdAt)) {
+      if (
+        !challengeSnap.exists ||
+        !challengeData ||
+        challengeData.consumedAt ||
+        challengeExpired(challengeData.createdAt)
+      ) {
         throw new HttpsError("failed-precondition", "Passkey assertion challenge expired or was already used.");
       }
 
