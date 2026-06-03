@@ -2,10 +2,11 @@
  * @fileoverview BurnBar Cloud Hermes Gateway contracts and pure helpers.
  */
 
+import { HttpsError } from "firebase-functions/v2/https";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { isRecord, recordOrUndefined } from "./guards.js";
 
-export const HERMES_GATEWAY_SCHEMA_VERSION = 1;
+export const HERMES_GATEWAY_SCHEMA_VERSION = 2;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
 export const HERMES_GATEWAY_TOKEN_BYTES = 32;
 // Bearer tokens expire 90 days after issuance/rotation. Tokens minted before
@@ -23,7 +24,7 @@ export const HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID = "home";
 // /state route. Distinct from HERMES_GATEWAY_SCHEMA_VERSION (which versions the
 // Firestore document shapes): clients use this to gate features that depend on
 // a newer gateway contract without inspecting individual document fields.
-export const HERMES_GATEWAY_PROTOCOL_VERSION = 1;
+export const HERMES_GATEWAY_PROTOCOL_VERSION = 2;
 // A client counts as "online" when it last checked in within this window.
 // Presence is DERIVED from lastSeenAt at read time and never persisted — a poll
 // bumps lastSeenAt on every authenticated request, so a stored online flag would
@@ -37,6 +38,55 @@ export const HERMES_GATEWAY_PENDING_MODEL_TTL_MS = 2 * 60 * 1000;
 // "expired" so a risky action never blocks the agent forever.
 export const HERMES_GATEWAY_APPROVAL_TTL_MS = 5 * 60 * 1000;
 export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
+
+// ---------------------------------------------------------------------------
+// Gateway relay E2EE envelope (schema 2+). The phone seals event bodies to the
+// agent's relay public key and the agent seals reply bodies to the phone's relay
+// public key using the byte-exact HermesRelayCrypto contract
+// ("p256-hkdf-sha256-aesgcm", keyVersion 1). The server is a blind
+// store-and-forward: it validates the envelope SHAPE only and never decrypts.
+// ---------------------------------------------------------------------------
+
+// Wire-format constant mirrored verbatim from HermesRelayCrypto.algorithm. Every
+// relay envelope and every published relay public key advertises this exact
+// string; any other value is rejected at validation time.
+export const HERMES_GATEWAY_RELAY_ENCRYPTION = "p256-hkdf-sha256-aesgcm";
+// X9.63 uncompressed P-256 public key: 65 bytes (0x04 ‖ X(32) ‖ Y(32)), base64.
+export const HERMES_GATEWAY_RELAY_PUBLIC_KEY_BYTES = 65;
+// payloadCiphertext base64 cap (matches the relay-request precedent in
+// firestore.rules). A sealed event/message/manifest payload is small; the cap is
+// generous so a full 32 KB event body plus GCM overhead fits comfortably.
+export const HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 = 900_000;
+// wrappedKey base64 cap. The wrapped symmetric key is a fixed ~125 bytes
+// (ephPubX963(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16)); 4096 leaves ample headroom.
+export const HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 = 4_096;
+// Grace window: legacy schema-1 clients with no published relay public key
+// (relayCapable !== true) may still send/receive PLAINTEXT bodies until this UTC
+// cutoff so an in-flight migration never bricks a paired phone. After the cutoff
+// the handlers fail toward privacy and reject any unsealed write. Reads keep a
+// legacy plaintext fallback indefinitely so already-queued v1 docs still render.
+export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-09-01T00:00:00.000Z";
+
+/**
+ * Whether the gateway is still inside the plaintext grace window. After the
+ * cutoff every body MUST be sealed; before it, a `relayCapable:false` legacy
+ * client may still write plaintext (the handler logs a deprecation counter).
+ */
+export function isWithinGatewayGraceWindow(now = Date.now()): boolean {
+  const cutoff = Date.parse(HERMES_GATEWAY_GRACE_WINDOW_CUTOFF);
+  return Number.isFinite(cutoff) && now < cutoff;
+}
+
+/**
+ * A client may legally write a plaintext body only when it is NOT relay-capable
+ * (never published a relay public key) AND the grace window has not yet closed.
+ * A relay-capable client is always required to seal; once the window closes
+ * every client must seal regardless of capability.
+ */
+export function gatewayPlaintextWriteAllowed(relayCapable: unknown, now = Date.now()): boolean {
+  if (relayCapable === true) return false;
+  return isWithinGatewayGraceWindow(now);
+}
 
 export const HERMES_GATEWAY_SCOPES = ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"] as const;
 export const HERMES_GATEWAY_DEFAULT_SCOPES = ["hermes.gateway.read", "hermes.gateway.write"] as const;
@@ -63,6 +113,22 @@ export interface HermesGatewayModelOptionDoc {
   displayName: string;
 }
 
+/**
+ * Per-document sealed sub-object carried by E2EE gateway docs (schema 2+).
+ * `payloadCiphertext` is the AES-256-GCM `.combined` seal of the direction's
+ * private JSON payload; `wrappedKey` is the per-payload symmetric key wrapped to
+ * the recipient's relay public key. Mirrors the relay-request precedent
+ * (HermesRelayRequestDoc) so the server's opaque store-and-forward treatment is
+ * identical. The server validates SHAPE only (requireGatewayRelayEnvelope) and
+ * never has the recipient private key, so it can never decrypt.
+ */
+export interface GatewayRelayEnvelopeDoc {
+  payloadCiphertext: string;
+  wrappedKey: string;
+  relayEncryption: string;
+  relayKeyVersion: number;
+}
+
 export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -75,6 +141,22 @@ export interface HermesGatewayClientDoc {
   expiresAt?: string;
   rotatedAt?: string;
   lastSeenAt?: string;
+  // Relay E2EE pairing material (schema 2+). The AGENT publishes its relay
+  // public key at device/start (and re-publishes via /runtime); the PHONE
+  // publishes its own at approveHermesGatewayDeviceGrant. Phone→agent event
+  // bodies are wrapped to agentRelayPublicKey; agent→phone reply/attachment
+  // bodies are wrapped to phoneRelayPublicKey. X9.63 uncompressed base64 (65B).
+  agentRelayPublicKey?: string;
+  agentRelayKeyVersion?: number;
+  agentRelayEncryption?: string;
+  phoneRelayPublicKey?: string;
+  phoneRelayKeyVersion?: number;
+  phoneRelayEncryption?: string;
+  // True once BOTH endpoints have published a relay public key, so the handlers
+  // require sealed bodies. A legacy schema-1 client leaves this unset/false and
+  // may write plaintext only within the grace window (see
+  // HERMES_GATEWAY_GRACE_WINDOW_CUTOFF).
+  relayCapable?: boolean;
   runtimeModelId?: string;
   runtimeProviderId?: string;
   runtimeModelOptions?: HermesGatewayModelOptionDoc[];
@@ -130,12 +212,18 @@ export interface HermesGatewayEventDoc {
   kind: HermesGatewayEventKind;
   destinationId: string;
   targetClientId?: string;
+  // threadId / senderDisplayName / text are PRIVATE (schema 2+): they live
+  // inside relayEnvelope.payloadCiphertext, sealed to the agent's relay key.
+  // They remain typed as optional only so the LEGACY plaintext read fallback
+  // can still surface a pre-migration schema-1 doc.
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
-  text: string;
+  text?: string;
   modelId?: string;
   attachmentIds: string[];
+  // Sealed body for schema 2+ events. Absent on legacy schema-1 docs.
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -147,7 +235,11 @@ export interface HermesGatewayMessageDoc {
   destinationId: string;
   threadId?: string;
   replyToEventId?: string;
+  // text is PRIVATE (schema 2+): sealed inside relayEnvelope to the phone's
+  // relay key. Kept optional for the legacy schema-1 plaintext read fallback.
   text?: string;
+  // Sealed reply body for schema 2+ messages. Absent on legacy schema-1 docs.
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -157,11 +249,18 @@ export interface HermesGatewayAttachmentManifestDoc {
   id: string;
   clientId: string;
   destinationId?: string;
-  fileName: string;
+  // fileName is PRIVATE (schema 2+): sealed inside relayEnvelope (alongside
+  // byteCount/contentType). Optional for the legacy schema-1 read fallback.
+  fileName?: string;
   contentType: string;
   byteCount: number;
   storagePath: string;
   status: HermesGatewayAttachmentStatus;
+  // Sealed manifest body ({fileName,byteCount,contentType}) + the wrapped
+  // attachment-body key, for schema 2+ encrypted uploads. The agent seals the
+  // bytes with a per-attachment key before the signed-URL upload, so Storage
+  // holds ciphertext and the server's sha256 is a ciphertext integrity check.
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
   createdAt: string;
   updatedAt?: string;
   expiresAt: string;
@@ -331,6 +430,91 @@ export function tokenPreview(token: string): string {
   return token.length <= 10 ? token : `${token.slice(0, 8)}...${token.slice(-4)}`;
 }
 
+/**
+ * Validate a published relay public key: a base64 X9.63 uncompressed P-256 key
+ * (exactly 65 bytes, first byte 0x04). Returns the canonical (trimmed) base64 on
+ * success, or undefined for any malformed/absent value — callers decide whether a
+ * missing key is fatal (post-cutoff pairing) or tolerable (legacy pairing).
+ */
+export function isGatewayRelayPublicKeyB64(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > 256 || !/^[A-Za-z0-9+/=]+$/u.test(value)) return undefined;
+  let decoded: Buffer;
+  try {
+    decoded = Buffer.from(value, "base64");
+  } catch {
+    return undefined;
+  }
+  // Reject base64 that round-trips to a different string (non-canonical padding)
+  // or to the wrong key length / point format.
+  if (decoded.length !== HERMES_GATEWAY_RELAY_PUBLIC_KEY_BYTES || decoded[0] !== 0x04) return undefined;
+  return value;
+}
+
+/**
+ * Validate a per-document relay envelope (schema 2+). Mirrors requireSealedText:
+ * checks the algorithm constant, the key version range, and the base64 shape +
+ * size caps of payloadCiphertext / wrappedKey. The server never decrypts; this is
+ * a pure SHAPE gate. Throws HttpsError("invalid-argument") on any violation — the
+ * gateway HTTP wrapper maps HttpsError to a 400, so both the callable and HTTP
+ * surfaces reject malformed envelopes identically.
+ */
+export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): GatewayRelayEnvelopeDoc {
+  const record = recordOrUndefined(raw);
+  if (!record) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be a relay envelope.`);
+  }
+  const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
+  if (relayEncryption !== HERMES_GATEWAY_RELAY_ENCRYPTION) {
+    throw new HttpsError("invalid-argument", `${fieldName}.relayEncryption must be ${HERMES_GATEWAY_RELAY_ENCRYPTION}.`);
+  }
+  const relayKeyVersion =
+    typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
+  if (!Number.isFinite(relayKeyVersion) || relayKeyVersion < 1 || relayKeyVersion > 100) {
+    throw new HttpsError("invalid-argument", `${fieldName}.relayKeyVersion must be between 1 and 100.`);
+  }
+  const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
+  if (
+    !payloadCiphertext ||
+    payloadCiphertext.length > HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 ||
+    !/^[A-Za-z0-9+/=]+$/u.test(payloadCiphertext)
+  ) {
+    throw new HttpsError("invalid-argument", `${fieldName}.payloadCiphertext must be base64 within the size cap.`);
+  }
+  const wrappedKey = typeof record.wrappedKey === "string" ? record.wrappedKey.trim() : "";
+  if (
+    !wrappedKey ||
+    wrappedKey.length > HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 ||
+    !/^[A-Za-z0-9+/=]+$/u.test(wrappedKey)
+  ) {
+    throw new HttpsError("invalid-argument", `${fieldName}.wrappedKey must be base64 within the size cap.`);
+  }
+  return { payloadCiphertext, wrappedKey, relayEncryption, relayKeyVersion };
+}
+
+/**
+ * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
+ * Event) to pass through a stored envelope verbatim without rejecting the whole
+ * doc. Returns the validated envelope or undefined.
+ */
+export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelopeDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  const { payloadCiphertext, wrappedKey, relayEncryption, relayKeyVersion } = record;
+  if (
+    typeof payloadCiphertext !== "string" ||
+    typeof wrappedKey !== "string" ||
+    typeof relayEncryption !== "string" ||
+    typeof relayKeyVersion !== "number" ||
+    !payloadCiphertext ||
+    !wrappedKey
+  ) {
+    return undefined;
+  }
+  return { payloadCiphertext, wrappedKey, relayEncryption, relayKeyVersion };
+}
+
 export function bearerTokenFromAuthorizationHeader(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const match = /^Bearer\s+(.+)$/i.exec(raw.trim());
@@ -383,6 +567,25 @@ export function clampHermesGatewayLimit(raw: unknown, fallback = 50): number {
   return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
+/**
+ * Tolerate the optional relay-pairing fields (schema 2+) on a client doc: when
+ * present each must be the right primitive type; absent is fine (legacy schema-1
+ * clients carry none). Factored out so the client-doc guard stays readable.
+ */
+function hasValidOptionalRelayFields(record: Record<string, unknown>): boolean {
+  const optionalString = (value: unknown) => typeof value === "string" || value === undefined;
+  const optionalNumber = (value: unknown) => typeof value === "number" || value === undefined;
+  return (
+    optionalString(record.agentRelayPublicKey) &&
+    optionalNumber(record.agentRelayKeyVersion) &&
+    optionalString(record.agentRelayEncryption) &&
+    optionalString(record.phoneRelayPublicKey) &&
+    optionalNumber(record.phoneRelayKeyVersion) &&
+    optionalString(record.phoneRelayEncryption) &&
+    (typeof record.relayCapable === "boolean" || record.relayCapable === undefined)
+  );
+}
+
 export function isHermesGatewayClientDoc(raw: unknown): raw is HermesGatewayClientDoc {
   const record = recordOrUndefined(raw);
   if (!record) return false;
@@ -397,9 +600,27 @@ export function isHermesGatewayClientDoc(raw: unknown): raw is HermesGatewayClie
     typeof record.homeDestinationId === "string" &&
     (typeof record.expiresAt === "string" || record.expiresAt === undefined) &&
     (typeof record.rotatedAt === "string" || record.rotatedAt === undefined) &&
+    hasValidOptionalRelayFields(record) &&
     typeof record.createdAt === "string" &&
     typeof record.updatedAt === "string" &&
     typeof record.schemaVersion === "number"
+  );
+}
+
+/**
+ * Tolerate the optional/timestamp tail of an attachment manifest (created/uploaded/
+ * finalized timestamps, sha256, storageGeneration). Factored out so the manifest
+ * guard's body stays under the complexity ceiling.
+ */
+function hasValidAttachmentManifestTail(record: Record<string, unknown>): boolean {
+  return (
+    typeof record.createdAt === "string" &&
+    (typeof record.updatedAt === "string" || record.updatedAt === undefined) &&
+    typeof record.expiresAt === "string" &&
+    (typeof record.uploadedAt === "string" || record.uploadedAt === undefined) &&
+    (typeof record.finalizedAt === "string" || record.finalizedAt === undefined) &&
+    (isSha256Hex(record.sha256) || record.sha256 === undefined) &&
+    (typeof record.storageGeneration === "string" || record.storageGeneration === undefined)
   );
 }
 
@@ -411,7 +632,11 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
     typeof record.id === "string" &&
     typeof record.clientId === "string" &&
     (typeof record.destinationId === "string" || record.destinationId === undefined) &&
-    typeof record.fileName === "string" &&
+    // fileName is sealed (schema 2+) so it is optional now; a legacy schema-1
+    // manifest still carries a plaintext fileName. relayEnvelope is present on
+    // sealed manifests and validated by sanitizeGatewayRelayEnvelope when read.
+    (typeof record.fileName === "string" || record.fileName === undefined) &&
+    (record.relayEnvelope === undefined || sanitizeGatewayRelayEnvelope(record.relayEnvelope) !== undefined) &&
     typeof record.contentType === "string" &&
     typeof record.byteCount === "number" &&
     Number.isFinite(record.byteCount) &&
@@ -421,13 +646,7 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
       status === "failed" ||
       status === "expired" ||
       status === "rejected") &&
-    typeof record.createdAt === "string" &&
-    (typeof record.updatedAt === "string" || record.updatedAt === undefined) &&
-    typeof record.expiresAt === "string" &&
-    (typeof record.uploadedAt === "string" || record.uploadedAt === undefined) &&
-    (typeof record.finalizedAt === "string" || record.finalizedAt === undefined) &&
-    (isSha256Hex(record.sha256) || record.sha256 === undefined) &&
-    (typeof record.storageGeneration === "string" || record.storageGeneration === undefined) &&
+    hasValidAttachmentManifestTail(record) &&
     typeof record.schemaVersion === "number"
   );
 }
@@ -435,13 +654,18 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
 export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc | undefined {
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
+  const relayEnvelope = sanitizeGatewayRelayEnvelope(record.relayEnvelope);
+  // schema 2+ docs carry a sealed relayEnvelope and NO plaintext text; legacy
+  // schema-1 docs carry a plaintext text and no envelope. Accept either, but
+  // reject a doc that has neither (a corrupt/empty event the agent can't read).
+  const hasLegacyText = typeof record.text === "string";
   if (
     typeof record.id !== "string" ||
     typeof record.sequence !== "number" ||
     (record.kind !== "message" && record.kind !== "model_switch") ||
     typeof record.destinationId !== "string" ||
     typeof record.senderId !== "string" ||
-    typeof record.text !== "string" ||
+    (!relayEnvelope && !hasLegacyText) ||
     !Array.isArray(record.attachmentIds) ||
     typeof record.createdAt !== "string" ||
     typeof record.schemaVersion !== "number"
@@ -454,11 +678,15 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     kind: record.kind,
     destinationId: record.destinationId,
     targetClientId: typeof record.targetClientId === "string" ? record.targetClientId : undefined,
+    // threadId/senderDisplayName/text are echoed ONLY for legacy schema-1 docs
+    // (read fallback). For sealed schema-2 docs they are absent here — the agent
+    // recovers them by opening relayEnvelope with its relay private key.
     threadId: typeof record.threadId === "string" ? record.threadId : undefined,
     senderId: record.senderId,
     senderDisplayName: typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,
-    text: record.text,
+    text: hasLegacyText ? (record.text as string) : undefined,
     modelId: typeof record.modelId === "string" ? record.modelId : undefined,
+    relayEnvelope,
     attachmentIds: record.attachmentIds.filter((item): item is string => typeof item === "string"),
     createdAt: record.createdAt,
     schemaVersion: record.schemaVersion,
@@ -531,6 +759,18 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     expiresAt: client.expiresAt,
     rotatedAt: client.rotatedAt,
     lastSeenAt: client.lastSeenAt,
+    // Surface BOTH relay public keys so the phone (reading /state or the clients
+    // collection) can wrap its first event to the agent, and the agent (polling
+    // /state) can wrap its first reply to the phone, without an extra round-trip.
+    // These are PUBLIC keys — safe to echo; the private halves never leave the
+    // owning device. relayCapable tells readers whether sealing is required.
+    agentRelayPublicKey: client.agentRelayPublicKey,
+    agentRelayKeyVersion: client.agentRelayKeyVersion,
+    agentRelayEncryption: client.agentRelayEncryption,
+    phoneRelayPublicKey: client.phoneRelayPublicKey,
+    phoneRelayKeyVersion: client.phoneRelayKeyVersion,
+    phoneRelayEncryption: client.phoneRelayEncryption,
+    relayCapable: client.relayCapable === true,
     runtimeModelId: client.runtimeModelId,
     runtimeProviderId: client.runtimeProviderId,
     runtimeModelOptions: client.runtimeModelOptions,

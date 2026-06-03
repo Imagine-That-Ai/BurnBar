@@ -10,7 +10,10 @@ import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.SkillRunEventImportance
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.cloud.CloudVaultCryptoSearch
 import com.openburnbar.data.firebase.CloudVaultSealedTextCodec
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -198,59 +201,54 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
 
     private fun writeFirestore(topic: AgentSubscriptionTopic) {
         val uid = auth.currentUser?.uid ?: return
-        // The display strings echo which agent the user follows (a behavioral
-        // fingerprint), so seal `displayName` → `sealedDisplayName` and
-        // `description` → `sealedDescription` with the Cloud Vault key before the
-        // write, mirroring the budget-rule writer. `agentURI`/`topicID` stay
-        // plaintext — they are the routing key and the doc ID is derived from them.
-        // If the key is unavailable (device not yet approved) the write degrades to
-        // legacy plaintext so subscriptions still sync; a key-holding peer re-seals
-        // on its next write.
+        // The whole subscription graph is cloaked: seal `displayName`/`description`
+        // (the behavioral fingerprint) AND the graph edge `agentURI`/`topicID`
+        // (which tells the server which agents the user follows) with the Cloud
+        // Vault key, and write under an opaque vault-keyed HMAC doc id. If the key
+        // is unavailable (device not yet approved), keep the local preference
+        // only; cloud writes are sealed-only.
         ioScope.launch {
             val vaultKey =
                 runCatching {
-                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
-                }.getOrNull()
-            val payload =
-                mutableMapOf<String, Any>(
-                    "agentURI" to topic.agentURI,
-                    "topicID" to topic.topicID,
-                    "cadence" to topic.cadence.token,
-                    "consentGivenAt" to topic.createdAtEpoch,
-                    "isMuted" to topic.muted,
-                    "deliveryMode" to topic.deliveryMode.wire,
-                    "minimumEventImportance" to topic.minimumEventImportance.wire,
-                    "deliveryCountThisMonth" to 0,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                )
-            if (vaultKey != null) {
-                payload["sealedDisplayName"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.displayName, vaultKey))
-                payload["sealedDescription"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.description, vaultKey))
-                // Strip any legacy plaintext a prior client merged in.
-                payload["displayName"] = FieldValue.delete()
-                payload["description"] = FieldValue.delete()
-            } else {
-                payload["displayName"] = topic.displayName
-                payload["description"] = topic.description
-            }
-            firestore.collection("users").document(uid)
+                    AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore).keyData
+                }.getOrNull() ?: return@launch
+            val payload = sealedSubscriptionTopicPayload(topic, vaultKey)
+            val collection = firestore.collection("users").document(uid)
                 .collection("subscription_topics")
-                .document(documentID(topic.agentURI, topic.topicID))
-                .set(payload, com.google.firebase.firestore.SetOptions.merge())
+            val opaqueDocID = documentID(topic.agentURI, topic.topicID, vaultKey)
+            collection.document(opaqueDocID).set(payload, com.google.firebase.firestore.SetOptions.merge())
+            legacyCleartextDocumentIDs(topic.agentURI, topic.topicID)
+                .filterNot { it == opaqueDocID }
+                .forEach { collection.document(it).delete() }
         }
     }
 
     private fun deleteFirestore(agentURI: String, topicID: String) {
         val uid = auth.currentUser?.uid ?: return
-        firestore.collection("users").document(uid)
-            .collection("subscription_topics")
-            .document(documentID(agentURI, topicID))
-            .delete()
+        // The opaque doc id needs the vault key. Resolve the read key (the doc-id
+        // key is deterministic for the active vault key) before recomputing the id.
+        ioScope.launch {
+            val vaultKey =
+                runCatching {
+                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+                }.getOrNull()
+            val collection = firestore.collection("users").document(uid)
+                .collection("subscription_topics")
+            if (vaultKey != null) {
+                collection.document(documentID(agentURI, topicID, vaultKey)).delete()
+            }
+            legacyCleartextDocumentIDs(agentURI, topicID).forEach { collection.document(it).delete() }
+        }
     }
 
     private fun decodeFirestoreTopic(data: Map<String, Any>, vaultKey: ByteArray? = null): AgentSubscriptionTopic? {
-        val agentURI = (data["agentURI"] as? String)?.takeIf { it.isNotBlank() } ?: return null
-        val topicID = (data["topicID"] as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_TOPIC_ID
+        // Open the sealed graph edge, falling back to legacy plaintext for
+        // pre-migration / in-flight docs. Without the key (and no legacy
+        // plaintext) the edge cannot resolve and the row is dropped — the graph
+        // stays invisible rather than surfacing an opaque doc id.
+        val (agentURI, decodedTopicID) = decodeSubscriptionTopicGraph(data, vaultKey)
+        if (agentURI.isNullOrBlank()) return null
+        val topicID = decodedTopicID?.takeIf { it.isNotBlank() } ?: DEFAULT_TOPIC_ID
         val mode = SkillRunDeliveryMode.fromWire(data["deliveryMode"] as? String)
         val (displayName, description) = decodeSubscriptionTopicDisplay(data, vaultKey)
         return AgentSubscriptionTopic(
@@ -315,9 +313,50 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             instance ?: AgentSubscriptionTopicStore(context).also { instance = it }
         }
 
-        fun documentID(agentURI: String, topicID: String): String = "$agentURI:$topicID"
-            .replace("/", "_")
-            .replace(":", "_")
+        private const val SUBSCRIPTION_DOC_ID_INFO = "subscription-topic"
+        private const val SUBSCRIPTION_DOC_ID_BYTES = 16
+        private const val HEX_BYTE_MASK = 0xff
+
+        /**
+         * Opaque, vault-keyed Firestore doc id for a topic. Replaces the legacy
+         * human-readable `agentURI:topicID` (with `/`,`:`→`_`) so the server can no
+         * longer enumerate which agents the user follows. Deterministic for a given
+         * `(agentURI, topicID, vaultKey)` — unsubscribe-by-id and upsert
+         * idempotency are preserved.
+         *
+         * Byte-for-byte parity with iOS `CloudVaultCrypto.subscriptionDocID`:
+         * `HKDF<SHA256>(vaultKey, salt = ∅, info = "subscription-topic") →
+         * HMAC<SHA256>("agentURI:topicID")`, then `"sub_"` + first 16 bytes as hex.
+         */
+        fun documentID(agentURI: String, topicID: String, vaultKey: ByteArray): String {
+            val docKey =
+                CloudVaultCryptoSearch.hkdfSha256(
+                    vaultKey,
+                    ByteArray(0),
+                    SUBSCRIPTION_DOC_ID_INFO.toByteArray(),
+                    32,
+                )
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(docKey, "HmacSHA256"))
+            val digest = mac.doFinal("$agentURI:$topicID".toByteArray(Charsets.UTF_8))
+            val hex =
+                digest.take(SUBSCRIPTION_DOC_ID_BYTES).joinToString("") {
+                    "%02x".format(it.toInt() and HEX_BYTE_MASK)
+                }
+            return "sub_$hex"
+        }
+
+        fun legacyCleartextDocumentIDs(agentURI: String, topicID: String): Set<String> {
+            val raw = "$agentURI:$topicID"
+            val slashOnly = raw.replace("/", "_")
+            val slashAndColon = slashOnly.replace(":", "_")
+            val collapsed = Regex("[^A-Za-z0-9._-]+")
+                .replace(raw, "_")
+                .trim('_')
+            return setOf(slashOnly, slashAndColon, collapsed)
+                .filter { it.isNotBlank() && !it.contains("/") }
+                .toSet()
+        }
 
         private fun minimumImportance(forMode: SkillRunDeliveryMode): SkillRunEventImportance = if (forMode == SkillRunDeliveryMode.FULL_STREAM) {
             SkillRunEventImportance.NORMAL
@@ -356,3 +395,51 @@ internal fun decodeSubscriptionTopicDisplay(
             ?: data["description"] as? String
     return displayName to description
 }
+
+/**
+ * Resolves the subscription graph edge sealed-first: open `sealedAgentURI` /
+ * `sealedTopicID` with the Cloud Vault key, then fall back to legacy plaintext
+ * `agentURI` / `topicID` for in-flight docs (CONTRACT legacy fallback). Lifted to
+ * a top-level `internal` seam so the cloak round-trip is unit-testable without the
+ * Firestore listener / Android keystore. Returns `(agentURI, topicID)` — either
+ * may be null when neither the sealed nor the legacy field is present/openable
+ * (e.g. a sealed doc read before the vault key resolves).
+ */
+internal fun decodeSubscriptionTopicGraph(
+    data: Map<String, Any?>,
+    vaultKey: ByteArray?,
+): Pair<String?, String?> {
+    val agentURI =
+        CloudVaultSealedTextCodec.open(data["sealedAgentURI"], vaultKey)
+            ?: data["agentURI"] as? String
+    val topicID =
+        CloudVaultSealedTextCodec.open(data["sealedTopicID"], vaultKey)
+            ?: data["topicID"] as? String
+    return agentURI to topicID
+}
+
+internal fun sealedSubscriptionTopicPayload(
+    topic: AgentSubscriptionTopic,
+    vaultKey: ByteArray,
+): MutableMap<String, Any> =
+    mutableMapOf(
+        // The whole subscription graph is cloaked: the graph edge
+        // (`agentURI`/`topicID`) and the display text are sealed, and merge
+        // writes actively delete any legacy plaintext copies. `cadence`/
+        // `consentGivenAt` stay cleartext — server order/filter inputs only.
+        "sealedAgentURI" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.agentURI, vaultKey)),
+        "sealedTopicID" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.topicID, vaultKey)),
+        "cadence" to topic.cadence.token,
+        "consentGivenAt" to topic.createdAtEpoch,
+        "isMuted" to topic.muted,
+        "deliveryMode" to topic.deliveryMode.wire,
+        "minimumEventImportance" to topic.minimumEventImportance.wire,
+        "deliveryCountThisMonth" to 0,
+        "updatedAt" to FieldValue.serverTimestamp(),
+        "sealedDisplayName" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.displayName, vaultKey)),
+        "sealedDescription" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.description, vaultKey)),
+        "agentURI" to FieldValue.delete(),
+        "topicID" to FieldValue.delete(),
+        "displayName" to FieldValue.delete(),
+        "description" to FieldValue.delete(),
+    )

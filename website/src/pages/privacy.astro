@@ -130,9 +130,9 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
             </li>
             <li>
               <strong>Cloud Run · end-to-end relay</strong> routes sealed frames between your own
-              devices; never sees plaintext request or response bodies. (The separate hosted chat
-              gateway — a bring-your-own-token bridge to outside chat apps — currently carries
-              readable message text in transit; an end-to-end migration of it is committed.)
+              devices; never sees plaintext request or response bodies. The hosted chat gateway — a
+              bring-your-own-token bridge to outside chat apps — is likewise sealed end-to-end: it
+              routes ciphertext only and never reads message text, sender names, or file names.
             </li>
             <li>
               <strong>Owner-scoped, secret-field-name-denied</strong> — Firestore rules reject documents
@@ -317,9 +317,9 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
           <p>
             Off by default; paid entitlement required to activate. This device-to-device relay
             seals every frame end-to-end from OpenBurnBar's perspective — the relay never receives
-            plaintext. The separate hosted chat gateway (a bridge to outside chat apps) is a
-            different path: it currently carries readable message text in transit, and its
-            end-to-end migration is committed.
+            plaintext. The hosted chat gateway (a bridge to outside chat apps) seals every frame
+            the same way: both directions are end-to-end encrypted, so the gateway routes ciphertext
+            only and never receives readable message text, sender names, or file names.
           </p>
         </li>
         <li class="glass-pane">

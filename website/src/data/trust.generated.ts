@@ -132,7 +132,7 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "conversations_chat",
     "title": "Conversations & Chat",
     "tier": "end_to_end",
-    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, and conversation recall metadata are sealed on-device before Firestore receives them.",
+    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, and conversation recall metadata are sealed on-device before Firestore receives them.",
     "caveat": null,
     "serverSees": [
       "provider/runtime identifiers",
@@ -150,7 +150,10 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
       "saved text snippets",
       "project/file/command labels",
       "rollback scope paths",
-      "rollback error diagnostics"
+      "rollback error diagnostics",
+      "approval policy labels/globs/projects",
+      "agent persona text",
+      "subscription graph edges and display text"
     ]
   },
   {
@@ -218,18 +221,16 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "title": "Connected Devices & Pairings",
     "tier": "server_readable",
     "blurb": "Your paired Macs, phones, and relays and which can talk to your account.",
-    "caveat": "End-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
+    "caveat": "End-to-end relay frames AND the hosted chat gateway are both sealed and never readable by the server — the gateway routes ciphertext per-link and never reads message text, sender names, or attachment file names. The per-agent subscription graph is cloaked behind opaque keyed doc ids.",
     "serverSees": [
       "device ids",
       "pairing metadata",
       "last seen",
       "relay routing",
-      "hosted chat gateway message text",
-      "hosted chat gateway sender names",
-      "hosted chat gateway attachment file names"
+      "opaque relay key material (public keys)"
     ],
     "deviceOnly": [
-      "end-to-end relay frame contents (sealed per their own domains)"
+      "end-to-end relay + gateway frame contents (message text, sender names, attachment file names — all sealed on-device)"
     ]
   },
   {
@@ -269,14 +270,20 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "title": "Media",
     "tier": "zero_access",
     "blurb": "Files, screen, and video relayed between your Mac and phones (Floo media).",
-    "caveat": null,
+    "caveat": "An attachment manifest records only an opaque content hash, mime type, byte size, an opaque per-peer device-id hash, direction, and timestamps — the human-readable file name is sealed on-device (sealedFilename) and never readable by the server.",
     "serverSees": [
       "session events",
       "quota usage",
-      "attachment manifests"
+      "attachment blob hash",
+      "mime type",
+      "byte size",
+      "opaque peer device-id hash",
+      "direction",
+      "timestamps"
     ],
     "deviceOnly": [
-      "media payload contents (relayed/sealed)"
+      "media payload contents (relayed/sealed)",
+      "attachment file names (sealed on-device)"
     ]
   },
   {

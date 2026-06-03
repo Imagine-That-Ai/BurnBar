@@ -35,9 +35,16 @@
  *     pure duplicate leak.
  *   - the filter key is `slugHmac` (a vault-keyed HMAC of the slug the device
  *     sends), REQUIRED, instead of the cleartext `sourceSlug`.
- * Existing legacy v0 rows remain readable until the device re-ingests each
- * source (forced by an `embeddingModelVersion`/`dedupHashVersion` bump). No
- * server-side backfill exists — the server never holds the vault key.
+ * The dedup-v0 retirement is now COMPLETE: legacy v0 rows are unreachable by
+ * recall (knowledgeSearch floors `dedupHashVersion == 1` and filters the new
+ * `embeddingModelVersion` tag) and the commit idempotent-skip below treats any
+ * stored `dedupHashVersion !== 1` as a non-match (it rewrites at v1). Stranded
+ * v0 rows — orphaned because a re-ingest produces a NEW vault-keyed doc id and
+ * cannot reach the old SHA-256-keyed doc — are DELETED by
+ * `purgeLegacyKnowledgeVectors` (owner callable + daily onSchedule). The
+ * cleartext-SHA-256 oracle therefore no longer exists in any served or queryable
+ * row. No server-side backfill is needed for the re-seal — the server never
+ * holds the vault key; the device re-ingests under the bumped model tag.
  * `sourceKind` (one of three coarse buckets) and `byteCount` (a length) remain
  * cleartext as ACCEPTED leakage — they are server-side filter / cap inputs and
  * carry no content; see docs/pensieve-leakage-analysis.md and docs/PENSIEVE.md.
@@ -46,6 +53,7 @@
 import { Timestamp, FieldValue, AggregateField } from "firebase-admin/firestore";
 import type { Query, WriteBatch } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -63,7 +71,7 @@ import {
   BURNBAR_ULTRA_ENTITLEMENT_ID as ULTRA_ENTITLEMENT_ID,
 } from "./shared.js";
 import { stripUndefinedObject } from "../guards.js";
-import { wrapCallableHandler } from "../logging.js";
+import { logInfo, wrapCallableHandler } from "../logging.js";
 import { randomBytes } from "node:crypto";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -74,11 +82,13 @@ const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
 
 /**
  * Stamped onto every row so old (legacy v0) rows stay distinguishable from the
- * vault-keyed v1 rows and a forced re-ingestion can target the laggards.
+ * vault-keyed v1 rows so the v0 purge can target them.
  *   - 0 — legacy: `dedupHash` held the cleartext SHA-256 of the plaintext (a
  *         confirm-the-guess side channel). The WRITE path no longer produces v0
- *         rows — the version is retained only so existing legacy rows remain
- *         readable until the device re-ingests them.
+ *         rows. This version is retained ONLY as the purge predicate; v0 rows
+ *         are deleted by `purgeLegacyKnowledgeVectors` and never served
+ *         (knowledgeSearch floors `dedupHashVersion == 1`, and the commit
+ *         idempotent-skip below treats `dedupHashVersion !== 1` as a non-match).
  *   - 1 — vault-keyed: `dedupHash` is the device's vault-keyed HMAC(plaintext)
  *         and `slugHmac` is the vault-keyed HMAC(slug); no cleartext hash/path.
  *
@@ -86,13 +96,26 @@ const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
  * device derivation (PensieveKnowledgeChunker + the Node shim) ships in the same
  * release that flips this write path to REQUIRE the vault-keyed `dedupHash` and
  * `cloakedVector`; not-yet-updated clients sending a cleartext `contentHash`/raw
- * `embedding` are now REJECTED. Existing legacy v0 rows stay readable until the
- * device re-ingests each source (forced by bumping `embeddingModelVersion`/
- * `dedupHashVersion`), which rewrites them at v1. There is no server-side
- * backfill — the server never holds the vault key.
+ * `embedding` are now REJECTED. The dedup-v0 retirement is COMPLETE: v0 rows are
+ * unreachable by recall (search floors `dedupHashVersion == 1` and filters the
+ * bumped `embeddingModelVersion` tag) and are deleted by the v0 purge, so the
+ * cleartext-SHA-256 oracle no longer exists in any served or queryable row.
+ * There is no server-side backfill — the server never holds the vault key; the
+ * device re-ingests each source under the bumped model tag.
  */
 const DEDUP_HASH_VERSION_LEGACY_CLEARTEXT = 0;
 const DEDUP_HASH_VERSION_VAULT_HMAC = 1;
+
+/**
+ * The RETIRED embedding-model tag. Every live vector now lands under the bumped
+ * tag (PensieveVectorCloak.embeddingModelVersion / embed.ts EMBEDDING_MODEL_VERSION
+ * = "bge-small-en-v1.5-vault-dedup-v1"), so any row still carrying this string is
+ * a pre-flag-day v0/ancient row. `purgeLegacyKnowledgeVectors` deletes by this
+ * tag to reach pre-`dedupHashVersion` ancients that lack the version field
+ * (Firestore cannot query "field absent"). Keep in lockstep with the device
+ * constants if the production model tag is ever bumped again.
+ */
+const RETIRED_EMBEDDING_MODEL_VERSION = "bge-small-en-v1.5";
 
 type PensieveTier = "pro" | "ultra";
 export interface PensieveLimits {
@@ -288,12 +311,17 @@ export const commitKnowledgeBatch = onCall(
       for (const v of validated) {
         const prior = existingByID.get(v.vectorId);
         const priorExists = Boolean(prior?.exists);
-        // Idempotent skip: compare the stored `dedupHash`. Both legacy v0 rows
-        // and vault-keyed v1 rows store it under `dedupHash`, so the cleartext
+        // Idempotent skip: compare the stored `dedupHash` AND require the stored
+        // row to already be at v1. FLAG-DAY (dedup-v0 retirement): a stored doc
+        // whose `dedupHashVersion !== 1` (a legacy v0 row, or a pre-versioned
+        // ancient with no field) is NEVER treated as an idempotent match — the
+        // chunk is force-rewritten at v1 so the cleartext-SHA-256 oracle cannot
+        // survive a re-ingest that happens to collide on doc id. The cleartext
         // `contentHash` oracle is no longer read here (privacy-leak-remediation-
-        // 2026-06-02 §3). A pre-`dedupHash` ancient row simply re-writes once.
+        // 2026-06-02 §3).
         const priorDedupHash = priorExists ? prior?.get("dedupHash") : undefined;
-        if (priorExists && priorDedupHash === v.dedupHash) {
+        const priorVersion = priorExists ? Number(prior?.get("dedupHashVersion") ?? 0) : 0;
+        if (priorExists && priorVersion === DEDUP_HASH_VERSION_VAULT_HMAC && priorDedupHash === v.dedupHash) {
           skipped += 1; // unchanged chunk — idempotent no-op
           continue;
         }
@@ -307,8 +335,8 @@ export const commitKnowledgeBatch = onCall(
           slugHmac,
           sourceKind: v.sourceKind,
           chunkIndex: v.chunkIndex,
-          // Vault-keyed HMAC(plaintext) (or a legacy v0 cleartext SHA-256 for
-          // not-yet-updated clients — see dedupHashVersion).
+          // Vault-keyed HMAC(plaintext) — always v1; the write path no longer
+          // produces a legacy v0 cleartext SHA-256 (see dedupHashVersion).
           dedupHash: v.dedupHash,
           dedupHashVersion: v.dedupHashVersion,
           byteCount: v.byteCount,
@@ -463,13 +491,15 @@ export const __testing__ = {
   PENSIEVE_LIMITS,
   KNOWLEDGE_VECTOR_DIM,
   MAX_CHUNK_BYTES,
-  // Retained so existing legacy rows stay classifiable; the write path no longer
-  // produces v0 rows (privacy-leak-remediation-2026-06-02 §3).
+  // Retained ONLY as the v0 purge predicate; the write path no longer produces
+  // v0 rows and recall never serves them (privacy-leak-remediation-2026-06-02 §3).
   DEDUP_HASH_VERSION_LEGACY_CLEARTEXT,
   DEDUP_HASH_VERSION_VAULT_HMAC,
+  RETIRED_EMBEDDING_MODEL_VERSION,
   requireSourceKind,
   requireCloakedVector,
   resolveDedupHash,
+  purgeLegacyKnowledgeVectorsForUser,
   slugify,
 };
 
@@ -483,4 +513,83 @@ export const purgeKnowledgeMemory = onCall(
     const deletedManifests = await deleteQueryInBatches(db.collection(`users/${uid}/knowledge_sync_manifests`));
     return { ok: true, deletedVectors, deletedManifests };
   }),
+);
+
+/**
+ * Delete every stranded legacy v0 / pre-flag-day knowledge vector for one user.
+ *
+ * FLAG-DAY (dedup-v0 retirement): a re-ingest produces a NEW vault-keyed doc id
+ * and cannot reach the old SHA-256-keyed v0 doc, so the keyless oracle survives
+ * forever on those orphaned rows unless we delete them. `privacyBackfill` can
+ * only strip FIELDS (FieldValue.delete()), never whole docs, so the purge lives
+ * here. Two predicates, both whole-doc deletes via `deleteQueryInBatches`:
+ *   1. `dedupHashVersion == 0` — every explicitly-stamped legacy v0 row.
+ *   2. `embeddingModelVersion == RETIRED_EMBEDDING_MODEL_VERSION` — reaches the
+ *      pre-`dedupHashVersion` ancients that lack the version field (Firestore
+ *      cannot query "field absent"). Safe because the device now writes ONLY
+ *      under the bumped model tag, so any row still on the retired tag is stale.
+ * Idempotent (re-runnable) and zero-knowledge — it deletes by opaque columns and
+ * never reads plaintext. Returns the per-predicate delete counts.
+ */
+async function purgeLegacyKnowledgeVectorsForUser(
+  uid: string,
+): Promise<{ deletedByVersion: number; deletedByRetiredTag: number }> {
+  const coll = db.collection(`users/${uid}/cloud_search_knowledge`);
+  const deletedByVersion = await deleteQueryInBatches(
+    coll.where("dedupHashVersion", "==", DEDUP_HASH_VERSION_LEGACY_CLEARTEXT),
+  );
+  const deletedByRetiredTag = await deleteQueryInBatches(
+    coll.where("embeddingModelVersion", "==", RETIRED_EMBEDDING_MODEL_VERSION),
+  );
+  return { deletedByVersion, deletedByRetiredTag };
+}
+
+/**
+ * purgeLegacyKnowledgeVectors — owner-scoped flag-day sweep that DELETES the
+ * stranded legacy v0 / retired-model-tag knowledge vectors for the caller. Pairs
+ * with `searchKnowledge`'s `dedupHashVersion == 1` floor (which stops serving
+ * them) to finish the dedup-v0 retirement: stop returning v0, then delete it.
+ */
+export const purgeLegacyKnowledgeVectors = onCall(
+  CALLABLE_OPTS,
+  wrapCallableHandler("purgeLegacyKnowledgeVectors", async (request: CallableRequest) => {
+    const uid = requireUid(request);
+    await assertActiveBurnBarCloudProEntitlement(uid);
+    const { deletedByVersion, deletedByRetiredTag } = await purgeLegacyKnowledgeVectorsForUser(uid);
+    return { ok: true, deletedByVersion, deletedByRetiredTag, deleted: deletedByVersion + deletedByRetiredTag };
+  }),
+);
+
+/**
+ * Daily backstop for the v0 purge. Walks a bounded page of members and runs the
+ * same idempotent sweep so accounts converge to "no stranded v0 / retired-tag
+ * knowledge vector" without each client invoking the callable (mirrors
+ * backfillPrivacyPlaintextScheduled).
+ */
+export const purgeLegacyKnowledgeVectorsScheduled = onSchedule(
+  {
+    region: FUNCTIONS_REGION,
+    schedule: "every 24 hours",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async () => {
+    const users = await db.collection("users").limit(500).get();
+    let usersScanned = 0;
+    let deletedByVersion = 0;
+    let deletedByRetiredTag = 0;
+    for (const user of users.docs) {
+      usersScanned += 1;
+      const stats = await purgeLegacyKnowledgeVectorsForUser(user.id);
+      deletedByVersion += stats.deletedByVersion;
+      deletedByRetiredTag += stats.deletedByRetiredTag;
+    }
+    logInfo({
+      event: "callable_info",
+      message: "legacy knowledge vector purge (scheduled)",
+      usersScanned,
+      deletedByVersion,
+      deletedByRetiredTag,
+    });
+  },
 );

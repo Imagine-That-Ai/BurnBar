@@ -72,6 +72,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                         localURL: completion.localURL
                     )
                 )
+
+                // Privacy-leak remediation (Fork F = SEAL): mirror the local
+                // history row into the cloud manifest collection with the
+                // filename SEALED via the vault key. This is the single
+                // writer-of-record per direction; gated on the media
+                // entitlement (skips silently if absent so local history is
+                // unaffected) and the cleartext name never reaches Firestore.
+                await MediaAttachmentManifestStore.persistManifest(completion)
             }
         }
 

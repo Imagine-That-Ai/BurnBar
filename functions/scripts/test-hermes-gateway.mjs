@@ -240,7 +240,7 @@ assert.equal(publicClientView({ ...baseClient, oversightMode: "autonomous" }).ov
 
 // ── Feature 1: runtime state — derived online/offline presence (Δ ≤ 90s).
 assert.equal(HERMES_GATEWAY_PRESENCE_WINDOW_MS, 90 * 1000);
-assert.equal(HERMES_GATEWAY_PROTOCOL_VERSION, 1);
+assert.equal(HERMES_GATEWAY_PROTOCOL_VERSION, 2); // bumped to 2 for the sealed (E2E) gateway contract
 const presenceNow = Date.parse("2026-06-01T00:01:30.000Z");
 assert.equal(isHermesGatewayClientOnline("2026-06-01T00:01:00.000Z", presenceNow), true); // 30s ago -> online
 assert.equal(isHermesGatewayClientOnline("2026-06-01T00:00:00.000Z", presenceNow), true); // exactly 90s -> online

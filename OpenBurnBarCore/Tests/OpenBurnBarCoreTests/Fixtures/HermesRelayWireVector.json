@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "zQkigXXKzxZmUr2r5FziRafduM4OK0wFipvTe\/fHJjHH42\/VVXzNDwdl5G9fhOk=",
+  "chunkCiphertext" : "whs2eYmuHwEmKDdKdTPHwk8BZJR0PuxoElwngtBG8HfWNz7xHwWhtHqa5AcmLC0=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "TOx3HLZTKS4UTjmPePkVK5A6vHIoOV\/\/v3aQ0hr5qCCLP+gAQYFYhlcq4gdHwrFmrGs1fjQqgUmdMGgFrcFRe9EDutN7D45hluglVPoQzrfD5Vcr5ObykD3L4gOkkN5GIR0q0IJPZwGElLhMtZkqMvPy8rX5hb49eotZ1OCfIDa85ivHoC0EU0sxmyK0mf7tcYhQl7xp",
+  "payloadCiphertext" : "Ae6561BH52H3+ZBwEzV\/sRFUcZRGY5McZa1Md2Bj+XbVdCIuTKM\/0aFMBqvM+5J6tDbcZirhVZEbiatuDv+\/SNqETzimx93CU\/R78uCLvscsA1U19WXadlz4jl1vu9nOXP8fS5VajeDE3yxotnOKYcZdNTZK0VYPxHaIrZNLUjLC3+gqI5JTEiY+s6+oTSh0cP9rdzI+",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BB7I8g+x1PwSfHSMREZ95Hfu+6CxzRPgs6b8WQDYnCQEKh1d+u0wFKQz4O9URIc6PdFaWDItkv980I7a7c8OnXf9HpjwMMSzuh7YY7+w9WuG5+gVnG5PP7hbzh8JfrKk3HBeA8Zhc+tL6e1DbyMcgR6viC9i0MVWncwSfbE="
+  "wrappedKey" : "BH46nwiglfglDrR3YnU8qM5pp2WDWvMwAik0OgS59NzQYoZ+Gs1C17CfY2aXGgLQpadG7JUo5VwZWoEQPLzFIESVGNefpJ7JD1Qio4NQrJr7Xt1GDQIO9fOTObwOc7NkaFwLdoBf2pwI7pyLQPCueJ8OQlCzKkN\/M7F64bg="
 }

@@ -1005,33 +1005,40 @@ service cloud.firestore {
       allow write: if ownsUserNamespace(userId) && requestWithinBasicLimits();
     }
 
-    // Usage rows now seal the project name into `sealedProjectName` (with an
-    // opaque `projectKeyHash` trapdoor for client group-by). The migration gate
-    // below rejects a plaintext `projectName` ONLY once the sealed copy is
-    // present, so legacy/in-flight rows that still carry the cleartext name keep
-    // syncing until the writer reseals (privacy-leak-remediation §1).
-    function rejectsPlaintextWhenSealed(plaintextField, sealedField) {
-      return !(sealedField in request.resource.data)
-        || !(plaintextField in request.resource.data);
-    }
-
+    // Usage rows seal the project name into `sealedProjectName` (with an opaque
+    // `projectKeyHash` trapdoor for client group-by). New writes are FAIL-CLOSED:
+    // a `create` may never carry a cleartext `projectName`, so a writer with no
+    // vault key omits the name rather than leaking it. Legacy rows that still
+    // hold a plaintext name keep syncing on `update` only, and only while the
+    // field already exists on the stored doc — no write may re-introduce one
+    // (privacy-leak-remediation §1 / F6).
     match /users/{userId}/usage/{usageId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && rejectsPlaintextWhenSealed("projectName", "sealedProjectName")
+      allow create: if ownerWritableNonSecret(userId)
+        && !("projectName" in request.resource.data)
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName));
+      allow update: if ownerWritableNonSecret(userId)
+        && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName));
       allow delete: if ownsUserNamespace(userId);
     }
 
     // Budget rules: owner-scoped CRUD. Cross-device sync writes these from
     // macOS CloudBudgetService and iOS BudgetRulesStore. The project name and
-    // label are sealed (`sealedProjectName`/`sealedLabel`); the same migration
-    // gate rejects the matching plaintext key once its sealed copy is present.
+    // label are sealed (`sealedProjectName`/`sealedLabel`). Same FAIL-CLOSED
+    // contract as usage: `create` forbids cleartext `projectName`/`label`
+    // outright; `update` tolerates a legacy plaintext field only while it
+    // already exists on the stored doc (migration), never on a fresh write.
     match /users/{userId}/budgetRules/{ruleId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && rejectsPlaintextWhenSealed("projectName", "sealedProjectName")
-        && rejectsPlaintextWhenSealed("label", "sealedLabel")
+      allow create: if ownerWritableNonSecret(userId)
+        && !("projectName" in request.resource.data)
+        && !("label" in request.resource.data)
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName))
+        && (!("sealedLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedLabel));
+      allow update: if ownerWritableNonSecret(userId)
+        && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
+        && (!("label" in request.resource.data) || ("label" in resource.data))
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName))
         && (!("sealedLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedLabel));
       allow delete: if ownsUserNamespace(userId);
@@ -1603,31 +1610,24 @@ service cloud.firestore {
     // label, file glob, and target project are sealed into
     // `sealedDisplayLabel`/`sealedFileGlob`/`sealedTargetProject` (with opaque
     // `projectKeyHash`/`fileGlobHash` trapdoors for client-side bucketing); the
-    // doc ID itself becomes an opaque keyed hash. The migration gate rejects a
-    // plaintext key ONLY once its sealed copy is present, so legacy/in-flight
-    // rows keep syncing until the writer reseals (privacy-leak-remediation).
-    match /users/{userId}/approval_policies/{policyId} {
-      function validApprovalPolicy() {
-        return request.resource.data.keys().hasOnly([
-          "id", "displayLabel", "decision", "missionKind", "toolName",
-          "fileGlob", "runtimeID", "targetProject",
-          "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
-          "projectKeyHash", "fileGlobHash",
-          "createdAt", "expiresAt", "matchCount", "schemaVersion"
-        ])
-        && request.resource.data.decision in ["approve", "deny"]
-        && rejectsPlaintextWhenSealed("displayLabel", "sealedDisplayLabel")
-        && rejectsPlaintextWhenSealed("fileGlob", "sealedFileGlob")
-        && rejectsPlaintextWhenSealed("targetProject", "sealedTargetProject")
-        && (!("displayLabel" in request.resource.data) || (request.resource.data.displayLabel is string && request.resource.data.displayLabel.size() <= 256))
-        && (!("fileGlob" in request.resource.data) || (request.resource.data.fileGlob is string && request.resource.data.fileGlob.size() <= 256))
-        && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
-        && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
-        && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
-        && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
-        && (!("sealedDisplayLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDisplayLabel))
-        && (!("sealedFileGlob" in request.resource.data) || validCloudSealedText(request.resource.data.sealedFileGlob))
-        && (!("sealedTargetProject" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTargetProject))
+	    // doc ID itself becomes an opaque keyed hash. New writes are sealed-only;
+	    // legacy plaintext rows remain readable but may not be re-created through
+	    // client rules (privacy-leak-remediation).
+	    match /users/{userId}/approval_policies/{policyId} {
+	      function validApprovalPolicy() {
+	        return request.resource.data.keys().hasOnly([
+	          "decision", "missionKind", "toolName", "runtimeID",
+	          "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
+	          "projectKeyHash", "fileGlobHash",
+	          "createdAt", "expiresAt", "matchCount", "schemaVersion"
+	        ])
+	        && request.resource.data.decision in ["approve", "deny"]
+	        && validCloudSealedText(request.resource.data.sealedDisplayLabel)
+	        && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
+	        && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
+	        && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
+	        && (!("sealedFileGlob" in request.resource.data) || validCloudSealedText(request.resource.data.sealedFileGlob))
+	        && (!("sealedTargetProject" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTargetProject))
         && (!("projectKeyHash" in request.resource.data) || request.resource.data.projectKeyHash.matches("^[a-f0-9]{32}$"))
         && (!("fileGlobHash" in request.resource.data) || request.resource.data.fileGlobHash.matches("^[a-f0-9]{32}$"))
         && (!("matchCount" in request.resource.data) || request.resource.data.matchCount is int);
@@ -1641,23 +1641,20 @@ service cloud.firestore {
     // and resolves. Snapshots themselves live under cli_sessions/{id}/snapshots.
     // The scope JSON (carries absolute file paths for singleFile scope) and the
     // Mac-written error diagnostic are sealed into `sealedScope`/
-    // `sealedErrorMessage`; the migration gate rejects the matching plaintext
-    // key once its sealed copy is present (privacy-leak-remediation).
-    match /users/{userId}/rollback_requests/{requestId} {
-      function validRollbackRequest() {
-        return request.resource.data.keys().hasOnly([
-          "id", "sessionID", "scopeJSON", "sealedScope", "requestedAt", "requestedBy",
-          "status", "resolvedAt", "errorMessage", "sealedErrorMessage", "schemaVersion", "source"
-        ])
-        && request.resource.data.sessionID is string
-        && request.resource.data.sessionID.size() <= 256
-        && rejectsPlaintextWhenSealed("scopeJSON", "sealedScope")
-        && rejectsPlaintextWhenSealed("errorMessage", "sealedErrorMessage")
-        && (!("scopeJSON" in request.resource.data) || (request.resource.data.scopeJSON is string && request.resource.data.scopeJSON.size() <= 4096))
-        && (!("sealedScope" in request.resource.data) || validCloudSealedText(request.resource.data.sealedScope))
-        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
-        && (!("sealedErrorMessage" in request.resource.data) || validCloudSealedText(request.resource.data.sealedErrorMessage))
-        && request.resource.data.status in ["pending", "in_flight", "completed", "failed"];
+	    // `sealedErrorMessage`; new client writes are sealed-only. Legacy plaintext
+	    // rows remain readable but may not be re-created through client rules
+	    // (privacy-leak-remediation).
+	    match /users/{userId}/rollback_requests/{requestId} {
+	      function validRollbackRequest() {
+	        return request.resource.data.keys().hasOnly([
+	          "id", "sessionID", "sealedScope", "requestedAt", "requestedBy",
+	          "status", "resolvedAt", "sealedErrorMessage", "schemaVersion", "source"
+	        ])
+	        && request.resource.data.sessionID is string
+	        && request.resource.data.sessionID.size() <= 256
+	        && validCloudSealedText(request.resource.data.sealedScope)
+	        && (!("sealedErrorMessage" in request.resource.data) || validCloudSealedText(request.resource.data.sealedErrorMessage))
+	        && request.resource.data.status in ["pending", "in_flight", "completed", "failed", "cancelled"];
       }
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validRollbackRequest();
@@ -1678,12 +1675,12 @@ service cloud.firestore {
           "id", "sessionID", "sequence", "takenAt",
           "sealedActionLabel", "sealedTouchedFiles", "sealedMacSnapshotPath",
           "restoredAt", "schemaVersion"
-        ])
-        && request.resource.data.sequence is int
-        && request.resource.data.sequence >= 0
-        && (!("sealedActionLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedActionLabel))
-        && (!("sealedTouchedFiles" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTouchedFiles))
-        && (!("sealedMacSnapshotPath" in request.resource.data) || validCloudSealedText(request.resource.data.sealedMacSnapshotPath));
+	        ])
+	        && request.resource.data.sequence is int
+	        && request.resource.data.sequence >= 0
+	        && validCloudSealedText(request.resource.data.sealedActionLabel)
+	        && (!("sealedTouchedFiles" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTouchedFiles))
+	        && (!("sealedMacSnapshotPath" in request.resource.data) || validCloudSealedText(request.resource.data.sealedMacSnapshotPath));
       }
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validRollbackSnapshot();
@@ -1706,9 +1703,6 @@ service cloud.firestore {
           "lastSevenDays", "lastRefreshedAt",
           "sealedDisplayName", "sealedTagline", "sealedPersonas", "updatedAt"
         ])
-        && rejectsPlaintextWhenSealed("displayName", "sealedDisplayName")
-        && rejectsPlaintextWhenSealed("tagline", "sealedTagline")
-        && rejectsPlaintextWhenSealed("personas", "sealedPersonas")
         && (!("sealedDisplayName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDisplayName))
         && (!("sealedTagline" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTagline))
         && (!("sealedPersonas" in request.resource.data) || validCloudSealedText(request.resource.data.sealedPersonas))
@@ -1721,28 +1715,27 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
-    // Hermes Square Phase A — subscription topics with per-template consent.
-    // The topic display text (which agent the user follows) is sealed into
-    // `sealedDisplayName`/`sealedDescription`; `agentURI`/`topicID` stay
-    // plaintext-functional (routing/doc-ID keys). Legacy plaintext
-    // displayName/description are tolerated only when the sealed copy is absent;
-    // the migration gate rejects the plaintext key once its sealed copy is
-    // present, and merge:true partial writes (setMuted/setDeliveryMode) pass
-    // trivially since they omit both — privacy-leak-remediation.
-    match /users/{userId}/subscription_topics/{topicId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
-          "agentURI", "topicID", "sealedDisplayName", "sealedDescription",
-          "cadence", "consentGivenAt", "isMuted", "deliveryMode",
-          "minimumEventImportance", "deliveryCountThisMonth", "lastDeliveredAt", "updatedAt",
-          "displayName", "description"
-        ])
-        && rejectsPlaintextWhenSealed("displayName", "sealedDisplayName")
-        && rejectsPlaintextWhenSealed("description", "sealedDescription")
-        && (!("sealedDisplayName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDisplayName))
-        && (!("sealedDescription" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDescription))
-        && (!("cadence" in request.resource.data) || request.resource.data.cadence in ["on_demand", "daily", "weekly", "monthly"])
+	    // Hermes Square Phase A — subscription topics with per-template consent.
+	    // The graph edge itself (which agent/topic the user follows) is sealed into
+	    // `sealedAgentURI`/`sealedTopicID`; display text is sealed into
+	    // `sealedDisplayName`/`sealedDescription`; the doc ID is an opaque keyed
+	    // hash. New writes are sealed-only. merge:true partial writes
+	    // (setMuted/setDeliveryMode) pass only against already-sealed documents
+	    // because request.resource.data is the post-write document —
+	    // privacy-leak-remediation.
+	    match /users/{userId}/subscription_topics/{topicId} {
+	      allow read: if ownsUserNamespace(userId);
+	      allow create, update: if ownerWritableNonSecret(userId)
+	        && request.resource.data.keys().hasOnly([
+	          "sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription",
+	          "cadence", "consentGivenAt", "isMuted", "deliveryMode",
+	          "minimumEventImportance", "deliveryCountThisMonth", "lastDeliveredAt", "updatedAt"
+	        ])
+	        && validCloudSealedText(request.resource.data.sealedAgentURI)
+	        && validCloudSealedText(request.resource.data.sealedTopicID)
+	        && validCloudSealedText(request.resource.data.sealedDisplayName)
+	        && validCloudSealedText(request.resource.data.sealedDescription)
+	        && (!("cadence" in request.resource.data) || request.resource.data.cadence in ["on_demand", "daily", "weekly", "monthly"])
         && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
         && (!("minimumEventImportance" in request.resource.data) || request.resource.data.minimumEventImportance in ["quiet", "normal", "action_required", "terminal"])
         && (!("deliveryCountThisMonth" in request.resource.data) || (request.resource.data.deliveryCountThisMonth is int && request.resource.data.deliveryCountThisMonth <= 64));
@@ -1951,21 +1944,41 @@ service cloud.firestore {
       }
     }
 
-    // Pensieve repo connections (the dirty-signal source registration). The
-    // client may configure a repo source; secrets are never stored here
-    // (ownerWritableNonSecret forbids apiKey/token/secret fields).
-    // Connected GitHub repo registry. The repo identity is project-class private
-    // text: it is written exclusively by the connectKnowledgeRepo callable (Admin
-    // SDK) which stores only an opaque server-keyed `repoMatchToken` (for webhook
-    // routing) plus a vault-`sealedRepoFullName` (for owner-only display). Direct
-    // client writes must never carry a cleartext `repoFullName`/`sourcePath`; the
-    // cleartext name is observed server-side only transiently for webhook routing,
-    // never stored in Firestore.
+    // Connected GitHub repo registry (the dirty-signal source registration). The
+    // repo identity is project-class private text: rows are written by the
+    // connectKnowledgeRepo callable (Admin SDK, which bypasses these rules) and
+    // hold only an opaque server-keyed `repoMatchToken` (for webhook routing)
+    // plus a vault-`sealedRepoFullName` (for owner-only display). A direct client
+    // write is now constrained to that opaque shape by a STRICT allowlist: no
+    // arbitrary smuggled fields, an opaque 64-hex `repoMatchToken`, an owner-only
+    // `sealedRepoFullName`, and an explicit ban on every cleartext repo identity
+    // (`repoFullName`/`sourcePath`/`sourceSlug`) so a future/buggy client can
+    // never reintroduce reversible path/name text (F5). The cleartext name is
+    // observed server-side only transiently for webhook routing, never stored.
     match /users/{userId}/knowledge_repos/{repoId} {
+      function validKnowledgeRepoKeys() {
+        return request.resource.data.keys().hasOnly([
+          "uid",
+          "repoId",
+          "repoMatchToken",
+          "sealedRepoFullName",
+          "installId",
+          "connectedAt",
+          "schemaVersion"
+        ]);
+      }
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
+        && validKnowledgeRepoKeys()
         && !("repoFullName" in request.resource.data)
-        && !("sourcePath" in request.resource.data);
+        && !("sourcePath" in request.resource.data)
+        && !("sourceSlug" in request.resource.data)
+        && (!("uid" in request.resource.data) || request.resource.data.uid == userId)
+        && (!("repoMatchToken" in request.resource.data)
+            || (request.resource.data.repoMatchToken is string
+                && request.resource.data.repoMatchToken.matches("^[a-f0-9]{64}$")))
+        && (!("sealedRepoFullName" in request.resource.data)
+            || validCloudSealedText(request.resource.data.sealedRepoFullName));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2278,11 +2291,31 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    // Hermes Gateway events (phone→agent). Server-written via the
+    // enqueueHermesGatewayEvent callable; clients never write here directly, so
+    // the doc stays `write:if false` and the sealed-envelope contract is
+    // enforced in the callable handler, not in a rule allowlist
+    // (hermes-gateway-e2e-rearchitecture). Once schemaVersion >= 2 a sealed doc
+    // carries only `relayEnvelope { payloadCiphertext, wrappedKey,
+    // relayEncryption:"p256-hkdf-sha256-aesgcm", relayKeyVersion }` plus
+    // routing fields (id/sequence/kind/destinationId/targetClientId/senderId/
+    // modelId/attachmentIds/createdAt/schemaVersion). The plaintext text,
+    // senderDisplayName, and threadId are sealed inside payloadCiphertext and
+    // are rejected by the callable; reads keep a legacy plaintext fallback for
+    // pre-cutoff docs.
     match /users/{userId}/hermes_gateway_events/{eventId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
     }
 
+    // Hermes Gateway messages (agent→phone). Server-written via the bearer-token
+    // handleMessageSend HTTP handler; `write:if false` for clients and the
+    // sealed-envelope contract is enforced in that handler
+    // (hermes-gateway-e2e-rearchitecture). Sealed docs carry only
+    // `relayEnvelope { payloadCiphertext, wrappedKey, relayEncryption,
+    // relayKeyVersion }` plus routing; the plaintext `text` is sealed inside
+    // payloadCiphertext and rejected by the handler. Reads keep a legacy
+    // plaintext fallback.
     match /users/{userId}/hermes_gateway_messages/{messageId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
@@ -2293,6 +2326,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Hermes Gateway attachments (agent→phone). Server-written via the
+    // bearer-token handleAttachmentInit HTTP handler; `write:if false` for
+    // clients and the sealed-envelope contract is enforced in that handler
+    // (hermes-gateway-e2e-rearchitecture). The body bytes are sealed with a
+    // per-attachment key before signed-URL upload; the manifest's
+    // `relayEnvelope.payloadCiphertext` seals `{fileName, byteCount,
+    // contentType}` and `wrappedKey` wraps the body key to the phone. The
+    // plaintext fileName (and the fileName segment of storagePath) are dropped;
+    // the server hashes ciphertext for integrity only.
     match /users/{userId}/hermes_gateway_attachments/{attachmentId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
@@ -2799,17 +2841,17 @@ service cloud.firestore {
     //
     // Fork F = SEAL (privacy-leak-remediation-2026-06-02 §6): the human-readable
     // filename is PRIVATE TEXT and is sealed into `sealedFilename`
-    // (validCloudSealedText). A bounded plaintext `filename` is retained ONLY as
-    // a legacy/in-flight migration fallback and is REJECTED the moment a sealed
-    // copy is present, so a hardened writer can never accidentally co-emit the
-    // cleartext name alongside the sealed one.
+    // (validCloudSealedText). FLAG-DAY (hermes-gateway-e2e-rearchitecture): the
+    // sealing iOS writer of record ships clean — no native code ever wrote this
+    // collection in plaintext — so the legacy plaintext `filename` branch is
+    // hard-dropped from the allowlist. `sealedFilename` is now MANDATORY; a
+    // plaintext `filename` key (or any smuggled body/ciphertext) is rejected.
     match /users/{userId}/media_attachment_manifests/{manifestId} {
       function validMediaAttachmentManifestKeys() {
         return request.resource.data.keys().hasOnly([
           "id",
           "blobHash",
           "sealedFilename",
-          "filename",
           "mime",
           "size",
           "peerDeviceIdHash",
@@ -2830,17 +2872,11 @@ service cloud.firestore {
         && request.resource.data.peerDeviceIdHash is string
         && request.resource.data.direction in ["macToIos", "iosToMac"]
         && request.resource.data.schemaVersion is int
-        // Sealed filename is the hardened shape; when present, no plaintext
-        // filename may ride along.
-        && (("sealedFilename" in request.resource.data) || ("filename" in request.resource.data))
-        && (!("sealedFilename" in request.resource.data) || (
-          validCloudSealedText(request.resource.data.sealedFilename)
-          && !("filename" in request.resource.data)
-        ))
-        && (!("filename" in request.resource.data) || (
-          request.resource.data.filename is string
-          && request.resource.data.filename.size() <= 256
-        ))
+        // Sealed filename is the only accepted shape — plaintext `filename`
+        // is no longer in the allowlist, so a co-emitted cleartext name is
+        // impossible.
+        && ("sealedFilename" in request.resource.data)
+        && validCloudSealedText(request.resource.data.sealedFilename)
         && !("body" in request.resource.data)
         && !("ciphertext" in request.resource.data);
       allow update: if false;
