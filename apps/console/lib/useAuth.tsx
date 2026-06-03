@@ -28,6 +28,7 @@ interface AuthState {
   signInPasskey: () => Promise<void>;
   signOut: () => Promise<void>;
   passkeySupported: boolean;
+  appleAuthEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const passkeySupported =
     typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined";
+  const appleAuthEnabled = process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "true";
 
   const value = useMemo<AuthState>(
     () => ({
@@ -78,8 +80,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInPasskey,
       signOut,
       passkeySupported,
+      appleAuthEnabled,
     }),
-    [user, loading, signInGoogle, signInApple, signInPasskey, signOut, passkeySupported],
+    [
+      user,
+      loading,
+      signInGoogle,
+      signInApple,
+      signInPasskey,
+      signOut,
+      passkeySupported,
+      appleAuthEnabled,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -15,6 +15,7 @@ const requiredConsoleCsp = {
     "https://www.gstatic.com/recaptcha/",
   ],
   "connect-src": [
+    "https://apis.google.com",
     "https://*.googleapis.com",
     "https://identitytoolkit.googleapis.com",
     "https://securetoken.googleapis.com",
@@ -41,12 +42,17 @@ function parseCsp(csp: string): Map<string, Set<string>> {
   );
 }
 
-function consoleHostingCsp(): string {
+function consoleHostingHeaders(): Header[] {
   const consoleTarget = (firebaseJson.hosting as HostingTarget[]).find(
     (target) => target.target === "console",
   );
   const globalHeaders = consoleTarget?.headers?.find((entry) => entry.source === "**");
-  const csp = globalHeaders?.headers.find((header) => header.key === "Content-Security-Policy");
+  expect(globalHeaders?.headers).toBeTruthy();
+  return globalHeaders!.headers;
+}
+
+function consoleHostingCsp(): string {
+  const csp = consoleHostingHeaders().find((header) => header.key === "Content-Security-Policy");
   expect(csp?.value).toBeTruthy();
   return csp!.value;
 }
@@ -75,14 +81,24 @@ describe("console CSP", () => {
       }
     }
   });
+
+  it("allows Firebase Auth popups to communicate with the opener", () => {
+    expect(consoleHostingHeaders()).toContainEqual({
+      key: "Cross-Origin-Opener-Policy",
+      value: "same-origin-allow-popups",
+    });
+  });
 });
 
 describe("console auth domain", () => {
-  it("documents the Firebase Hosting custom domain used by production auth", () => {
+  it("documents the registered Firebase Auth handler domain used by production OAuth", () => {
     const envExample = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
     const firebaseClient = readFileSync(new URL("../lib/firebaseClient.ts", import.meta.url), "utf8");
 
     expect(envExample).toContain("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=app.burnbar.ai");
-    expect(firebaseClient).toContain('authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "app.burnbar.ai"');
+    expect(envExample).toContain("NEXT_PUBLIC_ENABLE_APPLE_AUTH=false");
+    expect(firebaseClient).toContain(
+      'authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "app.burnbar.ai"',
+    );
   });
 });

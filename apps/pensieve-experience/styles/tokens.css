@@ -78,20 +78,39 @@
   --space-20: 80px;
   --space-24: 96px;
 
-  --rail-w: 264px;
+  --rail-w: 268px;
   --container-narrow: 760px; /* verified: prose/transparency column width */
-  --container-wide: 1180px; /* basin + library working width */
+  --container-wide: 1200px; /* basin + library working width */
+
+  /* Ember aliases — the brand furnace warmth (== canonical brass-*).
+     This is the dominant accent for chrome: CTAs, hovers, focus, the furnace
+     glow. Teal (--color-tier-end-to-end) stays reserved for sealed/healthy. */
+  --ember-core: var(--color-brass-core);   /* #fa6b06 */
+  --ember-bright: var(--color-brass-bright); /* #fdc42c */
+  --ember-deep: var(--color-brass-deep);   /* #ee1803 */
+  --ember-glow: var(--color-brass-glow);
+  --ember-wash: rgba(250, 107, 6, 0.12);
+
+  /* Premium glassmorphism — matches the marketing site recipe. */
+  --glass-blur: blur(80px) saturate(220%);
+  --glass-blur-heavy: blur(100px) saturate(240%);
+
+  --r-xl: 32px;
 
   --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
   --motion-ease-rise: cubic-bezier(0.16, 1, 0.3, 1); /* strands surfacing */
   --motion-frost-flip: calc(var(--motion-frost-flip-ms) * 1ms);
-  --dur-1: 140ms;
-  --dur-2: 240ms;
-  --dur-3: 420ms;
+  --dur-1: 160ms;
+  --dur-2: 280ms;
+  --dur-3: 460ms;
+  --dur-furnace: 8s;
   --dur-swirl: calc(var(--motion-swirl-seconds) * 1s);
 
-  --shadow-pool: 0 40px 120px -40px rgba(0, 0, 0, 0.9);
-  --shadow-lift: 0 1px 0 0 var(--color-glass-line-bright) inset, 0 30px 70px -50px rgba(0, 0, 0, 0.85);
+  --shadow-pool: 0 48px 120px -24px rgba(0, 0, 0, 0.85);
+  /* the "lit top edge" + deep drop — the signature glass-pane elevation */
+  --shadow-lift: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 32px 80px -16px rgba(0, 0, 0, 0.7);
+  --shadow-ember-hover: 0 16px 48px 0 rgba(250, 107, 6, 0.1), 0 32px 80px -16px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  --text-shadow-head: 0 2px 12px rgba(0, 0, 0, 0.8);
 
-  --ease: var(--motion-ease-standard);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }

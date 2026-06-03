@@ -143,7 +143,7 @@ export const registerBrowserEscrowDevice = onCall(
       };
       if (!existing.exists) devicePayload.createdAt = FieldValue.serverTimestamp();
 
-      const publicKeyRef = db.doc(`users/${uid}/escrow_public_keys/${escrowDeviceId}`);
+      const publicKeyRef = db.doc(`users/${uid}/escrow_public_keys/${escrowDeviceId}_1`);
       const batch = db.batch();
       batch.set(deviceRef, devicePayload, { merge: true });
       batch.set(

@@ -91,6 +91,44 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         )
     }
 
+    func test_clipboardValidationRequiresAttestationWhenPolicyRequiresIt() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let request = try signedClipboardRequest(privateKey: privateKey, attestationDigest: nil)
+
+        XCTAssertThrowsError(
+            try validator.validate(
+                envelope: request.authority,
+                clipboardRequest: request,
+                attestation: .requirePresent
+            )
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.missingAttestation = error else {
+                return XCTFail("Expected missingAttestation, got \(error)")
+            }
+        }
+    }
+
+    func test_remoteUnlockCredentialValidationRequiresAttestationWhenPolicyRequiresIt() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let credential = try signedRemoteUnlockCredential(privateKey: privateKey, attestationDigest: nil)
+
+        XCTAssertThrowsError(
+            try validator.validate(
+                envelope: credential.authority,
+                remoteUnlockCredential: credential,
+                attestation: .requirePresent
+            )
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.missingAttestation = error else {
+                return XCTFail("Expected missingAttestation, got \(error)")
+            }
+        }
+    }
+
     func test_strictMode_rejectsMacUnbound() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let validator = PhoneControlAuthorityValidator()
@@ -207,6 +245,76 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         intent.authority.intentHashBlake3 = signed.intentHashHex
         intent.authority.signatureEd25519 = signed.signatureBase64
         return intent
+    }
+
+    private func signedClipboardRequest(
+        privateKey: Curve25519.Signing.PrivateKey,
+        attestationDigest: String?
+    ) throws -> HermesRealtimeRelayClipboardRequest {
+        var request = HermesRealtimeRelayClipboardRequest(
+            requestId: UUID().uuidString,
+            action: .pasteToMac,
+            contentType: "text/plain",
+            text: "hello",
+            maxBytes: 65_536,
+            clientIntentId: UUID().uuidString,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "peer-1",
+                counter: 1,
+                timestamp: Date(),
+                intentHashBlake3: "",
+                signatureEd25519: "",
+                attestationHashBlake3: attestationDigest
+            )
+        )
+        let signed = try phoneSigner.sign(
+            clipboardRequest: request,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: request.authority.timestamp,
+            privateKey: privateKey
+        )
+        request.authority.intentHashBlake3 = signed.intentHashHex
+        request.authority.signatureEd25519 = signed.signatureBase64
+        return request
+    }
+
+    private func signedRemoteUnlockCredential(
+        privateKey: Curve25519.Signing.PrivateKey,
+        attestationDigest: String?
+    ) throws -> HermesRealtimeRelayRemoteUnlockCredentialEnvelope {
+        let now = Date()
+        var credential = HermesRealtimeRelayRemoteUnlockCredentialEnvelope(
+            requestId: UUID().uuidString,
+            sessionId: "remote-unlock-session",
+            clientIntentId: UUID().uuidString,
+            credentialKind: .typedPassword,
+            recipientKeyId: "recipient-key",
+            algorithm: "X25519-XSalsa20Poly1305",
+            ciphertextBase64: Data("ciphertext".utf8).base64EncodedString(),
+            aadBase64: Data("aad".utf8).base64EncodedString(),
+            redactedByteCount: 12,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(60),
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "peer-1",
+                counter: 1,
+                timestamp: now,
+                intentHashBlake3: "",
+                signatureEd25519: "",
+                attestationHashBlake3: attestationDigest
+            )
+        )
+        let signed = try phoneSigner.sign(
+            remoteUnlockCredential: credential,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: credential.authority.timestamp,
+            privateKey: privateKey
+        )
+        credential.authority.intentHashBlake3 = signed.intentHashHex
+        credential.authority.signatureEd25519 = signed.signatureBase64
+        return credential
     }
 }
 #endif

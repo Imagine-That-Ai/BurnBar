@@ -2562,7 +2562,8 @@ service cloud.firestore {
           "createdAt",
           "updatedAt",
           "publicKeyFingerprint",
-          "keyVersion"
+          "keyVersion",
+          "approvedByDeviceId"
         ])
         && request.resource.data.deviceId == deviceId
         && request.resource.data.deviceName is string
@@ -2572,7 +2573,11 @@ service cloud.firestore {
         && request.resource.data.trustState in ["pending", "trusted", "revoked"]
         && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
         && (!("publicKeyFingerprint" in request.resource.data) || (request.resource.data.publicKeyFingerprint is string && request.resource.data.publicKeyFingerprint.size() <= 256))
-        && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int);
+        && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int)
+        && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
+        && (!("approvedAt" in request.resource.data) || request.resource.data.approvedAt is timestamp)
+        && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
       }
 
       function validEscrowDeviceCreate(deviceId) {
@@ -2693,6 +2698,22 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_public_keys/{keyId} {
+      function escrowPublicKeyDevicePath() {
+        return /databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId);
+      }
+
+      function publicKeyMatchesPendingEscrowDevice() {
+        return exists(escrowPublicKeyDevicePath())
+          && get(escrowPublicKeyDevicePath()).data.trustState == "pending"
+          && ("publicKeyFingerprint" in request.resource.data)
+          && ("publicKeyFingerprint" in get(escrowPublicKeyDevicePath()).data)
+          && request.resource.data.publicKeyFingerprint == get(escrowPublicKeyDevicePath()).data.publicKeyFingerprint
+          && ("keyVersion" in get(escrowPublicKeyDevicePath()).data)
+          && request.resource.data.keyVersion == 1
+          && request.resource.data.keyVersion == get(escrowPublicKeyDevicePath()).data.keyVersion
+          && keyId == request.resource.data.deviceId + "_1";
+      }
+
       function validEscrowPublicKeyDocument() {
         return request.resource.data.keys().hasOnly([
           "deviceId",
@@ -2733,11 +2754,12 @@ service cloud.firestore {
       }
 
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
-        && validEscrowPublicKeyDocument();
-      allow delete: if ownsUserNamespace(userId);
+        && validEscrowPublicKeyDocument()
+        && publicKeyMatchesPendingEscrowDevice();
+      allow update, delete: if false;
     }
 
     match /users/{userId}/escrow_grants/{grantId} {

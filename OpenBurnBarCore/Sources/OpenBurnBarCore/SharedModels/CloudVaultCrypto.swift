@@ -69,6 +69,28 @@ public struct CloudVaultBlobEnvelope: Codable, Hashable, Sendable {
     }
 }
 
+public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
+    public let schemaVersion: Int
+    public let algorithm: String
+    public let keyVersion: Int
+    public let vaultKeyID: String
+    public let sealedBoxBase64: String
+
+    public init(
+        schemaVersion: Int = 1,
+        algorithm: String = CloudVaultCrypto.aesGCMAlgorithm,
+        keyVersion: Int,
+        vaultKeyID: String,
+        sealedBoxBase64: String
+    ) {
+        self.schemaVersion = schemaVersion
+        self.algorithm = algorithm
+        self.keyVersion = keyVersion
+        self.vaultKeyID = vaultKeyID
+        self.sealedBoxBase64 = sealedBoxBase64
+    }
+}
+
 public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
     public static let tokenHashVersion = 1
@@ -81,6 +103,11 @@ public enum CloudVaultCrypto {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return Data(bytes)
+    }
+
+    public static func vaultKeyID(for keyData: Data) throws -> String {
+        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return "v1_" + String(sha256Hex(keyData).prefix(32))
     }
 
     public static func generateRecoveryKey() throws -> String {
@@ -129,6 +156,62 @@ public enum CloudVaultCrypto {
             throw CloudVaultCryptoError.invalidEnvelope
         }
         return plaintext
+    }
+
+    public static func sealPayload(
+        _ data: Data,
+        keyData: Data,
+        vaultKeyID: String,
+        keyVersion: Int = currentKeyVersion
+    ) throws -> CloudVaultSealedPayload {
+        let sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData))
+        guard let combined = sealed.combined else {
+            throw CloudVaultCryptoError.sealedBoxUnavailable
+        }
+        return CloudVaultSealedPayload(
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: combined.base64EncodedString()
+        )
+    }
+
+    public static func openPayload(_ envelope: CloudVaultSealedPayload, keyData: Data) throws -> Data {
+        guard envelope.algorithm == aesGCMAlgorithm,
+              envelope.schemaVersion == 1,
+              envelope.vaultKeyID == (try vaultKeyID(for: keyData)),
+              let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        let box = try AES.GCM.SealedBox(combined: combined)
+        return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+    }
+
+    public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> [String: Any] {
+        [
+            "schemaVersion": envelope.schemaVersion,
+            "algorithm": envelope.algorithm,
+            "keyVersion": envelope.keyVersion,
+            "vaultKeyID": envelope.vaultKeyID,
+            "sealedBoxBase64": envelope.sealedBoxBase64
+        ]
+    }
+
+    public static func sealedPayload(from raw: Any?) -> CloudVaultSealedPayload? {
+        guard let dict = raw as? [String: Any],
+              let schemaVersion = dict["schemaVersion"] as? Int,
+              let algorithm = dict["algorithm"] as? String,
+              let keyVersion = dict["keyVersion"] as? Int,
+              let vaultKeyID = dict["vaultKeyID"] as? String,
+              let sealedBoxBase64 = dict["sealedBoxBase64"] as? String else {
+            return nil
+        }
+        return CloudVaultSealedPayload(
+            schemaVersion: schemaVersion,
+            algorithm: algorithm,
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: sealedBoxBase64
+        )
     }
 
     public static func tokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {

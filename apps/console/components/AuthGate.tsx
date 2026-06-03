@@ -22,7 +22,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function SignInCard() {
-  const { signInGoogle, signInApple, signInPasskey, passkeySupported } = useAuth();
+  const { signInGoogle, signInApple, signInPasskey, passkeySupported, appleAuthEnabled } =
+    useAuth();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -32,7 +33,7 @@ function SignInCard() {
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(signInErrorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -63,21 +64,44 @@ function SignInCard() {
           >
             {busy === "google" ? "…" : "Continue with Google"}
           </Button>
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={wrap("apple", signInApple)}
-            disabled={!!busy}
-          >
-            {busy === "apple" ? "…" : "Continue with Apple"}
-          </Button>
+          {appleAuthEnabled && (
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={wrap("apple", signInApple)}
+              disabled={!!busy}
+            >
+              {busy === "apple" ? "…" : "Continue with Apple"}
+            </Button>
+          )}
           {error && <p className="text-xs text-[color:var(--color-seal-crimson)]">{error}</p>}
           <p className="pt-token-2 text-xs text-content-dim">
-            Passkeys are primary; Google and Apple are fallbacks. This page is private and never
-            indexed.
+            {appleAuthEnabled
+              ? "Passkeys are primary; Google and Apple are fallbacks."
+              : "Passkeys work after setup; Google is the production fallback."}{" "}
+            This page is private and never indexed.
           </p>
         </CardContent>
       </Card>
     </div>
   );
+}
+
+function signInErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : "Sign-in failed.";
+  if (
+    message.includes("auth/operation-not-allowed") ||
+    message.includes("CONFIGURATION_NOT_FOUND") ||
+    message.includes("invalid_client")
+  ) {
+    return "This sign-in provider is not fully configured yet.";
+  }
+  if (
+    message.includes("NotAllowedError") ||
+    message.includes("privacy-considerations-client") ||
+    message.includes("timed out or was not allowed")
+  ) {
+    return "No passkey was selected, or the passkey prompt was cancelled.";
+  }
+  return message;
 }

@@ -43,7 +43,7 @@ fun AuroraNavigationTray(
         modifier =
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp)
+            .padding(horizontal = 12.dp)
             .padding(bottom = AuroraTrayPillBottomInset),
         contentAlignment = Alignment.Center,
     ) {

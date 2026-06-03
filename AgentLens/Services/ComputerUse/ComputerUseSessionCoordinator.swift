@@ -237,6 +237,13 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     public func updateEntitlement(_ entitlement: ComputerUseEntitlementSnapshot) {
         configuration.entitlement = entitlement
+        guard activeSessionId != nil else { return }
+        if !entitlement.isActive ||
+            !entitlement.allowsBrowser ||
+            !entitlement.allowsSystem ||
+            !entitlement.allowsPhoneControl {
+            endSessionNow(reason: .entitlementLost)
+        }
     }
 
     public func updateBudgetEnvelope(_ envelope: ComputerUseBudgetEnvelope) {
@@ -403,6 +410,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     }
 
     public func endSession(reason: ComputerUseEndReason = .completed) async {
+        endSessionNow(reason: reason)
+    }
+
+    private func endSessionNow(reason: ComputerUseEndReason = .completed) {
         guard activeSessionId != nil else { return }
         cancelPendingApprovals(decision: .reject, note: "session ended")
         finalizeAuditSignedHeadIfPossible()
@@ -955,7 +966,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     auditLogger: auditLogger,
                     scopeRules: scopeRulesProvider(),
                     validator: phoneValidator,
-                    isDirectPhoneControl: activeSessionIsDirectPhoneControl
+                    isDirectPhoneControl: activeSessionIsDirectPhoneControl,
+                    attestation: await phoneControlAttestationRequirement()
                 )
             )
             applyRemoteClipboardResult(result)
@@ -1097,7 +1109,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     activeSessionId: activeSessionId,
                     state: state,
                     isDirectPhoneControl: activeSessionIsDirectPhoneControl,
-                    authorizedPeerNodeId: authorizedPeerNode
+                    authorizedPeerNodeId: authorizedPeerNode,
+                    attestation: await phoneControlAttestationRequirement()
                 )
             )
             Self.log.info(
@@ -1404,6 +1417,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         case .error:
             return response.detail ?? action.executableSummary(forApproval: macDispatcher.currentScopeContext())
         }
+    }
+
+    private func phoneControlAttestationRequirement() async -> PhoneControlAttestationRequirement {
+        let strict = SettingsManager.shared.computerUsePhoneControlAttestationRequired
+        return await MacAppCheckAttestationReader.attestationRequirement(strictMode: strict)
     }
 
     private func controlDeniedReason(for denyReason: String) -> HermesRealtimeRelayControlDenied.Reason {

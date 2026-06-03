@@ -68,6 +68,34 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         return shared
     }
 
+    private func writableVaultKey(uid: String) async throws -> CloudVaultResolvedKey {
+        if vaultKeyStore is CloudVaultKeyStore,
+           vaultKeyPublisher is FirebaseSessionLogVaultKeyPublisher {
+            let gate = await context.syncGate()
+            return try await MacCloudVaultKeyAccess.keyForWriting(
+                uid: uid,
+                deviceId: gate.account.deviceId,
+                firestore: Firestore.firestore()
+            )
+        }
+        let key = try vaultKeyStore.getOrCreateKey(uid: uid)
+        try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: key, context: context)
+        return CloudVaultResolvedKey(keyData: key, vaultKeyID: try CloudVaultCrypto.vaultKeyID(for: key))
+    }
+
+    private func readableVaultKey(uid: String) async throws -> CloudVaultResolvedKey? {
+        if vaultKeyStore is CloudVaultKeyStore {
+            let gate = await context.syncGate()
+            return try await MacCloudVaultKeyAccess.keyForReading(
+                uid: uid,
+                deviceId: gate.account.deviceId,
+                firestore: Firestore.firestore()
+            )
+        }
+        guard let key = try vaultKeyStore.loadKey(uid: uid) else { return nil }
+        return CloudVaultResolvedKey(keyData: key, vaultKeyID: try CloudVaultCrypto.vaultKeyID(for: key))
+    }
+
     func sync() async {
         await sync(drainAll: false, progress: nil)
     }
@@ -189,8 +217,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         operation: "Encrypting session body"
                     )
 
-                    let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
-                    try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
+                    let resolvedVaultKey = try await writableVaultKey(uid: uid)
+                    let vaultKey = resolvedVaultKey.keyData
+                    let vaultKeyID = resolvedVaultKey.vaultKeyID
                     let sealedBody = try CloudVaultCrypto.sealBlob(Data(markdown.utf8), keyData: vaultKey)
                     let sealedBodyData = try Self.jsonData(sealedBody)
                     let uploadTicket = try await encryptedCloudClient.beginEncryptedSessionBlobUpload(
@@ -221,12 +250,14 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         "storagePath": uploadTicket.storagePath,
                         "sealedTitle": try Self.dictionary(sealedTitle),
                         "sealedBodyPreview": try Self.dictionary(sealedPreview),
-                        "encryption": [
-                            "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
-                            "keyVersion": CloudVaultCrypto.currentKeyVersion,
-                            "tokenHashVersion": CloudVaultCrypto.tokenHashVersion,
-                            "semanticHashVersion": CloudVaultCrypto.semanticHashVersion
-                        ],
+	                        "encryption": [
+	                            "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
+	                            "keyVersion": CloudVaultCrypto.currentKeyVersion,
+	                            "vaultKeyID": vaultKeyID,
+	                            "tokenHashVersion": CloudVaultCrypto.tokenHashVersion,
+	                            "semanticHashVersion": CloudVaultCrypto.semanticHashVersion
+	                        ],
+	                        "vaultKeyID": vaultKeyID,
                         "chunkCount": 0,
                         "searchChunkCount": chunks.count,
                         "byteCount": markdown.utf8.count,
@@ -560,8 +591,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
               !gate.syncSuppressed,
               let uid = gate.account.uid else { return }
 
-        let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
-        try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
+        let resolvedVaultKey = try await writableVaultKey(uid: uid)
+        let vaultKey = resolvedVaultKey.keyData
 
         let payload = try Self.jsonData(snapshot)
         let sealedSnapshot = try CloudVaultCrypto.sealBlob(payload, keyData: vaultKey)
@@ -575,10 +606,11 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     "sourceSessionCount": snapshot.sourceSessionCount,
                     "sourceConversationCount": snapshot.sourceConversationCount,
                     "generatedAt": Self.iso8601.string(from: snapshot.generatedAt),
-                    "freshness": snapshot.freshness.rawValue,
-                    "visualKinds": visualKinds,
-                    "sealedSnapshot": try Self.dictionary(sealedSnapshot)
-                ])
+	                    "freshness": snapshot.freshness.rawValue,
+	                    "visualKinds": visualKinds,
+	                    "vaultKeyID": resolvedVaultKey.vaultKeyID,
+	                    "sealedSnapshot": try Self.dictionary(sealedSnapshot)
+	                ])
         } catch {
             if Self.isPermissionDeniedFunctionsError(error) { return }
             throw error
@@ -594,7 +626,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
               !gate.syncSuppressed,
               let uid = gate.account.uid else { return nil }
 
-        guard let vaultKey = try vaultKeyStore.loadKey(uid: uid) else { return nil }
+        guard let vaultKey = try await readableVaultKey(uid: uid)?.keyData else { return nil }
         let payload: [String: Any]
         do {
             payload = try await encryptedCloudClient.getEncryptedProjectMemorySnapshot([
@@ -623,7 +655,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         guard gate.account.isFirebaseAvailable,
               gate.account.isSignedIn,
               let uid = gate.account.uid else { return [] }
-        let vaultKey = try? vaultKeyStore.loadKey(uid: uid)
+        let vaultKey = try? await readableVaultKey(uid: uid)?.keyData
 
         let snapshot = try await context.firestoreGateway
             .collection("users")
@@ -695,6 +727,7 @@ protocol SessionLogVaultKeyPublishing {
 @MainActor
 struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws {
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let keypair = try CloudVaultDeviceKeypair(account: "cloud-vault-device:\(context.deviceId)")
         let userRef = context.firestoreGateway.collection("users").document(uid)
         let deviceRef = userRef.collection("escrow_devices").document(context.deviceId)
@@ -741,11 +774,12 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
             }
             let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
             try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(targetDeviceId)_\(keyVersion)")
-                .setData([
-                    "uid": uid,
-                    "targetDeviceId": targetDeviceId,
-                    "sourceDeviceId": context.deviceId,
+	                .document("\(targetDeviceId)_\(keyVersion)")
+	                .setData([
+	                    "uid": uid,
+	                    "vaultKeyID": vaultKeyID,
+	                    "targetDeviceId": targetDeviceId,
+	                    "sourceDeviceId": context.deviceId,
                     "publicKeyFingerprint": fingerprint,
                     "keyVersion": keyVersion,
                     "wrappedVaultKey": wrapped.base64EncodedString(),
@@ -753,10 +787,10 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
                     "status": "active",
                     "createdAt": FieldValue.serverTimestamp(),
                     "updatedAt": FieldValue.serverTimestamp(),
-                    "schemaVersion": 1
-                ], merge: true)
-        }
-    }
+	                    "schemaVersion": 2
+	                ], merge: true)
+	        }
+	    }
 }
 
 extension SessionLogSyncService {
