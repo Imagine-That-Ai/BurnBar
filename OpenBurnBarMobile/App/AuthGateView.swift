@@ -50,7 +50,7 @@ struct AuthGateView: View {
         // plays one theme-appropriate show (Logo Storm / Cloud Token Rain /
         // edge bounce) and tears back down. Mounted here so both the iPhone
         // tab root and the iPad sidebar root inherit it.
-        .overlay { EasterEggOverlay(controller: EasterEggController.shared) }
+        .overlay { EasterEggOverlay(controller: .shared) }
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
         .environment(\.mobileAuthStore, authStore)
         .task(id: authStore.currentIdentity?.uid) {
