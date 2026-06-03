@@ -98,8 +98,15 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             "inferredTaskTitle": record.inferredTaskTitle,
             "lastAssistantMessage": capLastAssistantMessage(record.lastAssistantMessage),
             "updatedAt": FieldValue.serverTimestamp(),
-            "sourceType": record.sourceType.rawValue
+            "sourceType": record.sourceType.rawValue,
+            "version": record.version
         ]
+        // Tombstone propagation (B-DATA-2): a non-nil `deletedAt` tells every
+        // other device to soft-delete its local copy. We still upload the rest of
+        // the metadata so the doc carries a coherent last-known state.
+        if let deletedAt = record.deletedAt {
+            data["deletedAt"] = Timestamp(date: deletedAt)
+        }
         if let workingDirectory = record.workingDirectory {
             data["workingDirectory"] = workingDirectory
         }

@@ -231,6 +231,45 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         )
     }
 
+    @discardableResult
+    public func syncPreparedBatchPayloads(_ payloads: [[String: Any]]) async throws -> KnowledgeCommitResult? {
+        guard !payloads.isEmpty else { return nil }
+        guard uidProvider() != nil else { throw KnowledgeSyncError.notSignedIn }
+        guard Self.processGate.tryEnter() else { return nil }
+        defer { Self.processGate.leave() }
+
+        isSyncing = true
+        lastSyncError = nil
+        defer { isSyncing = false }
+
+        var totalWritten = 0
+        var totalSkipped = 0
+        var lastTier = "pro"
+        var lastChunkCount = 0
+
+        do {
+            for payload in payloads {
+                let result = try await callable.commitKnowledgeBatch(payload)
+                totalWritten += result.written
+                totalSkipped += result.skipped
+                lastTier = result.tier
+                lastChunkCount = result.chunkCount
+            }
+        } catch {
+            lastSyncError = error.localizedDescription
+            throw error
+        }
+
+        lastWritten = totalWritten
+        lastSyncDate = Date()
+        return KnowledgeCommitResult(
+            written: totalWritten,
+            skipped: totalSkipped,
+            tier: lastTier,
+            chunkCount: lastChunkCount
+        )
+    }
+
     // MARK: - Encoding
 
     /// Encode a prepared batch into the `commitKnowledgeBatch` callable payload.

@@ -42,6 +42,7 @@ import {
   resolveConversationSort,
 } from "./conversationQuery.js";
 import { buildCloudSearchPostingEdges, cloudSearchFallbackHashes } from "./encryptedSearchIndex.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: encrypted hosted session logs + cloud search
@@ -49,7 +50,7 @@ import { buildCloudSearchPostingEdges, cloudSearchFallbackHashes } from "./encry
 
 export const beginEncryptedSessionBlobUpload = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -104,7 +105,7 @@ export const beginEncryptedSessionBlobUpload = onCall(
 
 export const getEncryptedSessionBlobDownloadUrl = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -143,7 +144,7 @@ export const getEncryptedSessionBlobDownloadUrl = onCall(
 
 export const commitEncryptedSearchIndexBatch = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -322,7 +323,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
 
 export const commitEncryptedProjectMemorySnapshot = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -405,7 +406,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
 
 export const getEncryptedProjectMemorySnapshot = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -449,7 +450,7 @@ export const getEncryptedProjectMemorySnapshot = onCall(
 
 export const listEncryptedProjectMemorySnapshots = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -495,7 +496,7 @@ export const listEncryptedProjectMemorySnapshots = onCall(
 
 export const searchEncryptedConversationIndex = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -706,7 +707,7 @@ export const searchEncryptedConversationIndex = onCall(
  */
 export const queryConversations = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

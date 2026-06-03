@@ -266,13 +266,14 @@ export async function wrapVaultKey(
 
 /**
  * Unwrap a wrapped vault key with our device private key. Accepts the exact byte
- * layout Swift produces. Returns the 32-byte vault key as a CryptoKey usable for
- * AES-GCM decrypt (non-extractable, in-memory only).
+ * layout Swift produces. Returns the raw 32-byte vault key for in-memory browser
+ * consumers that must derive deterministic client-side transforms (Pensieve
+ * vector cloaking). The key is never serialized or sent to the server.
  */
-export async function unwrapVaultKey(
+export async function unwrapVaultKeyBytes(
   wrapped: Uint8Array,
   devicePrivateKey: CryptoKey,
-): Promise<CryptoKey> {
+): Promise<Uint8Array> {
   if (wrapped.length <= P256_X963_PUBKEY_LEN) {
     throw new EscrowError("invalid_envelope", "Wrapped vault key is too short.");
   }
@@ -302,6 +303,19 @@ export async function unwrapVaultKey(
   if (raw.length !== 32) {
     throw new EscrowError("invalid_key_length", "Unwrapped vault key must be 32 bytes.");
   }
+  return raw;
+}
+
+/**
+ * Unwrap a wrapped vault key with our device private key. Accepts the exact byte
+ * layout Swift produces. Returns the 32-byte vault key as a CryptoKey usable for
+ * AES-GCM decrypt (non-extractable, in-memory only).
+ */
+export async function unwrapVaultKey(
+  wrapped: Uint8Array,
+  devicePrivateKey: CryptoKey,
+): Promise<CryptoKey> {
+  const raw = await unwrapVaultKeyBytes(wrapped, devicePrivateKey);
   return importVaultKey(raw);
 }
 

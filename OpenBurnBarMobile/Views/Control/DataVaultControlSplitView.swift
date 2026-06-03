@@ -1,6 +1,18 @@
 import SwiftUI
 import OpenBurnBarCore
 
+struct DataVaultAdaptiveControlView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    var body: some View {
+        if horizontalSizeClass == .regular {
+            DataVaultControlSplitView()
+        } else {
+            DataVaultControlView()
+        }
+    }
+}
+
 // MARK: - Data & Privacy Control Center (iPad — 3-column cinematic basin)
 //
 // Column 1: sections (Inventory / Pensieve / Keys & safety / Audit).

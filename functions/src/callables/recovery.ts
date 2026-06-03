@@ -36,7 +36,8 @@ import {
   requireRecordArray,
   nowISO,
 } from "./shared.js";
-import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export const RECOVERY_SCHEMA_VERSION = 1;
 const RECOVERY_COLLECTION = "account_recovery_methods";
@@ -44,7 +45,7 @@ const MAX_RECOVERY_CONTACTS = 5;
 const MAX_WRAPPED_BLOB_LENGTH = 8192;
 
 const CALLABLE_OPTS = {
-  region: "us-central1",
+  region: FUNCTIONS_REGION,
   enforceAppCheck: getConfig().enforceAppCheck,
   maxInstances: 50,
 } as const;
@@ -209,15 +210,14 @@ export const confirmRecovery = onCall(
       tx.set(ref, { confirmed: true, confirmedAt: now, updatedAt: now }, { merge: true });
     });
 
-    try {
-      await appendAuditEvent(uid, {
-        actor: auditActorLabel(request),
-        action: AUDIT_ACTIONS.recoveryConfirm,
-        domain: "device_trust_keys",
-      });
-    } catch {
-      // best-effort audit
-    }
+    // Fail-CLOSED: confirming a recovery method arms an irreversible account-
+    // recovery path, so the record must commit. If the audit write fails the
+    // error propagates rather than the confirmation going unlogged.
+    await appendAuditEventRequired(uid, {
+      actor: auditActorLabel(request),
+      action: AUDIT_ACTIONS.recoveryConfirm,
+      domain: "device_trust_keys",
+    });
 
     return { ok: true };
   }),

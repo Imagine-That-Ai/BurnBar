@@ -99,6 +99,7 @@ struct SettingsSearchResultsView: View {
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot, .agentsRoot, .textExpansionRoot, .mediaRoot,
+             .dataControlCenterRoot,
              .computerUseRoot:
             return ""
         case .agentsAccounts: return "Accounts"

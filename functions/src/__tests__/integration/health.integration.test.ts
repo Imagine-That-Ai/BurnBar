@@ -6,9 +6,11 @@
  */
 import { describe, it, expect } from "vitest";
 
+import { FUNCTIONS_REGION } from "../../runtimeOptions.js";
+
 const EMULATOR_HOST = process.env.FUNCTIONS_EMULATOR_HOST ?? "localhost:5001";
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "openburnbar-dev";
-const BASE_URL = `http://${EMULATOR_HOST}/${PROJECT_ID}/us-central1`;
+const BASE_URL = `http://${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}`;
 
 // Skip integration tests unless emulator is explicitly enabled
 const describeIf = (condition: boolean) => (condition ? describe : describe.skip);

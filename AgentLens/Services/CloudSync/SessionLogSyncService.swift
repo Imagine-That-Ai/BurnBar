@@ -867,6 +867,10 @@ protocol SessionLogEncryptedCloudClient {
     ) async throws
     func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
+    /// Deletes the encrypted session body blob from Cloud Storage for a single
+    /// session-log document. Used by tombstone GC after the retention window so
+    /// the GCS object does not outlive the conversation it backed (B-DATA-2).
+    func deleteEncryptedSessionBlob(documentID: String, storagePath: String) async throws
 }
 
 final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient, @unchecked Sendable {
@@ -937,6 +941,15 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
         let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
         return result.data as? [String: Any] ?? [:]
+    }
+
+    func deleteEncryptedSessionBlob(documentID: String, storagePath: String) async throws {
+        // The body lives behind a signed-URL / IAM boundary, so deletion is
+        // server-mediated (same posture as `beginEncryptedSessionBlobUpload`).
+        _ = try await functions.httpsCallable("deleteEncryptedSessionBlob").call([
+            "documentID": documentID,
+            "storagePath": storagePath
+        ])
     }
 }
 

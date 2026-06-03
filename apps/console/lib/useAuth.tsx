@@ -11,11 +11,14 @@ import {
 } from "react";
 import {
   onAuthStateChanged,
+  signInWithCustomToken,
   signInWithPopup,
   signOut as fbSignOut,
   type User,
 } from "firebase/auth";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { auth, googleProvider, appleProvider } from "./firebaseClient";
+import { beginPasskeyAssertion, verifyPasskeyAssertion } from "./api";
 
 interface AuthState {
   user: User | null;
@@ -49,19 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithPopup(auth(), appleProvider());
   }, []);
 
-  /**
-   * Passkey-first sign-in. The WebAuthn assertion is exchanged for a Firebase
-   * custom token by a server callable (see integration notes); until that
-   * callable lands the UI keeps passkey primary but degrades to the federated
-   * providers. We surface a typed error rather than a silent no-op.
-   */
   const signInPasskey = useCallback(async () => {
     if (typeof PublicKeyCredential === "undefined") {
       throw new Error("Passkeys are not supported in this browser.");
     }
-    throw new Error(
-      "Passkey sign-in requires the verifyPasskeyAssertion callable (see integration notes). Use Google or Apple to continue.",
-    );
+    const { options } = await beginPasskeyAssertion();
+    const assertion = await startAuthentication({ optionsJSON: options });
+    const { token } = await verifyPasskeyAssertion(assertion, options.challenge);
+    await signInWithCustomToken(auth(), token);
   }, []);
 
   const signOut = useCallback(async () => {

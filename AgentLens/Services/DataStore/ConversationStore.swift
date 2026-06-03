@@ -75,7 +75,9 @@ final class ConversationStore: Sendable {
             sourceType: sourceType,
             sourceDeviceId: row["sourceDeviceId"] as? String,
             sourceDeviceName: row["sourceDeviceName"] as? String,
-            isRemote: ((row["isRemote"] as? Int) ?? Int(row["isRemote"] as? Int64 ?? 0)) != 0
+            isRemote: ((row["isRemote"] as? Int) ?? Int(row["isRemote"] as? Int64 ?? 0)) != 0,
+            deletedAt: OpenBurnBarDatabase.parseDateValue(row["deletedAt"]),
+            version: (row["version"] as? Int) ?? Int(row["version"] as? Int64 ?? 1)
         )
     }
 

@@ -150,6 +150,42 @@ When adding a new critical path, ship **one structured log event** and **one cou
 
 **Error budget:** Monthly Firestore read budget for hosted MCP — alert on dashboard tile before hard cap; see [media-budget.md](media-budget.md).
 
+### Cold-start mitigation (hot path warm pool, A4)
+
+Hot revenue/control paths pin a warm instance via `HOT_PATH_OPTIONS`
+(`minInstances`, `concurrency: 40`) in [`functions/src/runtimeOptions.ts`](../../functions/src/runtimeOptions.js)
+so the first request at launch never pays a full cold start (which would time
+out the Stripe and App Store webhooks). `minInstances` defaults to `1` and is
+overridable per-environment via the `HOT_MIN_INSTANCES` env var (set `0` to
+disable the warm pool in preview/CI projects where idle cost is not worth it).
+
+**Allowlist** (only these — everything else, including scheduled rollups, stays at `minInstances 0`):
+
+| Function | Surface | Why hot |
+|----------|---------|---------|
+| `stripeBurnBarProWebhook` | `callables/stripe.ts` | Stripe retries/times out on a cold first POST |
+| `appStoreServerNotificationsV2` | `appstore/notifications.ts` | Apple retries for 3 days on a slow response |
+| `beginEntitlementBinding` | `appstore/callable.ts` | First step of the App Store purchase flow |
+| `connectProviderAccount` | `callables/providerAccounts.ts` | First-run provider connect onboarding |
+| `startCliLink` | `callables/cliLink.ts` | Entry point of the CLI device-code flow |
+| `burnBarHermesGateway` | `callables/hermesGateway.ts` | Interactive gateway; cold start stalls the chat path |
+
+**Cost tradeoff:** each pinned instance bills for idle CPU/memory 24/7 instead
+of scaling to zero. At the default (`HOT_MIN_INSTANCES=1`) the allowlist holds
+~6 always-on instances. This is the deliberate price of avoiding launch-day
+webhook timeouts and first-request latency on revenue paths; revisit
+`HOT_MIN_INSTANCES` if the always-on spend outgrows the cold-start risk, or
+raise it ahead of a known traffic spike. Scheduled rollups are intentionally
+excluded — a few extra seconds of cold start on a background batch is free.
+
+**Post-deploy gate (do not skip):** confirm the warm pool actually landed —
+```bash
+# Replace REGION/PROJECT as needed; minScale must be >= HOT_MIN_INSTANCES
+gcloud run services describe stripeburnbarprowebhook --region=us-central1 \
+  --format='value(spec.template.metadata.annotations."autoscaling.knative.dev/minScale")'
+```
+Repeat per allowlisted function (Cloud Run service names are lowercased).
+
 ---
 
 ## Error budgets and escalation

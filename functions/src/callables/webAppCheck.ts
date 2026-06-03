@@ -29,6 +29,7 @@ import { db } from "../adminRuntime.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
 import { stripUndefinedObject } from "../guards.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const ESCROW_WEB_PLATFORM = "Web";
 const MAX_JWK_FIELD = 4096;
@@ -93,7 +94,7 @@ export const __testing__ = {
 
 export const registerBrowserEscrowDevice = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },

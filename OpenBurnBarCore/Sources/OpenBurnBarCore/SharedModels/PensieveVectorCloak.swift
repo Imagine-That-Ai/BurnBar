@@ -9,12 +9,26 @@ import Foundation
 /// preserved.
 ///
 /// Cloaking is an orthonormal map Q (a product of Householder reflections,
-/// each Hᵢ = I − 2·vᵢvᵢᵀ with ‖vᵢ‖ = 1). It preserves inner products and norms
-/// exactly, so ANN ranking over cloaked vectors equals ranking over raw
-/// model-space vectors, yet the server only ever sees the cloaked vector — it
-/// can never feed a public-model-space embedding to an inversion attack. Q is
-/// derived deterministically from the 32-byte device vault key and the model
-/// version, byte-for-byte identical to the TS construction.
+/// each Hᵢ = I − 2·vᵢvᵢᵀ with ‖vᵢ‖ = 1). Claim only the proven properties (see
+/// `docs/pensieve-leakage-analysis.md`):
+///   - Hides the public-model (bge) basis: stored vectors are not in the raw
+///     bge frame, so off-the-shelf embedding-inversion models cannot be applied
+///     DIRECTLY to them (raises the bar; not a non-invertibility proof).
+///   - Per-user distinct stored bytes (PARTIAL cross-tenant resistance): Q is
+///     per-user, so the same plaintext under two members' keys yields different
+///     vectors (defeats exact-match joins). NOT full unlinkability — with 24
+///     reflections in 384-dim, cross-tenant cosine ≈ 0.77, so similarity-based
+///     cross-tenant linkage is still possible; full decorrelation needs ~dim
+///     reflections (a versioned re-cloak).
+/// What it does NOT do — accepted, documented leakage: because Q is orthonormal,
+/// `<Qx, Qy> = <x, y>` and `‖Qx‖ = ‖x‖`, so cosine similarity is preserved
+/// EXACTLY. The pairwise-cosine matrix, k-NN graph, clusters, and
+/// similarity-dedup stay computable by the server WITHOUT the key — within one
+/// user and across users. (That same identity is the feature: it lets
+/// server-side findNearest recall work over cloaked vectors, and it keeps index-
+/// vs query-time ranking equal to raw space.) Q is derived deterministically
+/// from the 32-byte device vault key and the model version, byte-for-byte
+/// identical to the TS construction.
 public enum PensieveVectorCloak {
     /// Pinned production embedding model id stored on every vector. Index- and
     /// query-time vectors are only comparable within one version.

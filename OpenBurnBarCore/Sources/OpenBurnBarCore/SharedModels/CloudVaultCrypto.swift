@@ -74,11 +74,24 @@ public enum CloudVaultCrypto {
     public static let tokenHashVersion = 1
     public static let semanticHashVersion = 1
     public static let currentKeyVersion = 1
+    public static let recoverySalt = Data("OpenBurnBar-Recovery-Salt-v1".utf8)
+    public static let recoveryWrapInfo = Data("OpenBurnBar-Recovery-Wrap-v1".utf8)
 
     public static func generateVaultKey() -> Data {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return Data(bytes)
+    }
+
+    public static func generateRecoveryKey() throws -> String {
+        let alphabet = Array("ABCDEFGHJKMNPQRSTVWXYZ23456789")
+        var bytes = [UInt8](repeating: 0, count: 35)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+        let characters = bytes.map { alphabet[Int($0) % alphabet.count] }
+        return stride(from: 0, to: characters.count, by: 7)
+            .map { String(characters[$0..<min($0 + 7, characters.count)]) }
+            .joined(separator: "-")
     }
 
     public static func sealText(_ text: String, keyData: Data, keyVersion: Int = currentKeyVersion) throws -> CloudVaultSealedText {
@@ -298,12 +311,68 @@ public enum CloudVaultCrypto {
         return keyData
     }
 
+    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> SymmetricKey {
+        let normalized = normalizedRecoveryKey(recoveryKey)
+        guard normalized.count >= 20 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: Data(normalized.utf8)),
+            salt: recoverySalt,
+            info: recoveryWrapInfo,
+            outputByteCount: 32
+        )
+    }
+
+    public static func wrapVaultKeyWithRecovery(
+        vaultKey: Data,
+        recoveryKey: String
+    ) throws -> (wrappedVaultKeyBase64: String, verificationHash: String) {
+        guard vaultKey.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        let wrappingKey = try deriveRecoveryWrappingKey(from: recoveryKey)
+        let sealed = try AES.GCM.seal(vaultKey, using: wrappingKey)
+        guard let combined = sealed.combined else {
+            throw CloudVaultCryptoError.sealedBoxUnavailable
+        }
+        return (
+            wrappedVaultKeyBase64: combined.base64EncodedString(),
+            verificationHash: recoveryVerificationHash(forDerivedKey: wrappingKey)
+        )
+    }
+
+    public static func unwrapVaultKeyWithRecovery(
+        wrappedVaultKeyBase64: String,
+        recoveryKey: String
+    ) throws -> Data {
+        guard let combined = Data(base64Encoded: wrappedVaultKeyBase64) else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        let box = try AES.GCM.SealedBox(combined: combined)
+        let keyData = try AES.GCM.open(box, using: try deriveRecoveryWrappingKey(from: recoveryKey))
+        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return keyData
+    }
+
+    public static func recoveryVerificationHash(for recoveryKey: String) throws -> String {
+        try recoveryVerificationHash(forDerivedKey: deriveRecoveryWrappingKey(from: recoveryKey))
+    }
+
     public static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     public static func sha256Hex(_ text: String) -> String {
         sha256Hex(Data(text.utf8))
+    }
+
+    private static func recoveryVerificationHash(forDerivedKey key: SymmetricKey) -> String {
+        key.withUnsafeBytes { bytes in
+            sha256Hex(Data(bytes))
+        }
+    }
+
+    private static func normalizedRecoveryKey(_ recoveryKey: String) -> String {
+        recoveryKey
+            .uppercased()
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     private static func symmetricKey(from data: Data) throws -> SymmetricKey {

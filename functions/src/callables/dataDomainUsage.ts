@@ -27,6 +27,7 @@ import {
   isActiveBurnBarCloudProEntitlement,
 } from "./shared.js";
 import { PENSIEVE_LIMITS } from "./knowledgeMemory.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export type DataTier = "ultra" | "pro" | "free";
 
@@ -91,7 +92,7 @@ async function domainSnapshot(uid: string, id: string, src: UsageSource): Promis
 }
 
 export const getDataDomainUsage = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
   wrapCallableHandler("getDataDomainUsage", async (request: CallableRequest) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to view your data usage.");

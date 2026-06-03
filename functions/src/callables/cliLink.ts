@@ -19,6 +19,7 @@ import {
   clientIpFromHttpRequest,
   recordCallableApprovalFailure,
 } from "./publicRateLimit.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 function generateUserCode(): string {
   const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ23456789"; // Omit confusing chars: 0, 1, I, L
@@ -33,8 +34,9 @@ function generateUserCode(): string {
  */
 export const startCliLink = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
+    ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -87,7 +89,7 @@ export const startCliLink = onRequest(
  */
 export const pollCliLink = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
   },
   async (req, res) => {
@@ -158,7 +160,7 @@ export const pollCliLink = onRequest(
  */
 export const completeCliLink = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],

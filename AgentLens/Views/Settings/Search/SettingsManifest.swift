@@ -20,6 +20,16 @@ enum SettingsManifest {
     static let all: [SettingsItem] = baseItems + providerItems
 
     private static let baseItems: [SettingsItem] = [
+        SettingsItem(
+            id: "dataPrivacy.controlCenter.inventory",
+            tab: .dataPrivacy,
+            pageRoute: .dataControlCenterRoot,
+            anchorID: SettingsAnchor.dataControlCenterInventory,
+            title: "Data & Privacy Control Center",
+            subtitle: "See, export, delete, recover, and panic-revoke your BurnBar data",
+            keywords: ["privacy", "encryption", "vault", "pensieve", "delete", "export", "panic", "zero-knowledge"],
+            helpText: "Opens the Pensieve Data & Privacy Control Center inventory and governance controls."
+        ),
 
         // MARK: General → Operator model & setup
 

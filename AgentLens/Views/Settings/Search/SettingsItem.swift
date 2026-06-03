@@ -140,6 +140,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Media & Sharing
     case mediaRoot
 
+    // Data & Privacy
+    case dataControlCenterRoot
+
     // Computer Use
     case computerUseRoot
 }
@@ -185,6 +188,7 @@ enum SettingsAnchor {
     static let gatewayHost = "daemon.gateway.host"
     static let gatewayPort = "daemon.gateway.port"
     static let gatewayAuthToken = "daemon.gateway.authToken"
+    static let gatewayAllowUnauthenticatedLoopback = "daemon.gateway.allowUnauthenticatedLoopback"
 
     // Daemon → Controller runtime
     static let controllerEnabled = "daemon.controller.enabled"
@@ -245,6 +249,9 @@ enum SettingsAnchor {
 
     // Media & Sharing
     static let mediaPermissions = "media.permissions"
+
+    // Data & Privacy
+    static let dataControlCenterInventory = "data.controlCenter.inventory"
 
     // Computer Use
     static let computerUseReadiness = "computerUse.readiness"

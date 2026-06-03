@@ -1,4 +1,5 @@
 import OpenBurnBarDaemon
+import OpenBurnBarCore
 import Darwin
 import Dispatch
 import Foundation
@@ -28,6 +29,11 @@ struct OpenBurnBarDaemonExecutable {
         try configuration.validate()
         let logger = BurnBarDaemonLogger(category: "process")
         let server = BurnBarDaemonServer(configuration: configuration, logger: logger)
+        let pensieveWatcher = makePensieveKnowledgeWatcher(
+            environment: ProcessInfo.processInfo.environment,
+            logger: logger
+        )
+        pensieveWatcher?.start()
 
         try await server.start()
 
@@ -41,7 +47,38 @@ struct OpenBurnBarDaemonExecutable {
 
         let signal = await BurnBarSignalMonitor(signals: [SIGINT, SIGTERM]).waitForSignal()
         logger.notice("shutdown_signal_received", metadata: ["signal": "\(signal)"])
+        pensieveWatcher?.stop()
         await server.stop()
+    }
+}
+
+private func makePensieveKnowledgeWatcher(
+    environment: [String: String],
+    logger: BurnBarDaemonLogger
+) -> PensieveKnowledgeWatcher? {
+    let repoDocsURL = environment["OPENBURNBAR_PENSIEVE_REPO_DOCS_PATH"]
+        .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+    let notesURL = environment["OPENBURNBAR_PENSIEVE_NOTES_PATH"]
+        .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+    let roots = PensieveKnowledgeWatcher.standardRoots(
+        repoDocsURL: repoDocsURL,
+        notesURL: notesURL
+    )
+    guard roots.isEmpty == false else { return nil }
+
+    let uid = environment["OPENBURNBAR_PENSIEVE_VAULT_UID"] ?? environment["OPENBURNBAR_USER_ID"]
+    let trimmedUID = uid?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let keyStore = CloudVaultKeyStore(service: "com.openburnbar.cloud-vault")
+    logger.notice(
+        "pensieve_watcher_configured",
+        metadata: [
+            "root_count": "\(roots.count)",
+            "vault_uid_present": "\(trimmedUID?.isEmpty == false)"
+        ]
+    )
+    return PensieveKnowledgeWatcher(roots: roots) {
+        guard let trimmedUID, trimmedUID.isEmpty == false else { return nil }
+        return try? keyStore.loadKey(uid: trimmedUID)
     }
 }
 
@@ -68,6 +105,8 @@ private enum BurnBarDaemonCommandLine {
             ?? "8317") ?? 8317
         var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]
             ?? environment["BURNBAR_GATEWAY_AUTH_TOKEN"]
+        var gatewayAllowUnauthenticatedLoopback = environment["OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"] == "1"
+            || environment["BURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"] == "1"
         var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
 
@@ -113,6 +152,8 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 gatewayAuthToken = arguments[index]
+            case "--gateway-allow-unauthenticated-loopback":
+                gatewayAllowUnauthenticatedLoopback = true
             case "--socket-auth-token":
                 index += 1
                 guard index < arguments.count else {
@@ -132,6 +173,8 @@ private enum BurnBarDaemonCommandLine {
                       --gateway-host HOST          Gateway bind host (default 127.0.0.1)
                       --gateway-port PORT          Gateway port (default 8317)
                       --gateway-auth-token TOKEN   Bearer token for gateway auth
+                      --gateway-allow-unauthenticated-loopback
+                                                   Opt out of gateway auth on a loopback bind (unsafe)
                       --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
 
                     Environment overrides:
@@ -142,6 +185,7 @@ private enum BurnBarDaemonCommandLine {
                       OPENBURNBAR_GATEWAY_HOST
                       OPENBURNBAR_GATEWAY_PORT
                       OPENBURNBAR_GATEWAY_AUTH_TOKEN
+                      OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK=1
                       OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN
                     """
                 )
@@ -157,7 +201,8 @@ private enum BurnBarDaemonCommandLine {
             isEnabled: gatewayEnabled,
             host: gatewayHost,
             port: gatewayPort,
-            authToken: gatewayAuthToken
+            authToken: gatewayAuthToken,
+            allowUnauthenticatedLoopback: gatewayAllowUnauthenticatedLoopback
         )
         return BurnBarDaemonConfiguration(
             socketPath: socketPath,

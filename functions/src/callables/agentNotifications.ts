@@ -10,8 +10,9 @@ import { getConfig } from "../config.js";
 import { errorCode, isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import type { AgentNotificationReplyCommand, AgentReplyNotificationEvent } from "../agentNotifications.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-const REGION = "us-central1";
+const REGION = FUNCTIONS_REGION;
 const EVENT_COLLECTION = "agent_notification_events";
 const REPLY_COLLECTION = "agent_notification_replies";
 const MAX_REPLY_CHARS = 16_000;

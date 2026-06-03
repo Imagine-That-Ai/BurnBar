@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { EscrowFlow } from "@/components/escrow/EscrowFlow";
 import { exportUserData } from "@/lib/api";
+import { setConsoleVaultKey } from "@/lib/vaultKeySession";
 
 export default function EscrowPage() {
   /**
@@ -40,10 +41,10 @@ export default function EscrowPage() {
         // App Check supplies the attestation; reCAPTCHA Enterprise token is wired
         // when the site key is configured. Empty string is rejected server-side.
         recaptchaToken=""
-        onVaultKeyReady={() => {
+        onVaultKeyReady={(vaultKey, rawVaultKey) => {
           // The in-memory vault key is now available to decrypt sealed content
-          // (e.g. session-log bodies fetched via signed URLs). Consumers read it
-          // from a shared store; left as a hook for the content viewers.
+          // and cloak Pensieve recall queries. It remains tab-local.
+          setConsoleVaultKey(vaultKey, rawVaultKey);
         }}
       />
     </div>

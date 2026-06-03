@@ -126,7 +126,16 @@ extension ConversationStore {
 
         func fetchConversation(id: String) throws -> ConversationRecord? {
             try dbQueue.read { db in
-                try Self.fetchConversationRow(db, id: id)
+                // User-facing read: a tombstoned conversation reads as absent.
+                // Internal callers (upsert sync-preservation) use the unfiltered
+                // `fetchConversationRow` so re-indexing a transcript cannot
+                // silently resurrect a tombstone.
+                guard let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT * FROM conversations WHERE id = ? AND deletedAt IS NULL",
+                    arguments: [id]
+                ) else { return nil }
+                return Self.conversation(from: row)
             }
         }
 
@@ -134,7 +143,7 @@ extension ConversationStore {
             try dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
-                    sql: "SELECT * FROM conversations ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
+                    sql: "SELECT * FROM conversations WHERE deletedAt IS NULL ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
                     arguments: [limit]
                 )
                 return rows.compactMap { Self.conversation(from: $0) }
@@ -149,6 +158,7 @@ extension ConversationStore {
                     db,
                     sql: """
                     SELECT * FROM conversations
+                    WHERE deletedAt IS NULL
                     ORDER BY COALESCE(endTime, startTime, indexedAt) DESC, id ASC
                     LIMIT ? OFFSET ?
                     """,
@@ -167,6 +177,7 @@ extension ConversationStore {
                     sql: """
                     SELECT * FROM conversations
                     WHERE id IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: uniqueIDs.count)))
+                      AND deletedAt IS NULL
                     """,
                     arguments: StatementArguments(uniqueIDs)
                 )
@@ -178,7 +189,7 @@ extension ConversationStore {
             try dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
-                    sql: "SELECT * FROM conversations ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
+                    sql: "SELECT * FROM conversations WHERE deletedAt IS NULL ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
                     arguments: [limit]
                 )
                 return rows.compactMap { Self.conversation(from: $0) }
@@ -199,6 +210,7 @@ extension ConversationStore {
                         indexedAt, workingDirectory, fileModifiedAt, summary, summaryTitle, summaryUpdatedAt,
                         summaryProvider, summaryModel, sourceType, sourceDeviceId, sourceDeviceName, isRemote
                     FROM conversations
+                    WHERE deletedAt IS NULL
                     ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
                     LIMIT ?
                     """,
@@ -334,6 +346,7 @@ extension ConversationStore {
         ) -> (sql: String, arguments: [any DatabaseValueConvertible]) {
             var sql = """
             WHERE messageCount > 0
+            AND deletedAt IS NULL
             AND (
                 summary IS NULL
                 OR summaryTitle IS NULL
@@ -366,10 +379,53 @@ extension ConversationStore {
             }
         }
 
-        /// Deletes a single conversation by ID. Used for testing delete-event miss recovery.
+        /// Hard-deletes a single conversation row. This is the "the source log
+        /// vanished" recovery path used by gap repair and tests; the projection
+        /// pipeline relies on the row disappearing so it can purge orphaned
+        /// projections. User-initiated deletes go through `softDeleteConversation`
+        /// so the tombstone propagates across devices before the row is collected.
         func deleteConversation(id: String) throws {
             try dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
+            }
+        }
+
+        /// Tombstones a conversation so the delete propagates to other devices
+        /// (B-DATA-2). Mirrors `TextExpansionSnippetStore.delete`: sets `deletedAt`,
+        /// bumps `version`, and clears the sync flags so the tombstone re-enqueues
+        /// through `ConversationSyncService`/`SessionLogSyncService`. The row stays
+        /// on disk until `ConversationTombstoneGCService` collects it after the
+        /// retention window, which is what lets device B observe the deletion.
+        func softDeleteConversation(id: String, at date: Date = Date()) throws {
+            try dbQueue.write { db in
+                try db.execute(
+                    sql: """
+                    UPDATE conversations
+                    SET deletedAt = ?, version = version + 1,
+                        conversationSyncedAt = NULL, logSyncedAt = NULL
+                    WHERE id = ? AND deletedAt IS NULL
+                    """,
+                    arguments: [date, id]
+                )
+            }
+        }
+
+        /// Local tombstones whose `deletedAt` is older than `before`. The GC sweep
+        /// uses this to find conversations eligible for purge after the retention
+        /// window, then deletes their cloud bodies/manifests before hard-deleting.
+        func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) throws -> [ConversationRecord] {
+            try dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT * FROM conversations
+                    WHERE deletedAt IS NOT NULL AND deletedAt < ?
+                    ORDER BY deletedAt ASC
+                    LIMIT ?
+                    """,
+                    arguments: [before, limit]
+                )
+                return rows.compactMap { Self.conversation(from: $0) }
             }
         }
 
@@ -380,6 +436,7 @@ extension ConversationStore {
                     sql: """
                     SELECT COALESCE(SUM(LENGTH(fullText)), 0) + COALESCE(SUM(LENGTH(inferredTaskTitle)), 0)
                     + COALESCE(SUM(LENGTH(lastAssistantMessage)), 0) FROM conversations
+                    WHERE deletedAt IS NULL
                     """
                 ) ?? 0
                 return text
@@ -428,8 +485,8 @@ extension ConversationStore {
                     )
                 }
 
-                let total = try aggregate(whereClause: "isRemote = 0")
-                let pending = try aggregate(whereClause: "isRemote = 0 AND logSyncedAt IS NULL")
+                let total = try aggregate(whereClause: "isRemote = 0 AND deletedAt IS NULL")
+                let pending = try aggregate(whereClause: "isRemote = 0 AND deletedAt IS NULL AND logSyncedAt IS NULL")
                 let estimatedIndex = CloudBackupUsageSnapshot.estimateSearchIndexBytes(
                     rawTranscriptBytes: total.rawBytes,
                     searchChunkCount: total.searchChunks

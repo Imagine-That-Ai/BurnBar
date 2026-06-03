@@ -13,6 +13,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { logInfo, logError } from "./logging.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
 
@@ -39,7 +40,7 @@ async function probeFirestore(timeoutMs = 3000): Promise<number> {
 }
 
 /** Liveness probe — returns 200 if the function process is alive. */
-export const healthLive = onRequest({ region: "us-central1", cors: false, invoker: "public" }, (_req, res) => {
+export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, (_req, res) => {
   res.status(200).json({ status: "alive", timestamp: new Date().toISOString() });
 });
 
@@ -47,7 +48,7 @@ export const healthLive = onRequest({ region: "us-central1", cors: false, invoke
  * Readiness probe — verifies Firestore responds within 3 seconds.
  * Returns 200 when ready, 503 when degraded.
  */
-export const healthReady = onRequest({ region: "us-central1", cors: false, invoker: "public" }, async (_req, res) => {
+export const healthReady = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, async (_req, res) => {
   try {
     const latencyMs = await probeFirestore();
     logInfo({ event: "health_ready_ok", latency_ms: latencyMs });
@@ -74,7 +75,7 @@ export const healthReady = onRequest({ region: "us-central1", cors: false, invok
  * Combined health check — returns full status, version, uptime, and all
  * dependency health. Used by monitoring dashboards and deployment scripts.
  */
-export const healthCheck = onRequest({ region: "us-central1", cors: false, invoker: "public" }, async (_req, res) => {
+export const healthCheck = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, async (_req, res) => {
   let firestoreStatus: "ok" | "error" = "ok";
   let latencyMs = 0;
 

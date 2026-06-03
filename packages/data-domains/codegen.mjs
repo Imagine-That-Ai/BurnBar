@@ -9,6 +9,16 @@
  *   gen/DataDomains.swift — iOS / iPadOS / macOS
  *   gen/DataDomains.kt    — Android
  *
+ * Consumption is one-directional from these gen/ files:
+ *   - Web  imports gen/domains.ts directly.
+ *   - Apple references gen/DataDomains.swift via project.yml source paths, so a
+ *     fresh xcodegen build always picks up the latest gen output.
+ *   - Android cannot reference files outside its module, so the
+ *     `:app:syncGeneratedSources` Gradle task copies gen/DataDomains.kt (and the
+ *     design-tokens dist/compose/PensieveTokens.kt) into the Android tree on
+ *     every build. NEVER hand-edit the Android copies — CI (registry.test.mjs /
+ *     tokens.test.mjs + a git-diff gate) fails if they drift from registry.json.
+ *
  * Pure Node, no dependencies. Run: node codegen.mjs
  */
 

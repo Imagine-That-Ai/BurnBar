@@ -38,6 +38,9 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     private let db: OpaquePointer?
     private let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.indexed-search.sqlite")
     private let dbQueueID = UUID()
+    /// Cached result of the v47 `conversations.deletedAt` column probe. Only ever
+    /// touched under `dbQueue` via `conversationsHaveDeletedAtColumn`.
+    private var cachedConversationsHaveDeletedAtColumn: Bool?
     private let logger: BurnBarDaemonLogger
     private let semanticConfig: BurnBarSemanticSearchConfig
     private let snapshotBackend: any BurnBarPersistentVectorIndexBackend
@@ -1175,12 +1178,16 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
                 let pattern = raw.lowercased()
                 guard pattern.isEmpty == false else { continue }
 
+                // Exclude cross-device tombstones from credential-scan counts.
+                // The filter is gated on column presence so the daemon stays safe
+                // if it ever opens a pre-v47 schema.
+                let tombstoneFilter = conversationsHaveDeletedAtColumn ? " AND c.deletedAt IS NULL" : ""
                 var sql = """
                     SELECT COALESCE(SUM(
                         (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ''))) / LENGTH(?)
                     ), 0)
                     FROM conversations AS c
-                    WHERE 1 = 1
+                    WHERE 1 = 1\(tombstoneFilter)
                     """
                 var args: [SQLiteBindValue] = [.text(pattern), .text(pattern)]
                 if let providerRaw, providerRaw.isEmpty == false {
@@ -1249,6 +1256,25 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         try bind(args, to: statement)
         guard sqlite3_step(statement) == SQLITE_ROW else { return 0 }
         return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    /// Whether the `conversations` table carries the v47 `deletedAt` tombstone
+    /// column. Probed once and cached so tombstone-aware reads stay cheap and
+    /// remain safe against a transiently pre-migration schema.
+    private var conversationsHaveDeletedAtColumn: Bool {
+        if let cached = cachedConversationsHaveDeletedAtColumn { return cached }
+        var found = false
+        if let statement = try? prepareStatement(sql: "PRAGMA table_info(conversations)") {
+            defer { sqlite3_finalize(statement) }
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if stringColumn(statement, index: 1) == "deletedAt" {
+                    found = true
+                    break
+                }
+            }
+        }
+        cachedConversationsHaveDeletedAtColumn = found
+        return found
     }
 
     private func stringColumn(_ statement: OpaquePointer, index: Int32) -> String? {

@@ -28,7 +28,8 @@ import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { stripUndefinedObject } from "../guards.js";
 import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
-import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export type EncryptionTier = "server_readable" | "zero_access" | "end_to_end";
 
@@ -277,7 +278,7 @@ function deriveBodyHashFromPath(path: string): string {
 
 export const exportUserData = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
     timeoutSeconds: 300,
@@ -315,15 +316,14 @@ export const exportUserData = onCall(
       );
     }
 
-    try {
-      await appendAuditEvent(uid, {
-        actor: auditActorLabel(request),
-        action: AUDIT_ACTIONS.dataExport,
-        domain: ids.length === Object.keys(DATA_DOMAIN_PATHS).length ? "all" : ids.join(","),
-      });
-    } catch {
-      // Audit-write failure must not fail the export itself.
-    }
+    // Fail-CLOSED: an export is an irreversible disclosure, so it must leave an
+    // audit record. If the audit write fails the error propagates and the export
+    // is refused — a server cannot silently disclose data without a record.
+    await appendAuditEventRequired(uid, {
+      actor: auditActorLabel(request),
+      action: AUDIT_ACTIONS.dataExport,
+      domain: ids.length === Object.keys(DATA_DOMAIN_PATHS).length ? "all" : ids.join(","),
+    });
 
     return { ok: true, generatedAt: nowISO(), domains, schemaVersion: 1 };
   }),

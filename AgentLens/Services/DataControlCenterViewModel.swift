@@ -332,6 +332,28 @@ final class DataControlCenterViewModel {
         }
     }
 
+    @discardableResult
+    func setupRecoveryKey(_ recoveryKey: String) async -> String? {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            actionError = "Sign in to OpenBurnBar to set up recovery."
+            return nil
+        }
+        do {
+            let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)
+            let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey: vaultKey, recoveryKey: recoveryKey)
+            return await setupRecovery(method: .recoveryKey, payload: [
+                "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
+                "wrappedVaultKey": wrapped.wrappedVaultKeyBase64,
+                "verificationHash": wrapped.verificationHash,
+                "keyVersion": CloudVaultCrypto.currentKeyVersion,
+            ])
+        } catch {
+            actionError = Self.userFacing(error)
+            Self.logger.error("setup recovery key envelope failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
     // recovery_key confirmation passes the re-entered key's verificationHash
     // (Apple ADP delayed re-verify); recovery_contact passes nil.
     func confirmRecovery(recoveryId: String, verificationHash: String? = nil) async -> Bool {
@@ -348,6 +370,19 @@ final class DataControlCenterViewModel {
         } catch {
             actionError = Self.userFacing(error)
             Self.logger.error("confirmRecovery failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    func confirmRecoveryKey(recoveryId: String, recoveryKey: String) async -> Bool {
+        do {
+            return await confirmRecovery(
+                recoveryId: recoveryId,
+                verificationHash: try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey)
+            )
+        } catch {
+            actionError = Self.userFacing(error)
+            Self.logger.error("confirm recovery key hash failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }

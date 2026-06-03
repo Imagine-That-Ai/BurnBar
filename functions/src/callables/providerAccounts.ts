@@ -34,6 +34,7 @@ import { eraseUserAccount } from "../accountDeletion.js";
 import { HOSTED_RUNNER_SECRETS } from "../hostedRunnerConfig.js";
 import { errorMessage, optionalStringField, requireProviderAccountDoc, stripUndefinedObject } from "../guards.js";
 import type { ProviderAccountConnectContext, ProviderAccountDoc } from "../types.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: connectProviderAccount
@@ -41,9 +42,10 @@ import type { ProviderAccountConnectContext, ProviderAccountDoc } from "../types
 
 export const connectProviderAccount = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
+    ...HOT_PATH_OPTIONS,
   },
   wrapCallableHandler(
     "connectProviderAccount",
@@ -118,7 +120,7 @@ export const connectProviderAccount = onCall(
 
 export const connectProviderCredential = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -165,7 +167,7 @@ export const connectProviderCredential = onCall(
 
 export const connectHostedQuotaAccount = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -252,7 +254,7 @@ export const connectHostedQuotaAccount = onCall(
 
 export const connectSelfHostedQuotaAccount = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -341,7 +343,7 @@ export const connectSelfHostedQuotaAccount = onCall(
 
 export const uploadProviderQuotaSnapshot = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -384,7 +386,7 @@ export const uploadProviderQuotaSnapshot = onCall(
 
 export const deleteHostedQuotaCredentials = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -445,7 +447,7 @@ export const deleteHostedQuotaCredentials = onCall(
 
 export const updateProviderAccount = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -527,7 +529,7 @@ export const updateProviderAccount = onCall(
 
 export const deleteProviderAccount = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -628,7 +630,7 @@ export const deleteProviderAccount = onCall(
 
 export const deleteUserCloudData = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
     timeoutSeconds: 540,
@@ -664,7 +666,7 @@ export const deleteUserCloudData = onCall(
 
 export const deleteProviderCredential = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -743,7 +745,7 @@ export const deleteProviderCredential = onCall(
 
 export const refreshProviderAccountQuota = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
     secrets: HOSTED_RUNNER_SECRETS,
@@ -766,7 +768,7 @@ export const refreshProviderAccountQuota = onCall(
 
 export const refreshProviderQuota = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
     secrets: HOSTED_RUNNER_SECRETS,

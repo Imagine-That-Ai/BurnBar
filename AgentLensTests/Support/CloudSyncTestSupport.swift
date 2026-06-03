@@ -65,4 +65,10 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
         [:]
     }
+
+    private(set) var deletedBodies: [(documentID: String, storagePath: String)] = []
+
+    func deleteEncryptedSessionBlob(documentID: String, storagePath: String) async throws {
+        deletedBodies.append((documentID: documentID, storagePath: storagePath))
+    }
 }

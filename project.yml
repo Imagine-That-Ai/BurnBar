@@ -83,6 +83,8 @@ targets:
           # chat surface. Keep it out until the owning refactor lands.
           - Views/Chat/ChatEngineUIStubs.swift
           - "**/Views/Chat/ChatEngineUIStubs.swift"
+      - path: packages/data-domains/gen/DataDomains.swift
+      - path: packages/design-tokens/dist/swift/PensieveTokens.swift
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar
@@ -361,6 +363,8 @@ targets:
           - "**/.DS_Store"
           - "Tests/**"
           - "Resources/Mermaid/**"
+      - path: packages/data-domains/gen/DataDomains.swift
+      - path: packages/design-tokens/dist/swift/PensieveTokens.swift
       # Mermaid is shipped as a folder reference so `index.html` and
       # `mermaid.min.js` keep their relative paths inside the bundle.
       - path: OpenBurnBarMobile/Resources/Mermaid

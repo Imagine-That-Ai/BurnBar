@@ -12,10 +12,10 @@ const csp = [
   // Next.js injects inline runtime styles; styled tokens are static. Tailwind is built to a file.
   "style-src 'self' 'unsafe-inline'",
   // Next.js 15 emits a small inline bootstrap; 'wasm-unsafe-eval' covers Firebase SDK wasm.
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/",
   "font-src 'self' data:",
   "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com",
-  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com",
+  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com https://www.google.com/recaptcha/",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "upgrade-insecure-requests",
@@ -29,7 +29,7 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value:
-      "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), publickey-credentials-get=(self)",
+      "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), publickey-credentials-create=(self), publickey-credentials-get=(self)",
   },
   {
     key: "Strict-Transport-Security",

@@ -299,6 +299,8 @@ struct RootTabView: View {
                     authUID: authStore.currentIdentity?.uid,
                     hermesService: hermesService
                 )
+                case .dataVault: DataVaultAdaptiveControlView()
+                case .memory: PensieveMemorySearchView()
                 }
             }
             .navigationDestination(for: SettingsPageRoute.self) { route in

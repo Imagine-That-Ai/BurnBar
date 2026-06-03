@@ -19,6 +19,7 @@ import {
 import { db } from "../adminRuntime.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 
@@ -32,7 +33,7 @@ function parseEscrowPlatform(raw: unknown): string {
 
 export const bindAppCheckAttestation = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -61,7 +62,7 @@ export const bindAppCheckAttestation = onCall(
 
 export const registerEscrowDevice = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -130,7 +131,7 @@ export const registerEscrowDevice = onCall(
 
 export const approveEscrowDeviceTrust = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -173,7 +174,7 @@ export const approveEscrowDeviceTrust = onCall(
 
 export const revokeEscrowDeviceTrust = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

@@ -9,9 +9,10 @@ import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { macHasActiveMediaEntitlement, parseTriggerRequest, resolveFanOut } from "../voipPush.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export const triggerVoIPCall = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("triggerVoIPCall", async (request) => {
     assertAppCheck(request);
     if (!request.auth) {

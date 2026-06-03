@@ -27,6 +27,7 @@ import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { DATA_DOMAIN_PATHS } from "./dataExport.js";
 import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 /**
  * Domains whose deletion is intentionally NOT exposed through deleteDomainData.
@@ -50,7 +51,7 @@ export const UNDELETABLE_DOMAINS = new Set<string>([
 
 export const deleteDomainData = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
     timeoutSeconds: 300,

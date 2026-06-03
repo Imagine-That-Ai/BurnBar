@@ -166,3 +166,12 @@ launch-evidence/
 # Cursor IDE debug logs and local scratch experiments (preserved on disk only).
 .cursor/*.log
 scratch/
+
+# Secrets / local env / build caches — never commit (added during SOTA remediation
+# after these surfaced untracked in the working tree).
+appcheck-token.json
+.env.production
+**/.env.production
+.env.*.local
+.firebase/
+assets/generated/

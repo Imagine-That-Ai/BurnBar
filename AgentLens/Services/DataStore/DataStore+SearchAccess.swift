@@ -169,7 +169,7 @@ extension DataStore {
                     (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ''))) / LENGTH(?)
                 ), 0)
                 FROM conversations AS c
-                WHERE 1 = 1
+                WHERE c.deletedAt IS NULL
                 """
                 var args: [any DatabaseValueConvertible] = [pattern, pattern]
                 if let provider {
@@ -233,7 +233,7 @@ extension DataStore {
             var sql = """
             SELECT DISTINCT c.id
             FROM conversations AS c
-            WHERE (\(instrConditions.joined(separator: " OR ")))
+            WHERE c.deletedAt IS NULL AND (\(instrConditions.joined(separator: " OR ")))
             """
             if let provider {
                 sql += " AND c.provider = ?"
@@ -271,7 +271,7 @@ extension DataStore {
             let placeholders = Array(repeating: "?", count: candidateIDs.count).joined(separator: ", ")
             let sql = """
             SELECT * FROM conversations
-            WHERE id IN (\(placeholders))
+            WHERE id IN (\(placeholders)) AND deletedAt IS NULL
             ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
             """
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(candidateIDs))
@@ -361,7 +361,7 @@ extension DataStore {
                 COALESCE(SUM(\(occurrenceExprs.joined(separator: " + "))), 0) AS occurrenceCount,
                 COUNT(DISTINCT c.id) AS conversationCount
             FROM conversations AS c
-            WHERE (\(instrConditions.joined(separator: " OR ")))
+            WHERE c.deletedAt IS NULL AND (\(instrConditions.joined(separator: " OR ")))
             """
 
             if let projectName {

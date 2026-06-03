@@ -15,6 +15,7 @@ import {
   isDeviceLinkCapability,
   revokeDeviceLink,
 } from "../domains/device-links/index.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: adoptProviderAccountForDevice
@@ -25,7 +26,7 @@ import {
 
 export const adoptProviderAccountForDevice = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -80,7 +81,7 @@ export const adoptProviderAccountForDevice = onCall(
 
 export const revokeProviderAccountDeviceLink = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -114,7 +115,7 @@ export const revokeProviderAccountDeviceLink = onCall(
 
 export const backfillProviderAccountDeviceLinks = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
     timeoutSeconds: 300,
@@ -144,7 +145,7 @@ export const backfillProviderAccountDeviceLinks = onCall(
 
 export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     schedule: "every 24 hours",
     timeoutSeconds: 300,
     memory: "512MiB",

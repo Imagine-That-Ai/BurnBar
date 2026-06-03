@@ -35,6 +35,7 @@ import {
 } from "../hermes.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import type { HermesConnectionDoc, HermesConnectionMode, HermesPairingDoc } from "../types.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: Hermes pairing and connection management
@@ -42,7 +43,7 @@ import type { HermesConnectionDoc, HermesConnectionMode, HermesPairingDoc } from
 
 export const createHermesPairing = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -98,7 +99,7 @@ export const createHermesPairing = onCall(
 
 export const completeHermesPairing = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -239,7 +240,7 @@ export const completeHermesPairing = onCall(
 
 export const listHermesConnections = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -265,7 +266,7 @@ export const listHermesConnections = onCall(
 
 export const revokeHermesConnection = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -303,7 +304,7 @@ export const revokeHermesConnection = onCall(
 
 export const updateHermesConnectionStatus = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

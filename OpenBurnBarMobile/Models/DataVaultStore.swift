@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
 
@@ -107,13 +108,13 @@ final class FunctionsDataVaultService: DataVaultServicing {
     static let shared = FunctionsDataVaultService()
 
     private let functions = Functions.functions(region: "us-central1")
-    private let knowledgeProvider: () -> [KnowledgeIngestItem]
+    private let preparedPayloadProvider: () -> [[String: Any]]
 
-    /// `knowledgeProvider` supplies the device-prepared knowledge items the
-    /// "Sync now" action commits. By default it drains the daemon-written
-    /// commit queue; injectable for tests / app wiring.
-    init(knowledgeProvider: @escaping () -> [KnowledgeIngestItem] = FunctionsDataVaultService.defaultQueueProvider) {
-        self.knowledgeProvider = knowledgeProvider
+    /// `preparedPayloadProvider` supplies already-cloaked/sealed Pensieve
+    /// batches for the "Sync now" action. Mobile commits prepared payloads only;
+    /// desktop source ingestion lives in the Mac app/daemon target.
+    init(preparedPayloadProvider: @escaping () -> [[String: Any]] = PensieveCommitQueueDrainer.readPreparedBatchPayloads) {
+        self.preparedPayloadProvider = preparedPayloadProvider
     }
 
     func getDataDomainUsage() async throws -> DataDomainUsageResponse {
@@ -184,19 +185,23 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     func syncKnowledgeNow() async throws -> Int? {
         guard AuthRepository.shared.isSignedIn else { throw DataVaultError.notSignedIn }
-        let items = knowledgeProvider()
-        guard !items.isEmpty else { return 0 }
-        let service = KnowledgeSyncService()
-        let result = try await service.sync(items: items)
-        return result?.written
+        let preparedPayloads = preparedPayloadProvider()
+        guard !preparedPayloads.isEmpty else { return 0 }
+
+        var written = 0
+        for payload in preparedPayloads {
+            written += try await commitPreparedKnowledgeBatch(payload)
+        }
+        return written
     }
 
-    /// Default: drain the daemon-written commit queue
-    /// (`~/.openburnbar/pensieve-queue`) into ready-to-commit ingest items. On
-    /// iOS the queue is typically empty (the daemon runs on the Mac); the action
-    /// still succeeds as a no-op so the UI reflects "nothing pending".
-    nonisolated static func defaultQueueProvider() -> [KnowledgeIngestItem] {
-        PensieveCommitQueueDrainer.drainPreparedSourcePaths()
+    private func commitPreparedKnowledgeBatch(_ payload: [String: Any]) async throws -> Int {
+        let result = try await functions.httpsCallable("commitKnowledgeBatch").call(payload)
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool != false else {
+            throw DataVaultError.malformedResponse
+        }
+        return (dict["written"] as? NSNumber)?.intValue ?? 0
     }
 
     private static func decode<T: Decodable>(_ type: T.Type, from raw: Any?) throws -> T {
@@ -207,16 +212,35 @@ final class FunctionsDataVaultService: DataVaultServicing {
     }
 }
 
-/// Reads source paths from the daemon's queue so the app can re-prepare + commit
-/// them in the signed-in context. The daemon already sealed the chunks, but the
-/// app re-derives from source paths so the commit is fully device-authed and the
-/// vault key never leaves the app process. Returns items the app can ingest.
+/// Reads prepared, already-cloaked/sealed Pensieve commit payloads from the
+/// app container. The Mac daemon normally owns the real queue, so this returns
+/// an empty list on ordinary iOS installs unless app wiring injects payloads.
 enum PensieveCommitQueueDrainer {
-    static func drainPreparedSourcePaths() -> [KnowledgeIngestItem] {
-        // On iOS there is no local daemon queue; return empty so "Sync now" is a
-        // clean no-op. On macOS Catalyst / shared targets the app wiring can
-        // override `knowledgeProvider` to read the real queue.
-        []
+    static func readPreparedBatchPayloads() -> [[String: Any]] {
+        guard let queueURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first?
+            .appendingPathComponent("pensieve-queue", isDirectory: true)
+        else { return [] }
+
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: queueURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return urls.compactMap { url in
+            guard url.pathExtension == "json",
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
+                  let data = try? Data(contentsOf: url),
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  payload["sourceSlug"] is String,
+                  payload["vectors"] is [[String: Any]] else {
+                return nil
+            }
+            return payload
+        }
     }
 }
 
@@ -347,7 +371,20 @@ final class DataVaultStore {
 
     @discardableResult
     func setupRecoveryKey(_ key: String) async -> Bool {
-        await setupRecovery(method: "recovery_key", payload: ["recoveryKey": key])
+        do {
+            guard let uid = Auth.auth().currentUser?.uid else { throw DataVaultError.notSignedIn }
+            let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)
+            let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey: vaultKey, recoveryKey: key)
+            return await setupRecovery(method: "recovery_key", payload: [
+                "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
+                "wrappedVaultKey": wrapped.wrappedVaultKeyBase64,
+                "verificationHash": wrapped.verificationHash,
+                "keyVersion": CloudVaultCrypto.currentKeyVersion,
+            ])
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
     }
 
     @discardableResult
@@ -371,6 +408,15 @@ final class DataVaultStore {
         do {
             try await service.confirmRecovery(recoveryId: recoveryId, verificationHash: verificationHash)
             await loadRecovery()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func confirmRecoveryKey(_ recoveryId: String, recoveryKey: String) async {
+        do {
+            let verificationHash = try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey)
+            await confirmRecovery(recoveryId, verificationHash: verificationHash)
         } catch {
             self.error = error.localizedDescription
         }

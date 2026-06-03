@@ -21,6 +21,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import { logError } from "./logging.js";
 import type { MediaFeature, MediaQuotaUsageDoc } from "./types.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const QUOTA_SCHEMA_VERSION = 1;
 const QUOTA_COLLECTION = "media_quota_usage";
@@ -139,7 +140,7 @@ export const recomputeMediaQuotaUsage = onSchedule(
   {
     schedule: "every 60 minutes",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
   },
   async () => {
     const firestore = getFirestore();

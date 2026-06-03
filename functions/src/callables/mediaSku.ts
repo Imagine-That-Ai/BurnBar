@@ -15,6 +15,7 @@ import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { isRecord, stringField } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const MEDIA_SKU = "com.openburnbar.hostedMediaSync.monthly";
 const QUOTA_SKU_DOC_ID = "hosted_quota_sync";
@@ -42,7 +43,7 @@ function nowPlusDays(days: number): Timestamp {
 }
 
 export const grantMediaGrandfather = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("grantMediaGrandfather", async (request) => {
     assertAppCheck(request);
     if (!request.auth) {
@@ -103,7 +104,7 @@ export const grantMediaGrandfather = onCall(
 );
 
 export const validateMediaPurchase = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("validateMediaPurchase", async (request) => {
     assertAppCheck(request);
     if (!request.auth) {

@@ -95,8 +95,15 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     public var host: String
     /// Port to bind (default 8317).
     public var port: Int
-    /// Optional bearer token for authentication. Required if binding to non-loopback.
+    /// Optional bearer token for authentication. Required whenever the gateway
+    /// is enabled — including loopback binds — unless `allowUnauthenticatedLoopback`
+    /// is explicitly opted in.
     public var authToken: String?
+    /// Opt-in, off-by-default escape hatch that permits an unauthenticated
+    /// loopback (127.0.0.1) bind. Fail-closed by default: without a token, any
+    /// same-host process could spend the user's provider credits via the
+    /// gateway, so the gateway refuses to start unless this is explicitly set.
+    public var allowUnauthenticatedLoopback: Bool
     /// Rate limiting configuration for the HTTP gateway.
     /// Default: 30 req/s sustained, 50 burst.
     public var rateLimit: BurnBarRateLimitConfiguration?
@@ -106,12 +113,14 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
         host: String = "127.0.0.1",
         port: Int = 8317,
         authToken: String? = nil,
+        allowUnauthenticatedLoopback: Bool = false,
         rateLimit: BurnBarRateLimitConfiguration? = nil
     ) {
         self.isEnabled = isEnabled
         self.host = host
         self.port = port
         self.authToken = authToken
+        self.allowUnauthenticatedLoopback = allowUnauthenticatedLoopback
         self.rateLimit = rateLimit
     }
     public var normalizedHost: String {
@@ -138,8 +147,16 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
         if !Self.isValidHost(normalizedHost) {
             return "Gateway host '\(host)' is not a valid hostname or IP address."
         }
-        if !isLoopback && (authToken ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "A non-loopback gateway bind address requires an auth token for security."
+        let hasAuthToken = (authToken ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        if !hasAuthToken {
+            if !isLoopback {
+                return "A non-loopback gateway bind address requires an auth token for security."
+            }
+            // Fail-closed on loopback too: any same-host process can reach the
+            // gateway and spend the user's provider credits without a token.
+            if !allowUnauthenticatedLoopback {
+                return "The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1 without one."
+            }
         }
         return nil
     }

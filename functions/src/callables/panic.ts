@@ -28,7 +28,8 @@ import { boundedTrimmedString } from "./shared.js";
 import { revokeAllRemoteMcpGrantsForUser } from "../remoteMcpGrant.js";
 import { providerAccountSecretRefPath } from "../quota.js";
 import { destroyCredential } from "../secrets.js";
-import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 type PanicScope = "sync" | "all";
 
@@ -143,7 +144,7 @@ async function revokeProviderCredentials(uid: string): Promise<{ revoked: number
 
 export const revokeAllAccess = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
     timeoutSeconds: 300,
@@ -197,15 +198,15 @@ export const revokeAllAccess = onCall(
       providers: providerResult.revoked,
     };
 
-    try {
-      await appendAuditEvent(uid, {
-        actor: auditActorLabel(request),
-        action: AUDIT_ACTIONS.panicRevoke,
-        domain: scope === "all" ? "all" : "connected_devices",
-      });
-    } catch {
-      // best-effort audit
-    }
+    // Fail-CLOSED: revoke-all is irreversible, so the record of who pulled the
+    // kill switch must commit. If the audit write fails the error propagates —
+    // surfaces already revoked stay revoked, but the caller learns the action is
+    // unproven rather than the record being silently dropped.
+    await appendAuditEventRequired(uid, {
+      actor: auditActorLabel(request),
+      action: AUDIT_ACTIONS.panicRevoke,
+      domain: scope === "all" ? "all" : "connected_devices",
+    });
 
     // ok=false when any surface failed: the panic was NOT fully complete and the
     // member may still be exposed on the failed surface(s).

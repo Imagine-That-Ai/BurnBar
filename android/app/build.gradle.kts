@@ -366,3 +366,57 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
         exclude("**/renderers/**")
     }
 }
+
+// Pull the latest committed generated sources from the monorepo's codegen
+// packages into the Android tree before every build, mirroring how Apple
+// consumes packages/data-domains/gen + packages/design-tokens/dist directly
+// via project.yml source paths. Android modules cannot reference files outside
+// the module, so they are copied in byte-for-byte. This is the mechanism that
+// stops the Android privacy labels from drifting away from registry.json the
+// way DataDomains.kt did (a hand-edited "GENERATED-DO-NOT-EDIT" file once
+// mislabeled server-readable chat as end-to-end encrypted). CI enforces the
+// invariant from the other side (registry.test.mjs / tokens.test.mjs + a
+// `git diff --exit-code` gate). Refresh manually with:
+//   ./gradlew :app:syncGeneratedSources
+tasks.register("syncGeneratedSources") {
+    description = "Copies generated data-domain + design-token sources from /packages into the Android tree."
+    group = "build setup"
+
+    val repoRoot = rootProject.layout.projectDirectory.dir("..").asFile
+    val generatedCopies = mapOf(
+        repoRoot.resolve("packages/data-domains/gen/DataDomains.kt")
+            to projectDir.resolve("src/main/java/com/openburnbar/data/domains/DataDomains.kt"),
+        repoRoot.resolve("packages/design-tokens/dist/compose/PensieveTokens.kt")
+            to projectDir.resolve("src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt"),
+    )
+
+    // Only the existing sources participate in up-to-date checks; a missing
+    // source leaves the committed copy untouched (see the warning below).
+    inputs.files(generatedCopies.keys.filter { it.exists() })
+    outputs.files(generatedCopies.values)
+
+    doLast {
+        generatedCopies.forEach { (source, dest) ->
+            if (!source.exists()) {
+                logger.warn(
+                    "syncGeneratedSources: $source is missing — keeping the committed ${dest.name}. " +
+                        "Run the package codegen (node packages/data-domains/codegen.mjs / " +
+                        "packages/design-tokens config.mjs) to refresh it."
+                )
+                return@forEach
+            }
+            val sourceBytes = source.readBytes()
+            if (!dest.exists() || !dest.readBytes().contentEquals(sourceBytes)) {
+                dest.parentFile.mkdirs()
+                source.copyTo(dest, overwrite = true)
+                logger.lifecycle("syncGeneratedSources: refreshed ${dest.name} from ${source.relativeTo(repoRoot)}")
+            }
+        }
+    }
+}
+
+// A fresh build always pulls the latest generated sources first, so a stale
+// hand-edited copy can never reach the compiler.
+tasks.named("preBuild") {
+    dependsOn("syncGeneratedSources")
+}

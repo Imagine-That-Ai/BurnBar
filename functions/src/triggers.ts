@@ -12,6 +12,7 @@ import { applyUsageCounterDelta } from "./rollups.js";
 import { errorMessage, parseRollupJobDoc, parseUsageEventDoc } from "./guards.js";
 import { logError } from "./logging.js";
 import { runFirestoreTrigger } from "./scheduledOps.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 /**
  * Firestore trigger: whenever a usage event is created, updated, or deleted,
@@ -25,7 +26,7 @@ import { runFirestoreTrigger } from "./scheduledOps.js";
 export const onUsageWritten = onDocumentWritten(
   {
     document: "users/{uid}/usage/{usageDoc}",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     // No App Check enforcement needed for background triggers; they are
     // backend-internal and already authenticated via the service account.
   },

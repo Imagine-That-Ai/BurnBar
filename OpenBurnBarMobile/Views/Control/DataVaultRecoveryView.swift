@@ -12,6 +12,8 @@ struct DataVaultRecoveryView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var generatedKey = ""
+    @State private var confirmationKey = ""
+    @State private var confirmingRecoveryID: String?
     @State private var contactName = ""
     @State private var contactShare = ""
     @State private var isWorking = false
@@ -37,6 +39,40 @@ struct DataVaultRecoveryView: View {
             ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
         }
         .task { await store.loadRecovery() }
+        .sheet(item: Binding(
+            get: { confirmingRecoveryID.map(RecoveryConfirmationID.init) },
+            set: { confirmingRecoveryID = $0?.rawValue }
+        )) { item in
+            NavigationStack {
+                Form {
+                    SecureField("Recovery key", text: $confirmationKey)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    Text("BurnBar derives a verification hash on this device. The key itself is never sent.")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                .navigationTitle("Confirm recovery")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            confirmationKey = ""
+                            confirmingRecoveryID = nil
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Confirm") {
+                            Task {
+                                await store.confirmRecoveryKey(item.rawValue, recoveryKey: confirmationKey)
+                                confirmationKey = ""
+                                confirmingRecoveryID = nil
+                            }
+                        }
+                        .disabled(confirmationKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+        }
     }
 
     private var introCard: some View {
@@ -75,7 +111,11 @@ struct DataVaultRecoveryView: View {
                         Spacer()
                         if !method.confirmed {
                             Button("Confirm") {
-                                Task { await store.confirmRecovery(method.recoveryId) }
+                                if method.kind == "recovery_key" {
+                                    confirmingRecoveryID = method.recoveryId
+                                } else {
+                                    Task { await store.confirmRecovery(method.recoveryId) }
+                                }
                             }
                             .buttonStyle(.aurora(.secondary))
                         }
@@ -91,7 +131,7 @@ struct DataVaultRecoveryView: View {
                 Text("Recovery key")
                     .font(MobileTheme.Typography.headline)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
-                Text("A 28-character key only you hold. Write it down and store it somewhere safe.")
+                Text("A high-entropy recovery key only you hold. Write it down and store it somewhere safe.")
                     .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
 
@@ -110,7 +150,7 @@ struct DataVaultRecoveryView: View {
 
                 HStack {
                     Button(generatedKey.isEmpty ? "Generate key" : "Regenerate") {
-                        generatedKey = Self.generateRecoveryKey()
+                        generatedKey = (try? CloudVaultCrypto.generateRecoveryKey()) ?? ""
                     }
                     .buttonStyle(.aurora(.secondary))
 
@@ -171,13 +211,9 @@ struct DataVaultRecoveryView: View {
         }
     }
 
-    /// Crockford-base32-ish grouped recovery key generated on device. The server
-    /// stores only what `setupRecovery` derives from it — never the raw key here.
-    static func generateRecoveryKey() -> String {
-        let alphabet = Array("ABCDEFGHJKMNPQRSTVWXYZ0123456789")
-        let groups = (0..<7).map { _ -> String in
-            String((0..<4).map { _ in alphabet.randomElement()! })
-        }
-        return groups.joined(separator: "-")
-    }
+}
+
+private struct RecoveryConfirmationID: Identifiable {
+    let rawValue: String
+    var id: String { rawValue }
 }
