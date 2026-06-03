@@ -358,6 +358,7 @@ class HostedQuotaSubscriptionStore(
             _error.value = null
             try {
                 ensureReady()
+                val client = requireBillingClient()
                 val storeProduct =
                     STORE_PRODUCT_BY_ID[productID]
                         ?: error("Unsupported BurnBar product.")
@@ -383,8 +384,18 @@ class HostedQuotaSubscriptionStore(
                 firebaseAuth.currentUser?.uid?.let { uid ->
                     flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
                 }
+                subscriptionReplacementPurchase(productID, storeProduct)?.let { currentPurchase ->
+                    flowBuilder.setSubscriptionUpdateParams(
+                        BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                            .setOldPurchaseToken(currentPurchase.purchaseToken)
+                            .setSubscriptionReplacementMode(
+                                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE,
+                            )
+                            .build(),
+                    )
+                }
                 val params = flowBuilder.build()
-                val result = requireBillingClient().launchBillingFlow(activity, params)
+                val result = client.launchBillingFlow(activity, params)
                 if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                     error(result.debugMessage.ifBlank { "Google Play Billing did not start." })
                 }
@@ -397,6 +408,21 @@ class HostedQuotaSubscriptionStore(
                 _isLoading.value = false
             }
         }
+    }
+
+    private suspend fun subscriptionReplacementPurchase(productID: String, storeProduct: HostedQuotaStoreProduct): Purchase? {
+        if (storeProduct.productType != BillingClient.ProductType.SUBS) return null
+        return HostedQuotaBillingSupport.queryPurchases(requireBillingClient(), BillingClient.ProductType.SUBS)
+            .asSequence()
+            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            .flatMap { purchase ->
+                purchase.products
+                    .filter { existingProductID -> existingProductID in SUBSCRIPTION_PRODUCT_IDS && existingProductID != productID }
+                    .map { existingProductID -> existingProductID to purchase }
+            }
+            .sortedBy { (existingProductID, _) -> subscriptionProductPriority(existingProductID) }
+            .map { (_, purchase) -> purchase }
+            .firstOrNull()
     }
 
     fun restorePurchases() {
