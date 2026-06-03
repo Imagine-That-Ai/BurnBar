@@ -90,9 +90,7 @@ class FakeFirestore {
 describe("gatedDeletions — safe-by-construction", () => {
   it("deletes a plaintext field ONLY when its sealed gate is present", () => {
     const fields = [{ field: "projectName", requires: "sealedProjectName" }];
-    expect(gatedDeletions({ projectName: "secret-proj", sealedProjectName: {} }, fields)).toEqual([
-      "projectName",
-    ]);
+    expect(gatedDeletions({ projectName: "secret-proj", sealedProjectName: {} }, fields)).toEqual(["projectName"]);
   });
 
   it("never deletes a plaintext field while its sealed copy is absent", () => {
@@ -112,9 +110,9 @@ describe("gatedDeletions — safe-by-construction", () => {
 
   it("knowledge_repos drops cleartext repoFullName once the sealed name exists", () => {
     expect(gatedDeletions({ repoFullName: "owner/secret" }, KNOWLEDGE_REPO_FIELDS)).toEqual([]);
-    expect(
-      gatedDeletions({ repoFullName: "owner/secret", sealedRepoFullName: {} }, KNOWLEDGE_REPO_FIELDS),
-    ).toEqual(["repoFullName"]);
+    expect(gatedDeletions({ repoFullName: "owner/secret", sealedRepoFullName: {} }, KNOWLEDGE_REPO_FIELDS)).toEqual([
+      "repoFullName",
+    ]);
   });
 });
 

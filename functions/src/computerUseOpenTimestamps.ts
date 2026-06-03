@@ -455,7 +455,11 @@ export const validateOpenTimestampsProof = onCall(
     async (request: CallableRequest): Promise<ComputerUseOpenTimestampsValidationResponse> => {
       const parsed = parseComputerUseOpenTimestampsValidationRequest(request.data);
       logCallableStart("validateOpenTimestampsProof", traceIdFromCallableRequest(request), parsed.uid);
-      await enforceHighRiskComputerUseCallableWithNonce(request, parsed.uid, (request.data as { nonce?: unknown })?.nonce);
+      await enforceHighRiskComputerUseCallableWithNonce(
+        request,
+        parsed.uid,
+        (request.data as { nonce?: unknown })?.nonce,
+      );
       return validateComputerUseOpenTimestampsProofForRequest(parsed);
     },
   ),

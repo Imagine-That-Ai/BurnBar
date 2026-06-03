@@ -53,8 +53,12 @@ describe("Hermes Gateway model switching (feature 2)", () => {
   it("settles the pending marker once the runtime reports the applied model", () => {
     const at = "2026-06-01T00:00:00.000Z";
     const t = Date.parse("2026-06-01T00:00:30.000Z");
-    expect(pendingModelSwitchInFlight({ pendingModelId: "m", pendingModelRequestedAt: at, runtimeModelId: "old" }, t)).toBe(true);
-    expect(pendingModelSwitchInFlight({ pendingModelId: "m", pendingModelRequestedAt: at, runtimeModelId: "M" }, t)).toBe(false);
+    expect(
+      pendingModelSwitchInFlight({ pendingModelId: "m", pendingModelRequestedAt: at, runtimeModelId: "old" }, t),
+    ).toBe(true);
+    expect(
+      pendingModelSwitchInFlight({ pendingModelId: "m", pendingModelRequestedAt: at, runtimeModelId: "M" }, t),
+    ).toBe(false);
   });
 });
 
@@ -71,9 +75,15 @@ describe("Hermes Gateway oversight (feature 3)", () => {
   });
   it("derives an expired status in the public view for a stale waiting gate", () => {
     const gate = {
-      id: "g", clientId: "c", destinationId: "d", actionId: "a", summary: "s",
-      status: "waiting_for_approval" as const, requestedAt: "2026-06-01T00:00:00.000Z",
-      expiresAt: "2000-01-01T00:00:00.000Z", schemaVersion: 1,
+      id: "g",
+      clientId: "c",
+      destinationId: "d",
+      actionId: "a",
+      summary: "s",
+      status: "waiting_for_approval" as const,
+      requestedAt: "2026-06-01T00:00:00.000Z",
+      expiresAt: "2000-01-01T00:00:00.000Z",
+      schemaVersion: 1,
     };
     expect(publicApprovalView(gate).status).toBe("expired");
   });
