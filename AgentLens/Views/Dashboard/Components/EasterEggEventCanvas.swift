@@ -4,50 +4,80 @@ import SwiftUI
 // MARK: - Event canvas
 //
 // Mounted by ``EasterEggOverlay`` only while an event is in flight. Owns a
-// `TimelineView(.animation)` + `Canvas` that simulates and draws the particles,
-// then calls `onFinished` once the event's duration has elapsed so the overlay
-// can tear the whole tree down and return to zero cost.
+// `TimelineView(.animation)` + `Canvas` that *steps* and draws the stateful
+// ``EasterEggSimulation`` each frame (mirroring the website's `loop(now, dt)`),
+// then calls `onFinished` once the simulation goes idle so the overlay can tear
+// the whole tree down and return to zero cost.
 //
-// All marks are resolved as Canvas *symbols* (the same `context.resolveSymbol`
-// idiom ``BracketSwarmBackground`` uses), so the bundled logo/crest imagesets
-// draw at full fidelity without per-frame image decoding.
+// The provider/crest logos are resolved as Canvas *symbols* (the same
+// `context.resolveSymbol` idiom ``BracketSwarmBackground`` uses) so the bundled
+// imagesets draw at full fidelity without per-frame image decoding; the coin and
+// cloud bodies are drawn procedurally to match the website's gradients exactly.
 
 struct EasterEggEventCanvas: View {
     let event: EasterEggEvent
     let size: CGSize
     let colorScheme: ColorScheme
     let reduceMotion: Bool
+    let ledges: [EasterEggSimulation.Ledge]
     let onFinished: () -> Void
 
-    /// Particle field, built once when the canvas appears (deterministic per
-    /// event id) so the Canvas closure stays a pure function of elapsed time.
-    @State private var scene: EasterEggScene?
+    /// The stateful particle field, built once when the canvas appears.
+    @State private var simulation: EasterEggSimulation?
+    /// Last frame's `now` (ms, `startedAt`-relative) so `dt` is a real delta.
+    @State private var lastTickMS: Double = -1
     @State private var didFinish = false
+    /// The ordered logo/crest names the simulation indexes into.
+    private let logoNames = EasterEggAssets.stormLogoNames
+    private let crestNames = EasterEggAssets.cloudCrestNames
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { timeline in
             Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, canvasSize in
-                guard let scene else { return }
-                let elapsed = elapsedTime(now: timeline.date)
-                scene.draw(into: context, size: canvasSize, elapsed: elapsed, reduceMotion: reduceMotion)
+                guard let simulation else { return }
+                step(simulation, now: timeline.date, size: canvasSize)
+                simulation.draw(
+                    into: context,
+                    resolveLogo: { index in
+                        guard logoNames.indices.contains(index) else { return nil }
+                        return context.resolveSymbol(id: EasterEggSymbolID.logo(assetName: logoNames[index]))
+                    },
+                    resolveCrest: { index in
+                        guard crestNames.indices.contains(index) else { return nil }
+                        return context.resolveSymbol(id: EasterEggSymbolID.logo(assetName: crestNames[index]))
+                    }
+                )
             } symbols: {
                 symbolDeck
             }
         }
         .onAppear {
-            if scene == nil {
-                scene = EasterEggScene.make(for: event, size: size, colorScheme: colorScheme)
+            if simulation == nil {
+                let sim = EasterEggSimulation(kind: event.kind, reduceMotion: reduceMotion)
+                // `begin` works in ms relative to the event's `startedAt`, the same
+                // clock the canvas steps with, so every phase offset lines up.
+                sim.begin(now: 0, size: size, ledges: ledges)
+                simulation = sim
             }
             scheduleFinish()
         }
     }
 
-    private func elapsedTime(now: Date) -> TimeInterval {
-        max(0, now.timeIntervalSince(event.startedAt))
+    /// Advance the simulation using a real, clamped `dt` (matching the website's
+    /// `Math.min(0.05, (now-last)/1000)`; first frame uses 0.016). Under Reduce
+    /// Motion the timeline is paused and `begin` already no-op'd, so this never
+    /// produces motion. `now` is `startedAt`-relative milliseconds.
+    private func step(_ simulation: EasterEggSimulation, now date: Date, size: CGSize) {
+        let nowMS = max(0, date.timeIntervalSince(event.startedAt) * 1000)
+        let dt = lastTickMS >= 0 ? min(0.05, (nowMS - lastTickMS) / 1000) : 0.016
+        lastTickMS = nowMS
+        simulation.updateSize(size)
+        simulation.step(now: nowMS, dt: max(0, dt))
     }
 
-    /// Tear-down is time-based so it survives Reduce Motion (where the timeline
-    /// is paused and the Canvas would otherwise never advance).
+    /// Tear-down is time-based so it survives Reduce Motion (where the timeline is
+    /// paused and the Canvas would otherwise never advance). The duration covers
+    /// the full 5s takeover plus the rain/boundary tails.
     private func scheduleFinish() {
         guard !didFinish else { return }
         didFinish = true
@@ -58,8 +88,9 @@ struct EasterEggEventCanvas: View {
 
     // MARK: Symbol deck
 
-    /// Every mark the event might draw, tagged by a stable key. Resolving these
-    /// once per frame (instead of re-rasterising images) keeps the Canvas cheap.
+    /// Every logo/crest the event might draw, tagged by a stable key. Resolving
+    /// these once per frame (instead of re-rasterising images) keeps the Canvas
+    /// cheap. Coins + clouds are procedural, so they need no symbols.
     @ViewBuilder
     private var symbolDeck: some View {
         ForEach(EasterEggSymbolID.allCases(for: event), id: \.self) { symbolID in
@@ -73,22 +104,16 @@ struct EasterEggEventCanvas: View {
         switch id {
         case .logo(let assetName):
             EasterEggLogoSymbol(assetName: assetName)
-        case .coin(let metal):
-            TokenCoinSymbol(metal: metal)
-        case .cloud:
-            CloudPuffSymbol()
         }
     }
 }
 
 // MARK: - Symbol identifiers
 
-/// Stable, hashable key for a Canvas symbol. Built from the bundled asset
-/// catalog names already used by the constellation background.
+/// Stable, hashable key for a Canvas symbol. Only the provider/crest logos are
+/// symbols now; coins and clouds are drawn procedurally by the simulation.
 enum EasterEggSymbolID: Hashable {
     case logo(assetName: String)
-    case coin(metal: TokenMetal)
-    case cloud
 
     /// The marks this event will ever draw, so the symbol deck stays small.
     static func allCases(for event: EasterEggEvent) -> [EasterEggSymbolID] {
@@ -96,18 +121,11 @@ enum EasterEggSymbolID: Hashable {
         case .logoStorm:
             return EasterEggAssets.stormLogoNames.map { .logo(assetName: $0) }
         case .cloudTokenRain:
-            return [.cloud]
-                + EasterEggAssets.cloudCrestNames.map { .logo(assetName: $0) }
-                + [.coin(metal: .gold), .coin(metal: .silver)]
+            return EasterEggAssets.cloudCrestNames.map { .logo(assetName: $0) }
         case .boundary:
-            return [.coin(metal: .gold), .coin(metal: .silver)]
+            return []
         }
     }
-}
-
-enum TokenMetal: Hashable {
-    case gold
-    case silver
 }
 
 // MARK: - Symbol views
@@ -136,81 +154,6 @@ private struct EasterEggLogoSymbol: View {
             }
         }
         .frame(width: 64, height: 64)
-    }
-}
-
-/// A small minted token coin. Gold + silver variants rain in the cloud event
-/// and pop at the scroll boundaries.
-private struct TokenCoinSymbol: View {
-    let metal: TokenMetal
-
-    private var faceGradient: RadialGradient {
-        switch metal {
-        case .gold:
-            return RadialGradient(
-                colors: [Color(hex: "FFE9A8"), Color(hex: "F4B740"), Color(hex: "C8881C")],
-                center: .init(x: 0.38, y: 0.34),
-                startRadius: 1,
-                endRadius: 22
-            )
-        case .silver:
-            return RadialGradient(
-                colors: [Color(hex: "FAFBFC"), Color(hex: "C9D0D8"), Color(hex: "8A95A1")],
-                center: .init(x: 0.38, y: 0.34),
-                startRadius: 1,
-                endRadius: 22
-            )
-        }
-    }
-
-    private var rimColor: Color {
-        switch metal {
-        case .gold: return Color(hex: "9C6A12")
-        case .silver: return Color(hex: "6B747F")
-        }
-    }
-
-    private var glyphColor: Color {
-        switch metal {
-        case .gold: return Color(hex: "9C6A12").opacity(0.85)
-        case .silver: return Color(hex: "5C6671").opacity(0.85)
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            Circle().fill(faceGradient)
-            Circle().strokeBorder(rimColor.opacity(0.8), lineWidth: 2)
-            Circle()
-                .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
-                .padding(3)
-            // A token "$" mark so the coins read as spend, matching the brand's
-            // dollar-formation swarm vocabulary.
-            Text("$")
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundStyle(glyphColor)
-        }
-        .frame(width: 30, height: 30)
-        .shadow(color: rimColor.opacity(0.35), radius: 1.5, y: 0.5)
-    }
-}
-
-/// A soft grey cloud puff that drifts across the top and rains coins.
-private struct CloudPuffSymbol: View {
-    var body: some View {
-        ZStack {
-            // Layered ellipses give a billowed silhouette without an asset.
-            Capsule()
-                .fill(.white.opacity(0.92))
-                .frame(width: 120, height: 46)
-                .offset(y: 10)
-            Circle().fill(.white.opacity(0.95)).frame(width: 56, height: 56).offset(x: -28, y: -2)
-            Circle().fill(.white.opacity(0.97)).frame(width: 72, height: 72).offset(x: 4, y: -10)
-            Circle().fill(.white.opacity(0.94)).frame(width: 50, height: 50).offset(x: 38, y: 0)
-        }
-        .frame(width: 140, height: 84)
-        .compositingGroup()
-        .shadow(color: Color(hex: "7E8794").opacity(0.35), radius: 6, y: 4)
     }
 }
 

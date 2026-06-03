@@ -3162,6 +3162,288 @@ test("T12 usage and budgetRules reject plaintext project text when sealed copy p
   );
 });
 
+// T13 — cli_sessions/{id}/snapshots: sealed-only contract (no live writer).
+// Sealed action label / touched files / mac path accepted; any plaintext key
+// is rejected by the hard-dropped hasOnly allowlist; malformed sealed denied.
+test("T13 cli_sessions snapshots seal action/files/path and reject plaintext when sealed", async () => {
+  const ownerUid = "snap-owner";
+  const db = authedDb(ownerUid);
+  const base = {
+    id: "snap-1",
+    sessionID: "sess-1",
+    sequence: 0,
+    takenAt: "2026-06-02T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+  const snapshotPath = `users/${ownerUid}/cli_sessions/sess-1/snapshots/snap-1`;
+
+  // Fully sealed snapshot is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedActionLabel: sealedText(),
+      sealedTouchedFiles: sealedText(),
+      sealedMacSnapshotPath: sealedText(),
+    })
+  );
+  // Plaintext action label / touched files / mac path are rejected by hasOnly.
+  await assertFails(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedActionLabel: sealedText(),
+      actionLabel: "Edit src/foo.swift",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedTouchedFiles: sealedText(),
+      touchedFiles: ["/Users/me/file.swift"],
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedMacSnapshotPath: sealedText(),
+      macSnapshotPath: "/Users/me/.snapshots/x",
+    })
+  );
+  // Malformed sealed envelope is rejected by validCloudSealedText.
+  await assertFails(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedActionLabel: { algorithm: "rot13" },
+    })
+  );
+});
+
+// T14 — approval_policies: legacy plaintext-only doc still syncs; sealed doc
+// with opaque hashes accepted; carrying both sealed + plaintext is rejected;
+// bad hash + unknown key rejected.
+test("T14 approval_policies seal label/glob/project and reject plaintext when sealed", async () => {
+  const ownerUid = "ap-owner";
+  const db = authedDb(ownerUid);
+
+  // Legacy plaintext-only policy still syncs (migration safety).
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/legacy`), {
+      id: "legacy",
+      decision: "approve",
+      displayLabel: "Edits in BurnBar",
+      fileGlob: "src/**",
+      targetProject: "/Users/me/BurnBar",
+    })
+  );
+  // Sealed policy (opaque doc ID + sealed fields + 32-hex trapdoors) accepted.
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/ap_${"a".repeat(32)}`), {
+      decision: "approve",
+      sealedDisplayLabel: sealedText(),
+      sealedFileGlob: sealedText(),
+      sealedTargetProject: sealedText(),
+      projectKeyHash: "a".repeat(32),
+      fileGlobHash: "b".repeat(32),
+    })
+  );
+  // A doc carrying BOTH sealed + plaintext is denied (each private field).
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/leak-label`), {
+      decision: "approve",
+      sealedDisplayLabel: sealedText(),
+      displayLabel: "Edits in BurnBar",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/leak-glob`), {
+      decision: "approve",
+      sealedFileGlob: sealedText(),
+      fileGlob: "src/**",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/leak-project`), {
+      decision: "approve",
+      sealedTargetProject: sealedText(),
+      targetProject: "/Users/me/BurnBar",
+    })
+  );
+  // A non-hex projectKeyHash is rejected.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/bad-hash`), {
+      decision: "approve",
+      sealedTargetProject: sealedText(),
+      projectKeyHash: "NOTHEX",
+    })
+  );
+  // An unknown extra key is rejected by hasOnly.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/smuggle`), {
+      decision: "approve",
+      sealedDisplayLabel: sealedText(),
+      notes: "hi",
+    })
+  );
+});
+
+// T15 — rollback_requests: legacy plaintext scope still syncs; sealed scope +
+// error accepted; carrying both sealed + plaintext is rejected.
+test("T15 rollback_requests seal scope/error and reject plaintext when sealed", async () => {
+  const ownerUid = "rr-owner";
+  const db = authedDb(ownerUid);
+
+  // Legacy plaintext-only request still syncs (migration safety).
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/legacy`), {
+      id: "legacy",
+      sessionID: "sess-1",
+      scopeJSON: '{"kind":"singleFile","path":"/Users/me/file.swift"}',
+      status: "pending",
+    })
+  );
+  // Sealed scope + sealed error message accepted.
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/sealed`), {
+      id: "sealed",
+      sessionID: "sess-1",
+      sealedScope: sealedText(),
+      sealedErrorMessage: sealedText(),
+      status: "failed",
+    })
+  );
+  // A request carrying BOTH sealed + plaintext scope is denied.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/leak-scope`), {
+      id: "leak-scope",
+      sessionID: "sess-1",
+      sealedScope: sealedText(),
+      scopeJSON: '{"kind":"fullSession"}',
+      status: "pending",
+    })
+  );
+  // A request carrying BOTH sealed + plaintext error is denied.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/leak-error`), {
+      id: "leak-error",
+      sessionID: "sess-1",
+      sealedErrorMessage: sealedText(),
+      errorMessage: "boom",
+      status: "failed",
+    })
+  );
+});
+
+// T16 — agent_identities: forward-declared sealed contract (no live writer).
+// Sealed identity accepted; any plaintext free-text rejected outright; an
+// arbitrary unlisted key rejected by hasOnly; malformed sealed denied.
+test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts sealed", async () => {
+  const ownerUid = "ai-owner";
+  const db = authedDb(ownerUid);
+
+  // Sealed identity (no plaintext free-text) accepted.
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/agent_identities/x`), {
+      id: "x",
+      runtimeID: "claude",
+      glyph: "✦",
+      paletteHex: "#112233",
+      tier: "service",
+      availability: "online",
+      sealedDisplayName: sealedText(),
+      sealedTagline: sealedText(),
+      sealedPersonas: sealedText(),
+    })
+  );
+  // Plaintext displayName / tagline / personas are rejected outright.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-name`), {
+      id: "leak-name",
+      runtimeID: "claude",
+      sealedDisplayName: sealedText(),
+      displayName: "My Claude",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-personas`), {
+      id: "leak-personas",
+      runtimeID: "claude",
+      sealedPersonas: sealedText(),
+      personas: [{ id: "p1", name: "Default" }],
+    })
+  );
+  // An arbitrary unlisted key is rejected by hasOnly.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/agent_identities/smuggle`), {
+      id: "smuggle",
+      runtimeID: "claude",
+      sealedDisplayName: sealedText(),
+      notes: "hi",
+    })
+  );
+  // A malformed sealed envelope is rejected by validCloudSealedText.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/agent_identities/bad-sealed`), {
+      id: "bad-sealed",
+      runtimeID: "claude",
+      sealedDisplayName: { algorithm: "rot13" },
+    })
+  );
+});
+
+// T17 — subscription_topics: sealed display text accepted; legacy plaintext-only
+// still syncs; both sealed + plaintext rejected; arbitrary key rejected.
+test("T17 subscription_topics seal display text, reject plaintext-when-sealed and arbitrary keys", async () => {
+  const ownerUid = "st-owner";
+  const db = authedDb(ownerUid);
+
+  // Sealed-only topic accepted.
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/sealed`), {
+      agentURI: "agent://burnbar/research-scout",
+      topicID: "agent-updates",
+      sealedDisplayName: sealedText(),
+      sealedDescription: sealedText(),
+      cadence: "daily",
+    })
+  );
+  // Legacy plaintext-only topic still syncs (migration safety).
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/legacy`), {
+      agentURI: "agent://burnbar/research-scout",
+      topicID: "agent-updates",
+      displayName: "Research Scout updates",
+      description: "Daily research digest.",
+      cadence: "daily",
+    })
+  );
+  // A topic carrying BOTH sealed + plaintext displayName is denied.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-name`), {
+      agentURI: "agent://burnbar/research-scout",
+      topicID: "agent-updates",
+      sealedDisplayName: sealedText(),
+      displayName: "Research Scout updates",
+    })
+  );
+  // A topic carrying BOTH sealed + plaintext description is denied.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-desc`), {
+      agentURI: "agent://burnbar/research-scout",
+      topicID: "agent-updates",
+      sealedDescription: sealedText(),
+      description: "Daily research digest.",
+    })
+  );
+  // An arbitrary unlisted key is rejected by hasOnly.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/smuggle`), {
+      agentURI: "agent://burnbar/research-scout",
+      topicID: "agent-updates",
+      sealedDisplayName: sealedText(),
+      foo: "bar",
+    })
+  );
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });

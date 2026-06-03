@@ -4,12 +4,19 @@ import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.firebase.CloudVaultSealedTextCodec
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 // MARK: - Rollback Service (Android parity, Hermes Square §6.10)
@@ -94,28 +101,46 @@ class RollbackService private constructor(
 
     private val snapshotRegistrations = ConcurrentHashMap<String, ListenerRegistration>()
     private var requestsRegistration: ListenerRegistration? = null
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun startObservingSession(sessionID: String) {
         if (snapshotRegistrations.containsKey(sessionID)) return
         val uid = auth.currentUser?.uid ?: return
-        val ref =
-            firestore.collection("users").document(uid)
-                .collection("cli_sessions").document(sessionID)
-                .collection("snapshots")
-                .orderBy("sequence")
-        val reg =
-            ref.addSnapshotListener { snap, error ->
-                if (error != null) {
-                    _inlineError.value = error.localizedMessage
-                    return@addSnapshotListener
-                }
-                val parsed =
-                    snap?.documents.orEmpty().mapNotNull { doc ->
-                        doc.data?.toRollbackSnapshotOrNull(documentID = doc.id, sessionID = sessionID)
+        // Reserve the slot synchronously so concurrent calls don't double-register
+        // while the suspend read-key resolves.
+        snapshotRegistrations[sessionID] = NoopListenerRegistration
+        ioScope.launch {
+            // Snapshots seal `sealedActionLabel`/`sealedTouchedFiles`/
+            // `sealedMacSnapshotPath` (Mac claimed-device writer). Resolve the read
+            // key once so the decoder can open them; legacy plaintext snapshots fall
+            // back inside `toRollbackSnapshotOrNull`.
+            val vaultKey =
+                runCatching {
+                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+                }.getOrNull()
+            val ref =
+                firestore.collection("users").document(uid)
+                    .collection("cli_sessions").document(sessionID)
+                    .collection("snapshots")
+                    .orderBy("sequence")
+            val reg =
+                ref.addSnapshotListener { snap, error ->
+                    if (error != null) {
+                        _inlineError.value = error.localizedMessage
+                        return@addSnapshotListener
                     }
-                _snapshotsBySession.value = _snapshotsBySession.value + (sessionID to parsed)
+                    val parsed =
+                        snap?.documents.orEmpty().mapNotNull { doc ->
+                            doc.data?.toRollbackSnapshotOrNull(documentID = doc.id, sessionID = sessionID, vaultKey = vaultKey)
+                        }
+                    _snapshotsBySession.value = _snapshotsBySession.value + (sessionID to parsed)
+                }
+            // Stop-during-resolve removes the placeholder; honor that by dropping
+            // the freshly attached listener instead of leaking it.
+            if (!snapshotRegistrations.replace(sessionID, NoopListenerRegistration, reg)) {
+                reg.remove()
             }
-        snapshotRegistrations[sessionID] = reg
+        }
     }
 
     fun stopObservingSession(sessionID: String) {
@@ -126,22 +151,41 @@ class RollbackService private constructor(
     fun startObservingRequests() {
         if (requestsRegistration != null) return
         val uid = auth.currentUser?.uid ?: return
-        val ref =
-            firestore.collection("users").document(uid)
-                .collection("rollback_requests")
-                .whereIn("status", listOf("pending", "in_flight"))
-        requestsRegistration =
-            ref.addSnapshotListener { snap, error ->
-                if (error != null) {
-                    _inlineError.value = error.localizedMessage
-                    return@addSnapshotListener
-                }
-                val parsed =
-                    snap?.documents.orEmpty().mapNotNull { doc ->
-                        doc.data?.toRollbackRequestOrNull(documentID = doc.id)
+        // Reserve synchronously to keep the idempotent guard above honest while the
+        // suspend read-key resolves.
+        requestsRegistration = NoopListenerRegistration
+        ioScope.launch {
+            // Requests seal `sealedScope` (and, when the Mac claim path lands,
+            // `sealedErrorMessage`). Resolve the read key so the decoder can open
+            // them; legacy plaintext requests fall back inside
+            // `toRollbackRequestOrNull`.
+            val vaultKey =
+                runCatching {
+                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+                }.getOrNull()
+            val ref =
+                firestore.collection("users").document(uid)
+                    .collection("rollback_requests")
+                    .whereIn("status", listOf("pending", "in_flight"))
+            val reg =
+                ref.addSnapshotListener { snap, error ->
+                    if (error != null) {
+                        _inlineError.value = error.localizedMessage
+                        return@addSnapshotListener
                     }
-                _pendingRequests.value = parsed
+                    val parsed =
+                        snap?.documents.orEmpty().mapNotNull { doc ->
+                            doc.data?.toRollbackRequestOrNull(documentID = doc.id, vaultKey = vaultKey)
+                        }
+                    _pendingRequests.value = parsed
+                }
+            if (requestsRegistration === NoopListenerRegistration) {
+                requestsRegistration = reg
+            } else {
+                // stopAll() ran during resolution — don't leak the listener.
+                reg.remove()
             }
+        }
     }
 
     fun stopAll() {
@@ -172,17 +216,32 @@ class RollbackService private constructor(
                 resolvedAtEpoch = null,
                 errorMessage = null,
             )
+        // Seal the scope JSON (which embeds an absolute file path for `singleFile`
+        // scope) with the Cloud Vault key, mirroring the budget-rule writer. The
+        // sealed `sealedScope` envelope replaces plaintext `scopeJSON`. If the key
+        // is unavailable (device not yet approved), degrade to legacy plaintext so
+        // the request still reaches the Mac; a key-holding peer never re-writes
+        // these (the phone is the sole writer), so this only affects un-approved
+        // devices during the migration window.
+        val vaultKey =
+            runCatching {
+                AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+            }.getOrNull()
         val payload =
-            mapOf<String, Any>(
+            mutableMapOf<String, Any>(
                 "id" to id,
                 "sessionID" to sessionID,
-                "scopeJSON" to scope.asJson,
                 "requestedAt" to now.toString(),
                 "requestedBy" to requestedBy,
                 "status" to "pending",
                 "schemaVersion" to 1,
                 "source" to "android-hermes-square",
             )
+        if (vaultKey != null) {
+            payload["sealedScope"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(scope.asJson, vaultKey))
+        } else {
+            payload["scopeJSON"] = scope.asJson
+        }
         return try {
             firestore.collection("users").document(uid)
                 .collection("rollback_requests").document(id)
@@ -204,13 +263,34 @@ class RollbackService private constructor(
     }
 }
 
-private fun Map<String, Any?>.toRollbackSnapshotOrNull(documentID: String, sessionID: String): RollbackSnapshot? {
+internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
+    documentID: String,
+    sessionID: String,
+    vaultKey: ByteArray? = null,
+): RollbackSnapshot? {
     val sequence = (this["sequence"] as? Number)?.toInt()
     val takenAtIso = this["takenAt"] as? String
     val takenAtEpoch = takenAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
-    val actionLabel = this["actionLabel"] as? String
+    // Sealed-first: open `sealedActionLabel`, then fall back to legacy plaintext
+    // `actionLabel` for in-flight docs (CONTRACT legacy fallback).
+    val actionLabel =
+        CloudVaultSealedTextCodec.open(this["sealedActionLabel"], vaultKey)
+            ?: this["actionLabel"] as? String
     if (sequence == null || takenAtEpoch == null || actionLabel == null) return null
-    val touched = (this["touchedFiles"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+    // `sealedTouchedFiles` seals the whole `[String]` array as one JSON string;
+    // open + reparse, falling back to legacy plaintext `touchedFiles` list.
+    val touched =
+        CloudVaultSealedTextCodec.open(this["sealedTouchedFiles"], vaultKey)?.let { json ->
+            runCatching {
+                val arr = org.json.JSONArray(json)
+                (0 until arr.length()).map { arr.getString(it) }
+            }.getOrNull()
+        }
+            ?: (this["touchedFiles"] as? List<*>)?.mapNotNull { it as? String }
+            ?: emptyList()
+    val macSnapshotPath =
+        CloudVaultSealedTextCodec.open(this["sealedMacSnapshotPath"], vaultKey)
+            ?: this["macSnapshotPath"] as? String
     val restoredAtIso = this["restoredAt"] as? String
     val restoredAtEpoch = restoredAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
     return RollbackSnapshot(
@@ -220,14 +300,19 @@ private fun Map<String, Any?>.toRollbackSnapshotOrNull(documentID: String, sessi
         takenAtEpoch = takenAtEpoch,
         actionLabel = actionLabel,
         touchedFiles = touched,
-        macSnapshotPath = this["macSnapshotPath"] as? String,
+        macSnapshotPath = macSnapshotPath,
         restoredAtEpoch = restoredAtEpoch,
     )
 }
 
-private fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String): RollbackRequest? {
+internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vaultKey: ByteArray? = null): RollbackRequest? {
     val sessionID = this["sessionID"] as? String ?: return null
-    val scopeJSON = this["scopeJSON"] as? String ?: "{\"kind\":\"fullSession\"}"
+    // Sealed-first: open `sealedScope`, then fall back to legacy plaintext
+    // `scopeJSON` for in-flight docs (CONTRACT legacy fallback).
+    val scopeJSON =
+        CloudVaultSealedTextCodec.open(this["sealedScope"], vaultKey)
+            ?: this["scopeJSON"] as? String
+            ?: "{\"kind\":\"fullSession\"}"
     val scope = parseScope(scopeJSON)
     val statusRaw = this["status"] as? String
     val status = RollbackRequest.Status.fromToken(statusRaw)
@@ -240,7 +325,10 @@ private fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String): Rollb
             runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
         }
     val requestedBy = this["requestedBy"] as? String ?: "unknown"
-    val errorMessage = this["errorMessage"] as? String
+    // Sealed-first for the Mac-written resolution diagnostic, legacy fallback.
+    val errorMessage =
+        CloudVaultSealedTextCodec.open(this["sealedErrorMessage"], vaultKey)
+            ?: this["errorMessage"] as? String
     return RollbackRequest(
         id = documentID,
         sessionID = sessionID,
@@ -263,6 +351,12 @@ private fun parseScope(json: String): RollbackScope {
             else -> RollbackScope.FullSession
         }
     }.getOrDefault(RollbackScope.FullSession)
+}
+
+// Placeholder reservation so the synchronous `startObserving*` idempotency guard
+// stays honest while the suspend Cloud Vault read key resolves on `ioScope`.
+private object NoopListenerRegistration : ListenerRegistration {
+    override fun remove() = Unit
 }
 
 internal fun jsonString(raw: String): String {

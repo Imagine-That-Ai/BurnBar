@@ -127,9 +127,14 @@ final class ApprovalPolicyStore {
                         self.lastCloudError = error.localizedDescription
                         return
                     }
+                    // Synchronous local-keychain read of the vault key for the
+                    // snapshot callback (which cannot await). `nil` when the key
+                    // isn't escrowed onto this device yet — sealed fields then
+                    // stay hidden (decode returns `nil` for them, no leak).
+                    let vaultKey = self.cachedVaultKey(uid: uid)
                     let docs = snapshot?.documents ?? []
                     let cloudPolicies = docs.compactMap { doc in
-                        Self.decode(documentID: doc.documentID, data: doc.data())
+                        Self.decode(documentID: doc.documentID, data: doc.data(), vaultKey: vaultKey)
                     }
                     self.mergeCloudPolicies(cloudPolicies)
                 }
@@ -137,12 +142,14 @@ final class ApprovalPolicyStore {
     }
 
     private func mergeCloudPolicies(_ cloud: [ApprovalPolicy]) {
-        // Union-merge by `id` (class hash). Race-safe: if the user creates a
-        // local policy in the brief window before the first cloud snapshot
-        // lands, we preserve it AND queue an upload so it reaches Firestore
-        // the next tick. For overlapping IDs, we take the cloud row but keep
-        // the **higher** matchCount — the local instance may have auto-resolved
-        // asks the cloud copy hasn't seen yet.
+        // Union-merge by `id` (the in-memory class hash, recomputed by the
+        // `ApprovalPolicy` initializer from the decoded discriminators — the
+        // cloud document no longer carries a plaintext `id`). Race-safe: if the
+        // user creates a local policy in the brief window before the first cloud
+        // snapshot lands, we preserve it AND queue an upload so it reaches
+        // Firestore the next tick. For overlapping IDs, we take the cloud row but
+        // keep the **higher** matchCount — the local instance may have
+        // auto-resolved asks the cloud copy hasn't seen yet.
         let cloudByID = Dictionary(uniqueKeysWithValues: cloud.map { ($0.id, $0) })
         let localByID = Dictionary(uniqueKeysWithValues: policies.map { ($0.id, $0) })
         let allIDs = Set(cloudByID.keys).union(localByID.keys)
@@ -193,12 +200,33 @@ final class ApprovalPolicyStore {
 
     private func cloudUpsert(_ policy: ApprovalPolicy) async {
         guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
-        let payload = Self.encode(policy)
+        let vaultKey: Data
         do {
-            try await firestoreProvider()
-                .collection("users").document(uid)
-                .collection("approval_policies").document(safeDocumentID(policy.id))
-                .setData(payload, merge: false)
+            vaultKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid).keyData
+        } catch {
+            lastCloudError = error.localizedDescription
+            return
+        }
+        let payload: [String: Any]
+        let docID: String
+        do {
+            payload = try Self.encode(policy, vaultKey: vaultKey)
+            docID = try Self.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: vaultKey)
+        } catch {
+            lastCloudError = error.localizedDescription
+            return
+        }
+        let collection = firestoreProvider()
+            .collection("users").document(uid)
+            .collection("approval_policies")
+        do {
+            try await collection.document(docID).setData(payload, merge: false)
+            // Client-side migration: drop any legacy doc keyed by the cleartext
+            // class hash (which baked `glob=`/`project=` into the document name).
+            let legacyDocID = Self.legacyCleartextDocumentID(policy.id)
+            if legacyDocID != docID {
+                try? await collection.document(legacyDocID).delete()
+            }
         } catch {
             lastCloudError = error.localizedDescription
         }
@@ -206,50 +234,135 @@ final class ApprovalPolicyStore {
 
     private func cloudDelete(id: String) async {
         guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
+        let vaultKey = try? await MobileCloudVaultKeyAccess.keyForReading(uid: uid)?.keyData
+        let collection = firestoreProvider()
+            .collection("users").document(uid)
+            .collection("approval_policies")
         do {
-            try await firestoreProvider()
-                .collection("users").document(uid)
-                .collection("approval_policies").document(safeDocumentID(id))
-                .delete()
+            // Delete the opaque keyed doc (current scheme) when the key is
+            // available, plus the legacy cleartext-ID doc for pre-migration peers.
+            if let vaultKey,
+               let docID = try? Self.opaqueCloudDocumentID(forClassHash: id, vaultKey: vaultKey) {
+                try await collection.document(docID).delete()
+            }
+            let legacyDocID = Self.legacyCleartextDocumentID(id)
+            try await collection.document(legacyDocID).delete()
         } catch {
             lastCloudError = error.localizedDescription
         }
     }
 
-    /// Firestore document IDs cannot contain `/`. Our class-hash format
-    /// uses `|` separators which is safe, but defensive escape anyway.
-    private func safeDocumentID(_ id: String) -> String {
+    /// Legacy Firestore document ID derived directly from the cleartext class
+    /// hash. Retained only so the migration path can delete pre-seal documents;
+    /// new writes use `opaqueCloudDocumentID`.
+    static func legacyCleartextDocumentID(_ id: String) -> String {
         id.replacingOccurrences(of: "/", with: "_")
+    }
+
+    /// Synchronous local-keychain read of the Cloud Vault key for use inside the
+    /// snapshot-listener callback (which cannot await). Returns `nil` if the key
+    /// is not present locally yet; callers then fall back to any legacy plaintext
+    /// field. Mirrors `BudgetRulesStore.cachedVaultKey()`.
+    private func cachedVaultKey(uid: String) -> Data? {
+        try? CloudVaultKeyStore().loadKey(uid: uid)
+    }
+
+    /// Opaque, deterministic Firestore document ID for a policy. Replaces the
+    /// cleartext class hash (which leaked `glob=<fileGlob>` / `project=<targetProject>`
+    /// in the document name itself) with a keyed HMAC trapdoor so the server and
+    /// any raw Firestore reader learn nothing about the policy class.
+    ///
+    /// Reuses the existing `CloudVaultCrypto.tokenHashes` search trapdoor. The
+    /// class hash is first collapsed to a single canonical alphanumeric term
+    /// (mirroring `CloudVaultCrypto.projectKeyHash`) so the multi-token splitter
+    /// can't reduce it to the hash of just the first token — `tokenHashes(...).first`
+    /// then HMACs the whole class identity to a stable 32-hex bucket. Same class
+    /// + same vault key always yield the same ID (upsert idempotency); a different
+    /// vault key yields a different ID. No new crypto is introduced.
+    static func opaqueCloudDocumentID(forClassHash classHash: String, vaultKey: Data) throws -> String {
+        let term = CloudVaultCrypto.normalizedTokens(from: classHash).joined()
+        guard term.isEmpty == false,
+              let hash = try CloudVaultCrypto.tokenHashes(for: term, keyData: vaultKey, limit: 1).first else {
+            throw CloudVaultProjectSealError.encodingFailed
+        }
+        return "ap_" + hash
     }
 
     // MARK: Codec
 
-    private static func encode(_ policy: ApprovalPolicy) -> [String: Any] {
+    /// Encodes a policy into a Firestore dictionary with the private fields
+    /// sealed. `displayLabel`, `targetProject`, and `fileGlob` are written as
+    /// `CloudVaultSealedText` envelopes (`sealedDisplayLabel` / `sealedTargetProject`
+    /// / `sealedFileGlob`); their plaintext counterparts are dropped entirely. The
+    /// top-level `id` (the cleartext class hash) is also dropped — it lived only
+    /// to name the document, which is now the opaque keyed hash. Opaque match
+    /// trapdoors `projectKeyHash` / `fileGlobHash` let the client bucket policies
+    /// without decrypting; the server never reads any of them.
+    static func encode(_ policy: ApprovalPolicy, vaultKey: Data) throws -> [String: Any] {
         var dict: [String: Any] = [
-            "id": policy.id,
-            "displayLabel": policy.displayLabel,
             "decision": policy.decision.rawValue,
             "createdAt": ISO8601DateFormatter().string(from: policy.createdAt),
             "matchCount": policy.matchCount,
-            "schemaVersion": 1
+            "schemaVersion": 1,
+            "sealedDisplayLabel": try CloudVaultCrypto.dictionary(
+                CloudVaultCrypto.sealText(policy.displayLabel, keyData: vaultKey)
+            )
         ]
         if let v = policy.missionKind { dict["missionKind"] = v }
         if let v = policy.toolName { dict["toolName"] = v }
-        if let v = policy.fileGlob { dict["fileGlob"] = v }
         if let v = policy.runtimeID { dict["runtimeID"] = v }
-        if let v = policy.targetProject { dict["targetProject"] = v }
+        if let v = policy.fileGlob {
+            dict["sealedFileGlob"] = try CloudVaultCrypto.dictionary(
+                CloudVaultCrypto.sealText(v, keyData: vaultKey)
+            )
+            if let fileGlobHash = CloudVaultCrypto.projectKeyHash(for: v, keyData: vaultKey) {
+                dict["fileGlobHash"] = fileGlobHash
+            }
+        }
+        if let v = policy.targetProject {
+            dict["sealedTargetProject"] = try CloudVaultCrypto.dictionary(
+                CloudVaultCrypto.sealText(v, keyData: vaultKey)
+            )
+            if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: v, keyData: vaultKey) {
+                dict["projectKeyHash"] = projectKeyHash
+            }
+        }
         if let v = policy.expiresAt {
             dict["expiresAt"] = ISO8601DateFormatter().string(from: v)
         }
         return dict
     }
 
-    private static func decode(documentID: String, data: [String: Any]) -> ApprovalPolicy? {
+    /// Decodes a policy from a Firestore document. Opens the sealed private
+    /// fields with `openSealedProjectName` (which keeps a LEGACY plaintext
+    /// fallback so pre-migration documents still render, and returns `nil` —
+    /// never the legacy value — when a field is sealed but the vault key is
+    /// absent on this device). The `id` is recomputed by the `ApprovalPolicy`
+    /// initializer from the decoded discriminators, so the in-memory class hash
+    /// used for matching is unchanged even though the cloud no longer stores it.
+    static func decode(documentID: String, data: [String: Any], vaultKey: Data?) -> ApprovalPolicy? {
         guard
-            let label = data["displayLabel"] as? String,
+            let label = CloudVaultCrypto.openSealedProjectName(
+                from: data,
+                sealedField: "sealedDisplayLabel",
+                legacyField: "displayLabel",
+                keyData: vaultKey
+            ),
             let decisionRaw = data["decision"] as? String,
             let decision = ApprovalPolicy.Decision(rawValue: decisionRaw)
         else { return nil }
+        let fileGlob = CloudVaultCrypto.openSealedProjectName(
+            from: data,
+            sealedField: "sealedFileGlob",
+            legacyField: "fileGlob",
+            keyData: vaultKey
+        )
+        let targetProject = CloudVaultCrypto.openSealedProjectName(
+            from: data,
+            sealedField: "sealedTargetProject",
+            legacyField: "targetProject",
+            keyData: vaultKey
+        )
         let createdAt = (data["createdAt"] as? String)
             .flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
         let expiresAt = (data["expiresAt"] as? String)
@@ -257,9 +370,9 @@ final class ApprovalPolicyStore {
         return ApprovalPolicy(
             missionKind: data["missionKind"] as? String,
             toolName: data["toolName"] as? String,
-            fileGlob: data["fileGlob"] as? String,
+            fileGlob: fileGlob,
             runtimeID: data["runtimeID"] as? String,
-            targetProject: data["targetProject"] as? String,
+            targetProject: targetProject,
             decision: decision,
             displayLabel: label,
             createdAt: createdAt,

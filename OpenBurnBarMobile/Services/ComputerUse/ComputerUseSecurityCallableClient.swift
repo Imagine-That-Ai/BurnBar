@@ -120,6 +120,24 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    /// Bind a Hermes Gateway oversight approve/reject decision to this trusted
+    /// native escrow device via the App-Check-enforced
+    /// `respondHermesGatewayApproval` callable. Mirrors `respondMissionApproval`
+    /// but targets the gateway's own `hermes_gateway_approvals` collection.
+    static func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        let result = try await functions.httpsCallable("respondHermesGatewayApproval").call([
+            "approvalId": approvalId,
+            "approve": approve,
+            "deviceId": deviceId,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Gateway approval response failed.")
+        }
+    }
+
     private static func refreshAuthClaimsAfterBind() async throws {
         guard let user = Auth.auth().currentUser else {
             throw ClientError.notAuthenticated

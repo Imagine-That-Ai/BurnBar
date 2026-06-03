@@ -672,6 +672,120 @@ assertSectionIncludes(
   "media_attachment_manifests must reject raw payload body",
 );
 
+// ── Hermes Square device-only surfaces: seal private text, hasOnly allowlist ─
+// approval_policies, cli_sessions/*/snapshots, rollback_requests,
+// agent_identities, and subscription_topics each carry device-private free-text
+// (project/file/glob labels, rollback scope paths + error diagnostics, persona
+// identity strings, subscription display text). They are pure store-and-forward
+// between the user's own devices — the server reads none of them. Each write
+// helper must (a) positively allowlist its keys with keys().hasOnly([ (fail
+// closed), (b) carry the sealed fields validated by validCloudSealedText, and
+// (c) reject the bare plaintext key — either outright (no legacy writer) or via
+// rejectsPlaintextWhenSealed once its sealed copy is present (migration-safe).
+// (privacy-leak-remediation W3)
+
+// Each entry: [matchStart, nextMatchStart, sealedFields[], plaintextKeys[],
+//   rejectMode] where rejectMode is "outright" (assert `!("x" in …)`) or
+//   "whenSealed" (assert `rejectsPlaintextWhenSealed("x", "sealedX")`).
+const W3_SEALED_SURFACES = [
+  {
+    label: "approval_policies",
+    start: "match /users/{userId}/approval_policies/{policyId}",
+    end: "match /users/{userId}/rollback_requests",
+    sealed: ["sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject"],
+    plaintext: ["displayLabel", "fileGlob", "targetProject"],
+    rejectMode: "whenSealed",
+  },
+  {
+    label: "rollback_requests",
+    start: "match /users/{userId}/rollback_requests/{requestId}",
+    end: "match /users/{userId}/cli_sessions/{sessionId}/snapshots",
+    sealed: ["sealedScope", "sealedErrorMessage"],
+    plaintext: ["scopeJSON", "errorMessage"],
+    rejectMode: "whenSealed",
+  },
+  {
+    label: "cli_sessions/*/snapshots",
+    start: "match /users/{userId}/cli_sessions/{sessionId}/snapshots/{snapshotId}",
+    end: "match /users/{userId}/agent_identities",
+    sealed: ["sealedActionLabel", "sealedTouchedFiles", "sealedMacSnapshotPath"],
+    // No live writer ships today → the plaintext keys are hard-dropped from the
+    // allowlist, so hasOnly([ fails any plaintext write outright.
+    plaintext: ["actionLabel", "touchedFiles", "macSnapshotPath"],
+    rejectMode: "absentFromAllowlist",
+  },
+  {
+    label: "agent_identities",
+    start: "match /users/{userId}/agent_identities/{identityId}",
+    end: "match /users/{userId}/subscription_topics",
+    sealed: ["sealedDisplayName", "sealedTagline", "sealedPersonas"],
+    plaintext: ["displayName", "tagline", "personas"],
+    rejectMode: "outright",
+  },
+  {
+    label: "subscription_topics",
+    start: "match /users/{userId}/subscription_topics/{topicId}",
+    end: "match /users/{userId}/session_logs",
+    sealed: ["sealedDisplayName", "sealedDescription"],
+    plaintext: ["displayName", "description"],
+    rejectMode: "whenSealed",
+  },
+];
+
+for (const surface of W3_SEALED_SURFACES) {
+  // (a) SEMANTIC allowlist: the block must positively constrain its key set.
+  assertSectionIncludes(
+    "firestore.rules",
+    surface.start,
+    surface.end,
+    "request.resource.data.keys().hasOnly([",
+    `${surface.label} must allowlist its keys with keys().hasOnly([ (fail closed)`,
+  );
+  // (b) Each private field must be sealed and validated as a sealed envelope.
+  for (const sealedField of surface.sealed) {
+    assertSectionIncludes(
+      "firestore.rules",
+      surface.start,
+      surface.end,
+      `validCloudSealedText(request.resource.data.${sealedField})`,
+      `${surface.label} must validate ${sealedField} as a sealed envelope`,
+    );
+  }
+  // (c) Reject the bare plaintext key name.
+  for (let i = 0; i < surface.plaintext.length; i += 1) {
+    const plaintextKey = surface.plaintext[i];
+    if (surface.rejectMode === "outright") {
+      // No legacy migration window — cleartext is rejected unconditionally.
+      assertSectionIncludes(
+        "firestore.rules",
+        surface.start,
+        surface.end,
+        `!("${plaintextKey}" in request.resource.data)`,
+        `${surface.label} must reject plaintext ${plaintextKey} outright`,
+      );
+    } else if (surface.rejectMode === "absentFromAllowlist") {
+      // No live writer — the plaintext key is dropped from the allowlist, so it
+      // never appears as a quoted allowlist member.
+      assertSectionNotIncludes(
+        "firestore.rules",
+        surface.start,
+        surface.end,
+        `"${plaintextKey}"`,
+        `${surface.label} allowlist must not contain plaintext ${plaintextKey} (sealed-only from day one)`,
+      );
+    } else {
+      // Migration-safe: reject the plaintext key once its sealed copy is present.
+      assertSectionIncludes(
+        "firestore.rules",
+        surface.start,
+        surface.end,
+        `rejectsPlaintextWhenSealed("${plaintextKey}", "${surface.sealed[i]}")`,
+        `${surface.label} must reject plaintext ${plaintextKey} when ${surface.sealed[i]} is present`,
+      );
+    }
+  }
+}
+
 // ── Registry honesty: usage project text + gateway label + pensieve repo ─────
 // Mirrors the registry.test.mjs honesty assertions so the privacy scan also
 // fails red if the public-facing labels regress to overclaiming.
@@ -718,6 +832,42 @@ function assertRegistryPrivacyHonesty() {
     }
     if (devices.deviceOnly.some((v) => /^relayed payload contents/i.test(v.trim()))) {
       fail("packages/data-domains/registry.json: connected_devices must not claim every relayed payload is sealed");
+    }
+  }
+
+  // rollback_requests (W3): folded into the sealed conversations_chat domain
+  // rather than buried in excludedCollections as "Ephemeral job state." — it
+  // carries device-private rollback scope (absolute file paths) + diagnostics.
+  const chat = domain("conversations_chat");
+  if (!chat) {
+    fail("packages/data-domains/registry.json: missing conversations_chat domain");
+  } else {
+    if (!chat.firestorePaths.includes("rollback_requests")) {
+      fail("packages/data-domains/registry.json: conversations_chat must own the rollback_requests path");
+    }
+    if (!chat.deviceOnly.some((v) => /rollback scope/i.test(v))) {
+      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list rollback scope paths");
+    }
+    if (!chat.deviceOnly.some((v) => /rollback error/i.test(v))) {
+      fail("packages/data-domains/registry.json: conversations_chat deviceOnly must list rollback error diagnostics");
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(registry.excludedCollections ?? {}, "rollback_requests")) {
+    fail("packages/data-domains/registry.json: rollback_requests must be removed from excludedCollections once folded into conversations_chat");
+  }
+
+  // The device-only excluded collections that stay excluded but carry sealed
+  // private text must state the sealed-text contract (no understated one-liners).
+  const excluded = registry.excludedCollections ?? {};
+  for (const name of ["approval_policies", "agent_identities", "subscription_topics"]) {
+    const reason = excluded[name];
+    if (!reason) {
+      fail(`packages/data-domains/registry.json: ${name} must remain in excludedCollections with an honest reason`);
+      continue;
+    }
+    const lower = reason.toLowerCase();
+    if (!/seal/.test(lower) || !lower.includes("vault key") || !lower.includes("never")) {
+      fail(`packages/data-domains/registry.json: ${name} exclusion reason must state the sealed/vault-key/server-never-reads contract`);
     }
   }
 }

@@ -81,7 +81,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Conversations & Chat",
     "icon": "bubble.left.and.bubble.right.fill",
     "encryptionTier": "end_to_end",
-    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, and conversation recall metadata are sealed on-device before Firestore receives them.",
+    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, and conversation recall metadata are sealed on-device before Firestore receives them.",
     "serverSees": [
       "provider/runtime identifiers",
       "message counts",
@@ -96,7 +96,9 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "CLI transcripts",
       "mission prompts/results",
       "saved text snippets",
-      "project/file/command labels"
+      "project/file/command labels",
+      "rollback scope paths",
+      "rollback error diagnostics"
     ],
     "firestorePaths": [
       "conversations",
@@ -104,7 +106,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "mobile_assistant_chats",
       "cli_sessions",
       "cli_agent_mission_requests",
-      "text_snippets"
+      "text_snippets",
+      "rollback_requests"
     ],
     "storagePaths": [],
     "countSource": "chat_threads",

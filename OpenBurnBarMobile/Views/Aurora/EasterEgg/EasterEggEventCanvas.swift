@@ -74,10 +74,10 @@ struct EasterEggEventCanvas: View {
         switch id {
         case .logo(let assetName):
             EasterEggLogoSymbol(assetName: assetName)
-        case .coin(let metal):
-            TokenCoinSymbol(metal: metal)
-        case .cloud:
-            CloudPuffSymbol()
+        case .coin, .cloud:
+            // Coins + clouds are drawn procedurally by the scene now (edge-on
+            // coin flip + fluffy puffPath clouds); they resolve no image symbol.
+            EmptyView()
         }
     }
 }
@@ -91,17 +91,17 @@ enum EasterEggSymbolID: Hashable {
     case coin(metal: TokenMetal)
     case cloud
 
-    /// The marks this event will ever draw, so the symbol deck stays small.
+    /// The image marks this event resolves as Canvas symbols. Coins, clouds, and
+    /// the cloud body are all drawn *procedurally* now (edge-on coin flip, fluffy
+    /// puffPath clouds), so only the logo/crest PNGs need resolving here.
     static func allCases(for event: EasterEggEvent) -> [EasterEggSymbolID] {
         switch event.kind {
         case .logoStorm:
             return EasterEggAssets.stormLogoNames.map { .logo(assetName: $0) }
         case .cloudTokenRain:
-            return [.cloud]
-                + EasterEggAssets.cloudCrestNames.map { .logo(assetName: $0) }
-                + [.coin(metal: .gold), .coin(metal: .silver)]
+            return EasterEggAssets.cloudCrestNames.map { .logo(assetName: $0) }
         case .boundary:
-            return [.coin(metal: .gold), .coin(metal: .silver)]
+            return []
         }
     }
 }
@@ -137,90 +137,6 @@ private struct EasterEggLogoSymbol: View {
             }
         }
         .frame(width: 64, height: 64)
-    }
-}
-
-/// A small minted token coin. Gold + silver variants rain in the cloud event
-/// and pop at the scroll boundaries. Drawn procedurally so it stays crisp at
-/// any size; the RGB stops match the macOS coin hex palette for parity.
-private struct TokenCoinSymbol: View {
-    let metal: TokenMetal
-
-    private var faceGradient: RadialGradient {
-        switch metal {
-        case .gold:
-            return RadialGradient(
-                colors: [
-                    Color(red: 1.00, green: 0.91, blue: 0.66),  // FFE9A8
-                    Color(red: 0.96, green: 0.72, blue: 0.25),  // F4B740
-                    Color(red: 0.78, green: 0.53, blue: 0.11)   // C8881C
-                ],
-                center: .init(x: 0.38, y: 0.34),
-                startRadius: 1,
-                endRadius: 22
-            )
-        case .silver:
-            return RadialGradient(
-                colors: [
-                    Color(red: 0.98, green: 0.98, blue: 0.99),  // FAFBFC
-                    Color(red: 0.79, green: 0.82, blue: 0.85),  // C9D0D8
-                    Color(red: 0.54, green: 0.58, blue: 0.63)   // 8A95A1
-                ],
-                center: .init(x: 0.38, y: 0.34),
-                startRadius: 1,
-                endRadius: 22
-            )
-        }
-    }
-
-    private var rimColor: Color {
-        switch metal {
-        case .gold: return Color(red: 0.61, green: 0.42, blue: 0.07)   // 9C6A12
-        case .silver: return Color(red: 0.42, green: 0.45, blue: 0.50) // 6B747F
-        }
-    }
-
-    private var glyphColor: Color {
-        switch metal {
-        case .gold: return Color(red: 0.61, green: 0.42, blue: 0.07).opacity(0.85)
-        case .silver: return Color(red: 0.36, green: 0.40, blue: 0.44).opacity(0.85)
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            Circle().fill(faceGradient)
-            Circle().strokeBorder(rimColor.opacity(0.8), lineWidth: 2)
-            Circle()
-                .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
-                .padding(3)
-            // A token "$" mark so the coins read as spend, matching the brand's
-            // dollar-formation swarm vocabulary.
-            Text("$")
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundStyle(glyphColor)
-        }
-        .frame(width: 30, height: 30)
-        .shadow(color: rimColor.opacity(0.35), radius: 1.5, y: 0.5)
-    }
-}
-
-/// A soft grey cloud puff that drifts across the top and rains coins.
-private struct CloudPuffSymbol: View {
-    var body: some View {
-        ZStack {
-            // Layered ellipses give a billowed silhouette without an asset.
-            Capsule()
-                .fill(.white.opacity(0.92))
-                .frame(width: 120, height: 46)
-                .offset(y: 10)
-            Circle().fill(.white.opacity(0.95)).frame(width: 56, height: 56).offset(x: -28, y: -2)
-            Circle().fill(.white.opacity(0.97)).frame(width: 72, height: 72).offset(x: 4, y: -10)
-            Circle().fill(.white.opacity(0.94)).frame(width: 50, height: 50).offset(x: 38, y: 0)
-        }
-        .frame(width: 140, height: 84)
-        .compositingGroup()
-        .shadow(color: Color(red: 0.49, green: 0.53, blue: 0.58).opacity(0.35), radius: 6, y: 4)
     }
 }
 
