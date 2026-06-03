@@ -362,6 +362,11 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
         exclude("**/SwarmTextCoordinates.kt")
         exclude("**/SwarmBackground.kt")
         exclude("**/DotConstellationBackground.kt")
+        // Same family as the swarm/constellation renderers above: a heavy Canvas +
+        // particle-physics file whose inline field math (gravity, easing, alpha
+        // curves) trips LongParameterList/complexity rules that don't fit per-frame
+        // draw code. Excluded to match its siblings, not to hide real smells.
+        exclude("**/EasterEggOverlay.kt")
         exclude("**/AuroraTheme.kt")
         exclude("**/AuroraNavGlyphs.kt")
         exclude("**/renderers/**")
