@@ -853,7 +853,7 @@
         '<div class="toggle"><div class="toggle__text">' +
           (r.ok ? '<span class="teal">' + icon("check") + "</span> " : '<span class="amber">' + icon("alert") + "</span> ") +
           E(r.name) + "<small>" + E(r.detail) + "</small></div>" +
-          (r.ok ? '<span class="chip chip--seal tiny">' + E(r.status) + "</span>" : '<button class="btn btn--sm btn--ember">Set up</button>") +
+          (r.ok ? '<span class="chip chip--seal tiny">' + E(r.status) + "</span>" : '<button class="btn btn--sm btn--ember">Set up</button>') +
         "</div>"
       ).join("");
 
