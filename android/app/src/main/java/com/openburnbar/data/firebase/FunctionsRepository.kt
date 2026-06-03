@@ -18,7 +18,6 @@ data class CloudConversationSearchHit(
     val sourceKind: String,
     val sourceID: String,
     val provider: String?,
-    val projectName: String?,
     val sealedTitle: CloudVaultSealedText,
     val sealedSnippet: CloudVaultSealedText,
     val sealedBodyPreview: CloudVaultSealedText?,
@@ -35,9 +34,9 @@ data class CloudConversationSearchHit(
 
 /**
  * One encrypted session-log manifest row returned by the `queryConversations` callable. Facets are
- * plaintext cockpit metadata (provider/project/model/token & cost totals/timing); the conversation
- * title and preview stay sealed and are opened on-device with the vault key. Numeric facets are
- * nullable so manifests written before the facet backfill still decode.
+ * operational cockpit metadata (provider/model/token & cost totals/timing/device/source); text-like
+ * project/path/title/body fields stay sealed or hash-only. Numeric facets are nullable so manifests
+ * written before the facet backfill still decode.
  */
 data class ConversationFacetRow(
     val id: String,
@@ -116,15 +115,14 @@ class FunctionsRepository {
 
     /**
      * Faceted, paginated query over the signed-in paid user's encrypted session-log manifests.
-     * Filtering and sorting run server-side on plaintext facets; titles, previews, and bodies stay
-     * sealed and are opened on-device. `providers` and `models` may be multi-valued, but the server
-     * rejects filtering by multiple of *both* at once (one Firestore `in` clause per query). A date
-     * window forces a `startTime` sort server-side.
+     * Filtering and sorting run server-side only on operational facets. Project/path/title/body
+     * search must use encrypted search hashes and local decryption. `providers` and `models` may be
+     * multi-valued, but the server rejects filtering by multiple of *both* at once (one Firestore
+     * `in` clause per query). A date window forces a `startTime` sort server-side.
      */
     suspend fun queryConversations(
         providers: List<String> = emptyList(),
         models: List<String> = emptyList(),
-        projectName: String? = null,
         deviceId: String? = null,
         sourceType: String? = null,
         dateFromIso: String? = null,
@@ -144,7 +142,6 @@ class FunctionsRepository {
             )
         if (providers.isNotEmpty()) payload["providers"] = providers
         if (models.isNotEmpty()) payload["models"] = models
-        projectName?.takeIf { it.isNotBlank() }?.let { payload["projectName"] = it }
         deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
         sourceType?.takeIf { it.isNotBlank() }?.let { payload["sourceType"] = it }
         dateFromIso?.takeIf { it.isNotBlank() }?.let { payload["dateFrom"] = it }
@@ -337,7 +334,6 @@ private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSe
         sourceKind = this["sourceKind"] as? String ?: "conversation",
         sourceID = this["sourceID"] as? String ?: "",
         provider = this["provider"] as? String,
-        projectName = this["projectName"] as? String,
         sealedTitle = sealedTitle,
         sealedSnippet = sealedSnippet,
         sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
@@ -358,7 +354,7 @@ private fun Map<String, Any>.toConversationFacetRow(): ConversationFacetRow? {
     return ConversationFacetRow(
         id = id,
         provider = this["provider"] as? String,
-        projectName = this["projectName"] as? String,
+        projectName = null,
         sourceType = this["sourceType"] as? String,
         deviceId = this["deviceId"] as? String,
         model = this["model"] as? String,
@@ -367,7 +363,7 @@ private fun Map<String, Any>.toConversationFacetRow(): ConversationFacetRow? {
         outputTokens = (this["outputTokens"] as? Number)?.toInt(),
         totalTokens = (this["totalTokens"] as? Number)?.toInt(),
         costUSD = (this["costUSD"] as? Number)?.toDouble(),
-        workingDirectory = this["workingDirectory"] as? String,
+        workingDirectory = null,
         toolTags = (this["toolTags"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
         durationSeconds = (this["durationSeconds"] as? Number)?.toInt(),
         sealedTitle = (this["sealedTitle"] as? Map<*, *>)?.toSealedText(),

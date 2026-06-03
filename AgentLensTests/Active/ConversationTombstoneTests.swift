@@ -19,6 +19,7 @@ final class ConversationTombstoneTests: XCTestCase {
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
 
     override func setUp() async throws {
         queue = try DatabaseQueue(path: ":memory:")
@@ -27,6 +28,7 @@ final class ConversationTombstoneTests: XCTestCase {
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "tombstone-\(UUID().uuidString)")!)
         settingsManager.conversationCloudBackupEnabled = true
         fakeGateway = CloudSyncFirestoreFakeGateway()
+        vaultKeyProvider = TestConversationVaultKeyProvider()
         context = CloudSyncContext(
             dataStore: dataStore,
             accountManager: accountManager,
@@ -134,20 +136,34 @@ final class ConversationTombstoneTests: XCTestCase {
             "lastActiveAt": Timestamp(date: remoteUpdatedAt)
         ], at: "users/test-uid-1/devices/\(remoteDeviceId)")
 
+        let sealed = try ConversationCloudSealer.seal(
+            ConversationCloudPrivatePayload(
+                projectName: "RemoteProject",
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Remote Task",
+                lastAssistantMessage: "hello",
+                workingDirectory: nil,
+                summary: nil,
+                summaryTitle: nil,
+                summaryProvider: nil,
+                summaryModel: nil
+            ),
+            key: try vaultKeyProvider.resolvedKey()
+        )
         let basePayload: [String: Any] = [
             "id": "conv-remote-tomb",
             "deviceId": remoteDeviceId,
             "provider": AgentProvider.cursor.rawValue,
             "sessionId": "remote-session-tomb",
-            "projectName": "RemoteProject",
             "messageCount": 7,
             "userWordCount": 10,
             "assistantWordCount": 20,
-            "keyFiles": [],
-            "keyCommands": [],
-            "keyTools": [],
-            "inferredTaskTitle": "Remote Task",
-            "lastAssistantMessage": "hello",
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": try vaultKeyProvider.resolvedKey().vaultKeyID,
+            "sealedPayload": sealed,
             "sourceType": ConversationSourceType.providerLog.rawValue,
             "version": 1,
             "updatedAt": Timestamp(date: remoteUpdatedAt),
@@ -157,7 +173,7 @@ final class ConversationTombstoneTests: XCTestCase {
         let remoteDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_conv-remote-tomb"
         fakeGateway.setDocumentData(basePayload, at: remoteDocPath)
 
-        let downloadSync = DownloadSyncService(context: context)
+        let downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
         await downloadSync.sync()
         XCTAssertNotNil(try dataStore.fetchConversation(id: localId), "Live remote conversation should land locally.")
 
@@ -190,20 +206,34 @@ final class ConversationTombstoneTests: XCTestCase {
             "lastActiveAt": Timestamp(date: remoteUpdatedAt)
         ], at: "users/test-uid-1/devices/\(remoteDeviceId)")
 
+        let sealed = try ConversationCloudSealer.seal(
+            ConversationCloudPrivatePayload(
+                projectName: "RemoteProject",
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Already Deleted",
+                lastAssistantMessage: "bye",
+                workingDirectory: nil,
+                summary: nil,
+                summaryTitle: nil,
+                summaryProvider: nil,
+                summaryModel: nil
+            ),
+            key: try vaultKeyProvider.resolvedKey()
+        )
         fakeGateway.setDocumentData([
             "id": "conv-born-deleted",
             "deviceId": remoteDeviceId,
             "provider": AgentProvider.cursor.rawValue,
             "sessionId": "remote-session-born-deleted",
-            "projectName": "RemoteProject",
             "messageCount": 3,
             "userWordCount": 1,
             "assistantWordCount": 1,
-            "keyFiles": [],
-            "keyCommands": [],
-            "keyTools": [],
-            "inferredTaskTitle": "Already Deleted",
-            "lastAssistantMessage": "bye",
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": try vaultKeyProvider.resolvedKey().vaultKeyID,
+            "sealedPayload": sealed,
             "sourceType": ConversationSourceType.providerLog.rawValue,
             "deletedAt": Timestamp(date: remoteUpdatedAt),
             "version": 4,
@@ -212,7 +242,7 @@ final class ConversationTombstoneTests: XCTestCase {
             "endTime": Timestamp(date: remoteUpdatedAt.addingTimeInterval(50))
         ], at: "users/test-uid-1/conversations/\(remoteDeviceId)_conv-born-deleted")
 
-        await DownloadSyncService(context: context).sync()
+        await DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider).sync()
 
         XCTAssertNil(try dataStore.fetchConversation(id: localId), "A remote conversation that arrives already-deleted must not be visible.")
         let row = try await queue.read { db in

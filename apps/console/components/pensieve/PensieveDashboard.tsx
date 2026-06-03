@@ -1,17 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { httpsCallable } from "firebase/functions";
 import { GitBranch, RefreshCw, Brain } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { TierBadge } from "@/components/inventory/TierBadge";
 import { dataDomain } from "@/lib/domains";
+import { functions } from "@/lib/firebaseClient";
 import { useDomainUsage, usageById } from "@/lib/useDomainUsage";
 import { formatBytes, formatCount } from "@/lib/utils";
+import { RepoDisplayError, sealRepoFullName } from "@/lib/repoDisplay";
 import { PensieveRecallCard } from "./PensieveRecallCard";
 
 const PENSIEVE = dataDomain("pensieve")!;
+const CONNECT_REPO_CALLABLE = (PENSIEVE.callables.connectRepo ?? "connectKnowledgeRepo") as string;
+
+/** Derive a stable source slug from a repo full name (used as the manifest doc id). */
+function repoSourceSlug(repoFullName: string): string {
+  return `repo-${repoFullName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+}
 
 function Meter({
   label,
@@ -52,6 +61,38 @@ export function PensieveDashboard() {
   const limits = data?.limits.pensieve ?? { sources: 0, chunks: 0, bytes: 0 };
   const tier = data?.tier ?? "free";
   const [busy, setBusy] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  // Connect a repo by sealing its name end-to-end FIRST, then sending only the
+  // sealed envelope + an install id. The server derives an opaque keyed match
+  // token from the name in transit (for webhook routing) and stores the sealed
+  // copy for the console's own later display — never the cleartext name. The
+  // display name therefore always comes from `sealedRepoFullName` decrypted in
+  // the browser, not from the server row.
+  async function connectRepository() {
+    setConnectError(null);
+    const repoFullName = window.prompt("Repository to connect (owner/name):")?.trim();
+    if (!repoFullName) return;
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repoFullName)) {
+      setConnectError("Enter a repository as owner/name.");
+      return;
+    }
+    setBusy("connect");
+    try {
+      const sealedRepoFullName = await sealRepoFullName(repoFullName);
+      const connectRepo = httpsCallable(functions(), CONNECT_REPO_CALLABLE);
+      await connectRepo({ sealedRepoFullName, sourceSlug: repoSourceSlug(repoFullName) });
+      reload();
+    } catch (error) {
+      setConnectError(
+        error instanceof RepoDisplayError
+          ? error.message
+          : "Could not connect the repository. Try again.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
 
   // Source count is not in the usage snapshot (it counts chunks); the sources
   // meter uses the limit denominator and reflects connected repos once wired to
@@ -124,11 +165,11 @@ export function PensieveDashboard() {
             <Button
               variant="secondary"
               disabled={!!busy}
-              onClick={() => setBusy("connect")}
+              onClick={connectRepository}
               title="Binds to connectKnowledgeRepo"
             >
               <GitBranch className="size-4" />
-              Connect repository
+              {busy === "connect" ? "Connecting…" : "Connect repository"}
             </Button>
             <Button
               variant="ghost"
@@ -155,13 +196,15 @@ export function PensieveDashboard() {
             </p>
           )}
 
-          {busy === "connect" && (
-            <p className="text-xs text-content-dim">
-              Repo connection runs through the <code className="font-mono">connectKnowledgeRepo</code>{" "}
-              callable. Wire the picker to it and call{" "}
-              <code className="font-mono">reload()</code> on success.
-            </p>
+          {connectError && (
+            <p className="text-xs text-[color:var(--color-seal-crimson)]">{connectError}</p>
           )}
+          <p className="text-xs text-content-dim">
+            Repository names are sealed on your device before they leave the browser. The server
+            stores only an opaque keyed match token plus the sealed name; the name you see here is
+            decrypted locally from <code className="font-mono">sealedRepoFullName</code>, never read
+            from the server row.
+          </p>
         </CardContent>
       </Card>
 

@@ -102,6 +102,14 @@ struct SettingsView: View {
             DataControlCenterView(accountManager: accountManager)
                 .frame(minWidth: 980, minHeight: 680)
         }
+        .onReceive(NotificationCenter.default.publisher(for: FeatureGateRouting.openCloudStoreNotification)) { _ in
+            // A feature-gate unlock CTA fired while Settings is already open —
+            // jump the live router straight to the Cloud store pane (the
+            // parked `settings.pendingTab` only resolves on a fresh appear).
+            router.selectedTab = .cloud
+            router.path.removeAll()
+            UserDefaults.standard.removeObject(forKey: "settings.pendingTab")
+        }
     }
 
     private var searchField: some View {
@@ -428,7 +436,29 @@ private enum AccountActionError: LocalizedError {
 private struct DataControlCenterSettingsLanding: View {
     let onOpen: () -> Void
 
+    @StateObject private var entitlement = MacCloudEntitlementStore.shared
+
+    /// The Data Vault / agent-memory workbench requires Cloud Pro. When the
+    /// member doesn't yet hold it, the landing wears the evocative unlock veil
+    /// over a blurred teaser of the workbench affordance instead of opening.
+    private var isUnlocked: Bool {
+        entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.dataVault).requiredTier)
+    }
+
     var body: some View {
+        Group {
+            if isUnlocked {
+                landingCard
+            } else {
+                FeatureLockedVeil(feature: GatedFeature.gatedFeature(.dataVault)) {
+                    landingCard
+                }
+            }
+        }
+        .onAppear { entitlement.start() }
+    }
+
+    private var landingCard: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 0)
             VStack(spacing: 14) {
@@ -448,6 +478,7 @@ private struct DataControlCenterSettingsLanding: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(DesignSystem.Colors.teal)
+                .disabled(!isUnlocked)
             }
             .padding(32)
             .background(

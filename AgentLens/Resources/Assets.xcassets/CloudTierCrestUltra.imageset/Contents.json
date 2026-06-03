@@ -1,8 +1,19 @@
 {
   "images" : [
     {
-      "filename" : "crest_ultra.jpg",
-      "idiom" : "universal"
+      "filename" : "crest_ultra.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "crest_ultra@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "crest_ultra@3x.png",
+      "idiom" : "universal",
+      "scale" : "3x"
     }
   ],
   "info" : {

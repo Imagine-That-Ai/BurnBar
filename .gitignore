@@ -143,6 +143,10 @@ tools/**/lib/
 *.swift.plist
 
 # QA harness output (qa skill writes timestamped reports + screenshots)
+# Ignore the entire output/ tree: it holds local auth-QA artifacts including a
+# live Chromium profile (cookies/saved logins), OAuth-flow debug captures, and
+# authenticated production-session screenshots. None of it is publishable.
+output/
 qa-results/
 output/playwright-screenshots/
 output/playwright-user-data/

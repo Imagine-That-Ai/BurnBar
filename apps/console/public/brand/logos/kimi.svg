@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kimi mark">
+  <title>Kimi · Moonshot</title>
+  <!-- Bold K letterform — readable on both dark and cream rendering tiles. -->
+  <g fill="#0c0a0f">
+    <rect x="14" y="12" width="9" height="40" rx="1"/>
+    <path d="M 23 32 L 41 14 L 51 14 L 30 35 Z"/>
+    <path d="M 30 31 L 51 52 L 41 52 L 23 34 Z"/>
+  </g>
+  <!-- Kimi's signature blue chat-bubble accent in the corner. -->
+  <path d="M 44 8 Q 50 8 50 14 Q 50 20 44 20 L 40 20 L 41 22 L 38 20 Q 38 8 44 8 Z" fill="#1d75ff"/>
+</svg>

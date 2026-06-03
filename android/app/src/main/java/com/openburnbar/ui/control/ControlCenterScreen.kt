@@ -64,6 +64,7 @@ internal fun ControlCenterScreen(
     onBack: () -> Unit = {},
     onManagePlan: () -> Unit = {},
     onDomainDeepLink: (DataDomain, String) -> Unit = { _, _ -> },
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String? = { null },
 ) {
     LaunchedEffect(Unit) {
         store.refresh()
@@ -76,11 +77,21 @@ internal fun ControlCenterScreen(
     val error by store.error.collectAsState()
 
     var selectedDomainId by remember { mutableStateOf<String?>(null) }
+    var unlockFeature by remember { mutableStateOf<com.openburnbar.ui.pro.GatedFeature?>(null) }
     val isWide = LocalConfiguration.current.screenWidthDp >= 840
 
     val onDomainAction: (DataDomain, String) -> Unit = { domain, action ->
-        if (action == ACTION_UPGRADE) onManagePlan() else onDomainDeepLink(domain, action)
+        if (action == ACTION_UPGRADE) {
+            // Route an upgrade tap through the evocative unlock sheet when this
+            // domain fronts a marquee gated feature; otherwise fall back to the
+            // plain manage-plan deep link.
+            val feature = gatedFeatureForDomain(domain.id)
+            if (feature != null) unlockFeature = feature else onManagePlan()
+        } else {
+            onDomainDeepLink(domain, action)
+        }
     }
+    val onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit = { unlockFeature = it }
 
     Scaffold(
         topBar = {
@@ -107,6 +118,7 @@ internal fun ControlCenterScreen(
                     onSelectDomain = { selectedDomainId = it?.ifBlank { null } },
                     onManagePlan = onManagePlan,
                     onDomainAction = onDomainAction,
+                    onUnlock = onUnlock,
                 )
             } else {
                 ControlCenterSinglePane(
@@ -118,10 +130,19 @@ internal fun ControlCenterScreen(
                     onSelectDomain = { selectedDomainId = it?.ifBlank { null } },
                     onManagePlan = onManagePlan,
                     onDomainAction = onDomainAction,
+                    onUnlock = onUnlock,
                 )
             }
         }
     }
+
+    com.openburnbar.ui.pro.FeatureUnlockSheet(
+        feature = unlockFeature ?: com.openburnbar.ui.pro.GatedFeatureCatalog.feature(com.openburnbar.ui.pro.GatedFeatureID.DATA_VAULT),
+        show = unlockFeature != null,
+        livePrice = unlockFeature?.let { priceForTier(it.requiredTier) },
+        onUnlock = onManagePlan,
+        onDismiss = { unlockFeature = null },
+    )
 }
 
 @Composable
@@ -134,6 +155,7 @@ private fun ControlCenterListDetail(
     onSelectDomain: (String?) -> Unit,
     onManagePlan: () -> Unit,
     onDomainAction: (DataDomain, String) -> Unit,
+    onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
@@ -145,6 +167,7 @@ private fun ControlCenterListDetail(
                 selectedDomainId = selectedDomainId,
                 onSelectDomain = onSelectDomain,
                 onManagePlan = onManagePlan,
+                onUnlock = onUnlock,
             )
         }
         VerticalDivider(
@@ -178,6 +201,7 @@ private fun ControlCenterSinglePane(
     onSelectDomain: (String?) -> Unit,
     onManagePlan: () -> Unit,
     onDomainAction: (DataDomain, String) -> Unit,
+    onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
 ) {
     val selectedRow = selectedDomainId?.let { store.row(it) }
     if (selectedRow != null) {
@@ -202,6 +226,7 @@ private fun ControlCenterSinglePane(
             selectedDomainId = null,
             onSelectDomain = onSelectDomain,
             onManagePlan = onManagePlan,
+            onUnlock = onUnlock,
         )
     }
 }
@@ -215,6 +240,7 @@ private fun ControlCenterInventoryList(
     selectedDomainId: String?,
     onSelectDomain: (String?) -> Unit,
     onManagePlan: () -> Unit,
+    onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
 ) {
     val recovery by store.recoveryMethods.collectAsState()
     val recoveryBusy by store.recoveryBusy.collectAsState()
@@ -246,6 +272,7 @@ private fun ControlCenterInventoryList(
                 tier = snapshot.tier,
                 selected = row.domain.id == selectedDomainId,
                 onClick = { onSelectDomain(row.domain.id) },
+                onUnlock = onUnlock,
             )
         }
         item {

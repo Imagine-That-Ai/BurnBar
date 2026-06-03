@@ -22,7 +22,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineString } from "firebase-functions/params";
 import { getConfig } from "./config.js";
-import { enforceHighRiskComputerUseCallable } from "./appCheckAttestation.js";
+import { enforceHighRiskComputerUseCallableWithNonce } from "./appCheckAttestation.js";
 import { logCallableStart, traceIdFromCallableRequest, wrapCallableHandler } from "./logging.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { readOpenBurnBarFunctionsConfig } from "./firebaseRuntime.js";
@@ -455,7 +455,7 @@ export const validateOpenTimestampsProof = onCall(
     async (request: CallableRequest): Promise<ComputerUseOpenTimestampsValidationResponse> => {
       const parsed = parseComputerUseOpenTimestampsValidationRequest(request.data);
       logCallableStart("validateOpenTimestampsProof", traceIdFromCallableRequest(request), parsed.uid);
-      enforceHighRiskComputerUseCallable(request, parsed.uid);
+      await enforceHighRiskComputerUseCallableWithNonce(request, parsed.uid, (request.data as { nonce?: unknown })?.nonce);
       return validateComputerUseOpenTimestampsProofForRequest(parsed);
     },
   ),

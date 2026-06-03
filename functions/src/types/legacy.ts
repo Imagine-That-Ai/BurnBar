@@ -898,7 +898,10 @@ export interface QuotaSnapshotDoc {
 }
 
 // ---------------------------------------------------------------------------
-// Firestore: project_memory_snapshots/{projectSlug}
+// Firestore: users/{uid}/project_memory_snapshots/{docID}
+//
+// Keyed by an opaque vault-key-derived docID (no longer the plaintext slug);
+// see ProjectMemorySnapshotDoc below.
 // ---------------------------------------------------------------------------
 
 export type ProjectMemoryFreshness = "fresh" | "needsRefresh" | "stale";
@@ -1015,9 +1018,20 @@ export interface TextExpansionSnippetDoc {
   schemaVersion: number;
 }
 
+/**
+ * project_memory_snapshots/{docID}
+ *
+ * SEAL + OPAQUE DOC ID (privacy-leak-remediation-2026-06-02 §2). The human-
+ * readable `projectSlug`/`projectDisplayName` are NO LONGER persisted in the
+ * clear — both already live inside the sealed `sealedSnapshot` blob, and the doc
+ * is now keyed by an opaque, deterministic `docID` the device derives from the
+ * slug under the vault key (`projectMemoryDocID`, see CloudVaultCrypto). The
+ * server never learns the project's name. `schemaVersion` 2 fences the new
+ * sealed-only rows from the legacy plaintext-keyed rows.
+ */
 export interface ProjectMemorySnapshotDoc {
-  projectSlug: string;
-  projectDisplayName: string;
+  /** Opaque, vault-key-derived deterministic doc id (mirrors the Firestore key). */
+  docID?: string;
   contentHash: string;
   sourceSessionCount: number;
   sourceConversationCount: number;
@@ -1032,6 +1046,35 @@ export interface ProjectMemorySnapshotDoc {
   };
   schemaVersion: number;
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/knowledge_repos/{repoId}
+//
+// Pensieve repo connector (privacy-leak-remediation-2026-06-02 §4). The
+// cleartext `repoFullName` is NO LONGER stored: a GitHub-push webhook (no vault
+// key, no user context) can only equality-MATCH the incoming repo, never needs
+// the name back, so the row carries a SERVER-keyed `repoMatchToken =
+// HMAC_SHA256(KNOWLEDGE_REPO_MATCH_KEY, normalize(full_name))` the webhook
+// recomputes from the GitHub-signed payload. The user-visible display name lives
+// only in `sealedRepoFullName`, sealed by the authed web client with the vault
+// key and decrypted client-side. `repoId` is derived from the opaque token, not
+// the name.
+// ---------------------------------------------------------------------------
+
+export interface KnowledgeRepoDoc {
+  uid: string;
+  /** Opaque doc id derived from `repoMatchToken` (not the repo name). */
+  repoId: string;
+  /** Server-keyed HMAC of the normalized repo full name — the webhook match key. */
+  repoMatchToken: string;
+  /** Vault-sealed display name supplied by the authed client (optional). */
+  sealedRepoFullName?: CloudVaultSealedTextDoc;
+  /** The user's own knowledge-source doc id this repo feeds (slug, accepted leakage). */
+  sourceSlug: string;
+  installId?: string;
+  connectedAt: import("firebase-admin/firestore").Timestamp | string;
+  schemaVersion: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1219,6 +1262,21 @@ export interface UsageEventDoc {
   /** Provider/session identifier used to collapse idempotent re-uploads. */
   sessionId?: string;
 
+  /**
+   * Vault-sealed project name (privacy-leak-remediation-2026-06-02 §1). The
+   * legacy plaintext `projectName` is no longer written by updated clients — the
+   * working-dir/project label is private text the server must not read, so it is
+   * AES-256-GCM-sealed on device. Absent on legacy docs (read with a fallback).
+   */
+  sealedProjectName?: CloudVaultSealedTextDoc;
+
+  /**
+   * Opaque vault-keyed HMAC trapdoor of the normalized project name, so clients
+   * can group usage by project without decrypting every doc. Carries no
+   * plaintext; the server cannot recover the name from it.
+   */
+  projectKeyHash?: string;
+
   /** Device that originated the request. */
   deviceId?: string;
 
@@ -1347,6 +1405,9 @@ export interface EnvConfig {
 
   /** Firebase app check enforcement (default true). */
   enforceAppCheck: boolean;
+
+  /** Require a single-use high-risk action nonce on high-risk callables (default false; staged rollout). */
+  requireHighRiskNonce: boolean;
 
   /** Maximum credential string length (default 8192). */
   maxCredentialLength: number;

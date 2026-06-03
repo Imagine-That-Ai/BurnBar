@@ -16,14 +16,21 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
         XCTAssertEqual(proof.responseCount, 7)
         XCTAssertEqual(proof.approvalRequests.count, 7)
         XCTAssertEqual(Set(proof.approvalRequests.compactMap(\.trustMode)), [ComputerUseTrustMode.step.rawValue])
-        XCTAssertEqual(proof.auditEntries.count, 7)
-        XCTAssertEqual(proof.auditEntries.map(\.entryIndex), Array(0..<7))
-        XCTAssertEqual(Set(proof.auditEntries.map(\.approvedBy)), [.mac])
+        // Audit-before-action: each executed action writes a reservation +
+        // completion, interleaved (reservation at even index, completion at odd).
+        XCTAssertEqual(proof.auditEntries.count, 14)
+        XCTAssertEqual(proof.auditEntries.map(\.entryIndex), Array(0..<14))
+        let reservations = proof.auditEntries.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
+        let completions = proof.auditEntries.enumerated().filter { !$0.offset.isMultiple(of: 2) }.map(\.element)
+        XCTAssertEqual(reservations.count, 7)
+        XCTAssertEqual(completions.count, 7)
+        XCTAssertTrue(reservations.allSatisfy { $0.denyReason == ComputerUseRunCoordinator.auditReservationSentinel })
+        XCTAssertEqual(Set(completions.map(\.approvedBy)), [.mac])
         XCTAssertEqual(
-            proof.auditEntries.compactMap(\.approvalId),
+            completions.compactMap(\.approvalId),
             proof.approvalRequests.map(\.approvalId)
         )
-        XCTAssertTrue(proof.auditEntries.allSatisfy { $0.denyReason == nil })
+        XCTAssertTrue(completions.allSatisfy { $0.denyReason == nil })
         XCTAssertEqual(proof.finalExtractedText, "hello Hermes")
         XCTAssertGreaterThan(proof.screenshotBytes, 1_000)
     }
@@ -42,12 +49,17 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
 
         XCTAssertEqual(proof.responseCount, 7)
         XCTAssertTrue(proof.approvalRequests.isEmpty)
-        XCTAssertEqual(proof.auditEntries.count, 7)
-        XCTAssertEqual(proof.auditEntries.map(\.entryIndex), Array(0..<7))
-        XCTAssertEqual(Set(proof.auditEntries.map(\.approvedBy)), [.trustedScope])
-        XCTAssertTrue(proof.auditEntries.allSatisfy { $0.approvalId == nil })
-        XCTAssertTrue(proof.auditEntries.allSatisfy { $0.scopeRuleId == allowRule.rawValue })
-        XCTAssertTrue(proof.auditEntries.allSatisfy { $0.denyReason == nil })
+        // Audit-before-action: reservation + completion per executed action.
+        XCTAssertEqual(proof.auditEntries.count, 14)
+        XCTAssertEqual(proof.auditEntries.map(\.entryIndex), Array(0..<14))
+        let reservations = proof.auditEntries.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
+        let completions = proof.auditEntries.enumerated().filter { !$0.offset.isMultiple(of: 2) }.map(\.element)
+        XCTAssertEqual(completions.count, 7)
+        XCTAssertTrue(reservations.allSatisfy { $0.denyReason == ComputerUseRunCoordinator.auditReservationSentinel })
+        XCTAssertEqual(Set(completions.map(\.approvedBy)), [.trustedScope])
+        XCTAssertTrue(completions.allSatisfy { $0.approvalId == nil })
+        XCTAssertTrue(completions.allSatisfy { $0.scopeRuleId == allowRule.rawValue })
+        XCTAssertTrue(completions.allSatisfy { $0.denyReason == nil })
         XCTAssertEqual(proof.finalExtractedText, "hello Hermes")
         XCTAssertGreaterThan(proof.screenshotBytes, 1_000)
     }
@@ -74,7 +86,9 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
                 scopeOutcome: scopeOutcome
             )
             XCTAssertEqual(proof.responseCount, 7, "run \(run)")
-            XCTAssertEqual(proof.auditValidation.entryCount, 7, "run \(run)")
+            // Audit-before-action doubles entries: reservation + completion
+            // per executed action (7 actions -> 14 well-formed chain rows).
+            XCTAssertEqual(proof.auditValidation.entryCount, 14, "run \(run)")
             XCTAssertTrue(proof.auditValidation.isValid, "run \(run): \(String(describing: proof.auditValidation.firstInvalidReason))")
             totalResponses += proof.responseCount
             totalAuditEntries += proof.auditEntries.count
@@ -83,7 +97,7 @@ final class ComputerUseRunCoordinatorPlaywrightScenarioTests: XCTestCase {
         let elapsedMillis = Int(Date().timeIntervalSince(started) * 1_000)
         print("phase9_50_run_gate runs=50 responses=\(totalResponses) auditEntries=\(totalAuditEntries) elapsedMs=\(elapsedMillis)")
         XCTAssertEqual(totalResponses, 350)
-        XCTAssertEqual(totalAuditEntries, 350)
+        XCTAssertEqual(totalAuditEntries, 700)
     }
 
     private func runLocalBrowserScenario(

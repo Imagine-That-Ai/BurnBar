@@ -13,7 +13,7 @@
  * registry, so the two never drift.
  */
 
-import { AggregateField } from "firebase-admin/firestore";
+import { AggregateField, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -30,6 +30,15 @@ import { PENSIEVE_LIMITS } from "./knowledgeMemory.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export type DataTier = "ultra" | "pro" | "free";
+export type CloudProfileState = "published" | "missing";
+
+export interface CloudProfileSummary {
+  state: CloudProfileState;
+  displayName?: string;
+  avatarURL?: string;
+  sourceDeviceId?: string;
+  updatedAt?: string;
+}
 
 interface UsageSource {
   /** Collection whose docs are counted for the domain footprint. */
@@ -61,6 +70,46 @@ export const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   device_trust_keys: { countCollection: "escrow_devices" },
   audit_timeline: { countCollection: "unified_audit_log" },
 };
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function timestampString(value: unknown): string | undefined {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (
+    value &&
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof (value as { toDate?: unknown }).toDate === "function"
+  ) {
+    const date = (value as { toDate: () => Date }).toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined;
+  }
+  return optionalString(value);
+}
+
+export function summarizeCloudProfile(
+  data: Record<string, unknown> | undefined | null,
+): CloudProfileSummary {
+  if (!data) return { state: "missing" };
+
+  return {
+    state: "published",
+    displayName: optionalString(data.displayName),
+    avatarURL: optionalString(data.avatarURL),
+    sourceDeviceId: optionalString(data.sourceDeviceId),
+    updatedAt: timestampString(data.updatedAt),
+  };
+}
+
+async function cloudProfileSnapshot(uid: string): Promise<CloudProfileSummary> {
+  const snap = await db.doc(`users/${uid}/cloud_profile/default`).get();
+  return summarizeCloudProfile(snap.exists ? snap.data() : undefined);
+}
 
 export async function resolveDataTier(uid: string): Promise<DataTier> {
   const [ultra, proMax] = await Promise.all([
@@ -106,9 +155,16 @@ export const getDataDomainUsage = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to view your data usage.");
     enforceAuthAndAppCheck(request, uid);
 
-    const tier = await resolveDataTier(uid);
+    const [tier, profile] = await Promise.all([resolveDataTier(uid), cloudProfileSnapshot(uid)]);
     const domains = await Promise.all(
       Object.entries(DATA_DOMAIN_USAGE).map(([id, src]) => domainSnapshot(uid, id, src)),
+    );
+    const totals = domains.reduce(
+      (acc, domain) => ({
+        count: acc.count + domain.count,
+        bytes: acc.bytes + domain.bytes,
+      }),
+      { count: 0, bytes: 0 },
     );
 
     // Pensieve caps are the only tiered hard limits today; free users see the Pro shape (upsell).
@@ -117,6 +173,12 @@ export const getDataDomainUsage = onCall(
     return {
       ok: true,
       tier,
+      account: {
+        profile,
+        hasPublishedData: profile.state === "published" || totals.count > 0 || totals.bytes > 0,
+        totalCount: totals.count,
+        totalBytes: totals.bytes,
+      },
       limits: { pensieve: pensieveLimits },
       domains,
       schemaVersion: 1,

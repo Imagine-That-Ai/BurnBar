@@ -1086,7 +1086,6 @@ struct HermesSquareRoot: View {
                 title: row.title,
                 preview: [
                     row.provider,
-                    row.projectName,
                     row.snippet
                 ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
@@ -1415,9 +1414,6 @@ private struct HermesSquareCloudSessionDetailView: View {
                     HStack(spacing: 8) {
                         if let provider = row.provider {
                             Label(provider, systemImage: "cpu")
-                        }
-                        if let project = row.projectName {
-                            Label(project, systemImage: "folder")
                         }
                     }
                     .font(.caption)

@@ -8,6 +8,11 @@ import { isRecord, recordOrUndefined } from "./guards.js";
 export const HERMES_GATEWAY_SCHEMA_VERSION = 1;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
 export const HERMES_GATEWAY_TOKEN_BYTES = 32;
+// Bearer tokens expire 90 days after issuance/rotation. Tokens minted before
+// this field existed have no expiresAt and are grandfathered as non-expiring
+// until their next successful use (which backfills a default expiry) or an
+// explicit rotation.
+export const HERMES_GATEWAY_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const HERMES_GATEWAY_MAX_EVENT_TEXT = 32_000;
 export const HERMES_GATEWAY_MAX_MESSAGE_TEXT = 64_000;
 export const HERMES_GATEWAY_MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
@@ -42,6 +47,8 @@ export interface HermesGatewayClientDoc {
   tokenPreview: string;
   scopes: HermesGatewayScope[];
   homeDestinationId: string;
+  expiresAt?: string;
+  rotatedAt?: string;
   lastSeenAt?: string;
   runtimeModelId?: string;
   runtimeProviderId?: string;
@@ -139,6 +146,23 @@ export function generateHermesGatewayBearerToken(): string {
   return `${TOKEN_PREFIX}${randomBytes(HERMES_GATEWAY_TOKEN_BYTES).toString("base64url")}`;
 }
 
+export function gatewayTokenExpiryISO(fromMillis = Date.now()): string {
+  return new Date(fromMillis + HERMES_GATEWAY_TOKEN_TTL_MS).toISOString();
+}
+
+/**
+ * Fail-closed expiry check. A missing/empty expiresAt is grandfathered as
+ * non-expiring (returns false). An UNPARSEABLE expiresAt is treated as expired
+ * (returns true) so corrupt data cannot keep a token alive forever.
+ */
+export function isHermesGatewayTokenExpired(expiresAt: unknown, now = Date.now()): boolean {
+  if (expiresAt == null || expiresAt === "") return false;
+  if (typeof expiresAt !== "string") return true;
+  const ms = Date.parse(expiresAt);
+  if (!Number.isFinite(ms)) return true;
+  return ms <= now;
+}
+
 export function hashHermesGatewayBearerToken(token: string): string {
   return sha256Hex(token);
 }
@@ -230,6 +254,8 @@ export function isHermesGatewayClientDoc(raw: unknown): raw is HermesGatewayClie
     typeof record.tokenPreview === "string" &&
     Array.isArray(record.scopes) &&
     typeof record.homeDestinationId === "string" &&
+    (typeof record.expiresAt === "string" || record.expiresAt === undefined) &&
+    (typeof record.rotatedAt === "string" || record.rotatedAt === undefined) &&
     typeof record.createdAt === "string" &&
     typeof record.updatedAt === "string" &&
     typeof record.schemaVersion === "number"
@@ -361,6 +387,8 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     tokenPreview: client.tokenPreview,
     scopes: client.scopes,
     homeDestinationId: client.homeDestinationId,
+    expiresAt: client.expiresAt,
+    rotatedAt: client.rotatedAt,
     lastSeenAt: client.lastSeenAt,
     runtimeModelId: client.runtimeModelId,
     runtimeProviderId: client.runtimeProviderId,

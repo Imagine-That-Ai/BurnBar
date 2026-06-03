@@ -1,14 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Flame, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BrandMark } from "@/components/BrandMark";
 
 /** Gate that shows the sign-in card until the member is authenticated. */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+
+  // Local preview only: render the app shell without auth. Inert in prod
+  // builds unless NEXT_PUBLIC_PREVIEW_BYPASS_AUTH=1 is explicitly set.
+  if (process.env.NEXT_PUBLIC_PREVIEW_BYPASS_AUTH === "1") return <>{children}</>;
 
   if (loading) {
     return (
@@ -41,11 +46,15 @@ function SignInCard() {
 
   return (
     <div className="grid min-h-dvh place-items-center px-token-4">
-      <Card className="w-full max-w-md text-center">
+      <Card className="signin-card w-full max-w-md text-center">
         <CardHeader className="items-center">
-          <Flame className="size-7 text-brass-core" />
-          <CardTitle className="font-display text-2xl">Your data, your keys</CardTitle>
-          <CardDescription>
+          <div className="mb-token-3">
+            <BrandMark size={92} />
+          </div>
+          <CardTitle className="font-display text-[1.7rem] tracking-[-0.03em]">
+            Your data, your keys
+          </CardTitle>
+          <CardDescription className="mx-auto max-w-xs">
             Sign in to see everything BurnBar holds for you — and take any of it back.
           </CardDescription>
         </CardHeader>

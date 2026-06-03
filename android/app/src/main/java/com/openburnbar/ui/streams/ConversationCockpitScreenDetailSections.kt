@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -74,7 +73,6 @@ internal data class EntitledCockpitOverlaySheetState(
     val selectedRow: CockpitConversationRow?,
     val showFilters: Boolean,
     val showSaveQuery: Boolean,
-    val projectQuery: String,
     val dateFrom: Long?,
     val dateTo: Long?,
 )
@@ -96,11 +94,9 @@ internal fun EntitledCockpitOverlays(
     }
     if (sheetState.showFilters) {
         CockpitFilterSheet(
-            projectQuery = sheetState.projectQuery,
             dateFrom = sheetState.dateFrom,
             dateTo = sheetState.dateTo,
-            onApply = { project, from, to ->
-                store.filters.setProjectQuery(project)
+            onApply = { from, to ->
                 store.filters.setDateRange(from, to)
                 callbacks.onDismissFilters()
             },
@@ -202,7 +198,6 @@ private fun CockpitDetailSheetBody(
         CockpitDetailSheetHeader(row = row, transcript = transcript, context = context)
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
         CockpitDetailFacetsGrid(row = row)
-        CockpitDetailWorkingDirectory(row = row)
         HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp))
         CockpitDetailTranscriptSection(
             row = row,
@@ -220,9 +215,6 @@ private fun CockpitDetailSheetHeader(row: CockpitConversationRow, transcript: St
         row.providerEnum?.let { ProviderAvatar(providerKey = it.key, size = 40) }
         Column(modifier = Modifier.weight(1f)) {
             Text(row.displayTitle, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-            row.projectName?.takeIf { it.isNotBlank() }?.let {
-                Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
         }
         transcript?.takeIf { it.isNotBlank() }?.let { body ->
             IconButton(onClick = {
@@ -266,20 +258,6 @@ private fun cockpitDetailFacets(row: CockpitConversationRow): List<Pair<String, 
         (row.startTimeMs ?: row.updatedAtMs)?.takeIf { it > 0 }?.let { add("Started" to Formatting.formatRelativeTime(it)) }
         row.sourceType?.takeIf { it.isNotBlank() }?.let { add("Source" to it.replaceFirstChar { c -> c.uppercase() }) }
     }
-
-@Composable
-private fun CockpitDetailWorkingDirectory(row: CockpitConversationRow) {
-    row.workingDirectory?.takeIf { it.isNotBlank() }?.let { dir ->
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(vertical = AuroraSpacing.xs.dp),
-        ) {
-            Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
-            Text(dir, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
 
 @Composable
 private fun CockpitDetailTranscriptSection(
@@ -360,15 +338,13 @@ internal fun CockpitFacetCell(title: String, value: String, modifier: Modifier =
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CockpitFilterSheet(
-    projectQuery: String,
     dateFrom: Long?,
     dateTo: Long?,
-    onApply: (String, Long?, Long?) -> Unit,
+    onApply: (Long?, Long?) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var projectDraft by remember { mutableStateOf(projectQuery) }
     var fromDraft by remember { mutableStateOf(dateFrom) }
     var toDraft by remember { mutableStateOf(dateTo) }
     var showRangePicker by remember { mutableStateOf(false) }
@@ -377,20 +353,18 @@ internal fun CockpitFilterSheet(
         CockpitFilterSheetForm(
             state =
             CockpitFilterSheetFormState(
-                projectDraft = projectDraft,
                 fromDraft = fromDraft,
                 toDraft = toDraft,
             ),
             callbacks =
             CockpitFilterSheetFormCallbacks(
-                onProjectDraftChange = { projectDraft = it },
                 onOpenRangePicker = { showRangePicker = true },
                 onClearRange = {
                     fromDraft = null
                     toDraft = null
                 },
                 onReset = onReset,
-                onApply = { onApply(projectDraft.trim(), fromDraft, toDraft) },
+                onApply = { onApply(fromDraft, toDraft) },
             ),
         )
     }
@@ -410,13 +384,11 @@ internal fun CockpitFilterSheet(
 }
 
 private data class CockpitFilterSheetFormState(
-    val projectDraft: String,
     val fromDraft: Long?,
     val toDraft: Long?,
 )
 
 private data class CockpitFilterSheetFormCallbacks(
-    val onProjectDraftChange: (String) -> Unit,
     val onOpenRangePicker: () -> Unit,
     val onClearRange: () -> Unit,
     val onReset: () -> Unit,
@@ -428,7 +400,6 @@ private fun CockpitFilterSheetForm(
     state: CockpitFilterSheetFormState,
     callbacks: CockpitFilterSheetFormCallbacks,
 ) {
-    val projectDraft = state.projectDraft
     val fromDraft = state.fromDraft
     val toDraft = state.toDraft
     Column(
@@ -440,14 +411,6 @@ private fun CockpitFilterSheetForm(
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
     ) {
         Text("Cockpit Filters", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-        OutlinedTextField(
-            value = projectDraft,
-            onValueChange = callbacks.onProjectDraftChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Project") },
-            placeholder = { Text("Any project") },
-            singleLine = true,
-        )
         CockpitFilterDateRangeRow(
             fromDraft = fromDraft,
             toDraft = toDraft,
@@ -522,7 +485,7 @@ private fun CockpitFilterDateRangePicker(
 private fun CockpitSaveQueryDialogForm(name: String, onNameChange: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
         Text(
-            "Recall this provider, model, project, and sort combination from the saved-query rail.",
+            "Recall this provider, model, date, and sort combination from the saved-query rail.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -623,17 +586,14 @@ internal fun cockpitBuildShareMarkdown(row: CockpitConversationRow, body: String
     appendLine("|----------|-------|")
     appendLine("| Provider | ${row.providerEnum?.displayName ?: row.provider ?: "—"} |")
     row.model?.takeIf { it.isNotBlank() }?.let { appendLine("| Model | $it |") }
-    row.projectName?.takeIf { it.isNotBlank() }?.let { appendLine("| Project | $it |") }
     (row.startTimeMs ?: row.updatedAtMs)?.takeIf { it > 0 }?.let {
         appendLine("| Started | ${Formatting.formatRelativeTime(it)} |")
     }
     if (row.messageCount > 0) appendLine("| Messages | ${row.messageCount} |")
     if (row.totalTokens > 0) appendLine("| Tokens | ${Formatting.formatTokens(row.totalTokens.toLong())} |")
     if (row.costUSD > 0) appendLine("| Cost | ${Formatting.formatCurrency(row.costUSD)} |")
-    row.workingDirectory?.takeIf { it.isNotBlank() }?.let { appendLine("| Working dir | `$it` |") }
     appendLine()
     appendLine("## Transcript")
     appendLine()
     append(if (body.isBlank()) "_No transcript body was available._" else body)
 }
-

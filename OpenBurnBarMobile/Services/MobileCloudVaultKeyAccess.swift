@@ -25,7 +25,7 @@ enum MobileCloudVaultAccessError: LocalizedError {
 enum MobileCloudVaultKeyAccess {
     static func keyForWriting(uid: String, firestore: Firestore = Firestore.firestore()) async throws -> MobileCloudVaultResolvedKey {
         let userRef = firestore.collection("users").document(uid)
-        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
         let keyStore = CloudVaultKeyStore()
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
@@ -54,7 +54,7 @@ enum MobileCloudVaultKeyAccess {
 
     static func keyForReading(uid: String, firestore: Firestore = Firestore.firestore()) async throws -> MobileCloudVaultResolvedKey? {
         let userRef = firestore.collection("users").document(uid)
-        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
         let keyStore = CloudVaultKeyStore()
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)

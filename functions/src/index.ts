@@ -54,6 +54,7 @@ export {
   approveHermesGatewayDeviceGrant,
   listHermesGatewayClients,
   revokeHermesGatewayClient,
+  rotateHermesGatewayClientToken,
   enqueueHermesGatewayEvent,
 } from "./callables/hermesGateway.js";
 
@@ -115,9 +116,11 @@ export {
 export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {
   bindAppCheckAttestation,
+  issueHighRiskActionNonce,
   registerEscrowDevice,
   approveEscrowDeviceTrust,
   revokeEscrowDeviceTrust,
+  respondMissionApproval,
 } from "./callables/computerUseSecurity.js";
 
 export { rebuildUsageRollups, seedAndroidDemoAccount } from "./callables/misc.js";

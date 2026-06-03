@@ -17,6 +17,10 @@ struct DataVaultControlView: View {
     @State private var showRecovery = false
     @State private var showAudit = false
     @State private var showPanicConfirm = false
+    @State private var showPensieveUnlock = false
+
+    /// The user's resolved tier for the pro-gated Pensieve sync card.
+    private var tier: CloudTier { cloudStore?.cloudTier ?? .none }
 
     var body: some View {
         ZStack {
@@ -73,6 +77,9 @@ struct DataVaultControlView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showPensieveUnlock) {
+            FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.dataVault))
+        }
         .confirmationDialog(
             "Revoke all access?",
             isPresented: $showPanicConfirm,
@@ -117,6 +124,9 @@ struct DataVaultControlView: View {
                             .lineLimit(2)
                     }
                     Spacer(minLength: 0)
+                    if !tier.satisfies(.pro) {
+                        TierLockBadge(tier: .pro, style: .inline)
+                    }
                 }
 
                 if let limits = store.pensieveLimits, let usage = store.usage(for: "pensieve") {
@@ -149,9 +159,23 @@ struct DataVaultControlView: View {
                 }
 
                 if !store.isPensieveTier {
-                    Text("Pensieve needs BurnBar Cloud Pro. Upgrade to seal repo docs, notes, and chat memories.")
+                    Button {
+                        Haptics.light()
+                        showPensieveUnlock = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("See what Cloud Pro unlocks — seal repo docs, notes, and chat memories.")
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(EncryptionTier.serverReadable.tierColor)
+                        .foregroundStyle(ProTheme.Membership.foilLeaf)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens the Data Vault unlock")
                 }
             }
         }

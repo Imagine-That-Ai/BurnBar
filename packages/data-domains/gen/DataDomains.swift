@@ -30,8 +30,8 @@ public enum DataDomains {
     public static let all: [DataDomain] = [
         DataDomain(
             id: "usage_spend", title: "Usage & Spend", icon: "chart.bar.fill",
-            encryptionTier: .serverReadable, summary: "Per-session token counts, cost estimates, and provider/model/project telemetry.",
-            serverSees: ["provider", "model", "project", "device", "token counts", "cost estimates", "timestamps"], deviceOnly: [],
+            encryptionTier: .serverReadable, summary: "Per-session token counts, cost estimates, and provider/model/device telemetry. Project names and budget labels are sealed on-device; the server groups spend only by opaque per-project hashes.",
+            serverSees: ["provider", "model", "device", "token counts", "cost estimates", "timestamps", "opaque project hashes"], deviceOnly: ["project names", "budget labels"],
             firestorePaths: ["usage", "usage_rollups", "usage_counter_days", "usage_counter_totals", "recent_usage", "quota_snapshots", "rollup_jobs", "projects"], storagePaths: [],
             countSource: "usage", byteSource: nil,
             retention: "rolling", actions: ["view", "export", "delete"],
@@ -48,8 +48,8 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "session_logs", title: "Searchable Session Logs", icon: "text.magnifyingglass",
-            encryptionTier: .endToEnd, summary: "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext + plaintext cockpit facets.",
-            serverSees: ["provider", "model", "project", "cost", "token counts", "timing", "bodyHash", "opaque token/semantic hashes"], deviceOnly: ["title", "snippet", "body preview", "full transcript body"],
+            encryptionTier: .endToEnd, summary: "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes.",
+            serverSees: ["provider", "model", "cost", "token counts", "timing", "bodyHash", "opaque token/semantic hashes"], deviceOnly: ["project/path text", "title", "snippet", "body preview", "full transcript body"],
             firestorePaths: ["session_logs", "cloud_search_documents", "cloud_search_chunks", "cloud_search_postings", "cloud_search_index_state", "cloud_search_index_manifest", "project_memory_snapshots"], storagePaths: ["session_logs/{documentID}/bodies/{bodyHash}.json.aesgcm"],
             countSource: "cloud_search_documents", byteSource: "session_logs",
             retention: "until_deleted", actions: ["view", "export", "delete"],
@@ -57,8 +57,8 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "pensieve", title: "Pensieve Knowledge", icon: "brain.head.profile",
-            encryptionTier: .endToEnd, summary: "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either.",
-            serverSees: ["cloaked 384-dim vectors", "sourceKind", "sourceSlug", "chunk/byte counts", "timestamps"], deviceOnly: ["chunk text", "source paths", "section/category metadata"],
+            encryptionTier: .endToEnd, summary: "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
+            serverSees: ["cloaked 384-dim vectors", "sourceKind", "opaque keyed slug/dedup hashes", "opaque repo match token", "chunk/byte counts", "timestamps"], deviceOnly: ["chunk text", "source paths", "repo names", "section/category metadata"],
             firestorePaths: ["cloud_search_knowledge", "knowledge_sync_manifests", "knowledge_repos"], storagePaths: [],
             countSource: "knowledge_sync_manifests.chunkCount", byteSource: "knowledge_sync_manifests.byteCount",
             retention: "until_deleted", actions: ["view", "export", "delete", "configure", "sync"],
@@ -75,8 +75,8 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "connected_devices", title: "Connected Devices & Pairings", icon: "laptopcomputer.and.iphone",
-            encryptionTier: .serverReadable, summary: "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account.",
-            serverSees: ["device ids", "pairing metadata", "last seen", "relay routing"], deviceOnly: ["relayed payload contents (sealed per their own domains)"],
+            encryptionTier: .serverReadable, summary: "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
+            serverSees: ["device ids", "pairing metadata", "last seen", "relay routing", "hosted chat gateway message text", "hosted chat gateway sender names", "hosted chat gateway attachment file names"], deviceOnly: ["end-to-end relay frame contents (sealed per their own domains)"],
             firestorePaths: ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "runtime_connection_preferences"], storagePaths: ["hermes_gateway_attachments/**"],
             countSource: "devices", byteSource: nil,
             retention: "until_revoked", actions: ["view", "revoke"],

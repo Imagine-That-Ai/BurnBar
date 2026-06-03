@@ -147,8 +147,7 @@ struct CloudTierLineup: View {
                 CloudTierCard(
                     plan: cloud,
                     priceText: store.displayPrice(for: cloud),
-                    features: CloudTierCard.features(for: .cloud),
-                    isFlagship: false,
+                    tier: .cloud,
                     billingPeriod: billingPeriod,
                     isPurchasing: store.isPurchasing
                 ) {
@@ -161,13 +160,28 @@ struct CloudTierLineup: View {
                 CloudTierCard(
                     plan: pro,
                     priceText: store.displayPrice(for: pro),
-                    features: CloudTierCard.features(for: .pro),
-                    isFlagship: true,
+                    tier: .pro,
                     billingPeriod: billingPeriod,
                     isPurchasing: store.isPurchasing
                 ) {
                     Haptics.medium()
                     Task { await store.purchase(productID: pro.id) }
+                }
+            }
+
+            // Cloud Ultra — the flagship top tier, mirrors the marketing site's
+            // fourth plan. Rendered after Cloud Pro so the lineup reads
+            // Cloud → Pro → Ultra in ascending order.
+            if let ultra = plan(title: "BurnBar Cloud Ultra") {
+                CloudTierCard(
+                    plan: ultra,
+                    priceText: store.displayPrice(for: ultra),
+                    tier: .ultra,
+                    billingPeriod: billingPeriod,
+                    isPurchasing: store.isPurchasing
+                ) {
+                    Haptics.medium()
+                    Task { await store.purchase(productID: ultra.id) }
                 }
             }
         }
@@ -193,17 +207,22 @@ struct CloudTierBenefit: Identifiable {
 }
 
 struct CloudTierCard: View {
-    enum Tier { case cloud, pro }
+    enum Tier { case cloud, pro, ultra }
 
     let plan: OpenBurnBarStoreProduct
     let priceText: String
-    let features: [CloudTierBenefit]
-    let isFlagship: Bool
+    let tier: Tier
     let billingPeriod: CloudBillingPeriod
     let isPurchasing: Bool
     let onSubscribe: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Cloud Pro and Cloud Ultra are the "flagship" power tiers — they wear the
+    /// heavier foil stroke and the flagship interior glow.
+    private var isFlagship: Bool { tier != .cloud }
+
+    private var features: [CloudTierBenefit] { CloudTierCard.features(for: tier) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
@@ -215,7 +234,7 @@ struct CloudTierCard: View {
             FoilCTAButton(
                 title: ctaTitle,
                 subtitle: "\(priceText) \(billingPeriod.priceSuffix)",
-                icon: isFlagship ? "crown.fill" : "sparkles",
+                icon: ctaIcon,
                 isLoading: isPurchasing,
                 action: onSubscribe
             )
@@ -225,6 +244,7 @@ struct CloudTierCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(flagshipGlow)
         .membershipCard(strokeWidth: isFlagship ? 1.4 : 1.0)
+        .overlay(holographicAccent)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier("cloudStore.tier.\(plan.id)")
@@ -240,13 +260,57 @@ struct CloudTierCard: View {
         }
     }
 
+    // MARK: - Holographic accent
+    //
+    // Every paid tier wears a faint iridescent ghost of its own crest — the
+    // signature "holographic" look from the marketing site (`--holo-grad`). The
+    // crest art is used as an alpha mask over a per-tier multi-stop gradient and
+    // composited with `.plusLighter` at very low opacity, so it reads as a shiny
+    // silhouette sheen on the card while keeping every line of copy fully
+    // legible. The look is fully static, so it respects reduce-motion by design.
+    @ViewBuilder
+    private var holographicAccent: some View {
+        HolographicCrestAura(
+            crestImageName: crestImageName,
+            gradient: holoGradient,
+            intensity: .card
+        )
+        .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Per-tier iridescent palette mirroring the website's `--holo-grad`.
+    private var holoGradient: LinearGradient {
+        let stops: [Color]
+        switch tier {
+        case .cloud:
+            // Warm ember.
+            stops = [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "FF5C8A"), Color(hex: "B06BFF")]
+        case .pro:
+            // Cool aqua.
+            stops = [Color(hex: "5EF0C9"), Color(hex: "38D6F3"), Color(hex: "4F8BFF"), Color(hex: "8EF0A8")]
+        case .ultra:
+            // Full-spectrum premium.
+            stops = [Color(hex: "FFD56B"), Color(hex: "7DD3FC"), Color(hex: "C084FC"), Color(hex: "5EEAD4"), Color(hex: "FF9EC7")]
+        }
+        return LinearGradient(colors: stops, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
     private var crestImageName: String {
-        if plan.title.localizedCaseInsensitiveContains("ultra") {
-            return "CloudTierCrestUltra"
-        } else if plan.title.localizedCaseInsensitiveContains("pro") {
-            return "CloudTierCrestPro"
-        } else {
-            return "CloudTierCrest"
+        switch tier {
+        case .cloud: return "CloudTierCrest"
+        case .pro:   return "CloudTierCrestPro"
+        case .ultra: return "CloudTierCrestUltra"
+        }
+    }
+
+    private var headerSubtitle: String {
+        switch tier {
+        case .cloud: return "Your agent memory, everywhere"
+        case .pro:   return "The complete control plane"
+        case .ultra: return "10× private agent memory"
         }
     }
 
@@ -263,14 +327,26 @@ struct CloudTierCard: View {
                     .font(ProTheme.Typography.titleSerif)
                     .foregroundStyle(ProTheme.Membership.engraving)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(isFlagship ? "The complete control plane" : "Your agent memory, everywhere")
+                Text(headerSubtitle)
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(ProTheme.Membership.engravingSoft)
             }
             Spacer(minLength: 0)
-            if isFlagship {
-                MembershipSeal(text: "MOST POWERFUL", systemImage: "crown.fill", prominent: true)
+            if let sealText = headerSealText {
+                MembershipSeal(text: sealText, systemImage: "crown.fill", prominent: true)
             }
+        }
+    }
+
+    /// Only the top tier wears the prominent crest seal so hierarchy reads at a
+    /// glance: Cloud (none) → Pro ("MOST POWERFUL" no longer, see below) →
+    /// Ultra ("ULTIMATE"). Pro keeps a quieter "MOST POWERFUL" seal so it still
+    /// stands out from the base Cloud tier.
+    private var headerSealText: String? {
+        switch tier {
+        case .cloud: return nil
+        case .pro:   return "MOST POPULAR"
+        case .ultra: return "ULTIMATE"
         }
     }
 
@@ -297,7 +373,9 @@ struct CloudTierCard: View {
 
     @ViewBuilder
     private var trialRibbon: some View {
-        if !isFlagship {
+        // Only base Cloud carries the introductory free trial; Pro and Ultra
+        // have no trial, matching the App Store Connect configuration.
+        if tier == .cloud {
             HStack(spacing: 6) {
                 Image(systemName: "gift.fill")
                     .font(.system(size: 13, weight: .bold))
@@ -335,7 +413,19 @@ struct CloudTierCard: View {
     }
 
     private var ctaTitle: String {
-        isFlagship ? "Go Pro" : "Become a Member"
+        switch tier {
+        case .cloud: return "Become a Member"
+        case .pro:   return "Go Pro"
+        case .ultra: return "Go Ultra"
+        }
+    }
+
+    private var ctaIcon: String {
+        switch tier {
+        case .cloud: return "sparkles"
+        case .pro:   return "crown.fill"
+        case .ultra: return "sparkles.rectangle.stack.fill"
+        }
     }
 
     private var accessibilityText: String {
@@ -366,6 +456,119 @@ struct CloudTierCard: View {
                 CloudTierBenefit(icon: "arrow.up.arrow.down",
                                  text: "50 relay GB, file transfer & shared clipboard")
             ]
+        case .ultra:
+            return [
+                CloudTierBenefit(icon: "infinity",
+                                 text: "Everything in BurnBar Cloud Pro"),
+                CloudTierBenefit(icon: "brain.head.profile",
+                                 text: "10× agent memory: 15 sources · 50,000 chunks · 250 MB"),
+                CloudTierBenefit(icon: "lock.shield.fill",
+                                 text: "Sealed on-device — the server searches without reading it"),
+                CloudTierBenefit(icon: "arrow.up.arrow.down",
+                                 text: "Same hosted Agent Control & relay allowance as Pro")
+            ]
+        }
+    }
+}
+
+// MARK: - Holographic Crest Aura
+//
+// The signature "holographic" accent. Fills the tier crest's silhouette with a
+// per-tier iridescent gradient and floats it, very faintly, behind the card —
+// an elegant shiny ghost of the logo. Mirrors the marketing site's
+// `.plan__holo` (crest used as a mask over `--holo-grad`). The crest art is an
+// opaque-knockout PNG, so we use it directly as the gradient's mask.
+//
+// Two intensities (reused by the feature-gating unlock experience):
+//   • `.card` — opacity ~12%, no glow, the faint ghost behind a tier card.
+//   • `.hero` — opacity ~0.4 with a soft per-tier glow, the glowing crest at
+//     the top of the unlock sheet / locked-feature veil.
+// The look is fully static, so it respects reduce-motion automatically.
+struct HolographicCrestAura: View {
+    enum Intensity {
+        case card
+        case hero
+
+        var opacity: Double {
+            switch self {
+            case .card: return 0.14
+            case .hero: return 0.42
+            }
+        }
+
+        /// Soft outer glow radius (0 for the resting card aura).
+        var glowRadius: CGFloat {
+            switch self {
+            case .card: return 0
+            case .hero: return 26
+            }
+        }
+    }
+
+    let crestImageName: String
+    let gradient: LinearGradient
+    var intensity: Intensity = .card
+
+    var body: some View {
+        GeometryReader { geo in
+            let crest = gradient
+                .mask(
+                    Image(crestImageName)
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: geo.size.width * 1.32, height: geo.size.height * 1.32)
+                        .position(x: geo.size.width * 0.5, y: geo.size.height * 0.42)
+                )
+                .saturation(1.2)
+            ZStack {
+                // Soft bloom underlay only in the hero variant — a diffuse
+                // halo of the same iridescent crest so it *glows*.
+                if intensity == .hero {
+                    crest
+                        .blur(radius: intensity.glowRadius)
+                        .opacity(intensity.opacity * 0.8)
+                }
+                crest
+                    .blur(radius: 0.5)
+                    .opacity(intensity.opacity)
+            }
+        }
+        .clipped()
+    }
+}
+
+// MARK: - Tier holographic palette (shared)
+//
+// The per-tier iridescent `--holo-grad` mirrored from the marketing site,
+// exposed so the unlock experience renders the *required* tier's hero crest
+// with the exact same palette as that tier's store card.
+extension CloudTier {
+    /// Per-tier iridescent gradient mirroring the website's `--holo-grad`.
+    var holoGradient: LinearGradient {
+        let stops: [Color]
+        switch self {
+        case .none, .cloud:
+            // Warm ember.
+            stops = [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "FF5C8A"), Color(hex: "B06BFF")]
+        case .pro:
+            // Cool aqua.
+            stops = [Color(hex: "5EF0C9"), Color(hex: "38D6F3"), Color(hex: "4F8BFF"), Color(hex: "8EF0A8")]
+        case .ultra:
+            // Full-spectrum premium.
+            stops = [Color(hex: "FFD56B"), Color(hex: "7DD3FC"), Color(hex: "C084FC"), Color(hex: "5EEAD4"), Color(hex: "FF9EC7")]
+        }
+        return LinearGradient(colors: stops, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    /// The store-facing membership name shown on chips and CTAs. For the
+    /// implicit floor tier (`.none`) this returns the entry tier's name so
+    /// "Available on Cloud" never reads as "Available on ".
+    var membershipName: String {
+        switch self {
+        case .none, .cloud: return "Cloud"
+        case .pro: return "Cloud Pro"
+        case .ultra: return "Cloud Ultra"
         }
     }
 }

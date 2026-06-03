@@ -706,9 +706,6 @@ fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> 
                 hit.provider?.takeIf { it.isNotBlank() }?.let {
                     CustomMicroChip(text = it)
                 }
-                hit.projectName?.takeIf { it.isNotBlank() }?.let {
-                    CustomMicroChip(text = it)
-                }
             }
         }
     }

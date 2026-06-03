@@ -1361,12 +1361,44 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   );
   await assertFails(deleteDoc(doc(phoneDb, `${requestPath}/events/000002`)));
   await assertFails(deleteDoc(doc(phoneDb, requestPath)));
+  // Blocker 2 — approval binding: a bare owner-auth approval flip WITHOUT a
+  // trusted-device binding is now DENIED (a client can no longer self-approve).
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch({
+        approvalStatus: "approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+  // An approvedByDeviceId that does not resolve to a TRUSTED native escrow
+  // device is also DENIED (here: a device id that was never created).
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch({
+        approvalStatus: "approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        approvedByDeviceId: "ghost-device-never-trusted",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+  // Bound to the trusted macOS escrow device (mac-1), the approval is allowed.
+  // (The canonical path is the App-Check-enforced respondMissionApproval
+  // callable, which writes approvedByDeviceId via the Admin SDK; this rule is
+  // the defense-in-depth that blocks a forged direct client write.)
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
       sealedMissionStatePatch({
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        approvedByDeviceId: "mac-1",
         updatedAt: serverTimestamp(),
       }),
       { merge: true }
@@ -1532,15 +1564,16 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     })
   );
 
-  await assertSucceeds(
-    setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
-      index: 0,
-      hash: "hash",
-      snippet: "private markdown preview",
-      terms: ["private", "markdown"],
-      bodyStorage: "local_or_icloud",
-      schemaVersion: 3,
-      updatedAt: serverTimestamp(),
+	  await assertSucceeds(
+	    setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
+	      index: 0,
+	      hash: "hash",
+	      sealedSnippet: { schemaVersion: 1, algorithm: "AES-256-GCM", ciphertext: "cipher", nonce: "nonce", tag: "tag" },
+	      tokenHashes: ["a".repeat(32)],
+	      semanticHashes: ["b".repeat(32)],
+	      bodyStorage: "local_or_icloud",
+	      schemaVersion: 3,
+	      updatedAt: serverTimestamp(),
     })
   );
 
@@ -1570,7 +1603,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
   await assertSucceeds(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
       ...facetBase,
-      facetSchemaVersion: 1,
+      facetSchemaVersion: 2,
       model: "gpt-5-codex",
       messageCount: 12,
       userWordCount: 340,
@@ -1581,7 +1614,6 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
       cacheReadTokens: 9000,
       totalTokens: 25200,
       costUSD: 0.42,
-      workingDirectory: "/Users/dev/project",
       toolTags: ["bash", "edit", "read"],
       durationSeconds: 540,
     })
@@ -1611,20 +1643,24 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
     })
   );
 
-  // Plaintext string facets are length-bounded so none can smuggle a full transcript past the
-  // zero-knowledge boundary (projectName is the widest at 1024 chars).
+  // Project/path text is private and must never ride as a plaintext facet.
   await assertFails(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_bigproject"), {
       ...facetBase,
-      projectName: "x".repeat(2048),
+      projectName: "BurnBar",
     })
   );
 
-  // A bounded project path is still accepted.
-  await assertSucceeds(
-    setDoc(doc(db, "users/facet-user/session_logs/device_facets_okproject"), {
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_workingdir"), {
       ...facetBase,
-      projectName: "/Users/dev/Documents/Windsurf/BurnBar",
+      workingDirectory: "/Users/dev/Documents/Windsurf/BurnBar",
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_source"), {
+      ...facetBase,
       sourceType: "cli_session",
     })
   );

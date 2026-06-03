@@ -3,14 +3,13 @@ import "@/styles/globals.css";
 import { Providers } from "./providers";
 import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/AppShell";
+import { DotCrestField } from "@/components/DotCrestField";
 
 export const metadata: Metadata = {
   title: "BurnBar Console",
   description: "Your data, your keys — the BurnBar Data & Privacy Control Center.",
-  icons: {
-    icon: "/brand/burnbar_cloud_crest.svg",
-    apple: "/brand/burnbar_cloud_crest.svg",
-  },
+  // Favicon + touch icon are served by the Next file conventions app/icon.png
+  // and app/apple-icon.png (the BurnBar flame mark).
   // The console is a private member surface; never index it.
   robots: { index: false, follow: false, nocache: true },
   referrer: "strict-origin-when-cross-origin",
@@ -34,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
+        <DotCrestField />
         <Providers>
           <AuthGate>
             <AppShell>{children}</AppShell>

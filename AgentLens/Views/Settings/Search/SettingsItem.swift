@@ -158,6 +158,7 @@ enum SettingsAnchor {
     static let appearanceLaunchAtLogin = "general.appearance.launchAtLogin"
     static let usePremiumSOTAUX = "general.appearance.usePremiumSOTAUX"
     static let useWebsiteBackground = "general.appearance.useWebsiteBackground"
+    static let useConstellationBackground = "general.appearance.useConstellationBackground"
     static let desktopWallpaperEnabled = "general.appearance.desktopWallpaperEnabled"
     static let desktopWallpaperBackground = "general.appearance.desktopWallpaperBackground"
     static let desktopWallpaperSpeed = "general.appearance.desktopWallpaperSpeed"

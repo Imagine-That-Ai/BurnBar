@@ -17,7 +17,15 @@ React 19) app — independent of the repo's other subprojects, like `website/`.
   tier limits from `getDataDomainUsage().limits.pensieve`, connect-repo, sync-now.
 - **Device trust** (`/escrow`) — the browser escrow flow (register → approve on a
   trusted native device → unwrap the vault key in memory → decrypt sealed content).
+- **Account settings** (`/settings`) — signed-in identity, provider readback, and
+  passkey enrollment after Apple or Google fallback sign-in.
 - **Panic** (header) — `revokeAllAccess` across MCP / devices / escrow / providers.
+
+First-run accounts are valid immediately after Firebase sign-in. Until a trusted
+native BurnBar app publishes `users/{uid}/cloud_profile/default` and domain data
+for that same identity, the console renders an account-ready empty state and keeps
+the inventory rows at zero. Passkey enrollment is available from that signed-in
+state, after Google or Apple fallback sign-in.
 
 ## Source-of-truth bindings (no hardcoding)
 

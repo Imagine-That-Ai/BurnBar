@@ -14,6 +14,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
     private var fakeVaultKeyStore: FakeSessionLogVaultKeyStore!
     private var fakeVaultKeyPublisher: FakeSessionLogVaultKeyPublisher!
     private var fakeArchivedSessionMirror: FakeSessionLogArchivedSessionMirror!
+    private var conversationVaultKeyProvider: TestConversationVaultKeyProvider!
     private var context: CloudSyncContext!
     private var sessionLogSync: SessionLogSyncService!
     private var downloadSync: DownloadSyncService!
@@ -28,6 +29,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         fakeVaultKeyStore = FakeSessionLogVaultKeyStore()
         fakeVaultKeyPublisher = FakeSessionLogVaultKeyPublisher()
         fakeArchivedSessionMirror = FakeSessionLogArchivedSessionMirror()
+        conversationVaultKeyProvider = TestConversationVaultKeyProvider()
         context = CloudSyncContext(
             dataStore: dataStore,
             accountManager: accountManager,
@@ -41,7 +43,10 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             vaultKeyPublisher: fakeVaultKeyPublisher,
             archivedSessionMirror: fakeArchivedSessionMirror
         )
-        downloadSync = DownloadSyncService(context: context)
+        downloadSync = DownloadSyncService(
+            context: context,
+            conversationVaultKeyProvider: conversationVaultKeyProvider
+        )
     }
 
     // MARK: - Upload
@@ -182,7 +187,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertNil(manifest["body"] as? String)
         XCTAssertNotNil(manifest["bodyHash"] as? String)
         XCTAssertEqual(manifest["chunkMetadataVersion"] as? Int, 1)
-        XCTAssertEqual(manifest["cloudSearchIndexVersion"] as? Int, 4)
+        XCTAssertEqual(manifest["cloudSearchIndexVersion"] as? Int, 5)
+        XCTAssertNil(manifest["projectName"] as? String)
+        XCTAssertNil(manifest["workingDirectory"] as? String)
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
 
@@ -197,6 +204,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertNil(chunk["title"] as? String)
         XCTAssertNil(chunk["snippet"] as? String)
         XCTAssertNil(chunk["terms"] as? [String])
+        XCTAssertNil(chunk["projectName"] as? String)
+        XCTAssertNil(chunk["workingDirectory"] as? String)
         XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
         XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
         XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
@@ -234,7 +243,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         await sessionLogSync.sync()
 
         let commit = try XCTUnwrap(fakeEncryptedCloudClient.searchIndexCommits.first)
-        XCTAssertEqual(commit.indexVersion, 4)
+        XCTAssertEqual(commit.indexVersion, 5)
+        XCTAssertNil(commit.document["projectName"] as? String)
+        XCTAssertTrue(commit.chunks.allSatisfy { $0["projectName"] == nil })
         XCTAssertGreaterThan(commit.chunks.count, 1)
         XCTAssertTrue(
             commit.chunks.contains { chunk in
@@ -486,14 +497,19 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
     // MARK: - Download
 
-    func test_sessionLogDownload_reassemblesBody() async throws {
+    func test_sessionLogDownload_decryptsEncryptedBody() async throws {
         let docId = "remote-device-2_session-log-remote"
         let manifestPath = "users/test-uid-1/session_logs/\(docId)"
-        let chunkPrefix = "\(manifestPath)/chunks"
 
         let largeBody = String(repeating: "B", count: 1_000_000)
-        let chunks = SessionLogSyncService.chunkUTF8String(largeBody, maxBytes: 900_000)
-        XCTAssertGreaterThanOrEqual(chunks.count, 2)
+        let storagePath = "users/test-uid-1/session_logs/\(docId)/bodies/encrypted.json.aesgcm"
+        let envelope = try CloudVaultCrypto.sealBlob(
+            Data(largeBody.utf8),
+            keyData: try fakeVaultKeyStore.getOrCreateKey(uid: "test-uid-1")
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        fakeEncryptedCloudClient.downloadableBodies[storagePath] = try encoder.encode(envelope)
 
         fakeGateway.setDocumentData([
             "id": "session-log-remote",
@@ -503,22 +519,17 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             "projectName": "RemoteProject",
             "inferredTaskTitle": "Remote Task",
             "messageCount": 5,
-            "chunkCount": chunks.count,
+            "bodyStorage": "firebase_storage_encrypted",
+            "storagePath": storagePath,
+            "vaultKeyID": try CloudVaultCrypto.vaultKeyID(for: fakeVaultKeyStore.getOrCreateKey(uid: "test-uid-1")),
             "byteCount": largeBody.utf8.count
         ], at: manifestPath)
 
-        for (idx, chunk) in chunks.enumerated() {
-            fakeGateway.setDocumentData([
-                "index": idx,
-                "body": chunk
-            ], at: "\(chunkPrefix)/\(idx)")
-        }
-
-        let body = try await downloadSync.fetchCloudSessionLogBody(docId: docId)
+        let body = try await sessionLogSync.fetchCloudSessionLogBody(docId: docId)
         XCTAssertEqual(body, largeBody)
     }
 
-    func test_sessionLogDownload_viaFullSync_populatesConversationFullText() async throws {
+    func test_sessionLogDownload_viaFullSync_ignoresLegacyFirestoreChunkBody() async throws {
         let remoteDeviceId = "remote-device-2"
         let remoteConvId = "conv-remote-log"
         let docId = "\(remoteDeviceId)_\(remoteConvId)"
@@ -526,30 +537,44 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let updatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
 
         let body = "# Remote Session Log\n\nThis is the full markdown body."
+        let sealed = try ConversationCloudSealer.seal(
+            ConversationCloudPrivatePayload(
+                projectName: "RemoteProject",
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Remote Task",
+                lastAssistantMessage: "Remote msg",
+                workingDirectory: nil,
+                summary: nil,
+                summaryTitle: nil,
+                summaryProvider: nil,
+                summaryModel: nil
+            ),
+            key: try conversationVaultKeyProvider.resolvedKey()
+        )
 
-        // Seed conversation metadata
         let convDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_\(remoteConvId)"
         fakeGateway.setDocumentData([
             "id": remoteConvId,
             "deviceId": remoteDeviceId,
             "provider": AgentProvider.cursor.rawValue,
             "sessionId": "remote-session",
-            "projectName": "RemoteProject",
             "messageCount": 3,
             "userWordCount": 10,
             "assistantWordCount": 20,
-            "keyFiles": [],
-            "keyCommands": [],
-            "keyTools": [],
-            "inferredTaskTitle": "Remote Task",
-            "lastAssistantMessage": "Remote msg",
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": try conversationVaultKeyProvider.resolvedKey().vaultKeyID,
+            "sealedPayload": sealed,
             "sourceType": ConversationSourceType.providerLog.rawValue,
             "updatedAt": Timestamp(date: updatedAt),
             "startTime": Timestamp(date: updatedAt),
             "endTime": Timestamp(date: updatedAt.addingTimeInterval(100))
         ], at: convDocPath)
 
-        // Seed session log manifest and chunk
+        // Seed a legacy Firestore chunk body. Hardened sync must ignore it;
+        // encrypted blob readback is the only body path.
         fakeGateway.setDocumentData([
             "id": remoteConvId,
             "deviceId": remoteDeviceId,
@@ -581,32 +606,32 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(remoteConversations.count, 1)
 
         let remote = remoteConversations.first!
-        XCTAssertEqual(remote.fullText, body)
+        XCTAssertEqual(remote.fullText, "")
     }
 
-    // MARK: - Facet clamping (projectName must never overflow the 512-char cloud budget)
+    // MARK: - Private project search text clamping
 
-    func test_clampedCloudFacet_passesThroughShortValues() {
+    func test_clampedPrivateSearchText_passesThroughShortValues() {
         XCTAssertEqual(
-            SessionLogSyncService.clampedCloudFacet("~/Developer/LaHormigaDormida"),
+            SessionLogSyncService.clampedPrivateSearchText("~/Developer/LaHormigaDormida"),
             "~/Developer/LaHormigaDormida"
         )
     }
 
-    func test_clampedCloudFacet_trimsWhitespaceLikeTheServer() {
-        XCTAssertEqual(SessionLogSyncService.clampedCloudFacet("  spaced path  "), "spaced path")
+    func test_clampedPrivateSearchText_trimsWhitespace() {
+        XCTAssertEqual(SessionLogSyncService.clampedPrivateSearchText("  spaced path  "), "spaced path")
     }
 
-    func test_clampedCloudFacet_truncatesToTheServerBudget() {
-        let clamped = SessionLogSyncService.clampedCloudFacet(String(repeating: "a", count: 900))
+    func test_clampedPrivateSearchText_truncatesToTheHashBudget() {
+        let clamped = SessionLogSyncService.clampedPrivateSearchText(String(repeating: "a", count: 900))
         XCTAssertEqual(clamped.utf16.count, SessionLogSyncService.cloudFacetMaxLength)
         XCTAssertEqual(clamped.utf16.count, 512)
     }
 
-    func test_clampedCloudFacet_neverSplitsAGrapheme() {
+    func test_clampedPrivateSearchText_neverSplitsAGrapheme() {
         // Each emoji is 2 UTF-16 units, so a 512-unit budget admits exactly 256 whole emoji and the
         // truncation must not leave a dangling surrogate half.
-        let clamped = SessionLogSyncService.clampedCloudFacet(String(repeating: "😀", count: 600))
+        let clamped = SessionLogSyncService.clampedPrivateSearchText(String(repeating: "😀", count: 600))
         XCTAssertLessThanOrEqual(clamped.utf16.count, SessionLogSyncService.cloudFacetMaxLength)
         XCTAssertTrue(clamped.allSatisfy { $0 == "😀" })
         XCTAssertEqual(clamped.count, 256)

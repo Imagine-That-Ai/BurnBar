@@ -1015,7 +1015,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: auditDirectory,
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,
@@ -1103,7 +1104,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: auditDirectory,
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,
@@ -1162,6 +1164,94 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testClipboardDeniedWithoutDedicatedConsentEvenWhenInputAllowed() async throws {
+        // Consent is split from allowsSystem: with a valid signed paste and
+        // full remote-control entitlement but `clipboardConsentGranted` OFF,
+        // the clipboard request must fail closed (`clipboard_consent_required`)
+        // and never touch the pasteboard.
+        let secret = "phone clipboard secret \(UUID().uuidString)"
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "ios-phone-clipboard-noconsent"
+        let provider = StaticPhoneControlAuthorityProvider(
+            expectedUID: "uid-clipboard-noconsent",
+            expectedConnectionID: "conn-clipboard-noconsent",
+            expectedPeerNodeID: peerNodeId,
+            publicKey: privateKey.publicKey
+        )
+        let pasteboard = FakeRemoteClipboardPasteboard(storedText: "before")
+        let input = FakeRemoteClipboardInputController()
+        let inspector = FakeRemoteClipboardInspector()
+        let replies = ControlFrameCapture()
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("computer-use-clipboard-noconsent-\(UUID().uuidString)", isDirectory: true)
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-clipboard-noconsent",
+                macHostNodeId: "mac-clipboard",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
+                auditBaseDirectory: auditDirectory,
+                macAppVersion: "test"
+                // clipboardConsentGranted intentionally omitted -> defaults OFF.
+            ),
+            remoteClipboardController: RemoteClipboardController(
+                pasteboard: pasteboard,
+                inputController: input,
+                inspector: inspector
+            ),
+            authorityProvider: provider,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+        let started = try await coordinator.startSession(
+            request: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                phoneViewerNodeId: peerNodeId,
+                clientID: BurnBarClientID(rawValue: "client-clipboard-noconsent")
+            )
+        )
+        let dispatcher = coordinator.controlDispatcher
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
+            frame in await replies.record(frame)
+        }
+
+        let request = try signedClipboardRequest(
+            action: .pasteToMac,
+            text: secret,
+            privateKey: privateKey,
+            peerNodeId: peerNodeId,
+            counter: 1
+        )
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId)) {
+            frame in await replies.record(frame)
+        }
+
+        let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
+        let response = try XCTUnwrap(responseFrame.control?.clipboardResponse)
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.detail, ComputerUseDenyReason.clipboardConsentRequired.rawValue)
+        XCTAssertEqual(pasteboard.storedText, "before")
+        XCTAssertEqual(input.pasteShortcutCount, 0)
+        XCTAssertEqual(coordinator.lastDeniedReason, .clipboardConsentRequired)
+        XCTAssertEqual(coordinator.actionTimeline.last?.status, .rejected)
+    }
+
+    @MainActor
     func testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation() async throws {
         let previousStrictSetting = SettingsManager.shared.computerUsePhoneControlAttestationRequired
         SettingsManager.shared.computerUsePhoneControlAttestationRequired = true
@@ -1192,7 +1282,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: FileManager.default.temporaryDirectory
                     .appendingPathComponent("computer-use-clipboard-attestation-\(UUID().uuidString)", isDirectory: true),
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,
@@ -1274,7 +1365,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: auditDirectory,
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,

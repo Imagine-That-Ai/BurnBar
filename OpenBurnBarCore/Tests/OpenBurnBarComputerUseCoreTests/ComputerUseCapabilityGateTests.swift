@@ -44,7 +44,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         concurrent: Bool = false,
         kill: Bool = false,
         accessibility: Bool = true,
-        originatedFromPhone: Bool = false
+        originatedFromPhone: Bool = false,
+        clipboardConsentGranted: Bool = false
     ) -> ComputerUseCapabilityContext {
         ComputerUseCapabilityContext(
             entitlement: entitlement,
@@ -54,7 +55,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             concurrentSessionActive: concurrent,
             killSwitch: kill,
             accessibilityTrusted: accessibility,
-            originatedFromPhone: originatedFromPhone
+            originatedFromPhone: originatedFromPhone,
+            clipboardConsentGranted: clipboardConsentGranted
         )
     }
 
@@ -64,6 +66,33 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
     private let macAction: ComputerUseAction = .macInput(
         MacInputAction(kind: .click, displayX: 100, displayY: 200)
     )
+    private let clipboardAction: ComputerUseAction = .remoteClipboard(
+        RemoteClipboardActionDescriptor(kind: .pasteToMac, requestId: "r1", contentType: "text/plain", maxBytes: 65_536)
+    )
+
+    func testClipboardDeniedWithoutConsentEvenWithAllowsSystem() {
+        XCTAssertEqual(
+            gate.check(action: clipboardAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
+                       context: makeContext(originatedFromPhone: true, clipboardConsentGranted: false)),
+            .denied(.clipboardConsentRequired)
+        )
+    }
+
+    func testClipboardAllowedWithDedicatedConsent() {
+        XCTAssertEqual(
+            gate.check(action: clipboardAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
+                       context: makeContext(originatedFromPhone: true, clipboardConsentGranted: true)),
+            .allowed(approvedBy: .phone)
+        )
+    }
+
+    func testMacInputStillAllowedWhenClipboardConsentOff() {
+        XCTAssertEqual(
+            gate.check(action: macAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
+                       context: makeContext(originatedFromPhone: true, clipboardConsentGranted: false)),
+            .allowed(approvedBy: .phone)
+        )
+    }
 
     func testKillSwitchDeniesFirst() {
         XCTAssertEqual(

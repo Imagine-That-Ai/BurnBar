@@ -4,9 +4,11 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
 import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.channels.awaitClose
@@ -169,6 +171,7 @@ enum class SkillRunEventImportance(val wire: String) {
 class CLIAgentMissionDispatcher(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     /**
      * Hermes Square §6.4 — fan-out dispatch. Writes one mission group
@@ -382,29 +385,19 @@ class CLIAgentMissionDispatcher(
     }
 
     suspend fun respondToApproval(requestID: String, approve: Boolean) {
-        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before approving Mac agent missions.")
-        firestore.collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
-            .set(
-                sealedMissionStateUpdate(
-                    uid = uid,
-                    firestore = firestore,
-                    payload =
-                        mapOf(
-                            "approvalStatus" to if (approve) "approved" else "rejected",
-                            "approvalRespondedAt" to Instant.now().toString(),
-                            "updatedAt" to FieldValue.serverTimestamp(),
-                        ),
-                    liveSummary =
-                        if (approve) {
-                            "Approval granted from mobile. Waiting for the Mac to resume."
-                        } else {
-                            "Approval rejected from mobile."
-                        },
-                ),
-                com.google.firebase.firestore.SetOptions.merge(),
-            )
-            .await()
+        auth.currentUser?.uid ?: throw DispatchException("Sign in before approving Mac agent missions.")
+        // Bind the approve/reject to this trusted native escrow device via the
+        // App-Check-enforced callable. The bare Firestore status flip is no
+        // longer accepted by firestore.rules (it must carry approvedByDeviceId
+        // resolving to a trusted escrow device), so a stolen owner token cannot
+        // self-approve a high-risk mission. The deviceId here is the same id
+        // AndroidEscrowDeviceRegistry registers/trusts.
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        securityClient.respondMissionApproval(
+            requestId = requestID,
+            approve = approve,
+            deviceId = deviceId,
+        )
     }
 
     suspend fun cancelMission(requestID: String) {

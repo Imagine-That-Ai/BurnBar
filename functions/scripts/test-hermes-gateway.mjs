@@ -5,13 +5,17 @@ import {
   canonicalHermesGatewayUserCode,
   clampHermesGatewayLimit,
   destinationDocId,
+  gatewayTokenExpiryISO,
   generateHermesGatewayBearerToken,
   hashHermesGatewayBearerToken,
   hashHermesGatewayDeviceSecret,
   HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
+  HERMES_GATEWAY_TOKEN_TTL_MS,
   isHermesGatewayAttachmentManifestDoc,
   isHermesGatewayClientDoc,
+  isHermesGatewayTokenExpired,
   isSha256Hex,
+  publicClientView,
   makeHermesGatewaySSE,
   parseHermesGatewayCursor,
   randomHermesGatewayUserCode,
@@ -166,15 +170,61 @@ assert.equal(
 );
 assert.equal(isHermesGatewayClientDoc({ id: "partial" }), false);
 
+// --- Bearer-token expiry / rotation contracts (B-SEC-5) ---
+assert.ok(
+  Number.isFinite(HERMES_GATEWAY_TOKEN_TTL_MS) && HERMES_GATEWAY_TOKEN_TTL_MS > 0,
+  "HERMES_GATEWAY_TOKEN_TTL_MS must be a positive finite number",
+);
+// Missing/empty expiresAt is grandfathered as non-expiring.
+assert.equal(isHermesGatewayTokenExpired(undefined), false);
+assert.equal(isHermesGatewayTokenExpired(null), false);
+assert.equal(isHermesGatewayTokenExpired(""), false);
+// A past ISO timestamp is expired; a future one is valid.
+assert.equal(isHermesGatewayTokenExpired("2000-01-01T00:00:00.000Z"), true);
+assert.equal(isHermesGatewayTokenExpired(new Date(Date.now() + 60_000).toISOString()), false);
+// Corrupt / non-string values fail closed (treated as expired).
+assert.equal(isHermesGatewayTokenExpired(123), true);
+assert.equal(isHermesGatewayTokenExpired("garbage"), true);
+// gatewayTokenExpiryISO returns now + TTL as a parseable ISO string.
+const expiryFrom = 1_700_000_000_000;
+assert.equal(gatewayTokenExpiryISO(expiryFrom), new Date(expiryFrom + HERMES_GATEWAY_TOKEN_TTL_MS).toISOString());
+
+// isHermesGatewayClientDoc tolerates the new optional fields and rejects bad types.
+const baseClient = {
+  id: "c",
+  uid: "u",
+  displayName: "Hermes",
+  status: "active",
+  tokenHash: hashHermesGatewayBearerToken(token),
+  tokenPreview: tokenPreview(token),
+  scopes: ["hermes.gateway.read"],
+  homeDestinationId: "burnbar:home",
+  createdAt: "2026-06-01T00:00:00.000Z",
+  updatedAt: "2026-06-01T00:00:00.000Z",
+  schemaVersion: 1,
+};
+assert.equal(isHermesGatewayClientDoc({ ...baseClient, expiresAt: "2026-09-01T00:00:00.000Z" }), true);
+assert.equal(isHermesGatewayClientDoc({ ...baseClient, expiresAt: 123 }), false);
+assert.equal(isHermesGatewayClientDoc({ ...baseClient, rotatedAt: 123 }), false);
+
+// publicClientView surfaces the new read-only fields.
+const view = publicClientView({ ...baseClient, expiresAt: "2026-09-01T00:00:00.000Z", rotatedAt: "2026-06-02T00:00:00.000Z" });
+assert.equal(view.expiresAt, "2026-09-01T00:00:00.000Z");
+assert.equal(view.rotatedAt, "2026-06-02T00:00:00.000Z");
+
 const source = readFileSync(new URL("../src/callables/hermesGateway.ts", import.meta.url), "utf8");
 for (const name of [
   "approveHermesGatewayDeviceGrant",
   "listHermesGatewayClients",
   "revokeHermesGatewayClient",
+  "rotateHermesGatewayClientToken",
   "enqueueHermesGatewayEvent",
 ]) {
   assertCallable(source, name);
 }
+// resolveGatewayGrant must reject expired tokens fail-closed.
+assert.match(source, /expired_bearer_token/);
+assert.match(source, /isHermesGatewayTokenExpired\(client\.expiresAt\)/);
 assert.match(source, /export const burnBarHermesGateway = onRequest/);
 assert.match(source, /\/device\/start/);
 assert.match(source, /\/device\/poll/);
@@ -200,6 +250,7 @@ for (const name of [
   "approveHermesGatewayDeviceGrant",
   "listHermesGatewayClients",
   "revokeHermesGatewayClient",
+  "rotateHermesGatewayClientToken",
   "enqueueHermesGatewayEvent",
 ]) {
   assert.match(indexSource, new RegExp(`\\b${name}\\b`), `${name} must be exported from index`);

@@ -238,6 +238,45 @@ public enum CloudVaultCrypto {
         return tokenHashes(forTerms: terms, key: key, limit: limit)
     }
 
+    /// Deterministic, opaque Firestore document id for a project-memory snapshot.
+    ///
+    /// Replaces the name-derived slug doc id so the server (and anyone with raw
+    /// Firestore read) learns nothing about the project: it stores only ciphertext
+    /// plus this trapdoor. Same slug + same vault key always hash to the same id, so
+    /// upsert/get idempotency is preserved; a different vault key yields a different
+    /// id. The `pm_` + 32-hex output satisfies the server's `requiredIdentifier`
+    /// `[a-z0-9_-]` filter unchanged. Mirrors the `tokenHashes`/`searchKey`
+    /// HKDF<SHA256> → HMAC<SHA256> → hex recipe.
+    public static func projectMemoryDocID(forSlug slug: String, keyData: Data) throws -> String {
+        let key = try projectMemoryDocIDKey(from: keyData)
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: key)
+        return "pm_" + Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Vault-keyed dedup hash for a Pensieve knowledge chunk's plaintext.
+    ///
+    /// Equality-only idempotency key the server can compare without ever learning
+    /// the plaintext (and without the cleartext-SHA-256 oracle the legacy
+    /// `contentHash` exposed). Per-user HKDF derivation means two users with the
+    /// same plaintext produce different hashes. Full HMAC-SHA256 digest (64 hex),
+    /// matching `requireHexDigest`. Derivation parity:
+    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:content") → HMAC<SHA256>(plaintext)`.
+    public static func pensieveDedupHash(_ plaintext: String, keyData: Data) throws -> String {
+        let key = try pensieveDedupKey(from: keyData, label: "content")
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(plaintext.utf8), using: key)
+        return Data(mac).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Vault-keyed HMAC of a Pensieve source slug — the opaque filter column that
+    /// replaces the cleartext `sourceSlug`. Full HMAC-SHA256 digest (64 hex).
+    /// Derivation parity:
+    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:slug") → HMAC<SHA256>(slug)`.
+    public static func pensieveSlugHmac(_ slug: String, keyData: Data) throws -> String {
+        let key = try pensieveDedupKey(from: keyData, label: "slug")
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: key)
+        return Data(mac).map { String(format: "%02x", $0) }.joined()
+    }
+
     private static func tokenHashes(forTerms terms: [String], key: SymmetricKey, limit: Int) -> [String] {
         guard limit > 0 else { return [] }
         var seen = Set<String>()
@@ -479,6 +518,29 @@ public enum CloudVaultCrypto {
             inputKeyMaterial: SymmetricKey(data: data),
             salt: Data("OpenBurnBar-CloudSearch-Semantic-Salt-v1".utf8),
             info: Data("OpenBurnBar-CloudSearch-SemanticHash-v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    private static func projectMemoryDocIDKey(from data: Data) throws -> SymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: data),
+            salt: Data("OpenBurnBar-DocID-Salt-v1".utf8),
+            info: Data("OpenBurnBar-ProjectMemory-DocID-v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    /// Per-user Pensieve dedup subkey. Mirrors the TS device derivation the server
+    /// test pins (`knowledgeMemoryDedupHash.test.ts`): empty HKDF salt, info
+    /// `"pensieve-dedup:<label>"` where `label` is `content` or `slug`.
+    private static func pensieveDedupKey(from data: Data, label: String) throws -> SymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: data),
+            salt: Data(),
+            info: Data("pensieve-dedup:\(label)".utf8),
             outputByteCount: 32
         )
     }

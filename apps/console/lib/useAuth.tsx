@@ -16,9 +16,14 @@ import {
   signOut as fbSignOut,
   type User,
 } from "firebase/auth";
-import { startAuthentication } from "@simplewebauthn/browser";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { auth, googleProvider, appleProvider } from "./firebaseClient";
-import { beginPasskeyAssertion, verifyPasskeyAssertion } from "./api";
+import {
+  beginPasskeyAssertion,
+  registerPasskey,
+  verifyPasskeyAssertion,
+  verifyPasskeyRegistration,
+} from "./api";
 
 interface AuthState {
   user: User | null;
@@ -26,6 +31,7 @@ interface AuthState {
   signInGoogle: () => Promise<void>;
   signInApple: () => Promise<void>;
   signInPasskey: () => Promise<void>;
+  createPasskey: () => Promise<string>;
   signOut: () => Promise<void>;
   passkeySupported: boolean;
   appleAuthEnabled: boolean;
@@ -63,6 +69,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithCustomToken(auth(), token);
   }, []);
 
+  const createPasskey = useCallback(async () => {
+    if (typeof PublicKeyCredential === "undefined") {
+      throw new Error("Passkeys are not supported in this browser.");
+    }
+    const { options } = await registerPasskey();
+    window.focus();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const response = await startRegistration({ optionsJSON: options });
+    const { credentialId } = await verifyPasskeyRegistration(response, options.challenge);
+    return credentialId;
+  }, []);
+
   const signOut = useCallback(async () => {
     await fbSignOut(auth());
   }, []);
@@ -78,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInGoogle,
       signInApple,
       signInPasskey,
+      createPasskey,
       signOut,
       passkeySupported,
       appleAuthEnabled,
@@ -88,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInGoogle,
       signInApple,
       signInPasskey,
+      createPasskey,
       signOut,
       passkeySupported,
       appleAuthEnabled,

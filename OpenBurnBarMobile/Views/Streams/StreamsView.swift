@@ -136,7 +136,7 @@ struct StreamsView: View {
             }
             Button("Cancel", role: .cancel) { saveQueryName = "" }
         } message: {
-            Text("Recall this provider, model, project, and sort combination from the saved-query rail.")
+            Text("Recall this provider, model, date, and sort combination from the saved-query rail.")
         }
     }
 
@@ -241,7 +241,7 @@ struct StreamsView: View {
                         icon: hasSearch ? "magnifyingglass" : "doc.text.magnifyingglass",
                         title: hasSearch ? "No matches" : "No sessions yet",
                         message: hasSearch
-                            ? "Try a different model, provider, project, or searchable transcript term."
+                            ? "Try a different model, provider, or private transcript search term."
                             : "Sessions will appear here as soon as your Mac syncs."
                     )
                     .frame(minHeight: 320)
@@ -507,7 +507,7 @@ private struct StreamSearchResultRow: View {
     }
 }
 
-private struct CloudConversationSearchResultRow: View {
+struct CloudConversationSearchResultRow: View {
     let hit: CloudConversationSearchRow
 
     var body: some View {
@@ -541,9 +541,6 @@ private struct CloudConversationSearchResultRow: View {
                     if let provider = hit.provider, !provider.isEmpty {
                         Text(provider)
                     }
-                    if let project = hit.projectName, !project.isEmpty {
-                        Text(project)
-                    }
                 }
                 .font(MobileTheme.Typography.tiny)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
@@ -552,7 +549,7 @@ private struct CloudConversationSearchResultRow: View {
     }
 }
 
-private struct CloudConversationDetailSheet: View {
+struct CloudConversationDetailSheet: View {
     let hit: CloudConversationSearchRow
     let decryptedBody: String?
     let error: String?
@@ -569,9 +566,11 @@ private struct CloudConversationDetailSheet: View {
                         Label(hit.title.isEmpty ? "Encrypted session" : hit.title, systemImage: "lock.doc")
                             .font(MobileTheme.Typography.headline)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text([hit.provider, hit.projectName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                        if let provider = hit.provider, !provider.isEmpty {
+                            Text(provider)
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                        }
                     }
 
                     if isLoading {
@@ -871,10 +870,8 @@ private struct ConversationCockpitSection: View {
         return store.rows.filter { row in
             (row.title?.lowercased().contains(trimmed) ?? false)
                 || (row.preview?.lowercased().contains(trimmed) ?? false)
-                || (row.projectName?.lowercased().contains(trimmed) ?? false)
                 || (row.model?.lowercased().contains(trimmed) ?? false)
                 || (row.provider?.lowercased().contains(trimmed) ?? false)
-                || (row.workingDirectory?.lowercased().contains(trimmed) ?? false)
         }
     }
 
@@ -988,7 +985,7 @@ private struct ConversationCockpitSection: View {
                 kind: .empty,
                 icon: "magnifyingglass",
                 title: "No matches",
-                message: "Try a different model, provider, project, or searchable transcript term."
+                message: "Try a different model, provider, or private transcript search term."
             )
             .frame(minHeight: 300)
         }
@@ -1758,10 +1755,6 @@ private struct CockpitConversationRowView: View {
 
     private var subtitle: some View {
         HStack(spacing: 4) {
-            if let project = row.projectName, !project.isEmpty {
-                Text(project).lineLimit(1)
-                Text("·").foregroundStyle(MobileTheme.Colors.textMuted)
-            }
             if let model = row.model, !model.isEmpty {
                 Text(model).lineLimit(1)
             }
@@ -1865,12 +1858,6 @@ private struct CockpitConversationDetailSheet: View {
                         .font(MobileTheme.Typography.headline)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let project = row.projectName, !project.isEmpty {
-                        Text(project)
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                            .lineLimit(1)
-                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -1935,14 +1922,6 @@ private struct CockpitConversationDetailSheet: View {
 
     @ViewBuilder
     private var transcriptSection: some View {
-        if let workingDir = row.workingDirectory, !workingDir.isEmpty {
-            Label(workingDir, systemImage: "folder")
-                .font(MobileTheme.Typography.monoTiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-
         if isLoading {
             VStack(spacing: 10) {
                 ForEach(0..<5, id: \.self) { _ in
@@ -2003,14 +1982,12 @@ private struct CockpitConversationDetailSheet: View {
         var lines: [String] = ["# \(row.displayTitle)", "", "| Property | Value |", "|----------|-------|"]
         lines.append("| Provider | \(row.providerEnum?.displayName ?? row.provider ?? "—") |")
         if let model = row.model, !model.isEmpty { lines.append("| Model | \(model) |") }
-        if let project = row.projectName, !project.isEmpty { lines.append("| Project | \(project) |") }
         if let start = row.startTime {
             lines.append("| Started | \(start.formatted(date: .abbreviated, time: .shortened)) |")
         }
         if row.messageCount > 0 { lines.append("| Messages | \(row.messageCount) |") }
         if row.totalTokens > 0 { lines.append("| Tokens | \(row.totalTokens.formatAsTokens()) |") }
         if row.costUSD > 0 { lines.append("| Cost | \(row.costUSD.formatAsCost()) |") }
-        if let dir = row.workingDirectory, !dir.isEmpty { lines.append("| Working dir | `\(dir)` |") }
         lines.append("")
         lines.append("## Transcript")
         lines.append("")
@@ -2034,7 +2011,6 @@ private struct CockpitFilterSheet: View {
     let store: ConversationCockpitStore
 
     @Environment(\.dismiss) private var dismiss
-    @State private var projectDraft = ""
     @State private var useDateRange = false
     @State private var fromDate = Date()
     @State private var toDate = Date()
@@ -2049,11 +2025,6 @@ private struct CockpitFilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Project") {
-                    TextField("Any project", text: $projectDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
                 Section {
                     Toggle("Filter by start date", isOn: $useDateRange.animation())
                     if useDateRange {
@@ -2149,7 +2120,6 @@ private struct CockpitFilterSheet: View {
     }
 
     private func hydrate() {
-        projectDraft = store.projectQuery
         useDateRange = store.dateFrom != nil || store.dateTo != nil
         fromDate = store.dateFrom ?? Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         toDate = store.dateTo ?? Date()
@@ -2157,7 +2127,6 @@ private struct CockpitFilterSheet: View {
     }
 
     private func apply() {
-        store.projectQuery = projectDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if useDateRange {
             store.dateFrom = Calendar.current.startOfDay(for: fromDate)
             store.dateTo = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: toDate) ?? toDate

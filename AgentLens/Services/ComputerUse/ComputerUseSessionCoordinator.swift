@@ -38,6 +38,12 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         /// against AX deny-regions. Remote Config
         /// `computer_use_phone_control_respects_deny_regions`. Default `false`.
         public var phoneControlRespectsDenyRegions: Bool
+        /// Dedicated, short-lived consent for remote clipboard (phone↔Mac
+        /// paste/grab). SEPARATE from `entitlement.allowsSystem`: the user can
+        /// grant screen-share + input yet deny clipboard, and can revoke it
+        /// mid-session by flipping this back to `false` (the next clipboard
+        /// request is then denied without ending the session). Defaults OFF.
+        public var clipboardConsentGranted: Bool
 
         public init(
             userId: String,
@@ -49,7 +55,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             macAppVersion: String,
             killSwitch: Bool = false,
             phoneControlAttestationRequired: Bool = false,
-            phoneControlRespectsDenyRegions: Bool = false
+            phoneControlRespectsDenyRegions: Bool = false,
+            clipboardConsentGranted: Bool = false
         ) {
             self.userId = userId
             self.macHostNodeId = macHostNodeId
@@ -61,6 +68,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             self.killSwitch = killSwitch
             self.phoneControlAttestationRequired = phoneControlAttestationRequired
             self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
+            self.clipboardConsentGranted = clipboardConsentGranted
         }
     }
 
@@ -264,8 +272,31 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         }
     }
 
-    public func registerPhonePeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) {
+    @discardableResult
+    public func registerPhonePeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
         phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey)
+    }
+
+    /// Peer node id of the in-flight phone-control session, if any.
+    public var activePhoneViewerNodeId: String? {
+        guard activeSessionId != nil else { return nil }
+        return state?.manifest.phoneViewerNodeId
+    }
+
+    /// Revoke an escrow device mid-session. Populates the validator's
+    /// revocation sets (so all future validate() calls AND any reconnect
+    /// registerPeer are refused) and, when the live session belongs to the
+    /// revoked peer, actively tears it down via panicHalt. Idempotent.
+    public func revokeEscrowDevice(deviceId: String, peerNodeId: String?) async {
+        phoneValidator.revokeEscrowDevice(deviceId: deviceId)
+        if let peerNodeId, !peerNodeId.isEmpty {
+            phoneValidator.revokePeer(nodeId: peerNodeId)
+        }
+        guard activeSessionId != nil else { return }
+        let activePeer = state?.manifest.phoneViewerNodeId
+        if let peerNodeId, let activePeer, peerNodeId == activePeer {
+            await panicHalt(source: .revoked)
+        }
     }
 
     func attachFocusFollowController(_ controller: AgentFocusFollowController) {
@@ -690,6 +721,39 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 }
             }
 
+            // AUDIT-BEFORE-ACTION (fail-closed): reserve a pending audit
+            // entry on the chain BEFORE dispatch. If the reservation append
+            // throws we must NOT execute the action.
+            let reservation: ComputerUseAuditEntry
+            do {
+                reservation = try reserveAuditEntry(
+                    logger: logger,
+                    action: action,
+                    approvalId: approval.approvalId,
+                    approvedBy: approval.approvedBy,
+                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                    scopeContext: scopeContext,
+                    beforeScreenshotHashHex: beforeCapture?.sha256Hex
+                )
+                currentState.auditChainHeadHashHex = logger.headHashHex
+                state = currentState
+            } catch {
+                lastDeniedReason = .auditFailure
+                currentState.actionsRejected += 1
+                currentState.auditChainHeadHashHex = logger.headHashHex
+                state = currentState
+                let response = ComputerUseInvokeResponse(
+                    sessionId: sessionId.rawValue,
+                    callID: invocation.callID,
+                    status: .denied,
+                    approvalId: approval.approvalId,
+                    denyReason: ComputerUseDenyReason.auditFailure.rawValue,
+                    auditHeadHashHex: logger.headHashHex
+                )
+                appendTimeline(for: action, invocation: invocation, response: response, auditEntry: nil)
+                return response
+            }
+
             do {
                 let result = try await dispatch(action: action, invocation: invocation)
                 let afterCapture = captureEvidence(
@@ -706,7 +770,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     scopeContext: scopeContext,
                     beforeScreenshotHashHex: beforeCapture?.sha256Hex,
                     afterScreenshotHashHex: afterCapture?.sha256Hex
-                )
+                ) ?? reservation
                 currentState.actionsExecuted += 1
                 currentState.lastActionAt = Date()
                 currentState.auditChainHeadHashHex = logger.headHashHex
@@ -716,7 +780,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     callID: invocation.callID,
                     status: .executed,
                     approvalId: approval.approvalId,
-                    auditEntryIndex: entry?.entryIndex,
+                    auditEntryIndex: entry.entryIndex,
                     auditHeadHashHex: logger.headHashHex,
                     result: result
                 )
@@ -737,7 +801,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     scopeContext: scopeContext,
                     beforeScreenshotHashHex: beforeCapture?.sha256Hex,
                     afterScreenshotHashHex: afterCapture?.sha256Hex
-                )
+                ) ?? reservation
                 currentState.actionsRejected += 1
                 currentState.auditChainHeadHashHex = logger.headHashHex
                 state = currentState
@@ -747,7 +811,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     status: .error,
                     approvalId: approval.approvalId,
                     denyReason: String(describing: error),
-                    auditEntryIndex: entry?.entryIndex,
+                    auditEntryIndex: entry.entryIndex,
                     auditHeadHashHex: logger.headHashHex
                 )
                 appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
@@ -892,13 +956,47 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         switch frame.type {
         case .controlClassify:
             guard let peerNodeId = frame.control?.authorityPeerNodeId else { return }
+            // FAIL-CLOSED reconnect rejection: a revoked peer cannot
+            // re-admit itself via a fresh classify, even before the
+            // escrow_devices listener has fired.
+            if phoneValidator.isPeerRevoked(nodeId: peerNodeId) {
+                recordE2EProofEvent([
+                    "event": "mac_control_classify_revoked_peer",
+                    "peerNodeId": peerNodeId,
+                    "connectionId": frame.connectionId
+                ])
+                emitControlFrame(
+                    type: .controlDenied,
+                    payload: HermesRealtimeRelayControlPayload(
+                        streamClass: "control.input",
+                        sessionId: activeSessionId?.rawValue,
+                        denied: HermesRealtimeRelayControlDenied(reason: .signatureFailure, detail: "peer_revoked")
+                    )
+                )
+                return
+            }
             do {
                 let publicKey = try await authorityProvider.fetchPublicKey(
                     uid: frame.uid,
                     connectionId: frame.connectionId,
                     peerNodeId: peerNodeId
                 )
-                registerPhonePeer(nodeId: peerNodeId, publicKey: publicKey)
+                guard registerPhonePeer(nodeId: peerNodeId, publicKey: publicKey) else {
+                    recordE2EProofEvent([
+                        "event": "mac_control_classify_revoked_peer",
+                        "peerNodeId": peerNodeId,
+                        "connectionId": frame.connectionId
+                    ])
+                    emitControlFrame(
+                        type: .controlDenied,
+                        payload: HermesRealtimeRelayControlPayload(
+                            streamClass: "control.input",
+                            sessionId: activeSessionId?.rawValue,
+                            denied: HermesRealtimeRelayControlDenied(reason: .signatureFailure, detail: "peer_revoked")
+                        )
+                    )
+                    return
+                }
                 if activeSessionId == nil {
                     _ = try await startSession(request: ComputerUseSessionStartRequest(
                         mode: ComputerUseMode.system.rawValue,
@@ -1452,6 +1550,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
              .concurrentSession,
              .accessibilityRevoked,
              .userRejected,
+             .auditFailure,
+             .clipboardConsentRequired,
              nil:
             return .unknown
         }
@@ -1587,6 +1687,38 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         return macDispatcher.accessibilityDenyReason(at: input)
     }
 
+    /// Sentinel `denyReason` marking a pre-dispatch reservation entry; the
+    /// paired post-dispatch completion entry carries the real outcome.
+    static let auditReservationSentinel = "audit_reserved_pending"
+
+    /// Reserve a pending audit entry on the chain BEFORE the action runs.
+    /// Throws if the chain append fails so the caller can fail closed and
+    /// abort dispatch. The reservation is marked with the
+    /// `audit_reserved_pending` sentinel denyReason; the post-dispatch
+    /// completion entry carries the real outcome.
+    private func reserveAuditEntry(
+        logger: ComputerUseAuditLogger,
+        action: ComputerUseAction,
+        approvalId: String?,
+        approvedBy: ComputerUseAuditEntry.ApprovedBy,
+        scopeRuleId: String?,
+        scopeContext: ComputerUseScopeContext?,
+        beforeScreenshotHashHex: String?
+    ) throws -> ComputerUseAuditEntry {
+        let entry = try logger.makeEntry(
+            for: action,
+            approvalId: approvalId,
+            approvedBy: approvedBy,
+            scopeRuleId: scopeRuleId,
+            denyReason: Self.auditReservationSentinel,
+            beforeScreenshotHashHex: beforeScreenshotHashHex,
+            macHostNodeId: configuration.macHostNodeId,
+            scopeContext: scopeContext
+        )
+        try logger.append(entry)
+        return entry
+    }
+
     private func appendAuditEntry(
         logger: ComputerUseAuditLogger,
         action: ComputerUseAction,
@@ -1684,6 +1816,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         case .remoteConfig: return .panicRemoteConfig
         case .accessibilityRevoked: return .panicAccessibilityRevoked
         case .stalled: return .timeout
+        // Device/session trust revoked: tear the session down as an
+        // authorization loss. The panic source ("revoked") is preserved in
+        // the audit chain for forensics.
+        case .revoked: return .entitlementLost
         }
     }
 

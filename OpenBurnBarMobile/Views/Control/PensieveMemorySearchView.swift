@@ -22,6 +22,9 @@ struct PensieveMemorySearchView: View {
     @State private var isSearching = false
     @State private var error: String?
     @State private var hasSearched = false
+    @State private var showCloudStore = false
+
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     private let searcher: any PensieveMemorySearching
 
@@ -29,15 +32,50 @@ struct PensieveMemorySearchView: View {
         self.searcher = searcher
     }
 
+    /// Pensieve agent memory is a Cloud Pro feature (Data Vault). Locked users
+    /// get the full-screen feature veil over a blurred teaser of the search
+    /// surface; the live query path never runs until they're on Cloud Pro.
+    private var isUnlocked: Bool { (cloudStore?.cloudTier ?? .none).satisfies(.pro) }
+
     var body: some View {
+        Group {
+            if isUnlocked {
+                searchScreen
+            } else {
+                lockedVeil
+            }
+        }
+        .navigationTitle("Memory")
+        .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showCloudStore) {
+            NavigationStack {
+                CloudStoreView(onClose: { showCloudStore = false })
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var searchScreen: some View {
         ZStack {
             AuroraBackdrop(density: .subtle)
             content
         }
-        .navigationTitle("Memory")
-        .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Search your private memory")
         .onSubmit(of: .search) { runSearch() }
+    }
+
+    private var lockedVeil: some View {
+        LockedFeatureVeil(
+            feature: GatedFeature.gatedFeature(.dataVault),
+            priceLine: cloudStore.map { TierPricing.priceLine(for: .pro, store: $0) } ?? nil,
+            action: {
+                Haptics.medium()
+                showCloudStore = true
+            }
+        ) {
+            PensieveMemoryTeaserBackground()
+        }
     }
 
     @ViewBuilder
@@ -87,6 +125,43 @@ struct PensieveMemorySearchView: View {
                 hits = []
             }
         }
+    }
+}
+
+// MARK: - Locked teaser background
+//
+// Static glassy "memory hit" cards suggesting the Pensieve recall surface,
+// blurred behind the feature veil. Drives no Firebase / no search so locked
+// users never pay for work they can't see.
+
+private struct PensieveMemoryTeaserBackground: View {
+    var body: some View {
+        VStack(spacing: MobileTheme.Spacing.md) {
+            ForEach(0..<5, id: \.self) { idx in
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                EncryptionTier.endToEnd.tierColor.opacity(0.16 - Double(idx) * 0.015),
+                                UnifiedDesignSystem.Colors.whimsy.opacity(0.10),
+                                UnifiedDesignSystem.Colors.amber.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(height: 84)
+                    .overlay(alignment: .topLeading) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(EncryptionTier.endToEnd.tierColor.opacity(0.4))
+                            .padding(16)
+                    }
+            }
+        }
+        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+        .padding(.top, MobileTheme.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

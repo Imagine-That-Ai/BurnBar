@@ -81,6 +81,18 @@ struct AppearanceCorkboardSection: View {
                 Divider().background(DesignSystem.Colors.border)
 
                 SettingsToggle(
+                    title: "Constellation Style",
+                    subtitle: "Switch the swarm background to a calm, slow constellation: one crest or provider logo at a time resolves from coloured dots, shimmers in place, then dissolves as the next forms somewhere new. Requires Swarm Background.",
+                    icon: "sparkle",
+                    isOn: $settingsManager.useConstellationBackground
+                )
+                .disabled(!settingsManager.useWebsiteBackground)
+                .opacity(settingsManager.useWebsiteBackground ? 1.0 : 0.45)
+                .settingsAnchor(SettingsAnchor.useConstellationBackground)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
                     title: "Enable Desktop Swarm Wallpaper",
                     subtitle: "Render the dynamic token ember swarm simulation directly as your macOS desktop wallpaper.",
                     icon: "desktopcomputer",

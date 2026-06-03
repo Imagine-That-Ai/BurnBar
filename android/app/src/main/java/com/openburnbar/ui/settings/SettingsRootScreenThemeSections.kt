@@ -140,11 +140,11 @@ internal fun ThemePrefsToggleSection(
     router: SettingsRouter,
     haptic: HapticFeedback,
     usePremiumSOTAUX: Boolean,
-    useWebsiteBackground: Boolean,
+    backgroundStyle: BackgroundStyle,
     enableSwarmSparkles: Boolean,
     excludeBrandShapes: Boolean,
 ) {
-    ThemePrefsPrimaryToggles(router, haptic, usePremiumSOTAUX, useWebsiteBackground, enableSwarmSparkles)
+    ThemePrefsPrimaryToggles(router, haptic, usePremiumSOTAUX, backgroundStyle, enableSwarmSparkles)
     ThemePrefsDivider()
     AuroraSettingsToggle(
         icon = Icons.Filled.AutoAwesome,
@@ -164,7 +164,7 @@ internal fun ThemePrefsPrimaryToggles(
     router: SettingsRouter,
     haptic: HapticFeedback,
     usePremiumSOTAUX: Boolean,
-    useWebsiteBackground: Boolean,
+    backgroundStyle: BackgroundStyle,
     enableSwarmSparkles: Boolean,
 ) {
     ThemePrefsHaloToggle(
@@ -179,16 +179,11 @@ internal fun ThemePrefsPrimaryToggles(
         callbacks = ThemePrefsHaloToggleCallbacks(onCheckedChange = { GlobalVisualSettings.setPremiumSOTAUX(it) }, haptic = haptic),
     )
     ThemePrefsDivider()
-    ThemePrefsHaloToggle(
-        model = ThemePrefsHaloToggleModel(
-            highlighted = router.highlightedAnchor == SettingsAnchor.USE_WEBSITE_BACKGROUND,
-            icon = Icons.Filled.AutoAwesome,
-            label = "Swarm Background",
-            subtitle = "Active, reconverging token-ember swarms pulled from burnbar.ai",
-            checked = useWebsiteBackground,
-            tint = AuroraColors.hermesMercury,
-        ),
-        callbacks = ThemePrefsHaloToggleCallbacks(onCheckedChange = { GlobalVisualSettings.setWebsiteBackground(it) }, haptic = haptic),
+    ThemePrefsBackgroundStyleSelector(
+        highlighted = router.highlightedAnchor == SettingsAnchor.USE_WEBSITE_BACKGROUND,
+        useWebsiteBackground = backgroundStyle.usesCustomBackdrop,
+        backgroundStyle = backgroundStyle,
+        haptic = haptic,
     )
     ThemePrefsDivider()
     ThemePrefsHaloToggle(
@@ -202,6 +197,108 @@ internal fun ThemePrefsPrimaryToggles(
         ),
         callbacks = ThemePrefsHaloToggleCallbacks(onCheckedChange = { GlobalVisualSettings.setSwarmSparkles(it) }, haptic = haptic),
     )
+}
+
+/** Per-style metadata for the three-way background picker. */
+private data class BackgroundStyleOption(
+    val style: BackgroundStyle,
+    val subtitle: String,
+)
+
+private val backgroundStyleOptions =
+    listOf(
+        BackgroundStyleOption(BackgroundStyle.AURORA, "Soft drifting gradient orbs and ember ribbons"),
+        BackgroundStyleOption(BackgroundStyle.SWARM, "Active, reconverging token-ember swarms from burnbar.ai"),
+        BackgroundStyleOption(BackgroundStyle.DOT_CONSTELLATION, "Calm field: one crest or provider logo resolves, shimmers, and dissolves"),
+    )
+
+/**
+ * Three-way background style picker (Aurora / Swarm / Constellation). Replaces the
+ * old single Swarm Background toggle; the legacy `useWebsiteBackground` flag stays
+ * derived from the chosen style so every other screen keeps working unchanged.
+ */
+@Composable
+internal fun ThemePrefsBackgroundStyleSelector(
+    highlighted: Boolean,
+    useWebsiteBackground: Boolean,
+    backgroundStyle: BackgroundStyle,
+    haptic: HapticFeedback,
+) {
+    val haloColor by animateColorAsState(
+        targetValue = if (highlighted) Color(0xFFFFA800).copy(alpha = 0.18f) else Color.Transparent,
+        animationSpec = tween(durationMillis = 350),
+        label = "background-style-halo"
+    )
+    Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.md.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Filled.Wallpaper, contentDescription = null, modifier = Modifier.size(22.dp), tint = AuroraColors.hermesMercury)
+                Text(
+                    "Background Style",
+                    fontWeight = FontWeight.Bold,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            backgroundStyleOptions.forEach { option ->
+                ThemePrefsBackgroundStyleCard(
+                    option = option,
+                    selected = backgroundStyle == option.style,
+                    useWebsiteBackground = useWebsiteBackground,
+                    haptic = haptic,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePrefsBackgroundStyleCard(
+    option: BackgroundStyleOption,
+    selected: Boolean,
+    useWebsiteBackground: Boolean,
+    haptic: HapticFeedback,
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        color = if (selected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
+        border =
+            if (selected) {
+                androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
+            } else {
+                androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            },
+        onClick = {
+            GlobalVisualSettings.setBackgroundStyle(option.style)
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    option.style.displayName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    option.subtitle,
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                    color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (selected) {
+                Surface(modifier = Modifier.size(10.dp), shape = CircleShape, color = primaryColor) {}
+            }
+        }
+    }
 }
 
 @Composable
@@ -476,6 +573,7 @@ internal fun ThemePrefsHighlightEffect(router: SettingsRouter) {
 internal data class ThemePrefsScreenState(
     val isDark: Boolean,
     val useWebsiteBackground: Boolean,
+    val backgroundStyle: BackgroundStyle,
     val haptic: HapticFeedback,
     val usePremiumSOTAUX: Boolean,
     val enableSwarmSparkles: Boolean,
@@ -518,7 +616,7 @@ internal fun ThemePrefsScreenBody(
                     router,
                     state.haptic,
                     state.usePremiumSOTAUX,
-                    useWebsiteBackground,
+                    state.backgroundStyle,
                     state.enableSwarmSparkles,
                     state.excludeBrandShapes,
                 )
@@ -546,6 +644,7 @@ fun ThemePrefsScreen(
     val isDark = isSystemInDarkTheme()
     val haptic = LocalHapticFeedback.current
     val useWebsiteBackground by rememberWebsiteBackground()
+    val backgroundStyle by rememberBackgroundStyle()
     val usePremiumSOTAUX by rememberPremiumSOTAUX()
     val enableSwarmSparkles by rememberSwarmSparkles()
     val excludeBrandShapes by rememberExcludeBrandShapesFromSwarm()
@@ -563,6 +662,7 @@ fun ThemePrefsScreen(
             ThemePrefsScreenState(
                 isDark = isDark,
                 useWebsiteBackground = useWebsiteBackground,
+                backgroundStyle = backgroundStyle,
                 haptic = haptic,
                 usePremiumSOTAUX = usePremiumSOTAUX,
                 enableSwarmSparkles = enableSwarmSparkles,

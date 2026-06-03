@@ -14,6 +14,8 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import {
   bindAppCheckAttestationForUid,
   enforceHighRiskComputerUseCallable,
+  enforceHighRiskComputerUseCallableWithNonce,
+  issueHighRiskNonceForUid,
   readAppIdFromCallableRequest,
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
@@ -65,6 +67,21 @@ export const bindAppCheckAttestation = onCall(
   }),
 );
 
+export const issueHighRiskActionNonce = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler("issueHighRiskActionNonce", async (request: CallableRequest) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before requesting a high-risk action nonce.");
+    enforceHighRiskComputerUseCallable(request, uid);
+    const { nonce, expiresAtMillis } = await issueHighRiskNonceForUid(uid);
+    return { ok: true, nonce, expiresAtMillis };
+  }),
+);
+
 export const registerEscrowDevice = onCall(
   {
     region: FUNCTIONS_REGION,
@@ -81,11 +98,12 @@ export const registerEscrowDevice = onCall(
         appVersion?: unknown;
         publicKeyFingerprint?: unknown;
         keyVersion?: unknown;
+        nonce?: unknown;
       }>,
     ) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before registering an escrow device.");
-      enforceHighRiskComputerUseCallable(request, uid);
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
 
       const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
       const deviceName = boundedTrimmedString(request.data.deviceName, "deviceName", 256, true) ?? "OpenBurnBar device";
@@ -142,10 +160,10 @@ export const approveEscrowDeviceTrust = onCall(
   },
   wrapCallableHandler(
     "approveEscrowDeviceTrust",
-    async (request: CallableRequest<{ deviceId?: unknown; approverDeviceId?: unknown }>) => {
+    async (request: CallableRequest<{ deviceId?: unknown; approverDeviceId?: unknown; nonce?: unknown }>) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving device trust.");
-      enforceHighRiskComputerUseCallable(request, uid);
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
 
       const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
       const approverDeviceId = boundedTrimmedString(request.data.approverDeviceId, "approverDeviceId", 160, false);
@@ -233,10 +251,10 @@ export const revokeEscrowDeviceTrust = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  wrapCallableHandler("revokeEscrowDeviceTrust", async (request: CallableRequest<{ deviceId?: unknown }>) => {
+  wrapCallableHandler("revokeEscrowDeviceTrust", async (request: CallableRequest<{ deviceId?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking device trust.");
-    enforceHighRiskComputerUseCallable(request, uid);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
@@ -282,4 +300,85 @@ export const revokeEscrowDeviceTrust = onCall(
     });
     return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
   }),
+);
+
+const NATIVE_ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
+
+/**
+ * Bind a CLI-agent mission approval to the responding device.
+ *
+ * The decision is written server-side (admin SDK bypasses Firestore rules) only
+ * after confirming the responder is a TRUSTED NATIVE escrow device. This closes
+ * the gap where any owner-authenticated client could flip `approvalStatus` to
+ * `approved` by a bare Firestore write. Fail-closed.
+ */
+export const respondMissionApproval = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler(
+    "respondMissionApproval",
+    async (request: CallableRequest<{ requestId?: unknown; approve?: unknown; deviceId?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before responding to a mission approval.");
+      enforceHighRiskComputerUseCallable(request, uid);
+
+      const requestId = boundedTrimmedString(request.data.requestId, "requestId", 512, true);
+      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+      if (typeof request.data.approve !== "boolean") {
+        throw new HttpsError("invalid-argument", "approve must be a boolean.");
+      }
+      const approve = request.data.approve;
+
+      const missionRef = db.doc(`users/${uid}/cli_agent_mission_requests/${requestId}`);
+      const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+
+      const result = await db.runTransaction(async (transaction) => {
+        const [mission, device] = await Promise.all([transaction.get(missionRef), transaction.get(deviceRef)]);
+        if (!mission.exists) {
+          throw new HttpsError("not-found", "Mission request was not found.");
+        }
+        if (mission.get("status") !== "waiting_for_approval") {
+          throw new HttpsError("failed-precondition", "Mission is not waiting for approval.");
+        }
+        const currentApproval = mission.get("approvalStatus");
+        if (currentApproval && currentApproval !== "pending") {
+          throw new HttpsError("failed-precondition", "Mission approval has already been resolved.");
+        }
+        if (
+          !device.exists ||
+          device.get("trustState") !== "trusted" ||
+          !NATIVE_ESCROW_PLATFORMS.has(device.get("platform"))
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "Mission approvals require a trusted native device. Trust this device first.",
+          );
+        }
+
+        transaction.set(
+          missionRef,
+          {
+            approvalStatus: approve ? "approved" : "rejected",
+            approvalRespondedAt: FieldValue.serverTimestamp(),
+            approvedByDeviceId: deviceId,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        return { approvalStatus: approve ? "approved" : "rejected" };
+      });
+
+      logInfo({
+        event: "callable_info",
+        message: "mission_approval_recorded",
+        request_id: requestId,
+        approved_by_device_id: deviceId,
+        approval_status: result.approvalStatus,
+      });
+      return { ok: true, requestId, approvalStatus: result.approvalStatus, approvedByDeviceId: deviceId };
+    },
+  ),
 );

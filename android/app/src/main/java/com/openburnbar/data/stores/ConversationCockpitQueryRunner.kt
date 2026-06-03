@@ -17,7 +17,6 @@ internal class ConversationCockpitQueryRunner(
     suspend fun queryPage(store: ConversationCockpitStore, reset: Boolean): ConversationQueryResponse = functions.queryConversations(
         providers = store.selectedProviders.value.toList(),
         models = store.selectedModel.value?.let { listOf(it) } ?: emptyList(),
-        projectName = store.projectQuery.value.ifBlank { null },
         dateFromIso = store.dateFromMs.value?.isoString(),
         dateToIso = store.dateToMs.value?.isoString(),
         sort = store.sortField.value.field,
@@ -120,7 +119,7 @@ internal class ConversationCockpitQueryRunner(
         return CockpitConversationRow(
             id = row.id,
             provider = row.provider,
-            projectName = row.projectName,
+            projectName = null,
             model = row.model,
             sourceType = row.sourceType,
             messageCount = row.messageCount ?: 0,
@@ -128,7 +127,7 @@ internal class ConversationCockpitQueryRunner(
             outputTokens = row.outputTokens ?: 0,
             totalTokens = row.totalTokens ?: 0,
             costUSD = row.costUSD ?: 0.0,
-            workingDirectory = row.workingDirectory,
+            workingDirectory = null,
             toolTags = row.toolTags,
             durationSeconds = row.durationSeconds,
             startTimeMs = row.startTimeMs,
