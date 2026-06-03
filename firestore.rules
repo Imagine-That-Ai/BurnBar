@@ -360,7 +360,7 @@ service cloud.firestore {
         && !("terms" in request.resource.data)
         && !("projectName" in request.resource.data)
         && !("workingDirectory" in request.resource.data)
-        && (!("inferredTaskTitle" in request.resource.data) || (request.resource.data.inferredTaskTitle is string && request.resource.data.inferredTaskTitle.size() <= 64))
+        && (!("inferredTaskTitle" in request.resource.data) || request.resource.data.inferredTaskTitle == "Encrypted session")
         && (!("sealedTitle" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTitle))
         && (!("sealedBodyPreview" in request.resource.data) || validCloudSealedText(request.resource.data.sealedBodyPreview))
         && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
@@ -2234,6 +2234,16 @@ service cloud.firestore {
     }
 
     match /users/{userId}/hermes_gateway_state/{stateId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Human-in-the-loop oversight gates. The owner reads pending/decided gates
+    // (the native approval UI lights up from here); all writes are Admin-SDK
+    // only, so neither the bearer-token agent nor any client can self-approve.
+    // Resolution flows exclusively through respondHermesGatewayApproval, which
+    // requires a trusted native escrow device and stamps approvedByDeviceId.
+    match /users/{userId}/hermes_gateway_approvals/{approvalId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
     }

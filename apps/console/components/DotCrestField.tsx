@@ -37,6 +37,13 @@ const LOGOS: Logo[] = [
 
 const PERIOD = 9.5; // seconds a logo holds before it dissolves into the next
 
+// Summoned (click-spawned) formations layer on top of the ambient cycle.
+const MAX_SUMMONED = 3; // clicks beyond this many active are ignored
+const SUMMON_RESOLVE = 0.7; // seconds: dots resolve gracefully into the cloud
+const SUMMON_HOLD = 1.5; // seconds: the formation breathes in place
+const SUMMON_DISSOLVE = 1.0; // seconds: dots scatter apart and fade
+const SUMMON_SCALE = 0.82; // summoned formations sit slightly smaller than ambient
+
 type Dot = {
   x: number;
   y: number;
@@ -61,6 +68,23 @@ function pseudo(x: number, y: number) {
   const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
   return v - Math.floor(v);
 }
+
+/**
+ * A single logo formation on screen. The ambient cycle is one long-lived
+ * instance whose logo/position/coherence are recomputed every frame from the
+ * clock; summoned (click-spawned) instances each own a finite lifecycle and a
+ * fixed logo + position. Both are drawn by the same renderer so the look — dot
+ * colour, twinkle, jitter, sheen, scatter-on-dissolve — is identical.
+ */
+type Instance =
+  | { kind: "ambient" }
+  | {
+      kind: "summoned";
+      idx: number; // logo index, fixed for this formation's lifetime
+      cx: number; // target screen position (clamped on-screen)
+      cy: number;
+      bornAt: number; // performance-clock ms when the click happened
+    };
 
 export function DotCrestField() {
   const ref = useRef<HTMLCanvasElement>(null);

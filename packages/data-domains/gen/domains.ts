@@ -287,6 +287,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "hermes_gateway_typing",
       "hermes_gateway_state",
       "hermes_gateway_attachments",
+      "hermes_gateway_approvals",
       "pi_agent_connections",
       "pi_agent_pairings",
       "pi_agent_relay_requests",
