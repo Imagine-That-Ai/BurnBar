@@ -11,7 +11,7 @@
  * Fail behaviour: if the registry package is unavailable (e.g. a thin checkout),
  * we keep any previously synced copy rather than failing the build, but we warn.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,19 +24,40 @@ const repoRoot = resolve(consoleRoot, "..", "..");
  * source is unavailable (thin checkout) but the destination already exists.
  */
 function syncArtifact(source, dest, label) {
-  if (!existsSync(source)) {
-    if (existsSync(dest)) {
-      console.warn(`[sync-domains] ${label} not found at ${source}; keeping existing ${dest}`);
+  mkdirSync(dirname(dest), { recursive: true });
+  try {
+    copyFileSync(source, dest);
+    console.log(`[sync-domains] synced ${source} -> ${dest}`);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      try {
+        readFileSync(dest);
+        console.warn(`[sync-domains] ${label} not found at ${source}; keeping existing ${dest}`);
+        return;
+      } catch {
+        console.error(
+          `[sync-domains] ${label} not found at ${source} and no prior copy at ${dest}.`,
+        );
+        process.exit(1);
+      }
+    }
+    if (error?.code === "ENOTDIR") {
+      console.error(`[sync-domains] cannot sync ${label}; path is not a directory.`);
+      process.exit(1);
+    }
+    throw error;
+  }
+}
+
+function readOptionalText(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
       return;
     }
-    console.error(
-      `[sync-domains] ${label} not found at ${source} and no prior copy at ${dest}.`,
-    );
-    process.exit(1);
+    throw error;
   }
-  mkdirSync(dirname(dest), { recursive: true });
-  copyFileSync(source, dest);
-  console.log(`[sync-domains] synced ${source} -> ${dest}`);
 }
 
 const domainsDest = resolve(consoleRoot, "lib", "domains.generated.ts");
@@ -54,9 +75,9 @@ syncArtifact(
  * verbatim) so the console typechecks. Upstream codegen.mjs should add this field
  * to the interface; see integrationNeeded.
  */
-if (existsSync(domainsDest)) {
-  const src = readFileSync(domainsDest, "utf8");
-  if (src.includes('"tieredLimits"') && !/tieredLimits\?: string;/.test(src)) {
+{
+  const src = readOptionalText(domainsDest);
+  if (src && src.includes('"tieredLimits"') && !/tieredLimits\?: string;/.test(src)) {
     const patched = src.replace(
       "  entitlementGate: string | null;",
       "  /** Added by sync-domains shim; upstream codegen should emit this. */\n  tieredLimits?: string;\n  entitlementGate: string | null;",
