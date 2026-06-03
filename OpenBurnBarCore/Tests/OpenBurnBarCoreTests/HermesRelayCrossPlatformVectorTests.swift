@@ -3,15 +3,19 @@ import Foundation
 import OpenBurnBarCore
 import XCTest
 
-/// Generates a fixed Hermes relay wire vector and pins it to
+/// Verifies the fixed Hermes relay wire vector pinned at
 /// `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector.json`.
 ///
 /// The Android suite (`HermesRelayWireVectorTest`) replays the same JSON
 /// through the Kotlin implementation. A mismatch on either side
 /// signals a wire-protocol drift between iOS / macOS and Android.
+///
+/// Set `OPENBURNBAR_REGENERATE_HERMES_VECTORS=1` to intentionally rewrite the
+/// Swift fixtures after a contract revision bump. Normal test runs must be
+/// read-only: AES-GCM nonces and the wrapping key are intentionally random.
 final class HermesRelayCrossPlatformVectorTests: XCTestCase {
-    /// Whenever this string changes — bump it — Android must regenerate
-    /// the fixture (`swift test --filter HermesRelayCrossPlatformVectorTests`).
+    /// Whenever this string changes, Android must regenerate its vendored copy
+    /// by running this suite with `OPENBURNBAR_REGENERATE_HERMES_VECTORS=1`.
     private static let vectorRevision = "v1"
 
     /// Revision of the *gateway* wire vector (`HermesGatewayWireVector.json`).
@@ -127,14 +131,7 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
             chunkCiphertext: chunkCiphertext
         )
 
-        try FileManager.default.createDirectory(
-            at: Self.fixtureURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(vector)
-        try data.write(to: Self.fixtureURL, options: .atomic)
+        try updateOrAssertRelayFixture(vector)
     }
 
     // MARK: - Gateway wire vector (phone⇄agent E2E)
@@ -348,14 +345,7 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
             modelSwitch: modelSwitch
         )
 
-        try FileManager.default.createDirectory(
-            at: Self.gatewayFixtureURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(vector)
-        try data.write(to: Self.gatewayFixtureURL, options: .atomic)
+        try updateOrAssertGatewayFixture(vector)
     }
 
     /// The gateway AAD labels are the cross-language contract: this asserts the
@@ -378,6 +368,265 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
             String(data: HermesRelayCrypto.gatewayMessageKeyAAD(uid: "u", clientId: "c", messageId: "m"), encoding: .utf8),
             "OpenBurnBar-HermesRelay-v1|gatewayMessageKey|u|c|m"
         )
+    }
+
+    // MARK: - Fixture assertion / regeneration
+
+    private static var shouldRegenerateFixtures: Bool {
+        guard let value = ProcessInfo.processInfo.environment["OPENBURNBAR_REGENERATE_HERMES_VECTORS"] else {
+            return false
+        }
+        return ["1", "true", "yes"].contains(value.lowercased())
+    }
+
+    private func updateOrAssertRelayFixture(_ vector: WireVector) throws {
+        let data = try Self.encodeFixture(vector)
+        if Self.shouldRegenerateFixtures {
+            try Self.writeFixture(data, to: Self.fixtureURL)
+            return
+        }
+
+        let fixture = try JSONDecoder().decode(WireVector.self, from: Data(contentsOf: Self.fixtureURL))
+        assertRelayStableFields(fixture, match: vector)
+        try assertRelayVectorRoundTrips(fixture)
+    }
+
+    private func updateOrAssertGatewayFixture(_ vector: GatewayWireVector) throws {
+        let data = try Self.encodeFixture(vector)
+        if Self.shouldRegenerateFixtures {
+            try Self.writeFixture(data, to: Self.gatewayFixtureURL)
+            return
+        }
+
+        let fixture = try JSONDecoder().decode(GatewayWireVector.self, from: Data(contentsOf: Self.gatewayFixtureURL))
+        assertGatewayStableFields(fixture, match: vector)
+        try assertGatewayVectorRoundTrips(fixture)
+    }
+
+    private static func encodeFixture<T: Encodable>(_ value: T) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(value)
+    }
+
+    private static func writeFixture(_ data: Data, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func assertRelayStableFields(_ fixture: WireVector, match expected: WireVector) {
+        XCTAssertEqual(fixture.revision, expected.revision)
+        XCTAssertEqual(fixture.algorithm, expected.algorithm)
+        XCTAssertEqual(fixture.recipientPrivateKey, expected.recipientPrivateKey)
+        XCTAssertEqual(fixture.recipientPublicKey, expected.recipientPublicKey)
+        XCTAssertEqual(fixture.symmetricKey, expected.symmetricKey)
+        XCTAssertEqual(fixture.uid, expected.uid)
+        XCTAssertEqual(fixture.connectionId, expected.connectionId)
+        XCTAssertEqual(fixture.requestId, expected.requestId)
+        XCTAssertEqual(fixture.requestAAD, expected.requestAAD)
+        XCTAssertEqual(fixture.keyAAD, expected.keyAAD)
+        XCTAssertEqual(fixture.chunkAAD, expected.chunkAAD)
+        XCTAssertEqual(fixture.chunkSequence, expected.chunkSequence)
+        XCTAssertEqual(fixture.chunkKind, expected.chunkKind)
+        XCTAssertEqual(fixture.plaintextPath, expected.plaintextPath)
+        XCTAssertEqual(fixture.plaintextSessionId, expected.plaintextSessionId)
+        XCTAssertEqual(fixture.plaintextBody, expected.plaintextBody)
+        XCTAssertEqual(fixture.chunkPlaintext, expected.chunkPlaintext)
+    }
+
+    private func assertRelayVectorRoundTrips(_ vector: WireVector) throws {
+        XCTAssertEqual(vector.requestAAD, String(data: HermesRelayCrypto.requestAAD(
+            uid: vector.uid,
+            connectionID: vector.connectionId,
+            requestID: vector.requestId
+        ), encoding: .utf8))
+        XCTAssertEqual(vector.keyAAD, String(data: HermesRelayCrypto.keyAAD(
+            uid: vector.uid,
+            connectionID: vector.connectionId,
+            requestID: vector.requestId
+        ), encoding: .utf8))
+        XCTAssertEqual(vector.chunkAAD, String(data: HermesRelayCrypto.chunkAAD(
+            uid: vector.uid,
+            connectionID: vector.connectionId,
+            requestID: vector.requestId,
+            sequence: vector.chunkSequence,
+            kind: vector.chunkKind
+        ), encoding: .utf8))
+
+        let privateKeyData = try XCTUnwrap(Data(base64Encoded: vector.recipientPrivateKey))
+        let symmetricKey = try XCTUnwrap(Data(base64Encoded: vector.symmetricKey))
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            vector.wrappedKey,
+            privateKey: HermesRelayPrivateKey(rawRepresentation: privateKeyData),
+            aad: Data(vector.keyAAD.utf8)
+        )
+        XCTAssertEqual(unwrapped, symmetricKey)
+
+        let openedPlaintext = try HermesRelayCrypto.openBase64(
+            ciphertext: vector.payloadCiphertext,
+            keyData: symmetricKey,
+            aad: Data(vector.requestAAD.utf8)
+        )
+        XCTAssertEqual(openedPlaintext.base64EncodedString(), vector.encodedPlaintext)
+        let payload = try JSONDecoder().decode(HermesRelayEncryptedRequestPayload.self, from: openedPlaintext)
+        XCTAssertEqual(payload.path, vector.plaintextPath)
+        XCTAssertEqual(payload.sessionId, vector.plaintextSessionId)
+        XCTAssertEqual(payload.body, vector.plaintextBody)
+
+        let openedChunk = try HermesRelayCrypto.openBase64(
+            ciphertext: vector.chunkCiphertext,
+            keyData: symmetricKey,
+            aad: Data(vector.chunkAAD.utf8)
+        )
+        XCTAssertEqual(String(data: openedChunk, encoding: .utf8), vector.chunkPlaintext)
+    }
+
+    private func assertGatewayStableFields(_ fixture: GatewayWireVector, match expected: GatewayWireVector) {
+        XCTAssertEqual(fixture.revision, expected.revision)
+        XCTAssertEqual(fixture.algorithm, expected.algorithm)
+        XCTAssertEqual(fixture.keyVersion, expected.keyVersion)
+        assertGatewayEventStableFields(fixture.event, match: expected.event)
+        assertGatewayMessageStableFields(fixture.message, match: expected.message)
+        assertGatewayEventStableFields(fixture.modelSwitch, match: expected.modelSwitch)
+    }
+
+    private func assertGatewayEventStableFields(_ fixture: GatewayEventVector, match expected: GatewayEventVector) {
+        XCTAssertEqual(fixture.uid, expected.uid)
+        XCTAssertEqual(fixture.clientId, expected.clientId)
+        XCTAssertEqual(fixture.eventId, expected.eventId)
+        XCTAssertEqual(fixture.recipientPrivateKey, expected.recipientPrivateKey)
+        XCTAssertEqual(fixture.recipientPublicKey, expected.recipientPublicKey)
+        XCTAssertEqual(fixture.symmetricKey, expected.symmetricKey)
+        XCTAssertEqual(fixture.payloadAAD, expected.payloadAAD)
+        XCTAssertEqual(fixture.keyAAD, expected.keyAAD)
+        XCTAssertEqual(fixture.plaintext, expected.plaintext)
+        XCTAssertEqual(fixture.encodedPlaintext, expected.encodedPlaintext)
+    }
+
+    private func assertGatewayMessageStableFields(_ fixture: GatewayMessageVector, match expected: GatewayMessageVector) {
+        XCTAssertEqual(fixture.uid, expected.uid)
+        XCTAssertEqual(fixture.clientId, expected.clientId)
+        XCTAssertEqual(fixture.messageId, expected.messageId)
+        XCTAssertEqual(fixture.recipientPrivateKey, expected.recipientPrivateKey)
+        XCTAssertEqual(fixture.recipientPublicKey, expected.recipientPublicKey)
+        XCTAssertEqual(fixture.symmetricKey, expected.symmetricKey)
+        XCTAssertEqual(fixture.payloadAAD, expected.payloadAAD)
+        XCTAssertEqual(fixture.keyAAD, expected.keyAAD)
+        XCTAssertEqual(fixture.plaintext, expected.plaintext)
+        XCTAssertEqual(fixture.encodedPlaintext, expected.encodedPlaintext)
+    }
+
+    private func assertGatewayVectorRoundTrips(_ vector: GatewayWireVector) throws {
+        XCTAssertEqual(vector.revision, Self.gatewayVectorRevision)
+        XCTAssertEqual(vector.algorithm, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(vector.keyVersion, HermesRelayCrypto.keyVersion)
+
+        try assertGatewayEventVectorRoundTrips(
+            vector.event,
+            expectedPayloadAAD: HermesRelayCrypto.gatewayEventAAD(
+                uid: vector.event.uid,
+                clientId: vector.event.clientId,
+                eventId: vector.event.eventId
+            ),
+            expectedKeyAAD: HermesRelayCrypto.gatewayEventKeyAAD(
+                uid: vector.event.uid,
+                clientId: vector.event.clientId,
+                eventId: vector.event.eventId
+            )
+        )
+        try assertGatewayMessageVectorRoundTrips(
+            vector.message,
+            expectedPayloadAAD: HermesRelayCrypto.gatewayMessageAAD(
+                uid: vector.message.uid,
+                clientId: vector.message.clientId,
+                messageId: vector.message.messageId
+            ),
+            expectedKeyAAD: HermesRelayCrypto.gatewayMessageKeyAAD(
+                uid: vector.message.uid,
+                clientId: vector.message.clientId,
+                messageId: vector.message.messageId
+            )
+        )
+        try assertGatewayEventVectorRoundTrips(
+            vector.modelSwitch,
+            expectedPayloadAAD: HermesRelayCrypto.gatewayEventAAD(
+                uid: vector.modelSwitch.uid,
+                clientId: vector.modelSwitch.clientId,
+                eventId: vector.modelSwitch.eventId
+            ),
+            expectedKeyAAD: HermesRelayCrypto.gatewayEventKeyAAD(
+                uid: vector.modelSwitch.uid,
+                clientId: vector.modelSwitch.clientId,
+                eventId: vector.modelSwitch.eventId
+            )
+        )
+
+        let eventPrivateKeyData = try XCTUnwrap(Data(base64Encoded: vector.event.recipientPrivateKey))
+        let eventPrivateKey = try HermesRelayPrivateKey(rawRepresentation: eventPrivateKeyData)
+        XCTAssertNotEqual(vector.event.payloadAAD, vector.event.keyAAD)
+        XCTAssertNotEqual(vector.message.payloadAAD, vector.message.keyAAD)
+        XCTAssertThrowsError(
+            try HermesRelayCrypto.unwrapSymmetricKey(
+                vector.event.wrappedKey,
+                privateKey: eventPrivateKey,
+                aad: Data(vector.event.payloadAAD.utf8)
+            )
+        )
+    }
+
+    private func assertGatewayEventVectorRoundTrips(
+        _ vector: GatewayEventVector,
+        expectedPayloadAAD: Data,
+        expectedKeyAAD: Data
+    ) throws {
+        XCTAssertEqual(vector.payloadAAD, String(data: expectedPayloadAAD, encoding: .utf8))
+        XCTAssertEqual(vector.keyAAD, String(data: expectedKeyAAD, encoding: .utf8))
+
+        let privateKeyData = try XCTUnwrap(Data(base64Encoded: vector.recipientPrivateKey))
+        let symmetricKey = try XCTUnwrap(Data(base64Encoded: vector.symmetricKey))
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            vector.wrappedKey,
+            privateKey: HermesRelayPrivateKey(rawRepresentation: privateKeyData),
+            aad: expectedKeyAAD
+        )
+        XCTAssertEqual(unwrapped, symmetricKey)
+
+        let opened = try HermesRelayCrypto.openBase64(
+            ciphertext: vector.payloadCiphertext,
+            keyData: symmetricKey,
+            aad: expectedPayloadAAD
+        )
+        XCTAssertEqual(opened.base64EncodedString(), vector.encodedPlaintext)
+        XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
+    }
+
+    private func assertGatewayMessageVectorRoundTrips(
+        _ vector: GatewayMessageVector,
+        expectedPayloadAAD: Data,
+        expectedKeyAAD: Data
+    ) throws {
+        XCTAssertEqual(vector.payloadAAD, String(data: expectedPayloadAAD, encoding: .utf8))
+        XCTAssertEqual(vector.keyAAD, String(data: expectedKeyAAD, encoding: .utf8))
+
+        let privateKeyData = try XCTUnwrap(Data(base64Encoded: vector.recipientPrivateKey))
+        let symmetricKey = try XCTUnwrap(Data(base64Encoded: vector.symmetricKey))
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            vector.wrappedKey,
+            privateKey: HermesRelayPrivateKey(rawRepresentation: privateKeyData),
+            aad: expectedKeyAAD
+        )
+        XCTAssertEqual(unwrapped, symmetricKey)
+
+        let opened = try HermesRelayCrypto.openBase64(
+            ciphertext: vector.payloadCiphertext,
+            keyData: symmetricKey,
+            aad: expectedPayloadAAD
+        )
+        XCTAssertEqual(opened.base64EncodedString(), vector.encodedPlaintext)
+        XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
     }
 
     // MARK: - Deterministic key generation
