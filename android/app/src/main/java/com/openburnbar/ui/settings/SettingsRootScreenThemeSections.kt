@@ -28,7 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
-import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Wallpaper
@@ -451,7 +451,7 @@ internal fun RowScope.ThemePrefsAppearanceCard(
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = if (appearance == AppAppearance.EDITORIAL) Icons.Filled.Article else Icons.Filled.AutoAwesome,
+                    imageVector = if (appearance == AppAppearance.EDITORIAL) Icons.AutoMirrored.Filled.Article else Icons.Filled.AutoAwesome,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
                     tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
