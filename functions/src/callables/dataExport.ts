@@ -80,6 +80,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "cli_sessions",
       "cli_agent_mission_requests",
       "text_snippets",
+      "rollback_requests",
     ],
     storagePrefixes: [],
   },
@@ -126,6 +127,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "hermes_gateway_typing",
       "hermes_gateway_state",
       "hermes_gateway_attachments",
+      "hermes_gateway_approvals",
       "pi_agent_connections",
       "pi_agent_pairings",
       "pi_agent_relay_requests",
@@ -252,7 +254,12 @@ export function isSealedEnvelope(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   // Mirrors requireSealedText (shared.ts): AES-256-GCM text envelope …
-  if (v.algorithm === "AES-256-GCM" && typeof v.nonce === "string" && typeof v.ciphertext === "string" && typeof v.tag === "string") {
+  if (
+    v.algorithm === "AES-256-GCM" &&
+    typeof v.nonce === "string" &&
+    typeof v.ciphertext === "string" &&
+    typeof v.tag === "string"
+  ) {
     return true;
   }
   // … or a CloudVault blob/payload envelope (sealedBoxBase64 combined box).
@@ -267,7 +274,12 @@ function isExportablePrimitive(value: unknown): boolean {
   if (value === null) return true;
   const t = typeof value;
   if (t === "number" || t === "boolean") return true;
-  if (value && t === "object" && "toDate" in (value as object) && typeof (value as { toDate: unknown }).toDate === "function") {
+  if (
+    value &&
+    t === "object" &&
+    "toDate" in (value as object) &&
+    typeof (value as { toDate: unknown }).toDate === "function"
+  ) {
     return true;
   }
   return false;
