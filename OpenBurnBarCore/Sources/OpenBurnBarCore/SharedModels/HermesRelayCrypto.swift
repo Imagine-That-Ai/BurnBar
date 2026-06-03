@@ -96,6 +96,38 @@ public enum HermesRelayCrypto {
         aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
     }
 
+    // MARK: Hermes Gateway AAD namespacing
+    //
+    // The hosted chat gateway reuses this exact envelope (`p256-hkdf-sha256-aesgcm`,
+    // 65-byte X9.63 pubkeys, `wrappedKey = ephemeralPub(65) || AES-GCM combined`).
+    // Only the AAD parts differ so a gateway event/message frame can never be
+    // replayed onto the realtime-relay request path (and vice versa). The prefix
+    // (`OpenBurnBar-HermesRelay-v1|`) and the key-wrap shared info stay the single
+    // source of truth via the private `aad`/`keyWrapSharedInfo`.
+
+    /// AAD for the sealed payload of a phone→agent gateway event
+    /// (`hermes_gateway_events`), binding owner + client + the client-generated
+    /// event id so a ciphertext cannot be moved across users/clients/events.
+    public static func gatewayEventAAD(uid: String, clientId: String, eventId: String) -> Data {
+        aad(["gatewayEvent", uid, clientId, eventId])
+    }
+
+    /// AAD for wrapping the per-event symmetric key to the agent's relay pubkey.
+    public static func gatewayEventKeyAAD(uid: String, clientId: String, eventId: String) -> Data {
+        aad(["gatewayEventKey", uid, clientId, eventId])
+    }
+
+    /// AAD for the sealed payload of an agent→phone gateway message
+    /// (`hermes_gateway_messages`), bound to owner + client + message id.
+    public static func gatewayMessageAAD(uid: String, clientId: String, messageId: String) -> Data {
+        aad(["gatewayMessage", uid, clientId, messageId])
+    }
+
+    /// AAD for unwrapping the per-message symmetric key with the phone's relay key.
+    public static func gatewayMessageKeyAAD(uid: String, clientId: String, messageId: String) -> Data {
+        aad(["gatewayMessageKey", uid, clientId, messageId])
+    }
+
     public static func sealToBase64(plaintext: Data, keyData: Data, aad: Data) throws -> String {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey

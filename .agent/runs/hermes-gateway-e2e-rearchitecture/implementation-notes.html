@@ -91,11 +91,12 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> Goal created. Implementation work starts after validation is defined.</li>
-    <li><strong>Current phase:</strong> Define validation, then begin the first concrete task.</li>
-    <li><strong>Blockers:</strong> None recorded.</li>
-    <li><strong>Next action:</strong> Write the first working checkpoint here before or after implementation starts.</li>
-    <li><strong>Protected paths:</strong> None recorded.</li>
+    <li><strong>Status:</strong> [doing] IMPLEMENTED + verifying. Gateway E2E + 3 tails built across both repos (10 streams). Crux PROVEN: Python opens Swift-sealed wire vectors 23/23. iOS build is the last gate (running).</li>
+    <li><strong>Decision (Alberto):</strong> make the gateway truly E2E by giving each paired agent a relay keypair (NOT vault key to third parties), reusing HermesRelayCrypto. Ship as 2 fork PRs (PR1 BurnBar platform reconcile / PR2 E2EE crypto+adapter) + a BurnBar-repo companion (server/iOS/rules/honesty). Plus the 3 tails in BurnBar.</li>
+    <li><strong>Design + contract:</strong> evidence/CONTRACT.md (locked wire/crypto/field contract + stream ownership) and evidence/recon-gw-*.md (8 slice briefs). Crypto interop spec in recon-gw-crypto-interop.md.</li>
+    <li><strong>Validation so far (GREEN):</strong> fork crypto interop 23/23; fork BurnBar plugin 24/24; functions tsc clean; data-domains 16/16; firestore rules emulator 45/45 (fixed media test7 + T9 flag-day); privacy scan PASS; functions vitest 228; gateway+relay node tests pass; OpenBurnBarCore build + 31 swift tests (incl new subscriptionDocID, wire-vector, PensieveVectorCloak); Android compile 0 errors. PENDING: iOS OpenBurnBarMobile build-for-testing.</li>
+    <li><strong>Next action:</strong> confirm iOS build; then carve diffs into PR1/PR2 (fork) + companion (BurnBar); remove api_server.py from the PR1 branch; show diffs to Alberto; open the 2 fork PRs with gh.</li>
+    <li><strong>Baselines:</strong> BurnBar 815ae5f91, fork 7ac8ae02 (branch ajnunezg/burnbar-platform). Fork pre-impl dirty: api_server.py (remove from PR1), adapter.py (superseded by reconcile).</li>
   </ul>
 
   <h2>Progress Timeline</h2>
@@ -134,6 +135,13 @@
         phase: "start",
         actor: "agent",
         summary: "Goal ledger created."
+      },
+      {
+        ts: "2026-06-03T09:30:00Z",
+        status: "validated",
+        phase: "verify-and-carve",
+        actor: "agent",
+        summary: "ALL GATES GREEN incl iOS build-for-testing SUCCEEDED. Fork PRs carved in isolated worktrees: PR1 ajnunezg/burnbar-gateway-pr1 (platform, 1480 ins, ZERO crypto, 17 plugin tests pass) + PR2 ajnunezg/burnbar-gateway-e2ee stacked (E2EE, 1628 ins, 47 tests incl 23 byte-exact interop). No api_server.py/junk. Diffs saved evidence/PR1.diff + PR2.diff. BurnBar companion = 49 uncommitted code files. Awaiting Alberto: PR target + companion handling + push/open go-ahead."
       }
     ];
 

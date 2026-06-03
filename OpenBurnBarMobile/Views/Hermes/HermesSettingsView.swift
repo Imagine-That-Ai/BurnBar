@@ -512,7 +512,7 @@ struct HermesSettingsView: View {
                 }
             }
 
-            Text(reply.text ?? "Hermes sent a reply through BurnBar Cloud.")
+            Text(gatewayReplyBodyText(reply))
                 .font(.body)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -533,6 +533,23 @@ struct HermesSettingsView: View {
                 .stroke(MobileTheme.success.opacity(0.30), lineWidth: 0.75)
         )
         .accessibilityElement(children: .combine)
+    }
+
+    /// The body to render for a gateway reply. Sealed replies that opened on this
+    /// device show their plaintext; a sealed reply this device cannot open (key
+    /// mismatch / sealed for another paired device) shows a graceful explanation
+    /// instead of an empty bubble; legacy plaintext replies show their `text`.
+    private func gatewayReplyBodyText(
+        _ reply: HermesGatewayMessageRecord,
+        fallback: String = "Hermes sent a reply through BurnBar Cloud."
+    ) -> String {
+        if let body = reply.displayText, !body.isEmpty {
+            return body
+        }
+        if reply.isSealed {
+            return "This reply is sealed for another device. Open BurnBar on the device that approved this gateway to read it."
+        }
+        return fallback
     }
 
     private func gatewayPendingHero(_ pending: HermesGatewayQueuedEvent) -> some View {
@@ -1083,7 +1100,7 @@ struct HermesSettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                Text(reply.text ?? "Hermes sent a reply.")
+                Text(gatewayReplyBodyText(reply, fallback: "Hermes sent a reply."))
                     .font(.body)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2322,6 +2339,7 @@ final class HermesGatewaySettingsStore {
             let event = try await repository.enqueueHermesGatewayEvent(
                 text: text,
                 threadId: threadId,
+                targetClient: targetClient,
                 targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
@@ -2363,6 +2381,7 @@ final class HermesGatewaySettingsStore {
             let event = try await repository.enqueueHermesGatewayModelSwitch(
                 modelId: trimmed,
                 threadId: threadId,
+                targetClient: targetClient,
                 targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
@@ -2452,6 +2471,7 @@ final class HermesGatewaySettingsStore {
         do {
             let event = try await repository.enqueueHermesGatewayEvent(
                 text: text,
+                targetClient: targetClient,
                 targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
@@ -2489,9 +2509,17 @@ final class HermesGatewaySettingsStore {
             setNotice("Could not watch Hermes replies: \(error.localizedDescription)", style: .error)
             return
         }
-        let messages = snapshot?.documents.compactMap { document in
+        // Open sealed replies with this phone's relay key before resolving/rendering.
+        // Legacy plaintext docs pass through unchanged; a doc this device cannot
+        // open keeps `resolvedText == nil` and renders the sealed-for-another-device
+        // state instead of empty.
+        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let messages = (snapshot?.documents.compactMap { document in
             HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
-        } ?? []
+        } ?? []).map { record -> HermesGatewayMessageRecord in
+            guard let uid = listenedUID, !uid.isEmpty else { return record }
+            return record.decodedText(using: keypair, uid: uid)
+        }
 
         if let pendingTestEvent {
             guard let reply = HermesGatewayMessageResolver.newestReply(
@@ -2545,7 +2573,7 @@ final class HermesGatewaySettingsStore {
         AgentReplyNotificationService.shared.presentLocalReply(
             id: reply.id,
             title: "Hermes replied",
-            preview: reply.text ?? "Hermes sent a reply through BurnBar Cloud.",
+            preview: reply.displayText ?? "Hermes sent a reply through BurnBar Cloud.",
             runtime: AssistantRuntimeID.hermes.rawValue,
             threadID: reply.threadId ?? gatewayThreadID
         )

@@ -66,6 +66,46 @@ function applySet(path: string, data: Record<string, unknown>) {
   stored.set(path, { ...stored.get(path), ...data });
 }
 
+type WherePred = { field: string; op: string; value: unknown };
+
+/** A doc snapshot shaped like a Firestore QueryDocumentSnapshot for the query path. */
+function docSnap(path: string) {
+  return {
+    id: path.split("/").pop(),
+    ref: { __path: path },
+    exists: stored.has(path),
+    data: () => stored.get(path),
+    get: (field: string) => stored.get(path)?.[field],
+  };
+}
+
+/**
+ * A query double that RECORDS `where` predicates and honors them on `.get()`
+ * (so the dedupHashVersion / embeddingModelVersion floors are actually tested)
+ * and on `.findNearest()` (search) — mirroring the predicate-recording pattern
+ * used in privacyBackfill.test.ts. `limit` caps results; `findNearest` ignores
+ * vector distance (the fake just returns the filtered set, score-less).
+ */
+function makeQuery(base: string, preds: WherePred[] = [], limitN = Infinity) {
+  const matchingPaths = () =>
+    [...stored.keys()].filter((path) => {
+      if (!path.startsWith(`${base}/`)) return false;
+      const data = stored.get(path) ?? {};
+      return preds.every((p) => p.op === "==" && (data as Record<string, unknown>)[p.field] === p.value);
+    });
+  const self = {
+    where: (field: string, op: string, value: unknown) => makeQuery(base, [...preds, { field, op, value }], limitN),
+    limit: (n: number) => makeQuery(base, preds, n),
+    findNearest: (_opts: unknown) => self, // distance ignored; filter set is what matters
+    get: async () => {
+      const paths = matchingPaths().slice(0, limitN);
+      const docs = paths.map((path) => docSnap(path));
+      return { empty: docs.length === 0, size: docs.length, docs };
+    },
+  };
+  return self;
+}
+
 function makeDb() {
   const docRef = (path: string): FakeRef => ({
     __path: path,
@@ -81,6 +121,7 @@ function makeDb() {
   const collectionRef = (base: string) => ({
     doc: (id: string) => docRef(`${base}/${id}`),
     aggregate: () => ({ get: async () => ({ data: () => ({ n: 0, bytes: 0 }) }) }),
+    where: (field: string, op: string, value: unknown) => makeQuery(base, [{ field, op, value }]),
   });
   return {
     doc: (path: string) => docRef(path),
@@ -89,7 +130,7 @@ function makeDb() {
     // Mirrors commitBatchedWrites' use of db.batch() + batch.set(ref, data).
     batch: () => ({
       set: (ref: FakeRef, data: Record<string, unknown>) => applySet(ref.__path, data),
-      delete: (ref: FakeRef) => void stored.delete(ref.__path),
+      delete: (ref: { __path: string }) => void stored.delete(ref.__path),
       commit: async () => undefined,
     }),
   };
@@ -238,5 +279,133 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
 
     await expect(run(req)).rejects.toThrow(/cloakedVector/);
     expect([...stored.keys()].some((k) => k.startsWith("users/userRawEmbed/cloud_search_knowledge/"))).toBe(false);
+  });
+});
+
+// --- FLAG-DAY: dedup-v0 retirement (read floor + whole-doc purge) -------------
+
+// The bumped production tag every live v1 vector now lands under (must stay
+// byte-identical to PensieveVectorCloak.embeddingModelVersion / embed.ts).
+const NEW_MODEL_TAG = "bge-small-en-v1.5-vault-dedup-v1";
+// The retired tag every stranded legacy v0 / ancient row still carries.
+const RETIRED_MODEL_TAG = "bge-small-en-v1.5";
+
+function searchRequest(uid: string, modelTag: string) {
+  return {
+    auth: { uid, token: {} },
+    app: { appId: "test-app" },
+    rawRequest: { headers: {} },
+    data: {
+      queryVector: Array.from({ length: 384 }, (_, i) => Math.cos(i) / 9),
+      embeddingModelVersion: modelTag,
+      limit: 50,
+    },
+  };
+}
+
+/** Seed a stored knowledge vector directly (bypassing the write path). */
+function seedVector(
+  uid: string,
+  vectorId: string,
+  fields: { dedupHashVersion: number; embeddingModelVersion: string; dedupHash: string },
+) {
+  stored.set(`users/${uid}/cloud_search_knowledge/${vectorId}`, {
+    uid,
+    vectorId,
+    sealedCiphertext: sealedText("ct"),
+    sealedMetadata: sealedText("md"),
+    sourceKind: "repo_docs",
+    chunkIndex: 0,
+    byteCount: 16,
+    embedding: { __vector: Array.from({ length: 384 }, () => 0) },
+    ...fields,
+  });
+}
+
+describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () => {
+  beforeEach(() => stored.clear());
+  afterEach(() => vi.clearAllMocks());
+
+  it("searchKnowledge floors dedupHashVersion==1: a seeded v0 row is NOT served", async () => {
+    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
+    const run = (searchKnowledge as unknown as Runnable).run;
+
+    // A legacy v0 row whose doc id is the cleartext SHA-256 oracle, on the old tag.
+    seedVector("userSearch", KNOWN_PLAINTEXT_SHA256, {
+      dedupHashVersion: 0,
+      embeddingModelVersion: RETIRED_MODEL_TAG,
+      dedupHash: KNOWN_PLAINTEXT_SHA256,
+    });
+    // A fresh v1 row on the new tag.
+    seedVector("userSearch", "v1doc", {
+      dedupHashVersion: 1,
+      embeddingModelVersion: NEW_MODEL_TAG,
+      dedupHash: "aa".repeat(32),
+    });
+
+    const res = (await run(searchRequest("userSearch", NEW_MODEL_TAG))) as {
+      hits: Array<{ vectorId: string }>;
+    };
+    const ids = res.hits.map((h) => h.vectorId);
+    // The v0 oracle row is unreachable; only the v1 row surfaces.
+    expect(ids).toContain("v1doc");
+    expect(ids).not.toContain(KNOWN_PLAINTEXT_SHA256);
+  });
+
+  it("searchKnowledge at the new tag never returns a v0 row even on the retired tag", async () => {
+    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
+    const run = (searchKnowledge as unknown as Runnable).run;
+
+    // Only a v0 row exists, on the retired tag. Searching the new tag returns nothing.
+    seedVector("userSearch2", KNOWN_PLAINTEXT_SHA256, {
+      dedupHashVersion: 0,
+      embeddingModelVersion: RETIRED_MODEL_TAG,
+      dedupHash: KNOWN_PLAINTEXT_SHA256,
+    });
+    const res = (await run(searchRequest("userSearch2", NEW_MODEL_TAG))) as {
+      hits: Array<{ vectorId: string }>;
+    };
+    expect(res.hits).toHaveLength(0);
+  });
+
+  it("purgeLegacyKnowledgeVectors deletes v0 + retired-tag rows, keeps v1", async () => {
+    const { purgeLegacyKnowledgeVectors } = await import("../callables/knowledgeMemory.js");
+    const run = (purgeLegacyKnowledgeVectors as unknown as Runnable).run;
+    const uid = "userPurge";
+
+    // (a) explicit v0 row, (b) pre-versioned ancient on the retired tag (no
+    // dedupHashVersion field), (c) a live v1 row that MUST survive.
+    seedVector(uid, "v0doc", {
+      dedupHashVersion: 0,
+      embeddingModelVersion: NEW_MODEL_TAG, // even if re-tagged, v0 is deleted by version
+      dedupHash: KNOWN_PLAINTEXT_SHA256,
+    });
+    stored.set(`users/${uid}/cloud_search_knowledge/ancientDoc`, {
+      uid,
+      vectorId: "ancientDoc",
+      // No dedupHashVersion field — reached ONLY by the retired-tag predicate.
+      embeddingModelVersion: RETIRED_MODEL_TAG,
+      dedupHash: "cc".repeat(32),
+    });
+    seedVector(uid, "v1doc", {
+      dedupHashVersion: 1,
+      embeddingModelVersion: NEW_MODEL_TAG,
+      dedupHash: "dd".repeat(32),
+    });
+
+    const res = (await run({
+      auth: { uid, token: {} },
+      app: { appId: "test-app" },
+      rawRequest: { headers: {} },
+      data: {},
+    })) as { deletedByVersion: number; deletedByRetiredTag: number; deleted: number };
+
+    // v0 (by version) + ancient (by retired tag) deleted; v1 survives.
+    expect(stored.has(`users/${uid}/cloud_search_knowledge/v0doc`)).toBe(false);
+    expect(stored.has(`users/${uid}/cloud_search_knowledge/ancientDoc`)).toBe(false);
+    expect(stored.has(`users/${uid}/cloud_search_knowledge/v1doc`)).toBe(true);
+    expect(res.deletedByVersion).toBe(1);
+    expect(res.deletedByRetiredTag).toBe(1);
+    expect(res.deleted).toBe(2);
   });
 });

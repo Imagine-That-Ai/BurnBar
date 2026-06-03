@@ -177,7 +177,10 @@ final class RollbackService {
             ),
             let scope = try? JSONDecoder().decode(RollbackScope.self, from: Data(scopeRaw.utf8)),
             let statusRaw = data["status"] as? String,
-            let status = RollbackRequest.Status(rawValue: statusRaw)
+            // Route through the tolerant resolver so the legacy camelCase
+            // `"inFlight"` wire value (and `cancelled`) decode; a genuinely
+            // unknown status still drops the row via the guard.
+            let status = RollbackRequest.Status(wireValue: statusRaw)
         else { return nil }
         let requestedAt = (data["requestedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
         let resolvedAt = (data["resolvedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }

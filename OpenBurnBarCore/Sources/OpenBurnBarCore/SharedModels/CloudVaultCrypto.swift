@@ -277,6 +277,23 @@ public enum CloudVaultCrypto {
         return Data(mac).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Deterministic, opaque Firestore document id for a subscription topic.
+    ///
+    /// Cloaks the subscription graph: the legacy doc id was the human-readable
+    /// `agentURI:topicID` (with `/`,`:`→`_`), letting the server enumerate exactly
+    /// which agents a user follows. This replaces it with a vault-keyed HMAC of
+    /// `"agentURI:topicID"` so the same `(agentURI, topicID, vaultKey)` always
+    /// hashes to the same id (unsubscribe-by-id and upsert idempotency survive)
+    /// while a different vault key — or a different agent — yields an unrelated id.
+    /// The `sub_` + 32-hex output satisfies Firestore's `[a-z0-9_-]` doc-id rules
+    /// unchanged. Mirrors `pensieveSlugHmac`/`projectMemoryDocID`:
+    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "subscription-topic") → HMAC<SHA256>("agentURI:topicID")`.
+    public static func subscriptionDocID(agentURI: String, topicID: String, keyData: Data) throws -> String {
+        let key = try subscriptionDocIDKey(from: keyData)
+        let mac = HMAC<SHA256>.authenticationCode(for: Data("\(agentURI):\(topicID)".utf8), using: key)
+        return "sub_" + Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
     private static func tokenHashes(forTerms terms: [String], key: SymmetricKey, limit: Int) -> [String] {
         guard limit > 0 else { return [] }
         var seen = Set<String>()
@@ -541,6 +558,21 @@ public enum CloudVaultCrypto {
             inputKeyMaterial: SymmetricKey(data: data),
             salt: Data(),
             info: Data("pensieve-dedup:\(label)".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    /// Per-user subscription-graph doc-id subkey. Empty HKDF salt, info
+    /// `"subscription-topic"` — the byte-for-byte derivation the Kotlin mirror
+    /// (`AgentSubscriptionTopicStore.documentID`) must reproduce so the same
+    /// `(agentURI, topicID, vaultKey)` yields an identical opaque doc id on iOS
+    /// and Android.
+    private static func subscriptionDocIDKey(from data: Data) throws -> SymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: data),
+            salt: Data(),
+            info: Data("subscription-topic".utf8),
             outputByteCount: 32
         )
     }

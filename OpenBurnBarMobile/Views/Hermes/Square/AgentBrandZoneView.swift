@@ -1091,23 +1091,10 @@ final class AgentSubscriptionTopicStore {
         topicID: String = AgentBrandQuickActionComposer.defaultSubscriptionTopicID,
         deliveryMode: SkillRunDeliveryMode
     ) async throws {
-        let uid = try currentUserID()
         let id = "\(agentURI):\(topicID)"
-        try await collection(uid: uid)
-            .document(Self.documentID(agentURI: agentURI, topicID: topicID))
-            .setData([
-            "deliveryMode": deliveryMode.rawValue,
-            "minimumEventImportance": deliveryMode == .fullStream
-                ? SkillRunEventImportance.normal.rawValue
-                : SkillRunEventImportance.actionRequired.rawValue,
-            "isMuted": deliveryMode == .muted,
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
-
         guard let existing = topics.first(where: { $0.id == id }) else { return }
         let updated = existing.withDeliveryMode(deliveryMode)
-        mergeLocal(updated)
-        lastError = nil
+        try await upsert(updated)
     }
 
     func upsert(_ topic: SubscriptionTopic) async throws {
@@ -1117,9 +1104,22 @@ final class AgentSubscriptionTopicStore {
             .keyData
         var payload = try Self.encodeTopic(topic, vaultKey: vaultKey)
         payload["updatedAt"] = FieldValue.serverTimestamp()
-        try await collection(uid: uid)
-            .document(Self.documentID(agentURI: topic.agentURI, topicID: topic.topicID))
-            .setData(payload, merge: true)
+        // Merge writes must actively remove legacy plaintext fields; otherwise
+        // Firestore evaluates the post-merge document as sealed+plaintext and
+        // rejects the reseal. `agentURI`/`topicID` join the display fields now
+        // that the subscription graph itself is sealed.
+        payload["displayName"] = FieldValue.delete()
+        payload["description"] = FieldValue.delete()
+        payload["agentURI"] = FieldValue.delete()
+        payload["topicID"] = FieldValue.delete()
+        let topicCollection = collection(uid: uid)
+        let opaqueID = try Self.documentID(agentURI: topic.agentURI, topicID: topic.topicID, vaultKey: vaultKey)
+        try await topicCollection.document(opaqueID).setData(payload, merge: true)
+        for legacyID in Self.legacyCleartextDocumentIDs(agentURI: topic.agentURI, topicID: topic.topicID)
+            where legacyID != opaqueID
+        {
+            try? await topicCollection.document(legacyID).delete()
+        }
         mergeLocal(topic)
         lastError = nil
     }
@@ -1130,9 +1130,20 @@ final class AgentSubscriptionTopicStore {
     ) async throws {
         let uid = try currentUserID()
         let id = "\(agentURI):\(topicID)"
-        try await collection(uid: uid)
-            .document(Self.documentID(agentURI: agentURI, topicID: topicID))
-            .delete()
+        // Resolve the vault key so the opaque doc id can be recomputed for the
+        // delete. Fall back to the read key (the doc-id key is deterministic for
+        // either accessor — both return the same active vault key).
+        let vaultKey = try? await MobileCloudVaultKeyAccess
+            .keyForReading(uid: uid, firestore: firestoreProvider())?.keyData
+        let topicCollection = collection(uid: uid)
+        if let vaultKey {
+            try await topicCollection
+                .document(Self.documentID(agentURI: agentURI, topicID: topicID, vaultKey: vaultKey))
+                .delete()
+        }
+        for legacyID in Self.legacyCleartextDocumentIDs(agentURI: agentURI, topicID: topicID) {
+            try? await topicCollection.document(legacyID).delete()
+        }
         topics.removeAll { $0.id == id }
         lastError = nil
     }
@@ -1142,23 +1153,11 @@ final class AgentSubscriptionTopicStore {
         topicID: String = AgentBrandQuickActionComposer.defaultSubscriptionTopicID,
         muted: Bool
     ) async throws {
-        let uid = try currentUserID()
         let id = "\(agentURI):\(topicID)"
         let existing = topics.first(where: { $0.id == id })
         let deliveryMode: SkillRunDeliveryMode = muted
             ? .muted
             : ((existing?.deliveryMode == .muted) ? .actionOnly : (existing?.deliveryMode ?? .actionOnly))
-        try await collection(uid: uid)
-            .document(Self.documentID(agentURI: agentURI, topicID: topicID))
-            .setData([
-            "isMuted": muted,
-            "deliveryMode": deliveryMode.rawValue,
-            "minimumEventImportance": deliveryMode == .fullStream
-                ? SkillRunEventImportance.normal.rawValue
-                : SkillRunEventImportance.actionRequired.rawValue,
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
-
         guard let existing else { return }
         let updated = SubscriptionTopic(
             agentURI: existing.agentURI,
@@ -1173,8 +1172,7 @@ final class AgentSubscriptionTopicStore {
             deliveryCountThisMonth: existing.deliveryCountThisMonth,
             lastDeliveredAt: existing.lastDeliveredAt
         )
-        mergeLocal(updated)
-        lastError = nil
+        try await upsert(updated)
     }
 
     // MARK: - Internals
@@ -1239,13 +1237,15 @@ final class AgentSubscriptionTopicStore {
     }
 
     static func encodeTopic(_ topic: SubscriptionTopic, vaultKey: Data) throws -> [String: Any] {
-        // Seal the subscription display text — `displayName`/`description` echo
-        // which agent the user follows (a behavioral fingerprint). `agentURI`/
-        // `topicID` stay plaintext: they are the routing/dedup key and the doc
-        // ID is derived from them.
+        // Seal the whole subscription graph. `displayName`/`description` echo
+        // which agent the user follows (a behavioral fingerprint); `agentURI`/
+        // `topicID` ARE the graph edge — together with the opaque HMAC doc id,
+        // sealing them keeps the server from enumerating who the user follows.
+        // `cadence`/`consentGivenAt` (+ delivery fields) stay cleartext: they are
+        // the server-side order/filter inputs and carry no graph identity.
         [
-            "agentURI": topic.agentURI,
-            "topicID": topic.topicID,
+            "sealedAgentURI": try dictionary(CloudVaultCrypto.sealText(topic.agentURI, keyData: vaultKey)),
+            "sealedTopicID": try dictionary(CloudVaultCrypto.sealText(topic.topicID, keyData: vaultKey)),
             "sealedDisplayName": try dictionary(CloudVaultCrypto.sealText(topic.displayName, keyData: vaultKey)),
             "sealedDescription": try dictionary(CloudVaultCrypto.sealText(topic.description, keyData: vaultKey)),
             "cadence": topic.cadence.rawValue,
@@ -1258,15 +1258,41 @@ final class AgentSubscriptionTopicStore {
         ]
     }
 
-    private static func documentID(agentURI: String, topicID: String) -> String {
-        "\(agentURI):\(topicID)"
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ":", with: "_")
+    /// Opaque, vault-keyed Firestore doc id for a topic. Replaces the legacy
+    /// human-readable `agentURI:topicID` (with `/`,`:`→`_`) so the server can no
+    /// longer enumerate which agents the user follows. Deterministic for a given
+    /// `(agentURI, topicID, vaultKey)` — unsubscribe-by-id and upsert idempotency
+    /// are preserved. Crypto lives in `CloudVaultCrypto.subscriptionDocID`.
+    static func documentID(agentURI: String, topicID: String, vaultKey: Data) throws -> String {
+        try CloudVaultCrypto.subscriptionDocID(agentURI: agentURI, topicID: topicID, keyData: vaultKey)
+    }
+
+    static func legacyCleartextDocumentIDs(agentURI: String, topicID: String) -> [String] {
+        let raw = "\(agentURI):\(topicID)"
+        let slashOnly = raw.replacingOccurrences(of: "/", with: "_")
+        let slashAndColon = slashOnly.replacingOccurrences(of: ":", with: "_")
+        let collapsed = raw
+            .replacingOccurrences(of: #"[^A-Za-z0-9._-]+"#, with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return Array(Set([slashOnly, slashAndColon, collapsed].filter { !$0.isEmpty && !$0.contains("/") }))
+            .sorted()
     }
 
     static func decodeTopic(documentID: String, data: [String: Any], vaultKey: Data?) -> SubscriptionTopic? {
-        let agentURI = (data["agentURI"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let topicID = (data["topicID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Open the sealed graph edge, falling back to legacy plaintext for
+        // pre-migration / in-flight documents.
+        let agentURI = (openSealedString(
+            data: data,
+            sealedField: "sealedAgentURI",
+            legacyField: "agentURI",
+            vaultKey: vaultKey
+        ))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let topicID = (openSealedString(
+            data: data,
+            sealedField: "sealedTopicID",
+            legacyField: "topicID",
+            vaultKey: vaultKey
+        ))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         // Open the sealed display text, falling back to legacy plaintext for
         // pre-migration / in-flight documents.
         let displayName = (openSealedString(
@@ -1297,10 +1323,13 @@ final class AgentSubscriptionTopicStore {
         let deliveryCount = (data["deliveryCountThisMonth"] as? Int) ?? 0
         let lastDeliveredAt = decodeDate(data["lastDeliveredAt"])
 
+        // Display fallback: the doc id is now an opaque vault-keyed HMAC, not
+        // human text, so it can no longer stand in for a missing display name.
+        // Fall back to the (decoded) agent URI — never to the opaque doc id.
         let topic = SubscriptionTopic(
             agentURI: agentURI,
             topicID: topicID,
-            displayName: displayName.isEmpty ? documentID : displayName,
+            displayName: displayName.isEmpty ? agentURI : displayName,
             description: description,
             cadence: cadence,
             consentGivenAt: consentGivenAt,

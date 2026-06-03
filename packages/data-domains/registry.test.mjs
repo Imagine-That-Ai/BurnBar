@@ -215,59 +215,70 @@ test("HONEST CLAIMS: pensieve repo names are device-only with a webhook caveat",
   );
 });
 
-// connected_devices: the end-to-end relay path is sealed, but the hosted chat
-// gateway currently carries server-readable bridged message text. The label must
-// stop claiming ALL gateway payloads are sealed and name the gateway text as a
-// server-readable facet, with the committed E2E migration disclosed.
+// connected_devices: BOTH the end-to-end relay path AND the hosted chat gateway
+// are now sealed end-to-end (HermesRelayCrypto per-link P-256 ECDH + AES-256-GCM).
+// The label must no longer name gateway message text / sender names / attachment
+// file names as server-readable facets, and the sealed claim now covers the
+// gateway frame contents too. (Gateway E2E re-architecture — Wave 4.)
 
-test("HONEST CLAIMS: connected_devices distinguishes sealed relay from readable gateway chat", () => {
+test("HONEST CLAIMS: connected_devices seals both the relay and the hosted chat gateway", () => {
   const devices = registry.domains.find((d) => d.id === "connected_devices");
   assert.ok(devices, "expected the connected_devices domain");
   const serverLower = devices.serverSees.map((v) => v.toLowerCase());
-  // The hosted chat gateway text the server can currently read must be named.
-  assert.ok(
-    serverLower.some((v) => v.includes("gateway") && v.includes("message text")),
-    "connected_devices serverSees must name the readable hosted chat gateway message text",
-  );
-  // The sealed claim must be scoped to the END-TO-END relay path only, not all
-  // "relayed payload contents".
-  for (const onlyDevice of devices.deviceOnly) {
+  // The gateway is sealed now — the server must NOT claim it reads gateway
+  // message text, sender names, or attachment file names.
+  for (const leak of ["message text", "sender name", "file name"]) {
     assert.ok(
-      !/^relayed payload contents/i.test(onlyDevice.trim()),
-      "connected_devices must not claim every relayed payload is sealed (gateway chat is readable)",
+      !serverLower.some((v) => v.includes("gateway") && v.includes(leak)),
+      `connected_devices serverSees must not claim the server reads gateway ${leak} (the gateway is sealed)`,
     );
   }
+  // What the server may see is only opaque relay key material (public keys) plus
+  // routing metadata — named honestly.
   assert.ok(
-    devices.deviceOnly.map((v) => v.toLowerCase()).some((v) => v.includes("relay frame") && v.includes("sealed")),
-    "connected_devices deviceOnly must scope the sealed claim to end-to-end relay frames",
+    serverLower.some((v) => v.includes("opaque") && v.includes("key material")),
+    "connected_devices serverSees must declare the opaque relay public-key material it routes",
   );
-  // The committed gateway E2E migration is disclosed in the summary.
+  // The sealed claim now scopes to BOTH relay AND gateway frame contents.
+  assert.ok(
+    devices.deviceOnly
+      .map((v) => v.toLowerCase())
+      .some((v) => v.includes("gateway") && v.includes("sealed")),
+    "connected_devices deviceOnly must state the gateway frame contents are sealed",
+  );
+  // The summary must state the gateway is sealed end-to-end (no readable-text caveat).
   assert.match(
     devices.summary,
-    /end-to-end migration of the gateway is committed/i,
-    "connected_devices summary must disclose the committed gateway E2E migration",
+    /gateway[^.]*sealed/i,
+    "connected_devices summary must disclose the gateway is sealed end-to-end",
+  );
+  assert.ok(
+    !/server can read/i.test(devices.summary),
+    "connected_devices summary must not say the server can read the gateway",
   );
 });
 
-// rollback_requests: previously buried in excludedCollections as "Ephemeral job
-// state." — dishonest, because it carries device-private rollback scope (which
-// embeds absolute file paths for singleFile scope) and Mac-written error
-// diagnostics. It is now folded into conversations_chat (sealed end-to-end) so
-// the registry tells the truth about the file paths / diagnostics it holds.
+// rollback_requests + W3 same-pattern private collections: previously buried in
+// excludedCollections as "ephemeral/local" state. They carry device-private
+// rollback scope, approval labels/globs/projects, agent personas, and the
+// subscription graph. They are now folded into conversations_chat (sealed
+// end-to-end) so export/delete owns the ciphertext and the registry tells the
+// truth about the private text it holds.
 
-test("HONEST CLAIMS: rollback_requests is folded into the sealed conversations_chat domain, not hidden as ephemeral state", () => {
+test("HONEST CLAIMS: W3 sealed private collections are folded into conversations_chat, not hidden as excluded state", () => {
   const chat = registry.domains.find((d) => d.id === "conversations_chat");
   assert.ok(chat, "expected the conversations_chat domain");
   assert.equal(chat.encryptionTier, "end_to_end", "conversations_chat must stay end-to-end");
-  // rollback_requests is now an owned, sealed path — not excluded.
-  assert.ok(
-    chat.firestorePaths.includes("rollback_requests"),
-    "conversations_chat must own the rollback_requests path so it is no longer hidden in excludedCollections",
-  );
-  assert.ok(
-    !Object.prototype.hasOwnProperty.call(registry.excludedCollections ?? {}, "rollback_requests"),
-    "rollback_requests must be removed from excludedCollections once folded into a sealed domain",
-  );
+  for (const name of ["rollback_requests", "approval_policies", "agent_identities", "subscription_topics"]) {
+    assert.ok(
+      chat.firestorePaths.includes(name),
+      `conversations_chat must own the ${name} path so it is no longer hidden in excludedCollections`,
+    );
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(registry.excludedCollections ?? {}, name),
+      `${name} must be removed from excludedCollections once folded into a sealed domain`,
+    );
+  }
   // The device-only facets must name the genuinely private rollback text.
   const deviceLower = chat.deviceOnly.map((v) => v.toLowerCase());
   assert.ok(
@@ -278,38 +289,16 @@ test("HONEST CLAIMS: rollback_requests is folded into the sealed conversations_c
     deviceLower.some((v) => v.includes("rollback error")),
     "conversations_chat deviceOnly must list rollback error diagnostics as sealed/device-only",
   );
-});
-
-// The remaining device-private collections that stay in excludedCollections
-// (approval_policies, agent_identities, subscription_topics) carry private text
-// that is now sealed device-only. Their one-line exclusion reasons must stop
-// understating the contract ("Local … config." / "Push-notification topic
-// subscriptions.") and instead state that the private free-text is vault-sealed
-// and the server never reads it.
-
-test("HONEST CLAIMS: sealed device-only excluded collections state the sealed-text contract", () => {
-  const excluded = registry.excludedCollections ?? {};
-  for (const [name, mustMention] of [
-    ["approval_policies", ["sealed", "vault key", "never"]],
-    ["agent_identities", ["seal", "vault key", "never"]],
-    ["subscription_topics", ["sealed", "vault key", "never"]],
-  ]) {
-    const reason = excluded[name];
-    assert.ok(reason, `${name} must remain listed in excludedCollections with an honest reason`);
-    const lower = reason.toLowerCase();
-    for (const needle of mustMention) {
-      assert.ok(
-        lower.includes(needle.toLowerCase()),
-        `${name} exclusion reason must mention "${needle}" so it stops understating the sealed-text contract`,
-      );
-    }
-    // It must not regress to the old understated one-liners.
-    assert.notEqual(reason, "Local policy config.", `${name} must not keep the understated reason`);
-    assert.notEqual(reason, "Local agent identity config.", `${name} must not keep the understated reason`);
-    assert.notEqual(
-      reason,
-      "Push-notification topic subscriptions.",
-      `${name} must not keep the understated reason`,
-    );
-  }
+  assert.ok(
+    deviceLower.some((v) => v.includes("approval policy")),
+    "conversations_chat deviceOnly must list approval policy private labels/globs/projects",
+  );
+  assert.ok(
+    deviceLower.some((v) => v.includes("agent persona")),
+    "conversations_chat deviceOnly must list agent persona text",
+  );
+  assert.ok(
+    deviceLower.some((v) => v.includes("subscription graph")),
+    "conversations_chat deviceOnly must list subscription graph edges",
+  );
 });

@@ -39,9 +39,9 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "conversations_chat", title: "Conversations & Chat", icon: "bubble.left.and.bubble.right.fill",
-            encryptionTier: .endToEnd, summary: "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, and conversation recall metadata are sealed on-device before Firestore receives them.",
-            serverSees: ["provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids"], deviceOnly: ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "saved text snippets", "project/file/command labels", "rollback scope paths", "rollback error diagnostics"],
-            firestorePaths: ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets", "rollback_requests"], storagePaths: [],
+            encryptionTier: .endToEnd, summary: "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, and conversation recall metadata are sealed on-device before Firestore receives them.",
+            serverSees: ["provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids"], deviceOnly: ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "saved text snippets", "project/file/command labels", "rollback scope paths", "rollback error diagnostics", "approval policy labels/globs/projects", "agent persona text", "subscription graph edges and display text"],
+            firestorePaths: ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets", "rollback_requests", "approval_policies", "agent_identities", "subscription_topics"], storagePaths: [],
             countSource: "chat_threads", byteSource: nil,
             retention: "until_deleted", actions: ["view", "export", "delete"],
             entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud"
@@ -75,8 +75,8 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "connected_devices", title: "Connected Devices & Pairings", icon: "laptopcomputer.and.iphone",
-            encryptionTier: .serverReadable, summary: "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
-            serverSees: ["device ids", "pairing metadata", "last seen", "relay routing", "hosted chat gateway message text", "hosted chat gateway sender names", "hosted chat gateway attachment file names"], deviceOnly: ["end-to-end relay frame contents (sealed per their own domains)"],
+            encryptionTier: .serverReadable, summary: "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames AND the hosted chat gateway are both sealed and never readable by the server — the gateway routes ciphertext per-link and never reads message text, sender names, or attachment file names. The per-agent subscription graph is cloaked behind opaque keyed doc ids.",
+            serverSees: ["device ids", "pairing metadata", "last seen", "relay routing", "opaque relay key material (public keys)"], deviceOnly: ["end-to-end relay + gateway frame contents (message text, sender names, attachment file names — all sealed on-device)"],
             firestorePaths: ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "hermes_gateway_approvals", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "runtime_connection_preferences"], storagePaths: ["hermes_gateway_attachments/**"],
             countSource: "devices", byteSource: nil,
             retention: "until_revoked", actions: ["view", "revoke"],
@@ -102,8 +102,8 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "media", title: "Media", icon: "photo.on.rectangle.angled",
-            encryptionTier: .zeroAccess, summary: "Files, screen, and video relayed between your Mac and phones (Floo media).",
-            serverSees: ["session events", "quota usage", "attachment manifests"], deviceOnly: ["media payload contents (relayed/sealed)"],
+            encryptionTier: .zeroAccess, summary: "Files, screen, and video relayed between your Mac and phones (Floo media). NOTE: an attachment manifest records only an opaque content hash, mime type, byte size, an opaque per-peer device-id hash, direction, and timestamps — the human-readable file name is sealed on-device (sealedFilename) and never readable by the server.",
+            serverSees: ["session events", "quota usage", "attachment blob hash", "mime type", "byte size", "opaque peer device-id hash", "direction", "timestamps"], deviceOnly: ["media payload contents (relayed/sealed)", "attachment file names (sealed on-device)"],
             firestorePaths: ["media_session_events", "media_quota_usage", "media_attachment_manifests"], storagePaths: [],
             countSource: "media_attachment_manifests", byteSource: "media_attachment_manifests",
             retention: "rolling", actions: ["view", "delete"],

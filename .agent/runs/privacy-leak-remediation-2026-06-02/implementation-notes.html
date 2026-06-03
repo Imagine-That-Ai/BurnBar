@@ -91,8 +91,8 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> [doing] INTEGRATION/VALIDATION — Wave 2 (7 streams) landed; functions/rules/android/core/data-domains all GREEN; orchestrator closed 4 cross-stream handoffs (A-D below); adversarial closure re-scan + Mac BudgetRule app test running.</li>
-    <li><strong>Current phase:</strong> INTEGRATE. Validation done so far: data-domains 14/14; functions tsc clean; firestore rules emulator 40/40; functions vitest 195 pass; agent-notifications/encrypted-search/encrypted-session-blob/conversation-query all pass; privacy scan PASS; OpenBurnBarCore build + crypto/Pensieve tests pass; Android :app:compileDebugKotlin CLEAN (0 errors); Mac app UsageSyncRoundTripTests PASS. Remaining: BudgetRule app test (running), iOS S3 tests, adversarial closure verdicts, docs/memory/ledger finalize.</li>
+    <li><strong>Status:</strong> [done] COMPLETE + VERIFIED across all 5 platforms (Wave 1+2+3). Every named leak from the 2026-06-02 review is CLOSED and adversarially re-confirmed; the newly-found residual class (Wave 3) is sealed; gateway true-E2E is the chained child goal. Worktree is dirty (NOT committed — awaiting Alberto's review).</li>
+    <li><strong>FULL VALIDATION MATRIX — ALL GREEN:</strong> data-domains 16/16 (incl. honesty asserts); functions tsc clean; firestore rules emulator 45/45 (T1–T17); functions vitest 195 pass; agent-notifications + encrypted-search-index + encrypted-session-blob + conversation-query all pass; privacy scan PASS; OpenBurnBarCore build + CloudVaultCrypto 11/11 + Pensieve 5/5; Android :app:compileDebugKotlin 0 errors; Mac app UsageSyncRoundTripTests + BudgetRuleSealingRoundTripTests PASS; iOS OpenBurnBarMobile build-for-testing SUCCEEDED; adversarial closure re-scan confirmed all named leaks CLOSED.</li>
     <li><strong>Orchestrator integration fixes (un-owned-file handoffs the streams correctly flagged):</strong> (A) DownloadSyncService.swift Mac usage peer-download now opens sealedProjectName; (B) android FirestoreBudgetRepository.downloadAllBudgetRules now resolves+passes the read vault key; (C) legacy.ts MediaAttachmentManifestDoc gained sealedFilename (filename now optional/legacy); (D) encryptedSearch.ts commit now honors S1's legacyDocID to delete the stranded plaintext-slug project_memory doc. Also added knowledge_repos repoFullName/sourcePath rejection to firestore.rules (SE scanner caught the gap) and fixed 1 stale conversation-query test (removed a server-side projectName facet expectation) + 1 S1 Pensieve test (JSON-slash-escaping false negative).</li>
     <li><strong>Source of truth for the bugs:</strong> the 2026-06-02 adversarial review (see memory <code>project_privacy_hardening_open_leaks</code>). Confirmed leaks: Hermes Gateway plaintext (P0), project_memory_snapshots name (P1), dataExport verbatim dump (P1), knowledge_repos + Pensieve (P1), usage/budget project text (P2). Plus denylist-only rules, client regressions, blind scanner/tests, manual-only migration.</li>
     <li><strong>Blockers:</strong> None yet. Possible product fork pending recon: if the gateway needs server-side plaintext (hosted inference), sealing is impossible and the fix becomes honest-labeling — will resolve from code or ask Alberto.</li>
@@ -237,7 +237,14 @@
         status: "validated",
         phase: "implement3",
         actor: "agent",
-        summary: "Wave-3 GREEN: firestore rules emulator 45/45 (T13-T17: snapshots/approval_policies/rollback_requests/agent_identities/subscription_topics all enforce seal + reject-plaintext-when-sealed); functions tsc clean; data-domains 16/16 (2 new W3 honesty asserts) + DataDomains.kt in sync; privacy scan PASS (scanner extended to the 5 new surfaces); Android :app:compileDebugKotlin 0 errors. W3 also made approval_policies doc id opaque (was leaking targetProject/fileGlob via classHash). Pending: iOS OpenBurnBarMobile build-for-testing (running) to compile the Wave-2 S3 + Wave-3 iOS changes. W3 handoffs benign (Android listener key threaded via coroutine; pre-existing dormant RollbackRequest.Status enum mismatch flagged, orthogonal)."
+        summary: "Wave-3 GREEN: rules emulator 45/45 (T13-T17); functions clean; data-domains 16/16; scan PASS; Android compile 0 errors. approval_policies doc id made opaque (was leaking targetProject/fileGlob via classHash)."
+      },
+      {
+        ts: "2026-06-03T08:30:00Z",
+        status: "validated",
+        phase: "done",
+        actor: "agent",
+        summary: "iOS OpenBurnBarMobile build-for-testing SUCCEEDED — final gate green. Fixed 3 PRE-EXISTING stale tests (FakeConversationQueryClient + makeCloudSearchRow + a call site) that referenced projectName removed from CloudConversationSearchRow/ConversationQueryClient in the prior privacy work; the iOS build (never run before this remediation) surfaced them. ALL 5 platforms verified. Original mandate + Wave 3 COMPLETE. Gateway true-E2E = chained goal hermes-gateway-e2e-rearchitecture. Worktree dirty, not committed (awaiting review)."
       }
     ];
 
