@@ -481,6 +481,8 @@ internal class AssistantChatFirestoreMirror(
                 "vaultKeyID" to resolvedKey.vaultKeyID,
                 "sealedPayload" to CloudVaultCrypto.sealedPayloadMap(sealedPayload),
             )
+        thread.messages.lastOrNull()?.let { payload["lastMessageRole"] = it.role }
+        thread.messages.lastOrNull { it.role == "assistant" }?.let { payload["lastAssistantMessageID"] = it.id }
         if (thread.labelColorHex != null) {
             payload["labelColorHex"] = thread.labelColorHex
         }
