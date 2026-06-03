@@ -325,7 +325,7 @@ struct EasterEggParticleSystem {
             guard pop > 0.01 else { continue }
             let edgeY = atTop ? size.height * 0.06 : size.height * 0.94
             let lift: CGFloat = reduceMotion ? 10 : 34
-            let y = edgeY + (atTop ? pop * lift : -pop * lift)
+            let y = edgeY + (atTop ? CGFloat(pop) * lift : -CGFloat(pop) * lift)
             let squash: CGFloat = reduceMotion ? 1 : 1 - 0.25 * CGFloat(max(0, sin(local * .pi * 2)))
             drawCoin(
                 context,
