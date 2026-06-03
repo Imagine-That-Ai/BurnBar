@@ -1,5 +1,37 @@
 # hermes-agent (Nous fork) — Phase 4 re-application checklist
 
+## RECONSTRUCTION STATUS (done in this run, on user request)
+
+A worktree was created at **`~/.hermes/hermes-agent-burnbar-wt`** on branch
+`ajnunezg/burnbar-platform` and the v2 artifact + remediation was rebuilt + verified there
+(uncommitted, for the user to commit/push to Nous):
+
+- ✅ **`gateway/crypto/relay_e2ee.py`** — full v2 (2-DH AuthEncap) rebuilt from the verified
+  content + the 4 remediation fixes (MP-13/14/16/20). **Byte-exact verified**: the survived
+  `test_relay_e2ee_v2.py` (cross-language wire vector, forge/downgrade-reject, MP-18 fileName)
+  passes 20/20, and `test_relay_e2ee.py` (with the MP-14 fail-closed + MP-13 delimiter tests
+  applied) is green — **46 passed** total for the two crypto test files.
+- ✅ **`plugins/platforms/burnbar/adapter.py`** — copied from the BurnBar remediated copy;
+  `diff -q` clean (byte-identical), i.e. the full adapter remediation (MP-1/2/3/5/6/8/9/11/12/
+  15/21/22/25).
+- ✅ **`tests/gateway/test_relay_e2ee_v2.py`** + **`tests/gateway/fixtures/HermesGatewayWireVector.json`**
+  — survived the external checkout as untracked; in place (fixture sha256 `50d6204a…`).
+- ⚠️ **`tests/gateway/test_burnbar_plugin.py`** — the worktree still has the PRE-v2 version; its
+  full v2 form (v2 seal-envelope expectations + my 9 remediation regressions + the safety-code /
+  cache rewrites) was in the lost dirty tree and is only partially recoverable from context. 8
+  pre-v2 tests fail against the v2 adapter (they assert v1 seal behavior / a removed
+  `_gateway_model_switch_aad` helper) — these are STALE tests, not code defects (the adapter is
+  verified byte-identical to the BurnBar copy that passed the full 109-test suite). Re-derive the
+  v2 plugin tests from §3 + the BurnBar commit history before landing on Nous.
+
+To commit the reconstruction: `cd ~/.hermes/hermes-agent-burnbar-wt && git add -A && git commit`
+(do NOT push to the Nous remote without review). Tear down with
+`git worktree remove ~/.hermes/hermes-agent-burnbar-wt` if abandoning.
+
+---
+
+# hermes-agent (Nous fork) — Phase 4 re-application checklist (original)
+
 **Why this file exists:** during this run, the `~/.hermes/hermes-agent` working tree was on
 branch `ajnunezg/burnbar-platform` (the reviewed v2 artifact, dirty). The Python remediation
 (adapter.py + relay_e2ee.py + gateway tests) was implemented there and **verified green
