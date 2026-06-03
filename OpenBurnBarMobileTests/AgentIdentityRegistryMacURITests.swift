@@ -412,8 +412,8 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             )
         }
 
-        try await waitUntil { dialCount >= 2 }
         try await ensureTask.value
+        XCTAssertGreaterThanOrEqual(dialCount, 2, "ensureResponsive should redial after the stale stream misses the probe")
         try await waitUntilHeartbeatCount(secondStream, count: 1)
 
         let firstCloseCount = await firstStream.closeCount
