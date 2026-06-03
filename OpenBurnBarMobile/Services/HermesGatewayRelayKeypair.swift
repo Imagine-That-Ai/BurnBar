@@ -101,6 +101,86 @@ enum HermesGatewayRelayKeypairError: LocalizedError {
     }
 }
 
+/// The outcome of a TOFU pin read. `OSStatus` does not conform to `Error`, so
+/// this models the three states explicitly rather than via `Result`.
+enum HermesGatewayPinLoad {
+    case found(String)
+    case absent
+    case unreadable(OSStatus)
+}
+
+/// Secure key→value persistence seam behind ``HermesGatewayAgentKeyPinStore``.
+///
+/// Production binds this to the Keychain (``HermesGatewayKeychainPinBacking``).
+/// Tests inject an in-memory backing so the fail-closed pin logic is verifiable
+/// on unsigned simulators / CI runners, where the Keychain returns
+/// `errSecMissingEntitlement` (-34018) and would otherwise make every pin test
+/// un-runnable. The seam never weakens production: the shipping app always uses
+/// the Keychain.
+protocol HermesGatewayPinBacking: Sendable {
+    func load(account: String) -> HermesGatewayPinLoad
+    @discardableResult func save(_ value: String, account: String) -> OSStatus
+    func delete(account: String)
+}
+
+/// Keychain-backed pin persistence: `kSecClassGenericPassword`, accessible only
+/// `WhenUnlockedThisDeviceOnly`, never synced off device.
+struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
+    static let service = "com.openburnbar.mobile.hermes-gateway-agent-pin"
+
+    func load(account: String) -> HermesGatewayPinLoad {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        switch status {
+        case errSecItemNotFound:
+            return .absent
+        case errSecSuccess:
+            guard let data = item as? Data, let value = String(data: data, encoding: .utf8) else {
+                // A present-but-undecodable pin is a tamper/corruption signal —
+                // surface it as a read failure so the caller fails closed.
+                return .unreadable(errSecDecode)
+            }
+            return .found(value)
+        default:
+            return .unreadable(status)
+        }
+    }
+
+    @discardableResult
+    func save(_ value: String, account: String) -> OSStatus {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: account
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecItemNotFound {
+            var create = query
+            create[kSecValueData as String] = data
+            create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            return SecItemAdd(create as CFDictionary, nil)
+        }
+        return updateStatus
+    }
+
+    func delete(account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
 /// Keychain-backed trust-on-first-use (TOFU) pin for each paired agent's relay
 /// public key.
 ///
@@ -144,9 +224,13 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         }
     }
 
-    private static let keychainService = "com.openburnbar.mobile.hermes-gateway-agent-pin"
+    private let backing: HermesGatewayPinBacking
 
-    init() {}
+    /// Production uses the device Keychain; tests inject an in-memory backing so
+    /// the pin logic runs without Keychain entitlements (see ``HermesGatewayPinBacking``).
+    init(backing: HermesGatewayPinBacking = HermesGatewayKeychainPinBacking()) {
+        self.backing = backing
+    }
 
     /// Account scope is the `uid|clientId` pair so re-using a `clientId` across
     /// accounts (or a stale pin from a different signed-in user) never matches.
@@ -199,9 +283,9 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         let trimmed = publicKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let keyBytes = Data(base64Encoded: trimmed) ?? Data(trimmed.utf8)
-        let digest = SHA256.hash(data: keyBytes)
+        let digestBytes = Array(SHA256.hash(data: keyBytes))
         let groups = stride(from: 0, to: 8, by: 2).map { offset -> String in
-            let bytes = Array(digest)[offset..<min(offset + 2, digest.byteCount)]
+            let bytes = digestBytes[offset..<min(offset + 2, digestBytes.count)]
             return bytes.map { String(format: "%02X", $0) }.joined()
         }
         return groups.joined(separator: " ")
@@ -220,64 +304,17 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
     /// Call this on re-pair / revoke so a deliberate re-pairing re-establishes
     /// trust on first use rather than tripping the mismatch guard forever.
     func clearPin(uid: String, clientId: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.keychainService,
-            kSecAttrAccount as String: account(uid: uid, clientId: clientId)
-        ]
-        SecItemDelete(query as CFDictionary)
+        backing.delete(account: account(uid: uid, clientId: clientId))
     }
 
-    // MARK: - Keychain
+    // MARK: - Backing delegation
 
-    /// The outcome of a Keychain pin read. `OSStatus` does not conform to `Error`,
-    /// so this models the three states explicitly rather than via `Result`.
-    private enum PinLoad {
-        case found(String)
-        case absent
-        case unreadable(OSStatus)
-    }
-
-    private func loadPin(uid: String, clientId: String) -> PinLoad {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.keychainService,
-            kSecAttrAccount as String: account(uid: uid, clientId: clientId),
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        switch status {
-        case errSecItemNotFound:
-            return .absent
-        case errSecSuccess:
-            guard let data = item as? Data, let value = String(data: data, encoding: .utf8) else {
-                // A present-but-undecodable pin is a tamper/corruption signal —
-                // surface it as a read failure so the caller fails closed.
-                return .unreadable(errSecDecode)
-            }
-            return .found(value)
-        default:
-            return .unreadable(status)
-        }
+    private func loadPin(uid: String, clientId: String) -> HermesGatewayPinLoad {
+        backing.load(account: account(uid: uid, clientId: clientId))
     }
 
     @discardableResult
     private func savePin(_ value: String, uid: String, clientId: String) -> OSStatus {
-        let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.keychainService,
-            kSecAttrAccount as String: account(uid: uid, clientId: clientId)
-        ]
-        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if updateStatus == errSecItemNotFound {
-            var create = query
-            create[kSecValueData as String] = data
-            create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            return SecItemAdd(create as CFDictionary, nil)
-        }
-        return updateStatus
+        backing.save(value, account: account(uid: uid, clientId: clientId))
     }
 }

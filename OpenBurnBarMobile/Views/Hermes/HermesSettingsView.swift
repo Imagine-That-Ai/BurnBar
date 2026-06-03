@@ -523,6 +523,12 @@ struct HermesSettingsView: View {
                     RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
                         .fill(MobileTheme.Colors.surfaceElevated.opacity(0.82))
                 )
+
+            if !reply.openedAttachments.isEmpty {
+                ChatBubbleAttachmentStrip(attachments: reply.openedAttachments)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
         }
         .padding(12)
         .background(
@@ -1882,7 +1888,7 @@ struct HermesSettingsView: View {
         let keyChanged = gatewayStore.agentRelayKeyChanged(for: client)
         var parts = [
             gatewayStore.selectedClient?.id == client.id ? "Selected" : nil,
-            keyChanged ? "Pairing changed — connect again" : (client.canSealToAgent ? "Private replies ready" : "Update and connect again"),
+            keyChanged ? "Connection changed — reconnect" : (client.canSealToAgent ? "Private replies ready" : "Update and reconnect"),
             gatewayStore.isOnline(client) ? "Online now" : "Not online",
             client.homeDestinationId,
             client.tokenPreview
@@ -2192,11 +2198,11 @@ final class HermesGatewaySettingsStore {
     }
 
     private static func gatewayE2EERequiredMessage(for client: HermesGatewayClientRecord) -> String {
-        "Update OpenBurnBar on \(client.displayName), then connect it again so private cloud messages can be read on both sides."
+        "Update OpenBurnBar on \(client.displayName), then reconnect Hermes so private messages can be read on both sides."
     }
 
     private static func gatewayRelayKeyChangedMessage(for client: HermesGatewayClientRecord) -> String {
-        "\(client.displayName)'s private pairing changed since you connected it. Nothing was sent. Connect Hermes again on \(client.displayName) to restore private replies."
+        "\(client.displayName)'s connection looks different from when you set it up. Nothing was sent, to keep things safe. Reconnect Hermes on \(client.displayName) to restore private replies."
     }
 
     /// True when the agent pubkey this client now advertises differs from the one
@@ -2348,6 +2354,7 @@ final class HermesGatewaySettingsStore {
         }
         guard !isLoading else { return }
         syncSelectedClientIDFromDefaults()
+        failedGatewayAttachmentIDs = []
         isLoading = true
         defer { isLoading = false }
 
@@ -2686,24 +2693,29 @@ final class HermesGatewaySettingsStore {
         else { return reply }
 
         var opened: [HermesAttachment] = []
+        var failed: [String] = []
         for attachmentId in reply.attachmentIds {
             if let cached = openedGatewayAttachments[attachmentId] {
                 opened.append(cached)
                 continue
             }
-            guard !failedGatewayAttachmentIDs.contains(attachmentId) else { continue }
+            if failedGatewayAttachmentIDs.contains(attachmentId) {
+                failed.append(attachmentId)
+                continue
+            }
             guard let attachment = await openGatewayAttachment(
                 attachmentId: attachmentId,
                 uid: uid,
                 clientId: reply.clientId
             ) else {
                 failedGatewayAttachmentIDs.insert(attachmentId)
+                failed.append(attachmentId)
                 continue
             }
             openedGatewayAttachments[attachmentId] = attachment
             opened.append(attachment)
         }
-        return reply.withOpenedAttachments(opened)
+        return reply.withAttachmentHydration(opened: opened, failedAttachmentIds: failed)
     }
 
     private func openGatewayAttachment(attachmentId: String, uid: String, clientId: String) async -> HermesAttachment? {

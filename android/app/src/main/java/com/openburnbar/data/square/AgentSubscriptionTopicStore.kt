@@ -84,9 +84,11 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreListener: ListenerRegistration? = null
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var listenerGeneration: Long = 0
+    @Volatile private var activeListenerUID: String? = auth.currentUser?.uid
 
     init {
-        _topics.value = load()
+        _topics.value = load(activeListenerUID)
         start()
     }
 
@@ -182,8 +184,12 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     }
 
     private fun restartFirestoreListener(uid: String?) {
+        val generation = listenerGeneration + 1
+        listenerGeneration = generation
+        activeListenerUID = uid
         firestoreListener?.remove()
         firestoreListener = null
+        _topics.value = load(uid)
         if (uid == null) return
         // Topic display text seals `sealedDisplayName`/`sealedDescription`. Resolve
         // the read key once so the decoder can open them; legacy plaintext docs fall
@@ -194,14 +200,16 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 runCatching {
                     AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
                 }.getOrNull()
-            // A newer auth change may have replaced the listener while we resolved;
-            // only install if nothing else claimed the slot.
-            if (firestoreListener != null) return@launch
-            firestoreListener =
+            // A newer auth change may have happened while the vault key resolved.
+            // Re-check both our generation token and FirebaseAuth before attaching;
+            // stale listeners must never publish user A topics into user B's store.
+            if (!isActiveListenerGeneration(generation, uid)) return@launch
+            val registration =
                 firestore.collection("users").document(uid)
                     .collection("subscription_topics")
                     .orderBy("consentGivenAt")
                     .addSnapshotListener { snapshot, error ->
+                        if (!isActiveListenerGeneration(generation, uid)) return@addSnapshotListener
                         if (error != null || snapshot == null) return@addSnapshotListener
                         val decoded =
                             snapshot.documents.mapNotNull { doc ->
@@ -211,8 +219,16 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                         _topics.value = decoded.sortedByDescending { it.createdAtEpoch }
                         save()
                     }
+            if (isActiveListenerGeneration(generation, uid)) {
+                firestoreListener = registration
+            } else {
+                registration.remove()
+            }
         }
     }
+
+    private fun isActiveListenerGeneration(generation: Long, uid: String): Boolean =
+        listenerGeneration == generation && activeListenerUID == uid && auth.currentUser?.uid == uid
 
     private fun writeFirestore(topic: AgentSubscriptionTopic) {
         val uid = auth.currentUser?.uid ?: return
@@ -250,10 +266,11 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 ?: return AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY
         val collection = firestore.collection("users").document(uid)
             .collection("subscription_topics")
-        collection.document(opaqueDocID).delete().await()
-        legacyCleartextDocumentIDs(agentURI, topicID).forEach {
-            runCatching { collection.document(it).delete().await() }
+        val batch = firestore.batch()
+        subscriptionTopicDeleteDocumentIDs(agentURI, topicID, opaqueDocID).forEach {
+            batch.delete(collection.document(it))
         }
+        batch.commit().await()
         return AgentSubscriptionUnsubscribeResult.REMOVED
     }
 
@@ -285,8 +302,8 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         )
     }
 
-    private fun load(): List<AgentSubscriptionTopic> {
-        val raw = prefs.getString(KEY_TOPICS, null) ?: return emptyList()
+    private fun load(uid: String?): List<AgentSubscriptionTopic> {
+        val raw = prefs.getString(topicsKey(uid), null) ?: return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
             (0 until arr.length()).mapNotNull { i ->
@@ -321,11 +338,12 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             obj.put("createdAt", t.createdAtEpoch)
             arr.put(obj)
         }
-        prefs.edit().putString(KEY_TOPICS, arr.toString()).apply()
+        prefs.edit().putString(topicsKey(activeListenerUID), arr.toString()).apply()
     }
 
     companion object {
         private const val KEY_TOPICS = "topics.v1"
+        private const val KEY_TOPICS_UID_PREFIX = "topics.v1.uid."
         const val DEFAULT_TOPIC_ID = "agent-updates"
 
         @Volatile private var instance: AgentSubscriptionTopicStore? = null
@@ -378,6 +396,14 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 .filter { it.isNotBlank() && !it.contains("/") }
                 .toSet()
         }
+
+        fun subscriptionTopicDeleteDocumentIDs(agentURI: String, topicID: String, opaqueDocID: String): Set<String> =
+            (legacyCleartextDocumentIDs(agentURI, topicID) + opaqueDocID)
+                .filter { it.isNotBlank() && !it.contains("/") }
+                .toSet()
+
+        private fun topicsKey(uid: String?): String =
+            uid?.takeIf { it.isNotBlank() }?.let { "$KEY_TOPICS_UID_PREFIX$it" } ?: KEY_TOPICS
 
         private fun minimumImportance(forMode: SkillRunDeliveryMode): SkillRunEventImportance = if (forMode == SkillRunDeliveryMode.FULL_STREAM) {
             SkillRunEventImportance.NORMAL
