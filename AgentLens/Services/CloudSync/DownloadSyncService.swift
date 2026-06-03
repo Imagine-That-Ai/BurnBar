@@ -9,14 +9,19 @@ import OpenBurnBarCore
 /// Layout: `users/{uid}/usage`, `users/{uid}/conversations`, `users/{uid}/session_logs`
 final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
+    private let conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
     private(set) var lastSyncDate: Date?
     private(set) var cloudTotalCost: Double?
 
-    init(context: CloudSyncContext) {
+    init(
+        context: CloudSyncContext,
+        conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.context = context
+        self.conversationVaultKeyProvider = conversationVaultKeyProvider
     }
 
     /// Downloads remote data from Firestore with durable, per-account, per-collection watermark tracking.
@@ -424,34 +429,42 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
+            let vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
 
             for doc in snapshot.documents {
                 let data = doc.data()
                 guard let remoteDeviceId = data["deviceId"] as? String, remoteDeviceId != localDeviceId,
                       let rawProvider = data["provider"] as? String, let provider = AgentProvider(rawValue: rawProvider),
                       let sessionId = data["sessionId"] as? String else { continue }
+                let privatePayload = ConversationCloudSealer.open(data, keyData: vaultKey?.keyData)
+                if (data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil), privatePayload == nil {
+                    continue
+                }
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"
                 let deviceName = nameMap[remoteDeviceId] ?? remoteDeviceId
                 let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
                 let record = ConversationRecord(
                     id: stableId, provider: provider, sessionId: sessionId,
-                    projectName: data["projectName"] as? String ?? "",
+                    projectName: privatePayload?.projectName ?? data["projectName"] as? String ?? "",
                     startTime: (data["startTime"] as? Timestamp)?.dateValue(),
                     endTime: (data["endTime"] as? Timestamp)?.dateValue(),
                     messageCount: data["messageCount"] as? Int ?? 0,
                     userWordCount: data["userWordCount"] as? Int ?? 0,
                     assistantWordCount: data["assistantWordCount"] as? Int ?? 0,
-                    keyFiles: data["keyFiles"] as? [String] ?? [],
-                    keyCommands: data["keyCommands"] as? [String] ?? [],
-                    keyTools: data["keyTools"] as? [String] ?? [],
-                    inferredTaskTitle: data["inferredTaskTitle"] as? String ?? "",
-                    lastAssistantMessage: data["lastAssistantMessage"] as? String ?? "",
+                    keyFiles: privatePayload?.keyFiles ?? data["keyFiles"] as? [String] ?? [],
+                    keyCommands: privatePayload?.keyCommands ?? data["keyCommands"] as? [String] ?? [],
+                    keyTools: privatePayload?.keyTools ?? data["keyTools"] as? [String] ?? [],
+                    inferredTaskTitle: privatePayload?.inferredTaskTitle ?? data["inferredTaskTitle"] as? String ?? "",
+                    lastAssistantMessage: privatePayload?.lastAssistantMessage ?? data["lastAssistantMessage"] as? String ?? "",
                     fullText: "",
                     indexedAt: Date(),
-                    workingDirectory: data["workingDirectory"] as? String,
+                    workingDirectory: privatePayload?.workingDirectory ?? data["workingDirectory"] as? String,
                     fileModifiedAt: nil,
-                    summary: data["summary"] as? String,
+                    summary: privatePayload?.summary ?? data["summary"] as? String,
+                    summaryTitle: privatePayload?.summaryTitle ?? data["summaryTitle"] as? String,
+                    summaryProvider: privatePayload?.summaryProvider ?? data["summaryProvider"] as? String,
+                    summaryModel: privatePayload?.summaryModel ?? data["summaryModel"] as? String,
                     sourceType: ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
                     sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true,
                     // Honor a remote tombstone: if device A soft-deleted this

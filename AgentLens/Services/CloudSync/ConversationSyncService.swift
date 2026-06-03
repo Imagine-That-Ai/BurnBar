@@ -8,13 +8,18 @@ import Foundation
 /// Note: Full transcripts are NOT uploaded here; only metadata for cross-device recall.
 final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
+    private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
     private(set) var lastSyncDate: Date?
 
-    init(context: CloudSyncContext) {
+    init(
+        context: CloudSyncContext,
+        vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.context = context
+        self.vaultKeyProvider = vaultKeyProvider
     }
 
     /// Upload unsynced conversation metadata (excluding full transcripts).
@@ -44,11 +49,12 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             let batch = context.firestoreGateway.batch()
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("conversations")
             let deviceId = gate.account.deviceId
+            let vaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
 
             for record in unsynced {
                 let docId = "\(deviceId)_\(record.id)"
                 let docRef = collectionRef.document(docId)
-                let data = Self.encodeConversation(record, deviceId: deviceId)
+                let data = try Self.encodeConversation(record, deviceId: deviceId, vaultKey: vaultKey)
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
@@ -82,45 +88,36 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
         await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
-    static func encodeConversation(_ record: ConversationRecord, deviceId: String) -> [String: Any] {
+    static func encodeConversation(
+        _ record: ConversationRecord,
+        deviceId: String,
+        vaultKey: CloudVaultResolvedKey
+    ) throws -> [String: Any] {
         var data: [String: Any] = [
             "id": record.id,
             "deviceId": deviceId,
             "provider": record.provider.rawValue,
             "sessionId": record.sessionId,
-            "projectName": record.projectName,
             "messageCount": record.messageCount,
             "userWordCount": record.userWordCount,
             "assistantWordCount": record.assistantWordCount,
-            "keyFiles": record.keyFiles,
-            "keyCommands": record.keyCommands,
-            "keyTools": record.keyTools,
-            "inferredTaskTitle": record.inferredTaskTitle,
-            "lastAssistantMessage": capLastAssistantMessage(record.lastAssistantMessage),
             "updatedAt": FieldValue.serverTimestamp(),
             "sourceType": record.sourceType.rawValue,
-            "version": record.version
+            "version": record.version,
+            "contentSealed": true,
+            "sealedSchemaVersion": ConversationCloudSealer.sealedSchemaVersion,
+            "vaultKeyID": vaultKey.vaultKeyID,
+            "sealedPayload": try ConversationCloudSealer.seal(ConversationCloudPrivatePayload(record: record), key: vaultKey)
         ]
+        ConversationCloudSealer.plaintextFieldDeletes.forEach { data[$0.key] = $0.value }
         // Tombstone propagation (B-DATA-2): a non-nil `deletedAt` tells every
         // other device to soft-delete its local copy. We still upload the rest of
         // the metadata so the doc carries a coherent last-known state.
         if let deletedAt = record.deletedAt {
             data["deletedAt"] = Timestamp(date: deletedAt)
         }
-        if let workingDirectory = record.workingDirectory {
-            data["workingDirectory"] = workingDirectory
-        }
         data["startTime"] = record.startTime.map { Timestamp(date: $0) } as Any
         data["endTime"] = record.endTime.map { Timestamp(date: $0) } as Any
-        if let summary = record.summary { data["summary"] = summary }
-        if let summaryTitle = record.summaryTitle { data["summaryTitle"] = summaryTitle }
-        if let summaryProvider = record.summaryProvider { data["summaryProvider"] = summaryProvider }
-        if let summaryModel = record.summaryModel { data["summaryModel"] = summaryModel }
         return data
-    }
-
-    private static func capLastAssistantMessage(_ text: String) -> String {
-        if text.count <= 500 { return text }
-        return String(text.prefix(500))
     }
 }

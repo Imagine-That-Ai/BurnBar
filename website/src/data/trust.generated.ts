@@ -128,17 +128,24 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
   {
     "id": "conversations_chat",
     "title": "Conversations & Chat",
-    "tier": "server_readable",
-    "blurb": "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices.",
-    "caveat": "The cross-device mirror stores text the server can read; only chat threads bodies are sealed when encrypted cloud backup is on. Labeled server-readable for honesty — sealing these at rest is a tracked hardening.",
+    "tier": "end_to_end",
+    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, and conversation recall metadata are sealed on-device before Firestore receives them.",
+    "caveat": null,
     "serverSees": [
-      "assistant + CLI conversation text (mirror)",
-      "thread metadata",
+      "provider/runtime identifiers",
+      "message counts",
+      "status/routing metadata",
       "timestamps",
-      "device"
+      "device ids"
     ],
     "deviceOnly": [
-      "chat threads bodies when encrypted cloud backup is enabled"
+      "chat titles",
+      "chat previews",
+      "message bodies",
+      "CLI transcripts",
+      "mission prompts/results",
+      "saved text snippets",
+      "project/file/command labels"
     ]
   },
   {

@@ -77,16 +77,23 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "id": "conversations_chat",
     "title": "Conversations & Chat",
     "icon": "bubble.left.and.bubble.right.fill",
-    "encryptionTier": "server_readable",
-    "summary": "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices. NOTE: the cross-device mirror (mobile_assistant_chats, cli_sessions) stores text the server can read; only chat_threads bodies are sealed when encrypted cloud backup is on. Labeled server-readable for honesty — sealing these at rest is a tracked hardening.",
+    "encryptionTier": "end_to_end",
+    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, and conversation recall metadata are sealed on-device before Firestore receives them.",
     "serverSees": [
-      "assistant + CLI conversation text (mirror)",
-      "thread metadata",
+      "provider/runtime identifiers",
+      "message counts",
+      "status/routing metadata",
       "timestamps",
-      "device"
+      "device ids"
     ],
     "deviceOnly": [
-      "chat_threads bodies when encrypted cloud backup is enabled"
+      "chat titles",
+      "chat previews",
+      "message bodies",
+      "CLI transcripts",
+      "mission prompts/results",
+      "saved text snippets",
+      "project/file/command labels"
     ],
     "firestorePaths": [
       "conversations",

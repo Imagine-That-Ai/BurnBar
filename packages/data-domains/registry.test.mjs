@@ -138,13 +138,14 @@ test("HONEST CLAIMS: the public trust copy never overstates the product", () => 
     assert.ok(!codename.test(trust), `public trust copy must not expose codename ${codename}`);
   }
 
-  // 3. Chat is server-readable and must NEVER be labeled end-to-end. Find the
-  //    conversations_chat block in the generated source and assert on it.
+  // 3. Chat mirrors must stay end-to-end sealed. Find the conversations_chat
+  //    block in the generated source and assert on it.
   const chat = registry.domains.find((d) => d.id === "conversations_chat");
-  assert.equal(chat.encryptionTier, "server_readable", "chat must stay server-readable in the registry");
+  assert.equal(chat.encryptionTier, "end_to_end", "chat mirrors must stay end-to-end in the registry");
   const chatBlock = trust.slice(trust.indexOf('"id": "conversations_chat"'), trust.indexOf('"id": "session_logs"'));
   assert.ok(chatBlock.length > 0, "expected a conversations_chat block in the generated trust module");
-  assert.match(chatBlock, /"tier": "server_readable"/, "chat must be tiered server-readable on the public site");
-  assert.ok(!/end[-_ ]to[-_ ]end/i.test(chatBlock), "chat must never be labeled end-to-end on the public site");
-  assert.ok(/server can read/i.test(chatBlock), "chat must say the server can read the mirrored text");
+  assert.match(chatBlock, /"tier": "end_to_end"/, "chat must be tiered end-to-end on the public site");
+  assert.ok(!/server can read/i.test(chatBlock), "chat must not say the server can read mirrored text");
+  assert.ok(!/server_readable/i.test(chatBlock), "chat block must not contain the server-readable tier");
+  assert.ok(/sealed on-device/i.test(chatBlock), "chat must say mirrored content is sealed on-device");
 });
