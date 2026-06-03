@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 import { __testing__ } from "../callables/privacyBackfill.js";
 
@@ -82,9 +82,8 @@ class FakeFirestore {
   seed(path: string, data: Doc) {
     this.store.set(path, data);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  asFirestore() {
-    return this as unknown as any;
+  asFirestore(): Firestore {
+    return this as unknown as Firestore;
   }
 }
 
