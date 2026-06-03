@@ -495,7 +495,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "escrow_audit_events",
       "entitlement_events",
       "budgetEvents",
-      "unified_audit_log"
+      "unified_audit_log",
+      "audit_meta"
     ],
     "storagePaths": [],
     "countSource": "unified_audit_log",

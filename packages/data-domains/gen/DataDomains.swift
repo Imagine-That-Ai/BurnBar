@@ -131,7 +131,7 @@ public enum DataDomains {
             id: "audit_timeline", title: "Access Audit Timeline", icon: "list.bullet.rectangle.portrait.fill",
             encryptionTier: .serverReadable, summary: "A unified, tamper-evident log of who/what accessed your data, when — across every device, agent, and grant.",
             serverSees: ["actor", "action", "domain", "timestamp", "hash-chain links"], deviceOnly: [],
-            firestorePaths: ["remote_mcp_audit_events", "hermes_audit_events", "pi_agent_audit_events", "iroh_audit_events", "escrow_audit_events", "entitlement_events", "budgetEvents", "unified_audit_log"], storagePaths: [],
+            firestorePaths: ["remote_mcp_audit_events", "hermes_audit_events", "pi_agent_audit_events", "iroh_audit_events", "escrow_audit_events", "entitlement_events", "budgetEvents", "unified_audit_log", "audit_meta"], storagePaths: [],
             countSource: "unified_audit_log", byteSource: nil,
             retention: "append_only", actions: ["view", "verify", "export"],
             entitlementGate: nil, suspensionSurface: nil
