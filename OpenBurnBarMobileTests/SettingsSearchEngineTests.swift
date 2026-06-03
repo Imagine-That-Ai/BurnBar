@@ -208,6 +208,19 @@ final class SettingsSearchEngineTests: XCTestCase {
     }
 
     @MainActor
+    func test_routerPrepareDeepLinkPrimesAnchorWithoutSearchQuery() {
+        let router = SettingsRouter()
+        router.query = "hermes"
+
+        router.prepareDeepLink(anchor: SettingsAnchor.hermesCloudGateway)
+
+        XCTAssertEqual(router.query, "")
+        XCTAssertEqual(router.pendingAnchor, SettingsAnchor.hermesCloudGateway)
+        XCTAssertEqual(router.highlightedAnchor, SettingsAnchor.hermesCloudGateway)
+        XCTAssertNil(router.pendingFocus)
+    }
+
+    @MainActor
     func test_routerRootNavigationClearsSubpageInsteadOfStacking() {
         let router = SettingsRouter()
         let subpage = SettingsItem(

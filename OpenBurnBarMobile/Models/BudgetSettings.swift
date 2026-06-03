@@ -13,6 +13,8 @@ import UIKit
 @MainActor
 final class BudgetSettings {
     private let store: BudgetRulesStore
+    private let legacyBudgetDefaults: UserDefaults
+    private let migrateLegacyBudget: Bool
 
     /// Stable device identifier used as `sourceDeviceID` on every write. Falls back to a
     /// random UUID when `identifierForVendor` is nil (e.g. in Simulator edge cases).
@@ -25,8 +27,14 @@ final class BudgetSettings {
     /// Creates a new `BudgetSettings` backed by the given `BudgetRulesStore`.
     /// Immediately starts a Firestore listener for live rule updates and kicks off
     /// the legacy AppStorage migration check.
-    init(store: BudgetRulesStore) {
+    init(
+        store: BudgetRulesStore,
+        legacyBudgetDefaults: UserDefaults = .standard,
+        migrateLegacyBudget: Bool = true
+    ) {
         self.store = store
+        self.legacyBudgetDefaults = legacyBudgetDefaults
+        self.migrateLegacyBudget = migrateLegacyBudget
         self.deviceID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
 
         store.startListening { [weak self] rules in
@@ -177,14 +185,15 @@ final class BudgetSettings {
     /// old AppStorage-based budget UI) into a proper `BudgetRule` on first launch after the
     /// budgeting port ships. Runs exactly once per device — clears the key on success.
     private func migrateAppStorageBudgetIfNeeded() async {
+        guard migrateLegacyBudget else { return }
         let key = "dailyBudget"
-        let legacyAmount = UserDefaults.standard.double(forKey: key)
+        let legacyAmount = legacyBudgetDefaults.double(forKey: key)
         guard legacyAmount > 0 else { return }
 
         // Only create the rule if there's no existing global rule
         guard primaryGlobalRule == nil else {
             // Already have a rule — just clear the legacy key
-            UserDefaults.standard.removeObject(forKey: key)
+            legacyBudgetDefaults.removeObject(forKey: key)
             return
         }
 
@@ -197,7 +206,7 @@ final class BudgetSettings {
             sourceDeviceID: deviceID
         )
         await upsertRule(migrated, source: "legacy_migration")
-        UserDefaults.standard.removeObject(forKey: key)
+        legacyBudgetDefaults.removeObject(forKey: key)
     }
 
     // MARK: - Helpers

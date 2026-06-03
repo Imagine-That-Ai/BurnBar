@@ -34,11 +34,12 @@
  * owner-scoped, and is gated on "sealed copy exists" so it is always safe to run.
  */
 
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, Timestamp } from "firebase-admin/firestore";
 import type {
   CollectionReference,
   DocumentReference,
   Firestore,
+  Query,
   QueryDocumentSnapshot,
 } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
@@ -57,6 +58,18 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
  * re-seal on next sync. Keep in lockstep with the client watermark check.
  */
 export const PRIVACY_RESEAL_EPOCH = 2;
+const BACKFILL_PAGE_SIZE = 1000;
+
+interface BackfillProgressEvent {
+  readonly collection: string;
+  readonly phase: "started" | "completed";
+  readonly durationMs?: number;
+  readonly scannedDocs?: number;
+  readonly updatedDocs?: number;
+  readonly deletedFields?: number;
+}
+
+type BackfillProgress = (event: BackfillProgressEvent) => void | Promise<void>;
 
 /** A legacy plaintext field and the sealed field whose presence gates its deletion. */
 interface GatedField {
@@ -304,10 +317,58 @@ async function sweepCollection(
   fields: readonly GatedField[],
   stats: BackfillStats,
 ): Promise<void> {
+  if (typeof (ref as unknown as { orderBy?: unknown }).orderBy === "function") {
+    await sweepCollectionPaginated(ref, fields, stats);
+    return;
+  }
+
+  // Test doubles may only implement listDocuments(); production uses the
+  // paginated query path above so large collections cannot stall on one
+  // unbounded list operation.
   const docs = await ref.listDocuments();
   for (const docRef of docs) {
     await sweepDocument(docRef, fields, stats);
   }
+}
+
+async function sweepCollectionPaginated(
+  ref: CollectionReference,
+  fields: readonly GatedField[],
+  stats: BackfillStats,
+): Promise<void> {
+  let cursor: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let query: Query = ref.orderBy(FieldPath.documentId()).limit(BACKFILL_PAGE_SIZE);
+    if (cursor) query = query.startAfter(cursor);
+    const page = await query.get();
+    if (page.empty) return;
+    for (const snap of page.docs) {
+      await sweepSnapshot(snap, fields, stats);
+    }
+    cursor = page.docs.at(-1);
+    if (page.size < BACKFILL_PAGE_SIZE) return;
+  }
+}
+
+async function sweepNamedCollection(
+  name: string,
+  ref: CollectionReference,
+  fields: readonly GatedField[],
+  stats: BackfillStats,
+  progress?: BackfillProgress,
+): Promise<void> {
+  const startedAt = Date.now();
+  const before = { ...stats };
+  await progress?.({ collection: name, phase: "started" });
+  await sweepCollection(ref, fields, stats);
+  await progress?.({
+    collection: name,
+    phase: "completed",
+    durationMs: Date.now() - startedAt,
+    scannedDocs: stats.scannedDocs - before.scannedDocs,
+    updatedDocs: stats.updatedDocs - before.updatedDocs,
+    deletedFields: stats.deletedFields - before.deletedFields,
+  });
 }
 
 async function sweepDocument(
@@ -317,8 +378,24 @@ async function sweepDocument(
 ): Promise<void> {
   const snap = await docRef.get();
   if (!snap.exists) return;
+  await sweepExistingDocument(docRef, snap.data() ?? {}, fields, stats);
+}
+
+async function sweepSnapshot(
+  snap: QueryDocumentSnapshot,
+  fields: readonly GatedField[],
+  stats: BackfillStats,
+): Promise<void> {
+  await sweepExistingDocument(snap.ref, snap.data() ?? {}, fields, stats);
+}
+
+async function sweepExistingDocument(
+  docRef: DocumentReference,
+  data: Record<string, unknown>,
+  fields: readonly GatedField[],
+  stats: BackfillStats,
+): Promise<void> {
   stats.scannedDocs += 1;
-  const data = (snap.data() ?? {}) as Record<string, unknown>;
   const toDelete = gatedDeletions(data, fields);
   if (toDelete.length === 0) return;
   const update: Record<string, FieldValue> = {};
@@ -343,21 +420,36 @@ async function bumpResealWatermark(firestore: Firestore, uid: string, stats: Bac
 }
 
 /** Run the full idempotent backfill for a single user. */
-export async function backfillUserPrivacy(firestore: Firestore, uid: string): Promise<BackfillStats> {
+export async function backfillUserPrivacy(
+  firestore: Firestore,
+  uid: string,
+  progress?: BackfillProgress,
+): Promise<BackfillStats> {
   const stats = emptyStats();
   const userRef = firestore.collection("users").doc(uid);
 
   for (const plan of COLLECTION_PLANS) {
-    await sweepCollection(userRef.collection(plan.collection), plan.fields, stats);
+    await sweepNamedCollection(plan.collection, userRef.collection(plan.collection), plan.fields, stats, progress);
   }
 
   // knowledge_repos is keyed by an opaque repo id; sweep each doc directly.
-  await sweepCollection(userRef.collection("knowledge_repos"), KNOWLEDGE_REPO_FIELDS, stats);
+  await sweepNamedCollection("knowledge_repos", userRef.collection("knowledge_repos"), KNOWLEDGE_REPO_FIELDS, stats, progress);
 
   const cliSessions = await userRef.collection("cli_sessions").listDocuments();
+  const snapshotsStartedAt = Date.now();
+  const snapshotsBefore = { ...stats };
+  await progress?.({ collection: "cli_sessions.snapshots", phase: "started" });
   for (const sessionRef of cliSessions) {
     await sweepCollection(sessionRef.collection("snapshots"), ROLLBACK_SNAPSHOT_FIELDS, stats);
   }
+  await progress?.({
+    collection: "cli_sessions.snapshots",
+    phase: "completed",
+    durationMs: Date.now() - snapshotsStartedAt,
+    scannedDocs: stats.scannedDocs - snapshotsBefore.scannedDocs,
+    updatedDocs: stats.updatedDocs - snapshotsBefore.updatedDocs,
+    deletedFields: stats.deletedFields - snapshotsBefore.deletedFields,
+  });
 
   await bumpResealWatermark(firestore, uid, stats);
   return stats;

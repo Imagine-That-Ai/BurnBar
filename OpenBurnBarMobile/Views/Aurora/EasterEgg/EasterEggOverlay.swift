@@ -25,8 +25,7 @@ import SwiftUI
 //     BOTTOM pops a cute little row of gold/silver tokens that bounce once with
 //     a soft squash (~0.8s, throttled).
 //
-// Reduce Motion is honoured: rapid-scroll events collapse to a single calm
-// frame and the boundary tap is skipped.
+// Reduce Motion is honoured: rapid-scroll summons and the boundary tap are skipped.
 //
 // Asset reuse: the logo marks are the SAME bundled imagesets the constellation
 // background draws — resolved through `AgentProvider.bundledLogoName` and the
@@ -179,7 +178,7 @@ final class EasterEggController {
         reduceMotion: Bool
     ) {
         guard isEnabled else { return }
-        detectReversal(tag: tag, offset: offset, isDark: isDark)
+        detectReversal(tag: tag, offset: offset, isDark: isDark, reduceMotion: reduceMotion)
         detectBoundary(
             offset: offset,
             contentHeight: contentHeight,
@@ -194,7 +193,8 @@ final class EasterEggController {
         reversalStates[tag] = nil
     }
 
-    private func detectReversal(tag: String, offset: CGFloat, isDark: Bool) {
+    private func detectReversal(tag: String, offset: CGFloat, isDark: Bool, reduceMotion: Bool) {
+        guard !reduceMotion else { return }
         var state = reversalStates[tag] ?? ReversalState()
         defer {
             state.lastOffset = offset

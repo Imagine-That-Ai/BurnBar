@@ -6,13 +6,13 @@
     "eventId" : "e-gateway",
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u-gateway|c-gateway|e-gateway",
     "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEvent|u-gateway|c-gateway|e-gateway",
-    "payloadCiphertext" : "yq9TdLH7X2n7cX7tKy0a8nTDeldDLWD+kYDakPyuBCN7ZMGtKioO\/xfhpISYDEF6qyB5QRQJCYukbAesrmUHMQv7hL4gq0f3hfn6FMM=",
+    "payloadCiphertext" : "2sX63SoTTOm8kBW9CCLNff7kBVS0DPurwpOfO0K3LgzZeRWvo6KoCcFBTb3rKzOYWir07NQFR0M1Qcg+2pDMUn7ODU2kLpvi1vx0XkA=",
     "plaintext" : "{\"text\":\"open the BurnBar gateway\",\"kind\":\"chat\"}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgE=",
     "recipientPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
     "symmetricKey" : "ERgfJi00O0JJUFdeZWxzeoGIj5adpKuyucDHztXc4+o=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BAtaFxZzpRCwVBTctH99R+JpMsX9yVHmu759KKGWl2Iv7XxeJtaAzLbix0+AT5QjDJ4dyJV3xZXx5ISH+yyfCihi2xav8xcjyEwiHKsslPoXstjU6kM\/g1dS6EzhX2\/X6vurZk\/SblaSeRIK4b0xlN0ohZYlBH94RLjomUw="
+    "wrappedKey" : "BNvNR8uiT871q7YHCwKQXvx5dWWfWuHn0RJTDnbWcVO3vi+vaQihgbaVopAI4yQEfOr0MdLTVZfMb7Cj+s2FTffO\/pZppsWkKZ\/EnR+ityJ0NvrSl9gbzP5Si4MF0ZLpjEtcCehts4NXyGWOFwYFPAhXjjlcf9p8eSB\/9n8="
   },
   "keyVersion" : 1,
   "message" : {
@@ -21,13 +21,13 @@
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayMessageKey|u-gateway|c-gateway|m-gateway",
     "messageId" : "m-gateway",
     "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayMessage|u-gateway|c-gateway|m-gateway",
-    "payloadCiphertext" : "wC2c+ojBgtldODS9UH32HcvmExOCcUBIN+tAOGMmofKmwd2ojJVoWhaTr2WiOwSgjksqAOR6PFAqfsBtgjdZmDpUUS3MWWBC9wwxZcF8Rk0p",
+    "payloadCiphertext" : "3TsFPLJuvzNas3Ap4JJNCO5O6WgaEzOa8RC+g8YC4ceb7lKFveoRT7AgvgQ3LL5Ut15eZXMmHnTqD+hKYatBD6t9yTe\/XqQA+NDsgN7oCSQ2",
     "plaintext" : "{\"text\":\"Hermes replied over the encrypted gateway.\"}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgI=",
     "recipientPublicKey" : "BEKv7RhS+Y6na81bmkM5tzyhuY2lqIAoclDXgUMlOxYGgIa3AgfJHKxRBUYttVjR\/+p9mm94EPDWHQpMU175cwE=",
     "symmetricKey" : "IikwNz5FTFNaYWhvdn2Ei5KZoKeutbzDytHY3+bt9AA=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BFRrbybZbhpO9ZzR\/jeo5n6KC4CH+fxY4njTEWRHYzLUTf3NBbiP3cgWaD+87gP86+n2FWIAtvagUd6DKBH3gtT3qGl5UPL2rth2Vy2tBpq9QUI0L9nou56aBGO0\/lIfFaXiZ5e06r9B3hn4ZuFa6cSF8djtvWYnitTA1Hg="
+    "wrappedKey" : "BLZLRzx19FBs0bs2MDkhe1\/l6ulhxubZh\/ElvBSVmFKRsP08t9ddK06odi68JJWukwWmTyQWg1CkjjcyZ3d94Nvkfr5jRxhEe8vQMfGxFbWXAnsoBTMzofDMDWnTXE9eRAxw29VfjGrtTwBE7i\/ELZqe1WcnnagTAuEJhIo="
   },
   "modelSwitch" : {
     "clientId" : "c-gateway",
@@ -35,13 +35,13 @@
     "eventId" : "e-model-switch",
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u-gateway|c-gateway|e-model-switch",
     "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEvent|u-gateway|c-gateway|e-model-switch",
-    "payloadCiphertext" : "xDiDFDInURtUN4v8WeHEhbzjk4RPMmaPqavnMr0ezo7rmfO2y9npBUmPaH6FDUnCRmaFx2YO4t3n",
+    "payloadCiphertext" : "Ox2wQdjn0am\/Mp+fBJytWEkft\/S3gIFiltx5a4LLOYpzJ7gIL34yQrwlJHXbGHDrz4cpIKwmhj5c",
     "plaintext" : "{\"modelId\":\"claude-opus-4-8\"}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgE=",
     "recipientPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
     "symmetricKey" : "MzpBSE9WXWRrcnmAh46VnKOqsbi\/xs3U2+Lp8PcDChE=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BKxf8aiJqN1RbhwLFmnuJ8v8OwXOPs5voNcZ\/WwSqeSGqdaFAReUmp3njtzFWG9\/i1RGwA8l1Wf9wZNyEZk3r9GVD5erepjBcKH62BG5NCtauw9E+3WvwujMDiQsCo1gnMCqRurJ9\/7ik4PjtDjJ9nhLLdiGw01GLogoNlk="
+    "wrappedKey" : "BCDY2IkwIfdYvN\/vvGgYjudt6jXaGImsfKPO+YxOxQZgEPxWnThzhoYQl6PcZki6WcVTXWf6pY4QWChDgp9LaMN\/sBBkBGmnuy1HdE6LzDaJhUmtUABAjAYvlQePJKYhdUuDmb5mi38pwoxX+T4\/QQGywR\/G6jzevMc29Ys="
   },
   "revision" : "v1"
 }

@@ -359,7 +359,12 @@ final class AppearanceSettings {
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
         self.usePremiumSOTAUX = persistence.bool(forKey: "usePremiumSOTAUX")
-        self.useWebsiteBackground = persistence.bool(forKey: "useWebsiteBackground")
+        // Opt new installs into the live provider-glyph swarm backdrop so the
+        // app greets users with the same dot swarm the website shows; anyone who
+        // toggles it off keeps that choice (the key then exists).
+        self.useWebsiteBackground = persistence.objectExists(forKey: "useWebsiteBackground")
+            ? persistence.bool(forKey: "useWebsiteBackground")
+            : true
         self.useConstellationBackground = persistence.bool(forKey: "useConstellationBackground", defaultValue: false)
         self.enableDesktopWallpaper = persistence.bool(forKey: "enableDesktopWallpaper", defaultValue: false)
         self.amoledDarkBackground = persistence.bool(forKey: "amoledDarkBackground", defaultValue: false)

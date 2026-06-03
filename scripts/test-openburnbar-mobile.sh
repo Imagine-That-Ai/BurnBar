@@ -80,7 +80,7 @@ discover_physical_iphone_destination() {
     fi
 
     device_name="$(echo "$online_iphone" | sed -E 's/[[:space:]]*\(.+$//' | xargs)"
-    udid="$(echo "$online_iphone" | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40}' | head -1 || true)"
+    udid="$(echo "$online_iphone" | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40}' | head -1 || true)"
     if [[ -z "$udid" ]]; then
         echo "ERROR: Found a connected iPhone but could not parse its UDID from xctrace output:" >&2
         echo "  $online_iphone" >&2

@@ -57,7 +57,11 @@ struct DashboardBackdrop: View {
 
     var body: some View {
         ZStack {
-            if settingsManager.useWebsiteBackground {
+            if settingsManager.appearanceSkin == .editorial {
+                // Editorial / Paper skin: the light dot-crest (provider logos
+                // drifting from coloured dots on paper), like app.burnbar.ai.
+                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+            } else if settingsManager.useWebsiteBackground {
                 if settingsManager.useConstellationBackground {
                     ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
                 } else {
@@ -102,9 +106,29 @@ struct DashboardBackdrop: View {
 /// pace and pauses the shape cycle.
 struct WebsiteBackgroundView: View {
     let accent: Color
+    @Environment(SettingsManager.self) private var settingsManager
 
     var body: some View {
-        SwarmCanvasView(accent: accent, pace: .energetic)
-            .ignoresSafeArea()
+        if settingsManager.appearanceSkin == .editorial {
+            // Light dot-crest: paper field with a transparent, slow, sparkle-free
+            // swarm on top. Provider logos render in their real brand colours, so
+            // they read crisply on paper (no glyph filter → the full roster).
+            ZStack {
+                DesignSystem.Colors.background
+                    .ignoresSafeArea()
+                SwarmCanvasView(
+                    accent: accent,
+                    pace: .cinematic,
+                    isTransparent: true,
+                    motionSpeedMultiplier: 0.7,
+                    enableSwarmSparkles: false
+                )
+                .ignoresSafeArea()
+                .opacity(0.85)
+            }
+        } else {
+            SwarmCanvasView(accent: accent, pace: .energetic)
+                .ignoresSafeArea()
+        }
     }
 }

@@ -5,8 +5,7 @@ import OpenBurnBarCore
 final class BudgetGateTests: XCTestCase {
     @MainActor
     func testGateAllowsUnderLimit() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         let rule = BudgetRule(
             scope: .global,
@@ -44,8 +43,7 @@ final class BudgetGateTests: XCTestCase {
 
     @MainActor
     func testGateWarnsAtEightyPercent() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         let rule = BudgetRule(
             scope: .global,
@@ -86,8 +84,7 @@ final class BudgetGateTests: XCTestCase {
 
     @MainActor
     func testGateBlocksAtOneHundredPercent() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         let rule = BudgetRule(
             scope: .global,
@@ -127,8 +124,7 @@ final class BudgetGateTests: XCTestCase {
 
     @MainActor
     func testSubscriptionBypass() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         let rule = BudgetRule(
             scope: .global,
@@ -167,8 +163,7 @@ final class BudgetGateTests: XCTestCase {
 
     @MainActor
     func testPausedRuleAllows() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         let rule = BudgetRule(
             scope: .global,
@@ -203,6 +198,18 @@ final class BudgetGateTests: XCTestCase {
         } else {
             XCTFail("Expected .paused decision, got \(decision)")
         }
+    }
+
+    @MainActor
+    private func makeSettings() -> BudgetSettings {
+        let suiteName = "BudgetGateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return BudgetSettings(
+            store: BudgetRulesStore(forceTestingMode: true),
+            legacyBudgetDefaults: defaults,
+            migrateLegacyBudget: false
+        )
     }
 }
 

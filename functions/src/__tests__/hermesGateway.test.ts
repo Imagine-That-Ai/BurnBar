@@ -324,6 +324,9 @@ describe("publicClientView — surfaces relay public keys", () => {
       schemaVersion: 2,
     };
     const view = publicClientView(client);
+    expect(view.relayPublicKey).toBe(RELAY_PUBKEY_B64);
+    expect(view.relayKeyVersion).toBe(1);
+    expect(view.relayEncryption).toBe(HERMES_GATEWAY_RELAY_ENCRYPTION);
     expect(view.agentRelayPublicKey).toBe(RELAY_PUBKEY_B64);
     expect(view.phoneRelayPublicKey).toBe(RELAY_PUBKEY_B64);
     expect(view.relayCapable).toBe(true);
@@ -345,6 +348,7 @@ describe("publicClientView — surfaces relay public keys", () => {
       schemaVersion: 1,
     };
     expect(publicClientView(legacy).relayCapable).toBe(false);
+    expect(publicClientView(legacy).relayPublicKey).toBeUndefined();
     expect(publicClientView(legacy).agentRelayPublicKey).toBeUndefined();
   });
 });

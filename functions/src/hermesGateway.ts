@@ -818,6 +818,9 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     // /state) can wrap its first reply to the phone, without an extra round-trip.
     // These are PUBLIC keys — safe to echo; the private halves never leave the
     // owning device. relayCapable tells readers whether sealing is required.
+    relayPublicKey: client.agentRelayPublicKey,
+    relayKeyVersion: client.agentRelayKeyVersion,
+    relayEncryption: client.agentRelayEncryption,
     agentRelayPublicKey: client.agentRelayPublicKey,
     agentRelayKeyVersion: client.agentRelayKeyVersion,
     agentRelayEncryption: client.agentRelayEncryption,
