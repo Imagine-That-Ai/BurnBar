@@ -4,7 +4,7 @@
 
 import { HttpsError } from "firebase-functions/v2/https";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { isRecord, recordOrUndefined } from "./guards.js";
+import { isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
 
 export const HERMES_GATEWAY_SCHEMA_VERSION = 2;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
@@ -674,6 +674,26 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
     hasValidAttachmentManifestTail(record) &&
     typeof record.schemaVersion === "number"
   );
+}
+
+export function serializeHermesGatewayTypingDoc(params: {
+  clientId: string;
+  destinationId: string;
+  createdAt: string;
+  expiresAt: string;
+}): Record<string, unknown> {
+  return stripUndefinedObject({
+    id: params.clientId,
+    clientId: params.clientId,
+    kind: "typing",
+    destinationId: params.destinationId,
+    // No top-level threadId: it is private conversation-routing metadata for
+    // gateway chats. Typing is ephemeral and destination-scoped, so storing the
+    // thread id would create a plaintext side channel.
+    createdAt: params.createdAt,
+    expiresAt: params.expiresAt,
+    schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+  });
 }
 
 export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc | undefined {

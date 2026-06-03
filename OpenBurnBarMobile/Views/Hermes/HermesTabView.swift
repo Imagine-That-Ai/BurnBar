@@ -1878,7 +1878,13 @@ struct HermesChatView: View {
     /// direct/relay host (which carries its own transport security and doesn't
     /// surface the gateway lock).
     private var gatewayPrivacyClient: HermesGatewayClientRecord? {
-        guard shouldSendViaBurnBarGateway || !gatewayStore.onlineClients.isEmpty else { return nil }
+        // Only when the BurnBar Cloud path is the active route for this chat. CLI
+        // mode and the direct/relay host path carry their own transport security
+        // and don't surface the gateway lock, keeping the rail uncluttered.
+        guard chatViewMode != .cli,
+              shouldSendViaBurnBarGateway || !gatewayStore.onlineClients.isEmpty else {
+            return nil
+        }
         return gatewayStore.selectedClient
     }
 
@@ -1887,6 +1893,13 @@ struct HermesChatView: View {
     /// client in play), keeping the rail uncluttered on the direct-host path.
     private var gatewayPrivacyState: HermesGatewayPrivacyState? {
         guard let client = gatewayPrivacyClient else { return nil }
+        // A reply sealed for a device this one can no longer open (reinstall / new
+        // phone) is the same recoverable situation as a changed connection, so the
+        // chip and sheet both surface "Reconnect" — keeping the affordance honest
+        // and consistent even before the send-path key-change guard trips.
+        if hasUndecryptableGatewayReply {
+            return .reconnectNeeded
+        }
         return HermesGatewayPrivacyState.resolve(
             client: client,
             keyChanged: gatewayStore.agentRelayKeyChanged(for: client)
@@ -1904,13 +1917,14 @@ struct HermesChatView: View {
     @ViewBuilder
     private var gatewayPrivacySheet: some View {
         if let client = gatewayPrivacyClient, let state = gatewayPrivacyState {
-            // Offer reconnect when the connection changed (the seal guard is
-            // fail-closed) or when a reply arrived sealed for a device this one
-            // can no longer open — both are recoverable by an explicit, consented
-            // re-pair. A verified, openable connection shows no reconnect button.
-            let needsReconnect = state == .reconnectNeeded || hasUndecryptableGatewayReply
+            // Offer the explicit, consented reconnect whenever the connection
+            // can't be trusted as-is (changed connection — the seal guard is
+            // fail-closed) or a reply arrived sealed for a device this one can no
+            // longer open. A verified, openable connection shows no reconnect
+            // button — just the explainer and the safety code.
+            let needsReconnect = (state == .reconnectNeeded)
             HermesGatewayPrivacySheet(
-                state: needsReconnect ? .reconnectNeeded : state,
+                state: state,
                 clientDisplayName: client.displayName,
                 safetyCode: gatewayStore.agentSafetyCode(for: client),
                 onReconnect: needsReconnect

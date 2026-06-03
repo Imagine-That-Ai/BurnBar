@@ -1,11 +1,38 @@
 import XCTest
 import CryptoKit
+import Security
 import FirebaseFirestore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
+
+/// Hermetic in-memory backing for ``HermesGatewayAgentKeyPinStore`` tests. Mirrors
+/// the Keychain backing's three-state read contract without needing Keychain
+/// entitlements, so the TOFU pin tests pass on unsigned simulators / CI.
+private final class InMemoryGatewayPinBacking: HermesGatewayPinBacking, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: String] = [:]
+
+    func load(account: String) -> HermesGatewayPinLoad {
+        lock.lock(); defer { lock.unlock() }
+        if let value = storage[account] { return .found(value) }
+        return .absent
+    }
+
+    @discardableResult
+    func save(_ value: String, account: String) -> OSStatus {
+        lock.lock(); defer { lock.unlock() }
+        storage[account] = value
+        return errSecSuccess
+    }
+
+    func delete(account: String) {
+        lock.lock(); defer { lock.unlock() }
+        storage[account] = nil
+    }
+}
 
 @MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
@@ -285,6 +312,89 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(opened.chatRenderText(), "Hermes sent 1 attachment.")
     }
 
+    func testHermesGatewayAttachmentOpenFailureShowsRecoverableMessage() throws {
+        let record = HermesGatewayMessageRecord(
+            documentID: "msg_attachment_failed",
+            data: [
+                "id": "msg_attachment_failed",
+                "clientId": "hgw_abc",
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "attachmentIds": ["att_missing"],
+                "relayEnvelope": [
+                    "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
+                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2
+            ]
+        )
+
+        var opened = try XCTUnwrap(record)
+        opened.resolvedText = ""
+        opened = opened.withAttachmentHydration(opened: [], failedAttachmentIds: ["att_missing"])
+
+        XCTAssertFalse(opened.isUndecryptableHere)
+        XCTAssertEqual(
+            opened.chatRenderText(),
+            "One attachment could not open on this device. Reconnect Hermes here, then try again."
+        )
+    }
+
+    func testHermesGatewayUndecryptableReplyKeepsRePairCopyWhenAttachmentOpenFails() throws {
+        let record = HermesGatewayMessageRecord(
+            documentID: "msg_other_device_attachment_failed",
+            data: [
+                "id": "msg_other_device_attachment_failed",
+                "clientId": "hgw_abc",
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "attachmentIds": ["att_missing"],
+                "relayEnvelope": [
+                    "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
+                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2
+            ]
+        )
+
+        let opened = try XCTUnwrap(record?.withAttachmentHydration(opened: [], failedAttachmentIds: ["att_missing"]))
+
+        XCTAssertTrue(opened.isUndecryptableHere)
+        XCTAssertEqual(
+            opened.chatRenderText(),
+            "\(HermesGatewayMessageRecord.sealedForAnotherDeviceText)\n\nOne attachment could not open on this device. Reconnect Hermes here, then try again."
+        )
+    }
+
+    func testHermesGatewayBodyIncludesAttachmentFailureHint() throws {
+        let record = HermesGatewayMessageRecord(
+            documentID: "msg_body_attachment_failed",
+            data: [
+                "id": "msg_body_attachment_failed",
+                "clientId": "hgw_abc",
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "attachmentIds": ["att_missing"],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 1,
+                "text": "Here is the result."
+            ]
+        )
+
+        let opened = try XCTUnwrap(record?.withAttachmentHydration(opened: [], failedAttachmentIds: ["att_missing"]))
+
+        XCTAssertEqual(
+            opened.chatRenderText(),
+            "Here is the result.\n\nOne attachment could not open on this device. Reconnect Hermes here, then try again."
+        )
+    }
+
     func testHermesGatewaySealedAttachmentRoundTripsAndImportsIntoChatWorkspace() throws {
         let uid = "uid_test"
         let clientId = "hgw_abc"
@@ -422,7 +532,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
     /// A fresh pin store scoped to a throwaway Keychain account namespace so the
     /// test never collides with a previously pinned device key.
     private func freshPinStore() -> HermesGatewayAgentKeyPinStore {
-        HermesGatewayAgentKeyPinStore()
+        // Inject an in-memory backing so the TOFU pin tests run hermetically on
+        // unsigned simulators / CI, where the real Keychain returns
+        // errSecMissingEntitlement (-34018). Production still uses the Keychain.
+        HermesGatewayAgentKeyPinStore(backing: InMemoryGatewayPinBacking())
     }
 
     func testAgentKeyPinFirstUsePinsAndMatchesSameKey() {
@@ -471,6 +584,115 @@ final class OpenBurnBarMobileTests: XCTestCase {
         store.clearPin(uid: uid, clientId: clientId)
         XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: rotatedKey, uid: uid, clientId: clientId), .pinnedFirstUse)
         XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), rotatedKey)
+    }
+
+    func testAgentKeySafetyCodeIsDeterministicAndKeyDependent() {
+        let keyA = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let keyB = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+
+        let codeA1 = HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: keyA)
+        let codeA2 = HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: keyA)
+        let codeB = HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: keyB)
+
+        // Same key → identical code, so two devices can compare it out of band.
+        XCTAssertNotNil(codeA1)
+        XCTAssertEqual(codeA1, codeA2)
+        // Different key → different code, so a changed connection is visible.
+        XCTAssertNotEqual(codeA1, codeB)
+        // Whitespace around the same key must not change the code.
+        XCTAssertEqual(codeA1, HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: "  \(keyA)\n"))
+        // An empty key yields no code rather than a fabricated one.
+        XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: "   "))
+    }
+
+    func testAgentKeySafetyCodeFormatIsHumanComparableHexGroups() throws {
+        let key = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let code = try XCTUnwrap(HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: key))
+
+        // Four groups of four uppercase hex characters, space separated.
+        let groups = code.split(separator: " ").map(String.init)
+        XCTAssertEqual(groups.count, 4)
+        let allowed = CharacterSet(charactersIn: "0123456789ABCDEF")
+        for group in groups {
+            XCTAssertEqual(group.count, 4)
+            XCTAssertTrue(group.unicodeScalars.allSatisfy { allowed.contains($0) }, "non-hex in \(group)")
+        }
+    }
+
+    func testPinnedSafetyCodeReflectsTrustedKeyAfterRepair() {
+        let store = freshPinStore()
+        let uid = "uid_safety"
+        let clientId = "hgw_safety_\(UUID().uuidString)"
+        let originalKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let rotatedKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        // No pin yet → no pinned code.
+        XCTAssertNil(store.pinnedSafetyCode(uid: uid, clientId: clientId))
+
+        XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: originalKey, uid: uid, clientId: clientId), .pinnedFirstUse)
+        XCTAssertEqual(
+            store.pinnedSafetyCode(uid: uid, clientId: clientId),
+            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: originalKey)
+        )
+
+        // After a consented re-pair to a new key, the code tracks the new trust.
+        store.clearPin(uid: uid, clientId: clientId)
+        XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: rotatedKey, uid: uid, clientId: clientId), .pinnedFirstUse)
+        XCTAssertEqual(
+            store.pinnedSafetyCode(uid: uid, clientId: clientId),
+            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: rotatedKey)
+        )
+        XCTAssertNotEqual(
+            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: originalKey),
+            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: rotatedKey)
+        )
+    }
+
+    func testGatewayPrivacyStateResolvesFromRealKeyState() {
+        let sealableKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let verified = sealableGatewayClient(id: "hgw_state_a", agentPublicKey: sealableKey)
+        // A sealable, unchanged connection reads as private + verified.
+        XCTAssertEqual(
+            HermesGatewayPrivacyState.resolve(client: verified, keyChanged: false),
+            .privateVerified
+        )
+        // A changed connection always wins → reconnect, never "private".
+        XCTAssertEqual(
+            HermesGatewayPrivacyState.resolve(client: verified, keyChanged: true),
+            .reconnectNeeded
+        )
+        // A paired client that can't seal yet (Mac needs an update) → finish setup.
+        let notSealable = HermesGatewayClientRecord(
+            id: "hgw_state_b",
+            displayName: "Mac",
+            status: "active",
+            tokenPreview: "abcd",
+            scopes: [],
+            homeDestinationId: "burnbar:home",
+            lastSeenAt: nil,
+            revokedAt: nil,
+            createdAt: "2026-06-02T08:00:00.000Z",
+            updatedAt: "2026-06-02T08:00:00.000Z",
+            schemaVersion: 2
+        )
+        XCTAssertEqual(
+            HermesGatewayPrivacyState.resolve(client: notSealable, keyChanged: false),
+            .updateNeeded
+        )
+    }
+
+    func testGatewayPrivacyChipCopyIsJargonFree() {
+        let jargon = ["relay", "envelope", "P-256", "HKDF", "TOFU", "pin", "keyVersion", "AAD", "ciphertext", "MITM", "man-in-the-middle", "E2EE"]
+        let strings: [String] = HermesGatewayPrivacyState.allUserFacingCopyForTests
+        for text in strings {
+            for term in jargon {
+                XCTAssertFalse(
+                    text.localizedCaseInsensitiveContains(term),
+                    "Privacy copy leaks jargon '\(term)': \(text)"
+                )
+            }
+        }
     }
 
     func testGatewayEventSealPinsAgentKeyThenRefusesChangedKey() throws {

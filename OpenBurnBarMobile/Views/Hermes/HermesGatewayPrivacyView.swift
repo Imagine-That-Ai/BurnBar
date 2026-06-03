@@ -107,7 +107,17 @@ extension HermesGatewayPrivacyState {
         if client.canSealToAgent { return .privateVerified }
         return .updateNeeded
     }
+
+    /// Every user-facing string this state surfaces, gathered for the jargon
+    /// audit test so the copy policy is enforced in CI rather than by review.
+    static var allUserFacingCopyForTests: [String] {
+        allCases.flatMap { state in
+            [state.chipLabel, state.accessibilityLabel, state.sheetTitle, state.sheetSummary]
+        }
+    }
 }
+
+extension HermesGatewayPrivacyState: CaseIterable {}
 
 // MARK: - Lock Chip
 

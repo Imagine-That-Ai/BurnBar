@@ -558,6 +558,10 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// attachment workspace. Held in-memory until the chat service persists the
     /// rendered message.
     var openedAttachments: [HermesAttachment]
+    /// Referenced gateway attachments that this device could not open during the
+    /// latest hydration attempt. Held in-memory only so the UI can show a truthful
+    /// recovery state instead of an empty attachment strip.
+    var failedAttachmentIds: [String]
 
     init?(documentID: String, data: [String: Any]) {
         guard
@@ -588,6 +592,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             ?? (data["relayKeyVersion"] as? Int)
         self.resolvedText = nil
         self.openedAttachments = []
+        self.failedAttachmentIds = []
     }
 
     /// True when the reply carries a sealed body that must be opened with the
@@ -621,6 +626,13 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     static let sealedForAnotherDeviceText =
         "This reply was sent privately to another of your devices. Reconnect Hermes on this device to read replies here."
 
+    static func attachmentOpenFailureText(count: Int) -> String {
+        if count == 1 {
+            return "One attachment could not open on this device. Reconnect Hermes here, then try again."
+        }
+        return "\(count) attachments could not open on this device. Reconnect Hermes here, then try again."
+    }
+
     /// The single source of truth for what the conversation thread should show
     /// for a gateway reply: the opened body, the legacy plaintext, the
     /// re-pair state for a reply this device cannot open, or a benign fallback
@@ -629,19 +641,32 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     func chatRenderText(
         emptyFallback: String = "Hermes sent a reply through BurnBar Cloud."
     ) -> String {
+        let failedAttachmentText = failedAttachmentIds.isEmpty ? nil : Self.attachmentOpenFailureText(count: failedAttachmentIds.count)
         if let body = displayText?.trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty {
+            if let failedAttachmentText {
+                return "\(body)\n\n\(failedAttachmentText)"
+            }
             return body
         }
         // Files that already opened on this device render in the bubble; the
         // caption stays neutral rather than implying a re-pair is needed.
         if !openedAttachments.isEmpty {
             let count = openedAttachments.count
+            if let failedAttachmentText {
+                return "Hermes sent \(count) attachment\(count == 1 ? "" : "s"). \(failedAttachmentText)"
+            }
             return "Hermes sent \(count) attachment\(count == 1 ? "" : "s")."
         }
         // A sealed reply this device cannot open (and with no opened files) shows
         // the calm re-pair state, never a blank/"no text" bubble or crypto jargon.
         if isUndecryptableHere {
+            if let failedAttachmentText {
+                return "\(Self.sealedForAnotherDeviceText)\n\n\(failedAttachmentText)"
+            }
             return Self.sealedForAnotherDeviceText
+        }
+        if let failedAttachmentText {
+            return failedAttachmentText
         }
         if !attachmentIds.isEmpty {
             let count = attachmentIds.count
@@ -684,6 +709,14 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     func withOpenedAttachments(_ attachments: [HermesAttachment]) -> HermesGatewayMessageRecord {
         var copy = self
         copy.openedAttachments = attachments
+        copy.failedAttachmentIds = []
+        return copy
+    }
+
+    func withAttachmentHydration(opened attachments: [HermesAttachment], failedAttachmentIds: [String]) -> HermesGatewayMessageRecord {
+        var copy = self
+        copy.openedAttachments = attachments
+        copy.failedAttachmentIds = failedAttachmentIds
         return copy
     }
 
@@ -2093,13 +2126,13 @@ enum FunctionsError: Error, LocalizedError, Equatable {
         case .gatewayTargetMissingRelayKey:
             // Benefit-first, jargon-free per the copy policy: messages stay
             // private, so they can only send once the Mac is ready.
-            return "Update OpenBurnBar on your Mac and pair Hermes again. Messages here stay private to your devices, so they can only be sent once that Mac is set up."
+            return "Update OpenBurnBar on your Mac, then reconnect Hermes. Messages here stay private to your devices, so they can only be sent once that Mac is ready."
         case .gatewayRelayKeyChanged:
             // No transport/security jargon ("relay key", "man-in-the-middle"):
             // calm, action-first copy that protects the user and names the fix.
-            return "This Hermes connection looks different from when you set it up, so your message was kept on this device for your safety. Pair Hermes again on your Mac to keep sending privately."
+            return "This Hermes connection looks different from when you set it up, so your message was kept on this device for your safety. Reconnect Hermes on your Mac to keep sending privately."
         case .gatewayAttachmentUnreadable:
-            return "This file was shared privately with another device you paired. Re-pair this device to open files here."
+            return "This file was shared privately with another of your devices. Reconnect Hermes on this device to open files here."
         }
     }
 }
