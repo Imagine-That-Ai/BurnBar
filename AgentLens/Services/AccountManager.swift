@@ -45,6 +45,9 @@ final class AccountManager {
     private var firebaseAuthAccessGroup: String?
     /// Retains `AppleSignInPresentationCoordinator` until Sign in with Apple completes.
     private var appleSignInPresentation: AppleSignInPresentationCoordinator?
+    /// Retains GitHub OAuth session objects until ASWebAuthenticationSession completes.
+    private var activeWebAuthSession: ASWebAuthenticationSession?
+    private var activeWebAuthPresentationContext: WebAuthPresentationContext?
     private static let authLogger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "com.openburnbar.app",
         category: "AccountManager"
@@ -425,10 +428,15 @@ final class AccountManager {
         return try await withCheckedThrowingContinuation { (
             continuation: CheckedContinuation<URL, Error>
         ) in
+            let presentationContext = WebAuthPresentationContext(window: window)
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: callbackScheme,
                 completionHandler: { callbackURL, error in
+                    Task { @MainActor [weak self] in
+                        self?.activeWebAuthSession = nil
+                        self?.activeWebAuthPresentationContext = nil
+                    }
                     if let error {
                         continuation.resume(throwing: error)
                         return
@@ -440,8 +448,14 @@ final class AccountManager {
                     continuation.resume(returning: callbackURL)
                 }
             )
-            session.presentationContextProvider = WebAuthPresentationContext(window: window)
-            session.start()
+            session.presentationContextProvider = presentationContext
+            activeWebAuthPresentationContext = presentationContext
+            activeWebAuthSession = session
+            if !session.start() {
+                activeWebAuthSession = nil
+                activeWebAuthPresentationContext = nil
+                continuation.resume(throwing: AccountError.invalidCredential)
+            }
         }
     }
 
@@ -467,7 +481,7 @@ final class AccountManager {
         }
         if let idToken = values["id_token"] {
             return OAuthProvider.credential(
-                withProviderID: "github.com",
+                providerID: AuthProviderID.gitHub,
                 idToken: idToken,
                 accessToken: nil
             )
