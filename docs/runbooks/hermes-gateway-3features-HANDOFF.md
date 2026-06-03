@@ -1,5 +1,9 @@
 # HANDOFF — finish the Hermes Gateway 3 features (device-capable agent)
 
+> **Superseded on 2026-06-03:** this was the pre-merge handoff checklist. For
+> current launch status, audit evidence, and remaining hardware readback, use
+> `docs/runbooks/hermes-gateway-3features.md` §7-§8.
+
 You are picking up finished, tested server + adapter work. Your job is the part
 that needs **real hardware, deploy credentials, and a push** — none of which the
 prior agent had. Do NOT re-do the server/adapter work; it is done and green.

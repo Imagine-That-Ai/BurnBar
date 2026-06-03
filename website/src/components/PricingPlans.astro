@@ -119,7 +119,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <span class="plan__save mono" data-billing="annual"
             >${(Number(cloud.priceAnnualUSD) / 12).toFixed(2)}/mo · save {cloudSave}%</span
           >
-          <span class="plan__per-dim" data-billing="monthly">${cloud.priceAnnualUSD}/yr available</span
+          <span class="plan__per-dim" data-billing="monthly"
+            >${cloud.priceAnnualUSD}/yr available</span
           >
         </span>
       </div>
@@ -247,7 +248,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <span class="plan__save mono" data-billing="annual"
             >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {ultraSave}%</span
           >
-          <span class="plan__per-dim" data-billing="monthly">${ultra.priceAnnualUSD}/yr available</span
+          <span class="plan__per-dim" data-billing="monthly"
+            >${ultra.priceAnnualUSD}/yr available</span
           >
         </span>
       </div>
@@ -296,9 +298,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <span class="topup__price mono">${relayTopUp.priceUSD}</span>
         </div>
         <p class="topup__note">
-          Monthly caps still apply ({allowance.hostedAgentActionMonthlyCap.toLocaleString()} actions ·{" "}
-          {allowance.relayGBMonthlyCap} GB). When allowance and top-ups run out, hosted work pauses
-          instead of silently spending more.
+          Monthly caps still apply ({allowance.hostedAgentActionMonthlyCap.toLocaleString()} actions
+          · {allowance.relayGBMonthlyCap} GB). When allowance and top-ups run out, hosted work
+          pauses instead of silently spending more.
         </p>
       </div>
     </div>
@@ -549,14 +551,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
        silhouette — each tier gets its own harmonious palette (--holo-grad). */
     background: var(
       --holo-grad,
-      linear-gradient(
-        125deg,
-        #ffd166 6%,
-        #7dd3fc 30%,
-        #c084fc 52%,
-        #5eead4 74%,
-        #ffd166 92%
-      )
+      linear-gradient(125deg, #ffd166 6%, #7dd3fc 30%, #c084fc 52%, #5eead4 74%, #ffd166 92%)
     );
     background-size: 320% 320%;
     background-position: 0% 50%;

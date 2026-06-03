@@ -6,8 +6,11 @@ Cloud ↔ Hermes gateway: **(1) runtime state**, **(2) model switching**, and
 what was already there vs newly built, the tests run, the physical-iPhone E2E
 procedure, and the readiness verdict for the Hermes plugin PR.
 
-> **Hold for Alberto:** nothing here is pushed. The Hermes PR, the BurnBar
-> deploy, and the physical-iPhone E2E are gated on your explicit go-ahead.
+> **Post-merge status:** BurnBar PR #264 was merged to `main` on 2026-06-03.
+> Production backfill/cleanup has been run and was idempotent on the second pass.
+> The physical-iPhone pairing/connection loop was proven earlier in the release
+> pass, but the full approve/deny/expiry hardware scenario was not rerun during
+> the final formatting/security audit because the iPhone was offline to Xcode.
 
 ---
 
@@ -290,20 +293,48 @@ mirror is byte-identical to the verified-green `~/.hermes` deployment copy.
 Updated after the gateway E2EE re-architecture landed in the same files AND the
 remediation pass closed every review finding (see §6a).
 
-- **Server (functions) — all three features, control- AND data-plane:** **ready** —
-  built green; `test:hermes-gateway`, `test:firestore-rules` (45/45), vitest (30/30),
-  and the privacy scanner all pass. The oversight gate is sealed-consistent
+- **Server (functions) — all three features, control- AND data-plane:** **ready**.
+  Build, gateway contract tests, focused unit tests, privacy scanner, and the
+  post-merge format gates pass. The oversight gate is sealed-consistent
   (control-plane; no server-readable command text).
-- **Hermes plugin (adapter):** **ready** — the BurnBar mirror is byte-identical to
-  the verified-green `~/.hermes` deployment copy (E2EE + oversight integrated; 62
-  Hermes tests pass). The "cp destroys E2EE" footgun is gone.
-- **Hermes plugin PR:** **ready pending Alberto's controlled steps** — commit the
-  `~/.hermes` Hermes-repo WIP (adapter + `gateway/crypto/relay_e2ee.py` + the README,
-  authored as Ajnunezg), then open the PR. The de-hyped README lives in the mirror;
-  sync it into `~/.hermes` (the canonical copy still has the old hyped README).
-  **Do not push until you say so.**
-- **iOS client:** **needs Xcode compile + device E2E** before the demo — the only
-  item that cannot be closed in this environment (no toolchain). No code change is
-  outstanding: the server-derived approval label means the existing card renders
-  correctly; brace/paren balance verified across all four touched files.
-- **Deploy:** functions + rules need your deploy credentials/Node flow.
+- **Hermes plugin (adapter):** **ready**. The BurnBar mirror remains covered by the
+  canonical Hermes gateway tests (`test_burnbar_plugin.py` + `test_relay_e2ee.py`,
+  79 tests in the current harness), including relay E2EE.
+- **Hermes plugin PR:** **ready for Nous submission from the verified branch/copy**.
+  Keep Hermes commits separate from BurnBar commits and stage only adapter,
+  crypto, tests, fixtures, and README material.
+- **iOS client:** **unit/compile ready; physical full-flow still needs a fresh
+  hardware readback when the iPhone is online.** Simulator `OpenBurnBarMobileTests`
+  passed 88/88 during the final audit, including E2EE pinning, sealed replies,
+  sealed attachments, sealed model-switch envelopes, and gateway store behavior.
+  Xcode listed Alberto's iPhone as offline during this pass, so simulator success
+  must not be misrepresented as physical approve/deny/expiry proof.
+- **Deploy/backfill:** production cleanup/backfill ran once and the idempotence
+  pass reported no remaining updates. Treat future production cleanup as an
+  operator readback, not a unit-test substitute.
+
+## 8. Final post-merge audit — 2026-06-03
+
+GitHub Actions after PR #264 merge had two real red gates:
+
+- `Website (types + lint + format)`: Prettier drift in website Astro files.
+- `openburnbar-pr`: Prettier drift in `functions/src/callables/privacyBackfill.ts`.
+
+The final audit fixed those gates and found one additional release-script defect:
+`scripts/security/scan-publishable-tree.sh` copied tracked files into a temporary
+tree but did not pass `.gitleaks.toml`, so the release scan ignored the repo's
+reviewed allowlists. The script now passes the repo-root config explicitly. The
+policy was also tightened with scoped allowlists for public Firebase web config,
+synthetic relay-envelope fixtures, and SHA-256 purchase-token evidence hashes.
+
+Final local evidence:
+
+| Surface | Result |
+| --- | --- |
+| Website `format:check`, `check`, `build:offline`, `test:integration -- hermes-gateway-promo.test.ts` | pass |
+| Functions `format:check`, `build`, focused gateway/privacy vitest, `test:hermes-gateway` | pass |
+| `node scripts/privacy/scan-chat-cloud-plaintext.mjs` | pass |
+| Hermes adapter gateway tests (`test_burnbar_plugin.py`, `test_relay_e2ee.py`) | 79 passed |
+| Android `:app:testDebugUnitTest` | pass |
+| iOS simulator `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | 88 passed |
+| `bash scripts/security/scan-publishable-tree.sh` | pass (`gitleaks` no leaks, `trufflehog` 0 verified secrets) |
