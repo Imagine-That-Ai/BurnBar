@@ -8,7 +8,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { randomBytes, createHash } from "node:crypto";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
+import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { assertActiveBurnBarProEntitlement, REMOTE_MCP_TOKEN_HMAC_SECRET } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
@@ -19,6 +19,7 @@ import {
   clientIpFromHttpRequest,
   recordCallableApprovalFailure,
 } from "./publicRateLimit.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 function generateUserCode(): string {
   const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ23456789"; // Omit confusing chars: 0, 1, I, L
@@ -33,8 +34,9 @@ function generateUserCode(): string {
  */
 export const startCliLink = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
+    ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -87,7 +89,7 @@ export const startCliLink = onRequest(
  */
 export const pollCliLink = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
   },
   async (req, res) => {
@@ -158,15 +160,15 @@ export const pollCliLink = onRequest(
  */
 export const completeCliLink = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
   },
-  wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown }>) => {
+  wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before completing CLI link.");
-    enforceHighRiskComputerUseCallable(request, uid);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     await assertCallableApprovalNotLocked(uid, "cli_link_approve_fail");
     await assertActiveBurnBarProEntitlement(uid);
 

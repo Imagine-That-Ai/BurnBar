@@ -21,6 +21,8 @@ from pathlib import Path
 MAX_BODY_BYTES = 14 * 1024 * 1024
 MAX_PROOF_BYTES = 256 * 1024
 MAX_CHAIN_BYTES = 10 * 1024 * 1024
+# An OpenTimestamps digest is the raw 32-byte SHA-256 of the file being stamped.
+DIGEST_BYTES = 32
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -56,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
         _json_response(self, 404, {"error": "not_found"})
 
     def do_POST(self) -> None:
-        if self.path not in ("/", "/verify"):
+        if self.path not in ("/", "/verify", "/stamp"):
             _json_response(self, 404, {"error": "not_found"})
             return
         try:
@@ -69,6 +71,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except Exception:
+            _json_response(self, 400, {"error": "invalid_json"})
+            return
+
+        if self.path == "/stamp":
+            self._handle_stamp(payload)
+            return
+
+        try:
             proof = _decode_base64(payload.get("proofBase64"), "proofBase64", MAX_PROOF_BYTES)
             chain_value = payload.get("chainFileBase64")
             chain = None if chain_value is None else _decode_base64(
@@ -78,9 +89,6 @@ class Handler(BaseHTTPRequestHandler):
             )
         except ValueError as exc:
             _json_response(self, 400, {"error": str(exc)})
-            return
-        except Exception:
-            _json_response(self, 400, {"error": "invalid_json"})
             return
 
         with tempfile.TemporaryDirectory(prefix="openburnbar-ots-") as tmp:
@@ -117,6 +125,51 @@ class Handler(BaseHTTPRequestHandler):
             _json_response(self, 200, {"verified": True, "output": output})
         else:
             _json_response(self, 422, {"verified": False, "output": output})
+
+    def _handle_stamp(self, payload: dict) -> None:
+        """Stamp a raw 32-byte SHA-256 digest and return the detached `.ots` proof.
+
+        Used by the daily audit-head anchor. Submitting only the digest keeps the
+        member's audit-chain content off the calendar servers — the same property
+        the Mac relies on when it notarizes its local chain.jsonl head.
+        """
+        try:
+            digest = _decode_base64(payload.get("digestBase64"), "digestBase64", DIGEST_BYTES)
+        except ValueError as exc:
+            _json_response(self, 400, {"error": str(exc)})
+            return
+        if len(digest) != DIGEST_BYTES:
+            _json_response(self, 400, {"error": "digest must be 32 bytes (sha256)"})
+            return
+
+        with tempfile.TemporaryDirectory(prefix="openburnbar-ots-stamp-") as tmp:
+            root = Path(tmp)
+            digest_path = root / "head.bin"
+            proof_path = root / "head.bin.ots"
+            digest_path.write_bytes(digest)
+            try:
+                completed = subprocess.run(
+                    ["ots", "stamp", str(digest_path)],
+                    cwd=root,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=60,
+                    check=False,
+                )
+            except FileNotFoundError:
+                _json_response(self, 503, {"stamped": False, "output": "ots binary unavailable"})
+                return
+            except subprocess.TimeoutExpired:
+                _json_response(self, 504, {"stamped": False, "output": "ots stamp timed out"})
+                return
+
+            output = "\n".join(part for part in [completed.stdout, completed.stderr] if part).strip()
+            if completed.returncode != 0 or not proof_path.exists():
+                _json_response(self, 422, {"stamped": False, "output": output})
+                return
+            proof_b64 = base64.b64encode(proof_path.read_bytes()).decode("ascii")
+            _json_response(self, 200, {"stamped": True, "proofBase64": proof_b64, "output": output})
 
     def log_message(self, fmt: str, *args: object) -> None:
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)

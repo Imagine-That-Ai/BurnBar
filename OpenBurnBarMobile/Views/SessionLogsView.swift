@@ -7,6 +7,10 @@ struct SessionLogsView: View {
     @State private var store = ActivityStore()
     @State private var searchText = ""
     @State private var selectedUsage: TokenUsage?
+    @State private var selectedCloudConversation: CloudConversationSearchRow?
+    @State private var cloudConversationBody: String?
+    @State private var cloudConversationError: String?
+    @State private var isLoadingCloudConversation = false
     @State private var showFilters = false
 
     var filteredUsages: [TokenUsage] {
@@ -29,7 +33,10 @@ struct SessionLogsView: View {
                 get: { selectedUsage },
                 set: { selectedUsage = $0 }
             )) {
-                if store.isLoading && store.usages.isEmpty {
+                let hasCloudHits = !store.cloudSearchHits.isEmpty
+                let hasPrivateSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+
+                if store.isLoading && store.usages.isEmpty && !hasCloudHits {
                     Section {
                         ForEach(0..<5, id: \.self) { _ in
                             EmberSkeleton(height: 72, cornerRadius: MobileTheme.Radius.md)
@@ -37,7 +44,7 @@ struct SessionLogsView: View {
                                 .listRowSeparator(.hidden)
                         }
                     }
-                } else if store.usages.isEmpty {
+                } else if store.usages.isEmpty && !store.isSearching {
                     Section {
                         EmptyStateView(
                             icon: "doc.text.magnifyingglass",
@@ -47,30 +54,59 @@ struct SessionLogsView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
-                } else if filteredUsages.isEmpty && !searchText.isEmpty {
+                } else if filteredUsages.isEmpty && !searchText.isEmpty && !hasCloudHits && !store.isSearching {
                     Section {
                         EmptyStateView(
                             icon: "magnifyingglass",
                             title: "No Results",
-                            message: "Try a different search term — you can search by model, project, provider, session ID, cost, or device name."
+                            message: "Try a different model, provider, session ID, device, or private transcript search term."
                         )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
                 } else {
-                    ForEach(filteredUsages) { usage in
-                        NavigationLink(value: usage) {
-                            UsageRow(usage: usage)
-                        }
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .onAppear {
-                            if usage.id == store.usages.last?.id {
-                                Task { await store.loadNext() }
+                    if hasCloudHits {
+                        Section("Encrypted transcript matches") {
+                            ForEach(store.cloudSearchHits) { hit in
+                                Button { selectCloudConversation(hit) } label: {
+                                    CloudConversationSearchResultRow(hit: hit)
+                                }
+                                .buttonStyle(.plain)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                             }
                         }
                     }
-                    if store.isLoading {
+
+                    if !filteredUsages.isEmpty {
+                        Section {
+                            ForEach(filteredUsages) { usage in
+                                NavigationLink(value: usage) {
+                                    UsageRow(usage: usage)
+                                }
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .onAppear {
+                                    if usage.id == store.usages.last?.id {
+                                        Task { await store.loadNext() }
+                                    }
+                                }
+                            }
+                        } header: {
+                            if hasCloudHits {
+                                Text("Usage rows")
+                            }
+                        }
+                    }
+
+                    if store.isSearching && hasPrivateSearch {
+                        ProgressView()
+                            .tint(MobileTheme.ember)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    } else if store.isLoading {
                         MiningPickLoader(.inline)
                             .frame(maxWidth: .infinity)
                             .listRowBackground(Color.clear)
@@ -92,8 +128,23 @@ struct SessionLogsView: View {
             }
             .refreshable { await store.loadInitial() }
             .task { await store.loadInitial() }
+            .task(id: searchText) {
+                await store.updateSearch(query: searchText)
+            }
             .sheet(isPresented: $showFilters) {
                 SessionLogFilterSheet(store: store)
+            }
+            .sheet(item: $selectedCloudConversation) { hit in
+                CloudConversationDetailSheet(
+                    hit: hit,
+                    decryptedBody: cloudConversationBody,
+                    error: cloudConversationError,
+                    isLoading: isLoadingCloudConversation,
+                    onRetry: { Task { await loadCloudConversation(hit) } }
+                )
+                .task(id: hit.id) {
+                    await loadCloudConversation(hit)
+                }
             }
         } detail: {
             // MARK: Detail Pane
@@ -109,6 +160,26 @@ struct SessionLogsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+    }
+
+    private func selectCloudConversation(_ hit: CloudConversationSearchRow) {
+        cloudConversationBody = nil
+        cloudConversationError = nil
+        isLoadingCloudConversation = true
+        selectedCloudConversation = hit
+    }
+
+    private func loadCloudConversation(_ hit: CloudConversationSearchRow) async {
+        guard selectedCloudConversation?.id == hit.id else { return }
+        cloudConversationBody = nil
+        cloudConversationError = nil
+        isLoadingCloudConversation = true
+        defer { isLoadingCloudConversation = false }
+        do {
+            cloudConversationBody = try await store.loadCloudConversationBody(for: hit)
+        } catch {
+            cloudConversationError = error.localizedDescription
+        }
     }
 }
 

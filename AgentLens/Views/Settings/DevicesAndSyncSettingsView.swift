@@ -634,7 +634,10 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
 
     func approve(deviceID: String) async throws {
         guard uid != nil else { throw MacDeviceTrustError.notAuthenticated }
-        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(deviceId: deviceID)
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(
+            deviceId: deviceID,
+            approverDeviceId: Self.loadOrCreateDeviceId()
+        )
     }
 
     func revoke(deviceID: String) async throws {

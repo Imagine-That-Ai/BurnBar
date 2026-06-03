@@ -3,26 +3,42 @@
  *
  * This module is the client-side half of the Pensieve E2EE semantic memory: it
  * turns text into a 384-dim embedding and then applies a per-user, vault-key
- * derived ORTHONORMAL transform ("cloaking") to that vector before it ever
- * leaves the device. Cloaking is the embedding-inversion defense from the plan:
+ * derived ORTHONORMAL transform Q ("cloaking") to that vector before it ever
+ * leaves the device.
  *
- *   - It is an orthogonal map Q, so it preserves inner products and norms
- *     exactly: <Qx, Qy> = <x, y> and ||Qx|| = ||x||. Therefore cosine
- *     similarity is preserved EXACTLY, and ANN ranking over cloaked vectors is
- *     identical to ranking over the raw model-space vectors.
- *   - The SAME Q is applied to index-time vectors and to query vectors, so the
- *     server can run nearest-neighbour search on cloaked vectors and never sees
- *     a public-model-space embedding it could feed to an off-the-shelf
- *     embedding-inversion attack.
- *   - Q is built deterministically from the device vault key (via the same
- *     HKDF-from-vault-key pattern as resume.ts) and the embedding model version,
- *     so re-embedding is reproducible and a model bump triggers a clean
- *     re-cloak migration.
+ * What the cloak PROVABLY does (claim only these — see
+ * docs/pensieve-leakage-analysis.md):
  *
- * Q is realised as a product of Householder reflections (each Hᵢ = I − 2·vᵢvᵢᵀ
- * with ||vᵢ|| = 1). A product of reflections is exactly orthogonal, mixes every
- * coordinate (unlike a signed permutation, which only shuffles/flips coordinate
- * values an attacker could match), and is O(count·dim) to apply.
+ *   - Hides the public-model (bge) basis. Stored vectors are no longer in the
+ *     raw bge coordinate frame, so off-the-shelf embedding-inversion models
+ *     (which expect raw bge-space inputs) cannot be applied DIRECTLY to the
+ *     stored vectors. This raises the bar; it is NOT a proof of
+ *     non-invertibility.
+ *   - Per-user distinct stored bytes (PARTIAL cross-tenant resistance). Q is
+ *     per-user, so the SAME plaintext under two members' keys yields DIFFERENT
+ *     stored vectors (relative L2 distance ≈ 0.74), defeating an exact-match
+ *     cross-tenant join. NOT full unlinkability: with only CLOAK_REFLECTIONS=24
+ *     in 384-dim, cross-tenant cosine ≈ 0.77, so a server can still correlate
+ *     the same plaintext across tenants by SIMILARITY. Full decorrelation needs
+ *     ~dim reflections (a versioned re-cloak).
+ *
+ * What the cloak DOES NOT do (accepted, documented leakage):
+ *
+ *   - It does NOT hide relative geometry. Because Q is orthonormal,
+ *     <Qx, Qy> = <x, y> and ||Qx|| = ||x||, so cosine similarity is preserved
+ *     EXACTLY. The server can therefore compute the full pairwise cosine matrix,
+ *     k-NN graph, clusters, and similarity-dedup over the cloaked vectors WITHOUT
+ *     the key — within one user AND (per the caveat above) across users. (This
+ *     identity is also the feature: it lets server-side findNearest recall work
+ *     over cloaked vectors.)
+ *
+ * Q is built deterministically from the device vault key (same HKDF-from-vault-
+ * key pattern as resume.ts) and the embedding model version, so re-embedding is
+ * reproducible and a model bump triggers a clean re-cloak migration. It is a
+ * product of Householder reflections (each Hᵢ = I − 2·vᵢvᵢᵀ with ||vᵢ|| = 1):
+ * exactly orthogonal, mixes every coordinate (unlike a signed permutation that
+ * only shuffles/flips values), and O(count·dim) to apply. The proven properties
+ * above are asserted in cloakLeakage.test.ts.
  *
  * The embedding model itself (bge-small-en-v1.5 via Transformers.js/ONNX) is
  * loaded lazily from the user's environment so the published shim stays
@@ -40,7 +56,15 @@ export const EMBEDDING_DIM = 384;
 export const BGE_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: ";
 
 const CLOAK_SALT = Buffer.from("OpenBurnBar-Pensieve-Cloak-Salt-v1");
-/** Number of Householder reflections composed into the cloak. >log2(dim) for thorough mixing. */
+/**
+ * Number of Householder reflections composed into the cloak. 24 > log2(384) for
+ * thorough WITHIN-vector coordinate mixing (basis hiding; defeats signed-
+ * permutation structure). NOTE: this is NOT sized for cross-user decorrelation —
+ * two per-user Qs leave cross-tenant cosine ≈ 0.77 here; full unlinkability would
+ * need ~dim reflections. See docs/pensieve-leakage-analysis.md. Changing this
+ * value re-cloaks every stored vector and must stay in lockstep with
+ * PensieveVectorCloak.swift, so treat it as a versioned migration.
+ */
 const CLOAK_REFLECTIONS = 24;
 
 // -- HKDF (identical construction to resume.ts, kept local to avoid cross-module coupling) --

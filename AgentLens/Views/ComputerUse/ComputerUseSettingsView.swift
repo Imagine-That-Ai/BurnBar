@@ -198,11 +198,13 @@ struct ComputerUseSettingsView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @StateObject private var panelModel = ComputerUseSessionPanelModel()
     @StateObject private var wizardModel = ComputerUseSetupWizardModel()
+    @StateObject private var entitlement = MacCloudEntitlementStore.shared
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     @StateObject private var permissionsCoordinator = PermissionsOnboardingCoordinator()
     #endif
     @State private var accessibilityTrusted = AXIsProcessTrusted()
     @State private var showingSetupWizard = false
+    @State private var showingUnlock = false
     @State private var showingPermissionsWizard = false
     @State private var auditSessionId = ""
     @State private var auditIncludeScreenshots = true
@@ -238,7 +240,13 @@ struct ComputerUseSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
-        .onAppear(perform: configureModels)
+        .onAppear {
+            configureModels()
+            entitlement.start()
+        }
+        .sheet(isPresented: $showingUnlock) {
+            FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.agentControl))
+        }
         .sheet(isPresented: $showingSetupWizard) {
             ComputerUseSetupWizard(
                 model: wizardModel,
@@ -311,9 +319,14 @@ struct ComputerUseSettingsView: View {
                 heroStatusBadge
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(heroStatusTitle)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    HStack(spacing: 8) {
+                        Text(heroStatusTitle)
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        if !isAgentControlUnlocked {
+                            TierLockBadge(tier: GatedFeature.gatedFeature(.agentControl).requiredTier)
+                        }
+                    }
                     Text(heroStatusSubtitle)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -325,7 +338,11 @@ struct ComputerUseSettingsView: View {
 
                 HStack(spacing: 8) {
                     SettingsGlassButton(title: "Run Setup", icon: "wand.and.stars", style: .prominent) {
-                        showingSetupWizard = true
+                        if isAgentControlUnlocked {
+                            showingSetupWizard = true
+                        } else {
+                            showingUnlock = true
+                        }
                     }
                     if runtimeController != nil {
                         SettingsGlassButton(title: "Start Session", icon: "play.circle") {
@@ -428,6 +445,13 @@ struct ComputerUseSettingsView: View {
 
     private var activePanelModel: ComputerUseSessionPanelModel {
         runtimeController?.panelModel ?? panelModel
+    }
+
+    /// Agent Control (public name; "Computer Use" is internal-only) requires
+    /// Cloud Pro. When unsatisfied, the marquee "Run Setup" action opens the
+    /// evocative unlock sheet instead of the setup wizard.
+    private var isAgentControlUnlocked: Bool {
+        entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.agentControl).requiredTier)
     }
 
     // MARK: - Setup tab

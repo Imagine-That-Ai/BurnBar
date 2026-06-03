@@ -21,11 +21,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FunctionsRepository
+import com.openburnbar.ui.pro.CloudTier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
@@ -34,6 +38,7 @@ data class HostedQuotaProductDetails(val formattedPrice: String)
 enum class HostedQuotaStoreProductRole {
     CLOUD_SUBSCRIPTION,
     CLOUD_PRO_SUBSCRIPTION,
+    CLOUD_ULTRA_SUBSCRIPTION,
     CLOUD_PRO_TOP_UP,
 }
 
@@ -63,6 +68,15 @@ class HostedQuotaSubscriptionStore(
         const val CLOUD_ANNUAL_PRODUCT_ID = "com.openburnbar.pro.annual"
         const val CLOUD_PRO_MONTHLY_PRODUCT_ID = "com.openburnbar.promax.v2.monthly"
         const val CLOUD_PRO_ANNUAL_PRODUCT_ID = "com.openburnbar.promax.annual"
+
+        // Cloud Ultra — the top tier (10× agent memory over Cloud Pro). These are
+        // the Google Play SKUs the Cloud Functions config expects
+        // (`googlePlayUltraMonthlyProductID` / `googlePlayUltraAnnualProductID`);
+        // they verify into the server-reconciled `burnbar_ultra` entitlement,
+        // which mirrors `burnbar_pro_max` so Ultra inherits every Cloud Pro gate.
+        const val CLOUD_ULTRA_MONTHLY_PRODUCT_ID = "com.openburnbar.ultra.monthly"
+        const val CLOUD_ULTRA_ANNUAL_PRODUCT_ID = "com.openburnbar.ultra.annual"
+
         const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentcontrol.actions100"
         const val FLOO_RELAY_TOP_UP_PRODUCT_ID = "com.openburnbar.floo.relay50gb"
 
@@ -83,6 +97,18 @@ class HostedQuotaSubscriptionStore(
                     "$249",
                 ),
                 HostedQuotaStoreProduct(
+                    CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                    BillingClient.ProductType.SUBS,
+                    HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION,
+                    "$59.99",
+                ),
+                HostedQuotaStoreProduct(
+                    CLOUD_ULTRA_ANNUAL_PRODUCT_ID,
+                    BillingClient.ProductType.SUBS,
+                    HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION,
+                    "$599",
+                ),
+                HostedQuotaStoreProduct(
                     AGENT_CONTROL_TOP_UP_PRODUCT_ID,
                     BillingClient.ProductType.INAPP,
                     HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
@@ -101,6 +127,49 @@ class HostedQuotaSubscriptionStore(
                 .filter { it.productType == BillingClient.ProductType.INAPP }
                 .map { it.id }
                 .toSet()
+
+        // ── Tier resolution (spec §4.2) ──
+        //
+        // The flat `isActive` Boolean loses the tier, so feature gating cannot
+        // tell Cloud from Cloud Pro from Ultra. This maps the active product ID
+        // (Play SKU, or the Apple SKU written to the Firestore entitlement doc
+        // for cross-platform Cloud members) to the canonical `CloudTier` ladder:
+        //   burnbar_ultra (…ultra…)          → ULTRA
+        //   burnbar_pro_max / computer-use   → PRO
+        //   hosted_quota_sync (Cloud)        → CLOUD
+        // Higher tiers subsume lower gates via `CloudTier.satisfies`.
+
+        /**
+         * Resolve a [CloudTier] from the active product ID. Returns [CloudTier.NONE]
+         * when nothing is active. Recognizes both the Android Play SKUs (via the
+         * store-product role) and the Apple product IDs the verifier writes to the
+         * `hosted_quota_sync` entitlement doc for users who paid on iOS/macOS.
+         */
+        internal fun tierForActiveProduct(active: Boolean, productID: String?): CloudTier {
+            if (!active) return CloudTier.NONE
+            val id = productID?.trim().orEmpty()
+            // Fast path: a known Android store product maps via its role.
+            when (STORE_PRODUCT_BY_ID[id]?.role) {
+                HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> return CloudTier.ULTRA
+                HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> return CloudTier.PRO
+                HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> return CloudTier.CLOUD
+                else -> Unit
+            }
+            // Cross-platform fallback: classify by the product-ID substring the
+            // Apple/entitlement verifiers use (e.g. com.openburnbar.ultra.monthly,
+            // com.openburnbar.promax.*, com.openburnbar.computer-use.*).
+            val lower = id.lowercase()
+            return when {
+                lower.isEmpty() -> CloudTier.CLOUD // active but unlabeled ⇒ at least Cloud
+                lower.contains("ultra") -> CloudTier.ULTRA
+                lower.contains("promax") ||
+                    lower.contains("pro_max") ||
+                    lower.contains("pro.max") ||
+                    lower.contains("computer-use") ||
+                    lower.contains("computeruse") -> CloudTier.PRO
+                else -> CloudTier.CLOUD
+            }
+        }
     }
 
     private val _isActive = MutableStateFlow(false)
@@ -120,6 +189,21 @@ class HostedQuotaSubscriptionStore(
 
     private val _activeProductID = MutableStateFlow<String?>(null)
     val activeProductID: StateFlow<String?> = _activeProductID.asStateFlow()
+
+    /**
+     * The member's resolved subscription tier (spec §4.2). Derived live from
+     * [isActive] + [activeProductID] so all Cloud / Cloud Pro / Ultra feature
+     * gates resolve correctly. [isActive] still works for the simple "any paid
+     * plan?" check; `currentTier.satisfies(...)` answers "which gate passes?".
+     */
+    val currentTier: StateFlow<CloudTier> =
+        combine(_isActive, _activeProductID) { active, productID ->
+            tierForActiveProduct(active, productID)
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = CloudTier.NONE,
+        )
 
     private val _lastTopUpCredit = MutableStateFlow<Map<String, Any>?>(null)
     val lastTopUpCredit: StateFlow<Map<String, Any>?> = _lastTopUpCredit.asStateFlow()
@@ -544,9 +628,10 @@ class HostedQuotaSubscriptionStore(
 
     private fun subscriptionProductPriority(productID: String): Int {
         return when (STORE_PRODUCT_BY_ID[productID]?.role) {
-            HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> 0
-            HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> 1
-            else -> 2
+            HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> 0
+            HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> 1
+            HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> 2
+            else -> 3
         }
     }
 

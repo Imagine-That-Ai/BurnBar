@@ -6,6 +6,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
 import { numberField } from "./guards.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const CLOUD_ENTITLEMENT_ID = "burnbar_pro";
 const CLOUD_PRO_ENTITLEMENT_ID = "burnbar_pro_max";
@@ -139,7 +140,7 @@ export const computeTierCogsDaily = onSchedule(
   {
     schedule: "15 1 * * *",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     timeoutSeconds: 540,
   },
   async () => {

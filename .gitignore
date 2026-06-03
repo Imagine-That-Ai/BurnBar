@@ -143,6 +143,10 @@ tools/**/lib/
 *.swift.plist
 
 # QA harness output (qa skill writes timestamped reports + screenshots)
+# Ignore the entire output/ tree: it holds local auth-QA artifacts including a
+# live Chromium profile (cookies/saved logins), OAuth-flow debug captures, and
+# authenticated production-session screenshots. None of it is publishable.
+output/
 qa-results/
 output/playwright-screenshots/
 output/playwright-user-data/
@@ -166,3 +170,12 @@ launch-evidence/
 # Cursor IDE debug logs and local scratch experiments (preserved on disk only).
 .cursor/*.log
 scratch/
+
+# Secrets / local env / build caches — never commit (added during SOTA remediation
+# after these surfaced untracked in the working tree).
+appcheck-token.json
+.env.production
+**/.env.production
+.env.*.local
+.firebase/
+assets/generated/

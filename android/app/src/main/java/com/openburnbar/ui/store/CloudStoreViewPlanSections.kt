@@ -3,6 +3,12 @@
 
 package com.openburnbar.ui.store
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.ui.res.painterResource
@@ -11,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -56,6 +63,7 @@ import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaStoreProduct
 import com.openburnbar.data.stores.HostedQuotaStoreProductRole
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
+import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 
 // ── Plan tile (free users) ──
 
@@ -152,15 +160,7 @@ internal fun LazyListScope.cloudPaidTierLazyItems(
     if (sections.cloud.isNotEmpty()) {
         item {
             CloudTierPlanCard(
-                presentation =
-                TierPlanPresentation(
-                    label = "Cloud",
-                    title = "BurnBar Cloud",
-                    summary = "Quota sync, encrypted history, search, and memory across every device.",
-                    drawableRes = R.drawable.cloud_tier_crest,
-                    accent = CloudStorePal.ember,
-                    featureChips = listOf("Quota sync", "History", "Memory"),
-                ),
+                presentation = cloudTierPresentation(),
                 products = sections.cloud,
                 prices = prices,
                 enabled = !isLoading,
@@ -171,17 +171,19 @@ internal fun LazyListScope.cloudPaidTierLazyItems(
     if (sections.cloudPro.isNotEmpty()) {
         item {
             CloudTierPlanCard(
-                presentation =
-                TierPlanPresentation(
-                    label = "Cloud Pro",
-                    title = "BurnBar Cloud Pro",
-                    summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
-                    drawableRes = R.drawable.cloud_tier_crest_pro,
-                    accent = CloudStorePal.whimsy,
-                    featureChips = listOf("Floo", "Agent Control", "Relay"),
-                    featured = true,
-                ),
+                presentation = cloudProTierPresentation(),
                 products = sections.cloudPro,
+                prices = prices,
+                enabled = !isLoading,
+                onPurchase = onPurchase,
+            )
+        }
+    }
+    if (sections.cloudUltra.isNotEmpty()) {
+        item {
+            CloudTierPlanCard(
+                presentation = cloudUltraTierPresentation(),
+                products = sections.cloudUltra,
                 prices = prices,
                 enabled = !isLoading,
                 onPurchase = onPurchase,
@@ -205,6 +207,7 @@ internal fun cloudStorePurchaseTag(productID: String): String = "cloud-store.pur
 private data class CloudPaidTierSections(
     val cloud: List<HostedQuotaStoreProduct>,
     val cloudPro: List<HostedQuotaStoreProduct>,
+    val cloudUltra: List<HostedQuotaStoreProduct>,
     val topUps: List<HostedQuotaStoreProduct>,
 )
 
@@ -213,9 +216,51 @@ private fun cloudPaidTierSections(): CloudPaidTierSections {
     return CloudPaidTierSections(
         cloud = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION },
         cloudPro = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION },
+        cloudUltra = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION },
         topUps = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP },
     )
 }
+
+// ── Canonical per-tier presentation (mirrors the marketing site) ──
+//
+// Copy is benefit-first and honest: agent memory is "sealed on-device, the
+// server searches without reading it" — never "end-to-end encrypted chat".
+// Crests follow the website's final swap: Cloud→cloud, Cloud Pro→pro (the
+// high-tech ring logo), Cloud Ultra→ultra (the provider-icon ring logo).
+
+internal fun cloudTierPresentation(): TierPlanPresentation =
+    TierPlanPresentation(
+        label = "Cloud",
+        title = "BurnBar Cloud",
+        summary = "Sync your quota, encrypted history, and agent memory across devices.",
+        drawableRes = R.drawable.cloud_tier_crest,
+        accent = CloudStorePal.ember,
+        featureChips = listOf("Quota sync", "History", "Memory"),
+        holo = TierHolo.CLOUD,
+    )
+
+internal fun cloudProTierPresentation(): TierPlanPresentation =
+    TierPlanPresentation(
+        label = "Cloud Pro",
+        title = "BurnBar Cloud Pro",
+        summary = "Use your Mac from your phone and let agents work under your grant.",
+        drawableRes = R.drawable.cloud_tier_crest_pro,
+        accent = CloudStorePal.whimsy,
+        featureChips = listOf("Floo", "Agent Control", "Relay"),
+        featured = true,
+        holo = TierHolo.PRO,
+    )
+
+internal fun cloudUltraTierPresentation(): TierPlanPresentation =
+    TierPlanPresentation(
+        label = "Cloud Ultra",
+        title = "BurnBar Cloud Ultra",
+        summary = "Everything in Cloud Pro, plus 10× agent memory — sealed on-device.",
+        drawableRes = R.drawable.cloud_tier_crest_ultra,
+        accent = CloudStorePal.aureate,
+        featureChips = listOf("10× memory", "Sealed", "Pro relay"),
+        holo = TierHolo.ULTRA,
+    )
 
 @Composable
 private fun CloudPaidTierColumn(
@@ -228,32 +273,22 @@ private fun CloudPaidTierColumn(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         CloudPaidTierHeaderCard(hasPlayPrices = prices.isNotEmpty())
         CloudTierPlanCard(
-            presentation =
-            TierPlanPresentation(
-                label = "Cloud",
-                title = "BurnBar Cloud",
-                summary = "Quota sync, encrypted history, search, and memory across every device.",
-                drawableRes = R.drawable.cloud_tier_crest,
-                accent = CloudStorePal.ember,
-                featureChips = listOf("Quota sync", "History", "Memory"),
-            ),
+            presentation = cloudTierPresentation(),
             products = sections.cloud,
             prices = prices,
             enabled = !isLoading,
             onPurchase = onPurchase,
         )
         CloudTierPlanCard(
-            presentation =
-            TierPlanPresentation(
-                label = "Cloud Pro",
-                title = "BurnBar Cloud Pro",
-                summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
-                drawableRes = R.drawable.cloud_tier_crest_pro,
-                accent = CloudStorePal.whimsy,
-                featureChips = listOf("Floo", "Agent Control", "Relay"),
-                featured = true,
-            ),
+            presentation = cloudProTierPresentation(),
             products = sections.cloudPro,
+            prices = prices,
+            enabled = !isLoading,
+            onPurchase = onPurchase,
+        )
+        CloudTierPlanCard(
+            presentation = cloudUltraTierPresentation(),
+            products = sections.cloudUltra,
             prices = prices,
             enabled = !isLoading,
             onPurchase = onPurchase,
@@ -330,6 +365,7 @@ private fun CloudTopUpPlanCard(
 internal data class CloudPaidTierPlansArgs(
     val cloud: List<HostedQuotaStoreProduct>,
     val cloudPro: List<HostedQuotaStoreProduct>,
+    val cloudUltra: List<HostedQuotaStoreProduct> = emptyList(),
     val topUps: List<HostedQuotaStoreProduct>,
     val prices: Map<String, HostedQuotaProductDetails>,
     val isActive: Boolean,
@@ -341,21 +377,14 @@ internal data class CloudPaidTierPlansArgs(
 internal fun CloudPaidTierPlans(args: CloudPaidTierPlansArgs) {
     val cloud = args.cloud
     val cloudPro = args.cloudPro
+    val cloudUltra = args.cloudUltra
     val topUps = args.topUps
     val prices = args.prices
     val isActive = args.isActive
     val isLoading = args.isLoading
     val onPurchase = args.onPurchase
     TierPlanCard(
-        presentation =
-        TierPlanPresentation(
-            label = "Cloud",
-            title = "BurnBar Cloud",
-            summary = "Quota sync, encrypted history, search, and memory across every device.",
-            drawableRes = R.drawable.cloud_tier_crest,
-            accent = CloudStorePal.ember,
-            featureChips = listOf("Quota sync", "History", "Memory"),
-        ),
+        presentation = cloudTierPresentation(),
         commerce =
         TierPlanCommerce(
             products = cloud,
@@ -365,19 +394,20 @@ internal fun CloudPaidTierPlans(args: CloudPaidTierPlansArgs) {
         ),
     )
     TierPlanCard(
-        presentation =
-        TierPlanPresentation(
-            label = "Cloud Pro",
-            title = "BurnBar Cloud Pro",
-            summary = "Everything in Cloud, plus Floo, relay, and supervised Agent Control.",
-            drawableRes = R.drawable.cloud_tier_crest_pro,
-            accent = CloudStorePal.whimsy,
-            featureChips = listOf("Floo", "Agent Control", "Relay"),
-            featured = true,
-        ),
+        presentation = cloudProTierPresentation(),
         commerce =
         TierPlanCommerce(
             products = cloudPro,
+            prices = prices,
+            enabled = !isLoading,
+            onPurchase = onPurchase,
+        ),
+    )
+    TierPlanCard(
+        presentation = cloudUltraTierPresentation(),
+        commerce =
+        TierPlanCommerce(
+            products = cloudUltra,
             prices = prices,
             enabled = !isLoading,
             onPurchase = onPurchase,
@@ -430,12 +460,18 @@ internal data class CloudPlanOption(
 internal fun cloudPlanOption(product: HostedQuotaStoreProduct): CloudPlanOption {
     val annual =
         product.id == HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID ||
-            product.id == HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID
-    val pro = product.role == HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION
+            product.id == HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID ||
+            product.id == HostedQuotaSubscriptionStore.CLOUD_ULTRA_ANNUAL_PRODUCT_ID
+    val annualSaveLabel =
+        when (product.role) {
+            HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> "Save 17%"
+            HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> "Save 17%"
+            else -> "Save 18%"
+        }
     return CloudPlanOption(
         product = product,
         periodLabel = if (annual) "Annual" else "Monthly",
-        saveLabel = if (annual) if (pro) "Save 17%" else "Save 18%" else null,
+        saveLabel = if (annual) annualSaveLabel else null,
         cadenceLabel = if (annual) "/yr" else "/mo",
     )
 }
@@ -448,7 +484,49 @@ internal data class TierPlanPresentation(
     val accent: Color,
     val featureChips: List<String>,
     val featured: Boolean = false,
+    val holo: TierHolo? = null,
 )
+
+// ── Holographic accent ──
+//
+// Each PAID tier floats a subtle per-tier iridescent aura behind its card —
+// a tasteful, low-opacity ghost of the website's `--holo-grad`. We keep the
+// signature look legible: the gradient sweeps softly across the card at
+// ~10–14% alpha so every line of copy stays crisp. Native technique: a
+// `Brush.linearGradient` filled `Box` clipped to the card shape, with the
+// gradient endpoints animated for a slow shimmer (gated on reduce-motion).
+//
+// Palettes mirror the marketing site exactly:
+//   Cloud — warm ember (gold → orange → pink → violet)
+//   Cloud Pro — cool aqua (mint → cyan → blue → green)
+//   Cloud Ultra — full-spectrum premium (gold → sky → purple → teal → pink)
+internal enum class TierHolo(val colors: List<Color>) {
+    CLOUD(
+        listOf(
+            Color(0xFFFFD56B),
+            Color(0xFFFF8A3D),
+            Color(0xFFFF5C8A),
+            Color(0xFFB06BFF),
+        ),
+    ),
+    PRO(
+        listOf(
+            Color(0xFF5EF0C9),
+            Color(0xFF38D6F3),
+            Color(0xFF4F8BFF),
+            Color(0xFF8EF0A8),
+        ),
+    ),
+    ULTRA(
+        listOf(
+            Color(0xFFFFD56B),
+            Color(0xFF7DD3FC),
+            Color(0xFFC084FC),
+            Color(0xFF5EEAD4),
+            Color(0xFFFF9EC7),
+        ),
+    ),
+}
 
 internal data class TierPlanCommerce(
     val products: List<HostedQuotaStoreProduct>,
@@ -485,15 +563,53 @@ internal fun TierPlanCard(presentation: TierPlanPresentation, commerce: TierPlan
                     listOf(accent.copy(alpha = if (featured) 0.60f else 0.36f), CloudStorePal.border.copy(alpha = 0.38f)),
                 ),
                 shape = shape,
-            )
-            .padding(16.dp),
+            ),
     ) {
-        TierPlanCardBody(
-            presentation = presentation,
-            commerce = commerce,
-            options = commerce.products.map(::cloudPlanOption),
-        )
+        // Subtle per-tier iridescent aura behind the content — kept faint so
+        // text stays fully legible. Respects reduce-motion (no shimmer).
+        presentation.holo?.let { TierHoloAura(holo = it, shape = shape) }
+        Box(modifier = Modifier.padding(16.dp)) {
+            TierPlanCardBody(
+                presentation = presentation,
+                commerce = commerce,
+                options = commerce.products.map(::cloudPlanOption),
+            )
+        }
     }
+}
+
+@Composable
+private fun BoxScope.TierHoloAura(holo: TierHolo, shape: RoundedCornerShape) {
+    val reduceMotion = LocalAuroraReduceMotion.current
+    val sweep =
+        if (reduceMotion) {
+            0f
+        } else {
+            rememberInfiniteTransition(label = "tierHolo").animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec =
+                infiniteRepeatable(
+                    animation = tween(durationMillis = 9_000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "tierHoloSweep",
+            ).value
+        }
+    Box(
+        modifier =
+        Modifier
+            .matchParentSize()
+            .clip(shape)
+            .background(
+                brush =
+                Brush.linearGradient(
+                    colors = holo.colors.map { it.copy(alpha = 0.13f) },
+                    start = androidx.compose.ui.geometry.Offset(sweep * 480f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(sweep * 480f + 760f, 360f),
+                ),
+            ),
+    )
 }
 
 @Composable

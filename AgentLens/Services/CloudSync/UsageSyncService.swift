@@ -1,19 +1,30 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Sync domain for uploading local TokenUsage rows to Firestore.
 ///
 /// Firestore layout: `users/{uid}/usage/{deviceId}_{usageId}`
+///
+/// Project names are private text BurnBar must not be able to read. They are
+/// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
+/// being written in plaintext. An opaque keyed `projectKeyHash` is also written
+/// so on-device readers can group usage by project without decrypting every row.
 final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
+    private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
     private(set) var lastSyncDate: Date?
 
-    init(context: CloudSyncContext) {
+    init(
+        context: CloudSyncContext,
+        vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.context = context
+        self.vaultKeyProvider = vaultKeyProvider
     }
 
     /// Upload all unsynced local usage rows to Firestore.
@@ -35,6 +46,7 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
 
         do {
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
+            let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
 
             while true {
                 let unsynced = try context.dataStore.fetchUnsynced()
@@ -45,7 +57,7 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
                 for usage in unsynced {
                     let docId = "\(deviceId)_\(usage.id.uuidString)"
                     let docRef = collectionRef.document(docId)
-                    let data = encodeUsage(usage, deviceId: deviceId)
+                    let data = try encodeUsage(usage, deviceId: deviceId, vaultKey: resolvedVaultKey.keyData)
                     batch.setData(data, forDocument: docRef, merge: true)
                 }
 
@@ -104,14 +116,13 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
         await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
-    private func encodeUsage(_ usage: TokenUsage, deviceId: String) -> [String: Any] {
+    private func encodeUsage(_ usage: TokenUsage, deviceId: String, vaultKey: Data) throws -> [String: Any] {
         var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
             "provider": usage.provider.rawValue,
             "providerID": usage.providerID.rawValue,
             "sessionId": usage.sessionId,
-            "projectName": usage.projectName,
             "model": usage.model,
             "inputTokens": usage.inputTokens,
             "outputTokens": usage.outputTokens,
@@ -134,6 +145,73 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
         if let providerAccountSource = usage.providerAccountSource {
             data["providerAccountSource"] = providerAccountSource.rawValue
         }
+
+        // Seal the project name instead of writing it in clear. The server stays a
+        // blind store-and-forward: only on-device key holders can recover the name.
+        let sealedProjectName = try CloudVaultCrypto.sealText(usage.projectName, keyData: vaultKey)
+        data["sealedProjectName"] = try CloudVaultCrypto.dictionary(sealedProjectName)
+        // Opaque keyed group-by trapdoor so readers can bucket usage by project
+        // without decrypting every row. Absent for empty/blank names.
+        if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: usage.projectName, keyData: vaultKey) {
+            data["projectKeyHash"] = projectKeyHash
+        }
         return data
+    }
+}
+
+enum CloudVaultProjectSealError: Error {
+    case encodingFailed
+}
+
+extension CloudVaultCrypto {
+    /// Serializes a `Codable` sealed envelope into a Firestore-native dictionary.
+    static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CloudVaultProjectSealError.encodingFailed
+        }
+        return dictionary
+    }
+
+    /// Stable opaque group-by token for a project name (32 hex chars), derived via
+    /// the existing keyed search trapdoor. Collapses the name to a single canonical
+    /// alphanumeric term so multi-word names hash to one stable bucket, then HMACs
+    /// it under the per-user search key. Returns `nil` for empty/blank names.
+    ///
+    /// Reuses `CloudVaultCrypto.tokenHashes` only — no new crypto is introduced.
+    static func projectKeyHash(for projectName: String, keyData: Data) -> String? {
+        let normalized = normalizedTokens(from: projectName).joined()
+        guard normalized.isEmpty == false else { return nil }
+        return try? tokenHashes(for: normalized, keyData: keyData, limit: 1).first
+    }
+
+    /// Opens a sealed project name from a Firestore document, falling back to the
+    /// legacy plaintext `projectName` field for in-flight / pre-migration docs.
+    /// Returns `nil` only when neither the sealed field nor a legacy field is present.
+    static func openSealedProjectName(
+        from data: [String: Any],
+        sealedField: String = "sealedProjectName",
+        legacyField: String = "projectName",
+        keyData: Data?
+    ) -> String? {
+        if let raw = data[sealedField],
+           let envelope = decodeSealedText(from: raw) {
+            if let keyData, let plaintext = try? openText(envelope, keyData: keyData) {
+                return plaintext
+            }
+            // Sealed but unreadable on this device — do not leak a legacy value.
+            return nil
+        }
+        return data[legacyField] as? String
+    }
+
+    /// Decodes a `CloudVaultSealedText` envelope from a Firestore-native dictionary,
+    /// matching the JSON round-trip pattern used by the adjacent sync services.
+    static func decodeSealedText(from raw: Any?) -> CloudVaultSealedText? {
+        guard let dict = raw as? [String: Any],
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
     }
 }

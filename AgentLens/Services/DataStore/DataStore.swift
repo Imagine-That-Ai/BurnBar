@@ -200,7 +200,7 @@ actor DataStoreActor {
                 (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ?))) / LENGTH(?)
             ), 0) AS cnt
             FROM conversations AS c
-            WHERE 1=1\(baseWhere)
+            WHERE c.deletedAt IS NULL\(baseWhere)
             """)
             allArgs.append(p)
             allArgs.append(p)

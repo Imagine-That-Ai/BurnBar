@@ -16,9 +16,11 @@ import {
   canonicalHermesGatewayUserCode,
   clampHermesGatewayLimit,
   generateHermesGatewayBearerToken,
+  gatewayTokenExpiryISO,
   generateHermesGatewayDeviceCode,
   generateHermesGatewayDeviceSecret,
   hashHermesGatewayBearerToken,
+  isHermesGatewayTokenExpired,
   hashHermesGatewayDeviceSecret,
   hasHermesGatewayScope,
   HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
@@ -63,6 +65,7 @@ import {
   requiredIdentifier,
   safeIdentifier,
 } from "./shared.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 type HttpRequest = {
   method?: string;
@@ -262,12 +265,26 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (!clientSnap.exists || !isHermesGatewayClientDoc(client) || client.status !== "active") {
     throw httpError(401, "revoked_bearer_token");
   }
+  if (isHermesGatewayTokenExpired(client.expiresAt)) {
+    throw httpError(401, "expired_bearer_token");
+  }
   if (!hasHermesGatewayScope(client.scopes, scope)) {
     throw httpError(403, "missing_scope", scope);
   }
   await assertActiveHermesGatewayEntitlement(index.uid);
   const now = nowISO();
-  await clientRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
+  // Grandfather legacy tokens: backfill a default expiry on first use so
+  // pre-expiry tokens eventually age out without mass-invalidation.
+  const expiresAtBackfill = client.expiresAt ? undefined : gatewayTokenExpiryISO();
+  await Promise.all([
+    clientRef.set(
+      stripUndefinedObject({ lastSeenAt: now, updatedAt: now, expiresAt: expiresAtBackfill }),
+      { merge: true },
+    ),
+    expiresAtBackfill
+      ? db.doc(`hermes_gateway_token_index/${tokenHash}`).set({ expiresAt: expiresAtBackfill }, { merge: true })
+      : Promise.resolve(),
+  ]);
   return { uid: index.uid, client };
 }
 
@@ -641,9 +658,10 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
 
 export const burnBarHermesGateway = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
     maxInstances: 100,
+    ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
     if (req.method === "OPTIONS") {
@@ -680,7 +698,7 @@ export const burnBarHermesGateway = onRequest(
 
 export const approveHermesGatewayDeviceGrant = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -724,6 +742,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const token = generateHermesGatewayBearerToken();
       const tokenHash = hashHermesGatewayBearerToken(token);
       const now = nowISO();
+      const tokenExpiresAt = gatewayTokenExpiryISO();
       const clientId = `hgw_${randomBytes(12).toString("hex")}`;
       const scopes = sanitizeHermesGatewayScopes(request.data.scopes ?? session.requestedScopes);
       const homeDestinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
@@ -740,6 +759,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         tokenPreview: tokenPreview(token),
         scopes,
         homeDestinationId,
+        expiresAt: tokenExpiresAt,
         createdAt: now,
         updatedAt: now,
         schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
@@ -750,7 +770,9 @@ export const approveHermesGatewayDeviceGrant = onCall(
         db
           .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
           .set(stripUndefinedObject(clientDoc), { merge: false }),
-        db.doc(`hermes_gateway_token_index/${tokenHash}`).set({ uid, clientId, status: "active", createdAt: now }),
+        db
+          .doc(`hermes_gateway_token_index/${tokenHash}`)
+          .set({ uid, clientId, status: "active", createdAt: now, expiresAt: tokenExpiresAt }),
         sessionRef.set(
           {
             status: "approved",
@@ -773,7 +795,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
 
 export const listHermesGatewayClients = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -797,7 +819,7 @@ export const listHermesGatewayClients = onCall(
 
 export const revokeHermesGatewayClient = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -822,9 +844,88 @@ export const revokeHermesGatewayClient = onCall(
   }),
 );
 
+export const rotateHermesGatewayClientToken = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 50,
+  },
+  wrapCallableHandler(
+    "rotateHermesGatewayClientToken",
+    async (request: CallableRequest<{ clientId?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before rotating Hermes Gateway tokens.");
+      enforceAuthAndAppCheck(request, uid);
+      await assertCallableApprovalNotLocked(uid, "hermes_gateway_approve_fail");
+      await assertActiveHermesGatewayEntitlement(uid);
+      const clientId = requiredIdentifier(request.data.clientId, "clientId");
+      const ref = db.doc(`users/${uid}/hermes_gateway_clients/${clientId}`);
+      const snap = await ref.get();
+      const client = snap.data();
+      if (!snap.exists || !isHermesGatewayClientDoc(client)) {
+        await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
+        throw new HttpsError("not-found", "Hermes Gateway client not found.");
+      }
+      if (client.status !== "active") {
+        throw new HttpsError("failed-precondition", "Revoked Hermes Gateway clients cannot be rotated.");
+      }
+      const previousTokenHash = client.tokenHash;
+      const token = generateHermesGatewayBearerToken();
+      const tokenHash = hashHermesGatewayBearerToken(token);
+      if (tokenHash === previousTokenHash) {
+        throw new HttpsError("aborted", "Token rotation collision; please retry.");
+      }
+      const now = nowISO();
+      const tokenExpiresAt = gatewayTokenExpiryISO();
+      // Atomic-enough swap: write the NEW index first (so a crash mid-rotation
+      // leaves the new token usable rather than locking the client out), then
+      // repoint the client doc, then delete the OLD index hash. The old token is
+      // invalidated the moment the client doc's tokenHash changes because
+      // resolveGatewayGrant re-derives and compares against the client doc.
+      const batch = db.batch();
+      batch.set(db.doc(`hermes_gateway_token_index/${tokenHash}`), {
+        uid,
+        clientId,
+        status: "active",
+        createdAt: now,
+        expiresAt: tokenExpiresAt,
+      });
+      batch.set(
+        ref,
+        {
+          tokenHash,
+          tokenPreview: tokenPreview(token),
+          expiresAt: tokenExpiresAt,
+          rotatedAt: now,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+      if (previousTokenHash && previousTokenHash !== tokenHash) {
+        batch.delete(db.doc(`hermes_gateway_token_index/${previousTokenHash}`));
+      }
+      await batch.commit();
+      logInfo({
+        event: "hermes_gateway.token_rotated",
+        user_id_hash: uid.slice(0, 8),
+        client_id: clientId,
+      });
+      const rotated: HermesGatewayClientDoc = {
+        ...client,
+        tokenHash,
+        tokenPreview: tokenPreview(token),
+        expiresAt: tokenExpiresAt,
+        rotatedAt: now,
+        updatedAt: now,
+      };
+      return { client: publicClientView(rotated), accessToken: token, tokenType: "Bearer", expiresAt: tokenExpiresAt };
+    },
+  ),
+);
+
 export const enqueueHermesGatewayEvent = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

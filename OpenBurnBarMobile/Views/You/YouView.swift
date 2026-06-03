@@ -14,8 +14,12 @@ struct YouView: View {
     @State private var showSignOutConfirm = false
     @State private var showCloudStore = false
     @State private var showSignIn = false
+    @State private var unlockFeature: GatedFeaturePresentation?
 
     @Environment(\.cloudSubscriptionStore) private var cloudStore
+
+    /// The user's resolved tier; `.none` when no Cloud store is in scope yet.
+    private var tier: CloudTier { cloudStore?.cloudTier ?? .none }
 
     var body: some View {
         ZStack {
@@ -53,12 +57,15 @@ struct YouView: View {
                     computerUseRow
                         .staggeredEntrance(delay: 0.18)
 
-                    settingsRow
+                    dataVaultRow
                         .staggeredEntrance(delay: 0.20)
+
+                    settingsRow
+                        .staggeredEntrance(delay: 0.22)
 
                     accountActionButton
                         .padding(.top, MobileTheme.Spacing.md)
-                        .staggeredEntrance(delay: 0.25)
+                        .staggeredEntrance(delay: 0.27)
                 }
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
                 .padding(.vertical, MobileTheme.Spacing.md)
@@ -101,6 +108,9 @@ struct YouView: View {
             SignInScene(authStore: authStore)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $unlockFeature) { presentation in
+            FeatureUnlockSheet(feature: presentation.feature)
         }
         .onChange(of: authStore.state.isSignedIn) { _, isSignedIn in
             if isSignedIn {
@@ -276,35 +286,68 @@ struct YouView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Agent Control (pro-gated)
+    //
+    // Public name "Agent Control" (never "Computer Use" in user copy). When the
+    // user isn't on Cloud Pro the row wears a `TierLockBadge` and its tap opens
+    // the unlock sheet instead of navigating into the live agent screen.
+
+    @ViewBuilder
     private var computerUseRow: some View {
-        NavigationLink(value: YouRoute.computerUse) {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-                HStack(spacing: 12) {
-                    Image(systemName: "cursorarrow.click.2")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.orange)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.orange.opacity(0.16))
-                        )
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Computer Use")
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("Watch, approve, take over, or halt your Mac agent")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
+        let chrome = gatedRowChrome(
+            icon: "cursorarrow.rays",
+            iconTint: .orange,
+            title: "Agent Control",
+            subtitle: "Watch, approve, take over, or halt your Mac agent"
+        )
+        if tier.satisfies(.pro) {
+            NavigationLink(value: YouRoute.computerUse) { chrome }
+                .buttonStyle(.plain)
+        } else {
+            Button {
+                Haptics.light()
+                unlockFeature = GatedFeatureID.agentControl.presentation
+            } label: {
+                chrome.tierLockBadge(.agentControl, tier: tier)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Available on Cloud Pro")
+        }
+    }
+
+    /// Shared row chrome for the gated You-tab rows so the entitled
+    /// NavigationLink and the locked unlock-button render identically.
+    private func gatedRowChrome(
+        icon: String,
+        iconTint: Color,
+        title: String,
+        subtitle: String
+    ) -> some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(iconTint)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(iconTint.opacity(0.16))
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(MobileTheme.Typography.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text(subtitle)
+                        .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                .contentShape(Rectangle())
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     /// Distinct providers that have at least one active account or legacy
@@ -381,6 +424,35 @@ struct YouView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Data Vault (pro-gated)
+    //
+    // The Data & Privacy Control Center hosts the pro-gated Pensieve agent
+    // memory. Locked users see the tier badge and the unlock sheet; the
+    // privacy inventory itself stays reachable once on Cloud Pro.
+
+    @ViewBuilder
+    private var dataVaultRow: some View {
+        let chrome = gatedRowChrome(
+            icon: "brain.head.profile",
+            iconTint: MobileTheme.success,
+            title: "Data Vault",
+            subtitle: "Private agent memory · privacy inventory · recovery"
+        )
+        if tier.satisfies(.pro) {
+            NavigationLink(value: YouRoute.dataVault) { chrome }
+                .buttonStyle(.plain)
+        } else {
+            Button {
+                Haptics.light()
+                unlockFeature = GatedFeatureID.dataVault.presentation
+            } label: {
+                chrome.tierLockBadge(.dataVault, tier: tier)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Available on Cloud Pro")
+        }
+    }
+
     // MARK: - Sign Out
 
     private var accountActionButton: some View {
@@ -411,6 +483,8 @@ enum YouRoute: Hashable, CaseIterable {
     case devices
     case providers
     case computerUse
+    case dataVault
+    case memory
 }
 
 // MARK: - Cloud Member Crest Row

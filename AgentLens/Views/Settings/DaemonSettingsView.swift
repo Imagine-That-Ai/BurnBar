@@ -281,7 +281,21 @@ struct HTTPGatewayDetailView: View {
                             || settingsManager.gatewayHost == "localhost"
                             || settingsManager.gatewayHost == "::1"
 
-                        if !isLoopback {
+                        Divider().background(DesignSystem.Colors.border)
+
+                        SettingsToggle(
+                            title: "Allow unauthenticated loopback",
+                            subtitle: "Bind 127.0.0.1 without a bearer token. Unsafe: any process on this Mac can spend your provider credits through the gateway.",
+                            icon: "lock.open",
+                            isOn: $settingsManager.gatewayAllowUnauthenticatedLoopback
+                        )
+                        .settingsAnchor(SettingsAnchor.gatewayAllowUnauthenticatedLoopback)
+
+                        // Auth is required whenever the gateway is enabled, unless
+                        // the user explicitly opted into an unauthenticated loopback
+                        // bind. A token is auto-generated on the next daemon launch
+                        // when this field is left blank.
+                        if !(isLoopback && settingsManager.gatewayAllowUnauthenticatedLoopback) {
                             Divider().background(DesignSystem.Colors.border)
 
                             HStack {
@@ -289,12 +303,14 @@ struct HTTPGatewayDetailView: View {
                                     Text("Auth token")
                                         .font(DesignSystem.Typography.caption)
                                         .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                    Text("Required for non-loopback bindings")
+                                    Text(settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? "Auto-generated on next daemon launch"
+                                        : "Bearer token clients must send as Authorization: Bearer")
                                         .font(DesignSystem.Typography.tiny)
-                                        .foregroundStyle(DesignSystem.Colors.warning)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
                                 }
                                 Spacer()
-                                SecureField("Bearer token", text: $settingsManager.gatewayAuthToken)
+                                SecureField("Auto-generated", text: $settingsManager.gatewayAuthToken)
                                     .textFieldStyle(.roundedBorder)
                                     .font(DesignSystem.Typography.monoSmall)
                                     .frame(width: 180)

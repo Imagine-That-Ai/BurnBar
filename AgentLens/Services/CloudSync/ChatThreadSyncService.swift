@@ -1,14 +1,15 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Sync domain for chat thread and message upload.
 ///
 /// Uploads local chat threads to Firestore for cross-device resume.
 ///
 /// Message bodies, thread titles, and previews are backed up only after explicit
-/// `chatThreadContentCloudBackupEnabled` consent. Without that consent, the cloud
-/// record contains non-content metadata only.
+/// `chatThreadContentCloudBackupEnabled` consent and are sealed before upload.
+/// Without that consent, the cloud record contains non-content metadata only.
 /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}`
 ///
 /// Uses existing DataStore APIs:
@@ -59,8 +60,15 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                 .document(uid)
                 .collection("chat_threads")
 
-            let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
-            for thread in threads {
+	            let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
+	            let resolvedKey = includeContent
+	                ? try await MacCloudVaultKeyAccess.keyForWriting(
+	                    uid: uid,
+	                    deviceId: deviceId,
+	                    firestore: Firestore.firestore()
+	                )
+	                : nil
+	            for thread in threads {
                 let label = thread.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? "Thread \(thread.id.prefix(8))"
                     : thread.title
@@ -85,41 +93,34 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     "contentIncluded": includeContent,
                 ]
 
-                if includeContent {
-                    let encodedMessages: [[String: Any]] = messages.map { msg -> [String: Any] in
-                        var m: [String: Any] = [
-                            "id": msg.id,
-                            "role": msg.role == .user ? "user" : "assistant",
-                            "content": String(msg.content.prefix(4000)),
-                            "timestamp": Timestamp(date: msg.timestamp),
-                        ]
-                        if let cli = msg.cliUsed {
-                            m["cliUsed"] = cli
-                        }
-                        if !msg.attachments.isEmpty {
-                            // Attachments roundtrip metadata only — bytes stay
-                            // on the originating device's chat workspace.
-                            m["attachments"] = msg.attachments.map { att -> [String: Any] in
-                                [
-                                    "id": att.id,
-                                    "kind": att.kind.rawValue,
-                                    "displayName": att.displayName,
-                                    "mimeType": att.mimeType,
-                                    "byteSize": att.byteSize,
-                                    "workspacePath": att.workspaceRelativePath,
-                                ]
-                            }
-                        }
-                        return m
-                    }
-                    data["title"] = thread.title
-                    data["preview"] = String(thread.preview.prefix(500))
-                    data["messages"] = encodedMessages
-                } else {
-                    data["messages"] = FieldValue.delete()
-                    data["title"] = FieldValue.delete()
-                    data["preview"] = FieldValue.delete()
-                }
+	                if includeContent, let resolvedKey {
+	                    let payload = ChatThreadSealedPayload(
+	                        threadId: thread.id,
+	                        title: thread.title,
+	                        preview: String(thread.preview.prefix(500)),
+	                        messages: messages.map(ChatThreadSealedPayload.Message.init)
+	                    )
+	                    let payloadData = try Self.sealedPayloadEncoder.encode(payload)
+	                    let sealedPayload = try CloudVaultCrypto.sealPayload(
+	                        payloadData,
+	                        keyData: resolvedKey.keyData,
+	                        vaultKeyID: resolvedKey.vaultKeyID
+	                    )
+	                    data["contentSealed"] = true
+	                    data["sealedSchemaVersion"] = 1
+	                    data["vaultKeyID"] = resolvedKey.vaultKeyID
+	                    data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
+	                    data["title"] = FieldValue.delete()
+	                    data["preview"] = FieldValue.delete()
+	                    data["messages"] = FieldValue.delete()
+	                } else {
+	                    data["messages"] = FieldValue.delete()
+	                    data["title"] = FieldValue.delete()
+	                    data["preview"] = FieldValue.delete()
+	                    data["sealedPayload"] = FieldValue.delete()
+	                    data["vaultKeyID"] = FieldValue.delete()
+	                    data["contentSealed"] = false
+	                }
                 batch.setData(data, forDocument: docRef, merge: true)
                 progress?.recordChatThreadProcessed(label: label)
             }
@@ -139,4 +140,61 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
             lastSyncError = error.localizedDescription
         }
     }
+
+    private static var sealedPayloadEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+}
+
+private struct ChatThreadSealedPayload: Codable {
+    struct Message: Codable {
+        struct Attachment: Codable {
+            let id: String
+            let kind: String
+            let displayName: String
+            let mimeType: String
+            let byteSize: Int
+            let workspacePath: String
+        }
+
+        let id: String
+        let role: String
+        let content: String
+        let timestamp: Date
+        let cliUsed: String?
+        let attachments: [Attachment]
+
+        init(_ message: ChatMessageRecord) {
+            id = message.id
+            switch message.role {
+            case .user:
+                role = "user"
+            case .assistant:
+                role = "assistant"
+            case .system:
+                role = "system"
+            }
+            content = String(message.content.prefix(4000))
+            timestamp = message.timestamp
+            cliUsed = message.cliUsed
+            attachments = message.attachments.map { attachment in
+                Attachment(
+                    id: attachment.id,
+                    kind: attachment.kind.rawValue,
+                    displayName: attachment.displayName,
+                    mimeType: attachment.mimeType,
+                    byteSize: attachment.byteSize,
+                    workspacePath: attachment.workspaceRelativePath
+                )
+            }
+        }
+    }
+
+    let threadId: String
+    let title: String
+    let preview: String
+    let messages: [Message]
 }

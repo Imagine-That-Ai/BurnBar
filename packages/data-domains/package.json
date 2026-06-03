@@ -1,0 +1,15 @@
+{
+  "name": "@openburnbar/data-domains",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical user-data domain registry + codegen for the BurnBar Data & Privacy Control Center.",
+  "bin": {
+    "data-domains-driftcheck": "driftcheck.mjs"
+  },
+  "scripts": {
+    "build": "node codegen.mjs",
+    "driftcheck": "node driftcheck.mjs",
+    "test": "node codegen.mjs && node --test"
+  }
+}

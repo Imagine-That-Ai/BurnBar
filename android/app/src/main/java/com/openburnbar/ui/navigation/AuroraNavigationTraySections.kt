@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -47,9 +48,8 @@ import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.HapticBus
 import com.openburnbar.ui.theme.AuroraColors
 
-internal val AuroraTrayPillHeight = 62.dp
-internal val AuroraTrayIconSize = 24.dp
-internal val AuroraTrayTabWidth = 56.dp
+internal val AuroraTrayPillHeight = 60.dp
+internal val AuroraTrayIconSize = 22.dp
 internal val AuroraTrayPillBottomInset = 14.dp
 
 internal data class AuroraTrayPillModel(
@@ -75,6 +75,7 @@ internal fun AuroraTabItem(
     userDisplayName: String?,
     userPhotoUrl: String?,
     cloudIndicator: CloudIndicator = CloudIndicator.None,
+    modifier: Modifier = Modifier,
     onSelected: () -> Unit,
 ) {
     val dotScale by animateFloatAsState(
@@ -90,8 +91,7 @@ internal fun AuroraTabItem(
 
     Box(
         modifier =
-        Modifier
-            .width(AuroraTrayTabWidth)
+        modifier
             .height(AuroraTrayPillHeight - 6.dp)
             .clip(CircleShape)
             .clickableNoRipple(onClick = onSelected),
@@ -128,9 +128,8 @@ internal fun AuroraTabItem(
                 fontSize = 9.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Clip,
+                overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.width(48.dp),
             )
 
             Spacer(modifier = Modifier.height(2.dp))
@@ -260,9 +259,10 @@ internal fun AuroraNavigationTrayPill(
     Row(
         modifier =
         Modifier
+            .fillMaxWidth()
             .auroraTrayPillChrome(model.isDark)
             .auroraTrayPillDragGesture(model.destinations, model.selectedDestination, dragCallbacks),
-        horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         model.destinations.forEach { dest ->
@@ -278,6 +278,7 @@ internal fun AuroraNavigationTrayPill(
                 } else {
                     CloudIndicator.None
                 },
+                modifier = Modifier.weight(1f),
                 onSelected = {
                     if (!isSelected) {
                         onDestinationSelected(dest)

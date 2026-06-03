@@ -36,8 +36,9 @@ import {
 } from "./reconciler.js";
 import { getAppleJWSVerifier, JWSVerificationFailure } from "./verifier.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
-const REGION = "us-central1";
+const REGION = FUNCTIONS_REGION;
 
 // ---------------------------------------------------------------------------
 // beginEntitlementBinding
@@ -49,6 +50,7 @@ export const beginEntitlementBinding = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     secrets: APP_STORE_SECRETS,
+    ...HOT_PATH_OPTIONS,
   },
   wrapCallableHandler(
     "beginEntitlementBinding",

@@ -69,16 +69,56 @@ public struct CloudVaultBlobEnvelope: Codable, Hashable, Sendable {
     }
 }
 
+public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
+    public let schemaVersion: Int
+    public let algorithm: String
+    public let keyVersion: Int
+    public let vaultKeyID: String
+    public let sealedBoxBase64: String
+
+    public init(
+        schemaVersion: Int = 1,
+        algorithm: String = CloudVaultCrypto.aesGCMAlgorithm,
+        keyVersion: Int,
+        vaultKeyID: String,
+        sealedBoxBase64: String
+    ) {
+        self.schemaVersion = schemaVersion
+        self.algorithm = algorithm
+        self.keyVersion = keyVersion
+        self.vaultKeyID = vaultKeyID
+        self.sealedBoxBase64 = sealedBoxBase64
+    }
+}
+
 public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
     public static let tokenHashVersion = 1
     public static let semanticHashVersion = 1
     public static let currentKeyVersion = 1
+    public static let recoverySalt = Data("OpenBurnBar-Recovery-Salt-v1".utf8)
+    public static let recoveryWrapInfo = Data("OpenBurnBar-Recovery-Wrap-v1".utf8)
 
     public static func generateVaultKey() -> Data {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return Data(bytes)
+    }
+
+    public static func vaultKeyID(for keyData: Data) throws -> String {
+        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return "v1_" + String(sha256Hex(keyData).prefix(32))
+    }
+
+    public static func generateRecoveryKey() throws -> String {
+        let alphabet = Array("ABCDEFGHJKMNPQRSTVWXYZ23456789")
+        var bytes = [UInt8](repeating: 0, count: 35)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+        let characters = bytes.map { alphabet[Int($0) % alphabet.count] }
+        return stride(from: 0, to: characters.count, by: 7)
+            .map { String(characters[$0..<min($0 + 7, characters.count)]) }
+            .joined(separator: "-")
     }
 
     public static func sealText(_ text: String, keyData: Data, keyVersion: Int = currentKeyVersion) throws -> CloudVaultSealedText {
@@ -118,6 +158,62 @@ public enum CloudVaultCrypto {
         return plaintext
     }
 
+    public static func sealPayload(
+        _ data: Data,
+        keyData: Data,
+        vaultKeyID: String,
+        keyVersion: Int = currentKeyVersion
+    ) throws -> CloudVaultSealedPayload {
+        let sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData))
+        guard let combined = sealed.combined else {
+            throw CloudVaultCryptoError.sealedBoxUnavailable
+        }
+        return CloudVaultSealedPayload(
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: combined.base64EncodedString()
+        )
+    }
+
+    public static func openPayload(_ envelope: CloudVaultSealedPayload, keyData: Data) throws -> Data {
+        guard envelope.algorithm == aesGCMAlgorithm,
+              envelope.schemaVersion == 1,
+              envelope.vaultKeyID == (try vaultKeyID(for: keyData)),
+              let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        let box = try AES.GCM.SealedBox(combined: combined)
+        return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+    }
+
+    public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> [String: Any] {
+        [
+            "schemaVersion": envelope.schemaVersion,
+            "algorithm": envelope.algorithm,
+            "keyVersion": envelope.keyVersion,
+            "vaultKeyID": envelope.vaultKeyID,
+            "sealedBoxBase64": envelope.sealedBoxBase64
+        ]
+    }
+
+    public static func sealedPayload(from raw: Any?) -> CloudVaultSealedPayload? {
+        guard let dict = raw as? [String: Any],
+              let schemaVersion = dict["schemaVersion"] as? Int,
+              let algorithm = dict["algorithm"] as? String,
+              let keyVersion = dict["keyVersion"] as? Int,
+              let vaultKeyID = dict["vaultKeyID"] as? String,
+              let sealedBoxBase64 = dict["sealedBoxBase64"] as? String else {
+            return nil
+        }
+        return CloudVaultSealedPayload(
+            schemaVersion: schemaVersion,
+            algorithm: algorithm,
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: sealedBoxBase64
+        )
+    }
+
     public static func tokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
         let key = try searchKey(from: keyData)
         let terms = normalizedTokens(from: text)
@@ -140,6 +236,45 @@ public enum CloudVaultCrypto {
         terms.append(contentsOf: tokens.compactMap(searchQueryPrefixTerm))
         terms.append(contentsOf: exactPhraseTerms(from: text))
         return tokenHashes(forTerms: terms, key: key, limit: limit)
+    }
+
+    /// Deterministic, opaque Firestore document id for a project-memory snapshot.
+    ///
+    /// Replaces the name-derived slug doc id so the server (and anyone with raw
+    /// Firestore read) learns nothing about the project: it stores only ciphertext
+    /// plus this trapdoor. Same slug + same vault key always hash to the same id, so
+    /// upsert/get idempotency is preserved; a different vault key yields a different
+    /// id. The `pm_` + 32-hex output satisfies the server's `requiredIdentifier`
+    /// `[a-z0-9_-]` filter unchanged. Mirrors the `tokenHashes`/`searchKey`
+    /// HKDF<SHA256> → HMAC<SHA256> → hex recipe.
+    public static func projectMemoryDocID(forSlug slug: String, keyData: Data) throws -> String {
+        let key = try projectMemoryDocIDKey(from: keyData)
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: key)
+        return "pm_" + Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Vault-keyed dedup hash for a Pensieve knowledge chunk's plaintext.
+    ///
+    /// Equality-only idempotency key the server can compare without ever learning
+    /// the plaintext (and without the cleartext-SHA-256 oracle the legacy
+    /// `contentHash` exposed). Per-user HKDF derivation means two users with the
+    /// same plaintext produce different hashes. Full HMAC-SHA256 digest (64 hex),
+    /// matching `requireHexDigest`. Derivation parity:
+    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:content") → HMAC<SHA256>(plaintext)`.
+    public static func pensieveDedupHash(_ plaintext: String, keyData: Data) throws -> String {
+        let key = try pensieveDedupKey(from: keyData, label: "content")
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(plaintext.utf8), using: key)
+        return Data(mac).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Vault-keyed HMAC of a Pensieve source slug — the opaque filter column that
+    /// replaces the cleartext `sourceSlug`. Full HMAC-SHA256 digest (64 hex).
+    /// Derivation parity:
+    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:slug") → HMAC<SHA256>(slug)`.
+    public static func pensieveSlugHmac(_ slug: String, keyData: Data) throws -> String {
+        let key = try pensieveDedupKey(from: keyData, label: "slug")
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: key)
+        return Data(mac).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func tokenHashes(forTerms terms: [String], key: SymmetricKey, limit: Int) -> [String] {
@@ -298,12 +433,68 @@ public enum CloudVaultCrypto {
         return keyData
     }
 
+    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> SymmetricKey {
+        let normalized = normalizedRecoveryKey(recoveryKey)
+        guard normalized.count >= 20 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: Data(normalized.utf8)),
+            salt: recoverySalt,
+            info: recoveryWrapInfo,
+            outputByteCount: 32
+        )
+    }
+
+    public static func wrapVaultKeyWithRecovery(
+        vaultKey: Data,
+        recoveryKey: String
+    ) throws -> (wrappedVaultKeyBase64: String, verificationHash: String) {
+        guard vaultKey.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        let wrappingKey = try deriveRecoveryWrappingKey(from: recoveryKey)
+        let sealed = try AES.GCM.seal(vaultKey, using: wrappingKey)
+        guard let combined = sealed.combined else {
+            throw CloudVaultCryptoError.sealedBoxUnavailable
+        }
+        return (
+            wrappedVaultKeyBase64: combined.base64EncodedString(),
+            verificationHash: recoveryVerificationHash(forDerivedKey: wrappingKey)
+        )
+    }
+
+    public static func unwrapVaultKeyWithRecovery(
+        wrappedVaultKeyBase64: String,
+        recoveryKey: String
+    ) throws -> Data {
+        guard let combined = Data(base64Encoded: wrappedVaultKeyBase64) else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        let box = try AES.GCM.SealedBox(combined: combined)
+        let keyData = try AES.GCM.open(box, using: try deriveRecoveryWrappingKey(from: recoveryKey))
+        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return keyData
+    }
+
+    public static func recoveryVerificationHash(for recoveryKey: String) throws -> String {
+        try recoveryVerificationHash(forDerivedKey: deriveRecoveryWrappingKey(from: recoveryKey))
+    }
+
     public static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     public static func sha256Hex(_ text: String) -> String {
         sha256Hex(Data(text.utf8))
+    }
+
+    private static func recoveryVerificationHash(forDerivedKey key: SymmetricKey) -> String {
+        key.withUnsafeBytes { bytes in
+            sha256Hex(Data(bytes))
+        }
+    }
+
+    private static func normalizedRecoveryKey(_ recoveryKey: String) -> String {
+        recoveryKey
+            .uppercased()
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     private static func symmetricKey(from data: Data) throws -> SymmetricKey {
@@ -327,6 +518,29 @@ public enum CloudVaultCrypto {
             inputKeyMaterial: SymmetricKey(data: data),
             salt: Data("OpenBurnBar-CloudSearch-Semantic-Salt-v1".utf8),
             info: Data("OpenBurnBar-CloudSearch-SemanticHash-v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    private static func projectMemoryDocIDKey(from data: Data) throws -> SymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: data),
+            salt: Data("OpenBurnBar-DocID-Salt-v1".utf8),
+            info: Data("OpenBurnBar-ProjectMemory-DocID-v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    /// Per-user Pensieve dedup subkey. Mirrors the TS device derivation the server
+    /// test pins (`knowledgeMemoryDedupHash.test.ts`): empty HKDF salt, info
+    /// `"pensieve-dedup:<label>"` where `label` is `content` or `slug`.
+    private static func pensieveDedupKey(from data: Data, label: String) throws -> SymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: data),
+            salt: Data(),
+            info: Data("pensieve-dedup:\(label)".utf8),
             outputByteCount: 32
         )
     }

@@ -697,3 +697,132 @@ section {
     display: none;
   }
 }
+
+/* ============================================================
+   LIGHT THEME overrides + background-canvas swap.
+   Dark stays the default; [data-theme="light"] re-themes the
+   atmosphere and hands the background to the dot-logo field.
+   ============================================================ */
+
+/* Two fixed background canvases live in BaseLayout: #bgCanvas (the
+   dark ember swarm) and #bgDots (the light dot-logo constellation).
+   Show exactly one per theme. */
+#bgDots {
+  display: none;
+}
+:root[data-theme="light"] #bgCanvas {
+  display: none;
+}
+:root[data-theme="light"] #bgDots {
+  display: block;
+}
+
+:root[data-theme="light"] body {
+  background-color: var(--ink-void);
+}
+
+/* kill the furnace glow + soften the grain on paper */
+:root[data-theme="light"] body::before {
+  display: none;
+}
+:root[data-theme="light"] body::after {
+  opacity: 0.05;
+}
+
+/* dark text-shadows become muddy halos on light text */
+:root[data-theme="light"] h1,
+:root[data-theme="light"] h2,
+:root[data-theme="light"] h3,
+:root[data-theme="light"] h4,
+:root[data-theme="light"] .eyebrow,
+:root[data-theme="light"] .lead {
+  text-shadow: none;
+}
+
+/* glass surfaces → light vellum with gentle shadows */
+:root[data-theme="light"] .glass-card,
+:root[data-theme="light"] .glass-pane,
+:root[data-theme="light"] .glass-pane--elevated,
+:root[data-theme="light"] .glass-inline {
+  border-color: var(--ink-line);
+  border-top-color: var(--ink-line-bright);
+  box-shadow:
+    0 1px 2px rgba(22, 19, 14, 0.04),
+    0 24px 48px -30px rgba(22, 19, 14, 0.4);
+}
+:root[data-theme="light"] .glass-pane:hover,
+:root[data-theme="light"] .glass-card:hover {
+  border-color: color-mix(in oklab, var(--core-fire) 32%, var(--ink-line));
+  box-shadow:
+    0 16px 40px -28px rgba(200, 83, 10, 0.3),
+    0 24px 48px -30px rgba(22, 19, 14, 0.4);
+}
+
+/* the default (glass) button is built for a black canvas — relight it */
+:root[data-theme="light"] .btn {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.6) 100%);
+  color: var(--text-base);
+  border-color: var(--ink-line-bright);
+  box-shadow:
+    0 4px 16px -6px rgba(22, 19, 14, 0.2),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
+}
+:root[data-theme="light"] .btn:hover,
+:root[data-theme="light"] .btn:focus-visible {
+  color: var(--text-bright);
+  background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.85) 100%);
+  border-color: color-mix(in oklab, var(--core-fire) 40%, var(--ink-line-bright));
+}
+/* the ember CTA keeps its fire; just ensure white text reads */
+:root[data-theme="light"] .btn--ember {
+  color: #fff;
+}
+:root[data-theme="light"] .btn--ghost {
+  color: var(--text-mute);
+}
+
+/* hairline dividers + code chips already flow from tokens; nudge code legibility */
+:root[data-theme="light"] code,
+:root[data-theme="light"] kbd,
+:root[data-theme="light"] samp {
+  background: var(--ink-surface);
+  border-color: var(--ink-line);
+  color: var(--text-bright);
+}
+
+/* the theme toggle button (defined in Header) */
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--ink-line);
+  background: var(--ink-surface);
+  color: var(--text-base);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.theme-toggle:hover {
+  color: var(--text-bright);
+  border-color: var(--ink-line-bright);
+}
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+.theme-toggle .icon-sun {
+  display: none;
+}
+.theme-toggle .icon-moon {
+  display: block;
+}
+:root[data-theme="light"] .theme-toggle .icon-sun {
+  display: block;
+}
+:root[data-theme="light"] .theme-toggle .icon-moon {
+  display: none;
+}

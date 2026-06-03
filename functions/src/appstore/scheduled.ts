@@ -18,8 +18,9 @@ import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { JWSVerificationFailure } from "./verifier.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-const REGION = "us-central1";
+const REGION = FUNCTIONS_REGION;
 
 /**
  * Daily reconciliation of every active hosted entitlement.

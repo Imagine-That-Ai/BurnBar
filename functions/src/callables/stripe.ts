@@ -36,6 +36,7 @@ import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefin
 import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
 import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable / HTTP: BurnBar Pro billing bridges
@@ -145,7 +146,7 @@ function googlePlayTopUpKind(productID: string): CloudProTopUpKind {
 
 export const createStripeBurnBarProCheckoutSession = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     secrets: STRIPE_API_SECRETS,
@@ -230,7 +231,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
 
 export const createStripeBurnBarProPortalSession = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     secrets: STRIPE_API_SECRETS,
@@ -262,7 +263,7 @@ export const createStripeBurnBarProPortalSession = onCall(
 
 export const verifyGooglePlayBurnBarProSubscription = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -343,7 +344,7 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
 
 export const verifyGooglePlayCloudProTopUp = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -449,9 +450,10 @@ export const verifyGooglePlayCloudProTopUp = onCall(
 
 export const stripeBurnBarProWebhook = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     maxInstances: 20,
     secrets: STRIPE_WEBHOOK_SECRETS,
+    ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
     let stripe: Stripe;

@@ -66,6 +66,52 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(backups.isEmpty, "Current databases should not be copied on every launch: \(backups)")
     }
 
+    /// The backup gate derives the "latest migration" from the migrator, so the
+    /// last registered migration must be exactly what the gate compares against.
+    /// This is the regression guard for the stale-`v45`-constant bug.
+    func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
+        XCTAssertEqual(
+            OpenBurnBarDatabase.migrator.migrations.last,
+            "v47_conversation_tombstones",
+            "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
+        )
+    }
+
+    /// A database genuinely at v46 upgrading to v47 must take a pre-migration
+    /// backup. With the old hardcoded `latestMigrationIdentifier` constant, the
+    /// gate saw the prior version already applied and skipped the backup entirely
+    /// — this test fails on that code and passes once the identifier is
+    /// migrator-derived, and it tracks forward as new migrations land.
+    func test_runMigrationsSafely_createsBackup_whenUpgradingToLatestMigration() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dbPath = tempDir.appendingPathComponent("test.sqlite").path
+        let queue = try DatabaseQueue(path: dbPath)
+
+        // Bring the database genuinely to v46 — the migration immediately before
+        // the latest — so the safe-migration gate must detect v47 as pending.
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v46_drain_target_per_provider")
+
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+
+        let contents = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+        let backups = contents.filter { $0.contains(".backup.") }
+        XCTAssertEqual(backups.count, 1, "Upgrading v46→v47 must take exactly one pre-migration backup, got: \(backups)")
+
+        // And the upgrade actually completed through the latest migration.
+        let applied = try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
+        }
+        XCTAssertTrue(
+            applied.contains("v47_conversation_tombstones"),
+            "runMigrationsSafely must apply the pending v47 migration after backing up."
+        )
+    }
+
     func test_runMigrationsSafely_skipsIntegrityCheck_whenFileBasedDBIsCurrent() throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

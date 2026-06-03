@@ -35,10 +35,12 @@ users/{uid}/cli_sessions/{threadId}
 users/{uid}/mobile_assistant_chats/{threadId}
 ```
 
-The event id is deterministic across source, runtime, thread, message id, and
-content hash, so duplicate snapshots do not create duplicate notifications.
-Cloud fanout reads `users/{uid}/devices`, skips the active matching chat when
-the device heartbeat is fresh, sends FCM to registered mobile devices, and marks
+The event id is deterministic across source, thread, and assistant message id,
+so duplicate snapshots do not create duplicate notifications without hashing
+message text. For sealed sources the event uses `lastAssistantMessageID` and a
+generic preview (`OpenBurnBar has a new agent reply.`), not assistant content.
+Cloud fanout reads `users/{uid}/devices`, skips the active matching chat when the
+device heartbeat is fresh, sends FCM to registered mobile devices, and marks
 stale or invalid tokens. Android receives data-only high-priority messages so
 `FirebaseMessagingService` can always build the notification with inline reply
 actions, including while the app is backgrounded. Apple platforms receive alert
@@ -47,8 +49,9 @@ pushes with the `AGENT_REPLY` category registered at launch.
 Firestore rules intentionally make events server-only. Users may read events and
 create bounded reply commands only when the command references a real
 server-created event and matches that event's thread/runtime/source. Clients may
-only advance reply command status; they cannot mutate the target, text, or
-ownership fields.
+only advance reply command status; they cannot mutate the target, sealed reply
+payload, or ownership fields. Reply text is Cloud Vault sealed on device and
+stored as `sealedReplyPayload`; plaintext `replyText` is not accepted.
 
 ## Client Surfaces
 
@@ -75,21 +78,23 @@ token, app lifecycle, and active assistant thread. `MercuryFcmService` handles
 data-only `type=agent_reply` messages, suppresses the already-open active chat,
 creates the `agent_replies` notification channel, adds a direct-reply action,
 and opens the same assistant deep link. `AgentReplyNotificationReceiver`
-submits inline replies to the Cloud callable and cancels the notification after
-successful dispatch. The Mac host then consumes the queued reply command and
-sends it into the same agent thread, so Android notification replies work even
-when the Android app is backgrounded.
+seals inline replies with the Cloud Vault key, submits the sealed payload to the
+Cloud callable, and cancels the notification after successful dispatch. The Mac
+host then consumes and decrypts the queued reply command locally before sending
+it into the same agent thread, so Android notification replies work even when
+the Android app is backgrounded.
 
 ### macOS
 
 `MacAgentReplyNotificationListener` starts with live services, follows Firebase
 Auth state, listens to `agent_notification_events`, suppresses the active
 foreground thread locally, writes a Mac device heartbeat, and displays native
-notifications with inline reply. Reply actions call the same Cloud callable and
-route through `ChatSessionController` so the Mac uses the same backend/thread
-send path as an open chat. The same listener also consumes queued
-`agent_notification_replies` from phones/tablets, claims them, routes them
-silently through `ChatSessionController`, and marks them `sent` or `failed`.
+notifications with inline reply. Reply actions seal the reply text, call the
+same Cloud callable, and route through `ChatSessionController` so the Mac uses
+the same backend/thread send path as an open chat. The same listener also
+consumes queued `agent_notification_replies` from phones/tablets, decrypts them
+locally, claims them, routes them silently through `ChatSessionController`, and
+marks them `sent` or `failed`.
 
 ## Apple and Firebase Setup
 
@@ -124,6 +129,7 @@ Local checks:
 npm --prefix functions run build
 npm --prefix functions run test:agent-notifications
 npm --prefix functions run test:firestore-rules
+node scripts/privacy/scan-chat-cloud-plaintext.mjs
 xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS Simulator' -configuration Debug -derivedDataPath /tmp/DerivedData-openburnbar-notifications -skipPackagePluginValidation -skipMacroValidation build
 xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -configuration Debug -derivedDataPath /tmp/DerivedData-openburnbar-notifications-mac-arm64 -skipPackagePluginValidation -skipMacroValidation ONLY_ACTIVE_ARCH=YES ARCHS=arm64 build
 cd android && ./gradlew :app:compileDebugKotlin --no-daemon
@@ -136,7 +142,7 @@ Device smoke:
 3. Send an assistant reply into the mirrored Mac thread.
 4. Verify the mobile system notification appears with Reply and Open actions.
 5. Reply inline and confirm the reply is written to
-   `agent_notification_replies` and sent into the chat when the runtime is
-   available.
+   `agent_notification_replies` with `contentSealed == true` and
+   `sealedReplyPayload`, then sent into the chat when the runtime is available.
 6. Repeat with the mobile app foregrounded in a different tab and with the
    target chat already open; only the non-active surface should notify.

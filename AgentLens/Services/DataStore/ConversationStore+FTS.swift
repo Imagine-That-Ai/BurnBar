@@ -25,7 +25,7 @@ extension ConversationStore {
                 snippet(conversations_fts, 1, '<b>', '</b>', '…', 10) AS snip
                 FROM conversations_fts
                 JOIN conversations AS c ON c.rowid = conversations_fts.rowid
-                WHERE conversations_fts MATCH ?
+                WHERE conversations_fts MATCH ? AND c.deletedAt IS NULL
                 """
                 var args: [any DatabaseValueConvertible] = [ftsQuery]
 
@@ -57,7 +57,7 @@ extension ConversationStore {
                     var fallbackSQL = """
                     SELECT c.*
                     FROM conversations AS c
-                    WHERE (
+                    WHERE c.deletedAt IS NULL AND (
                         LOWER(COALESCE(c.summaryTitle, '')) LIKE ?
                         OR LOWER(COALESCE(c.summary, '')) LIKE ?
                     )

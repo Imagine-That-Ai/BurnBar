@@ -9,14 +9,19 @@ import OpenBurnBarCore
 /// Layout: `users/{uid}/usage`, `users/{uid}/conversations`, `users/{uid}/session_logs`
 final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
+    private let conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
     private(set) var lastSyncDate: Date?
     private(set) var cloudTotalCost: Double?
 
-    init(context: CloudSyncContext) {
+    init(
+        context: CloudSyncContext,
+        conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.context = context
+        self.conversationVaultKeyProvider = conversationVaultKeyProvider
     }
 
     /// Downloads remote data from Firestore with durable, per-account, per-collection watermark tracking.
@@ -39,7 +44,6 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
         await downloadRemoteProviderAccounts(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteUsage(uid: resolvedUid, localDeviceId: localDeviceId)
         let newConversationIds = await downloadRemoteConversations(uid: resolvedUid, localDeviceId: localDeviceId)
-        await downloadRemoteSessionLogBodies(uid: resolvedUid, conversationIds: newConversationIds)
         enqueueProjectionForRemoteConversations(newConversationIds)
 
         lastSyncDate = Date()
@@ -424,36 +428,53 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
+            var vaultKey: CloudVaultResolvedKey?
 
             for doc in snapshot.documents {
                 let data = doc.data()
                 guard let remoteDeviceId = data["deviceId"] as? String, remoteDeviceId != localDeviceId,
                       let rawProvider = data["provider"] as? String, let provider = AgentProvider(rawValue: rawProvider),
                       let sessionId = data["sessionId"] as? String else { continue }
+                guard data["contentSealed"] as? Bool == true,
+                      data["sealedPayload"] != nil else {
+                    continue
+                }
+                if vaultKey == nil {
+                    vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+                }
+                guard let privatePayload = ConversationCloudSealer.open(data, keyData: vaultKey?.keyData) else { continue }
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"
                 let deviceName = nameMap[remoteDeviceId] ?? remoteDeviceId
                 let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
                 let record = ConversationRecord(
                     id: stableId, provider: provider, sessionId: sessionId,
-                    projectName: data["projectName"] as? String ?? "",
+                    projectName: privatePayload.projectName,
                     startTime: (data["startTime"] as? Timestamp)?.dateValue(),
                     endTime: (data["endTime"] as? Timestamp)?.dateValue(),
                     messageCount: data["messageCount"] as? Int ?? 0,
                     userWordCount: data["userWordCount"] as? Int ?? 0,
                     assistantWordCount: data["assistantWordCount"] as? Int ?? 0,
-                    keyFiles: data["keyFiles"] as? [String] ?? [],
-                    keyCommands: data["keyCommands"] as? [String] ?? [],
-                    keyTools: data["keyTools"] as? [String] ?? [],
-                    inferredTaskTitle: data["inferredTaskTitle"] as? String ?? "",
-                    lastAssistantMessage: data["lastAssistantMessage"] as? String ?? "",
+                    keyFiles: privatePayload.keyFiles,
+                    keyCommands: privatePayload.keyCommands,
+                    keyTools: privatePayload.keyTools,
+                    inferredTaskTitle: privatePayload.inferredTaskTitle,
+                    lastAssistantMessage: privatePayload.lastAssistantMessage,
                     fullText: "",
                     indexedAt: Date(),
-                    workingDirectory: data["workingDirectory"] as? String,
+                    workingDirectory: privatePayload.workingDirectory,
                     fileModifiedAt: nil,
-                    summary: data["summary"] as? String,
+                    summary: privatePayload.summary,
+                    summaryTitle: privatePayload.summaryTitle,
+                    summaryProvider: privatePayload.summaryProvider,
+                    summaryModel: privatePayload.summaryModel,
                     sourceType: ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
-                    sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true
+                    sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true,
+                    // Honor a remote tombstone: if device A soft-deleted this
+                    // conversation, carry `deletedAt` through so the local copy is
+                    // tombstoned too (B-DATA-2 cross-device delete propagation).
+                    deletedAt: (data["deletedAt"] as? Timestamp)?.dateValue(),
+                    version: data["version"] as? Int ?? 1
                 )
                 try context.dataStore.insertRemoteConversation(record)
                 insertedIds.append(stableId)
@@ -467,75 +488,6 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
         }
         return insertedIds
-    }
-
-    // MARK: - Session Log Body Download
-
-    /// Downloads full Markdown bodies from session_logs for remote conversations
-    /// and updates their fullText so FTS can index them.
-    private func downloadRemoteSessionLogBodies(uid: String, conversationIds: [String]) async {
-        guard !conversationIds.isEmpty else { return }
-        let logsRef = context.firestoreGateway.collection("users").document(uid).collection("session_logs")
-
-        for conversationId in conversationIds.prefix(20) {
-            guard let colonIdx = conversationId.firstIndex(of: ":"),
-                  conversationId.distance(from: conversationId.startIndex, to: colonIdx) > 0 else { continue }
-            let devicePrefix = String(conversationId[conversationId.startIndex..<colonIdx])
-
-            do {
-                let snapshot = try await withCloudSyncRetry(
-                    policy: context.retryPolicy,
-                    circuitBreaker: context.circuitBreaker,
-                    domain: "download.sessionLogBodies"
-                ) {
-                    try await logsRef
-                        .whereField("deviceId", isEqualTo: devicePrefix)
-                        .limit(to: 200)
-                        .getDocuments()
-                }
-
-                for doc in snapshot.documents {
-                    let data = doc.data()
-                    guard let docConvId = data["id"] as? String else { continue }
-                    let stableId = "\(devicePrefix):\(docConvId)"
-                    guard conversationIds.contains(stableId) else { continue }
-
-                    let body = try await fetchCloudSessionLogBody(docId: doc.documentID)
-                    guard !body.isEmpty else { continue }
-
-                    try context.dataStore.updateConversationFullText(id: stableId, fullText: body)
-                }
-            } catch {
-            AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
-        }
-        }
-    }
-
-    // MARK: - Session Log Body Reassembly
-
-    /// Reassembles chunk sub-documents into the full Markdown body for a session log.
-    func fetchCloudSessionLogBody(docId: String) async throws -> String {
-        let gate = await context.syncGate()
-        guard gate.account.isFirebaseAvailable, let uid = gate.account.uid else { return "" }
-
-        let snapshot = try await withCloudSyncRetry(
-            policy: context.retryPolicy,
-            circuitBreaker: context.circuitBreaker,
-            domain: "download.sessionLogChunks"
-        ) {
-            try await context.firestoreGateway
-                .collection("users")
-                .document(uid)
-                .collection("session_logs")
-                .document(docId)
-                .collection("chunks")
-                .order(by: "index", descending: false)
-                .getDocuments()
-        }
-
-        return snapshot.documents
-            .compactMap { $0.data()["body"] as? String }
-            .joined()
     }
 
     // MARK: - Projection Enqueue

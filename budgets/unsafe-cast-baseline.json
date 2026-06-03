@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-02T14:16:48.937Z",
+  "generatedAt": "2026-06-03T00:24:42.533Z",
   "scanner": {
     "tsMode": "typescript-eslint-parser",
     "excluded": {
@@ -38,15 +38,15 @@
       ]
     }
   },
-  "total": 43,
+  "total": 93,
   "byLanguage": {
     "kotlin": 5,
-    "typescript": 38
+    "typescript": 88
   },
   "byKind": {
     "kotlin_force_unwrap": 5,
-    "ts_non_null_assertion": 2,
-    "ts_type_assertion": 36
+    "ts_non_null_assertion": 6,
+    "ts_type_assertion": 82
   },
   "violations": [
     {
@@ -122,6 +122,42 @@
       "detail": "SentryNodeModule"
     },
     {
+      "path": "functions/src/__tests__/apnsRetrySweeper.test.ts",
+      "line": 32,
+      "column": 20,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const snapshot = {",
+      "detail": "QueryDocumentSnapshot"
+    },
+    {
+      "path": "functions/src/__tests__/apnsRetrySweeper.test.ts",
+      "line": 32,
+      "column": 20,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const snapshot = {",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/apnsRetrySweeper.test.ts",
+      "line": 135,
+      "column": 21,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const retryAt = updates[0].retryAt as Timestamp;",
+      "detail": "Timestamp"
+    },
+    {
+      "path": "functions/src/__tests__/apnsRetrySweeper.test.ts",
+      "line": 170,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return { db: { collectionGroup } as never, collectionGroup, query };",
+      "detail": "never"
+    },
+    {
       "path": "functions/src/__tests__/appCheckAttestation.test.ts",
       "line": 15,
       "column": 41,
@@ -149,8 +185,71 @@
       "detail": "non-null assertion"
     },
     {
+      "path": "functions/src/__tests__/appendAuditEventRequired.test.ts",
+      "line": 26,
+      "column": 33,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "get: async () => ({ docs: [] as unknown[] }),",
+      "detail": "unknown[]"
+    },
+    {
+      "path": "functions/src/__tests__/auditLog.test.ts",
+      "line": 40,
+      "column": 21,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "auditActorLabel({ rawRequest: { headers: { \"x-burnbar-platform\": v } } } as never);",
+      "detail": "never"
+    },
+    {
+      "path": "functions/src/__tests__/check-region-literals.test.ts",
+      "line": 15,
+      "column": 15,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const e = err as { status?: number; stdout?: string; stderr?: string };",
+      "detail": "{ status?: number; stdout?: string; stderr?: string }"
+    },
+    {
+      "path": "functions/src/__tests__/dataExport.test.ts",
+      "line": 9,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const registry = JSON.parse(",
+      "detail": "{\n  domains: Array<{\n    id: string;\n    encryptionTier: string;\n    firestorePaths: string[];\n    storagePaths: string[];\n    actions: string[];\n  }>;\n}"
+    },
+    {
+      "path": "functions/src/__tests__/dataExportFailClosed.test.ts",
+      "line": 23,
+      "column": 45,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "limit: () => ({ get: async () => ({ docs: [] as unknown[] }) }),",
+      "detail": "unknown[]"
+    },
+    {
+      "path": "functions/src/__tests__/dataExportFailClosed.test.ts",
+      "line": 68,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/dataExportFailClosed.test.ts",
+      "line": 68,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(",
+      "detail": "unknown"
+    },
+    {
       "path": "functions/src/__tests__/integration/health.integration.test.ts",
-      "line": 22,
+      "line": 24,
       "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -159,7 +258,7 @@
     },
     {
       "path": "functions/src/__tests__/integration/health.integration.test.ts",
-      "line": 37,
+      "line": 39,
       "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -168,12 +267,129 @@
     },
     {
       "path": "functions/src/__tests__/integration/health.integration.test.ts",
-      "line": 46,
+      "line": 48,
       "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
       "snippet": "const body = (await res.json()) as Record<string, unknown>;",
       "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 161,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 161,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 164,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "const recA = [...stored.entries()].find(([k]) => k.startsWith(\"users/userA/cloud_search_knowledge/\"))![1];",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 167,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "const recB = [...stored.entries()].find(([k]) => k.startsWith(\"users/userB/cloud_search_knowledge/\"))![1];",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 181,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 181,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 184,
+      "column": 24,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "const [, record] = [...stored.entries()].find(([k]) => k.startsWith(\"users/userA/cloud_search_knowledge/\"))!;",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 212,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 212,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 217,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "delete (req.data.vectors[0] as Record<string, unknown>).dedupHash;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 218,
+      "column": 6,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "(req.data.vectors[0] as Record<string, unknown>).contentHash = KNOWN_PLAINTEXT_SHA256;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 219,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "delete (req.data as Record<string, unknown>).slugHmac;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 222,
+      "column": 24,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "const [, record] = [...stored.entries()].find(([k]) => k.startsWith(\"users/userLegacy/cloud_search_knowledge/\"))!;",
+      "detail": "non-null assertion"
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
@@ -311,6 +527,24 @@
       "detail": "string"
     },
     {
+      "path": "functions/src/__tests__/panic.test.ts",
+      "line": 41,
+      "column": 35,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const asQuery = (q: StubQuery) => q as unknown as FirebaseFirestore.Query;",
+      "detail": "FirebaseFirestore.Query"
+    },
+    {
+      "path": "functions/src/__tests__/panic.test.ts",
+      "line": 41,
+      "column": 35,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const asQuery = (q: StubQuery) => q as unknown as FirebaseFirestore.Query;",
+      "detail": "unknown"
+    },
+    {
       "path": "functions/src/appCheckAttestation.ts",
       "line": 85,
       "column": 20,
@@ -330,7 +564,7 @@
     },
     {
       "path": "functions/src/callables/cliLink.ts",
-      "line": 112,
+      "line": 114,
       "column": 20,
       "language": "typescript",
       "kind": "ts_non_null_assertion",
@@ -339,7 +573,7 @@
     },
     {
       "path": "functions/src/callables/cliLink.ts",
-      "line": 122,
+      "line": 124,
       "column": 25,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -348,7 +582,7 @@
     },
     {
       "path": "functions/src/callables/cliLink.ts",
-      "line": 201,
+      "line": 203,
       "column": 23,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -374,6 +608,195 @@
       "detail": "QueryConversationSortField"
     },
     {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 226,
+      "column": 74,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "if (value && typeof value === \"object\" && \"toDate\" in value && typeof (value as { toDate: unknown }).toDate === \"function\") {",
+      "detail": "{ toDate: unknown }"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 228,
+      "column": 15,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return (value as { toDate: () => Date }).toDate().toISOString();",
+      "detail": "{ toDate: () => Date }"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 236,
+      "column": 41,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = serializeValue(v);",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 311,
+      "column": 9,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "stripUndefinedObject({",
+      "detail": "DomainExport"
+    },
+    {
+      "path": "functions/src/callables/knowledgeMemory.ts",
+      "line": 433,
+      "column": 14,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": ": ((await manifestRef.get()).get(\"slugHmac\") as string | undefined);",
+      "detail": "string | undefined"
+    },
+    {
+      "path": "functions/src/callables/panic.ts",
+      "line": 158,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const scope = (boundedTrimmedString(request.data?.scope, \"scope\", 16, false) ?? \"sync\") as PanicScope;",
+      "detail": "PanicScope"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 97,
+      "column": 33,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return snap.docs.map((doc) => doc.data() as StoredPasskeyCredential);",
+      "detail": "StoredPasskeyCredential"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 102,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return raw as unknown as RegistrationResponseJSON;",
+      "detail": "RegistrationResponseJSON"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 102,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return raw as unknown as RegistrationResponseJSON;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 107,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return raw as unknown as AuthenticationResponseJSON;",
+      "detail": "AuthenticationResponseJSON"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 107,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return raw as unknown as AuthenticationResponseJSON;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 156,
+      "column": 51,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const response = requireRegistrationResponse((request.data as { response?: unknown } | undefined)?.response);",
+      "detail": "{ response?: unknown } | undefined"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 157,
+      "column": 38,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const challenge = requireString((request.data as { challenge?: unknown } | undefined)?.challenge, \"challenge\");",
+      "detail": "{ challenge?: unknown } | undefined"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 222,
+      "column": 54,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const assertion = requireAuthenticationResponse((request.data as { assertion?: unknown } | undefined)?.assertion);",
+      "detail": "{ assertion?: unknown } | undefined"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 223,
+      "column": 38,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const challenge = requireString((request.data as { challenge?: unknown } | undefined)?.challenge, \"challenge\");",
+      "detail": "{ challenge?: unknown } | undefined"
+    },
+    {
+      "path": "functions/src/callables/passkey.ts",
+      "line": 238,
+      "column": 20,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const stored = credentialDoc.data() as StoredPasskeyCredential;",
+      "detail": "StoredPasskeyCredential"
+    },
+    {
+      "path": "functions/src/callables/recovery.ts",
+      "line": 79,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const payload = raw as Record<string, unknown>;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/callables/recovery.ts",
+      "line": 96,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const payload = raw as Record<string, unknown>;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/callables/recovery.ts",
+      "line": 102,
+      "column": 5,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "stripUndefinedObject({",
+      "detail": "RecoveryContactShare"
+    },
+    {
+      "path": "functions/src/callables/recovery.ts",
+      "line": 122,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const stored = (data.recoveryKey as Record<string, unknown> | undefined)?.verificationHash;",
+      "detail": "Record<string, unknown> | undefined"
+    },
+    {
+      "path": "functions/src/callables/recovery.ts",
+      "line": 145,
+      "column": 22,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const method = boundedTrimmedString(request.data?.method, \"method\", 40, true) as RecoveryMethodKind;",
+      "detail": "RecoveryMethodKind"
+    },
+    {
       "path": "functions/src/callables/shared.ts",
       "line": 1042,
       "column": 37,
@@ -384,7 +807,7 @@
     },
     {
       "path": "functions/src/callables/stripe.ts",
-      "line": 50,
+      "line": 51,
       "column": 52,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -393,7 +816,7 @@
     },
     {
       "path": "functions/src/callables/stripe.ts",
-      "line": 53,
+      "line": 54,
       "column": 10,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -401,8 +824,17 @@
       "detail": "T"
     },
     {
+      "path": "functions/src/callables/webAppCheck.ts",
+      "line": 55,
+      "column": 15,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const jwk = raw as Record<string, unknown>;",
+      "detail": "Record<string, unknown>"
+    },
+    {
       "path": "functions/src/tierCogs.ts",
-      "line": 125,
+      "line": 126,
       "column": 21,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -411,12 +843,30 @@
     },
     {
       "path": "functions/src/tierCogs.ts",
-      "line": 127,
+      "line": 128,
       "column": 33,
       "language": "typescript",
       "kind": "ts_type_assertion",
       "snippet": "totalBytes += numberField(bucket as Record<string, unknown>, \"totalBytes\") ?? 0;",
       "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "services/hosted-mcp/src/entitlements.test.ts",
+      "line": 11,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return {",
+      "detail": "RemoteMcpClientFirestore"
+    },
+    {
+      "path": "services/hosted-mcp/src/entitlements.test.ts",
+      "line": 11,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return {",
+      "detail": "unknown"
     },
     {
       "path": "services/hosted-mcp/src/search.test.ts",

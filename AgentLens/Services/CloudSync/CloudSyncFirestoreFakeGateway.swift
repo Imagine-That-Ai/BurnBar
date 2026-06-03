@@ -87,6 +87,10 @@ private final class FakeDocumentStore {
         }
         documents[path] = existing
     }
+
+    func deleteDocument(at path: String) {
+        documents.removeValue(forKey: path)
+    }
 }
 
 // MARK: - Fake Collection Gateway
@@ -192,6 +196,11 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway {
         } else {
             store.setDocumentData(normalized, at: path)
         }
+    }
+
+    func deleteDocument() async throws {
+        if let error = nextError() { throw error }
+        store.deleteDocument(at: path)
     }
 }
 

@@ -17,12 +17,20 @@ final class CloudBudgetService {
     private let accountManager: AccountManager
     private let budgetSettings: BudgetSettings
     private let budgetRulesStore: BudgetRulesStore
+    private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
-    init(dataStore: DataStore, accountManager: AccountManager, budgetSettings: BudgetSettings, budgetRulesStore: BudgetRulesStore) {
+    init(
+        dataStore: DataStore,
+        accountManager: AccountManager,
+        budgetSettings: BudgetSettings,
+        budgetRulesStore: BudgetRulesStore,
+        vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.dataStore = dataStore
         self.accountManager = accountManager
         self.budgetSettings = budgetSettings
         self.budgetRulesStore = budgetRulesStore
+        self.vaultKeyProvider = vaultKeyProvider
     }
 
     // MARK: - Upload
@@ -37,6 +45,14 @@ final class CloudBudgetService {
 
         let db = Firestore.firestore()
 
+        let vaultKey: Data
+        do {
+            vaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: accountManager.deviceId).keyData
+        } catch {
+            // Without a vault key we cannot seal project names — skip this cycle and retry.
+            return
+        }
+
         // Upload rules with no syncedAt
         do {
             let unsyncedRules = try budgetRulesStore.fetchAllRules(includeDisabled: true)
@@ -45,7 +61,7 @@ final class CloudBudgetService {
             for rule in unsyncedRules {
                 let docRef = db.collection("users").document(uid)
                     .collection("budgetRules").document(rule.id)
-                let data = encodeRule(rule)
+                let data = try encodeRule(rule, vaultKey: vaultKey)
                 try await docRef.setData(data, merge: true)
 
                 // Mark as synced locally
@@ -96,6 +112,11 @@ final class CloudBudgetService {
         }
         let localByID = Dictionary(uniqueKeysWithValues: localRules.map { ($0.id, $0) })
 
+        // Best-effort read key; absent on devices not yet escrowed. Legacy plaintext
+        // rules still decode without it, and sealed peers are simply skipped until the
+        // vault key arrives.
+        let vaultKey = try? await vaultKeyProvider.keyForReading(uid: uid, deviceId: accountManager.deviceId)?.keyData
+
         do {
             let snapshot = try await db.collection("users").document(uid)
                 .collection("budgetRules")
@@ -103,7 +124,7 @@ final class CloudBudgetService {
                 .getDocuments()
 
             for doc in snapshot.documents {
-                guard let remoteRule = decodeRule(from: doc.data(), id: doc.documentID) else { continue }
+                guard let remoteRule = decodeRule(from: doc.data(), id: doc.documentID, vaultKey: vaultKey) else { continue }
                 if let local = localByID[remoteRule.id] {
                     // Remote wins on conflict if newer
                     if remoteRule.updatedAt > local.updatedAt {
@@ -123,15 +144,13 @@ final class CloudBudgetService {
 
     // MARK: - Encoding / Decoding
 
-    private func encodeRule(_ rule: BudgetRule) -> [String: Any] {
+    private func encodeRule(_ rule: BudgetRule, vaultKey: Data) throws -> [String: Any] {
         var data: [String: Any] = [
             "id": rule.id,
             "scope": rule.scope.rawValue,
             "identifier": rule.identifier as Any,
             "providerID": rule.providerID as Any,
             "accountID": rule.accountID as Any,
-            "projectName": rule.projectName as Any,
-            "label": rule.label as Any,
             "amountUSD": rule.amountUSD,
             "period": rule.period.rawValue,
             "behavior": rule.behavior.rawValue,
@@ -143,6 +162,20 @@ final class CloudBudgetService {
             "sourceDeviceID": rule.sourceDeviceID as Any,
             "isEnabled": rule.isEnabled,
         ]
+        // Seal the private project name + label instead of writing them in clear.
+        if let projectName = rule.projectName {
+            data["sealedProjectName"] = try CloudVaultCrypto.dictionary(
+                CloudVaultCrypto.sealText(projectName, keyData: vaultKey)
+            )
+            if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: projectName, keyData: vaultKey) {
+                data["projectKeyHash"] = projectKeyHash
+            }
+        }
+        if let label = rule.label {
+            data["sealedLabel"] = try CloudVaultCrypto.dictionary(
+                CloudVaultCrypto.sealText(label, keyData: vaultKey)
+            )
+        }
         // Firestore doesn't tolerate nil values in setData — remove them
         data = data.compactMapValues { $0 }
         return data
@@ -165,7 +198,7 @@ final class CloudBudgetService {
         return data
     }
 
-    private func decodeRule(from data: [String: Any], id: String) -> BudgetRule? {
+    private func decodeRule(from data: [String: Any], id: String, vaultKey: Data?) -> BudgetRule? {
         guard let scopeRaw = data["scope"] as? String,
               let scope = BudgetRuleScope(rawValue: scopeRaw),
               let periodRaw = data["period"] as? String,
@@ -181,14 +214,23 @@ final class CloudBudgetService {
            let decoded = try? JSONDecoder().decode([String].self, from: jsonData) {
             fallbacks = decoded
         }
+        // Open sealed project name/label; fall back to legacy plaintext for
+        // pre-migration peers that still write the cleartext fields.
+        let projectName = CloudVaultCrypto.openSealedProjectName(from: data, keyData: vaultKey)
+        let label = CloudVaultCrypto.openSealedProjectName(
+            from: data,
+            sealedField: "sealedLabel",
+            legacyField: "label",
+            keyData: vaultKey
+        )
         return BudgetRule(
             id: id,
             scope: scope,
             identifier: data["identifier"] as? String,
             providerID: data["providerID"] as? String,
             accountID: data["accountID"] as? String,
-            projectName: data["projectName"] as? String,
-            label: data["label"] as? String,
+            projectName: projectName,
+            label: label,
             amountUSD: amount,
             period: period,
             behavior: behavior,

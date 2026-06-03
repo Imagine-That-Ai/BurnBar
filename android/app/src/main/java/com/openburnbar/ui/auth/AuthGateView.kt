@@ -22,7 +22,7 @@ private const val AUTH_GATE_CROSSFADE_MS = 300
 
 /**
  * Auth gate that shows either the auth flow or the main app content based on auth state.
- * If not signed in, shows a simple sign-in screen (Google, Apple, Anonymous).
+ * If not signed in, shows the branded ember login screen — visual parity with iOS `SignInScene`.
  */
 @Composable
 fun AuthGateView(userStore: UserStore = viewModel()) {
@@ -41,7 +41,14 @@ fun AuthGateView(userStore: UserStore = viewModel()) {
             if (signedIn) {
                 BurnBarNavHost()
             } else {
-                SimpleAuthScreen(userStore = userStore)
+                val isSigningIn by userStore.isSigningIn.collectAsState()
+                val authError by userStore.authError.collectAsState()
+                LoginScreen(
+                    userStore = userStore,
+                    isSigningIn = isSigningIn,
+                    authError = authError,
+                    onDismissError = { userStore.clearError() },
+                )
             }
         }
     }

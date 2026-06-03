@@ -119,13 +119,22 @@ final class CLIAgentChatReader {
                         self?.logger.warning("CLI agent listener failed: \(String(describing: error), privacy: .public)")
                         return
                     }
+                    // `uid` is already a non-optional String here (unwrapped by the
+                    // `guard let uid` above), so it can be used directly.
+                    let key: MobileCloudVaultResolvedKey?
+                    do {
+                        key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+                    } catch {
+                        self?.logger.warning("CLI agent vault key read failed: \(String(describing: error), privacy: .public)")
+                        key = nil
+                    }
                     self?.sessions = snapshot?.documents.compactMap { document in
-                        CLIAgentSessionCodec.decode(
+                        CLIAgentChatFirestoreSource.decodeDocument(
                             documentID: document.documentID,
-                            data: document.data(),
-                            timestampDecoder: CLIAgentChatFirestoreSource.firestoreTimestampDecoder
-                        )
-                    } ?? []
+	                            data: document.data(),
+	                            vaultKey: key?.keyData
+	                        )
+	                    } ?? []
                     self?.lastRefreshedAt = Date()
                     self?.lastError = nil
                 }
@@ -142,10 +151,67 @@ final class CLIAgentChatReader {
         guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
-        var payload: [String: Any] = [:]
-        if let customTitle = customTitle {
-            payload["customTitle"] = customTitle.isEmpty ? FieldValue.delete() : customTitle
+        let db = Firestore.firestore()
+        let docRef = db
+            .collection("users").document(uid)
+            .collection("cli_sessions").document(id)
+
+        // `customTitle` is private user text and only legally exists inside the
+        // sealed record (`CLIAgentSessionCodec.encodeSealed` JSON), never as a
+        // top-level field — `validCliSessionMirror` (firestore.rules) rejects a
+        // top-level `customTitle`. Mirror the already-correct
+        // `MobileChatHistoryStore` / Android `AssistantChatHistoryStore`
+        // pattern: re-seal the WHOLE record with the new `customTitle` baked in.
+        //
+        // `labelColorHex` / `isPinned` / `priorityOrder` are allowed top-level
+        // by the rules, so they stay as a plain `merge:true` write and never
+        // require re-sealing the transcript.
+        if customTitle != nil {
+            let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+            let snapshot = try await docRef.getDocument()
+            guard let data = snapshot.data(),
+                  let record = CLIAgentChatFirestoreSource.decodeDocument(
+                    documentID: id,
+                    data: data,
+                    vaultKey: key?.keyData
+                  ) else {
+                // No existing record to re-seal (or vault key unavailable for a
+                // sealed doc). Skip the title change rather than leak plaintext.
+                logger.warning("CLI session rename skipped: missing record or vault key for \(id, privacy: .public)")
+                return
+            }
+
+            guard let key else {
+                logger.warning("CLI session rename skipped: vault key unavailable for \(id, privacy: .public)")
+                return
+            }
+
+            let updated = Self.applyMetadata(
+                to: record,
+                customTitle: customTitle,
+                labelColorHex: labelColorHex,
+                isPinned: isPinned,
+                priorityOrder: priorityOrder
+            )
+            var sealed = try CLIAgentSessionCodec.encodeSealed(
+                updated,
+                vaultKey: key.keyData,
+                vaultKeyID: key.vaultKeyID
+            )
+            // `merge:true` keeps untouched fields, so explicitly delete any
+            // legacy plaintext `customTitle` (and the legacy plaintext `title`/
+            // `preview`/`messages`) a pre-seal writer or older client may have
+            // left behind — otherwise the rename would leave a plaintext copy.
+            for legacyField in ["customTitle", "title", "preview", "messages"] where sealed[legacyField] == nil {
+                sealed[legacyField] = FieldValue.delete()
+            }
+            try await docRef.setData(sealed, merge: true)
+            return
         }
+
+        // No title change: only the non-private top-level metadata changed.
+        // A targeted `merge:true` write keeps the sealed transcript untouched.
+        var payload: [String: Any] = [:]
         if let labelColorHex = labelColorHex {
             payload["labelColorHex"] = labelColorHex == "#NONE#" ? FieldValue.delete() : labelColorHex
         }
@@ -157,11 +223,35 @@ final class CLIAgentChatReader {
         }
 
         if !payload.isEmpty {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("cli_sessions").document(id)
-                .setData(payload, merge: true)
+            try await docRef.setData(payload, merge: true)
         }
+    }
+
+    /// Apply rename / metadata edits onto an in-memory record so the whole
+    /// record can be re-sealed. An empty `customTitle` clears the override
+    /// (preserving the old "delete to reset" gesture); non-private metadata is
+    /// updated in place when supplied.
+    static func applyMetadata(
+        to record: CLIAgentSessionRecord,
+        customTitle: String?,
+        labelColorHex: String?,
+        isPinned: Bool?,
+        priorityOrder: Int?
+    ) -> CLIAgentSessionRecord {
+        var updated = record
+        if let customTitle = customTitle {
+            updated.customTitle = customTitle.isEmpty ? nil : customTitle
+        }
+        if let labelColorHex = labelColorHex {
+            updated.labelColorHex = labelColorHex == "#NONE#" ? nil : labelColorHex
+        }
+        if let isPinned = isPinned {
+            updated.isPinned = isPinned
+        }
+        if let priorityOrder = priorityOrder {
+            updated.priorityOrder = priorityOrder
+        }
+        return updated
     }
 }
 
@@ -201,15 +291,28 @@ final class CLIAgentChatFirestoreSource: CLIAgentChatRemoteSource {
         if let filter {
             query = query.whereField("agent", isEqualTo: filter.rawValue)
         }
-        let snapshot = try await query.getDocuments()
-        return snapshot.documents.compactMap { document in
-            CLIAgentSessionCodec.decode(
-                documentID: document.documentID,
-                data: document.data(),
-                timestampDecoder: Self.firestoreTimestampDecoder
-            )
-        }
-    }
+	        let snapshot = try await query.getDocuments()
+	        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+	        return snapshot.documents.compactMap { document in
+	            Self.decodeDocument(
+	                documentID: document.documentID,
+	                data: document.data(),
+	                vaultKey: key?.keyData
+	            )
+	        }
+	    }
+
+	    static func decodeDocument(documentID: String, data: [String: Any], vaultKey: Data?) -> CLIAgentSessionRecord? {
+	        if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
+	            guard let vaultKey else { return nil }
+	            return CLIAgentSessionCodec.decodeSealed(documentID: documentID, data: data, vaultKey: vaultKey)
+	        }
+	        return CLIAgentSessionCodec.decode(
+	            documentID: documentID,
+	            data: data,
+	            timestampDecoder: Self.firestoreTimestampDecoder
+	        )
+	    }
 
     /// Firestore returns `Timestamp` (not Foundation `Date`). The codec
     /// stays SDK-free; we plug an SDK-aware decoder here.

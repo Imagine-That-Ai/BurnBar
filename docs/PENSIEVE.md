@@ -47,12 +47,15 @@ source change → chunkMarkdown (shared verbatim chunker)
   → embed each chunk on-device (bge-small-en-v1.5, 384-dim)
   → CLOAK vector (vault-key Householder-product orthonormal transform)
   → SEAL text + metadata (AES-256-GCM, vault key)
-  → commitKnowledgeBatch({sourceSlug, vectors:[{vectorId, cloakedVector,
-      sealedCiphertext, sealedMetadata, contentHash, sourceKind, sourcePath,
+  → commitKnowledgeBatch({sourceSlug, slugHmac, vectors:[{vectorId,
+      cloakedVector, sealedCiphertext, sealedMetadata, dedupHash, sourceKind,
       chunkIndex, byteCount}], embeddingModelVersion})
+      [dedupHash + slugHmac are VAULT-KEYED HMACs the device computes — no
+       cleartext contentHash/sourcePath/sourceSlug leaves the device (B-SEC-2)]
   → server writes users/{uid}/cloud_search_knowledge/{vectorId}
       (embedding = FieldValue.vector, ciphertext stored INLINE) + manifest
-  [server sees only ciphertext + cloaked vectors + counts/timestamps]
+  [server sees only ciphertext + cloaked vectors + keyed dedup/slug HMACs
+   + sourceKind/byteCount + counts/timestamps]
 ```
 
 ### Flow 2 — Query (agent recall, E2EE)
@@ -63,7 +66,8 @@ agent → stdio shim (tools/openburnbar-mcp-remote)
     never leaves the device)
   → burnbar_search_knowledge {queryVector:number[384], filters?, …}
   → server findNearest COSINE over users/{sub}/cloud_search_knowledge
-    → top-K {vectorId, ciphertext, sealedMetadata, score, sourceKind}
+    → top-K {vectorId, ciphertext, sealedMetadata, score, sourceKind,
+             slugHmac, dedupHash}   [keyed, not cleartext — B-SEC-2]
   → shim decrypts ciphertext + metadata (vault key) + applies sealed-only
     filters (sourcePath/section/category) → plaintext memory → agent context
 ```
@@ -82,30 +86,71 @@ agent session ends → Claude SessionEnd hook → `openburnbar memory run`
   → embed + cloak + seal → queue for commitKnowledgeBatch (device-authed)
 ```
 
-### Vault-key vector cloaking (the embedding-inversion defense)
+### Vault-key vector cloaking (basis hiding + per-user distinct bytes)
 
 Before upload, every embedding (index + query) is multiplied by a per-user
 **orthonormal** transform Q derived from the vault key (HKDF seed → a product of
-24 Householder reflections). Q preserves inner products and norms exactly, so
-cosine similarity — and therefore ANN ranking — is **identical** to raw space,
-while the stored vectors are scrambled relative to the public bge model space,
-defeating off-the-shelf embedding-inversion. Implemented in
-`tools/openburnbar-mcp-remote/src/embed.ts` (`cloakVector`).
+24 Householder reflections). Q is exactly orthonormal, so `<Qx, Qy> = <x, y>`
+and `‖Qx‖ = ‖x‖`. That math is the basis of what the cloak does and does **not**
+buy us — state only the proven properties:
+
+1. **Hides the public-model (bge) basis.** Stored vectors are no longer expressed
+   in the raw bge coordinate frame, so off-the-shelf embedding-inversion models —
+   which expect raw bge-space inputs — cannot be applied **directly** to the
+   stored vectors. This raises the bar; it is not a proof of non-invertibility.
+2. **Per-user distinct stored bytes (partial cross-tenant resistance).** Q is
+   per-user, so the same plaintext stored under two members' keys yields
+   **different** vectors (relative L2 distance ≈ 0.74), defeating an exact-match
+   cross-tenant join. **Caveat — this is NOT full unlinkability:** with only 24
+   Householder reflections in 384-dim, cross-tenant **cosine ≈ 0.77**, so a
+   curious server can still correlate the same plaintext across tenants by
+   *similarity*. Full decorrelation needs ≈ `dim` reflections (a versioned
+   re-cloak). See the leakage analysis.
+3. **It does NOT hide relative geometry — accepted, documented leakage.** Because
+   Q is orthonormal, the **full pairwise cosine matrix**, **k-NN graph**,
+   **clusterability**, and **similarity-based dedup** are preserved and
+   computable by the server **without the key** — both within a single user's
+   vectors and (per the caveat above) across tenants. The cloak is not an
+   "inversion-proof", distance-hiding, or full-unlinkability scheme.
+
+For the precise protect-vs-leak accounting, the orthonormality math, the
+accepted-leakage rationale, and the trigger that would force a stronger scheme,
+see [`docs/pensieve-leakage-analysis.md`](pensieve-leakage-analysis.md).
+Implemented in `tools/openburnbar-mcp-remote/src/embed.ts` (`cloakVector`),
+mirrored in
+`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveVectorCloak.swift`.
+Proven by `tools/openburnbar-mcp-remote/src/cloakLeakage.test.ts`.
 
 ---
 
 ## Security & threat model
 
 **What the server / any vendor can see:** ciphertext, cloaked opaque vectors,
-chunk counts, timestamps, `namespace = uid`, and the plaintext filter columns
-`sourceKind` + `sourceSlug`. **Never** plaintext, raw query text, or a
-public-space embedding.
+chunk counts, timestamps, `namespace = uid`, the vault-keyed `dedupHash` +
+`slugHmac` (HMACs the server cannot reverse or re-derive without the key), and
+the two cleartext filter/cap inputs `sourceKind` (one of three coarse buckets) +
+`byteCount` (a length). For a connected repo it additionally sees an opaque
+server-keyed `repoMatchToken` (used only to route an inbound GitHub webhook) and
+a vault-sealed `sealedRepoFullName` it cannot open. **Never** plaintext, raw
+query text, a public-bge-space embedding, a confirm-the-guess SHA-256 of the
+plaintext (the legacy v0 `contentHash` dedup oracle is removed — commits now
+require a vault-keyed `dedupHash` and reject a raw `embedding`/`contentHash`),
+the real `sourcePath` (it is sealed inside `sealedMetadata`), the cleartext
+`sourceSlug` (B-SEC-2), or the cleartext repo `repoFullName` (now stored only as
+the opaque match token + sealed name; the cleartext name is observed transiently
+server-side only when the GitHub push webhook arrives, never stored). **Accepted leakage:** because the cloak is
+orthonormal, the server can compute the pairwise cosine matrix, k-NN graph,
+clusters, and similarity-dedup over the cloaked vectors **without the key** —
+relative geometry is preserved, not hidden. At the shipped 24-reflection
+parameter this also leaves a cross-tenant "same-item" similarity signal
+(cosine ≈ 0.77), so cross-tenant linkage is only *partially* resisted. See
+[`docs/pensieve-leakage-analysis.md`](pensieve-leakage-analysis.md).
 
 | Control | Mechanism |
 |---|---|
 | **Isolation** | Server queries only `namespace = claims.sub` (Firebase uid from the verified bearer). A client-supplied namespace/uid is never trusted. Firestore data lives under `users/{uid}/…`, enforced by owner-only rules. |
 | **Key management** | Vault key device-only (Keychain / `~/.openburnbar/vault-key` 0600). Loss ⇒ unrecoverable memory (documented). |
-| **Inversion defense** | Per-user vault-key orthonormal cloaking on every vector. |
+| **Basis hiding + per-user distinct bytes** | Per-user vault-key orthonormal cloaking on every vector: removes the public bge basis (no *direct* off-the-shelf inversion) and makes the same plaintext stored under two members' keys byte-distinct (defeats exact-match cross-tenant joins). Does **not** hide relative geometry, and at 24 reflections does **not** give full cross-tenant unlinkability (cross-tenant cosine ≈ 0.77) — see [leakage analysis](pensieve-leakage-analysis.md). |
 | **Secret hygiene** | `redactSecrets` runs before sealing chat-derived memories; the extraction prompt forbids secrets; per-confidence threshold. |
 | **Fail-open** | Missing vault key / lapsed entitlement / unreachable index ⇒ a clear error or empty result, never a crash that blocks a commit, app launch, or agent session. |
 
@@ -181,7 +226,11 @@ gitignored build output):
 **Firestore** — `firestore.rules` (owner-only `cloud_search_knowledge`,
 `knowledge_sync_manifests`, `knowledge_repos`; Ultra SKUs in the premium/media/
 computer-use allowlists), `firestore.indexes.json` (4× 384-dim COSINE vector
-indexes on `cloud_search_knowledge`).
+indexes on `cloud_search_knowledge`). A `knowledge_repos` row stores only an
+opaque server-keyed `repoMatchToken` + a vault-sealed `sealedRepoFullName` (no
+cleartext `repoFullName`); the webhook recomputes the match token from the
+GitHub-signed `full_name` to route, and the rules reject a client-supplied
+cleartext `repoFullName`.
 
 **Security/docs** — `scripts/test-hosted-mcp-security.sh` (+8 cases), this file.
 

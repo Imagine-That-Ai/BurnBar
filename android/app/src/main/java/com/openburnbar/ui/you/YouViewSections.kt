@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
@@ -90,6 +91,7 @@ internal data class YouRootNavigation(
     val onOpenMenuBarPrefs: () -> Unit,
     val onOpenChatTiles: () -> Unit,
     val onOpenSettings: () -> Unit,
+    val onOpenControlCenter: () -> Unit,
 )
 
 internal data class YouRootScrollState(
@@ -314,6 +316,12 @@ private fun YouRootSettingsRows(
         title = "Settings",
         subtitle = "Search across cloud sync, devices, displays, Hermes",
         onClick = navigation.onOpenSettings,
+    )
+    YouSettingsRow(
+        icon = Icons.Filled.Shield,
+        title = "Data & Privacy",
+        subtitle = "See, export, and delete everything BurnBar holds",
+        onClick = navigation.onOpenControlCenter,
     )
 }
 

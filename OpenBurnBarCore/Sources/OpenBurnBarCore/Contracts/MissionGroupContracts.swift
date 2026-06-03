@@ -1,5 +1,38 @@
 import Foundation
 
+private struct MissionGroupPrivatePayload: Codable {
+    var title: String?
+    var prompt: String?
+    var targetProject: String?
+    var liveSummary: String?
+    var resultPreview: String?
+    var errorMessage: String?
+    var approvalTitle: String?
+    var approvalMessage: String?
+    var personaScopeJSON: String?
+    var synthesisSummary: String?
+}
+
+private enum MissionGroupPrivatePayloadCodec {
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    static func open(_ data: [String: Any], field: String = "sealedPayload", vaultKey: Data?) -> MissionGroupPrivatePayload? {
+        guard let vaultKey,
+              let envelope = CloudVaultCrypto.sealedPayload(from: data[field])
+        else { return nil }
+        do {
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            return try decoder.decode(MissionGroupPrivatePayload.self, from: payload)
+        } catch {
+            return nil
+        }
+    }
+}
+
 // MARK: - Mission Group Contracts (Hermes Square §6.4)
 //
 // Firestore-shaped DTOs for the multi-agent fan-out flow.
@@ -343,9 +376,15 @@ public enum MissionGroupPayloadFactory {
 
 extension MissionGroupDocument {
     public init?(documentID: String, data: [String: Any]) {
+        self.init(documentID: documentID, data: data, vaultKey: nil)
+    }
+
+    public init?(documentID: String, data: [String: Any], vaultKey: Data?) {
+        let privatePayload = MissionGroupPrivatePayloadCodec.open(data, vaultKey: vaultKey)
+        let statePayload = MissionGroupPrivatePayloadCodec.open(data, field: "sealedStatePayload", vaultKey: vaultKey)
         guard
-            let title = data["title"] as? String,
-            let prompt = data["prompt"] as? String,
+            let title = privatePayload?.title ?? data["title"] as? String,
+            let prompt = privatePayload?.prompt ?? data["prompt"] as? String,
             let missionKind = data["missionKind"] as? String,
             let childIDs = data["childMissionIDs"] as? [String],
             let runtimes = data["runtimeTokens"] as? [String],
@@ -357,8 +396,8 @@ extension MissionGroupDocument {
 
         let plim = (data["parallelismLimit"] as? Int) ?? childIDs.count
         let winner = (data["winnerMissionID"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let target = (data["targetProject"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let synthesis = (data["synthesisSummary"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let target = (privatePayload?.targetProject ?? data["targetProject"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let synthesis = (statePayload?.synthesisSummary ?? privatePayload?.synthesisSummary ?? data["synthesisSummary"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
         let forecast: ForecastBand
         if let fmap = data["forecast"] as? [String: Any] {

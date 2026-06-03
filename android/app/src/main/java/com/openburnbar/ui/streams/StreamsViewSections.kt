@@ -16,14 +16,22 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Folder
@@ -31,12 +39,12 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -55,7 +63,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,7 +84,9 @@ import com.openburnbar.ui.components.ModeAwareLoader
 import com.openburnbar.ui.components.ModelLogo
 import com.openburnbar.ui.components.ProviderAvatar
 import com.openburnbar.ui.components.ShimmerCard
+import com.openburnbar.ui.components.HapticBus
 import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.theme.AuroraGradients
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
 import com.openburnbar.ui.components.AuroraBackdrop
@@ -250,7 +263,13 @@ internal fun StreamsViewContent(
                                 ),
                             )
                         StreamsSegment.MODELS -> streamsModelsItems(state.usages, state.isLoading)
-                        StreamsSegment.PROJECTS -> streamsProjectsItems(state.projects, state.isLoading)
+                        StreamsSegment.PROJECTS ->
+                            streamsProjectsItems(
+                                projects = state.projects,
+                                isLoading = state.isLoading,
+                                error = state.error,
+                                onRetry = { activityStore.setSegment(StreamsSegment.PROJECTS) }
+                            )
                     }
                 }
             }
@@ -259,32 +278,163 @@ internal fun StreamsViewContent(
 }
 
 @Composable
+private fun CustomMicroChip(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 internal fun StreamsSegmentTabs(selectedSegment: StreamsSegment, onSelectSegment: (StreamsSegment) -> Unit) {
+    val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
+
     Row(
-        modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.md.dp),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)
+            .height(42.dp)
+            .clip(RoundedCornerShape(21.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+            .border(
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(21.dp)
+            )
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         StreamsSegment.entries.forEach { segment ->
-            FilterChip(
-                selected = selectedSegment == segment,
-                onClick = { onSelectSegment(segment) },
-                label = { Text(segment.label) },
-            )
+            val isSelected = selectedSegment == segment
+            val bgGradient = if (isSelected) {
+                Brush.linearGradient(
+                    if (isDark) {
+                        listOf(AuroraColors.ember.copy(alpha = 0.25f), AuroraColors.amber.copy(alpha = 0.12f))
+                    } else {
+                        listOf(AuroraColors.ember.copy(alpha = 0.16f), AuroraColors.amber.copy(alpha = 0.08f))
+                    }
+                )
+            } else {
+                Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+            }
+            val borderModifier = if (isSelected) {
+                Modifier.border(
+                    width = 0.5.dp,
+                    color = AuroraColors.ember.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(18.dp)
+                )
+            } else {
+                Modifier
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(bgGradient)
+                    .then(borderModifier)
+                    .clickable {
+                        if (!isSelected) {
+                            onSelectSegment(segment)
+                            HapticBus.tabChange(context)
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = segment.label,
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
+            }
         }
     }
 }
 
 @Composable
 internal fun StreamsSearchField(searchQuery: String, onSearchChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = searchQuery,
-        onValueChange = onSearchChange,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.md.dp),
-        placeholder = { Text("Search sessions, models, projects...") },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        singleLine = true,
-        shape = MaterialTheme.shapes.medium,
-    )
+    var inputFocused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AuroraSpacing.md.dp)
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .border(
+                width = if (inputFocused) 1.dp else 0.5.dp,
+                color = if (inputFocused) AuroraColors.ember.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = if (inputFocused) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { inputFocused = it.isFocused },
+                placeholder = {
+                    Text(
+                        "Search sessions, models, projects...",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    disabledBorderColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    cursorColor = AuroraColors.ember,
+                ),
+            )
+
+            if (searchQuery.isNotEmpty()) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Clear",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { onSearchChange("") }
+                )
+            }
+        }
+    }
 }
 
 internal data class StreamsSessionsListContext(
@@ -363,6 +513,10 @@ internal fun LazyListScope.streamsModelsItems(usages: List<TokenUsage>, isLoadin
             .map { (model, rows) -> Triple(model, rows.size, rows.sumOf { it.cost }) }
             .sortedByDescending { it.third }
 
+    if (isLoading && modelSummaries.isEmpty()) {
+        items(5) { ShimmerCard(height = 70) }
+        return
+    }
     if (modelSummaries.isEmpty() && !isLoading) {
         item {
             EmptyStateView(
@@ -378,7 +532,27 @@ internal fun LazyListScope.streamsModelsItems(usages: List<TokenUsage>, isLoadin
     }
 }
 
-internal fun LazyListScope.streamsProjectsItems(projects: List<ProjectSummary>, isLoading: Boolean) {
+internal fun LazyListScope.streamsProjectsItems(
+    projects: List<ProjectSummary>,
+    isLoading: Boolean,
+    error: String?,
+    onRetry: () -> Unit
+) {
+    if (isLoading && projects.isEmpty()) {
+        items(5) { ShimmerCard(height = 70) }
+        return
+    }
+    if (error != null && projects.isEmpty()) {
+        item {
+            ErrorStateView(
+                icon = Icons.Filled.Error,
+                title = "Couldn't Load Projects",
+                message = error,
+                onRetry = onRetry,
+            )
+        }
+        return
+    }
     if (projects.isEmpty() && !isLoading) {
         item {
             EmptyStateView(icon = Icons.Filled.Folder, title = "No Projects", message = "Projects will appear here as you use AI.")
@@ -411,12 +585,12 @@ fun UsageCard(usage: TokenUsage, onAskHermes: (String) -> Unit) {
                     Text(" · ${usage.model}", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("Cost", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold)
+                    Text("Cost", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                    Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
                 }
             }
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Tokens: ${Formatting.formatTokens(usage.inputTokens.toLong() + usage.outputTokens.toLong())}",
                     fontSize = 11.sp,
@@ -428,11 +602,70 @@ fun UsageCard(usage: TokenUsage, onAskHermes: (String) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-            TextButton(onClick = { onAskHermes("What was this session about?") }, contentPadding = PaddingValues(0.dp)) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
-                Text("Ask Hermes", fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    AuroraColors.hermesMercury.copy(alpha = 0.15f),
+                                    AuroraColors.hermesAureate.copy(alpha = 0.08f)
+                                )
+                            )
+                        )
+                        .border(
+                            width = 0.5.dp,
+                            brush = Brush.linearGradient(AuroraGradients.mercuryGradient),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable { onAskHermes("What was this session about?") }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = AuroraColors.hermesAureate
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Ask Hermes",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                usage.projectName?.takeIf { it.isNotBlank() }?.let { projName ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = projName,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
@@ -468,13 +701,10 @@ fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> 
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
                 hit.provider?.takeIf { it.isNotBlank() }?.let {
-                    AssistChip(onClick = {}, label = { Text(it, fontSize = 10.sp) }, enabled = false)
-                }
-                hit.projectName?.takeIf { it.isNotBlank() }?.let {
-                    AssistChip(onClick = {}, label = { Text(it, fontSize = 10.sp) }, enabled = false)
+                    CustomMicroChip(text = it)
                 }
             }
         }
@@ -537,13 +767,14 @@ fun ModelSummaryCard(model: String, requestCount: Int, totalCost: Double) {
                 ModelLogo(modelKey = model, size = 32.dp)
                 Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
                 Column {
-                    Text(model, fontWeight = FontWeight.Bold)
-                    Text("$requestCount requests", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(model, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    CustomMicroChip(text = "$requestCount requests")
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("Total cost", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(Formatting.formatCurrency(totalCost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange)
+                Text("Total spend", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                Text(Formatting.formatCurrency(totalCost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
             }
         }
     }
@@ -558,19 +789,25 @@ fun ProjectCard(project: ProjectSummary) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                Icon(
+                    imageVector = Icons.Filled.Folder,
+                    contentDescription = null,
+                    tint = AuroraColors.ember,
+                    modifier = Modifier.size(22.dp)
+                )
                 Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
                 Column {
-                    Text(project.name, fontWeight = FontWeight.Bold)
-                    Text("${project.totalSessions} sessions", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(project.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    CustomMicroChip(text = "${project.totalSessions} sessions")
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("Cost", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(Formatting.formatCurrency(project.totalCost), fontWeight = FontWeight.Bold)
+                Text("Total spend", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                Text(Formatting.formatCurrency(project.totalCost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
                 Text(
                     "Tokens: ${Formatting.formatTokens(project.totalTokens)}",
-                    fontSize = AuroraTypography.caption.sp,
+                    fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

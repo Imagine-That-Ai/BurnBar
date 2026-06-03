@@ -2214,6 +2214,105 @@ final class HermesServiceTests: XCTestCase {
             Data(body.utf8)
         )
     }
+
+    // MARK: - A3: selected-model integrity (iroh→Firestore fallback parity)
+
+    private func makeRelayPayload(operation: HermesRelayOperation, path: String) -> HermesRelayPayload {
+        HermesRelayPayload(
+            connectionID: "conn-a3",
+            relayPublicKey: nil,
+            relayKeyVersion: nil,
+            relayEncryption: nil,
+            realtimeRelayURL: nil,
+            operation: operation,
+            method: operation == .chatCompletions ? "POST" : "GET",
+            path: path,
+            sessionID: nil,
+            body: operation == .chatCompletions ? Data(#"{"model":"x"}"#.utf8) : nil
+        )
+    }
+
+    /// `HermesCompositeRelayTransport.recordFallback` reads `Auth.auth().currentUser`,
+    /// which requires a configured `FirebaseApp`. Prefer the live host's real plist;
+    /// fall back to a minimal offline app on a plist-less unit host (currentUser is
+    /// nil offline, so the audit hop is a guarded no-op).
+    private func ensureFirebaseConfiguredForFallbackAudit() {
+        guard FirebaseApp.app() == nil else { return }
+        if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+           let options = FirebaseOptions(contentsOfFile: path) {
+            FirebaseApp.configure(options: options)
+            return
+        }
+        let options = FirebaseOptions(
+            googleAppID: "1:1234567890:ios:openburnbarunittests",
+            gcmSenderID: "1234567890"
+        )
+        options.apiKey = "AIzaSyOpenBurnBarUnitTestHostKey"
+        options.projectID = "openburnbar-unit-tests"
+        FirebaseApp.configure(options: options)
+    }
+
+    /// Regression for the iOS/Android selected-model integrity gap: a generic iroh
+    /// failure on `/v1/chat/completions` must hard-fail, NOT silently reroute the
+    /// user's selected model over Firestore (which Android already refuses).
+    func testStreamingChatCompletionsDoesNotFallBackToFirestoreOnIrohFailure() async {
+        let iroh = FakeHermesRelayTransport()
+        iroh.streamingError = HermesServiceError.relayUnavailable("iroh direct dial failed (symmetric NAT)")
+        let firestore = FakeHermesRelayTransport()
+        firestore.streamingEvents = ["data: must-not-be-delivered\n\n"]
+        let composite = HermesCompositeRelayTransport(
+            primary: iroh,
+            secondary: firestore,
+            fallback: firestore,
+            irohEnabled: { true }
+        )
+        let payload = makeRelayPayload(operation: .chatCompletions, path: "/v1/chat/completions")
+
+        var thrown: Error?
+        do {
+            try await composite.sendStreaming(payload, timeout: 20) { _ in
+                XCTFail("No SSE event should be delivered when the selected-model stream hard-fails")
+            }
+            XCTFail("Expected the selected-model stream to throw instead of falling back to Firestore")
+        } catch {
+            thrown = error
+        }
+
+        XCTAssertEqual(iroh.streamingPayloads.count, 1, "iroh must be attempted first")
+        XCTAssertTrue(
+            firestore.streamingPayloads.isEmpty,
+            "chat_completions must NOT silently reroute over Firestore after an iroh failure"
+        )
+        XCTAssertTrue(
+            (thrown?.localizedDescription ?? "").contains("not silently rerouted"),
+            "Error must explain the selected model was not rerouted; got: \(String(describing: thrown))"
+        )
+    }
+
+    /// The complement: a control-plane unary call still falls back to Firestore on an
+    /// iroh failure (it does not bind a user-selected model), matching Android.
+    func testUnaryControlPlaneStillFallsBackToFirestoreOnIrohFailure() async throws {
+        ensureFirebaseConfiguredForFallbackAudit()
+        let iroh = FakeHermesRelayTransport()
+        iroh.unaryError = HermesServiceError.relayUnavailable("iroh direct dial failed")
+        let firestore = FakeHermesRelayTransport()
+        let composite = HermesCompositeRelayTransport(
+            primary: iroh,
+            secondary: firestore,
+            fallback: firestore,
+            irohEnabled: { true }
+        )
+        let payload = makeRelayPayload(operation: .models, path: "/v1/models")
+
+        let data = try await composite.sendUnary(payload, timeout: 20)
+
+        XCTAssertEqual(iroh.unaryPayloads.count, 1, "iroh must be attempted first")
+        XCTAssertEqual(
+            firestore.unaryPayloads.count, 1,
+            "control-plane unary must still fall back to Firestore (no selected model is bound)"
+        )
+        XCTAssertFalse(data.isEmpty, "fallback must return the Firestore control-plane response")
+    }
 }
 
 private final class RequestCapture: @unchecked Sendable {
@@ -2307,12 +2406,16 @@ private final class FakeHermesRelayTransport: HermesRelayTransporting {
     ]
     var streamingEvents: [String] = []
     var streamingError: Error?
+    var unaryError: Error?
     private(set) var unaryPayloads: [HermesRelayPayload] = []
     private(set) var streamingPayloads: [HermesRelayPayload] = []
     private(set) var streamingTimeouts: [TimeInterval] = []
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
         unaryPayloads.append(payload)
+        if let unaryError {
+            throw unaryError
+        }
         return unaryResponses[payload.operation] ?? Data()
     }
 

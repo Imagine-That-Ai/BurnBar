@@ -11,6 +11,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import type { IrohTransportAuditEventDoc, IrohTransportDailyRollupDoc } from "./types.js";
 import { isRecord, numberField, recordField, stringField } from "./guards.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const IROH_ROLLUP_SCHEMA_VERSION = 1;
 const IROH_AUDIT_COLLECTION = "iroh_audit_events";
@@ -215,7 +216,7 @@ export const rollupIrohTransportDaily = onSchedule(
   {
     schedule: "15 8 * * *",
     timeZone: "Etc/UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
   },
   async (_event) => {
     await buildAndPersistIrohDailyRollup(getFirestore());

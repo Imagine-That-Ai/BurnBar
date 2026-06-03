@@ -21,10 +21,14 @@ import { errorMessage, isRecord, stringValue } from "./guards.js";
 
 import { createSign, randomUUID } from "node:crypto";
 import { connect as http2Connect, type ClientHttp2Session } from "node:http2";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, getFirestore } from "firebase-admin/firestore";
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import * as logger from "firebase-functions/logger";
 import { pushWithResilience } from "./resilienceHelpers.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const APNS_KEY_ID = defineSecret("APNS_KEY_ID");
 const APNS_TEAM_ID = defineSecret("APNS_TEAM_ID");
@@ -231,7 +235,7 @@ async function sendVoipPush(args: {
 export const sendVoIPOutbound = onDocumentCreated(
   {
     document: "voip_outbound/{docId}",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     secrets: [APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8],
   },
   async (event) => {
@@ -275,10 +279,186 @@ export const sendVoIPOutbound = onDocumentCreated(
           status: "pending",
           lastAttemptAt: Timestamp.now(),
           lastFailureReason: result.reason ?? null,
-          retryAt: Timestamp.fromMillis(Date.now() + 30_000),
+          retryAt: Timestamp.fromMillis(Date.now() + RETRY_BACKOFF_BASE_MS),
           attemptCount: (typeof data.attemptCount === "number" ? data.attemptCount : 0) + 1,
         });
         return;
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Stuck-push retry sweeper (Risk-A2)
+//
+// The `sendVoIPOutbound` Eventarc trigger only fires once, on document
+// creation. When that single push hits a transient APNs blip it leaves the
+// document `status: "pending"` with a future `retryAt`, but nothing ever fires
+// again — so remote VoIP wake silently never lands. `retryStuckVoIPPushes`
+// runs every minute, finds those due-but-pending documents, and re-pushes them
+// with exponential backoff until they either deliver or exhaust their budget.
+// ---------------------------------------------------------------------------
+
+/** Backoff base for transient retries (matches `sendVoIPOutbound`'s first retry). */
+const RETRY_BACKOFF_BASE_MS = 30_000;
+/** Hard ceiling on a single backoff interval so a wedged token retries hourly-ish, not yearly. */
+const RETRY_BACKOFF_MAX_MS = 15 * 60_000;
+/** After this many attempts a still-failing push is sealed `rejected` so dashboards see token rot. */
+export const MAX_VOIP_RETRY_ATTEMPTS = 8;
+/** Max documents handled per sweep tick — bounds Firestore writes + APNs fan-out per invocation. */
+const SWEEP_BATCH_LIMIT = 50;
+
+/**
+ * Exponential backoff for the Nth attempt (1-based): 30s, 60s, 120s, … capped
+ * at {@link RETRY_BACKOFF_MAX_MS}. `attempt` is the count *after* incrementing
+ * for the failure we just observed.
+ */
+export function nextVoIPRetryDelayMs(attempt: number): number {
+  const exponent = Math.max(0, attempt - 1);
+  const raw = RETRY_BACKOFF_BASE_MS * 2 ** exponent;
+  return Math.min(RETRY_BACKOFF_MAX_MS, raw);
+}
+
+/** Outcome of processing a single stuck document — surfaced for tests + logging. */
+export type StuckPushOutcome = "sent" | "rejected" | "rescheduled" | "skipped";
+
+type VoIPPushFn = (args: {
+  deviceTokenHex: string;
+  payload: Record<string, unknown>;
+  documentId: string;
+}) => Promise<SendResult>;
+
+/**
+ * Re-push a single due `voip_outbound` document and commit its next state.
+ *
+ * Reuses the exact field names + push shape from `sendVoIPOutbound`:
+ *   - success → `status: "sent"`, `deliveredAt`, `apnsStatusCode`.
+ *   - permanent reject (410/400) OR `attemptCount >= MAX_VOIP_RETRY_ATTEMPTS`
+ *     → `status: "rejected"`, `rejectedAt`, `reason`.
+ *   - transient retry → `status: "pending"`, bumped `attemptCount`, exponential
+ *     `retryAt`, `lastAttemptAt`, `lastFailureReason`.
+ *
+ * Double-processing guard: only acts when the snapshot's status is still
+ * `"pending"`; a doc another tick already advanced is left untouched.
+ */
+export async function processStuckVoIPPush(
+  snapshot: QueryDocumentSnapshot,
+  push: VoIPPushFn,
+  now: Date = new Date(),
+): Promise<StuckPushOutcome> {
+  const data = snapshot.data();
+  if (!isRecord(data)) return "skipped";
+  // Guard against double-processing: a concurrent tick or the original trigger
+  // may already have advanced this document past "pending".
+  if (data.status !== "pending") return "skipped";
+
+  const deviceToken = stringValue(data.voipDeviceToken);
+  const priorAttempts = typeof data.attemptCount === "number" ? data.attemptCount : 0;
+
+  if (!deviceToken) {
+    await snapshot.ref.update({
+      status: "rejected",
+      rejectedAt: Timestamp.fromDate(now),
+      reason: "missing voipDeviceToken",
+    });
+    return "rejected";
+  }
+
+  const result = await push({
+    deviceTokenHex: deviceToken,
+    payload: isRecord(data.payload) ? data.payload : {},
+    // apns-id idempotency keys off the Firestore doc id (Apple coalesces dupes).
+    documentId: snapshot.id,
+  });
+
+  switch (result.status) {
+    case "sent":
+      await snapshot.ref.update({
+        status: "sent",
+        deliveredAt: Timestamp.fromDate(now),
+        apnsStatusCode: result.apnsStatusCode ?? 200,
+      });
+      return "sent";
+    case "rejected":
+      await snapshot.ref.update({
+        status: "rejected",
+        rejectedAt: Timestamp.fromDate(now),
+        apnsStatusCode: result.apnsStatusCode ?? null,
+        reason: result.reason ?? null,
+      });
+      return "rejected";
+    case "retry": {
+      const attemptCount = priorAttempts + 1;
+      // Budget exhausted: seal it so token rot is visible rather than retrying forever.
+      if (attemptCount >= MAX_VOIP_RETRY_ATTEMPTS) {
+        await snapshot.ref.update({
+          status: "rejected",
+          rejectedAt: Timestamp.fromDate(now),
+          attemptCount,
+          apnsStatusCode: result.apnsStatusCode ?? null,
+          reason: result.reason ?? `exhausted ${MAX_VOIP_RETRY_ATTEMPTS} retry attempts`,
+        });
+        return "rejected";
+      }
+      await snapshot.ref.update({
+        status: "pending",
+        attemptCount,
+        lastAttemptAt: Timestamp.fromDate(now),
+        lastFailureReason: result.reason ?? null,
+        retryAt: Timestamp.fromMillis(now.getTime() + nextVoIPRetryDelayMs(attemptCount)),
+      });
+      return "rescheduled";
+    }
+  }
+}
+
+/**
+ * Query due-and-pending `voip_outbound` documents across every subcollection
+ * and re-push each one. Returns a per-outcome tally for structured logging.
+ */
+export async function sweepStuckVoIPPushes(
+  db: ReturnType<typeof getFirestore>,
+  push: VoIPPushFn,
+  now: Date = new Date(),
+): Promise<Record<StuckPushOutcome, number>> {
+  const snapshot = await db
+    .collectionGroup("voip_outbound")
+    .where("status", "==", "pending")
+    .where("retryAt", "<=", Timestamp.fromDate(now))
+    .orderBy("retryAt", "asc")
+    .limit(SWEEP_BATCH_LIMIT)
+    .get();
+
+  const tally: Record<StuckPushOutcome, number> = { sent: 0, rejected: 0, rescheduled: 0, skipped: 0 };
+  for (const doc of snapshot.docs) {
+    try {
+      const outcome = await processStuckVoIPPush(doc, push, now);
+      tally[outcome] += 1;
+    } catch (err) {
+      tally.skipped += 1;
+      logger.error("retryStuckVoIPPushes: failed to process document", {
+        documentPath: doc.ref.path,
+        error: errorMessage(err),
+      });
+    }
+  }
+  return tally;
+}
+
+/**
+ * Scheduled sweeper — re-pushes `voip_outbound` documents left `pending` after a
+ * transient APNs failure once their `retryAt` falls due. Mirrors the onSchedule
+ * option shape used by the iroh / Computer-Use monitoring rollups.
+ */
+export const retryStuckVoIPPushes = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: FUNCTIONS_REGION,
+    secrets: [APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8],
+  },
+  async () => {
+    const tally = await sweepStuckVoIPPushes(getFirestore(), (args) => pushToAPNs(args));
+    if (tally.sent || tally.rejected || tally.rescheduled || tally.skipped) {
+      logger.info("retryStuckVoIPPushes swept stuck VoIP pushes", tally);
     }
   },
 );

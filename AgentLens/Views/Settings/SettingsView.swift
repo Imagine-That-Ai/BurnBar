@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var presentationWindow: NSWindow?
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
+    @State private var isShowingDataControlCenter = false
 
     init(
         settingsManager: SettingsManager,
@@ -97,6 +98,18 @@ struct SettingsView: View {
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
         .background(SettingsWindowReader(window: $presentationWindow))
+        .sheet(isPresented: $isShowingDataControlCenter) {
+            DataControlCenterView(accountManager: accountManager)
+                .frame(minWidth: 980, minHeight: 680)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: FeatureGateRouting.openCloudStoreNotification)) { _ in
+            // A feature-gate unlock CTA fired while Settings is already open —
+            // jump the live router straight to the Cloud store pane (the
+            // parked `settings.pendingTab` only resolves on a fresh appear).
+            router.selectedTab = .cloud
+            router.path.removeAll()
+            UserDefaults.standard.removeObject(forKey: "settings.pendingTab")
+        }
     }
 
     private var searchField: some View {
@@ -249,6 +262,7 @@ struct SettingsView: View {
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
+             .dataControlCenterRoot,
              .textExpansionRoot, .computerUseRoot:
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
@@ -353,6 +367,11 @@ struct SettingsView: View {
         case .media:
             MediaPermissionsView()
                 .navigationTitle("Media & Sharing")
+        case .dataPrivacy:
+            DataControlCenterSettingsLanding {
+                isShowingDataControlCenter = true
+            }
+            .navigationTitle("Data & Privacy")
         case .computerUse:
             #if DISTRIBUTION_MAS
             MediaPermissionsView()
@@ -412,4 +431,67 @@ private enum AccountActionError: LocalizedError {
         preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
     }()
     SettingsView(settingsManager: SettingsManager(), dataStore: store)
+}
+
+private struct DataControlCenterSettingsLanding: View {
+    let onOpen: () -> Void
+
+    @StateObject private var entitlement = MacCloudEntitlementStore.shared
+
+    /// The Data Vault / agent-memory workbench requires Cloud Pro. When the
+    /// member doesn't yet hold it, the landing wears the evocative unlock veil
+    /// over a blurred teaser of the workbench affordance instead of opening.
+    private var isUnlocked: Bool {
+        entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.dataVault).requiredTier)
+    }
+
+    var body: some View {
+        Group {
+            if isUnlocked {
+                landingCard
+            } else {
+                FeatureLockedVeil(feature: GatedFeature.gatedFeature(.dataVault)) {
+                    landingCard
+                }
+            }
+        }
+        .onAppear { entitlement.start() }
+    }
+
+    private var landingCard: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+            VStack(spacing: 14) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 46, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.teal)
+                Text("Data & Privacy Control Center")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Open the dedicated Pensieve workbench for vault inventory, export, deletion, recovery setup, audit verification, and panic revoke. It runs outside the Settings split view so its own columns stay intact.")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 560)
+                Button(action: onOpen) {
+                    Label("Open Data Control Center", systemImage: "arrow.up.right.square.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.teal)
+                .disabled(!isUnlocked)
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(DesignSystem.Colors.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+                    )
+            )
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
+    }
 }

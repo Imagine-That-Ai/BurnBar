@@ -2,7 +2,7 @@
  * @fileoverview User-level cloud-feature suspension controls.
  *
  * Ops can suspend variable-cost cloud features by writing:
- * `users/{uid}/ops/suspensions/cloudFeatures`.
+ * `users/{uid}/ops/suspensions/cloudFeatures/current`.
  */
 
 import type { Firestore } from "firebase-admin/firestore";
@@ -10,7 +10,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 
 import { isTimestampWithToMillis } from "./guards.js";
 
-export const CLOUD_FEATURE_SUSPENSION_DOC_PATH_TEMPLATE = "users/{uid}/ops/suspensions/cloudFeatures";
+export const CLOUD_FEATURE_SUSPENSION_DOC_PATH_TEMPLATE = "users/{uid}/ops/suspensions/cloudFeatures/current";
 export const CLOUD_FEATURE_ABUSE_DAILY_REFRESH_LIMIT = 5;
 
 export const REQUIRED_SUSPENDED_USER_DENIED_SURFACES = [
@@ -38,7 +38,7 @@ const DEFAULT_DENIED_SURFACES: CloudFeatureSurface[] = [
 ];
 
 export function cloudFeatureSuspensionPath(uid: string): string {
-  return `users/${uid}/ops/suspensions/cloudFeatures`;
+  return `users/${uid}/ops/suspensions/cloudFeatures/current`;
 }
 
 export function parseCloudFeatureSuspension(

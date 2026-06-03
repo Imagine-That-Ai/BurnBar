@@ -232,6 +232,18 @@ final class AppearanceSettings {
         }
     }
 
+    /// When `true` (and ``useWebsiteBackground`` is on), the dynamic background
+    /// renders the calm "Constellation" style — one crest / provider logo at a
+    /// time resolving, shimmering, and dissolving — instead of the energetic
+    /// continuously-murmurating swarm. Additive: leaves the swarm behaviour
+    /// untouched when off.
+    var useConstellationBackground: Bool = false {
+        didSet {
+            persistence.set(useConstellationBackground, forKey: "useConstellationBackground")
+            NotificationCenter.default.post(name: .useConstellationBackgroundDidChange, object: nil)
+        }
+    }
+
     var enableDesktopWallpaper: Bool = false {
         didSet {
             persistence.set(enableDesktopWallpaper, forKey: "enableDesktopWallpaper")
@@ -331,6 +343,7 @@ final class AppearanceSettings {
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
         self.usePremiumSOTAUX = persistence.bool(forKey: "usePremiumSOTAUX")
         self.useWebsiteBackground = persistence.bool(forKey: "useWebsiteBackground")
+        self.useConstellationBackground = persistence.bool(forKey: "useConstellationBackground", defaultValue: false)
         self.enableDesktopWallpaper = persistence.bool(forKey: "enableDesktopWallpaper", defaultValue: false)
         self.amoledDarkBackground = persistence.bool(forKey: "amoledDarkBackground", defaultValue: false)
         if let raw = persistence.optionalString(forKey: "desktopWallpaperBackground"),
@@ -382,6 +395,7 @@ final class AppearanceSettings {
 
 extension Notification.Name {
     static let useWebsiteBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useWebsiteBackgroundDidChange")
+    static let useConstellationBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useConstellationBackgroundDidChange")
     static let enableDesktopWallpaperDidChange = Notification.Name("com.openburnbar.appearance.enableDesktopWallpaperDidChange")
     static let amoledDarkBackgroundDidChange = Notification.Name("com.openburnbar.appearance.amoledDarkBackgroundDidChange")
     static let desktopWallpaperBackgroundDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperBackgroundDidChange")

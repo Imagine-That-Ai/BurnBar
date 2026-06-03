@@ -68,6 +68,10 @@ function buildConfig(): EnvConfig {
     projectId,
     kmsKeyName,
     enforceAppCheck: toBool(process.env.ENFORCE_APP_CHECK ?? configString(openburnbar, "enforce_app_check"), true),
+    requireHighRiskNonce: toBool(
+      process.env.REQUIRE_HIGH_RISK_NONCE ?? configString(openburnbar, "require_high_risk_nonce"),
+      false,
+    ),
     maxCredentialLength: toNum(
       process.env.MAX_CREDENTIAL_LENGTH ?? configString(openburnbar, "max_credential_length"),
       8192,

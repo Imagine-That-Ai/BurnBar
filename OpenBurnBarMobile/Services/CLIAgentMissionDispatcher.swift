@@ -4,6 +4,99 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 
+private struct CLIAgentMissionPrivatePayload: Codable {
+    var title: String?
+    var prompt: String?
+    var targetProject: String?
+    var liveSummary: String?
+    var resultPreview: String?
+    var errorMessage: String?
+    var approvalTitle: String?
+    var approvalMessage: String?
+    var personaScopeJSON: String?
+    var synthesisSummary: String?
+
+    init(
+        title: String? = nil,
+        prompt: String? = nil,
+        targetProject: String? = nil,
+        liveSummary: String? = nil,
+        resultPreview: String? = nil,
+        errorMessage: String? = nil,
+        approvalTitle: String? = nil,
+        approvalMessage: String? = nil,
+        personaScopeJSON: String? = nil,
+        synthesisSummary: String? = nil
+    ) {
+        self.title = title
+        self.prompt = prompt
+        self.targetProject = targetProject
+        self.liveSummary = liveSummary
+        self.resultPreview = resultPreview
+        self.errorMessage = errorMessage
+        self.approvalTitle = approvalTitle
+        self.approvalMessage = approvalMessage
+        self.personaScopeJSON = personaScopeJSON
+        self.synthesisSummary = synthesisSummary
+    }
+}
+
+private struct CLIAgentMissionEventPrivatePayload: Codable {
+    var title: String?
+    var message: String
+    var fullMessage: String?
+    var toolName: String?
+    var artifactPath: String?
+    var changedFilePath: String?
+}
+
+private enum CLIAgentMissionCloudSealer {
+    static let sealedSchemaVersion = 1
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    static func seal<T: Encodable>(_ payload: T, vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+        let data = try encoder.encode(payload)
+        let sealed = try CloudVaultCrypto.sealPayload(data, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        return CloudVaultCrypto.sealedPayloadDictionary(sealed)
+    }
+
+    static func openPrivatePayload(_ data: [String: Any], field: String = "sealedPayload", vaultKey: Data?) -> CLIAgentMissionPrivatePayload? {
+        guard let vaultKey,
+              let envelope = CloudVaultCrypto.sealedPayload(from: data[field])
+        else { return nil }
+        do {
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
+        } catch {
+            return nil
+        }
+    }
+
+    static func openEventPayload(_ data: [String: Any], vaultKey: Data?) -> CLIAgentMissionEventPrivatePayload? {
+        guard let vaultKey,
+              let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"])
+        else { return nil }
+        do {
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            return try decoder.decode(CLIAgentMissionEventPrivatePayload.self, from: payload)
+        } catch {
+            return nil
+        }
+    }
+}
+
 @MainActor
 final class CLIAgentMissionDispatcher {
     static let shared = CLIAgentMissionDispatcher()
@@ -51,7 +144,9 @@ final class CLIAgentMissionDispatcher {
         let effectiveRequestedModelID = try requestedModelID?.nonEmpty
             ?? Self.selectedModelID(forRequestedRuntime: requestedRuntime)
 
-        let payload = CLIAgentMissionRequestPayloadFactory.build(
+        let db = firestoreProvider()
+        let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
+        let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
             id: id,
             title: trimmedTitle,
             prompt: trimmedPrompt,
@@ -70,22 +165,25 @@ final class CLIAgentMissionDispatcher {
             sourceSurface: sourceSurface,
             deliveryMode: deliveryMode,
             parentHermesThreadID: parentHermesThreadID,
-            presentationMode: presentationMode
+            presentationMode: presentationMode,
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID
         )
-        let db = firestoreProvider()
         let requestRef = db
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
         let batch = db.batch()
         batch.setData(payload, forDocument: requestRef, merge: false)
         batch.setData(
-            CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+            try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                 label: isChatRequest ? "Chat" : "Mission",
                 source: sourceSurface?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                     ?? (isChatRequest ? "ios-chat" : "ios"),
                 sourceSkillID: sourceSkillID,
                 deliveryMode: deliveryMode,
-                now: Date()
+                now: Date(),
+                vaultKey: resolvedKey.keyData,
+                vaultKeyID: resolvedKey.vaultKeyID
             ),
             forDocument: requestRef.collection("events").document("000001"),
             merge: false
@@ -105,6 +203,12 @@ final class CLIAgentMissionDispatcher {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw DispatchError.notSignedIn
         }
+        let localVaultKey: Data?
+        do {
+            localVaultKey = try CloudVaultKeyStore().loadKey(uid: uid)
+        } catch {
+            localVaultKey = nil
+        }
 
         let requestRef = firestoreProvider()
             .collection("users").document(uid)
@@ -114,11 +218,12 @@ final class CLIAgentMissionDispatcher {
         var latestEvents: [CLIAgentMissionEvent] = []
 
         func emitLatest() {
-            guard let latestData,
+                guard let latestData,
                   let mission = CLIAgentMissionSnapshot(
                     documentID: requestID,
                     data: latestData,
-                    eventOverride: latestEvents.isEmpty ? nil : latestEvents
+                    eventOverride: latestEvents.isEmpty ? nil : latestEvents,
+                    vaultKey: localVaultKey
                   ) else { return }
             Task { @MainActor in onUpdate(mission) }
         }
@@ -147,7 +252,7 @@ final class CLIAgentMissionDispatcher {
                     return
                 }
                 latestEvents = snapshot?.documents.compactMap { doc in
-                    CLIAgentMissionEvent(data: doc.data())
+                    CLIAgentMissionEvent(data: doc.data(), vaultKey: localVaultKey)
                 } ?? []
                 emitLatest()
             }
@@ -234,12 +339,13 @@ final class CLIAgentMissionDispatcher {
         )
 
         let db = firestoreProvider()
+        let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
         let groupRef = db
             .collection("users").document(uid)
             .collection("mission_groups").document(groupID)
         let batch = db.batch()
 
-        let groupPayload = MissionGroupPayloadFactory.buildGroupPayload(
+        let legacyGroupPayload = MissionGroupPayloadFactory.buildGroupPayload(
             id: groupID,
             title: trimmedTitle,
             prompt: trimmedPrompt,
@@ -251,13 +357,22 @@ final class CLIAgentMissionDispatcher {
             mergeStrategy: mergeStrategy,
             forecast: aggregated
         )
+        let groupPayload = try CLIAgentMissionRequestPayloadFactory.sealGroupPayload(
+            legacyGroupPayload,
+            title: trimmedTitle,
+            prompt: trimmedPrompt,
+            targetProject: targetProject,
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID
+        )
         batch.setData(groupPayload, forDocument: groupRef, merge: false)
 
         // Child missions: each gets the existing payload plus group hints +
         // optional persona scope.
         for (index, runtimeToken) in runtimeTokens.enumerated() {
             let missionID = childMissionIDs[index]
-            var payload = CLIAgentMissionRequestPayloadFactory.build(
+            let personaScopeJSON = try personaScopeByRuntime[runtimeToken]?.jsonString()
+            var payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
                 id: missionID,
                 title: "\(trimmedTitle) · \(runtimeToken)",
                 prompt: trimmedPrompt,
@@ -273,7 +388,10 @@ final class CLIAgentMissionDispatcher {
                 sourceSurface: sourceSurface,
                 deliveryMode: deliveryMode,
                 parentHermesThreadID: parentHermesThreadID,
-                presentationMode: presentationMode
+                presentationMode: presentationMode,
+                personaScopeJSON: personaScopeJSON,
+                vaultKey: resolvedKey.keyData,
+                vaultKeyID: resolvedKey.vaultKeyID
             )
             let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
                 groupID: groupID,
@@ -282,20 +400,19 @@ final class CLIAgentMissionDispatcher {
             )
             for (k, v) in overlay { payload[k] = v }
             if let envelope = personaScopeByRuntime[runtimeToken] {
-                if let scopeJSON = try? envelope.jsonString() {
-                    payload["personaScopeJSON"] = scopeJSON
-                    payload["personaID"] = envelope.personaID
-                }
+                payload["personaID"] = envelope.personaID
             }
             let requestRef = db
                 .collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(missionID)
             batch.setData(payload, forDocument: requestRef, merge: false)
             batch.setData(
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                     sourceSkillID: sourceSkillID,
                     deliveryMode: deliveryMode,
-                    now: Date()
+                    now: Date(),
+                    vaultKey: resolvedKey.keyData,
+                    vaultKeyID: resolvedKey.vaultKeyID
                 ),
                 forDocument: requestRef.collection("events").document("000001"),
                 merge: false
@@ -365,6 +482,12 @@ final class CLIAgentMissionDispatcher {
     ) throws -> CLIAgentMissionObservation {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
+        let localVaultKey: Data?
+        do {
+            localVaultKey = try CloudVaultKeyStore().loadKey(uid: uid)
+        } catch {
+            localVaultKey = nil
+        }
         let ref = firestoreProvider()
             .collection("users").document(uid)
             .collection("mission_groups").document(groupID)
@@ -374,14 +497,22 @@ final class CLIAgentMissionDispatcher {
                 return
             }
             guard let data = snapshot?.data() else { return }
-            guard let doc = MissionGroupDocument(documentID: groupID, data: data) else { return }
+            guard let doc = MissionGroupDocument(documentID: groupID, data: data, vaultKey: localVaultKey) else { return }
             Task { @MainActor in onUpdate(doc) }
         }
         return CLIAgentMissionObservation(registrations: [registration])
     }
 
     /// Apply the user's merge choice. Sets `phase = merged`, records
-    /// `winnerMissionID`, and optionally writes a synthesisSummary.
+    /// `winnerMissionID`, and optionally seals a `synthesisSummary` into
+    /// `sealedStatePayload`.
+    ///
+    /// `synthesisSummary` is private user-facing text, so it is NEVER written
+    /// as a top-level plaintext field — `validMissionGroup` (firestore.rules)
+    /// rejects a top-level `synthesisSummary` and the seal mirrors Android's
+    /// `sealGroupPayload`/`sealedMissionStateUpdate` shape. The reader
+    /// (`MissionGroupDocument`) already opens `sealedStatePayload` for the
+    /// synthesis with a legacy top-level fallback during migration.
     func mergeMissionGroup(
         groupID: String,
         winnerMissionID: String?,
@@ -389,16 +520,59 @@ final class CLIAgentMissionDispatcher {
     ) async throws {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
+        let db = firestoreProvider()
+        let update: [String: Any]
+        if let synthesisSummary {
+            // Sealing the synthesis requires the writable vault key; mirror the
+            // dispatch path so a merge after dispatch always re-seals locally.
+            let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
+            update = try Self.mergeMissionGroupUpdate(
+                winnerMissionID: winnerMissionID,
+                synthesisSummary: synthesisSummary,
+                vaultKey: resolvedKey.keyData,
+                vaultKeyID: resolvedKey.vaultKeyID
+            )
+        } else {
+            update = Self.mergeMissionGroupUpdate(winnerMissionID: winnerMissionID)
+        }
+        try await db
+            .collection("users").document(uid)
+            .collection("mission_groups").document(groupID)
+            .setData(update, merge: true)
+    }
+
+    /// Build the merge update WITHOUT a synthesis summary (no seal needed).
+    /// Writes only non-private fields: `phase`, `winnerMissionID`, `updatedAt`.
+    static func mergeMissionGroupUpdate(winnerMissionID: String?) -> [String: Any] {
         var update: [String: Any] = [
             "phase": MissionGroupPhase.merged.rawValue,
             "updatedAt": FieldValue.serverTimestamp()
         ]
         if let winnerMissionID { update["winnerMissionID"] = winnerMissionID }
-        if let synthesisSummary { update["synthesisSummary"] = synthesisSummary }
-        try await firestoreProvider()
-            .collection("users").document(uid)
-            .collection("mission_groups").document(groupID)
-            .setData(update, merge: true)
+        return update
+    }
+
+    /// Build the merge update WITH a sealed synthesis summary. The private
+    /// `synthesisSummary` lives only inside `sealedStatePayload`; the triplet
+    /// of state fields (`contentSealed`/`sealedStateSchemaVersion`/
+    /// `sealedStateVaultKeyID`) matches the dispatch sealing contract.
+    static func mergeMissionGroupUpdate(
+        winnerMissionID: String?,
+        synthesisSummary: String,
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
+        var update = mergeMissionGroupUpdate(winnerMissionID: winnerMissionID)
+        let privatePayload = CLIAgentMissionPrivatePayload(synthesisSummary: synthesisSummary)
+        update["contentSealed"] = true
+        update["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        update["sealedStateVaultKeyID"] = vaultKeyID
+        update["sealedStatePayload"] = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+        return update
     }
 
     func respondToApproval(
@@ -408,18 +582,20 @@ final class CLIAgentMissionDispatcher {
         guard FirebaseApp.app() != nil else {
             throw DispatchError.firebaseUnavailable
         }
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard Auth.auth().currentUser?.uid != nil else {
             throw DispatchError.notSignedIn
         }
-        try await firestoreProvider()
-            .collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
-            .setData([
-                "approvalStatus": approve ? "approved" : "rejected",
-                "approvalRespondedAt": ISO8601DateFormatter().string(from: Date()),
-                "liveSummary": approve ? "Approval granted from mobile. Waiting for the Mac to resume." : "Approval rejected from mobile.",
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+        // Bind the approve/reject to this trusted native escrow device via the
+        // App-Check-enforced callable. The bare Firestore status flip is no
+        // longer accepted by firestore.rules (it must carry approvedByDeviceId
+        // resolving to a trusted escrow device), so a stolen owner token cannot
+        // self-approve a high-risk mission.
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        try await ComputerUseSecurityCallableClient.respondMissionApproval(
+            requestId: requestID,
+            approve: approve,
+            deviceId: deviceId
+        )
     }
 
     func cancelMission(requestID: String) async throws {
@@ -429,14 +605,44 @@ final class CLIAgentMissionDispatcher {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw DispatchError.notSignedIn
         }
-        try await firestoreProvider()
+        let db = firestoreProvider()
+        // The user-facing cancel summary is private text. Seal it into
+        // `sealedStatePayload` (mirroring Android `sealedMissionStateUpdate`)
+        // instead of writing a top-level plaintext `liveSummary`. The reader
+        // (`CLIAgentMissionSnapshot`) already prefers the sealed state summary
+        // with a legacy top-level fallback. This shape also satisfies the new
+        // `validMobileMissionCancel()` rule predicate (owned by stream SD):
+        // diff hasOnly(status, contentSealed, sealedStatePayload,
+        // sealedStateSchemaVersion, sealedStateVaultKeyID, updatedAt).
+        let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
+        let update = try Self.cancelMissionUpdate(
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID
+        )
+        try await db
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(requestID)
-            .setData([
-                "status": "cancelled",
-                "liveSummary": "Mission cancelled by user.",
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            .setData(update, merge: true)
+    }
+
+    /// Build the sealed cancel update. `status` flips to `cancelled` and the
+    /// cancel summary is sealed into `sealedStatePayload`; no plaintext
+    /// `liveSummary` is written. Diff keys exactly match the
+    /// `validMobileMissionCancel()` rule allowlist.
+    static func cancelMissionUpdate(vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+        let privatePayload = CLIAgentMissionPrivatePayload(liveSummary: "Mission cancelled by user.")
+        return [
+            "status": "cancelled",
+            "contentSealed": true,
+            "sealedStateSchemaVersion": CLIAgentMissionCloudSealer.sealedSchemaVersion,
+            "sealedStateVaultKeyID": vaultKeyID,
+            "sealedStatePayload": try CLIAgentMissionCloudSealer.seal(
+                privatePayload,
+                vaultKey: vaultKey,
+                vaultKeyID: vaultKeyID
+            ),
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
     }
 
 
@@ -560,6 +766,96 @@ struct AgentHarnessImportJobSnapshot: Identifiable, Equatable, Sendable {
 }
 
 enum CLIAgentMissionRequestPayloadFactory {
+    static func buildSealed(
+        id: String,
+        title: String,
+        prompt: String,
+        missionKind: String,
+        requestedRuntime: String,
+        targetProject: String?,
+        depth: String,
+        approvalMode: String,
+        commandsAllowed: Bool,
+        fileEditsAllowed: Bool,
+        requestedModelID: String? = nil,
+        clientThreadID: String? = nil,
+        parentSessionID: String? = nil,
+        resumeAction: String? = nil,
+        sourceSkillID: HermesSkillRunID? = nil,
+        sourceSurface: String? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        parentHermesThreadID: String? = nil,
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat,
+        personaScopeJSON: String? = nil,
+        now: Date = Date(),
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        var payload = build(
+            id: id,
+            title: title,
+            prompt: prompt,
+            missionKind: missionKind,
+            requestedRuntime: requestedRuntime,
+            targetProject: targetProject,
+            depth: depth,
+            approvalMode: approvalMode,
+            commandsAllowed: commandsAllowed,
+            fileEditsAllowed: fileEditsAllowed,
+            requestedModelID: requestedModelID,
+            clientThreadID: clientThreadID,
+            parentSessionID: parentSessionID,
+            resumeAction: resumeAction,
+            sourceSkillID: sourceSkillID,
+            sourceSurface: sourceSurface,
+            deliveryMode: deliveryMode,
+            parentHermesThreadID: parentHermesThreadID,
+            presentationMode: presentationMode,
+            now: now
+        )
+        let isChatRequest = missionKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "chat"
+        let privatePayload = CLIAgentMissionPrivatePayload(
+            title: trimmedTitle ?? (isChatRequest ? "New chat" : "Insights mission"),
+            prompt: trimmedPrompt,
+            targetProject: targetProject?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            liveSummary: isChatRequest
+                ? "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."
+                : "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.",
+            resultPreview: nil,
+            errorMessage: nil,
+            approvalTitle: nil,
+            approvalMessage: nil,
+            personaScopeJSON: personaScopeJSON?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            synthesisSummary: nil
+        )
+        return try applySealedPrivatePayload(privatePayload, to: payload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+    }
+
+    static func sealGroupPayload(
+        _ payload: [String: Any],
+        title: String,
+        prompt: String,
+        targetProject: String?,
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
+        let privatePayload = CLIAgentMissionPrivatePayload(
+            title: title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
+            targetProject: targetProject?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            liveSummary: nil,
+            resultPreview: nil,
+            errorMessage: nil,
+            approvalTitle: nil,
+            approvalMessage: nil,
+            personaScopeJSON: nil,
+            synthesisSummary: nil
+        )
+        return try applySealedPrivatePayload(privatePayload, to: payload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+    }
+
     static func build(
         id: String,
         title: String,
@@ -657,6 +953,81 @@ enum CLIAgentMissionRequestPayloadFactory {
         }
         return event
     }
+
+    static func initialQueuedEventSealed(
+        label: String = "Mission",
+        source: String = "ios",
+        sourceSkillID: HermesSkillRunID? = nil,
+        deliveryMode: SkillRunDeliveryMode = .actionOnly,
+        eventImportance: SkillRunEventImportance = .normal,
+        skillStepID: String = "queued",
+        now: Date = Date(),
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
+        var event = initialQueuedEvent(
+            label: label,
+            source: source,
+            sourceSkillID: sourceSkillID,
+            deliveryMode: deliveryMode,
+            eventImportance: eventImportance,
+            skillStepID: skillStepID,
+            now: now
+        )
+        let privatePayload = CLIAgentMissionEventPrivatePayload(
+            title: event["title"] as? String,
+            message: (event["message"] as? String) ?? "\(label) queued from this device.",
+            fullMessage: event["fullMessage"] as? String,
+            toolName: event["toolName"] as? String,
+            artifactPath: event["artifactPath"] as? String,
+            changedFilePath: event["changedFilePath"] as? String
+        )
+        try applySealedEventPayload(privatePayload, to: &event, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        return event
+    }
+
+    private static func applySealedPrivatePayload(
+        _ privatePayload: CLIAgentMissionPrivatePayload,
+        to payload: [String: Any],
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
+        var payload = payload
+        for key in [
+            "title",
+            "prompt",
+            "targetProject",
+            "liveSummary",
+            "resultPreview",
+            "errorMessage",
+            "approvalTitle",
+            "approvalMessage",
+            "personaScopeJSON",
+            "synthesisSummary"
+        ] {
+            payload.removeValue(forKey: key)
+        }
+        payload["contentSealed"] = true
+        payload["sealedSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        payload["vaultKeyID"] = vaultKeyID
+        payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        return payload
+    }
+
+    private static func applySealedEventPayload(
+        _ privatePayload: CLIAgentMissionEventPrivatePayload,
+        to event: inout [String: Any],
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws {
+        for key in ["title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath"] {
+            event.removeValue(forKey: key)
+        }
+        event["contentSealed"] = true
+        event["sealedSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        event["vaultKeyID"] = vaultKeyID
+        event["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+    }
 }
 
 final class CLIAgentMissionObservation {
@@ -699,26 +1070,33 @@ struct CLIAgentMissionEvent: Equatable, Sendable, Identifiable {
     var id: String { "\(sequence)-\(timestamp)-\(phase)-\(message)" }
 
     init?(data: Any) {
+        self.init(data: data, vaultKey: nil)
+    }
+
+    init?(data: Any, vaultKey: Data?) {
         guard let map = data as? [String: Any],
               let timestamp = map["timestamp"] as? String,
-              let phase = map["phase"] as? String,
-              let message = map["message"] as? String else {
+              let phase = map["phase"] as? String else {
+            return nil
+        }
+        let sealed = CLIAgentMissionCloudSealer.openEventPayload(map, vaultKey: vaultKey)
+        guard let message = sealed?.message ?? map["message"] as? String else {
             return nil
         }
         self.sequence = (map["sequence"] as? Int) ?? 0
         self.timestamp = timestamp
         self.kind = (map["kind"] as? String) ?? phase
         self.phase = phase
-        self.title = map["title"] as? String
+        self.title = sealed?.title ?? map["title"] as? String
         self.message = message
-        self.fullMessage = map["fullMessage"] as? String
+        self.fullMessage = sealed?.fullMessage ?? map["fullMessage"] as? String
         self.messageLength = map["messageLength"] as? Int
         self.messageTruncated = (map["messageTruncated"] as? Bool) ?? false
         self.runtime = map["runtime"] as? String
         self.source = map["source"] as? String
-        self.toolName = map["toolName"] as? String
-        self.artifactPath = map["artifactPath"] as? String
-        self.changedFilePath = map["changedFilePath"] as? String
+        self.toolName = sealed?.toolName ?? map["toolName"] as? String
+        self.artifactPath = sealed?.artifactPath ?? map["artifactPath"] as? String
+        self.changedFilePath = sealed?.changedFilePath ?? map["changedFilePath"] as? String
         self.sourceSkillID = map["sourceSkillID"] as? String
         self.deliveryMode = (map["deliveryMode"] as? String)
             .flatMap(SkillRunDeliveryMode.init(rawValue:)) ?? .actionOnly
@@ -755,7 +1133,13 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
     let createdAt: Date?
 
     init?(documentID: String, data: [String: Any], eventOverride: [CLIAgentMissionEvent]? = nil) {
-        guard let title = data["title"] as? String,
+        self.init(documentID: documentID, data: data, eventOverride: eventOverride, vaultKey: nil)
+    }
+
+    init?(documentID: String, data: [String: Any], eventOverride: [CLIAgentMissionEvent]? = nil, vaultKey: Data?) {
+        let requestPrivate = CLIAgentMissionCloudSealer.openPrivatePayload(data, vaultKey: vaultKey)
+        let statePrivate = CLIAgentMissionCloudSealer.openPrivatePayload(data, field: "sealedStatePayload", vaultKey: vaultKey)
+        guard let title = requestPrivate?.title ?? data["title"] as? String,
               let status = data["status"] as? String else {
             return nil
         }
@@ -771,7 +1155,7 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         self.selectedModelID = (data["selectedModelID"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
-        self.targetProject = (data["targetProject"] as? String)?
+        self.targetProject = (requestPrivate?.targetProject ?? data["targetProject"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
         self.sourceSkillID = (data["sourceSkillID"] as? String)?
@@ -785,16 +1169,16 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         self.parentHermesThreadID = (data["parentHermesThreadID"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
-        self.liveSummary = data["liveSummary"] as? String
-        self.resultPreview = data["resultPreview"] as? String
-        self.errorMessage = data["errorMessage"] as? String
+        self.liveSummary = statePrivate?.liveSummary ?? requestPrivate?.liveSummary ?? data["liveSummary"] as? String
+        self.resultPreview = statePrivate?.resultPreview ?? requestPrivate?.resultPreview ?? data["resultPreview"] as? String
+        self.errorMessage = statePrivate?.errorMessage ?? requestPrivate?.errorMessage ?? data["errorMessage"] as? String
         self.sessionID = data["sessionId"] as? String
         self.approvalRequestId = data["approvalRequestId"] as? String
         self.approvalStatus = data["approvalStatus"] as? String
-        self.approvalTitle = data["approvalTitle"] as? String
-        self.approvalMessage = data["approvalMessage"] as? String
+        self.approvalTitle = statePrivate?.approvalTitle ?? requestPrivate?.approvalTitle ?? data["approvalTitle"] as? String
+        self.approvalMessage = statePrivate?.approvalMessage ?? requestPrivate?.approvalMessage ?? data["approvalMessage"] as? String
         self.createdAt = (data["createdAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-        let documentEvents = (data["events"] as? [Any] ?? []).compactMap(CLIAgentMissionEvent.init(data:))
+        let documentEvents = (data["events"] as? [Any] ?? []).compactMap { CLIAgentMissionEvent(data: $0, vaultKey: vaultKey) }
         self.events = (eventOverride ?? documentEvents).sorted {
             if $0.sequence == $1.sequence { return $0.timestamp < $1.timestamp }
             return $0.sequence < $1.sequence

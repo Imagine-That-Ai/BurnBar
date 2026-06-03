@@ -54,6 +54,24 @@ private struct AgentReplyNotificationPayload: Sendable {
     }
 }
 
+private struct AgentNotificationReplyPrivatePayload: Codable {
+    let replyText: String
+}
+
+private enum AgentNotificationReplySealer {
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
+    static func sealedReplyMap(replyText: String, keyData: Data, vaultKeyID: String) throws -> [String: Any] {
+        let payload = try encoder.encode(AgentNotificationReplyPrivatePayload(replyText: replyText))
+        let sealed = try CloudVaultCrypto.sealPayload(payload, keyData: keyData, vaultKeyID: vaultKeyID)
+        return CloudVaultCrypto.sealedPayloadDictionary(sealed)
+    }
+}
+
 @MainActor
 final class AgentReplyNotificationService: NSObject, ObservableObject {
     static let shared = AgentReplyNotificationService()
@@ -237,9 +255,16 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     private func submitReply(eventID: String, replyText: String) async {
         let callable = Functions.functions(region: "us-central1").httpsCallable("submitAgentNotificationReply")
         do {
+            guard let uid = Auth.auth().currentUser?.uid else { return }
+            let key = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid)
             _ = try await callable.call([
                 "eventId": eventID,
-                "replyText": replyText,
+                "sealedReplyPayload": try AgentNotificationReplySealer.sealedReplyMap(
+                    replyText: replyText,
+                    keyData: key.keyData,
+                    vaultKeyID: key.vaultKeyID
+                ),
+                "vaultKeyID": key.vaultKeyID,
                 "deviceId": deviceID,
                 "clientReplyId": "\(eventID)_\(deviceID)",
             ])

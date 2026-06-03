@@ -23,6 +23,9 @@ protocol CloudSyncDocumentGateway: AnyObject, Sendable {
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway
     func getData() async throws -> [String: Any]?
     func setData(_ data: [String: Any], merge: Bool) async throws
+    /// Hard-deletes the document. Used by tombstone GC to remove a conversation's
+    /// session-log manifest, search-index chunks, and metadata after retention.
+    func deleteDocument() async throws
 }
 
 protocol CloudSyncQueryGateway: AnyObject, Sendable {
@@ -116,6 +119,10 @@ final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway, @unchecked S
 
     func setData(_ data: [String: Any], merge: Bool) async throws {
         try await reference.setData(data, merge: merge)
+    }
+
+    func deleteDocument() async throws {
+        try await reference.delete()
     }
 }
 

@@ -315,7 +315,7 @@ test("appStoreEntitlementTarget maps locked Cloud product families", () => {
     sourceEntitlementID: "burnbar_ultra",
     mirrorEntitlementID: "burnbar_pro_max",
   });
-  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget("com.openburnbar.ultra.annual"), {
+  assert.deepEqual(reconcilerTesting.appStoreEntitlementTarget("com.openburnbar.ultra.annual.v2"), {
     sourceEntitlementID: "burnbar_ultra",
     mirrorEntitlementID: "burnbar_pro_max",
   });

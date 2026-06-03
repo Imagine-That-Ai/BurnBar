@@ -18,7 +18,6 @@ struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
     let sourceKind: String
     let sourceID: String
     let provider: String?
-    let projectName: String?
     let sealedTitle: CloudVaultSealedText
     let sealedSnippet: CloudVaultSealedText
     let sealedBodyPreview: CloudVaultSealedText?
@@ -42,10 +41,10 @@ struct ConversationQueryAggregates: Decodable, Hashable, Sendable {
     let totalTokens: Int
 }
 
-/// One encrypted session-log manifest as returned by `queryConversations`. Facets are plaintext
-/// metadata (provider/project/model/tokens/cost/timing); the conversation title and preview stay
-/// sealed and are opened on-device with the vault key. Numeric facets are optional so manifests
-/// written before the facet backfill still decode.
+/// One encrypted session-log manifest as returned by `queryConversations`. Server-visible facets
+/// are operational metadata (provider/model/tokens/cost/timing/device/source); text-like fields
+/// such as project names, paths, titles, previews, and bodies stay sealed or hash-only. Numeric
+/// facets are optional so manifests written before the facet backfill still decode.
 struct ConversationFacetRow: Decodable, Identifiable, Hashable, Sendable {
     let id: String
     let provider: String?
@@ -822,14 +821,14 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     /// Faceted, paginated query over the user's encrypted session-log manifests for the cockpit.
-    /// All filtering and sorting happen on plaintext facets server-side; the returned rows carry
-    /// only sealed envelopes for title/preview, which the caller opens with the on-device vault
-    /// key. Pass `cursorDocId` from a prior `nextCursor` to page; request aggregates only on the
-    /// first page (`includeAggregates`) since they cover the whole filtered set.
+    /// Server-side filters are limited to operational facets. Project/path/title/body search must
+    /// use `searchEncryptedConversationIndex`, where the client sends keyed hashes and decrypts
+    /// result labels locally. Pass `cursorDocId` from a prior `nextCursor` to page; request
+    /// aggregates only on the first page (`includeAggregates`) since they cover the whole filtered
+    /// set.
     func queryConversations(
         providers: [String] = [],
         models: [String] = [],
-        projectName: String? = nil,
         deviceId: String? = nil,
         sourceType: String? = nil,
         dateFrom: Date? = nil,
@@ -849,7 +848,6 @@ final class FunctionsRepository: HermesGatewayRepository {
         ]
         if !providers.isEmpty { payload["providers"] = Array(providers.prefix(20)) }
         if !models.isEmpty { payload["models"] = Array(models.prefix(20)) }
-        if let projectName, !projectName.isEmpty { payload["projectName"] = projectName }
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
         if let sourceType, !sourceType.isEmpty { payload["sourceType"] = sourceType }
         let iso = ISO8601DateFormatter()

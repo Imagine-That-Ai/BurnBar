@@ -66,9 +66,14 @@ export const SITE = {
         period: "month",
         productIds: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual.v2"],
         entitlementId: "burnbar_ultra",
-        summary: "Cloud Pro plus larger encrypted Pensieve memory limits for heavy agent work.",
+        summary:
+          "Everything in Cloud Pro, plus 10× your private agent memory — 15 sources, 50,000 sealed chunks, and 250 MB your agents can recall.",
         cta: "Choose Ultra",
         allowance: {
+          hostedAgentActionsMonthly: 500,
+          relayGBMonthly: 50,
+          hostedAgentActionMonthlyCap: 2000,
+          relayGBMonthlyCap: 300,
           knowledgeSources: 15,
           memoryChunks: 50000,
           encryptedStorageMB: 250
@@ -131,6 +136,7 @@ export const NAV_FOOTER = {
   ],
   trust: [
     { href: "/privacy", label: "Privacy model" },
+    { href: "/privacy#data-domains", label: "What we can see" },
     { href: "/security", label: "Security model" },
     { href: "/mcp", label: "MCP integration" },
     { href: "/legal/privacy-policy", label: "Privacy policy" },

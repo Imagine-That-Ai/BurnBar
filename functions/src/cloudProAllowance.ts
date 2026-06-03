@@ -24,6 +24,7 @@ import {
   boundedTrimmedString,
   requiredIdentifier,
 } from "./callables/shared.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 interface ReserveAllowanceRequest {
   sessionId?: unknown;
@@ -195,7 +196,7 @@ async function reserveCloudProAllowance(args: {
 
 export const reserveAgentControlActionBudget = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -220,7 +221,7 @@ export const reserveAgentControlActionBudget = onCall(
 
 export const reserveFlooRelayBudget = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

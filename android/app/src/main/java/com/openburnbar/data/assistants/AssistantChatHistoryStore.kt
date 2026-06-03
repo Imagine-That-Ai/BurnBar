@@ -9,6 +9,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import java.io.File
 import java.lang.IllegalStateException
 import java.util.Date
@@ -26,6 +28,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -441,6 +444,12 @@ internal class AssistantChatFirestoreMirror(
     private val firestore: FirebaseFirestore = Firebase.firestore,
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) : AssistantChatCloudMirror {
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
+
     override val isAvailable: Boolean
         get() = auth.currentUser != null
 
@@ -453,21 +462,27 @@ internal class AssistantChatFirestoreMirror(
 
     override suspend fun upsert(thread: AssistantChatThread) {
         val uid = requireUID()
+        val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
+        val sealedPayload =
+            CloudVaultCrypto.sealPayload(
+                json.encodeToString(thread).toByteArray(Charsets.UTF_8),
+                resolvedKey.keyData,
+                resolvedKey.vaultKeyID,
+            )
         val payload =
             mutableMapOf<String, Any?>(
                 "id" to thread.id,
                 "runtime" to thread.runtime,
-                "title" to thread.title,
-                "preview" to thread.preview,
-                "modelName" to thread.modelName,
                 "createdAt" to Timestamp(Date(thread.createdAtMillis)),
                 "updatedAt" to Timestamp(Date(thread.updatedAtMillis)),
                 "messageCount" to thread.messageCount,
-                "messages" to thread.messages.map(::encodeMessage),
+                "contentSealed" to true,
+                "sealedSchemaVersion" to 1,
+                "vaultKeyID" to resolvedKey.vaultKeyID,
+                "sealedPayload" to CloudVaultCrypto.sealedPayloadMap(sealedPayload),
             )
-        if (thread.customTitle != null) {
-            payload["customTitle"] = thread.customTitle
-        }
+        thread.messages.lastOrNull()?.let { payload["lastMessageRole"] = it.role }
+        thread.messages.lastOrNull { it.role == "assistant" }?.let { payload["lastAssistantMessageID"] = it.id }
         if (thread.labelColorHex != null) {
             payload["labelColorHex"] = thread.labelColorHex
         }
@@ -485,6 +500,7 @@ internal class AssistantChatFirestoreMirror(
 
     override suspend fun fetchAll(): List<AssistantChatThread> {
         val uid = requireUID()
+        val key = AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)
         val snapshot =
             collection(uid)
                 .orderBy("updatedAt", Query.Direction.DESCENDING)
@@ -492,7 +508,7 @@ internal class AssistantChatFirestoreMirror(
                 .get()
                 .await()
         return snapshot.documents.mapNotNull { document ->
-            decodeThread(document.id, document.data ?: return@mapNotNull null)
+            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData)
         }
     }
 
@@ -544,7 +560,16 @@ internal class AssistantChatFirestoreMirror(
         return map
     }
 
-    internal fun decodeThread(documentID: String, data: Map<String, Any?>): AssistantChatThread? {
+    internal fun decodeThread(documentID: String, data: Map<String, Any?>, vaultKey: ByteArray? = null): AssistantChatThread? {
+        if (data["contentSealed"] == true || data["sealedPayload"] != null) {
+            val sealedPayload = CloudVaultCrypto.sealedPayloadFromMap(data["sealedPayload"] as? Map<*, *>) ?: return null
+            val key = vaultKey ?: return null
+            return runCatching {
+                json.decodeFromString<AssistantChatThread>(
+                    CloudVaultCrypto.openPayload(sealedPayload, key).toString(Charsets.UTF_8),
+                )
+            }.getOrNull()
+        }
         val runtime = data["runtime"] as? String ?: return null
         val id = data["id"] as? String ?: documentID
         val title = data["title"] as? String ?: "Chat"

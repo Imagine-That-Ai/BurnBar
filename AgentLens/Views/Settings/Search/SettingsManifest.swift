@@ -20,6 +20,16 @@ enum SettingsManifest {
     static let all: [SettingsItem] = baseItems + providerItems
 
     private static let baseItems: [SettingsItem] = [
+        SettingsItem(
+            id: "dataPrivacy.controlCenter.inventory",
+            tab: .dataPrivacy,
+            pageRoute: .dataControlCenterRoot,
+            anchorID: SettingsAnchor.dataControlCenterInventory,
+            title: "Data & Privacy Control Center",
+            subtitle: "See, export, delete, recover, and panic-revoke your BurnBar data",
+            keywords: ["privacy", "encryption", "vault", "pensieve", "delete", "export", "panic", "zero-knowledge"],
+            helpText: "Opens the Pensieve Data & Privacy Control Center inventory and governance controls."
+        ),
 
         // MARK: General → Operator model & setup
 
@@ -81,6 +91,15 @@ enum SettingsManifest {
             title: "Swarm Background",
             subtitle: "Active, reconverging token-ember swarms from burnbar.ai with logo formation",
             keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar", "logo"]
+        ),
+        SettingsItem(
+            id: "general.appearance.useConstellationBackground",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.useConstellationBackground,
+            title: "Constellation Style",
+            subtitle: "Calm, slow background where one crest or provider logo at a time resolves from coloured dots, shimmers, and dissolves",
+            keywords: ["constellation", "calm", "slow", "ambient", "dots", "logo", "crest", "provider", "shimmer", "dissolve", "background", "swarm", "style"]
         ),
         SettingsItem(
             id: "general.appearance.desktopWallpaperEnabled",
@@ -670,6 +689,7 @@ enum SettingsManifest {
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,
+        SettingsAnchor.useConstellationBackground,
         SettingsAnchor.desktopWallpaperEnabled,
         SettingsAnchor.desktopWallpaperBackground,
         SettingsAnchor.desktopWallpaperSpeed,
@@ -708,6 +728,7 @@ enum SettingsManifest {
         SettingsAnchor.textExpansionSnippets,
         SettingsAnchor.textExpansionRuntime,
         SettingsAnchor.mediaPermissions,
+        SettingsAnchor.dataControlCenterInventory,
         SettingsAnchor.computerUseReadiness,
         SettingsAnchor.computerUsePermissionsSetup,
         SettingsAnchor.switcherBrowser,

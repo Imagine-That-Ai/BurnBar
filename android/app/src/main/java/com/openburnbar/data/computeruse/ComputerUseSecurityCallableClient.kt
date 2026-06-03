@@ -18,6 +18,22 @@ class ComputerUseSecurityCallableClient(
         refreshAuthClaimsAfterBind()
     }
 
+    /**
+     * Fetch a single-use, short-lived nonce to attach to a high-risk action,
+     * providing replay resistance on top of the 30-day attestation binding.
+     */
+    suspend fun issueHighRiskActionNonce(): String {
+        requireAuthenticatedUser()
+        val result =
+            functions.getHttpsCallable("issueHighRiskActionNonce")
+                .call(emptyMap<String, Any>())
+                .await()
+        val map = result.getData() as? Map<*, *> ?: error("Could not obtain a high-risk action nonce.")
+        val nonce = map["nonce"] as? String
+        check(!nonce.isNullOrEmpty()) { "Could not obtain a high-risk action nonce." }
+        return nonce
+    }
+
     suspend fun registerEscrowDevice(
         deviceId: String,
         deviceName: String,
@@ -27,11 +43,13 @@ class ComputerUseSecurityCallableClient(
         keyVersion: Int? = null,
     ) {
         requireAuthenticatedUser()
+        val nonce = issueHighRiskActionNonce()
         val payload =
             linkedMapOf<String, Any>(
                 "deviceId" to deviceId,
                 "deviceName" to deviceName,
                 "platform" to platform,
+                "nonce" to nonce,
             )
         appVersion?.takeIf { it.isNotBlank() }?.let { payload["appVersion"] = it }
         publicKeyFingerprint?.takeIf { it.isNotBlank() }?.let { payload["publicKeyFingerprint"] = it }
@@ -40,22 +58,45 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Escrow device registration failed.")
     }
 
-    suspend fun approveEscrowDeviceTrust(deviceId: String) {
+    suspend fun approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = null) {
         requireAuthenticatedUser()
+        val nonce = issueHighRiskActionNonce()
+        val payload = mutableMapOf<String, Any>("deviceId" to deviceId, "nonce" to nonce)
+        approverDeviceId?.takeIf { it.isNotBlank() }?.let { payload["approverDeviceId"] = it }
         val result =
             functions.getHttpsCallable("approveEscrowDeviceTrust")
-                .call(mapOf("deviceId" to deviceId))
+                .call(payload)
                 .await()
         requireOk(result.getData(), "Escrow device trust approval failed.")
     }
 
     suspend fun revokeEscrowDeviceTrust(deviceId: String) {
         requireAuthenticatedUser()
+        val nonce = issueHighRiskActionNonce()
         val result =
             functions.getHttpsCallable("revokeEscrowDeviceTrust")
-                .call(mapOf("deviceId" to deviceId))
+                .call(mapOf("deviceId" to deviceId, "nonce" to nonce))
                 .await()
         requireOk(result.getData(), "Escrow device trust revocation failed.")
+    }
+
+    /**
+     * Bind a CLI-agent mission approve/reject decision to this trusted native
+     * escrow device via the App-Check-enforced `respondMissionApproval` callable.
+     */
+    suspend fun respondMissionApproval(requestId: String, approve: Boolean, deviceId: String) {
+        requireAuthenticatedUser()
+        val result =
+            functions.getHttpsCallable("respondMissionApproval")
+                .call(
+                    mapOf(
+                        "requestId" to requestId,
+                        "approve" to approve,
+                        "deviceId" to deviceId,
+                    ),
+                )
+                .await()
+        requireOk(result.getData(), "Mission approval response failed.")
     }
 
     private suspend fun refreshAuthClaimsAfterBind() {

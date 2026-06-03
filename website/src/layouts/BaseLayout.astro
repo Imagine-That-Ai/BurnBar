@@ -32,7 +32,23 @@ const fullTitle =
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <meta name="theme-color" content="#07060a" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Theme: resolve BEFORE paint to avoid a flash. Default follows the
+         viewer's system preference; the header toggle persists a choice. -->
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("burnbar-theme");
+          var prefersLight =
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+          var theme = stored || (prefersLight ? "light" : "dark");
+          document.documentElement.setAttribute("data-theme", theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", theme === "light" ? "#f6f4ee" : "#07060a");
+        } catch (e) {}
+      })();
+    </script>
 
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
@@ -108,10 +124,23 @@ const fullTitle =
     />
   </head>
   <body>
-    <!-- Interactive Token Ember Swarm Canvas Background -->
+    <!-- Interactive Token Ember Swarm Canvas Background (DARK theme) -->
     <canvas
       id="bgCanvas"
       style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
+    ></canvas>
+
+    <!-- Dot-logo constellation background (LIGHT theme) -->
+    <canvas
+      id="bgDots"
+      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0;"
+    ></canvas>
+
+    <!-- Easter-egg FX overlay: logo storm (dark) / cloud token rain (light) /
+         boundary "you've reached the end" tokens. Idles until summoned. -->
+    <canvas
+      id="bgFx"
+      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60;"
     ></canvas>
 
     <Header />
@@ -607,6 +636,13 @@ const fullTitle =
         setTimeout(scheduleNextCycle, pace.cycleInterval);
 
         function animate() {
+          // In LIGHT theme the dot-logo field owns the background; the ember
+          // swarm goes idle (and must not paint its dark decay rect).
+          if (document.documentElement.getAttribute("data-theme") === "light") {
+            ctx.clearRect(0, 0, width, height);
+            requestAnimationFrame(animate);
+            return;
+          }
           // Subtle frame decay to preserve trails without layout stutter
           ctx.fillStyle = "rgba(5, 5, 8, 0.12)";
           ctx.fillRect(0, 0, width, height);
@@ -624,6 +660,520 @@ const fullTitle =
         // Dynamically re-evaluate coordinates when content scrolls or windows resize
         window.addEventListener("scroll", updateInteractiveElements);
         setInterval(updateInteractiveElements, 1200);
+      })();
+    </script>
+
+    <!-- Dot-Logo Constellation Background (LIGHT theme) — BurnBar crests +
+         provider logos sampled into colored dots that resolve into a logo,
+         shimmer, scatter/dissolve, and reappear as a different logo elsewhere. -->
+    <script is:inline>
+      (function () {
+        var canvas = document.getElementById("bgDots");
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var reduced =
+          window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        var LOGOS = [
+          { src: "/brand/vector/cloud_crest.svg", scale: 0.4 },
+          { src: "/brand/providers/openai.png", scale: 0.26 },
+          { src: "/brand/vector/cloud_pro_crest.svg", scale: 0.4 },
+          { src: "/brand/providers/claude-code.png", scale: 0.26 },
+          { src: "/brand/providers/codex.png", scale: 0.26 },
+          { src: "/brand/providers/antigravity.png", scale: 0.27 },
+          { src: "/brand/providers/hermes.png", scale: 0.26 },
+          { src: "/brand/providers/openclaw.png", scale: 0.27 },
+          { src: "/brand/providers/anthropic.png", scale: 0.25 },
+          { src: "/brand/providers/cursor.png", scale: 0.26 },
+          { src: "/brand/providers/gemini-cli.png", scale: 0.26 },
+          { src: "/brand/providers/xai.png", scale: 0.24 },
+          { src: "/brand/providers/windsurf.png", scale: 0.26 },
+          { src: "/brand/providers/copilot.png", scale: 0.25 },
+          { src: "/brand/providers/factory.png", scale: 0.26 },
+          { src: "/brand/providers/warp.png", scale: 0.26 },
+          { src: "/brand/providers/kimi.svg", scale: 0.26 },
+          { src: "/brand/providers/deepseek.svg", scale: 0.27 },
+          { src: "/brand/providers/qwen.svg", scale: 0.26 }
+        ];
+        var PERIOD = 9.5,
+          S = 200,
+          GAP = 4;
+
+        function smoothstep(a, b, x) {
+          var t = Math.max(0, Math.min(1, (x - a) / (b - a || 1)));
+          return t * t * (3 - 2 * t);
+        }
+        function hash(n) {
+          var v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+          return v - Math.floor(v);
+        }
+        function pseudo(x, y) {
+          var v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+          return v - Math.floor(v);
+        }
+
+        var dpr = Math.min(2, window.devicePixelRatio || 1);
+        var W = 0,
+          H = 0;
+        function resize() {
+          W = window.innerWidth;
+          H = window.innerHeight;
+          canvas.width = Math.floor(W * dpr);
+          canvas.height = Math.floor(H * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        resize();
+        var rt;
+        window.addEventListener("resize", function () {
+          clearTimeout(rt);
+          rt = setTimeout(resize, 150);
+        });
+
+        var sampled = LOGOS.map(function () {
+          return null;
+        });
+
+        function sample(img, ci) {
+          try {
+            var off = document.createElement("canvas");
+            off.width = S;
+            off.height = S;
+            var octx = off.getContext("2d", { willReadFrequently: true });
+            if (!octx) {
+              sampled[ci] = [];
+              return;
+            }
+            var ar = img.naturalWidth / img.naturalHeight || 1;
+            var dw = S * 0.92,
+              dh = S * 0.92;
+            if (ar > 1) dh = dw / ar;
+            else dw = dh * ar;
+            octx.clearRect(0, 0, S, S);
+            octx.drawImage(img, (S - dw) / 2, (S - dh) / 2, dw, dh);
+            var data = octx.getImageData(0, 0, S, S).data;
+            var bgR = data[0],
+              bgG = data[1],
+              bgB = data[2],
+              bgOpaque = data[3] > 200;
+            var dots = [];
+            for (var y = 0; y < S; y += GAP) {
+              for (var x = 0; x < S; x += GAP) {
+                var i = (y * S + x) * 4;
+                if (data[i + 3] < 48) continue;
+                if (bgOpaque) {
+                  var dr = data[i] - bgR,
+                    dg = data[i + 1] - bgG,
+                    db = data[i + 2] - bgB;
+                  if (dr * dr + dg * dg + db * db < 3000) continue;
+                }
+                var nx = x / S - 0.5,
+                  ny = y / S - 0.5;
+                var ang = pseudo(x * 1.7, y * 0.7) * Math.PI * 2;
+                var rad = Math.hypot(nx, ny) || 0.001;
+                dots.push({
+                  x: nx,
+                  y: ny,
+                  r: data[i],
+                  g: data[i + 1],
+                  b: data[i + 2],
+                  a: data[i + 3] / 255,
+                  sx: (nx / rad) * 0.65 + Math.cos(ang) * 0.6,
+                  sy: (ny / rad) * 0.65 + Math.sin(ang) * 0.6,
+                  phase: pseudo(x + 3, y + 7) * Math.PI * 2
+                });
+              }
+            }
+            sampled[ci] = dots.length ? dots : [];
+          } catch (e) {
+            sampled[ci] = [];
+          }
+        }
+
+        LOGOS.forEach(function (logo, ci) {
+          if (/\.svg(\?|$)/.test(logo.src)) {
+            fetch(logo.src)
+              .then(function (r) {
+                return r.text();
+              })
+              .then(function (svg) {
+                var m = svg.match(/viewBox=["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)/);
+                var vbw = m ? parseFloat(m[1]) : 140,
+                  vbh = m ? parseFloat(m[2]) : 140;
+                var sized = /<svg[^>]*\swidth=/.test(svg)
+                  ? svg
+                  : svg.replace("<svg", '<svg width="' + vbw + '" height="' + vbh + '"');
+                var url = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }));
+                var img = new Image();
+                img.onload = function () {
+                  sample(img, ci);
+                  URL.revokeObjectURL(url);
+                };
+                img.onerror = function () {
+                  sampled[ci] = [];
+                  URL.revokeObjectURL(url);
+                };
+                img.src = url;
+              })
+              .catch(function () {
+                sampled[ci] = [];
+              });
+          } else {
+            var img = new Image();
+            img.onload = function () {
+              sample(img, ci);
+            };
+            img.onerror = function () {
+              sampled[ci] = [];
+            };
+            img.src = logo.src;
+          }
+        });
+
+        var start = 0,
+          lastPaint = 0,
+          cleared = false;
+        function draw(now) {
+          requestAnimationFrame(draw);
+          if (document.documentElement.getAttribute("data-theme") !== "light") {
+            if (!cleared) {
+              ctx.clearRect(0, 0, W, H);
+              cleared = true;
+            }
+            return;
+          }
+          cleared = false;
+          if (now - lastPaint < 33) return;
+          lastPaint = now;
+          if (!start) start = now;
+          ctx.clearRect(0, 0, W, H);
+
+          var baseT = (reduced ? 4 : now - start) / 1000;
+          var cyc = baseT / PERIOD;
+          var cycleNum = Math.floor(cyc);
+          var idx = reduced ? 0 : cycleNum % LOGOS.length;
+          var ph = reduced ? 0.5 : cyc - cycleNum;
+          var dots = sampled[idx];
+          if (!dots || !dots.length) return;
+          var coh = reduced ? 0.92 : smoothstep(0, 0.22, ph) * (1 - smoothstep(0.78, 1, ph));
+          if (coh <= 0.01) return;
+
+          var size = Math.min(W, H) * LOGOS[idx].scale;
+          var hx = reduced ? 0.5 : hash(cycleNum * 1.7 + 0.3);
+          var hy = reduced ? 0.46 : hash(cycleNum * 2.3 + 7.1);
+          var cx = (0.2 + 0.6 * hx) * W + (reduced ? 0 : Math.sin(baseT * 0.5 + cycleNum) * W * 0.02);
+          var cy =
+            (0.22 + 0.54 * hy) * H + (reduced ? 0 : Math.cos(baseT * 0.6 + cycleNum) * H * 0.02);
+          var scatter = (1 - coh) * size * 0.6;
+          var rDot = Math.max(1.2, (size / S) * GAP * 0.5);
+          var T = now * 0.0011;
+
+          for (var k = 0; k < dots.length; k++) {
+            var d = dots[k];
+            var tw = reduced ? 1 : 0.66 + 0.34 * Math.sin(baseT * 1.7 + d.phase);
+            var jx = reduced ? 0 : Math.sin(baseT * 2.1 + d.phase) * 0.6;
+            var jy = reduced ? 0 : Math.cos(baseT * 1.8 + d.phase * 1.3) * 0.6;
+            var sh = reduced ? 0.25 : (Math.sin((d.x - d.y) * 5.5 - T) + 1) / 2;
+            var hi = Math.pow(sh, 2.2);
+            var r = d.r + (255 - d.r) * hi * 0.5;
+            var g = d.g + (255 - d.g) * hi * 0.5;
+            var b = d.b + (255 - d.b) * hi * 0.5;
+            var alpha = coh * tw * d.a * (0.56 + hi * 0.24);
+            if (alpha <= 0.01) continue;
+            var px = cx + d.x * size + d.sx * scatter + jx;
+            var py = cy + d.y * size + d.sy * scatter + jy;
+            ctx.fillStyle = "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + alpha + ")";
+            ctx.beginPath();
+            ctx.arc(px, py, rDot * (0.5 + coh * 0.5), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        requestAnimationFrame(draw);
+      })();
+    </script>
+
+    <!-- Easter Eggs: jiggle the scroll (rapid up/down) to summon a LOGO STORM
+         (dark) or CLOUD TOKEN RAIN (light); hit the very top/bottom for a cute
+         "you've reached the end" token bounce. Idles at zero cost until summoned. -->
+    <script is:inline>
+      (function () {
+        var canvas = document.getElementById("bgFx");
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var reduced =
+          window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        var LOGO_SRCS = [
+          "/brand/vector/cloud_crest.svg",
+          "/brand/vector/cloud_pro_crest.svg",
+          "/brand/providers/openai.png",
+          "/brand/providers/claude-code.png",
+          "/brand/providers/codex.png",
+          "/brand/providers/antigravity.png",
+          "/brand/providers/hermes.png",
+          "/brand/providers/openclaw.png",
+          "/brand/providers/anthropic.png",
+          "/brand/providers/cursor.png",
+          "/brand/providers/gemini-cli.png",
+          "/brand/providers/xai.png",
+          "/brand/providers/windsurf.png",
+          "/brand/providers/copilot.png",
+          "/brand/providers/factory.png",
+          "/brand/providers/warp.png"
+        ];
+        var CREST_SRCS = ["/brand/vector/cloud_crest.svg", "/brand/vector/cloud_pro_crest.svg"];
+
+        function loadImg(src, into, i) {
+          if (/\.svg(\?|$)/.test(src)) {
+            fetch(src)
+              .then(function (r) { return r.text(); })
+              .then(function (svg) {
+                var m = svg.match(/viewBox=["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)/);
+                var vbw = m ? parseFloat(m[1]) : 140,
+                  vbh = m ? parseFloat(m[2]) : 140;
+                var sized = /<svg[^>]*\swidth=/.test(svg)
+                  ? svg
+                  : svg.replace("<svg", '<svg width="' + vbw + '" height="' + vbh + '"');
+                var url = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }));
+                var img = new Image();
+                img.onload = function () { into[i] = img; URL.revokeObjectURL(url); };
+                img.onerror = function () { URL.revokeObjectURL(url); };
+                img.src = url;
+              })
+              .catch(function () {});
+          } else {
+            var img = new Image();
+            img.onload = function () { into[i] = img; };
+            img.src = src;
+          }
+        }
+        var logos = [];
+        LOGO_SRCS.forEach(function (s, i) { loadImg(s, logos, i); });
+        var crests = [];
+        CREST_SRCS.forEach(function (s, i) { loadImg(s, crests, i); });
+
+        var dpr = Math.min(2, window.devicePixelRatio || 1), W = 0, H = 0;
+        function resize() {
+          W = window.innerWidth; H = window.innerHeight;
+          canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        resize();
+        window.addEventListener("resize", resize);
+
+        function rand(a, b) { return a + Math.random() * (b - a); }
+        function theme() {
+          return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+        }
+        function easeOutBack(x) {
+          var c1 = 1.70158, c3 = c1 + 1;
+          return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+        }
+
+        var sparks = [], clouds = [], tokens = [], edge = [], rects = [];
+        var stormUntil = 0, nextBurst = 0, rainUntil = 0, nextEmit = 0;
+        var rafId = null, last = 0;
+
+        function ensureLoop() { if (rafId == null) { last = 0; rafId = requestAnimationFrame(loop); } }
+
+        function drawImgP(img, x, y, size, rot, a) {
+          if (!img || a <= 0) return;
+          var ratio = img.naturalHeight / img.naturalWidth || 1;
+          var w = size, h = size * ratio;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, a));
+          ctx.translate(x, y); ctx.rotate(rot);
+          ctx.drawImage(img, -w / 2, -h / 2, w, h);
+          ctx.restore();
+        }
+        function drawToken(t, a) {
+          if (a <= 0) return;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, a));
+          ctx.translate(t.x, t.y); ctx.rotate(t.rot || 0);
+          var rr = t.r;
+          var g = ctx.createRadialGradient(-rr * 0.3, -rr * 0.3, rr * 0.1, 0, 0, rr);
+          if (t.gold) { g.addColorStop(0, "#fff1c2"); g.addColorStop(0.5, "#fdc42c"); g.addColorStop(1, "#a9760c"); }
+          else { g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#dfe6ec"); g.addColorStop(1, "#9aa3ad"); }
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(0, 0, rr, 0, 6.283); ctx.fill();
+          ctx.globalAlpha *= 0.5;
+          ctx.strokeStyle = t.gold ? "#7c5208" : "#7d858f"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(0, 0, rr * 0.58, 0, 6.283); ctx.stroke();
+          ctx.restore();
+        }
+        function drawCloud(cl, now) {
+          ctx.save();
+          var bob = Math.sin(now * 0.001 + cl.x) * 3;
+          var x = cl.x, y = cl.y + bob, w = cl.w, h = w * 0.42;
+          ctx.fillStyle = "rgba(150,154,162,0.5)";
+          ctx.beginPath();
+          ctx.arc(x - w * 0.28, y, h * 0.55, 0, 6.283);
+          ctx.arc(x, y - h * 0.18, h * 0.72, 0, 6.283);
+          ctx.arc(x + w * 0.28, y, h * 0.6, 0, 6.283);
+          ctx.rect(x - w * 0.45, y - 2, w * 0.9, h * 0.55);
+          ctx.fill();
+          var img = crests[cl.crest];
+          if (img) {
+            ctx.globalAlpha = 0.95;
+            var s = h * 1.0, ratio = img.naturalHeight / img.naturalWidth || 1;
+            ctx.drawImage(img, x - s / 2, y - s * 0.85, s, s * ratio);
+          }
+          ctx.restore();
+        }
+
+        function burst(now) {
+          var cx = rand(W * 0.12, W * 0.88), cy = rand(H * 0.12, H * 0.62);
+          var n = 7 + ((Math.random() * 7) | 0);
+          for (var i = 0; i < n; i++) {
+            var ang = rand(0, 6.283), sp = rand(40, 180);
+            sparks.push({
+              li: (Math.random() * logos.length) | 0, x: cx, y: cy,
+              vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - rand(20, 80),
+              size: rand(26, 54), rot: rand(-0.4, 0.4), vr: rand(-2, 2),
+              t: 0, life: rand(1.3, 2.1), tw: rand(0, 6.28)
+            });
+          }
+        }
+        function emitTokens(now) {
+          for (var c = 0; c < clouds.length; c++) {
+            var cl = clouds[c], n = 1 + ((Math.random() * 2) | 0);
+            for (var j = 0; j < n; j++) {
+              tokens.push({
+                x: cl.x + rand(-cl.w * 0.4, cl.w * 0.4), y: cl.y + 18,
+                vx: rand(-30, 30), vy: rand(10, 60), r: rand(5, 9),
+                rot: rand(0, 6.28), vr: rand(-4, 4), gold: Math.random() < 0.5, t: 0, settle: 0
+              });
+            }
+          }
+        }
+
+        function startStorm(now) { stormUntil = now + 4600; nextBurst = now; ensureLoop(); }
+        function startRain(now) {
+          rainUntil = now + 5600; nextEmit = now + 200; clouds = [];
+          rects = [];
+          document
+            .querySelectorAll(".btn, .hero__h, .hero__copy .lead, .card, .pillar, .ptcard, h1, h2, h3, .console")
+            .forEach(function (el) {
+              var r = el.getBoundingClientRect();
+              if (r.width > 40 && r.top > -50 && r.top < H + 50) rects.push({ l: r.left, r: r.right, t: r.top });
+            });
+          var nc = 3;
+          for (var i = 0; i < nc; i++) {
+            clouds.push({ x: ((i + 0.5) / nc) * W + rand(-40, 40), y: rand(36, 84), vx: rand(-12, 12), w: rand(120, 180), crest: i % Math.max(1, crests.length) });
+          }
+          ensureLoop();
+        }
+        function boundary(which, now) {
+          var y0 = which === "top" ? 6 : H - 6, dir = which === "top" ? 1 : -1, n = 8;
+          for (var i = 0; i < n; i++) {
+            edge.push({
+              x: ((i + 0.5) / n) * W + rand(-12, 12), y: y0, vy: dir * rand(260, 420),
+              g: -dir * 1100, r: rand(5, 8), gold: Math.random() < 0.5, t: 0, rot: 0
+            });
+          }
+          ensureLoop();
+        }
+
+        function loop(now) {
+          rafId = null;
+          var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
+          last = now;
+          ctx.clearRect(0, 0, W, H);
+
+          // logo storm
+          if (stormUntil && now < stormUntil && now >= nextBurst) { burst(now); nextBurst = now + rand(480, 820); }
+          for (var i = sparks.length - 1; i >= 0; i--) {
+            var p = sparks[i]; p.t += dt;
+            if (p.t >= p.life) { sparks.splice(i, 1); continue; }
+            var inA = Math.min(1, p.t / 0.32);
+            var outA = p.t > p.life - 0.55 ? Math.max(0, (p.life - p.t) / 0.55) : 1;
+            var sc = p.size * (0.2 + 0.8 * easeOutBack(inA));
+            p.vx *= 0.985; p.vy = p.vy * 0.985 + 38 * dt;
+            p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+            var a = Math.min(inA, outA) * (0.82 + 0.18 * Math.sin(now * 0.012 + p.tw));
+            drawImgP(logos[p.li], p.x, p.y, sc, p.rot, a);
+          }
+
+          // cloud token rain
+          if (rainUntil) {
+            for (var c = 0; c < clouds.length; c++) { var cl = clouds[c]; cl.x += cl.vx * dt; drawCloud(cl, now); }
+            if (now < rainUntil && now >= nextEmit) { emitTokens(now); nextEmit = now + rand(120, 240); }
+            for (var k = tokens.length - 1; k >= 0; k--) {
+              var t = tokens[k]; t.t += dt;
+              t.vy += 520 * dt; t.x += t.vx * dt; t.y += t.vy * dt; t.rot += t.vr * dt;
+              if (t.x < t.r) { t.x = t.r; t.vx = Math.abs(t.vx) * 0.6; }
+              if (t.x > W - t.r) { t.x = W - t.r; t.vx = -Math.abs(t.vx) * 0.6; }
+              for (var ri = 0; ri < rects.length; ri++) {
+                var R = rects[ri];
+                if (t.vy > 0 && t.x > R.l && t.x < R.r && t.y > R.t - t.r && t.y < R.t + 10) {
+                  t.y = R.t - t.r; t.vy = -t.vy * 0.52; t.vx += rand(-40, 40);
+                }
+              }
+              if (t.y > H - t.r) { t.y = H - t.r; t.vy = -Math.abs(t.vy) * 0.45; t.vx *= 0.7; t.settle++; }
+              var fade = t.t > 4.5 ? Math.max(0, (6 - t.t) / 1.5) : 1;
+              if (t.t > 6 || t.settle > 4) { tokens.splice(k, 1); continue; }
+              drawToken(t, fade);
+            }
+            if (now > rainUntil && tokens.length === 0) { rainUntil = 0; clouds = []; }
+          }
+
+          // boundary tokens
+          for (var e = edge.length - 1; e >= 0; e--) {
+            var et = edge[e]; et.t += dt;
+            et.vy += et.g * dt; et.y += et.vy * dt;
+            var fa = et.t > 0.5 ? Math.max(0, (0.85 - et.t) / 0.35) : 1;
+            if (et.t > 0.85) { edge.splice(e, 1); continue; }
+            drawToken(et, fa);
+          }
+
+          var busy =
+            sparks.length || tokens.length || edge.length ||
+            (rainUntil && now < rainUntil) || (stormUntil && now < stormUntil);
+          if (busy) rafId = requestAnimationFrame(loop);
+          else { ctx.clearRect(0, 0, W, H); last = 0; }
+        }
+
+        // --- triggers ---
+        var revTimes = [], lastDir = 0, cooldownUntil = 0, lastBoundary = 0;
+        function onDir(dir, now) {
+          if (!dir) return;
+          if (dir !== lastDir) { lastDir = dir; revTimes.push(now); }
+          while (revTimes.length && now - revTimes[0] > 1500) revTimes.shift();
+          if (revTimes.length >= 5 && now > cooldownUntil) {
+            cooldownUntil = now + 8000; revTimes = [];
+            if (reduced) return;
+            if (theme() === "light") startRain(now); else startStorm(now);
+          }
+        }
+        function atTop() { return (window.scrollY || 0) <= 0; }
+        function atBottom() {
+          return window.innerHeight + (window.scrollY || 0) >= document.documentElement.scrollHeight - 1;
+        }
+        var lastY = window.scrollY || 0;
+        window.addEventListener("scroll", function () {
+          var y = window.scrollY || 0, d = y - lastY; lastY = y;
+          if (Math.abs(d) > 2) onDir(d > 0 ? 1 : -1, performance.now());
+        }, { passive: true });
+        window.addEventListener("wheel", function (ev) {
+          var now = performance.now();
+          if (Math.abs(ev.deltaY) > 1) onDir(ev.deltaY > 0 ? 1 : -1, now);
+          if (!reduced && now > lastBoundary + 1200) {
+            if (atTop() && ev.deltaY < 0) { lastBoundary = now; boundary("top", now); }
+            else if (atBottom() && ev.deltaY > 0) { lastBoundary = now; boundary("bottom", now); }
+          }
+        }, { passive: true });
+        var tY = 0;
+        window.addEventListener("touchstart", function (e) { tY = e.touches[0].clientY; }, { passive: true });
+        window.addEventListener("touchmove", function (e) {
+          var y = e.touches[0].clientY, dy = y - tY; tY = y; var now = performance.now();
+          if (Math.abs(dy) > 4) onDir(dy < 0 ? 1 : -1, now);
+          if (!reduced && now > lastBoundary + 1200) {
+            if (atTop() && dy > 0) { lastBoundary = now; boundary("top", now); }
+            else if (atBottom() && dy < 0) { lastBoundary = now; boundary("bottom", now); }
+          }
+        }, { passive: true });
       })();
     </script>
 

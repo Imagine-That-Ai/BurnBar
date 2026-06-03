@@ -238,7 +238,7 @@ struct AgentBrandZoneView: View {
                     .font(.caption)
                     .foregroundStyle(DesignSystemColors.textMuted)
             } else {
-                FlowLayout(spacing: 6) {
+                AgentBrandFlowLayout(spacing: 6) {
                     ForEach(pills, id: \.self) { pill in
                         Text(pill)
                             .font(.caption.bold())
@@ -1315,7 +1315,7 @@ final class AgentSubscriptionTopicStore {
 
 // MARK: - Minimal FlowLayout shim (capability pills)
 
-private struct FlowLayout: Layout {
+private struct AgentBrandFlowLayout: Layout {
     var spacing: CGFloat
 
     init(spacing: CGFloat = 6) {

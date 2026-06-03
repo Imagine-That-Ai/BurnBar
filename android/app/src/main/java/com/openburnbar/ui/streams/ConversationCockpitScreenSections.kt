@@ -118,23 +118,19 @@ internal fun cockpitFilterRows(rows: List<CockpitConversationRow>, search: Strin
     return rows.filter { row ->
         row.title?.lowercase()?.contains(trimmed) == true ||
             row.preview?.lowercase()?.contains(trimmed) == true ||
-            row.projectName?.lowercase()?.contains(trimmed) == true ||
             row.model?.lowercase()?.contains(trimmed) == true ||
-            row.provider?.lowercase()?.contains(trimmed) == true ||
-            row.workingDirectory?.lowercase()?.contains(trimmed) == true
+            row.provider?.lowercase()?.contains(trimmed) == true
     }
 }
 
 internal fun cockpitHasActiveFilters(
     selectedProviders: Set<String>,
     selectedModel: String?,
-    projectQuery: String,
     dateFrom: Long?,
     dateTo: Long?,
 ): Boolean =
     selectedProviders.isNotEmpty() ||
         selectedModel != null ||
-        projectQuery.isNotEmpty() ||
         dateFrom != null ||
         dateTo != null
 
@@ -263,7 +259,6 @@ internal data class EntitledCockpitStoreSnapshot(
     val sortDirection: ConversationSortDirection,
     val dateFrom: Long?,
     val dateTo: Long?,
-    val projectQuery: String,
 )
 
 @Composable
@@ -285,7 +280,6 @@ internal fun rememberEntitledCockpitStoreSnapshot(store: ConversationCockpitStor
     val sortDirection by store.sortDirection.collectAsState()
     val dateFrom by store.dateFromMs.collectAsState()
     val dateTo by store.dateToMs.collectAsState()
-    val projectQuery by store.projectQuery.collectAsState()
     return EntitledCockpitStoreSnapshot(
         rows = rows,
         aggregates = aggregates,
@@ -304,7 +298,6 @@ internal fun rememberEntitledCockpitStoreSnapshot(store: ConversationCockpitStor
         sortDirection = sortDirection,
         dateFrom = dateFrom,
         dateTo = dateTo,
-        projectQuery = projectQuery,
     )
 }
 
@@ -328,7 +321,6 @@ private fun EntitledCockpitBody(store: ConversationCockpitStore, snapshot: Entit
     val hasActiveFilters = cockpitHasActiveFilters(
         snapshot.selectedProviders,
         snapshot.selectedModel,
-        snapshot.projectQuery,
         snapshot.dateFrom,
         snapshot.dateTo,
     )
@@ -352,7 +344,7 @@ private fun EntitledCockpitBody(store: ConversationCockpitStore, snapshot: Entit
         store = store,
         sheetState =
         EntitledCockpitOverlaySheetState(
-            selectedRow, showFilters, showSaveQuery, snapshot.projectQuery, snapshot.dateFrom, snapshot.dateTo,
+            selectedRow, showFilters, showSaveQuery, snapshot.dateFrom, snapshot.dateTo,
         ),
         callbacks =
         EntitledCockpitOverlaySheetCallbacks(
@@ -944,7 +936,6 @@ internal fun CockpitMetaLabel(icon: androidx.compose.ui.graphics.vector.ImageVec
 
 internal fun cockpitRowSubtitle(row: CockpitConversationRow): String {
     val parts = mutableListOf<String>()
-    row.projectName?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
     row.model?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
     row.activityDateMs.takeIf { it > 0 }?.let { parts.add(Formatting.formatRelativeTime(it)) }
     return parts.joinToString(" · ")

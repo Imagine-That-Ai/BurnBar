@@ -19,10 +19,12 @@ import { computeUserRollups, computeUserRollupsFromCounters, writeUserRollups } 
 import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
+import { anchorAuditHeads } from "./callables/auditLog.js";
 import type { Provider } from "./types.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
 import { logError } from "./logging.js";
 import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 
@@ -35,7 +37,7 @@ const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 export const rebuildRollups = onSchedule(
   {
     schedule: "every 5 minutes",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     // Use the default compute service account; no special invoker needed.
   },
   async (_event) =>
@@ -93,7 +95,7 @@ export const rebuildRollups = onSchedule(
 export const refreshAllProviderQuotas = onSchedule(
   {
     schedule: "every 15 minutes",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     secrets: HOSTED_RUNNER_SECRETS,
   },
   async (_event) =>
@@ -223,7 +225,7 @@ export const refreshAllProviderQuotas = onSchedule(
 export const refreshModelLandscapeBenchmarks = onSchedule(
   {
     schedule: "every 24 hours",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     secrets: [ARTIFICIAL_ANALYSIS_API_KEY],
     // The bench fetch (AA + HF + Design Arena) plus retry/backoff can take
     // 30-60 s; the rundown re-score adds a few more reads/writes. Give the
@@ -245,4 +247,27 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
       await scheduledFirestore("model_landscape.write", () => writeModelLandscapeBenchmarks(db, result));
       await scheduledFirestore("router_rundown.build", () => buildAndPersistRouterRundown(db, now));
     }),
+);
+
+/**
+ * Scheduled worker: daily OpenTimestamps anchor of every user's audit head.
+ *
+ * Stamps `audit_meta/head.headHash` for each head that advanced since its last
+ * anchor (B-SEC-3 truncation hardening). The anchor lets `verifyAuditLog` reject
+ * a truncated tail even against a colluding server that also rewrites the head
+ * pointer. Best-effort per user; reuses the existing OTS infra.
+ */
+export const anchorAuditLogHeads = onSchedule(
+  {
+    schedule: "every 24 hours",
+    region: FUNCTIONS_REGION,
+    // Each head stamp shells out to / round-trips the OTS calendar; give the
+    // sweep room for a bounded batch without starving on slow calendars.
+    timeoutSeconds: 300,
+  },
+  async (_event) => {
+    await runScheduledJob("anchorAuditLogHeads", async () => {
+      await anchorAuditHeads();
+    });
+  },
 );

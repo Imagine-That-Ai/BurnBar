@@ -385,13 +385,19 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
         guard others.documents.isEmpty else {
             throw CloudGatewayError.classified(.other(message: "Another trusted device already exists. Approve from that device."))
         }
-        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(deviceId: deviceId)
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(
+            deviceId: deviceId,
+            approverDeviceId: deviceId
+        )
     }
 
     func trustSelfForComputerUseControl() async throws {
         guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
         await registerSelfIfNeeded()
-        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(deviceId: deviceId)
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(
+            deviceId: deviceId,
+            approverDeviceId: deviceId
+        )
     }
 
     func isSelfTrustedForComputerUseControl() async throws -> Bool {

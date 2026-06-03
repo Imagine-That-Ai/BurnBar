@@ -22,6 +22,7 @@ import { syncKillSwitchForBudgetLevel } from "./computerUseRemoteConfig.js";
 import { numberField } from "./guards.js";
 import { logError, logInfo } from "./logging.js";
 import { remoteConfigStringValue } from "./remoteConfigGuards.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const SOFT_CAP_USD = 1500;
 const HARD_CAP_USD = 2500;
@@ -131,7 +132,7 @@ export const evaluateComputerUseBudget = onSchedule(
   {
     schedule: "every 60 minutes",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     timeoutSeconds: 540,
   },
   async () => {

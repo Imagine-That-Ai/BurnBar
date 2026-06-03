@@ -21,6 +21,7 @@ import { numberField } from "./guards.js";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { MediaBudgetStatusDoc } from "./types.js";
 import { syncKillSwitchForMediaBudgetLevel } from "./mediaRemoteConfig.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const SOFT_CAP_USD = 600;
 const HARD_CAP_USD = 1000;
@@ -205,7 +206,7 @@ export const evaluateMediaBudget = onSchedule(
   {
     schedule: "every 60 minutes",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
   },
   async () => {
     await evaluateBudget(new Date());

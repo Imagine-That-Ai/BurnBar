@@ -117,6 +117,120 @@ async function seedHostedComputerUseEntitlement(
   });
 }
 
+const TEST_VAULT_KEY_ID = `v1_${"a".repeat(32)}`;
+
+function sealedPayload(vaultKeyID = TEST_VAULT_KEY_ID, sealedBoxBase64 = "c2VhbGVk") {
+  return {
+    schemaVersion: 1,
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    vaultKeyID,
+    sealedBoxBase64,
+  };
+}
+
+// Canonical CloudVaultSealedText envelope (validCloudSealedText shape):
+// algorithm/keyVersion/nonce/ciphertext/tag, base64-charset strings only.
+function sealedText(overrides = {}) {
+  return {
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    nonce: "bm9uY2U=",
+    ciphertext: "Y2lwaGVydGV4dA==",
+    tag: "dGFn",
+    ...overrides,
+  };
+}
+
+// Canonical CloudVaultBlobEnvelope (validCloudSealedBlob shape):
+// schemaVersion/algorithm/keyVersion/plaintextSHA256/sealedBoxBase64/createdAt.
+function sealedBlob(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    plaintextSHA256: "a".repeat(64),
+    sealedBoxBase64: "c2VhbGVkLWJsb2I=",
+    createdAt: "2026-06-02T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+async function seedCloudVaultState(uid, vaultKeyID = TEST_VAULT_KEY_ID) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/cloud_vault_state/current`), {
+      uid,
+      vaultKeyID,
+      keyVersion: 1,
+      algorithm: "AES-256-GCM",
+      status: "active",
+      createdByDeviceId: "test-device",
+      createdAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
+      updatedAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
+      schemaVersion: 1,
+    });
+  });
+}
+
+function sealedChatThreadPatch(overrides = {}) {
+  return {
+    contentIncluded: true,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    ...overrides,
+  };
+}
+
+function sealedMissionBase(id, overrides = {}) {
+  return {
+    id,
+    missionKind: "debt",
+    requestedRuntime: "auto",
+    depth: "standard",
+    approvalMode: "existing_policy",
+    commandsAllowed: false,
+    fileEditsAllowed: false,
+    source: "ios-insights",
+    status: "pending",
+    createdAt: "2026-05-13T00:00:00.000Z",
+    updatedAt: serverTimestamp(),
+    schemaVersion: 2,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    ...overrides,
+  };
+}
+
+function sealedMissionEvent(overrides = {}) {
+  return {
+    sequence: 1,
+    timestamp: "2026-05-13T00:00:00.000Z",
+    kind: "status",
+    phase: "queued",
+    source: "ios",
+    isError: false,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    ...overrides,
+  };
+}
+
+function sealedMissionStatePatch(overrides = {}) {
+  return {
+    contentSealed: true,
+    sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl"),
+    sealedStateSchemaVersion: 1,
+    sealedStateVaultKeyID: TEST_VAULT_KEY_ID,
+    ...overrides,
+  };
+}
+
 function authedDb(uid) {
   return testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
 }
@@ -126,16 +240,17 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
   const otherDb = authedDb("credential-attacker");
   const validCode = "ABCDEFGHJKM2";
   const validPath = `credential_transfers/${validCode}`;
+  const now = Date.now();
   const baseTransfer = {
     ownerUid: "credential-owner",
     payload: "v1.c2FsdC1maXh0dXJl.aXYtZml4dHVyZQ.Y2lwaGVydGV4dC1maXh0dXJl",
-    createdAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
-    expiresAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+    createdAt: Timestamp.fromMillis(now - 1_000),
+    expiresAt: Timestamp.fromMillis(now + 23 * 60 * 60 * 1000),
     consumed: false,
   };
 
   await assertSucceeds(setDoc(doc(ownerDb, validPath), baseTransfer));
-  await assertSucceeds(getDoc(doc(ownerDb, validPath)));
+  await assertFails(getDoc(doc(ownerDb, validPath)));
   await assertFails(getDoc(doc(otherDb, validPath)));
 
   await assertFails(
@@ -157,7 +272,7 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
     updateDoc(doc(ownerDb, validPath), {
       consumed: true,
       consumedAt: Timestamp.fromDate(new Date("2026-06-01T00:05:00.000Z")),
@@ -178,6 +293,125 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
     });
   });
   await assertFails(getDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM5")));
+  await assertFails(
+    setDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM6"), {
+      ...baseTransfer,
+      expiresAt: Timestamp.fromMillis(now + 25 * 60 * 60 * 1000),
+    })
+  );
+});
+
+test("provider accounts reject plaintext or unknown credential containers", async () => {
+  const ownerDb = authedDb("provider-owner");
+  const basePath = "users/provider-owner/provider_accounts/account-1";
+  const canonical = {
+    id: "account-1",
+    providerID: "codex",
+    label: "Codex",
+    status: "connected",
+    credentialKind: "token",
+    storageScope: "server_private",
+    redactedLabel: "sk_...1234",
+    isDefault: true,
+    sortKey: 0,
+    schemaVersion: 2,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  await assertSucceeds(setDoc(doc(ownerDb, basePath), canonical));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-2"), {
+      ...canonical,
+      id: "account-2",
+      credentials: { apiKey: "plaintext" },
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-3"), {
+      ...canonical,
+      id: "account-3",
+      secretVersionName: "projects/x/secrets/y/versions/1",
+    })
+  );
+});
+
+test("escrow public keys and envelopes are schema-constrained encrypted docs", async () => {
+  const ownerDb = authedDb("escrow-owner");
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), {
+      deviceId: "device-1",
+      publicKeyData: "A".repeat(88),
+      publicKeyFingerprint: "F".repeat(44),
+      keyVersion: 1,
+      algorithm: "ECIES-P256-AESGCM",
+      createdAt: Timestamp.fromMillis(Date.now()),
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_devices/device-1"), {
+      deviceId: "device-1",
+      deviceName: "iPhone",
+      platform: "iOS",
+      trustState: "pending",
+      publicKeyFingerprint: "F".repeat(44),
+      keyVersion: 1,
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    })
+  );
+  const publicKey = {
+    deviceId: "device-1",
+    publicKeyData: "A".repeat(88),
+    publicKeyFingerprint: "F".repeat(44),
+    keyVersion: 1,
+    algorithm: "ECIES-P256-AESGCM",
+    createdAt: Timestamp.fromMillis(Date.now()),
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), publicKey));
+  await assertFails(updateDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), { publicKeyData: "B".repeat(88) }));
+  await assertFails(setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_duplicate"), publicKey));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1_alt"), {
+      ...publicKey,
+      publicKeyFingerprint: "G".repeat(44),
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-2_1"), {
+      ...publicKey,
+      deviceId: "device-2",
+      publicKeyJwk: { kty: "EC", crv: "P-256", x: "A", y: "B", d: "PRIVATE" },
+    })
+  );
+
+  const envelope = {
+    id: "envelope-1",
+    grantId: "grant-1",
+    sourceDeviceId: "device-1",
+    targetDeviceId: "device-2",
+    providerId: "codex",
+    credentialKind: "api_key",
+    ciphertext: "Q".repeat(64),
+    keyVersion: 1,
+    envelopeVersion: 1,
+    createdAt: Timestamp.fromMillis(Date.now()),
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-1"), envelope));
+  const { targetDeviceId: _targetDeviceId, ...missingTargetEnvelope } = envelope;
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-2"), {
+      ...missingTargetEnvelope,
+      id: "envelope-2",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-3"), {
+      ...envelope,
+      id: "envelope-3",
+      credentials: { apiKey: "plaintext" },
+    })
+  );
 });
 
 test("owners can publish iroh pairing data and audit events without leaking secrets", async () => {
@@ -530,15 +764,24 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
   );
 
   await seedHostedCloudEntitlement("alice");
+  await seedCloudVaultState("alice");
 
   await assertSucceeds(
     setDoc(
       doc(freeDb, threadPath),
+      sealedChatThreadPatch({
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+
+  await assertFails(
+    setDoc(
+      doc(freeDb, threadPath),
       {
-        contentIncluded: true,
+        ...sealedChatThreadPatch(),
         title: "private plan",
-        preview: "private preview",
-        messages: [{ id: "m1", role: "user", content: "secret prompt" }],
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -638,107 +881,44 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   const phoneDb = authedDb("ivy");
   const otherDb = authedDb("mallory");
   const requestPath = "users/ivy/cli_agent_mission_requests/mission-1";
+  await seedCloudVaultState("ivy");
 
   await assertSucceeds(
-    setDoc(doc(phoneDb, requestPath), {
-      id: "mission-1",
-      title: "Debt Mission",
-      prompt: "Find the highest-leverage technical debt mission from the current Insights brief.",
-      missionKind: "debt",
-      requestedRuntime: "auto",
-      targetProject: "",
-      depth: "standard",
-      approvalMode: "existing_policy",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
-      source: "ios-insights",
-      status: "pending",
-      liveSummary: "Mission queued from this device.",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1"))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Mission queued from this device.",
-      source: "ios",
-      isError: false,
-    })
+    setDoc(doc(phoneDb, `${requestPath}/events/000001`), sealedMissionEvent())
   );
   const androidRequestPath = "users/ivy/cli_agent_mission_requests/mission-android";
   await assertSucceeds(
-    setDoc(doc(phoneDb, androidRequestPath), {
-      id: "mission-android",
-      title: "Android Mission",
-      prompt: "Launch a mobile mission from Android.",
+    setDoc(doc(phoneDb, androidRequestPath), sealedMissionBase("mission-android", {
       missionKind: "custom",
       requestedRuntime: "opencode",
-      targetProject: "",
       depth: "light",
       approvalMode: "read_only",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
       source: "android-insights",
-      status: "pending",
-      liveSummary: "Mission queued from this Android device.",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Mission queued from this Android device.",
+    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), sealedMissionEvent({
       source: "android",
-      isError: false,
-    })
+    }))
   );
   const chatRequestPath = "users/ivy/cli_agent_mission_requests/chat-ios";
   await assertSucceeds(
-    setDoc(doc(phoneDb, chatRequestPath), {
-      id: "chat-ios",
-      title: "New Codex chat",
-      prompt: "Start a normal mobile chat.",
+    setDoc(doc(phoneDb, chatRequestPath), sealedMissionBase("chat-ios", {
       missionKind: "chat",
       requestedRuntime: "codex",
       requestedModelID: "gpt-5.5",
-      targetProject: "",
-      depth: "standard",
-      approvalMode: "existing_policy",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
       source: "ios-chat",
-      status: "pending",
-      liveSummary: "Chat queued from this device.",
       clientThreadID: "mobile-thread-1",
       resumeAction: "new",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Chat queued from this device.",
+    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), sealedMissionEvent({
       source: "ios-chat",
-      isError: false,
-    })
+    }))
   );
   await assertFails(
     setDoc(doc(phoneDb, `${androidRequestPath}/events/000002`), {
@@ -959,119 +1139,82 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   );
   const lifecyclePath = "users/ivy/cli_agent_mission_requests/mission-lifecycle";
   await assertSucceeds(
-    setDoc(doc(phoneDb, lifecyclePath), {
-      id: "mission-lifecycle",
-      title: "Lifecycle Mission",
-      prompt: "Exercise accepted, starting, and running lifecycle states.",
+    setDoc(doc(phoneDb, lifecyclePath), sealedMissionBase("mission-lifecycle", {
       missionKind: "custom",
       requestedRuntime: "codex",
-      targetProject: "",
-      depth: "standard",
       approvalMode: "read_only",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
-      source: "ios-insights",
-      status: "pending",
-      liveSummary: "Mission queued from this device.",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Mission queued from this device.",
-      source: "ios",
-      isError: false,
-    })
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), sealedMissionEvent())
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      {
+      sealedMissionStatePatch({
         status: "accepted",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
         selectedModelID: "gpt-5.5",
-        liveSummary: "Codex claimed the mission on this Mac.",
         startedAt: "2026-05-13T00:00:01.000Z",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), {
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), sealedMissionEvent({
       sequence: 2,
       timestamp: "2026-05-13T00:00:01.000Z",
-      kind: "status",
       phase: "accepted",
-      title: "Accepted",
-      message: "Codex claimed the mission on this Mac.",
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      {
+      sealedMissionStatePatch({
         status: "starting",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
-        liveSummary: "Starting Codex with the mission prompt.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), {
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), sealedMissionEvent({
       sequence: 3,
       timestamp: "2026-05-13T00:00:02.000Z",
-      kind: "status",
       phase: "starting",
-      title: "Starting",
-      message: "Starting Codex with the mission prompt.",
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      {
+      sealedMissionStatePatch({
         status: "running",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
-        liveSummary: "Codex is running on this Mac.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), {
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), sealedMissionEvent({
       sequence: 4,
       timestamp: "2026-05-13T00:00:03.000Z",
-      kind: "status",
       phase: "running",
-      title: "Running",
-      message: "Codex is running on this Mac.",
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
   await assertSucceeds(
     setDoc(doc(phoneDb, "users/ivy/escrow_devices/mac-pending"), {
@@ -1209,38 +1352,30 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      {
+      sealedMissionStatePatch({
         status: "waiting_for_approval",
         claimedBy: "mac-1",
         approvalRequestId: "approval-1",
         approvalStatus: "pending",
         approvalRequestedAt: "2026-05-13T00:00:03.500Z",
-        approvalTitle: "Approve Debt Mission",
-        approvalMessage: "Codex is waiting for approval before commands.",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
-        liveSummary: "Codex is waiting for approval before commands.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000002`), {
+    setDoc(doc(phoneDb, `${requestPath}/events/000002`), sealedMissionEvent({
       sequence: 2,
       timestamp: "2026-05-13T00:00:03.000Z",
       kind: "tool_call",
       phase: "tool_use",
-      title: "Read",
-      message: "Read: AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
-      fullMessage: "Read: AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift\n\n{\"offset\":1,\"limit\":120}",
       messageLength: 96,
       messageTruncated: false,
       runtime: "codex",
       source: "mac",
-      toolName: "Read",
-      isError: false,
-    })
+    }))
   );
   await assertFails(
     setDoc(
@@ -1253,18 +1388,49 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   );
   await assertFails(deleteDoc(doc(phoneDb, `${requestPath}/events/000002`)));
   await assertFails(deleteDoc(doc(phoneDb, requestPath)));
-  await assertSucceeds(
+  // Blocker 2 — approval RESOLUTION is server-only. A direct client write cannot
+  // approve a mission (with or without naming a trusted device); approve/reject
+  // must flow through the App-Check + attestation enforced respondMissionApproval
+  // callable (Admin SDK). Both the mobile and trusted-host rule branches refuse
+  // to resolve approvalStatus to approved/rejected.
+  await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
-      {
+      sealedMissionStatePatch({
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
-        liveSummary: "Approval granted from mobile. Waiting for the Mac to resume.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch({
+        approvalStatus: "approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        approvedByDeviceId: "mac-1",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+  // The real resolution is performed server-side by the callable (Admin SDK,
+  // which bypasses these rules), simulated here with security rules disabled —
+  // it stamps a server-verified approvedByDeviceId.
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), requestPath),
+      sealedMissionStatePatch({
+        approvalStatus: "approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        approvedByDeviceId: "mac-1",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    );
+  });
   await assertFails(
     setDoc(doc(otherDb, `${requestPath}/events/000003`), {
       sequence: 3,
@@ -1282,35 +1448,29 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      {
+      sealedMissionStatePatch({
         status: "completed",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
         sessionId: "thread-1",
-        liveSummary: "Codex returned a result.",
-        resultPreview: "Prioritized debt mission with validation commands.",
         completedAt: "2026-05-13T00:00:05.000Z",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000003`), {
+    setDoc(doc(phoneDb, `${requestPath}/events/000003`), sealedMissionEvent({
       sequence: 3,
       timestamp: "2026-05-13T00:00:05.000Z",
       kind: "final_answer",
       phase: "completed",
-      title: "Completed",
-      message: "Prioritized debt mission with validation commands.",
-      fullMessage: "Prioritized debt mission with validation commands.\n\nValidation:\n- xcodebuild test\n- ./gradlew test",
       messageLength: 95,
       messageTruncated: false,
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
 
   await assertFails(getDoc(doc(otherDb, requestPath)));
@@ -1334,28 +1494,22 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
   const macDb = authedDb("jules");
   const otherDb = authedDb("mallory");
   const sessionPath = "users/jules/cli_sessions/thread-1";
+  await seedCloudVaultState("jules");
 
   await assertSucceeds(
     setDoc(doc(macDb, sessionPath), {
       id: "thread-1",
       agent: "claude",
-      title: "Diligence Mission",
-      preview: "Security and launch-readiness findings",
-      modelName: "claude-code",
-      workspaceLabel: "BurnBar",
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: "2026-05-13T00:00:03.000Z",
       schemaVersion: 1,
-      messages: [
-        {
-          id: "m1",
-          role: "assistant",
-          text: "Found one launch-readiness issue.",
-          timestamp: "2026-05-13T00:00:03.000Z",
-          isError: false,
-          toolUses: [],
-        },
-      ],
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedPayload: sealedPayload(),
+      messageCount: 1,
+      lastMessageRole: "assistant",
+      lastAssistantMessageID: "m1",
     })
   );
 
@@ -1365,26 +1519,40 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
     setDoc(doc(macDb, "users/jules/cli_sessions/thread-2"), {
       id: "thread-2",
       agent: "unknown",
-      title: "Unsupported",
-      preview: "Unsupported agent",
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: "2026-05-13T00:00:03.000Z",
       schemaVersion: 1,
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedPayload: sealedPayload(),
     })
   );
 });
 
 test("conversation and session-log backup require hosted cloud entitlement", async () => {
   const db = authedDb("carol");
+  await seedCloudVaultState("carol");
+
+  const sealedConversationDoc = {
+    id: "conv",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    messageCount: 1,
+    userWordCount: 10,
+    assistantWordCount: 20,
+    updatedAt: serverTimestamp(),
+    sourceType: "provider_log",
+    version: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
 
   await assertFails(
-    setDoc(doc(db, "users/carol/conversations/device_conv"), {
-      id: "conv",
-      deviceId: "device",
-      provider: "codex",
-      sessionId: "session",
-      updatedAt: serverTimestamp(),
-    })
+    setDoc(doc(db, "users/carol/conversations/device_conv"), sealedConversationDoc)
   );
 
   await assertFails(
@@ -1401,12 +1569,14 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
   await seedHostedCloudEntitlement("carol");
 
   await assertSucceeds(
-    setDoc(doc(db, "users/carol/conversations/device_conv"), {
-      id: "conv",
-      deviceId: "device",
-      provider: "codex",
-      sessionId: "session",
-      updatedAt: serverTimestamp(),
+    setDoc(doc(db, "users/carol/conversations/device_conv"), sealedConversationDoc)
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/carol/conversations/device_plaintext"), {
+      ...sealedConversationDoc,
+      id: "device_plaintext",
+      projectName: "BurnBar",
     })
   );
 
@@ -1425,8 +1595,9 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
       index: 0,
       hash: "hash",
-      snippet: "private markdown preview",
-      terms: ["private", "markdown"],
+      sealedSnippet: sealedText(),
+      tokenHashes: ["a".repeat(32)],
+      semanticHashes: ["b".repeat(32)],
       bodyStorage: "local_or_icloud",
       schemaVersion: 3,
       updatedAt: serverTimestamp(),
@@ -1459,7 +1630,7 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
   await assertSucceeds(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_ok"), {
       ...facetBase,
-      facetSchemaVersion: 1,
+      facetSchemaVersion: 2,
       model: "gpt-5-codex",
       messageCount: 12,
       userWordCount: 340,
@@ -1470,7 +1641,6 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
       cacheReadTokens: 9000,
       totalTokens: 25200,
       costUSD: 0.42,
-      workingDirectory: "/Users/dev/project",
       toolTags: ["bash", "edit", "read"],
       durationSeconds: 540,
     })
@@ -1500,20 +1670,24 @@ test("session-log manifest accepts bounded cockpit facets but rejects malformed 
     })
   );
 
-  // Plaintext string facets are length-bounded so none can smuggle a full transcript past the
-  // zero-knowledge boundary (projectName is the widest at 1024 chars).
+  // Project/path text is private and must never ride as a plaintext facet.
   await assertFails(
     setDoc(doc(db, "users/facet-user/session_logs/device_facets_bigproject"), {
       ...facetBase,
-      projectName: "x".repeat(2048),
+      projectName: "BurnBar",
     })
   );
 
-  // A bounded project path is still accepted.
-  await assertSucceeds(
-    setDoc(doc(db, "users/facet-user/session_logs/device_facets_okproject"), {
+  await assertFails(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_workingdir"), {
       ...facetBase,
-      projectName: "/Users/dev/Documents/Windsurf/BurnBar",
+      workingDirectory: "/Users/dev/Documents/Windsurf/BurnBar",
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/facet-user/session_logs/device_facets_source"), {
+      ...facetBase,
       sourceType: "cli_session",
     })
   );
@@ -1570,6 +1744,7 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   );
 
   await seedBurnBarProEntitlement("pro-user");
+  await seedCloudVaultState("pro-user");
 
   await assertFails(
     setDoc(doc(db, documentPath), {
@@ -1783,11 +1958,12 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       publicKeyFingerprint: "fingerprint",
       keyVersion: 1,
       wrappedVaultKey: "sealed-vault-key",
+      vaultKeyID: TEST_VAULT_KEY_ID,
       algorithm: "P256_X963_HKDF_SHA256_AESGCM",
       status: "active",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      schemaVersion: 1,
+      schemaVersion: 2,
     })
   );
 });
@@ -2157,6 +2333,7 @@ test("agent notification events are server-written and replies are queued by own
   const otherDb = authedDb("mallory");
   const eventPath = "users/nina/agent_notification_events/event-1";
   const replyPath = "users/nina/agent_notification_replies/reply-1";
+  await seedCloudVaultState("nina");
 
   await assertFails(
     setDoc(doc(db, eventPath), {
@@ -2203,7 +2380,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "thread-1",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "Ship it.",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       deviceId: "iphone",
       status: "queued",
       createdAt: serverTimestamp(),
@@ -2241,7 +2421,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "thread-1",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "Hijack",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2258,6 +2441,10 @@ test("agent notification events are server-written and replies are queued by own
       runtime: "codex",
       sourceKind: "cli_session",
       replyText: "",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2273,7 +2460,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "different-thread",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "Send somewhere else",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2289,7 +2479,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "thread-1",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "No backing event",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2440,6 +2633,501 @@ test("Hermes Gateway state is server-owned and destinations are Cloud-gated", as
       ...destination,
       id: "burnbar:leaky",
       secret: "must-not-pass",
+    })
+  );
+});
+
+// ---------------------------------------------------------------------------
+// privacy-leak-remediation-2026-06-02 — denylist -> hasOnly allowlist hardening.
+// T1-T9: prove the sealed shapes are accepted, that arbitrary unlisted keys are
+// rejected on BOTH the create and the merge-update paths, and that the gateway
+// relay collection is already-sealed (ciphertext, never plaintext text/body).
+// ---------------------------------------------------------------------------
+
+// T1 — hermes_relay_requests (gateway) is already sealed on create AND update.
+test("T1 hermes_relay_requests stays sealed across create and merge update", async () => {
+  const db = authedDb("relay-owner");
+  const requestPath = "users/relay-owner/hermes_relay_requests/req-1";
+  const chunkPath = `${requestPath}/chunks/00000000`;
+  await seedHostedCloudEntitlement("relay-owner");
+
+  const sealedRequest = {
+    id: "req-1",
+    connectionId: "relay-mac",
+    operation: "chatCompletions",
+    status: "pending",
+    method: "POST",
+    payloadCiphertext: "ciphertext",
+    wrappedKey: "wrapped",
+    relayEncryption: "p256-hkdf-sha256-aesgcm",
+    relayKeyVersion: 1,
+    chunkCount: 0,
+    createdAt: "2026-06-02T00:00:01.000Z",
+    updatedAt: "2026-06-02T00:00:01.000Z",
+    schemaVersion: 2,
+  };
+
+  // Plaintext body / sessionId / path are denied outright.
+  await assertFails(
+    setDoc(doc(db, requestPath), { ...sealedRequest, body: "{\"messages\":[]}" })
+  );
+  await assertFails(
+    setDoc(doc(db, requestPath), { ...sealedRequest, sessionId: "leak-session" })
+  );
+  // The sealed v2 request succeeds.
+  await assertSucceeds(setDoc(doc(db, requestPath), sealedRequest));
+
+  // A merge update advancing the status stays sealed and is allowed.
+  await assertSucceeds(
+    setDoc(
+      doc(db, requestPath),
+      { ...sealedRequest, status: "streaming", updatedAt: "2026-06-02T00:00:02.000Z" },
+      { merge: true }
+    )
+  );
+
+  // A merge update smuggling a plaintext body is denied (catches the
+  // merge-semantics regression where a later partial write re-introduces a
+  // cleartext field past a create-only check).
+  await assertFails(
+    setDoc(doc(db, requestPath), { body: "leak" }, { merge: true })
+  );
+
+  // Chunk: plaintext text/data denied, sealed ciphertext chunk allowed.
+  await assertFails(
+    setDoc(doc(db, chunkPath), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "sse",
+      text: "leaked token stream",
+      createdAt: "2026-06-02T00:00:03.000Z",
+      schemaVersion: 2,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(db, chunkPath), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "sse",
+      ciphertext: "encrypted-chunk",
+      createdAt: "2026-06-02T00:00:03.000Z",
+      schemaVersion: 2,
+    })
+  );
+});
+
+// T2 — mobile_assistant_chats rejects plaintext content and unlisted keys.
+test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", async () => {
+  const db = authedDb("ma-owner");
+  const threadPath = "users/ma-owner/mobile_assistant_chats/thread-1";
+  await seedCloudVaultState("ma-owner");
+
+  const sealedThread = {
+    id: "thread-1",
+    runtime: "hermes",
+    createdAt: "2026-06-02T00:00:00.000Z",
+    updatedAt: "2026-06-02T00:00:00.000Z",
+    messageCount: 3,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+
+  await assertSucceeds(setDoc(doc(db, threadPath), sealedThread));
+
+  // Plaintext messages / title are denied.
+  await assertFails(
+    setDoc(doc(db, "users/ma-owner/mobile_assistant_chats/thread-2"), {
+      ...sealedThread,
+      id: "thread-2",
+      messages: [{ role: "user", content: "secret prompt" }],
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/ma-owner/mobile_assistant_chats/thread-3"), {
+      ...sealedThread,
+      id: "thread-3",
+      title: "private title",
+    })
+  );
+  // An arbitrary unlisted key is denied by hasOnly.
+  await assertFails(
+    setDoc(doc(db, "users/ma-owner/mobile_assistant_chats/thread-4"), {
+      ...sealedThread,
+      id: "thread-4",
+      summary: "smuggled plaintext summary",
+    })
+  );
+});
+
+// T3 — session_logs manifest rejects an arbitrary unlisted key (hasOnly).
+test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
+  const db = authedDb("slm-owner");
+  await seedHostedCloudEntitlement("slm-owner");
+  const base = {
+    id: "log",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    chunkCount: 1,
+    updatedAt: serverTimestamp(),
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/slm-owner/session_logs/ok"), base)
+  );
+  // Arbitrary unlisted key.
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/smuggled"), {
+      ...base,
+      smuggled: "x",
+    })
+  );
+  // Classic plaintext-content vectors stay denied.
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/body"), { ...base, body: "leak" })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/title"), { ...base, title: "leak" })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/proj"), { ...base, projectName: "BurnBar" })
+  );
+});
+
+// T4 — session_logs chunk rejects unlisted + plaintext keys (hasOnly).
+test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
+  const db = authedDb("slc-owner");
+  await seedHostedCloudEntitlement("slc-owner");
+  const chunkBase = {
+    index: 0,
+    hash: "hash",
+    sealedSnippet: sealedText(),
+    tokenHashes: ["a".repeat(32)],
+    semanticHashes: ["b".repeat(32)],
+    bodyStorage: "local_or_icloud",
+    schemaVersion: 3,
+    updatedAt: serverTimestamp(),
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/0"), chunkBase)
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/1"), {
+      ...chunkBase,
+      smuggled: "x",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/2"), {
+      ...chunkBase,
+      text: "leak",
+    })
+  );
+});
+
+// T5 — conversations: create sealed, then a merge update adding plaintext is denied.
+test("T5 conversations deny plaintext smuggled on the merge-update path", async () => {
+  const db = authedDb("conv-owner");
+  await seedCloudVaultState("conv-owner");
+  await seedHostedCloudEntitlement("conv-owner");
+  const convPath = "users/conv-owner/conversations/conv-1";
+  const sealedConversation = {
+    id: "conv-1",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    messageCount: 1,
+    userWordCount: 10,
+    assistantWordCount: 20,
+    updatedAt: serverTimestamp(),
+    sourceType: "provider_log",
+    version: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+
+  await assertSucceeds(setDoc(doc(db, convPath), sealedConversation));
+  // Re-introducing a plaintext projectName via merge is denied.
+  await assertFails(
+    setDoc(doc(db, convPath), { projectName: "BurnBar" }, { merge: true })
+  );
+});
+
+// T6 — cli_sessions: create sealed, then a merge update adding plaintext is denied.
+test("T6 cli_sessions deny plaintext smuggled on the merge-update path", async () => {
+  const db = authedDb("cli-owner");
+  await seedCloudVaultState("cli-owner");
+  const sessionPath = "users/cli-owner/cli_sessions/thread-1";
+  await assertSucceeds(
+    setDoc(doc(db, sessionPath), {
+      id: "thread-1",
+      agent: "claude",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:03.000Z",
+      schemaVersion: 1,
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedPayload: sealedPayload(),
+      messageCount: 1,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, sessionPath), { summary: "leak" }, { merge: true })
+  );
+  await assertFails(
+    setDoc(doc(db, sessionPath), { title: "leak" }, { merge: true })
+  );
+});
+
+// T7 — session_logs manifest: create sealed, then a merge update adding plaintext
+// / an arbitrary key is denied (the merge-semantics regression guard).
+test("T7 session_logs manifest denies plaintext on the merge-update path", async () => {
+  const db = authedDb("slu-owner");
+  await seedHostedCloudEntitlement("slu-owner");
+  const logPath = "users/slu-owner/session_logs/log";
+  await assertSucceeds(
+    setDoc(doc(db, logPath), {
+      id: "log",
+      deviceId: "device",
+      provider: "codex",
+      sessionId: "session",
+      chunkCount: 1,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, logPath), { workingDirectory: "/Users/dev/BurnBar" }, { merge: true })
+  );
+  await assertFails(
+    setDoc(doc(db, logPath), { smuggled: "x" }, { merge: true })
+  );
+});
+
+// T8 — media_session_events rejects an arbitrary unlisted key (hasOnly).
+test("T8 media_session_events denies unlisted keys", async () => {
+  const db = authedDb("mse-owner");
+  await seedBurnBarProMaxEntitlement("mse-owner");
+  const base = {
+    id: "evt-1",
+    sessionId: "sess-1",
+    feature: "screenShare",
+    streamClass: "interactive",
+    startedAt: "2026-06-02T00:00:00.000Z",
+    endedAt: "2026-06-02T00:05:00.000Z",
+    endReason: "completed",
+    peerDeviceIdHash: "c".repeat(64),
+    byteCountInbound: 1024,
+    byteCountOutbound: 2048,
+    freezeCount: 0,
+    p95RoundTripMillisBucket: "50_150ms",
+    p95BitsPerSecondBucket: "600kbps_1mbps",
+    durationBucket: "2m_10m",
+    schemaVersion: 1,
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-1"), base)
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-2"), {
+      ...base,
+      id: "evt-2",
+      filename: "screen.png",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-3"), {
+      ...base,
+      id: "evt-3",
+      smuggled: "x",
+    })
+  );
+});
+
+// T9 — media_attachment_manifests seal-aware filename (Fork F = SEAL).
+test("T9 media_attachment_manifests accept sealedFilename and reject co-emitted plaintext", async () => {
+  const db = authedDb("mam-owner");
+  await seedBurnBarProMaxEntitlement("mam-owner");
+  const base = {
+    blobHash: "b".repeat(64),
+    mime: "image/png",
+    size: 1234,
+    peerDeviceIdHash: "peer-hash",
+    direction: "macToIos",
+    schemaVersion: 1,
+  };
+
+  // Sealed filename is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/sealed-1"), {
+      ...base,
+      id: "sealed-1",
+      sealedFilename: sealedText(),
+    })
+  );
+  // Legacy plaintext filename still syncs (migration fallback).
+  await assertSucceeds(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/legacy-1"), {
+      ...base,
+      id: "legacy-1",
+      filename: "screen.png",
+    })
+  );
+  // A doc carrying BOTH the sealed and the cleartext name is rejected.
+  await assertFails(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/both-1"), {
+      ...base,
+      id: "both-1",
+      sealedFilename: sealedText(),
+      filename: "screen.png",
+    })
+  );
+  // An arbitrary unlisted key is rejected by hasOnly.
+  await assertFails(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/extra-1"), {
+      ...base,
+      id: "extra-1",
+      sealedFilename: sealedText(),
+      smuggled: "x",
+    })
+  );
+});
+
+// T10 — mobile mission cancel: the owner phone can cancel its own mission with
+// only sealed state fields; a cancel smuggling a plaintext liveSummary is denied.
+test("T10 cli_agent_mission_requests accept sealed mobile cancel, deny plaintext", async () => {
+  const ownerUid = "cancel-owner";
+  const phoneDb = authedDb(ownerUid);
+  const requestPath = `users/${ownerUid}/cli_agent_mission_requests/mission-1`;
+  await seedCloudVaultState(ownerUid);
+
+  await assertSucceeds(
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1"))
+  );
+
+  // Cancel with only sealed state fields is allowed.
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch({
+        status: "cancelled",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+
+  // A cancel that smuggles a plaintext liveSummary is denied (the field is in
+  // the request-level denylist; the cancel predicate also bounds affectedKeys).
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "cancelled",
+        liveSummary: "Mission cancelled by user.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+});
+
+// T11 — project_memory_snapshots: opaque docID + sealed snapshot accepted,
+// plaintext projectDisplayName / projectSlug rejected.
+test("T11 project_memory_snapshots seal the name and reject plaintext slug", async () => {
+  const ownerUid = "pms-owner";
+  const db = authedDb(ownerUid);
+  await seedHostedCloudEntitlement(ownerUid);
+  const docID = `pm_${"a".repeat(16)}`;
+  const snapshotPath = `users/${ownerUid}/project_memory_snapshots/${docID}`;
+  const base = {
+    docID,
+    contentHash: "d".repeat(64),
+    sourceSessionCount: 3,
+    sourceConversationCount: 5,
+    generatedAt: "2026-06-02T00:00:00.000Z",
+    freshness: "fresh",
+    visualKinds: ["chart"],
+    sealedSnapshot: sealedBlob(),
+    encryption: { algorithm: "AES-256-GCM", keyVersion: 1, envelopeSchemaVersion: 1 },
+    schemaVersion: 2,
+    updatedAt: "2026-06-02T00:00:00.000Z",
+  };
+
+  await assertSucceeds(setDoc(doc(db, snapshotPath), base));
+  // Plaintext project name fields are denied.
+  await assertFails(
+    setDoc(doc(db, snapshotPath), { ...base, projectDisplayName: "BurnBar" })
+  );
+  await assertFails(
+    setDoc(doc(db, snapshotPath), { ...base, projectSlug: "burnbar" })
+  );
+  // Legacy v1 plaintext-keyed rows are fenced out (schemaVersion must be >= 2).
+  await assertFails(
+    setDoc(doc(db, snapshotPath), { ...base, schemaVersion: 1 })
+  );
+});
+
+// T12 — usage / budgetRules reject the plaintext project text once sealed.
+test("T12 usage and budgetRules reject plaintext project text when sealed copy present", async () => {
+  const db = authedDb("usage-owner");
+
+  // Legacy usage row with only the plaintext name still syncs (migration).
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/usage/legacy"), {
+      id: "legacy",
+      projectName: "BurnBar",
+      totalCostUSD: 1.5,
+    })
+  );
+  // Sealed usage row is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/usage/sealed"), {
+      id: "sealed",
+      sealedProjectName: sealedText(),
+      projectKeyHash: "e".repeat(64),
+      totalCostUSD: 1.5,
+    })
+  );
+  // A row carrying BOTH sealed + plaintext name is denied.
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/usage/both"), {
+      id: "both",
+      sealedProjectName: sealedText(),
+      projectName: "BurnBar",
+    })
+  );
+
+  // budgetRules: sealed name + label accepted; plaintext alongside is denied.
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/budgetRules/sealed"), {
+      id: "sealed",
+      sealedProjectName: sealedText(),
+      sealedLabel: sealedText(),
+      projectKeyHash: "f".repeat(64),
+      limitUSD: 100,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetRules/leak-name"), {
+      id: "leak-name",
+      sealedProjectName: sealedText(),
+      projectName: "BurnBar",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetRules/leak-label"), {
+      id: "leak-label",
+      sealedLabel: sealedText(),
+      label: "Monthly cap",
     })
   );
 });

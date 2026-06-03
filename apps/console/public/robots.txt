@@ -1,0 +1,3 @@
+# The member console is private — never index it.
+User-agent: *
+Disallow: /

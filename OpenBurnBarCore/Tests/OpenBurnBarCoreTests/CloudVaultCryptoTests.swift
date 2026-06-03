@@ -133,6 +133,105 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertFalse(indexedHashes.contains("twitter"))
     }
 
+    func test_projectMemoryDocID_isDeterministicOpaqueAndKeySensitive() throws {
+        let key = Data(repeating: 0x42, count: 32)
+        let otherKey = Data(repeating: 0x24, count: 32)
+        let slug = "la-hormiga-dormida"
+
+        let first = try CloudVaultCrypto.projectMemoryDocID(forSlug: slug, keyData: key)
+        let second = try CloudVaultCrypto.projectMemoryDocID(forSlug: slug, keyData: key)
+        let otherSlug = try CloudVaultCrypto.projectMemoryDocID(forSlug: "burnbar", keyData: key)
+        let otherVault = try CloudVaultCrypto.projectMemoryDocID(forSlug: slug, keyData: otherKey)
+
+        // Deterministic: same slug + key → same id (upsert idempotency).
+        XCTAssertEqual(first, second)
+        // Distinct slug → distinct id.
+        XCTAssertNotEqual(first, otherSlug)
+        // Different vault key → different id (per-user opacity).
+        XCTAssertNotEqual(first, otherVault)
+        // Opaque shape: "pm_" + 32 lowercase hex — passes requiredIdentifier's
+        // [a-z0-9_-] filter, and never echoes the plaintext slug.
+        XCTAssertTrue(first.range(of: "^pm_[a-f0-9]{32}$", options: .regularExpression) != nil)
+        XCTAssertFalse(first.contains(slug))
+
+        // Independent recomputation of the documented recipe:
+        // HKDF<SHA256>(key, salt "OpenBurnBar-DocID-Salt-v1",
+        //   info "OpenBurnBar-ProjectMemory-DocID-v1", 32B) → HMAC<SHA256>(slug).prefix16.hex
+        let docKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: key),
+            salt: Data("OpenBurnBar-DocID-Salt-v1".utf8),
+            info: Data("OpenBurnBar-ProjectMemory-DocID-v1".utf8),
+            outputByteCount: 32
+        )
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: docKey)
+        let expected = "pm_" + Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(first, expected)
+    }
+
+    func test_pensieveDedupHash_isVaultKeyedDeterministicAndNotPlaintextSHA256() throws {
+        let keyA = Data(repeating: 0xA1, count: 32)
+        let keyB = Data(repeating: 0xB2, count: 32)
+        let plaintext = "deploy the daemon before midnight"
+
+        let first = try CloudVaultCrypto.pensieveDedupHash(plaintext, keyData: keyA)
+        let second = try CloudVaultCrypto.pensieveDedupHash(plaintext, keyData: keyA)
+        let other = try CloudVaultCrypto.pensieveDedupHash(plaintext, keyData: keyB)
+
+        // Deterministic per key; per-user keys diverge for identical plaintext.
+        XCTAssertEqual(first, second)
+        XCTAssertNotEqual(first, other)
+        // Full HMAC-SHA256 digest (64 hex) — satisfies requireHexDigest.
+        XCTAssertTrue(first.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        // Never the keyless SHA-256 a curious server could guess (no dedup oracle).
+        let plaintextSHA256 = SHA256.hash(data: Data(plaintext.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        XCTAssertNotEqual(first, plaintextSHA256)
+
+        // Parity with the server test's derivation (knowledgeMemoryDedupHash.test.ts):
+        // HKDF<SHA256>(key, salt ∅, info "pensieve-dedup:content", 32B) → HMAC<SHA256>(plaintext).
+        let dedupKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: keyA),
+            salt: Data(),
+            info: Data("pensieve-dedup:content".utf8),
+            outputByteCount: 32
+        )
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(plaintext.utf8), using: dedupKey)
+        let expected = Data(mac).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(first, expected)
+    }
+
+    func test_pensieveSlugHmac_isVaultKeyedDeterministicAndDistinctFromDedupHash() throws {
+        let key = Data(repeating: 0xC3, count: 32)
+        let slug = "burnbar-docs-secret-runbook"
+
+        let first = try CloudVaultCrypto.pensieveSlugHmac(slug, keyData: key)
+        let second = try CloudVaultCrypto.pensieveSlugHmac(slug, keyData: key)
+        let otherSlug = try CloudVaultCrypto.pensieveSlugHmac("notes-security-md", keyData: key)
+        let otherKey = try CloudVaultCrypto.pensieveSlugHmac(slug, keyData: Data(repeating: 0xD4, count: 32))
+
+        XCTAssertEqual(first, second)
+        XCTAssertNotEqual(first, otherSlug)
+        XCTAssertNotEqual(first, otherKey)
+        XCTAssertTrue(first.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertFalse(first.contains(slug))
+
+        // The slug info label differs from content, so the same input under the
+        // same key must not collide across the two trapdoors (domain separation).
+        let asContent = try CloudVaultCrypto.pensieveDedupHash(slug, keyData: key)
+        XCTAssertNotEqual(first, asContent)
+
+        // Parity: HKDF<SHA256>(key, salt ∅, info "pensieve-dedup:slug", 32B) → HMAC<SHA256>(slug).
+        let slugKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: key),
+            salt: Data(),
+            info: Data("pensieve-dedup:slug".utf8),
+            outputByteCount: 32
+        )
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: slugKey)
+        let expected = Data(mac).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(first, expected)
+    }
+
     func test_wrappedVaultKeyRoundTrip_unwrapsAcrossGeneratedDeviceKeys() throws {
         let recipient = P256.KeyAgreement.PrivateKey()
         let vaultKey = Data((0..<32).map(UInt8.init))
@@ -144,5 +243,23 @@ final class CloudVaultCryptoTests: XCTestCase {
         let unwrapped = try CloudVaultCrypto.unwrapVaultKey(wrapped, privateKey: recipient)
 
         XCTAssertEqual(unwrapped, vaultKey)
+    }
+
+    func test_recoveryWrappedVaultKeyRoundTrip_usesSymmetricRecoveryEnvelope() throws {
+        let vaultKey = Data((0..<32).map(UInt8.init))
+        let recoveryKey = try CloudVaultCrypto.generateRecoveryKey()
+
+        let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(
+            vaultKey: vaultKey,
+            recoveryKey: recoveryKey
+        )
+        let unwrapped = try CloudVaultCrypto.unwrapVaultKeyWithRecovery(
+            wrappedVaultKeyBase64: wrapped.wrappedVaultKeyBase64,
+            recoveryKey: recoveryKey
+        )
+
+        XCTAssertEqual(unwrapped, vaultKey)
+        XCTAssertEqual(wrapped.verificationHash, try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey))
+        XCTAssertTrue(wrapped.verificationHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
     }
 }

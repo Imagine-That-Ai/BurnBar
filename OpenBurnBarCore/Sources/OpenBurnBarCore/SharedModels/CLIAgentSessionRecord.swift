@@ -6,17 +6,18 @@ import Foundation
 // (`CLIAgentSessionMirror` in AgentLens) and the iOS reader
 // (`CLIAgentChatReader` in OpenBurnBarMobile). Mirrors what users see when
 // they chat with Codex / Claude Code / OpenClaw on their Mac so the same
-// transcript surfaces inside the iOS Assistants tab, complete with the
-// streamed tool-use pills.
+// transcript surfaces inside the iOS Assistants tab. The Firestore row keeps
+// routing/count metadata outside and seals transcript text/tool details inside
+// `sealedPayload`.
 //
 // Flow (per session):
 //   Mac CLI bridge → CLIChatStreamEvent → `CLIAgentSessionMirror.append(...)`
 //     → Firestore: users/{uid}/cli_sessions/{sessionID}
 //   iOS Assistants tab → `CLIAgentChatReader.refresh()` → renders.
 //
-// Live and archived sessions are mirrored into `cli_sessions` for readable
-// mobile chat. The encrypted cloud session-log vault remains the durable
-// source for semantic search, resume metadata, and long transcript backup.
+// Live and archived sessions are mirrored into `cli_sessions` for mobile chat.
+// The encrypted cloud session-log vault remains the durable source for semantic
+// search and long transcript backup.
 
 /// Three CLI agent runtimes whose transcripts can be mirrored from the
 /// user's Mac to their iOS app. The raw values are stable Firestore
@@ -76,10 +77,9 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-/// One persisted CLI agent session, mirrored from a Mac chat into
-/// Firestore for iOS visibility. Keys mirror `MobileChatThread` where the
-/// shapes overlap so the iOS UI can render them with the same bubble
-/// components.
+/// One persisted CLI agent session. Current Firestore writers store this record
+/// as a Cloud Vault sealed payload; the plaintext codec remains only for legacy
+/// migration readers and focused round-trip tests.
 public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var agent: CLIAgentRuntime
@@ -303,6 +303,8 @@ public struct CLIAgentTokenUsage: Codable, Hashable, Sendable {
 /// (e.g. `Date` becomes `Timestamp`). Tests use the same codec to verify
 /// round-trip integrity.
 public enum CLIAgentSessionCodec {
+    private static let sealedPayloadField = "sealedPayload"
+
     /// Decode a Firestore document body into a `CLIAgentSessionRecord`.
     /// Returns `nil` for documents missing required fields, sessions
     /// stamped with a schema version newer than this build, or sessions
@@ -363,6 +365,24 @@ public enum CLIAgentSessionCodec {
         )
     }
 
+    public static func decodeSealed(
+        documentID: String,
+        data: [String: Any],
+        vaultKey: Data
+    ) -> CLIAgentSessionRecord? {
+        guard let envelope = CloudVaultCrypto.sealedPayload(from: data[sealedPayloadField]) else {
+            return nil
+        }
+        do {
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            let record = try JSONDecoder.openBurnBarCloudPayload.decode(CLIAgentSessionRecord.self, from: payload)
+            guard record.schemaVersion <= CLIAgentSessionRecord.currentSchemaVersion else { return nil }
+            return record.id.isEmpty ? nil : record
+        } catch {
+            return nil
+        }
+    }
+
     /// Encode a `CLIAgentSessionRecord` to the dictionary form
     /// Firestore's SDK accepts. Dates stay as `Date` values; the SDK
     /// converts them to `Timestamp` at the boundary.
@@ -396,6 +416,55 @@ public enum CLIAgentSessionCodec {
         }
         if let customTitle = record.customTitle, !customTitle.isEmpty {
             dict["customTitle"] = customTitle
+        }
+        if let labelColorHex = record.labelColorHex, !labelColorHex.isEmpty {
+            dict["labelColorHex"] = labelColorHex
+        }
+        if let isPinned = record.isPinned {
+            dict["isPinned"] = isPinned
+        }
+        if let priorityOrder = record.priorityOrder {
+            dict["priorityOrder"] = priorityOrder
+        }
+        return dict
+    }
+
+    public static func encodeSealed(
+        _ record: CLIAgentSessionRecord,
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
+        let payload = try JSONEncoder.openBurnBarCloudPayload.encode(record)
+        let sealed = try CloudVaultCrypto.sealPayload(
+            payload,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+        var dict: [String: Any] = [
+            "id": record.id,
+            "agent": record.agent.rawValue,
+            "sourceKind": record.sourceKind.rawValue,
+            "createdAt": record.createdAt,
+            "updatedAt": record.updatedAt,
+            "schemaVersion": record.schemaVersion,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": vaultKeyID,
+            "contentSealed": true,
+            "messageCount": record.messages.count,
+            "encryptedTranscriptAvailable": record.encryptedTranscriptAvailable,
+            sealedPayloadField: CloudVaultCrypto.sealedPayloadDictionary(sealed)
+        ]
+        if let endedAt = record.endedAt {
+            dict["endedAt"] = endedAt
+        }
+        if let last = record.messages.last {
+            dict["lastMessageRole"] = last.role.rawValue
+        }
+        if let assistant = record.messages.last(where: { $0.role == .assistant }) {
+            dict["lastAssistantMessageID"] = assistant.id
+        }
+        if let usage = record.tokenUsage {
+            dict["tokenUsage"] = encodeTokenUsage(usage)
         }
         if let labelColorHex = record.labelColorHex, !labelColorHex.isEmpty {
             dict["labelColorHex"] = labelColorHex
@@ -549,5 +618,22 @@ public enum CLIAgentSessionCodec {
         if let value = raw as? Double { return Date(timeIntervalSince1970: value) }
         if let value = raw as? Int { return Date(timeIntervalSince1970: TimeInterval(value)) }
         return nil
+    }
+}
+
+private extension JSONEncoder {
+    static var openBurnBarCloudPayload: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var openBurnBarCloudPayload: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 }

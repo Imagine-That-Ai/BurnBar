@@ -11,15 +11,17 @@ private enum CloudStoreLegalURLs {
 }
 
 private enum CloudSubscriptionDisclosure {
-    static let title = "BurnBar Cloud and BurnBar Cloud Pro"
+    static let title = "BurnBar Cloud, BurnBar Cloud Pro, and BurnBar Cloud Ultra"
     static let period = "Monthly or annual auto-renewable subscriptions"
-    static let included = "BurnBar Cloud includes sync, encrypted history backup, cloud search, Intelligence Brief fallback, remote relay, and Hosted Remote MCP. BurnBar Cloud Pro adds Floo live control, supervised Agent Control, 500 hosted actions, and 50 relay GB."
+    static let included = "BurnBar Cloud includes sync, encrypted history backup, cloud search, Intelligence Brief fallback, remote relay, and Hosted Remote MCP. BurnBar Cloud Pro adds Floo live control, supervised Agent Control, 500 hosted actions, and 50 relay GB. BurnBar Cloud Ultra adds 10x agent memory (15 sources, 50,000 chunks, 250 MB) sealed on-device, with the same hosted Agent Control and relay allowance as Pro."
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
     static let reviewVisiblePlans = [
         "BurnBar Cloud Monthly - 1 month - $7.99 - 14-day intro free trial for new subscribers.",
         "BurnBar Cloud Annual - 1 year - $79 - 14-day intro free trial for new subscribers.",
         "BurnBar Cloud Pro Monthly - 1 month - $24.99 - no intro trial.",
         "BurnBar Cloud Pro Annual - 1 year - $249 - no intro trial.",
+        "BurnBar Cloud Ultra Monthly - 1 month - $59.99 - no intro trial.",
+        "BurnBar Cloud Ultra Annual - 1 year - $599 - no intro trial.",
         "Agent Control 100 Actions - consumable top-up - $4.99.",
         "Floo Relay 50 GB - consumable top-up - $4.99."
     ]
@@ -1275,7 +1277,7 @@ private struct CloudStoreMemberCard: View {
 
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
-                            Text("PRO")
+                            Text(store.isActiveUltra ? "ULTRA" : "PRO")
                                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                                 .tracking(1.8)
                                 .foregroundStyle(ProTheme.Membership.surface)

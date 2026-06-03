@@ -74,6 +74,7 @@ import { assertAppCheck, assertAuth } from "./auth.js";
 import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
 import { wrapCallableHandler } from "./logging.js";
 import { resilientFetch } from "./resilienceHelpers.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 /**
  * Lazy Firestore handle. The module is loaded inside the deployed
@@ -448,7 +449,7 @@ function sanitizeEnvelope(rawContent: string): string {
 
 export const insightsHostedAnswer = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     timeoutSeconds: 60,

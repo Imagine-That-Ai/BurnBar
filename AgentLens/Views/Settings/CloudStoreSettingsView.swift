@@ -43,6 +43,14 @@ struct CloudStoreSettingsView: View {
     @State private var pendingBackupSessionLogs = 0
     @State private var pendingBackupChatThreads = 0
     @State private var didRequestAutomaticCatchUp = false
+    @State private var showingHostedMCPUnlock = false
+
+    /// Hosted Remote MCP requires Cloud Pro. When the member doesn't hold it,
+    /// the card wears the tier lock badge and routes its setup action to the
+    /// evocative unlock sheet instead of the live endpoint.
+    private var isHostedMCPUnlocked: Bool {
+        entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.hostedMCP).requiredTier)
+    }
 
     var body: some View {
         ZStack {
@@ -59,10 +67,17 @@ struct CloudStoreSettingsView: View {
                     if entitlement.isActive {
                         auroraMemberCard
                             .padding(.horizontal, 28)
-                    } else {
-                        planCard
-                            .padding(.horizontal, 28)
                     }
+
+                    // The full four-tier pricing lineup — matches the marketing
+                    // site exactly (Local · Cloud · Cloud Pro · Cloud Ultra).
+                    // Shown to everyone: free users to subscribe, members to
+                    // compare and upgrade (a Cloud member can jump to Ultra).
+                    tierLineup
+                        .padding(.horizontal, 28)
+
+                    purchaseSupportRow
+                        .padding(.horizontal, 28)
 
                     backupSyncCard
                         .padding(.horizontal, 28)
@@ -856,63 +871,289 @@ struct CloudStoreSettingsView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Plan card
+    // MARK: - Tier lineup
+    //
+    // The four marketing tiers, rendered as stacked Aurora glass cards that match
+    // burnbar.ai/pricing exactly: OpenBurnBar Local (free, no crest), BurnBar
+    // Cloud, BurnBar Cloud Pro, and BurnBar Cloud Ultra. Each paid card carries
+    // its transparent crest and a subtle per-tier holographic accent (the crest
+    // silhouette masked over an iridescent gradient, low opacity) behind the
+    // glass so copy stays fully legible. Prices come live from StoreKit.
 
-    private var planCard: some View {
+    private var tierLineup: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("CHOOSE YOUR PLAN")
+                    .font(.system(size: 11, weight: .heavy))
+                    .tracking(2.4)
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                Spacer()
+                Text("Free where it should be · paid where it costs us money")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            VStack(spacing: 16) {
+                ForEach(MacPricingTierModel.all) { model in
+                    tierCard(model)
+                }
+            }
+
+            if let error = purchaseStore.error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("macCloudStore.purchaseError")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tierCard(_ model: MacPricingTierModel) -> some View {
+        let tier = model.tier
+        let currentTier = entitlement.currentTier
+        let isCurrent = currentTier == model.entitlementTier && model.entitlementTier != .free
+        let isOwned = model.entitlementTier != .free && currentTier >= model.entitlementTier
+        let isBusy = purchaseStore.purchasingTier == tier
+
         AuroraGlassCardMac {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("MEMBERSHIP")
-                        .font(.system(size: 11, weight: .heavy))
-                        .tracking(2.4)
-                        .foregroundStyle(DesignSystem.Colors.ember)
-                    Spacer()
-                    Text("MONTHLY")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .tracking(1.4)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .background(
-                            Capsule().fill(.ultraThinMaterial)
-                        )
-                        .overlay(
-                            Capsule().stroke(DesignSystem.Colors.border, lineWidth: 0.6)
-                        )
+            ZStack(alignment: .topTrailing) {
+                // Per-tier holographic accent — the crest silhouette filled with
+                // an iridescent gradient, kept faint so copy stays crisp.
+                if let crestAsset = model.crestAsset {
+                    TierHolographicAccent(
+                        crestAsset: crestAsset,
+                        palette: model.holoPalette,
+                        reduceMotion: reduceMotion
+                    )
+                    .allowsHitTesting(false)
                 }
 
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("$7.99")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.primaryGradient)
-                    Text("/ month")
-                        .font(.system(size: 14))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
+                VStack(alignment: .leading, spacing: 14) {
+                    tierHeader(model, isCurrent: isCurrent)
+                    tierPriceRow(model)
 
-                Text("Apple-verified, billed monthly via the App Store. Manage or cancel anytime in Settings -> Apple ID.")
-                    .font(.system(size: 12))
+                    Text(model.summary)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(model.bullets, id: \.self) { bullet in
+                            tierBullet(bullet, accent: model.accent)
+                        }
+                    }
+                    .padding(.top, 2)
+
+                    if let included = model.includedNote {
+                        tierIncludedNote(included)
+                    }
+
+                    tierActionRow(model, isOwned: isOwned, isCurrent: isCurrent, isBusy: isBusy)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .overlay(alignment: .top) {
+            if isCurrent {
+                tierCurrentBadge
+                    .offset(y: -10)
+            } else if let highlight = model.highlightBadge {
+                tierHighlightBadge(highlight, accent: model.accent)
+                    .offset(y: -10)
+            }
+        }
+    }
+
+    private func tierHeader(_ model: MacPricingTierModel, isCurrent: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.eyebrow)
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.8)
+                    .foregroundStyle(model.accent)
+                Text(model.name)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+            Spacer(minLength: 8)
+            if let crestAsset = model.crestAsset {
+                Image(crestAsset)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 52, height: 52)
+                    .shadow(color: model.accent.opacity(0.35), radius: 8, y: 2)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private func tierPriceRow(_ model: MacPricingTierModel) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if model.tier == .local {
+                Text("$0")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("forever")
+                    .font(.system(size: 13))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                Text(purchaseStore.displayPrice(for: model.tier) ?? "—")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                    .accessibilityIdentifier("macCloudStore.price.\(model.tier.rawValue)")
+                Text("/ month")
+                    .font(.system(size: 13))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                if let annual = MacHostedQuotaPurchaseStore.fallbackAnnualPrice[model.tier] {
+                    Text("· \(annual)/yr")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+        }
+    }
+
+    private func tierBullet(_ text: String, accent: Color) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(accent)
+                .padding(.top, 1.5)
+            Text(text)
+                .font(.system(size: 12.5))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func tierIncludedNote(_ note: MacPricingTierModel.IncludedNote) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(note.label.uppercased())
+                .font(.system(size: 9, weight: .heavy))
+                .tracking(1.4)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            ForEach(note.lines, id: \.self) { line in
+                Text(line)
+                    .font(.system(size: 11))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.45))
+        )
+    }
 
-                Button {
-                    Task { await purchaseStore.purchase() }
-                } label: {
-                    if purchaseStore.isPurchasing {
+    @ViewBuilder
+    private func tierActionRow(
+        _ model: MacPricingTierModel,
+        isOwned: Bool,
+        isCurrent: Bool,
+        isBusy: Bool
+    ) -> some View {
+        if model.tier == .local {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.success)
+                Text("Installed — no account, nothing to buy")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 4)
+        } else if isCurrent {
+            Button {
+                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Label("Manage subscription", systemImage: "creditcard.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(AuroraSecondaryButtonStyle())
+            .padding(.top, 4)
+        } else {
+            Button {
+                Task { await purchaseStore.purchase(tier: model.tier) }
+            } label: {
+                Group {
+                    if isBusy {
                         HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
+                            ProgressView().controlSize(.small)
                             Text("Opening App Store purchase")
                         }
-                        .font(.system(size: 14, weight: .semibold))
                     } else {
-                        Label(purchaseButtonTitle, systemImage: "creditcard.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        Label(
+                            isOwned ? "Switch to \(model.name)" : "\(model.ctaVerb) \(model.name)",
+                            systemImage: "creditcard.fill"
+                        )
                     }
                 }
-                .buttonStyle(AuroraPrimaryButtonStyle())
-                .disabled(purchaseStore.isPurchasing)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(AuroraPrimaryButtonStyle())
+            .disabled(purchaseStore.isPurchasing)
+            .padding(.top, 4)
+            .accessibilityIdentifier("macCloudStore.subscribe.\(model.tier.rawValue)")
+        }
+    }
 
+    private var tierCurrentBadge: some View {
+        Text("YOUR PLAN")
+            .font(.system(size: 9, weight: .heavy))
+            .tracking(1.6)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    LinearGradient(
+                        colors: [DesignSystem.Colors.success, DesignSystem.Colors.success.opacity(0.75)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            )
+            .shadow(color: DesignSystem.Colors.success.opacity(0.4), radius: 8, y: 3)
+    }
+
+    private func tierHighlightBadge(_ text: String, accent: Color) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 9, weight: .heavy))
+            .tracking(1.6)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    LinearGradient(
+                        colors: [accent, accent.opacity(0.7)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            )
+            .shadow(color: accent.opacity(0.4), radius: 8, y: 3)
+    }
+
+    // MARK: - Purchase support row (restore + legal + disclosure)
+
+    private var purchaseSupportRow: some View {
+        AuroraGlassCardMac(cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Button {
                         Task { await purchaseStore.restorePurchases() }
@@ -924,28 +1165,14 @@ struct CloudStoreSettingsView: View {
                     .disabled(purchaseStore.isLoading || purchaseStore.isPurchasing)
 
                     MacCloudStoreLegalLinks()
+                    Spacer(minLength: 0)
                 }
 
                 subscriptionDetails
-
-                if let error = purchaseStore.error {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(DesignSystem.Colors.warning)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("macCloudStore.purchaseError")
-                }
             }
-            .padding(20)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var purchaseButtonTitle: String {
-        if let product = purchaseStore.product {
-            return "Subscribe for \(product.displayPrice) / month"
-        }
-        return "Subscribe with App Store"
     }
 
     private var subscriptionDetails: some View {
@@ -954,7 +1181,7 @@ struct CloudStoreSettingsView: View {
                 .font(.system(size: 10, weight: .heavy))
                 .tracking(1.8)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text("BurnBar Cloud Monthly is an auto-renewable 1 month subscription. Each billing period includes hosted quota refresh, conversation backup and resume, encrypted session history, cloud search, synced agent memory, and remote relay. Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
+            Text("BurnBar Cloud, Cloud Pro, and Cloud Ultra are auto-renewable subscriptions billed through the App Store. Cloud adds hosted quota refresh, encrypted backup and resume, cloud search, synced agent memory, and remote relay. Cloud Pro adds Floo phone-to-Mac control and supervised Agent Control with prepaid hosted allowances. Cloud Ultra keeps all of Pro and gives your agents 10× private memory — sealed on your device so the server searches without reading it. Prices shown are live from the App Store; Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1048,9 +1275,13 @@ struct CloudStoreSettingsView: View {
                         .tracking(2.4)
                         .foregroundStyle(DesignSystem.Colors.ember)
                     Spacer()
-                    Label("Cloud only", systemImage: "lock.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    if isHostedMCPUnlocked {
+                        Label("Active", systemImage: "checkmark.seal.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.success)
+                    } else {
+                        TierLockBadge(tier: GatedFeature.gatedFeature(.hostedMCP).requiredTier)
+                    }
                 }
 
                 Text("Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search. Direct HTTP uses the hosted endpoint; the local shim keeps decrypted snippets on-device.")
@@ -1065,13 +1296,27 @@ struct CloudStoreSettingsView: View {
                 MacRemoteMCPConnectedClientsSection(store: remoteMCPClients)
 
                 HStack(spacing: 16) {
-                    Link(destination: URL(string: "https://burnbar.ai/product")!) {
-                        HStack(spacing: 6) {
-                            Text("Open Remote MCP setup")
-                            Image(systemName: "arrow.up.right.square.fill")
+                    if isHostedMCPUnlocked {
+                        Link(destination: URL(string: "https://burnbar.ai/product")!) {
+                            HStack(spacing: 6) {
+                                Text("Open Remote MCP setup")
+                                Image(systemName: "arrow.up.right.square.fill")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(DesignSystem.Colors.ember)
                         }
-                        .font(.system(size: 12))
-                        .foregroundStyle(DesignSystem.Colors.ember)
+                    } else {
+                        Button {
+                            showingHostedMCPUnlock = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("See what Hosted MCP unlocks")
+                                Image(systemName: "sparkle")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(DesignSystem.Colors.ember)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     Button(action: {
@@ -1092,6 +1337,9 @@ struct CloudStoreSettingsView: View {
         }
         .onAppear { remoteMCPClients.startListening() }
         .onDisappear { remoteMCPClients.stopListening() }
+        .sheet(isPresented: $showingHostedMCPUnlock) {
+            FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.hostedMCP))
+        }
     }
 
     private func remoteMCPCommandRow(label: String, value: String) -> some View {
@@ -1270,6 +1518,212 @@ private struct AuroraSecondaryButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Pricing tier model
+//
+// Static, honest copy for each of the four marketing tiers, mirrored 1:1 with
+// website/src/pages/pricing.astro + site.ts. Prices are NOT stored here — the
+// live `Product.displayPrice` from StoreKit drives the numbers; this model only
+// carries names, summaries, feature bullets, crest asset names, and the per-tier
+// holographic palette.
+
+private struct MacPricingTierModel: Identifiable {
+    struct IncludedNote {
+        let label: String
+        let lines: [String]
+    }
+
+    let tier: MacCloudPricingTier
+    let eyebrow: String
+    let name: String
+    let summary: String
+    let bullets: [String]
+    let includedNote: IncludedNote?
+    /// Asset-catalog imageset for the transparent crest. `nil` for Local (bare).
+    let crestAsset: String?
+    let accent: Color
+    /// Iridescent gradient stops for the holographic silhouette (mirrors the
+    /// website's per-tier `--holo-grad`).
+    let holoPalette: [Color]
+    let ctaVerb: String
+    let highlightBadge: String?
+
+    var id: String { tier.rawValue }
+    var entitlementTier: MacCloudTier { tier.entitlementTier }
+
+    static let all: [MacPricingTierModel] = [
+        MacPricingTierModel(
+            tier: .local,
+            eyebrow: "FREE · LOCAL",
+            name: "OpenBurnBar Local",
+            summary: "Local-first cost & quota tracking. No account. No cloud.",
+            bullets: [
+                "Local SQLite tracking, zero telemetry",
+                "Cost & token rollups — today / week / month / all-time",
+                "Quota windows for every connected provider",
+                "Daemon, CLI, and editor panels",
+                "Hermes assistant on local backends"
+            ],
+            includedNote: nil,
+            crestAsset: nil,
+            accent: DesignSystem.Colors.textSecondary,
+            holoPalette: [],
+            ctaVerb: "",
+            highlightBadge: nil
+        ),
+        MacPricingTierModel(
+            tier: .cloud,
+            eyebrow: "OPENBURNBAR CLOUD",
+            name: "BurnBar Cloud",
+            summary: "Sync your quota, encrypted history, and agent memory across devices.",
+            bullets: [
+                "Hosted quota refresh from any signed-in device",
+                "Conversation backup & resume across iPhone, iPad & Mac",
+                "Encrypted session history, searchable everywhere",
+                "Agent memory sync across every device",
+                "Verified entitlement — checked server-side"
+            ],
+            includedNote: MacPricingTierModel.IncludedNote(
+                label: "Included",
+                lines: [
+                    "Everything in Local, local-first",
+                    "14-day introductory free trial for new subscribers"
+                ]
+            ),
+            crestAsset: "CloudTierCrest",
+            accent: DesignSystem.Colors.ember,
+            // Warm ember iridescence.
+            holoPalette: [
+                Color(hex: "FFD56B"),
+                Color(hex: "FF8A3D"),
+                Color(hex: "FF5C8A"),
+                Color(hex: "B06BFF")
+            ],
+            ctaVerb: "Subscribe to",
+            highlightBadge: "Most popular"
+        ),
+        MacPricingTierModel(
+            tier: .pro,
+            eyebrow: "FOR POWER USERS",
+            name: "BurnBar Cloud Pro",
+            summary: "Use your Mac from your phone and let agents work under your grant.",
+            bullets: [
+                "Everything in BurnBar Cloud",
+                "Floo — see & use your Mac from your phone",
+                "Agent Control — agents work under your grant",
+                "Live screen, files, calls & shared clipboard",
+                "Tamper-proof action record · per-task grants"
+            ],
+            includedNote: MacPricingTierModel.IncludedNote(
+                label: "Included each month",
+                lines: [
+                    "500 hosted Agent Control actions",
+                    "50 relay-accounting GB",
+                    "Prepaid overage only · BYOK never spends credits"
+                ]
+            ),
+            crestAsset: "CloudTierCrestPro",
+            accent: DesignSystem.Colors.whimsy,
+            // Cool aqua iridescence.
+            holoPalette: [
+                Color(hex: "5EF0C9"),
+                Color(hex: "38D6F3"),
+                Color(hex: "4F8BFF"),
+                Color(hex: "8EF0A8")
+            ],
+            ctaVerb: "Subscribe to",
+            highlightBadge: nil
+        ),
+        MacPricingTierModel(
+            tier: .ultra,
+            eyebrow: "YOUR WHOLE SECOND BRAIN",
+            name: "BurnBar Cloud Ultra",
+            summary: "Everything in Cloud Pro, plus 10× agent memory.",
+            bullets: [
+                "Everything in BurnBar Cloud Pro",
+                "10× agent memory: 15 sources · 50,000 chunks · 250 MB",
+                "Sealed on-device — the server searches without reading it",
+                "Same hosted Agent Control & relay allowance as Pro"
+            ],
+            includedNote: MacPricingTierModel.IncludedNote(
+                label: "Private semantic memory",
+                lines: [
+                    "Cloaked vectors + sealed text — nearest-neighbor search, never your content",
+                    "500 hosted actions · 50 relay-accounting GB each month",
+                    "Prepaid overage only · BYOK never spends credits"
+                ]
+            ),
+            crestAsset: "CloudTierCrestUltra",
+            accent: DesignSystem.Colors.amber,
+            // Full-spectrum premium iridescence.
+            holoPalette: [
+                Color(hex: "FFD56B"),
+                Color(hex: "7DD3FC"),
+                Color(hex: "C084FC"),
+                Color(hex: "5EEAD4"),
+                Color(hex: "FF9EC7")
+            ],
+            ctaVerb: "Subscribe to",
+            highlightBadge: "Top tier"
+        )
+    ]
+}
+
+// MARK: - Holographic tier accent
+//
+// The signature look: each paid tier's transparent crest is used as a silhouette
+// MASK over an iridescent gradient, rendered very faint behind the card content
+// so every line of copy stays legible. A slow, tasteful angular shimmer sweeps
+// the gradient — disabled entirely under Reduce Motion (a still, even fainter
+// ghost remains). This is the native SwiftUI mirror of the website's
+// `.plan__holo` masked-silhouette technique.
+
+private struct TierHolographicAccent: View {
+    let crestAsset: String
+    let palette: [Color]
+    let reduceMotion: Bool
+
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(max(geo.size.width, geo.size.height) * 0.92, 360)
+            iridescentGradient
+                .frame(width: side, height: side)
+                .mask(
+                    Image(crestAsset)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: side, height: side)
+                )
+                .opacity(reduceMotion ? 0.08 : 0.13)
+                .blur(radius: 0.5)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+                .offset(x: geo.size.width * 0.18, y: -geo.size.height * 0.04)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 11).repeatForever(autoreverses: false)) {
+                phase = 1
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var iridescentGradient: some View {
+        // A wide, looped gradient sweep so the iridescence drifts across the
+        // silhouette without a visible seam. Falls back gracefully for short
+        // palettes.
+        let stops = palette.isEmpty ? [Color.white.opacity(0.4)] : palette
+        let looped = stops + stops.reversed() + [stops.first ?? .white]
+        return AngularGradient(
+            gradient: Gradient(colors: looped),
+            center: .center,
+            angle: .degrees(reduceMotion ? 0 : Double(phase) * 360)
+        )
+        .saturation(1.2)
+    }
+}
+
 private struct MacCloudStoreLegalLinks: View {
     var body: some View {
         HStack(spacing: 8) {
@@ -1285,22 +1739,91 @@ private struct MacCloudStoreLegalLinks: View {
     }
 }
 
+/// The four marketing tiers mirrored on the macOS pricing pane. `local` is the
+/// free, account-less product; the other three are App Store subscriptions whose
+/// live price comes from StoreKit (`displayPrice`).
+private enum MacCloudPricingTier: String, CaseIterable, Identifiable {
+    case local
+    case cloud
+    case pro
+    case ultra
+
+    var id: String { rawValue }
+
+    /// The monthly StoreKit product purchased for this tier. `nil` for Local.
+    /// These match `OpenBurnBarProductCatalog` (iOS) and the server config IDs.
+    var monthlyProductID: String? {
+        switch self {
+        case .local: return nil
+        case .cloud:  return "com.openburnbar.pro.monthly"
+        case .pro:    return "com.openburnbar.proMax.v2.monthly"
+        case .ultra:  return "com.openburnbar.ultra.monthly"
+        }
+    }
+
+    /// The entitlement tier this purchase resolves to once the server reconciles.
+    var entitlementTier: MacCloudTier {
+        switch self {
+        case .local: return .free
+        case .cloud:  return .cloud
+        case .pro:    return .pro
+        case .ultra:  return .ultra
+        }
+    }
+}
+
 @MainActor
 private final class MacHostedQuotaPurchaseStore: ObservableObject {
     static let productID = "com.openburnbar.pro.monthly"
+
+    /// The monthly subscription product for each paid tier. Live prices are
+    /// fetched from StoreKit; the documented fallback amount renders only when
+    /// the App Store has not returned the product yet.
+    static let tierProductIDs: [MacCloudPricingTier: String] = {
+        var map: [MacCloudPricingTier: String] = [:]
+        for tier in MacCloudPricingTier.allCases {
+            if let id = tier.monthlyProductID { map[tier] = id }
+        }
+        return map
+    }()
+
+    /// Documented expected price per tier — used only as fallback copy until the
+    /// live `Product.displayPrice` arrives. Never the source of truth for a sale.
+    static let fallbackMonthlyPrice: [MacCloudPricingTier: String] = [
+        .cloud: "$7.99",
+        .pro: "$24.99",
+        .ultra: "$59.99"
+    ]
+    static let fallbackAnnualPrice: [MacCloudPricingTier: String] = [
+        .cloud: "$79",
+        .pro: "$249",
+        .ultra: "$599"
+    ]
+
     static let entitlementProductIDs: Set<String> = [
         "com.openburnbar.hostedQuotaSync.cloud.monthly",
         "com.openburnbar.hostedQuotaSync.monthly",
         "com.openburnbar.computerUse.monthly",
         "com.openburnbar.proMax.bundle.monthly",
         "com.openburnbar.hostedComputerUseSync.monthly",
+        "com.openburnbar.proMax.monthly",
         "com.openburnbar.proMax.v2.monthly",
-        "com.openburnbar.pro.monthly"
+        "com.openburnbar.proMax.annual",
+        "com.openburnbar.pro.monthly",
+        "com.openburnbar.pro.annual",
+        "com.openburnbar.ultra.monthly",
+        "com.openburnbar.ultra.annual.v2"
     ]
 
+    /// The primary (Cloud) product, kept for the legacy single-tier call sites.
     @Published private(set) var product: Product?
+    /// Live StoreKit products keyed by tier, so each tier card can show its own
+    /// `displayPrice`. Populated by `load()`.
+    @Published private(set) var tierProducts: [MacCloudPricingTier: Product] = [:]
     @Published private(set) var isLoading = false
     @Published private(set) var isPurchasing = false
+    /// The tier whose purchase sheet is currently opening (drives per-card spinners).
+    @Published private(set) var purchasingTier: MacCloudPricingTier?
     @Published private(set) var error: String?
 
     private let functions = Functions.functions(region: "us-central1")
@@ -1315,29 +1838,48 @@ private final class MacHostedQuotaPurchaseStore: ObservableObject {
         await loadProductMetadata()
     }
 
+    /// Live `displayPrice` for a tier, or the documented fallback while the
+    /// App Store catalogue is still loading.
+    func displayPrice(for tier: MacCloudPricingTier) -> String? {
+        if let product = tierProducts[tier] { return product.displayPrice }
+        return Self.fallbackMonthlyPrice[tier]
+    }
+
     func purchase() async {
+        await purchase(tier: .cloud)
+    }
+
+    func purchase(tier: MacCloudPricingTier) async {
+        guard let productID = tier.monthlyProductID else { return }
         guard !isPurchasing else { return }
         isPurchasing = true
+        purchasingTier = tier
         error = nil
-        defer { isPurchasing = false }
+        defer {
+            isPurchasing = false
+            purchasingTier = nil
+        }
 
         do {
-            if product == nil {
-                await loadProductMetadata()
+            let resolved = tierProducts[tier] ?? product
+            var purchaseTarget = resolved?.id == productID ? resolved : nil
+            if purchaseTarget == nil {
+                purchaseTarget = try await Product.products(for: [productID]).first
+                if let purchaseTarget { tierProducts[tier] = purchaseTarget }
             }
-            guard let product else {
+            guard let purchaseTarget else {
                 throw MacHostedQuotaPurchaseError.productUnavailable
             }
 
             let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
             let purchaseOptions: Set<Product.PurchaseOption>
             if signedInUser != nil {
-                purchaseOptions = [.appAccountToken(try await mintAppAccountToken())]
+                purchaseOptions = [.appAccountToken(try await mintAppAccountToken(productID: productID))]
             } else {
                 purchaseOptions = []
             }
 
-            let result = try await product.purchase(options: purchaseOptions)
+            let result = try await purchaseTarget.purchase(options: purchaseOptions)
             switch result {
             case .success(let verification):
                 let transaction = try checked(verification)
@@ -1393,8 +1935,18 @@ private final class MacHostedQuotaPurchaseStore: ObservableObject {
     }
 
     private func loadProductMetadata() async {
+        isLoading = true
+        defer { isLoading = false }
         do {
-            product = try await Product.products(for: [Self.productID]).first
+            let ids = Array(Set(Self.tierProductIDs.values))
+            let products = try await Product.products(for: ids)
+            let byID = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
+            var resolved: [MacCloudPricingTier: Product] = [:]
+            for (tier, id) in Self.tierProductIDs {
+                if let match = byID[id] { resolved[tier] = match }
+            }
+            tierProducts = resolved
+            product = resolved[.cloud] ?? byID[Self.productID]
         } catch {
             if self.error == nil {
                 self.error = error.localizedDescription
@@ -1444,9 +1996,9 @@ private final class MacHostedQuotaPurchaseStore: ObservableObject {
         return nil
     }
 
-    private func mintAppAccountToken() async throws -> UUID {
+    private func mintAppAccountToken(productID: String = MacHostedQuotaPurchaseStore.productID) async throws -> UUID {
         let result = try await functions.httpsCallable("beginEntitlementBinding").call([
-            "productID": Self.productID,
+            "productID": productID,
             "clientPlatform": "macos"
         ])
         guard

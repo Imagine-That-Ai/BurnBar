@@ -140,6 +140,7 @@ struct PulseView: View {
                 .padding(.bottom, MobileTheme.Spacing.xxl)
             }
             .scrollDismissesKeyboard(.interactively)
+            .trackEasterEggScroll(tag: "pulse")
             .refreshable {
                 HapticBus.refreshStarted()
                 await reload()

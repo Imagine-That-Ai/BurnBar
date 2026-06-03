@@ -58,7 +58,11 @@ struct DashboardBackdrop: View {
     var body: some View {
         ZStack {
             if settingsManager.useWebsiteBackground {
-                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+                if settingsManager.useConstellationBackground {
+                    ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
+                } else {
+                    WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+                }
             } else {
                 DesignSystem.Colors.background
                     .ignoresSafeArea()

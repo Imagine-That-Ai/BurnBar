@@ -26,7 +26,9 @@ struct DashboardDepthBackdrop: View {
             let w = geo.size.width
             let h = geo.size.height
             ZStack {
-                if settingsManager.useWebsiteBackground {
+                if settingsManager.useWebsiteBackground || settingsManager.useConstellationBackground {
+                    // Let the dynamic swarm / constellation backdrop show
+                    // through instead of stacking an opaque plate on top of it.
                     Color.clear
                 } else {
                     DesignSystem.Colors.background

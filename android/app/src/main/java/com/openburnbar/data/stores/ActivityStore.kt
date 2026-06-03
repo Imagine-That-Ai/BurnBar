@@ -131,10 +131,14 @@ class ActivityStore(
         _selectedSegment.value = segment
         if (segment == StreamsSegment.PROJECTS) {
             viewModelScope.launch {
+                _isLoading.value = true
+                _error.value = null
                 try {
                     _projects.value = repo.fetchProjects()
                 } catch (e: FirebaseException) {
                     _error.value = e.message
+                } finally {
+                    _isLoading.value = false
                 }
             }
         }

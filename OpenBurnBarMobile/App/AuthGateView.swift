@@ -44,6 +44,13 @@ struct AuthGateView: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)
+        // App-root easter-egg layer. A single full-bleed, hit-test-disabled
+        // overlay that idles at zero cost until a rapid up/down "summon" or an
+        // at-the-end over-pull is detected on a tracked scroll surface, then
+        // plays one theme-appropriate show (Logo Storm / Cloud Token Rain /
+        // edge bounce) and tears back down. Mounted here so both the iPhone
+        // tab root and the iPad sidebar root inherit it.
+        .overlay { EasterEggOverlay() }
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
         .environment(\.mobileAuthStore, authStore)
         .task(id: authStore.currentIdentity?.uid) {
