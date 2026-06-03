@@ -10,6 +10,7 @@
   --ink-furnace: #180805; /* Deep molten red/black */
   --ink-line: rgba(255, 255, 255, 0.08); /* Crisp glass border */
   --ink-line-bright: rgba(255, 255, 255, 0.15);
+  --ink-line-soft: rgba(255, 255, 255, 0.04);
 
   /* ---------- Glassmorphism ---------- */
   --glass-bg: rgba(10, 10, 15, 0.5);
@@ -132,6 +133,7 @@
   --ink-furnace: #f1ede4;
   --ink-line: rgba(22, 19, 14, 0.12);
   --ink-line-bright: rgba(22, 19, 14, 0.2);
+  --ink-line-soft: rgba(22, 19, 14, 0.08);
 
   /* glass → translucent vellum */
   --glass-bg: rgba(255, 255, 255, 0.58);

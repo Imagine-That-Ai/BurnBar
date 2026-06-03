@@ -48,8 +48,18 @@
 import { createHash, createHmac } from "node:crypto";
 import { readVaultKey } from "./vaultStore.js";
 
-/** Pinned production embedding model. Stored on every vector; index- and query-time must match. */
-export const EMBEDDING_MODEL_VERSION = "bge-small-en-v1.5";
+/**
+ * Pinned production embedding model. Stored on every vector; index- and
+ * query-time must match.
+ *
+ * FLAG-DAY (dedup-v0 retirement): bumped from "bge-small-en-v1.5" to the
+ * "-vault-dedup-v1" tag so a re-ingest lands every vector under a NEW tag. The
+ * server search floors `dedupHashVersion == 1` AND filters this tag, so stranded
+ * legacy v0 rows (still on the old "bge-small-en-v1.5" tag) become unreachable by
+ * recall and are deleted by `purgeLegacyKnowledgeVectors`. MUST stay
+ * byte-identical to `PensieveVectorCloak.embeddingModelVersion` (Swift).
+ */
+export const EMBEDDING_MODEL_VERSION = "bge-small-en-v1.5-vault-dedup-v1";
 export const EMBEDDING_DIM = 384;
 
 /** bge retrieval asymmetry: queries get an instruction prefix, documents do not. */

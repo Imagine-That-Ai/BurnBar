@@ -81,7 +81,12 @@ data class RollbackRequest(
         ;
 
         companion object {
-            fun fromToken(token: String?): Status = values().firstOrNull { it.token == token } ?: PENDING
+            fun fromToken(token: String?): Status? =
+                when (token) {
+                    "inFlight" -> IN_FLIGHT
+                    null -> null
+                    else -> values().firstOrNull { it.token == token }
+                }
         }
     }
 }
@@ -166,7 +171,7 @@ class RollbackService private constructor(
             val ref =
                 firestore.collection("users").document(uid)
                     .collection("rollback_requests")
-                    .whereIn("status", listOf("pending", "in_flight"))
+                    .whereIn("status", listOf("pending", "in_flight", "inFlight"))
             val reg =
                 ref.addSnapshotListener { snap, error ->
                     if (error != null) {
@@ -217,31 +222,17 @@ class RollbackService private constructor(
                 errorMessage = null,
             )
         // Seal the scope JSON (which embeds an absolute file path for `singleFile`
-        // scope) with the Cloud Vault key, mirroring the budget-rule writer. The
-        // sealed `sealedScope` envelope replaces plaintext `scopeJSON`. If the key
-        // is unavailable (device not yet approved), degrade to legacy plaintext so
-        // the request still reaches the Mac; a key-holding peer never re-writes
-        // these (the phone is the sole writer), so this only affects un-approved
-        // devices during the migration window.
+        // scope) with the Cloud Vault key, mirroring the iOS writer. Do not fall
+        // back to plaintext when this device is not approved; keep the request
+        // local and make the user approve the device before cloud sync.
         val vaultKey =
             runCatching {
-                AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
-            }.getOrNull()
-        val payload =
-            mutableMapOf<String, Any>(
-                "id" to id,
-                "sessionID" to sessionID,
-                "requestedAt" to now.toString(),
-                "requestedBy" to requestedBy,
-                "status" to "pending",
-                "schemaVersion" to 1,
-                "source" to "android-hermes-square",
-            )
-        if (vaultKey != null) {
-            payload["sealedScope"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(scope.asJson, vaultKey))
-        } else {
-            payload["scopeJSON"] = scope.asJson
-        }
+                AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore).keyData
+            }.getOrElse { error ->
+                _inlineError.value = error.localizedMessage ?: "Approve this Android device before syncing rollback requests."
+                return null
+            }
+        val payload = sealedRollbackRequestPayload(request, source = "android-hermes-square", vaultKey = vaultKey)
         return try {
             firestore.collection("users").document(uid)
                 .collection("rollback_requests").document(id)
@@ -263,6 +254,22 @@ class RollbackService private constructor(
     }
 }
 
+internal fun sealedRollbackRequestPayload(
+    request: RollbackRequest,
+    source: String,
+    vaultKey: ByteArray,
+): MutableMap<String, Any> =
+    mutableMapOf(
+        "id" to request.id,
+        "sessionID" to request.sessionID,
+        "requestedAt" to Instant.ofEpochMilli(request.requestedAtEpoch).toString(),
+        "requestedBy" to request.requestedBy,
+        "status" to request.status.token,
+        "schemaVersion" to 1,
+        "source" to source,
+        "sealedScope" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(request.scope.asJson, vaultKey)),
+    )
+
 internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
     documentID: String,
     sessionID: String,
@@ -271,26 +278,20 @@ internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
     val sequence = (this["sequence"] as? Number)?.toInt()
     val takenAtIso = this["takenAt"] as? String
     val takenAtEpoch = takenAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
-    // Sealed-first: open `sealedActionLabel`, then fall back to legacy plaintext
-    // `actionLabel` for in-flight docs (CONTRACT legacy fallback).
     val actionLabel =
-        CloudVaultSealedTextCodec.open(this["sealedActionLabel"], vaultKey)
-            ?: this["actionLabel"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(this["sealedActionLabel"], vaultKey, this["actionLabel"] as? String)
     if (sequence == null || takenAtEpoch == null || actionLabel == null) return null
-    // `sealedTouchedFiles` seals the whole `[String]` array as one JSON string;
-    // open + reparse, falling back to legacy plaintext `touchedFiles` list.
+    // `sealedTouchedFiles` seals the whole `[String]` array as one JSON string.
+    // If the sealed field exists, fail closed instead of falling back to a stale
+    // plaintext sibling.
     val touched =
-        CloudVaultSealedTextCodec.open(this["sealedTouchedFiles"], vaultKey)?.let { json ->
-            runCatching {
-                val arr = org.json.JSONArray(json)
-                (0 until arr.length()).map { arr.getString(it) }
-            }.getOrNull()
-        }
-            ?: (this["touchedFiles"] as? List<*>)?.mapNotNull { it as? String }
-            ?: emptyList()
+        openSealedStringListOrLegacy(this["sealedTouchedFiles"], vaultKey, this["touchedFiles"])
     val macSnapshotPath =
-        CloudVaultSealedTextCodec.open(this["sealedMacSnapshotPath"], vaultKey)
-            ?: this["macSnapshotPath"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(
+            this["sealedMacSnapshotPath"],
+            vaultKey,
+            this["macSnapshotPath"] as? String,
+        )
     val restoredAtIso = this["restoredAt"] as? String
     val restoredAtEpoch = restoredAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
     return RollbackSnapshot(
@@ -307,15 +308,12 @@ internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
 
 internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vaultKey: ByteArray? = null): RollbackRequest? {
     val sessionID = this["sessionID"] as? String ?: return null
-    // Sealed-first: open `sealedScope`, then fall back to legacy plaintext
-    // `scopeJSON` for in-flight docs (CONTRACT legacy fallback).
     val scopeJSON =
-        CloudVaultSealedTextCodec.open(this["sealedScope"], vaultKey)
-            ?: this["scopeJSON"] as? String
-            ?: "{\"kind\":\"fullSession\"}"
+        CloudVaultSealedTextCodec.openOrLegacy(this["sealedScope"], vaultKey, this["scopeJSON"] as? String)
+            ?: return null
     val scope = parseScope(scopeJSON)
     val statusRaw = this["status"] as? String
-    val status = RollbackRequest.Status.fromToken(statusRaw)
+    val status = RollbackRequest.Status.fromToken(statusRaw) ?: return null
     val requestedAt =
         (this["requestedAt"] as? String)?.let {
             runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
@@ -325,10 +323,8 @@ internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vault
             runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
         }
     val requestedBy = this["requestedBy"] as? String ?: "unknown"
-    // Sealed-first for the Mac-written resolution diagnostic, legacy fallback.
     val errorMessage =
-        CloudVaultSealedTextCodec.open(this["sealedErrorMessage"], vaultKey)
-            ?: this["errorMessage"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(this["sealedErrorMessage"], vaultKey, this["errorMessage"] as? String)
     return RollbackRequest(
         id = documentID,
         sessionID = sessionID,
@@ -339,6 +335,17 @@ internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vault
         resolvedAtEpoch = resolvedAt,
         errorMessage = errorMessage,
     )
+}
+
+private fun openSealedStringListOrLegacy(rawSealed: Any?, vaultKey: ByteArray?, rawLegacy: Any?): List<String> {
+    if (CloudVaultSealedTextCodec.fromMap(rawSealed as? Map<*, *>) != null) {
+        val json = CloudVaultSealedTextCodec.open(rawSealed, vaultKey) ?: return emptyList()
+        return runCatching {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrNull() ?: emptyList()
+    }
+    return (rawLegacy as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
 }
 
 private fun parseScope(json: String): RollbackScope {

@@ -240,7 +240,7 @@ assert.equal(publicClientView({ ...baseClient, oversightMode: "autonomous" }).ov
 
 // ── Feature 1: runtime state — derived online/offline presence (Δ ≤ 90s).
 assert.equal(HERMES_GATEWAY_PRESENCE_WINDOW_MS, 90 * 1000);
-assert.equal(HERMES_GATEWAY_PROTOCOL_VERSION, 1);
+assert.equal(HERMES_GATEWAY_PROTOCOL_VERSION, 2); // bumped to 2 for the sealed (E2E) gateway contract
 const presenceNow = Date.parse("2026-06-01T00:01:30.000Z");
 assert.equal(isHermesGatewayClientOnline("2026-06-01T00:01:00.000Z", presenceNow), true); // 30s ago -> online
 assert.equal(isHermesGatewayClientOnline("2026-06-01T00:00:00.000Z", presenceNow), true); // exactly 90s -> online
@@ -397,6 +397,19 @@ assert.match(source, /approvedByDeviceId: deviceId/);
 assert.match(source, /has already been resolved/); // single-resolution idempotency guard
 assert.match(source, /Oversight request has expired/); // expiry guard in the resolver
 assert.match(source, /export const reapHermesGatewayApprovals = onSchedule/);
+// PRIVACY BOUNDARY (sealed-gateway consistency): the oversight gate is
+// CONTROL-PLANE only — the server must NEVER persist a client-supplied free-text
+// `summary` (the action detail flows E2E-sealed over the message channel). Assert
+// the leak path is gone and the gate stores an empty summary at the boundary.
+assert.ok(
+  !/handleArmApproval[\s\S]*?sanitizeHermesGatewayApprovalSummary\(body\.summary\)/.test(source),
+  "handleArmApproval must NOT persist client-supplied summary text on the sealed gateway",
+);
+// The stored summary is SERVER-DERIVED from the coarse toolName, never client free-text.
+assert.match(source, /const summary = toolName \? `Approve \$\{toolName\} action`/);
+// The full human-readable detail must travel over the sealed message channel,
+// not the gate doc — the adapter posts it via the sealed send_slash_confirm path.
+assert.match(source, /CONTROL-PLANE only/);
 // The gateway must NOT write into the E2E-sealed CLI mission collection: assert
 // there is no Firestore PATH reference to it (the word may appear in a comment).
 assert.ok(

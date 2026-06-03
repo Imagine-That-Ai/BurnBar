@@ -204,6 +204,22 @@ class UserStore : ViewModel() {
                 .setScopes(listOf("email", "name"))
                 .addCustomParameter("locale", java.util.Locale.getDefault().language)
                 .build()
+        startProviderSignIn(activity, provider, "Apple")
+    }
+
+    // ═══ GitHub ═══
+    fun signInWithGitHub(activity: android.app.Activity) {
+        _isSigningIn.value = true
+        _authError.value = null
+        val provider = OAuthProvider.newBuilder("github.com").build()
+        startProviderSignIn(activity, provider, "GitHub")
+    }
+
+    private fun startProviderSignIn(
+        activity: android.app.Activity,
+        provider: OAuthProvider,
+        label: String,
+    ) {
         // If a pending result already exists (e.g. activity recreated mid-flow),
         // prefer it so we don't kick off a second auth web sheet.
         val pending = auth.pendingAuthResult
@@ -212,17 +228,17 @@ class UserStore : ViewModel() {
             _isSigningIn.value = false
             if (!completed.isSuccessful) {
                 val e = completed.exception
-                Log.w("BurnBar", "Apple sign-in failed", e)
+                Log.w("BurnBar", "$label sign-in failed", e)
                 val raw = e?.localizedMessage.orEmpty()
                 val hint =
                     when {
                         raw.contains("invalid_client", ignoreCase = true) ||
                             raw.contains("CONFIGURATION_NOT_FOUND", ignoreCase = true) ->
-                            "Apple Sign-In isn't fully configured for this app yet. " +
-                                "An admin needs to add the Apple Services ID + key in Firebase Console → Authentication → Apple."
+                            "$label Sign-In isn't fully configured for this app yet. " +
+                                "An admin needs to add the $label OAuth credentials in Firebase Console → Authentication → $label."
                         raw.contains("web-context-cancelled", ignoreCase = true) ||
                             raw.contains("cancelled", ignoreCase = true) -> ""
-                        raw.isBlank() -> "Apple sign-in failed."
+                        raw.isBlank() -> "$label sign-in failed."
                         else -> raw
                     }
                 if (hint.isNotEmpty()) {

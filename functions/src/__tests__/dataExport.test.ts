@@ -96,10 +96,27 @@ const sealedBlob = {
   createdAt: "2026-06-02T00:00:00.000Z",
 };
 
+// gateway-e2e Wave 4: the sealed Hermes gateway relay envelope (HermesRelayCrypto
+// p256-hkdf-sha256-aesgcm) carries only opaque base64 ciphertext + wrapped key.
+const relayEnvelope = {
+  payloadCiphertext: "Y2lwaGVydGV4dA==",
+  wrappedKey: "BAQEd3JhcHBlZA==",
+  relayEncryption: "p256-hkdf-sha256-aesgcm",
+  relayKeyVersion: 1,
+};
+
 describe("isSealedEnvelope structural detection", () => {
   it("detects AES-256-GCM text + blob envelopes regardless of key name", () => {
     expect(isSealedEnvelope(sealedText)).toBe(true);
     expect(isSealedEnvelope(sealedBlob)).toBe(true);
+  });
+
+  it("detects the Hermes gateway relay envelope (p256-hkdf-sha256-aesgcm)", () => {
+    expect(isSealedEnvelope(relayEnvelope)).toBe(true);
+    // missing wrappedKey → not a complete envelope
+    expect(isSealedEnvelope({ relayEncryption: "p256-hkdf-sha256-aesgcm", payloadCiphertext: "x" })).toBe(false);
+    // wrong algorithm constant → not recognized
+    expect(isSealedEnvelope({ relayEncryption: "rot13", payloadCiphertext: "x", wrappedKey: "y" })).toBe(false);
   });
 
   it("rejects plaintext, partial envelopes, arrays, and scalars", () => {
@@ -109,6 +126,68 @@ describe("isSealedEnvelope structural detection", () => {
     expect(isSealedEnvelope([sealedText])).toBe(false);
     expect(isSealedEnvelope(42)).toBe(false);
     expect(isSealedEnvelope(null)).toBe(false);
+  });
+});
+
+describe("sealAwareSerializeDoc seals gateway / media / subscription content", () => {
+  it("emits a sealed gateway event doc as routing metadata + relayEnvelope, drops plaintext text", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      // sealed payload sub-object (HermesRelayCrypto)
+      relayEnvelope,
+      // routing-only opaque metadata — emitted
+      sequence: 7,
+      kind: "user_message",
+      destinationId: "dest-1",
+      schemaVersion: 2,
+      // any plaintext that a legacy/misbehaving writer left behind MUST be dropped
+      text: "the secret prompt",
+      senderDisplayName: "Alberto",
+      threadId: "thread-99",
+    });
+    expect(out.relayEnvelope).toEqual(relayEnvelope);
+    expect(out.sequence).toBe(7);
+    expect(out.kind).toBe("user_message");
+    expect(out.schemaVersion).toBe(2);
+    for (const leaked of ["text", "senderDisplayName", "threadId", "destinationId"]) {
+      expect(out, `${leaked} must be dropped`).not.toHaveProperty(leaked);
+      expect(dropped, `${leaked} must be reported`).toContain(leaked);
+    }
+  });
+
+  it("emits a sealed media manifest as sealedFilename + opaque columns, drops plaintext filename", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      sealedFilename: sealedText,
+      blobHash: "d".repeat(64),
+      mime: "image/png",
+      size: 4096,
+      peerDeviceIdHash: "e".repeat(64),
+      direction: "iosToMac",
+      schemaVersion: 1,
+      filename: "vacation-photos.zip", // legacy plaintext — must be dropped
+    });
+    expect(out.sealedFilename).toEqual(sealedText);
+    expect(out.blobHash).toBe("d".repeat(64));
+    expect(out.mime).toBe("image/png");
+    expect(out.direction).toBe("iosToMac");
+    expect(out).not.toHaveProperty("filename");
+    expect(dropped).toContain("filename");
+  });
+
+  it("emits sealed subscription agentURI/topicID, drops cleartext graph identity", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      sealedAgentURI: sealedText,
+      sealedTopicID: sealedText,
+      consentGivenAt: { toDate: () => new Date("2026-06-03T00:00:00.000Z") },
+      agentURI: "agent://example.com/coolbot", // cleartext graph — must be dropped
+      topicID: "releases",
+    });
+    expect(out.sealedAgentURI).toEqual(sealedText);
+    expect(out.sealedTopicID).toEqual(sealedText);
+    expect(out.consentGivenAt).toBe("2026-06-03T00:00:00.000Z");
+    expect(out).not.toHaveProperty("agentURI");
+    expect(out).not.toHaveProperty("topicID");
+    expect(dropped).toContain("agentURI");
+    expect(dropped).toContain("topicID");
   });
 });
 

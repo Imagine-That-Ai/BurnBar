@@ -361,6 +361,13 @@ is_xcode_false_negative_pass() {
     return 0
 }
 
+is_zero_test_pass() {
+    local log_path="$1"
+
+    grep -Fq "Test Suite 'Selected tests' passed" "$log_path" || return 1
+    grep -Eq "Executed 0 tests, with ([0-9]+ tests skipped and )?0 failures" "$log_path"
+}
+
 backoff_seconds=(0 5 10 20 40)
 
 test_attempt=1
@@ -402,6 +409,15 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     attempt_duration=$((attempt_end_epoch - attempt_start_epoch))
 
     if [ "$last_test_exit_code" -eq 0 ]; then
+        if is_zero_test_pass "$xcodebuild_log"; then
+            emit_attempt_event "$test_attempt" 65 "zero_tests_failed" "$attempt_duration" "$attempt_xcresult"
+            echo "ERROR: XCTest reported Selected tests passed but executed 0 tests for filter '$test_filter'." >&2
+            echo "ERROR: Regenerate the Xcode project or fix OPENBURNBAR_MOBILE_TEST_FILTER before accepting this run." >&2
+            final_exit_code=65
+            final_outcome="failed"
+            final_xcresult="$attempt_xcresult"
+            break
+        fi
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "passed" "$attempt_duration" "$attempt_xcresult"
         final_exit_code=0
         final_outcome="passed"

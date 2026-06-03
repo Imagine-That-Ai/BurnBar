@@ -133,18 +133,34 @@ the two cleartext filter/cap inputs `sourceKind` (one of three coarse buckets) +
 server-keyed `repoMatchToken` (used only to route an inbound GitHub webhook) and
 a vault-sealed `sealedRepoFullName` it cannot open. **Never** plaintext, raw
 query text, a public-bge-space embedding, a confirm-the-guess SHA-256 of the
-plaintext (the legacy v0 `contentHash` dedup oracle is removed — commits now
-require a vault-keyed `dedupHash` and reject a raw `embedding`/`contentHash`),
-the real `sourcePath` (it is sealed inside `sealedMetadata`), the cleartext
-`sourceSlug` (B-SEC-2), or the cleartext repo `repoFullName` (now stored only as
-the opaque match token + sealed name; the cleartext name is observed transiently
-server-side only when the GitHub push webhook arrives, never stored). **Accepted leakage:** because the cloak is
+plaintext (the legacy v0 `contentHash` dedup oracle is GONE end-to-end — commits
+require a vault-keyed `dedupHash` and reject a raw `embedding`/`contentHash`, and
+as of the dedup-v0 flag-day any pre-existing v0 row — `dedupHashVersion == 0`,
+whose doc id was the legacy cleartext SHA-256 — is no longer served and is
+purged: `searchKnowledge` floors `dedupHashVersion == 1` and filters the bumped
+embedding-model tag `bge-small-en-v1.5-vault-dedup-v1`, the `commitKnowledgeBatch`
+idempotent-skip never treats a v0 row as a match, and `purgeLegacyKnowledgeVectors`
+deletes v0 rows + rows under the retired model tag, so the cleartext-SHA-256
+oracle survives in no served or queryable row),
+the real `sourcePath` for an indexed chunk (it is sealed inside `sealedMetadata`),
+or the cleartext repo `repoFullName` (now stored only as the opaque match token +
+sealed name; the cleartext name is observed transiently server-side only when the
+GitHub push webhook arrives, never stored). **Accepted leakage:** because the cloak is
 orthonormal, the server can compute the pairwise cosine matrix, k-NN graph,
 clusters, and similarity-dedup over the cloaked vectors **without the key** —
 relative geometry is preserved, not hidden. At the shipped 24-reflection
 parameter this also leaves a cross-tenant "same-item" similarity signal
-(cosine ≈ 0.77), so cross-tenant linkage is only *partially* resisted. See
-[`docs/pensieve-leakage-analysis.md`](pensieve-leakage-analysis.md).
+(cosine ≈ 0.77), so cross-tenant linkage is only *partially* resisted. The repo
+`repoMatchToken` is a **global** deterministic HMAC (the same repo yields the same
+token for every user), so the server can observe that two members connected the
+same repo and — if the single server-side match key ever leaked — could
+dictionary-confirm *which* public repo from a candidate list; it is not per-user
+salted. The source registry also still stores a reversible cleartext `sourceSlug`
+(a slugified source path) on `knowledge_repos` rows and as
+`knowledge_sync_manifests` document ids; replacing those with an opaque per-user id
+is tracked remaining hardening (privacy-leak-remediation F4/F5). See
+[`docs/pensieve-leakage-analysis.md`](pensieve-leakage-analysis.md) and
+[`docs/searchable-index-leakage.md`](searchable-index-leakage.md).
 
 | Control | Mechanism |
 |---|---|

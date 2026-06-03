@@ -79,8 +79,8 @@ const statusClass =
     gap: var(--s-4);
     align-content: start;
     padding: var(--s-5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid var(--ink-line-bright);
     border-radius: var(--r-md);
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
@@ -94,15 +94,25 @@ const statusClass =
       transform var(--dur-base) var(--ease-out),
       box-shadow var(--dur-base) var(--ease-out);
   }
+  :root[data-theme="light"] .surface-card {
+    box-shadow:
+      0 8px 32px rgba(22, 19, 14, 0.12),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
+  }
   .surface-card:hover {
     border-color: color-mix(
       in oklab,
       var(--brand-color, var(--ember-core)) 40%,
-      rgba(255, 255, 255, 0.08)
+      var(--ink-line)
     );
     transform: translateY(-4px);
     box-shadow:
       0 12px 36px rgba(0, 0, 0, 0.45),
+      0 0 20px color-mix(in oklab, var(--brand-color, var(--ember-core)) 10%, transparent);
+  }
+  :root[data-theme="light"] .surface-card:hover {
+    box-shadow:
+      0 12px 36px rgba(22, 19, 14, 0.18),
       0 0 20px color-mix(in oklab, var(--brand-color, var(--ember-core)) 10%, transparent);
   }
   .surface-card::after {

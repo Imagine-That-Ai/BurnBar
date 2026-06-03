@@ -4,7 +4,7 @@ import OpenBurnBarCore
 // MARK: - Auth
 
 public enum MobileAuthProviderID: String, Sendable, Equatable, CaseIterable {
-    case email, apple, google
+    case email, apple, google, github
 }
 
 public struct MobileAuthIdentity: Sendable, Equatable {

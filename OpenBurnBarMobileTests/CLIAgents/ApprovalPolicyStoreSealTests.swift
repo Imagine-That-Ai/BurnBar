@@ -11,6 +11,7 @@ import OpenBurnBarCore
 ///
 /// Matching stays entirely client-side, so the round-trip must preserve the
 /// in-memory class hash and `ApprovalPolicy.matches(...)` behaviour.
+@MainActor
 final class ApprovalPolicyStoreSealTests: XCTestCase {
 
     private func samplePolicy() -> ApprovalPolicy {

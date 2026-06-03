@@ -642,7 +642,7 @@ test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async ()
     setDoc(doc(cloudDb, "users/cloud-only-media/media_attachment_manifests/manifest-1"), {
       id: "manifest-1",
       blobHash: "b".repeat(64),
-      filename: "screen.png",
+      sealedFilename: sealedText(),
       mime: "image/png",
       size: 1234,
       peerDeviceIdHash: "peer-hash",
@@ -657,7 +657,7 @@ test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async ()
     setDoc(doc(proDb, "users/cloud-pro-media/media_attachment_manifests/manifest-1"), {
       id: "manifest-1",
       blobHash: "b".repeat(64),
-      filename: "screen.png",
+      sealedFilename: sealedText(),
       mime: "image/png",
       size: 1234,
       peerDeviceIdHash: "peer-hash",
@@ -1591,7 +1591,7 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
       index: 0,
       hash: "hash",
@@ -2643,7 +2643,7 @@ test("Hermes Gateway state is server-owned and destinations are Cloud-gated", as
   };
   await assertFails(setDoc(doc(ownerDb, destinationPath), destination));
   await seedBurnBarProMaxEntitlement("hgw-owner");
-  await assertSucceeds(setDoc(doc(ownerDb, destinationPath), destination));
+  await assertFails(setDoc(doc(ownerDb, destinationPath), destination));
   await assertSucceeds(getDoc(doc(ownerDb, destinationPath)));
   await assertFails(getDoc(doc(otherDb, destinationPath)));
   await assertFails(
@@ -2828,8 +2828,10 @@ test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
   );
 });
 
-// T4 — session_logs chunk rejects unlisted + plaintext keys (hasOnly).
-test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
+// T4 — session_logs chunk writes are server-only. Search chunks are committed
+// through commitEncryptedSearchIndexBatch, where the callable validates every
+// token/semantic hash before Admin SDK writes `cloud_search_chunks`.
+test("T4 session_logs chunk denies all direct client writes", async () => {
   const db = authedDb("slc-owner");
   await seedHostedCloudEntitlement("slc-owner");
   const chunkBase = {
@@ -2843,7 +2845,7 @@ test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
     updatedAt: serverTimestamp(),
   };
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/0"), chunkBase)
   );
   await assertFails(
@@ -2856,6 +2858,18 @@ test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
     setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/2"), {
       ...chunkBase,
       text: "leak",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/3"), {
+      ...chunkBase,
+      tokenHashes: ["private prompt"],
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/4"), {
+      ...chunkBase,
+      semanticHashes: ["not-a-valid-hash"],
     })
   );
 });
@@ -2982,8 +2996,11 @@ test("T8 media_session_events denies unlisted keys", async () => {
   );
 });
 
-// T9 — media_attachment_manifests seal-aware filename (Fork F = SEAL).
-test("T9 media_attachment_manifests accept sealedFilename and reject co-emitted plaintext", async () => {
+// T9 — media_attachment_manifests sealed-filename FLAG-DAY (Fork F = SEAL).
+// The sealing iOS writer of record ships clean, so the plaintext `filename`
+// branch is hard-dropped: sealedFilename is mandatory; plaintext filename and
+// a doc with neither field are both rejected (hermes-gateway-e2e-rearchitecture).
+test("T9 media_attachment_manifests require sealedFilename and reject plaintext", async () => {
   const db = authedDb("mam-owner");
   await seedBurnBarProMaxEntitlement("mam-owner");
   const base = {
@@ -3003,15 +3020,24 @@ test("T9 media_attachment_manifests accept sealedFilename and reject co-emitted 
       sealedFilename: sealedText(),
     })
   );
-  // Legacy plaintext filename still syncs (migration fallback).
-  await assertSucceeds(
+  // FLAG-DAY: a plaintext `filename` is no longer in the allowlist → rejected.
+  await assertFails(
     setDoc(doc(db, "users/mam-owner/media_attachment_manifests/legacy-1"), {
       ...base,
       id: "legacy-1",
       filename: "screen.png",
     })
   );
-  // A doc carrying BOTH the sealed and the cleartext name is rejected.
+  // A doc carrying neither the sealed nor the cleartext name is rejected
+  // (sealedFilename is now mandatory).
+  await assertFails(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/neither-1"), {
+      ...base,
+      id: "neither-1",
+    })
+  );
+  // A doc carrying BOTH the sealed and the cleartext name is rejected (the
+  // plaintext key is no longer in the hasOnly allowlist).
   await assertFails(
     setDoc(doc(db, "users/mam-owner/media_attachment_manifests/both-1"), {
       ...base,
@@ -3106,15 +3132,24 @@ test("T11 project_memory_snapshots seal the name and reject plaintext slug", asy
   );
 });
 
-// T12 — usage / budgetRules reject the plaintext project text once sealed.
-test("T12 usage and budgetRules reject plaintext project text when sealed copy present", async () => {
+// T12 — usage / budgetRules FAIL CLOSED: a fresh write may never carry a
+// cleartext projectName/label. Sealed or nameless creates are accepted; legacy
+// plaintext is tolerated only on an update where the field already exists.
+test("T12 usage and budgetRules fail closed on plaintext project text", async () => {
   const db = authedDb("usage-owner");
 
-  // Legacy usage row with only the plaintext name still syncs (migration).
-  await assertSucceeds(
-    setDoc(doc(db, "users/usage-owner/usage/legacy"), {
-      id: "legacy",
+  // A plaintext-only usage CREATE is now DENIED (no vault key → omit the name).
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/usage/plaintext-create"), {
+      id: "plaintext-create",
       projectName: "BurnBar",
+      totalCostUSD: 1.5,
+    })
+  );
+  // A nameless usage row (no-key writer omitted the name) is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/usage/nameless"), {
+      id: "nameless",
       totalCostUSD: 1.5,
     })
   );
@@ -3136,13 +3171,52 @@ test("T12 usage and budgetRules reject plaintext project text when sealed copy p
     })
   );
 
-  // budgetRules: sealed name + label accepted; plaintext alongside is denied.
+  // Migration tolerance lives on UPDATE only. Seed a legacy plaintext row with
+  // rules disabled, then prove an owner update that PRESERVES the existing
+  // plaintext name still syncs, while introducing fresh plaintext is rejected.
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/usage-owner/usage/legacy-mig"), {
+      id: "legacy-mig",
+      projectName: "BurnBar",
+      totalCostUSD: 1.0,
+    });
+  });
+  await assertSucceeds(
+    updateDoc(doc(db, "users/usage-owner/usage/legacy-mig"), { totalCostUSD: 2.0 })
+  );
+  // Re-introducing a plaintext name onto a sealed row (none existed) is denied.
+  await assertFails(
+    updateDoc(doc(db, "users/usage-owner/usage/sealed"), { projectName: "BurnBar" })
+  );
+
+  // budgetRules: sealed name + label accepted; nameless accepted; any cleartext
+  // projectName/label on create denied.
   await assertSucceeds(
     setDoc(doc(db, "users/usage-owner/budgetRules/sealed"), {
       id: "sealed",
       sealedProjectName: sealedText(),
       sealedLabel: sealedText(),
       projectKeyHash: "f".repeat(64),
+      limitUSD: 100,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/budgetRules/nameless"), {
+      id: "nameless",
+      limitUSD: 100,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetRules/plaintext-name"), {
+      id: "plaintext-name",
+      projectName: "BurnBar",
+      limitUSD: 100,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetRules/plaintext-label"), {
+      id: "plaintext-label",
+      label: "Monthly cap",
       limitUSD: 100,
     })
   );
@@ -3160,12 +3234,40 @@ test("T12 usage and budgetRules reject plaintext project text when sealed copy p
       label: "Monthly cap",
     })
   );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/budgetEvents/event-ok"), {
+      id: "event-ok",
+      ruleID: "sealed",
+      kind: "ruleUpdated",
+      source: "settings_ui",
+      amountAtEvent: 0,
+      limitAtEvent: 100,
+      occurredAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
+      sourceDeviceID: "device-a",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetEvents/event-leak"), {
+      id: "event-leak",
+      ruleID: "sealed",
+      kind: "ruleUpdated",
+      source: "settings_ui",
+      amountAtEvent: 0,
+      limitAtEvent: 100,
+      detailJSON: "{\"label\":\"Secret Project\"}",
+      occurredAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
+    })
+  );
 });
 
 // T13 — cli_sessions/{id}/snapshots: sealed-only contract (no live writer).
 // Sealed action label / touched files / mac path accepted; any plaintext key
-// is rejected by the hard-dropped hasOnly allowlist; malformed sealed denied.
-test("T13 cli_sessions snapshots seal action/files/path and reject plaintext when sealed", async () => {
+// is rejected by the hard-dropped hasOnly allowlist; missing/malformed required
+// sealed action label denied.
+test("T13 cli_sessions snapshots require sealed action/files/path and reject plaintext", async () => {
   const ownerUid = "snap-owner";
   const db = authedDb(ownerUid);
   const base = {
@@ -3184,6 +3286,13 @@ test("T13 cli_sessions snapshots seal action/files/path and reject plaintext whe
       sealedActionLabel: sealedText(),
       sealedTouchedFiles: sealedText(),
       sealedMacSnapshotPath: sealedText(),
+    })
+  );
+  // Required action label cannot be omitted on a new snapshot.
+  await assertFails(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedTouchedFiles: sealedText(),
     })
   );
   // Plaintext action label / touched files / mac path are rejected by hasOnly.
@@ -3217,15 +3326,15 @@ test("T13 cli_sessions snapshots seal action/files/path and reject plaintext whe
   );
 });
 
-// T14 — approval_policies: legacy plaintext-only doc still syncs; sealed doc
-// with opaque hashes accepted; carrying both sealed + plaintext is rejected;
-// bad hash + unknown key rejected.
-test("T14 approval_policies seal label/glob/project and reject plaintext when sealed", async () => {
+// T14 — approval_policies: sealed-only writes; legacy plaintext-only creates
+// are rejected by the hard-dropped hasOnly allowlist. Sealed doc with opaque
+// hashes accepted; carrying plaintext, bad hash, and unknown keys rejected.
+test("T14 approval_policies require sealed label/glob/project and reject plaintext", async () => {
   const ownerUid = "ap-owner";
   const db = authedDb(ownerUid);
 
-  // Legacy plaintext-only policy still syncs (migration safety).
-  await assertSucceeds(
+  // Legacy plaintext-only policy is no longer accepted for new client writes.
+  await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/legacy`), {
       id: "legacy",
       decision: "approve",
@@ -3271,6 +3380,7 @@ test("T14 approval_policies seal label/glob/project and reject plaintext when se
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/bad-hash`), {
       decision: "approve",
+      sealedDisplayLabel: sealedText(),
       sealedTargetProject: sealedText(),
       projectKeyHash: "NOTHEX",
     })
@@ -3285,14 +3395,15 @@ test("T14 approval_policies seal label/glob/project and reject plaintext when se
   );
 });
 
-// T15 — rollback_requests: legacy plaintext scope still syncs; sealed scope +
-// error accepted; carrying both sealed + plaintext is rejected.
-test("T15 rollback_requests seal scope/error and reject plaintext when sealed", async () => {
+// T15 — rollback_requests: sealed-only writes; legacy plaintext scope is
+// rejected for new client writes. Sealed scope + error accepted; carrying
+// plaintext is rejected.
+test("T15 rollback_requests require sealed scope/error and reject plaintext", async () => {
   const ownerUid = "rr-owner";
   const db = authedDb(ownerUid);
 
-  // Legacy plaintext-only request still syncs (migration safety).
-  await assertSucceeds(
+  // Legacy plaintext-only request is no longer accepted for new client writes.
+  await assertFails(
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/legacy`), {
       id: "legacy",
       sessionID: "sess-1",
@@ -3325,9 +3436,40 @@ test("T15 rollback_requests seal scope/error and reject plaintext when sealed", 
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/leak-error`), {
       id: "leak-error",
       sessionID: "sess-1",
+      sealedScope: sealedText(),
       sealedErrorMessage: sealedText(),
       errorMessage: "boom",
       status: "failed",
+    })
+  );
+
+  // Snake_case status tokens — including the newly-added terminal `cancelled`
+  // and the active `in_flight` — are accepted by the allowlist
+  // (hermes-gateway-e2e-rearchitecture rollback-status).
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/active`), {
+      id: "active",
+      sessionID: "sess-1",
+      sealedScope: sealedText(),
+      status: "in_flight",
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/cancelled`), {
+      id: "cancelled",
+      sessionID: "sess-1",
+      sealedScope: sealedText(),
+      status: "cancelled",
+    })
+  );
+  // A legacy camelCase `inFlight` status is NOT in the wire allowlist — new
+  // writes must use snake_case; only read decoders tolerate the legacy alias.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/rollback_requests/legacy-status`), {
+      id: "legacy-status",
+      sessionID: "sess-1",
+      sealedScope: sealedText(),
+      status: "inFlight",
     })
   );
 });
@@ -3363,6 +3505,14 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
     })
   );
   await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-tagline`), {
+      id: "leak-tagline",
+      runtimeID: "claude",
+      sealedTagline: sealedText(),
+      tagline: "Reads private repos",
+    })
+  );
+  await assertFails(
     setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-personas`), {
       id: "leak-personas",
       runtimeID: "claude",
@@ -3389,24 +3539,33 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
   );
 });
 
-// T17 — subscription_topics: sealed display text accepted; legacy plaintext-only
-// still syncs; both sealed + plaintext rejected; arbitrary key rejected.
-test("T17 subscription_topics seal display text, reject plaintext-when-sealed and arbitrary keys", async () => {
+// T17 — subscription_topics: sealed graph + display text required; legacy
+// plaintext-only creates rejected; both sealed + plaintext rejected; arbitrary
+// key rejected.
+test("T17 subscription_topics require sealed graph/display text and reject plaintext", async () => {
   const ownerUid = "st-owner";
   const db = authedDb(ownerUid);
 
   // Sealed-only topic accepted.
   await assertSucceeds(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/sealed`), {
-      agentURI: "agent://burnbar/research-scout",
-      topicID: "agent-updates",
+      sealedAgentURI: sealedText(),
+      sealedTopicID: sealedText(),
       sealedDisplayName: sealedText(),
       sealedDescription: sealedText(),
       cadence: "daily",
     })
   );
-  // Legacy plaintext-only topic still syncs (migration safety).
+  // Partial updates still pass against an already-sealed document because rules
+  // evaluate request.resource.data as the post-update document.
   await assertSucceeds(
+    updateDoc(doc(db, `users/${ownerUid}/subscription_topics/sealed`), {
+      deliveryMode: "muted",
+      isMuted: true,
+    })
+  );
+  // Legacy plaintext-only topic is no longer accepted for new client writes.
+  await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/legacy`), {
       agentURI: "agent://burnbar/research-scout",
       topicID: "agent-updates",
@@ -3418,27 +3577,49 @@ test("T17 subscription_topics seal display text, reject plaintext-when-sealed an
   // A topic carrying BOTH sealed + plaintext displayName is denied.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-name`), {
-      agentURI: "agent://burnbar/research-scout",
-      topicID: "agent-updates",
+      sealedAgentURI: sealedText(),
+      sealedTopicID: sealedText(),
       sealedDisplayName: sealedText(),
+      sealedDescription: sealedText(),
       displayName: "Research Scout updates",
     })
   );
   // A topic carrying BOTH sealed + plaintext description is denied.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-desc`), {
-      agentURI: "agent://burnbar/research-scout",
-      topicID: "agent-updates",
+      sealedAgentURI: sealedText(),
+      sealedTopicID: sealedText(),
+      sealedDisplayName: sealedText(),
       sealedDescription: sealedText(),
       description: "Daily research digest.",
+    })
+  );
+  // A topic carrying BOTH sealed + plaintext graph edge is denied.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-agent`), {
+      agentURI: "agent://burnbar/research-scout",
+      sealedAgentURI: sealedText(),
+      sealedTopicID: sealedText(),
+      sealedDisplayName: sealedText(),
+      sealedDescription: sealedText(),
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-topic`), {
+      topicID: "agent-updates",
+      sealedAgentURI: sealedText(),
+      sealedTopicID: sealedText(),
+      sealedDisplayName: sealedText(),
+      sealedDescription: sealedText(),
     })
   );
   // An arbitrary unlisted key is rejected by hasOnly.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/smuggle`), {
-      agentURI: "agent://burnbar/research-scout",
-      topicID: "agent-updates",
+      sealedAgentURI: sealedText(),
+      sealedTopicID: sealedText(),
       sealedDisplayName: sealedText(),
+      sealedDescription: sealedText(),
       foo: "bar",
     })
   );

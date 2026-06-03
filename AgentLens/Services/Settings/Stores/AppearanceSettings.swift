@@ -211,6 +211,19 @@ final class AppearanceSettings {
         didSet { persistence.set(appearanceMode, forKey: "appearanceMode") }
     }
 
+    /// The app *skin* (see `AppSkin`) — orthogonal to light/dark. `.editorial`
+    /// re-points the design-system tokens to the light, paper-bright
+    /// app.burnbar.ai console palette. Written straight to `UserDefaults.standard`
+    /// (in addition to the debounced coordinator) so `AppSkin.current`, read from
+    /// the dynamic color resolvers, sees the change immediately and after relaunch.
+    var appearanceSkin: AppSkin = .aurora {
+        didSet {
+            UserDefaults.standard.set(appearanceSkin.rawValue, forKey: AppSkin.storageKey)
+            persistence.set(appearanceSkin.rawValue, forKey: AppSkin.storageKey)
+            NotificationCenter.default.post(name: .appearanceSkinDidChange, object: nil)
+        }
+    }
+
     var showInMenuBar: Bool = true {
         didSet { persistence.set(showInMenuBar, forKey: "showInMenuBar") }
     }
@@ -338,6 +351,10 @@ final class AppearanceSettings {
         } else {
             self.appearanceMode = .system
         }
+        // Skin is canonically read from `UserDefaults.standard` (where the
+        // dynamic color resolvers read `AppSkin.current`); mirror it back through
+        // the coordinator so a fresh suite stays consistent.
+        self.appearanceSkin = AppSkin.current
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
@@ -394,6 +411,7 @@ final class AppearanceSettings {
 }
 
 extension Notification.Name {
+    static let appearanceSkinDidChange = Notification.Name("com.openburnbar.appearance.appearanceSkinDidChange")
     static let useWebsiteBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useWebsiteBackgroundDidChange")
     static let useConstellationBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useConstellationBackgroundDidChange")
     static let enableDesktopWallpaperDidChange = Notification.Name("com.openburnbar.appearance.enableDesktopWallpaperDidChange")

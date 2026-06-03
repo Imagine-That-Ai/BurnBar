@@ -81,7 +81,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Conversations & Chat",
     "icon": "bubble.left.and.bubble.right.fill",
     "encryptionTier": "end_to_end",
-    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, and conversation recall metadata are sealed on-device before Firestore receives them.",
+    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, and conversation recall metadata are sealed on-device before Firestore receives them.",
     "serverSees": [
       "provider/runtime identifiers",
       "message counts",
@@ -98,7 +98,10 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "saved text snippets",
       "project/file/command labels",
       "rollback scope paths",
-      "rollback error diagnostics"
+      "rollback error diagnostics",
+      "approval policy labels/globs/projects",
+      "agent persona text",
+      "subscription graph edges and display text"
     ],
     "firestorePaths": [
       "conversations",
@@ -107,7 +110,10 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "cli_sessions",
       "cli_agent_mission_requests",
       "text_snippets",
-      "rollback_requests"
+      "rollback_requests",
+      "approval_policies",
+      "agent_identities",
+      "subscription_topics"
     ],
     "storagePaths": [],
     "countSource": "chat_threads",
@@ -130,15 +136,15 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Searchable Session Logs",
     "icon": "text.magnifyingglass",
     "encryptionTier": "end_to_end",
-    "summary": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes.",
+    "summary": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes. NOTE: the keyword search index is deterministic — repeated and co-occurring search terms produce stable keyed digests, so the server can learn which terms recur and appear together across your logs (the search structure), and the integrity hashes can confirm a guessed body or chunk; every title, snippet, body, and path stays sealed and unreadable.",
     "serverSees": [
       "provider",
       "model",
       "cost",
       "token counts",
       "timing",
-      "bodyHash",
-      "opaque token/semantic hashes"
+      "integrity hashes",
+      "deterministic keyed search digests"
     ],
     "deviceOnly": [
       "project/path text",
@@ -264,18 +270,16 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Connected Devices & Pairings",
     "icon": "laptopcomputer.and.iphone",
     "encryptionTier": "server_readable",
-    "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
+    "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames AND the hosted chat gateway are both sealed and never readable by the server — the gateway routes ciphertext per-link and never reads message text, sender names, or attachment file names. The per-agent subscription graph is cloaked behind opaque keyed doc ids.",
     "serverSees": [
       "device ids",
       "pairing metadata",
       "last seen",
       "relay routing",
-      "hosted chat gateway message text",
-      "hosted chat gateway sender names",
-      "hosted chat gateway attachment file names"
+      "opaque relay key material (public keys)"
     ],
     "deviceOnly": [
-      "end-to-end relay frame contents (sealed per their own domains)"
+      "end-to-end relay + gateway frame contents (message text, sender names, attachment file names — all sealed on-device)"
     ],
     "firestorePaths": [
       "devices",
@@ -393,14 +397,20 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Media",
     "icon": "photo.on.rectangle.angled",
     "encryptionTier": "zero_access",
-    "summary": "Files, screen, and video relayed between your Mac and phones (Floo media).",
+    "summary": "Files, screen, and video relayed between your Mac and phones (Floo media). NOTE: an attachment manifest records only an opaque content hash, mime type, byte size, an opaque per-peer device-id hash, direction, and timestamps — the human-readable file name is sealed on-device (sealedFilename) and never readable by the server.",
     "serverSees": [
       "session events",
       "quota usage",
-      "attachment manifests"
+      "attachment blob hash",
+      "mime type",
+      "byte size",
+      "opaque peer device-id hash",
+      "direction",
+      "timestamps"
     ],
     "deviceOnly": [
-      "media payload contents (relayed/sealed)"
+      "media payload contents (relayed/sealed)",
+      "attachment file names (sealed on-device)"
     ],
     "firestorePaths": [
       "media_session_events",
@@ -504,7 +514,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "action",
       "domain",
       "timestamp",
-      "hash-chain links"
+      "hash-chain links",
+      "generic notification routing ids"
     ],
     "deviceOnly": [],
     "firestorePaths": [
@@ -515,6 +526,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "escrow_audit_events",
       "entitlement_events",
       "budgetEvents",
+      "agent_notification_events",
+      "agent_notification_replies",
       "unified_audit_log",
       "audit_meta"
     ],

@@ -78,7 +78,7 @@ export const searchKnowledge = onCall(
       // `sourceKind` is one of three coarse buckets (accepted leakage) and the
       // source filter is keyed ONLY by the vault-keyed `slugHmac` the device
       // sends — the cleartext `sourceSlug` filter has been dropped now that
-      // clients are v1 (v0 rows fall back to a slugHmac-less recall).
+      // clients are v1 (v0 rows are never served, see the dedupHashVersion floor).
       const sourceKindRaw = boundedTrimmedString(request.data?.sourceKind, "sourceKind", 64, false);
       if (sourceKindRaw && !SOURCE_KINDS.has(sourceKindRaw)) {
         throw new HttpsError("invalid-argument", `sourceKind must be one of: ${[...SOURCE_KINDS].join(", ")}.`);
@@ -86,9 +86,21 @@ export const searchKnowledge = onCall(
       const slugHmac =
         request.data?.slugHmac !== undefined ? requireHexDigest(request.data?.slugHmac, "slugHmac") : undefined;
 
+      // FLAG-DAY (dedup-v0 retirement): floor `dedupHashVersion == 1` so the
+      // server NEVER returns a stranded legacy v0 row (a row whose `dedupHash`
+      // is the cleartext SHA-256 confirm-the-guess oracle). v0 rows carry
+      // `dedupHashVersion: 0` (or, for pre-versioned ancients, no field at all)
+      // and therefore drop out of recall immediately on deploy; they are then
+      // deleted by `purgeLegacyKnowledgeVectors` (knowledgeMemory.ts). Combined
+      // with the bumped `embeddingModelVersion` tag (PensieveVectorCloak.swift /
+      // embed.ts), search returns ONLY freshly re-ingested v1 vectors. Both
+      // filters are equality, so the composite cloud_search_knowledge index
+      // (embeddingModelVersion ==, dedupHashVersion ==, embedding vector) serves
+      // this + findNearest — see firestore.indexes.json.
       let query: Query = db
         .collection(`users/${uid}/cloud_search_knowledge`)
-        .where("embeddingModelVersion", "==", embeddingModelVersion);
+        .where("embeddingModelVersion", "==", embeddingModelVersion)
+        .where("dedupHashVersion", "==", 1);
       if (sourceKindRaw) query = query.where("sourceKind", "==", sourceKindRaw);
       if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
 

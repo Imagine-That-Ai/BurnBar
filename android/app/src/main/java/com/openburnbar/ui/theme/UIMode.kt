@@ -20,6 +20,26 @@ enum class UIMode(val key: String, val displayName: String, val description: Str
 }
 
 /**
+ * App-wide visual *skin* — an axis orthogonal to light/dark and to [UIMode].
+ *
+ * [AURORA] is the signature ember/glass look and stays the default. [EDITORIAL]
+ * is the light-locked "Quiet Editorial" paper skin lifted from the
+ * app.burnbar.ai console: paper surfaces, ink text, a single coral accent, and
+ * hairlines. Selecting it re-points the [AuroraColors] token store so every
+ * token-bound composable flips coherently, exactly like the web console
+ * re-points its CSS variables.
+ */
+enum class AppAppearance(val key: String, val displayName: String, val description: String, val iconName: String) {
+    AURORA("aurora", "Aurora", "The signature ember look", "sparkles"),
+    EDITORIAL("editorial", "Editorial", "Light, paper-bright console skin", "doc.richtext"),
+    ;
+
+    companion object {
+        fun fromKey(key: String?): AppAppearance = entries.find { it.key == key } ?: AURORA
+    }
+}
+
+/**
  * Mode-specific design token overrides. Computes adapted values for each persona
  * to guarantee state-of-the-art visual harmony.
  */

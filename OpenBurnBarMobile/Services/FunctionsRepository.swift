@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
@@ -101,12 +102,25 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     let pendingModelId: String?
     let pendingModelRequestedAt: String?
     let oversightMode: String?
+    /// The agent's published P-256 relay public key (X9.63 base64). The phone
+    /// wraps per-event symmetric keys to this so only the paired agent can open
+    /// `hermes_gateway_events`.
+    let relayPublicKey: String?
+    let relayKeyVersion: Int?
+    let relayEncryption: String?
     let revokedAt: String?
     let createdAt: String
     let updatedAt: String
     let schemaVersion: Int
 
     var isActive: Bool { status == "active" }
+
+    /// True once the agent has published a usable relay pubkey, so the phone can
+    /// seal event text end-to-end instead of sending plaintext. Mirrors the
+    /// realtime-relay `canSealToHost` guard in `HermesService`.
+    var canSealToAgent: Bool {
+        relayEncryption == HermesRelayCrypto.algorithm && (relayPublicKey?.isEmpty == false)
+    }
 
     /// Treat an unset `oversightMode` as the safe `supervised` default so the
     /// phone never implies a gateway is running autonomously when the server
@@ -136,6 +150,9 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         case pendingModelId
         case pendingModelRequestedAt
         case oversightMode
+        case relayPublicKey
+        case relayKeyVersion
+        case relayEncryption
         case revokedAt
         case createdAt
         case updatedAt
@@ -163,7 +180,10 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
             agentVersion: try container.decodeIfPresent(String.self, forKey: .agentVersion),
             pendingModelId: try container.decodeIfPresent(String.self, forKey: .pendingModelId),
             pendingModelRequestedAt: try container.decodeIfPresent(String.self, forKey: .pendingModelRequestedAt),
-            oversightMode: try container.decodeIfPresent(String.self, forKey: .oversightMode)
+            oversightMode: try container.decodeIfPresent(String.self, forKey: .oversightMode),
+            relayPublicKey: try container.decodeIfPresent(String.self, forKey: .relayPublicKey),
+            relayKeyVersion: try container.decodeIfPresent(Int.self, forKey: .relayKeyVersion),
+            relayEncryption: try container.decodeIfPresent(String.self, forKey: .relayEncryption)
         )
     }
 
@@ -186,7 +206,10 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         agentVersion: String? = nil,
         pendingModelId: String? = nil,
         pendingModelRequestedAt: String? = nil,
-        oversightMode: String? = nil
+        oversightMode: String? = nil,
+        relayPublicKey: String? = nil,
+        relayKeyVersion: Int? = nil,
+        relayEncryption: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -203,6 +226,9 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         self.pendingModelId = pendingModelId
         self.pendingModelRequestedAt = pendingModelRequestedAt
         self.oversightMode = oversightMode
+        self.relayPublicKey = relayPublicKey
+        self.relayKeyVersion = relayKeyVersion
+        self.relayEncryption = relayEncryption
         self.revokedAt = revokedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -240,7 +266,10 @@ extension HermesGatewayClientRecord {
             agentVersion: Self.string(data["agentVersion"]),
             pendingModelId: Self.string(data["pendingModelId"]),
             pendingModelRequestedAt: Self.string(data["pendingModelRequestedAt"]),
-            oversightMode: Self.string(data["oversightMode"])
+            oversightMode: Self.string(data["oversightMode"]),
+            relayPublicKey: Self.string(data["relayPublicKey"]),
+            relayKeyVersion: (data["relayKeyVersion"] as? NSNumber)?.intValue ?? (data["relayKeyVersion"] as? Int),
+            relayEncryption: Self.string(data["relayEncryption"])
         )
     }
 
@@ -508,10 +537,22 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     let destinationId: String
     let threadId: String?
     let replyToEventId: String?
+    /// Legacy plaintext reply body. Present only on pre-seal (schemaVersion < 2)
+    /// docs; sealed docs carry the body in `relayEnvelope.payloadCiphertext`
+    /// instead.
     let text: String?
     let attachmentIds: [String]
     let createdAt: String
     let schemaVersion: Int
+    /// Sealed reply body (agent→phone). The agent wraps the per-message key to
+    /// this phone's relay pubkey; only this device can open it.
+    let payloadCiphertext: String?
+    let wrappedKey: String?
+    let relayEncryption: String?
+    let relayKeyVersion: Int?
+    /// Plaintext recovered by opening `payloadCiphertext` in the snapshot handler.
+    /// Held in-memory only; never persisted. `nil` until opened.
+    var resolvedText: String?
 
     init?(documentID: String, data: [String: Any]) {
         guard
@@ -531,6 +572,63 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         self.attachmentIds = (data["attachmentIds"] as? [Any])?.compactMap(Self.string) ?? []
         self.createdAt = createdAt
         self.schemaVersion = (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1
+        let relayEnvelope = Self.dictionary(data["relayEnvelope"])
+        self.payloadCiphertext = Self.string(relayEnvelope?["payloadCiphertext"]) ?? Self.string(data["payloadCiphertext"])
+        self.wrappedKey = Self.string(relayEnvelope?["wrappedKey"]) ?? Self.string(data["wrappedKey"])
+        self.relayEncryption = Self.string(relayEnvelope?["relayEncryption"]) ?? Self.string(data["relayEncryption"])
+        self.relayKeyVersion =
+            (relayEnvelope?["relayKeyVersion"] as? NSNumber)?.intValue
+            ?? (relayEnvelope?["relayKeyVersion"] as? Int)
+            ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
+            ?? (data["relayKeyVersion"] as? Int)
+        self.resolvedText = nil
+    }
+
+    /// True when the reply carries a sealed body that must be opened with the
+    /// phone's relay key (vs. a legacy plaintext doc).
+    var isSealed: Bool {
+        relayEncryption == HermesRelayCrypto.algorithm
+            && (payloadCiphertext?.isEmpty == false)
+            && (wrappedKey?.isEmpty == false)
+    }
+
+    /// The body to render: the opened plaintext for sealed docs, otherwise the
+    /// legacy plaintext `text` field. `nil` when a sealed doc has not yet been
+    /// opened (or could not be opened on this device).
+    var displayText: String? {
+        if isSealed { return resolvedText }
+        return text
+    }
+
+    /// Open the sealed reply body with this phone's relay key, returning a copy of
+    /// the record with `resolvedText` populated. Legacy plaintext docs are
+    /// returned unchanged. A sealed doc this device cannot open (key mismatch /
+    /// envelope sealed for another device) is returned with `resolvedText == nil`
+    /// so the caller can show a graceful "sealed for another device" state rather
+    /// than crash or render ciphertext.
+    func decodedText(using keypair: HermesGatewayRelayKeypair, uid: String) -> HermesGatewayMessageRecord {
+        guard isSealed,
+              let payloadCiphertext,
+              let wrappedKey else {
+            return self
+        }
+        var resolved = self
+        do {
+            let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKey,
+                privateKey: keypair.privateKey,
+                aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id)
+            )
+            let plaintext = try HermesRelayCrypto.openBase64(
+                ciphertext: payloadCiphertext,
+                keyData: keyData,
+                aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
+            )
+            resolved.resolvedText = String(data: plaintext, encoding: .utf8)
+        } catch {
+            resolved.resolvedText = nil
+        }
+        return resolved
     }
 
     private static func string(_ raw: Any?) -> String? {
@@ -541,6 +639,17 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             return value as String
         case let value as NSNumber:
             return value.stringValue
+        default:
+            return nil
+        }
+    }
+
+    private static func dictionary(_ raw: Any?) -> [String: Any]? {
+        switch raw {
+        case let dict as [String: Any]:
+            return dict
+        case let dict as NSDictionary:
+            return dict as? [String: Any]
         default:
             return nil
         }
@@ -565,7 +674,9 @@ enum HermesGatewayMessageResolver {
         }
 
         return messages.first { message in
-            guard message.threadId == threadID else { return false }
+            let hasThreadMatch = message.threadId == threadID
+            let canUseSealedTimeFallback = message.isSealed && message.threadId == nil && pendingEventSentAt != nil
+            guard hasThreadMatch || canUseSealedTimeFallback else { return false }
             guard matchesTarget(message, targetClientId: resolvedTargetClientId) else { return false }
             guard let pendingEventSentAt else { return true }
             guard let createdAt = gatewayDate(from: message.createdAt) else { return false }
@@ -579,9 +690,14 @@ enum HermesGatewayMessageResolver {
         targetClientId: String? = nil
     ) -> HermesGatewayMessageRecord? {
         messages.first { message in
-            guard message.threadId == threadID else { return false }
+            guard message.threadId == threadID || (message.isSealed && message.threadId == nil) else { return false }
             guard matchesTarget(message, targetClientId: nonEmpty(targetClientId)) else { return false }
-            return message.text?.isEmpty == false || !message.attachmentIds.isEmpty
+            // A sealed reply is selectable even before it is opened — the snapshot
+            // handler opens it and renders `displayText`. Legacy docs gate on the
+            // plaintext `text`. Both directions still honor attachment-only replies.
+            return message.isSealed
+                || message.displayText?.isEmpty == false
+                || !message.attachmentIds.isEmpty
         }
     }
 
@@ -657,7 +773,10 @@ protocol HermesGatewayRepository: AnyObject {
         userCode: String,
         displayName: String?,
         destinationId: String,
-        scopes: [String]
+        scopes: [String],
+        relayPublicKey: String?,
+        relayKeyVersion: Int?,
+        relayEncryption: String?
     ) async throws -> HermesGatewayClientRecord
 
     func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord]
@@ -667,6 +786,7 @@ protocol HermesGatewayRepository: AnyObject {
         text: String,
         destinationId: String,
         threadId: String,
+        targetClient: HermesGatewayClientRecord?,
         targetClientId: String?,
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent
@@ -675,6 +795,7 @@ protocol HermesGatewayRepository: AnyObject {
         modelId: String,
         destinationId: String,
         threadId: String,
+        targetClient: HermesGatewayClientRecord?,
         targetClientId: String?,
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent
@@ -689,7 +810,10 @@ extension HermesGatewayRepository {
         userCode: String,
         displayName: String? = nil
     ) async throws -> HermesGatewayClientRecord {
-        try await approveHermesGatewayDeviceGrant(
+        // Publish this phone's persistent relay pubkey at pairing so the agent can
+        // seal `hermes_gateway_messages` replies back to this device.
+        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+        return try await approveHermesGatewayDeviceGrant(
             userCode: userCode,
             displayName: displayName,
             destinationId: "burnbar:home",
@@ -697,7 +821,10 @@ extension HermesGatewayRepository {
                 "hermes.gateway.read",
                 "hermes.gateway.write",
                 "hermes.gateway.manage"
-            ]
+            ],
+            relayPublicKey: keypair.relayPublicKeyBase64,
+            relayKeyVersion: keypair.keyVersion,
+            relayEncryption: keypair.relayEncryption
         )
     }
 
@@ -708,6 +835,7 @@ extension HermesGatewayRepository {
     func enqueueHermesGatewayEvent(
         text: String,
         threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord? = nil,
         targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
@@ -715,7 +843,8 @@ extension HermesGatewayRepository {
             text: text,
             destinationId: "burnbar:home",
             threadId: threadId,
-            targetClientId: targetClientId,
+            targetClient: targetClient,
+            targetClientId: targetClientId ?? targetClient?.id,
             senderDisplayName: senderDisplayName
         )
     }
@@ -723,6 +852,7 @@ extension HermesGatewayRepository {
     func enqueueHermesGatewayModelSwitch(
         modelId: String,
         threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord? = nil,
         targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
@@ -730,7 +860,8 @@ extension HermesGatewayRepository {
             modelId: modelId,
             destinationId: "burnbar:home",
             threadId: threadId,
-            targetClientId: targetClientId,
+            targetClient: targetClient,
+            targetClientId: targetClientId ?? targetClient?.id,
             senderDisplayName: senderDisplayName
         )
     }
@@ -1155,7 +1286,10 @@ final class FunctionsRepository: HermesGatewayRepository {
             "hermes.gateway.read",
             "hermes.gateway.write",
             "hermes.gateway.manage"
-        ]
+        ],
+        relayPublicKey: String? = nil,
+        relayKeyVersion: Int? = nil,
+        relayEncryption: String? = nil
     ) async throws -> HermesGatewayClientRecord {
         let callable = functions.httpsCallable("approveHermesGatewayDeviceGrant")
         var payload: [String: Any] = [
@@ -1166,6 +1300,10 @@ final class FunctionsRepository: HermesGatewayRepository {
         if let displayName, !displayName.isEmpty {
             payload["displayName"] = displayName
         }
+        // Publish the phone's relay pubkey so the agent can seal replies to it.
+        if let relayPublicKey, !relayPublicKey.isEmpty { payload["relayPublicKey"] = relayPublicKey }
+        if let relayKeyVersion { payload["relayKeyVersion"] = relayKeyVersion }
+        if let relayEncryption, !relayEncryption.isEmpty { payload["relayEncryption"] = relayEncryption }
 
         let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         return try Self.decodeHermesGatewayValue(HermesGatewayApprovalResponse.self, from: result.data).client
@@ -1186,6 +1324,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         text: String,
         destinationId: String = "burnbar:home",
         threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord? = nil,
         targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
@@ -1193,14 +1332,19 @@ final class FunctionsRepository: HermesGatewayRepository {
         var payload: [String: Any] = [
             "destinationId": destinationId,
             "threadId": threadId,
-            "senderId": "burnbar-ios",
-            "senderDisplayName": senderDisplayName,
-            "text": text
+            "senderId": "burnbar-ios"
         ]
-        if let targetClientId = targetClientId?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !targetClientId.isEmpty {
-            payload["targetClientId"] = targetClientId
+        if let resolvedTargetClientId = Self.trimmedClientID(targetClientId) {
+            payload["targetClientId"] = resolvedTargetClientId
         }
+        try Self.applyGatewayEventSeal(
+            into: &payload,
+            text: text,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId,
+            modelId: nil,
+            targetClient: targetClient
+        )
         let result = try await callable.call(payload)
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
@@ -1209,25 +1353,146 @@ final class FunctionsRepository: HermesGatewayRepository {
         modelId: String,
         destinationId: String = "burnbar:home",
         threadId: String = "burnbar-ios-e2e",
+        targetClient: HermesGatewayClientRecord? = nil,
         targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
         let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
         var payload: [String: Any] = [
             "destinationId": destinationId,
-            "threadId": threadId,
             "senderId": "burnbar-ios",
-            "senderDisplayName": senderDisplayName,
-            "eventKind": "model_switch",
-            "modelId": modelId,
-            "text": "/model \(modelId)"
+            "eventKind": "model_switch"
         ]
-        if let targetClientId = targetClientId?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !targetClientId.isEmpty {
-            payload["targetClientId"] = targetClientId
+        if let resolvedTargetClientId = Self.trimmedClientID(targetClientId) {
+            payload["targetClientId"] = resolvedTargetClientId
+        }
+        if targetClient?.canSealToAgent == true {
+            // E2E link: seal the model id into `relayEnvelope.payloadCiphertext`
+            // (alongside text/senderDisplayName/threadId) like every other event,
+            // so the routing model id never leaves the device in cleartext. The
+            // server reads `modelId` from inside the sealed payload after opening.
+            try Self.applyGatewayEventSeal(
+                into: &payload,
+                text: "",
+                senderDisplayName: senderDisplayName,
+                threadId: threadId,
+                modelId: modelId,
+                targetClient: targetClient
+            )
+        } else {
+            // Legacy (non-canSealToAgent) link during the grace window: the agent
+            // has no relay key to wrap to, so the routing-only model id stays
+            // cleartext per the gateway wire contract until that Mac re-pairs.
+            // Wire stays identical to the pre-seal model_switch (no threadId).
+            payload["modelId"] = modelId
         }
         let result = try await callable.call(payload)
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
+    }
+
+    private static func trimmedClientID(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    /// Seal the phone→agent event payload into `payload`, reusing the existing
+    /// `HermesRelayCrypto` envelope. When the target agent has published a usable
+    /// relay pubkey (`canSealToAgent`), the cleartext body never leaves the
+    /// device: a per-event symmetric key seals `{text, senderDisplayName,
+    /// threadId[, modelId]}` and is wrapped to the agent's pubkey. The phone
+    /// generates the `eventId` so it binds the AAD; the server honors it as the
+    /// doc id. If the target cannot seal, the call fails before constructing any
+    /// plaintext cloud payload.
+    private static func applyGatewayEventSeal(
+        into payload: inout [String: Any],
+        text: String,
+        senderDisplayName: String,
+        threadId: String,
+        modelId: String?,
+        targetClient: HermesGatewayClientRecord?,
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+    ) throws {
+        guard let uid = Auth.auth().currentUser?.uid, !uid.isEmpty else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+        try sealGatewayEventPayload(
+            into: &payload,
+            text: text,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId,
+            modelId: modelId,
+            targetClient: targetClient,
+            uid: uid,
+            pinStore: pinStore
+        )
+    }
+
+    /// Pure, `uid`-injected seal core shared by the live path and tests. Refuses
+    /// to seal unless the target can seal AND its advertised relay pubkey passes
+    /// the phone's TOFU pin check. Fails closed on every gap.
+    nonisolated static func sealGatewayEventPayload(
+        into payload: inout [String: Any],
+        text: String,
+        senderDisplayName: String,
+        threadId: String,
+        modelId: String?,
+        targetClient: HermesGatewayClientRecord?,
+        uid: String,
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+    ) throws {
+        guard
+            let targetClient,
+            targetClient.canSealToAgent,
+            let relayPublicKey = targetClient.relayPublicKey,
+            !uid.isEmpty
+        else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        // Phone-side TOFU pin (defense-in-depth alongside the server immutability
+        // fix): refuse to seal to a key that differs from the one we pinned at
+        // first pairing. A mismatch — or a Keychain read failure we can't verify
+        // against — fails closed: the encrypted payload is never built, so no
+        // plaintext or attacker-readable ciphertext leaves the device.
+        guard pinStore
+            .verifyOrPin(agentPublicKeyBase64: relayPublicKey, uid: uid, clientId: targetClient.id)
+            .allowsSeal
+        else {
+            throw FunctionsError.gatewayRelayKeyChanged
+        }
+
+        let eventId = "evt_\(UUID().uuidString.lowercased())"
+        var sealedPayload: [String: Any] = [
+            "text": text,
+            "senderDisplayName": senderDisplayName,
+            "threadId": threadId
+        ]
+        if let modelId, !modelId.isEmpty {
+            sealedPayload["modelId"] = modelId
+        }
+        let plaintext = try JSONSerialization.data(withJSONObject: sealedPayload)
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: plaintext,
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: relayPublicKey,
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+        )
+        // Drop plaintext text/senderDisplayName/threadId from the top level — they
+        // now live only inside `payloadCiphertext`. Keep routing fields.
+        payload["eventId"] = eventId
+        payload["relayEnvelope"] = [
+            "payloadCiphertext": payloadCiphertext,
+            "wrappedKey": wrappedKey,
+            "relayEncryption": HermesRelayCrypto.algorithm,
+            "relayKeyVersion": targetClient.relayKeyVersion ?? HermesRelayCrypto.keyVersion
+        ]
     }
 
     func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
@@ -1590,12 +1855,18 @@ private extension ProviderQuotaSnapshot {
 
 // MARK: - Functions Error
 
-enum FunctionsError: Error, LocalizedError {
+enum FunctionsError: Error, LocalizedError, Equatable {
     case decodingFailed
+    case gatewayTargetMissingRelayKey
+    case gatewayRelayKeyChanged
 
     var errorDescription: String? {
         switch self {
         case .decodingFailed: return "Failed to decode cloud function response."
+        case .gatewayTargetMissingRelayKey:
+            return "Update OpenBurnBar on the Mac and re-pair Hermes Gateway. Cloud gateway messages are end-to-end encrypted and cannot be sent until that Mac publishes a relay key."
+        case .gatewayRelayKeyChanged:
+            return "This Hermes gateway's relay key changed since you paired — a possible man-in-the-middle. For your safety the encrypted message was not sent. Re-pair Hermes Gateway on this Mac to trust the new key."
         }
     }
 }

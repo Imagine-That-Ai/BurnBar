@@ -51,6 +51,27 @@ class RollbackServiceSealedFieldsTest {
     // ── rollback_requests ──
 
     @Test
+    fun sealedRollbackRequestPayloadWritesNoPlaintextScopeJson() {
+        val request =
+            RollbackRequest(
+                id = "req-write",
+                sessionID = "session-write",
+                scope = RollbackScope.SingleFile("/Users/me/secret/file.swift"),
+                requestedAtEpoch = 1_700_000_000_000,
+                requestedBy = "android",
+                status = RollbackRequest.Status.PENDING,
+                resolvedAtEpoch = null,
+                errorMessage = null,
+            )
+
+        val payload = sealedRollbackRequestPayload(request, source = "android-hermes-square", vaultKey = vaultKey)
+
+        assertTrue(payload.containsKey("sealedScope"))
+        assertFalse(payload.containsKey("scopeJSON"))
+        assertFalse(payload.values.any { it == request.scope.asJson || it == "/Users/me/secret/file.swift" })
+    }
+
+    @Test
     fun toRollbackRequestOpensSealedScopeAndErrorMessage() {
         val scopeJson = RollbackScope.SingleFile("/Users/me/secret/file.swift").asJson
         val data: Map<String, Any?> =
@@ -89,19 +110,43 @@ class RollbackServiceSealedFieldsTest {
     }
 
     @Test
-    fun toRollbackRequestWithoutKeyKeepsSealedScopeOpaqueButLegacyWorks() {
+    fun toRollbackRequestWithoutKeyDropsSealedOnlyRequest() {
         val sealedOnly: Map<String, Any?> =
             mapOf(
                 "sessionID" to "session-3",
                 "sealedScope" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("{\"kind\":\"fullSession\"}", vaultKey)),
+                "scopeJSON" to RollbackScope.LastN(9).asJson,
                 "status" to "pending",
             )
-        // No key: sealed scope cannot open; decoder defaults to fullSession and
-        // never throws or leaks.
-        val request = sealedOnly.toRollbackRequestOrNull(documentID = "req-3", vaultKey = null)
+        // No key: sealed scope cannot open. Because the sealed field is present,
+        // the legacy sibling must NOT leak.
+        assertNull(sealedOnly.toRollbackRequestOrNull(documentID = "req-3", vaultKey = null))
+    }
+
+    @Test
+    fun toRollbackRequestLegacyPlaintextStillDecodesWithoutKey() {
+        val legacy: Map<String, Any?> =
+            mapOf(
+                "sessionID" to "session-legacy",
+                "scopeJSON" to RollbackScope.LastN(2).asJson,
+                "status" to "pending",
+            )
+        val request = legacy.toRollbackRequestOrNull(documentID = "req-legacy", vaultKey = null)
         requireNotNull(request)
-        assertEquals(RollbackScope.FullSession, request.scope)
-        assertNull(request.errorMessage)
+        assertEquals(RollbackScope.LastN(2), request.scope)
+    }
+
+    @Test
+    fun toRollbackRequestToleratesLegacyInFlightStatusAndRejectsUnknownStatus() {
+        val base: Map<String, Any?> =
+            mapOf(
+                "sessionID" to "session-status",
+                "scopeJSON" to RollbackScope.FullSession.asJson,
+            )
+        val legacy = (base + ("status" to "inFlight")).toRollbackRequestOrNull(documentID = "req-status", vaultKey = null)
+        requireNotNull(legacy)
+        assertEquals(RollbackRequest.Status.IN_FLIGHT, legacy.status)
+        assertNull((base + ("status" to "wat")).toRollbackRequestOrNull(documentID = "req-bad-status", vaultKey = null))
     }
 
     // ── cli_sessions/{id}/snapshots ──
@@ -154,6 +199,9 @@ class RollbackServiceSealedFieldsTest {
                 "sequence" to 1,
                 "takenAt" to "2026-06-02T10:00:00Z",
                 "sealedActionLabel" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("Hidden", vaultKey)),
+                "actionLabel" to "Legacy leak",
+                "touchedFiles" to listOf("legacy/leak.kt"),
+                "macSnapshotPath" to "/legacy/leak",
             )
         assertNull(data.toRollbackSnapshotOrNull(documentID = "snap-x", sessionID = "session-1", vaultKey = null))
     }

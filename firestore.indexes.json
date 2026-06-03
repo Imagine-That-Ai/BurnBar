@@ -426,6 +426,46 @@
       ]
     },
     {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
+        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
+        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
+        {"fieldPath": "sourceKind", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
+        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
+        {"fieldPath": "slugHmac", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
+        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
+        {"fieldPath": "sourceKind", "order": "ASCENDING"},
+        {"fieldPath": "slugHmac", "order": "ASCENDING"},
+        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+      ]
+    },
+    {
       "collectionGroup": "remote_mcp_grants",
       "queryScope": "COLLECTION",
       "fields": [
@@ -757,7 +797,7 @@
     },
     {
       "collectionGroup": "knowledge_repos",
-      "fieldPath": "repoFullName",
+      "fieldPath": "repoMatchToken",
       "indexes": [
         {
           "order": "ASCENDING",

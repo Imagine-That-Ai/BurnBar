@@ -419,11 +419,14 @@ private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null): TokenUsa
         provenanceConfidence = data["provenanceConfidence"] as? String,
         provenanceMethod = data["provenanceMethod"] as? String,
         userDisplayId = data["user_display_id"] as? String,
-        // Sealed-first: open `sealedProjectName` (CloudVaultSealedText), then fall
-        // back to legacy plaintext `projectName`/`project_name` for in-flight docs.
+        // Sealed-present means decrypt-or-nil; legacy plaintext is used only when
+        // the sealed field is absent.
         projectName =
-            CloudVaultSealedTextCodec.open(data["sealedProjectName"], vaultKey)
-                ?: FirestoreValueParsers.string(data, "projectName", "project_name"),
+            CloudVaultSealedTextCodec.openOrLegacy(
+                data["sealedProjectName"],
+                vaultKey,
+                FirestoreValueParsers.string(data, "projectName", "project_name"),
+            ),
         timestamp = timestampMillis,
         startTime = startMillis,
         endTime = endMillis,
@@ -537,11 +540,13 @@ private fun DocumentSnapshot.toProjectSummary(): ProjectSummary? {
  * Suspends to resolve the Cloud Vault write key. The existing zero-arg call
  * sites (`FirestoreBudgetRepository.uploadBudgetRule`/`uploadBudgetRules`) run in
  * a suspend context, so they pick up the seal with no change. If the vault key
- * is unavailable (device not yet approved), the write degrades to legacy
- * plaintext so budget sync keeps working during the migration — a key-holding
- * peer re-seals the rule on its next write. This deliberately does NOT throw
- * (unlike chat writers) because budget sync predates the vault and must not
- * hard-fail on an un-approved device.
+ * is unavailable (device not yet approved), the write FAILS CLOSED: the project
+ * name/label are omitted (never written in cleartext) so the rule still syncs by
+ * scope/identifier, and a key-holding peer re-seals the name on its next write.
+ * This deliberately does NOT throw (unlike chat writers) so budget sync keeps
+ * working on an un-approved device — it just omits the private name until a
+ * vault key is available. firestore.rules enforces the same invariant (no
+ * plaintext `projectName`/`label` on create).
  */
 suspend fun BudgetRule.toMap(
     firestore: FirebaseFirestore = Firebase.firestore,
@@ -584,10 +589,11 @@ suspend fun BudgetRule.toMap(
         map["projectName"] = com.google.firebase.firestore.FieldValue.delete()
         map["label"] = com.google.firebase.firestore.FieldValue.delete()
     } else {
-        // No vault key on this device — keep legacy plaintext so the rule still
-        // syncs; a key-holding peer re-seals it on its next write.
-        map["projectName"] = projectName
-        map["label"] = label
+        // No vault key on this device — FAIL CLOSED. We must never write the
+        // cleartext project name/label to the cloud (firestore.rules rejects a
+        // plaintext `projectName`/`label` on create). Omit them entirely: the
+        // rule still syncs and enforces by scope/identifier, the name stays in
+        // on-device state, and a key-holding peer re-seals it on its next write.
     }
     return map
 }
@@ -605,13 +611,12 @@ fun DocumentSnapshot.toBudgetRule(vaultKey: ByteArray? = null): BudgetRule? {
         identifier = data["identifier"] as? String,
         providerID = data["providerID"] as? String,
         accountID = data["accountID"] as? String,
-        // Sealed-first with legacy plaintext fallback for in-flight docs.
+        // Sealed-present means decrypt-or-nil; legacy plaintext is used only when
+        // the sealed field is absent.
         projectName =
-            CloudVaultSealedTextCodec.open(data["sealedProjectName"], vaultKey)
-                ?: data["projectName"] as? String,
+            CloudVaultSealedTextCodec.openOrLegacy(data["sealedProjectName"], vaultKey, data["projectName"] as? String),
         label =
-            CloudVaultSealedTextCodec.open(data["sealedLabel"], vaultKey)
-                ?: data["label"] as? String,
+            CloudVaultSealedTextCodec.openOrLegacy(data["sealedLabel"], vaultKey, data["label"] as? String),
         amountUSD = (data["amountUSD"] as? Number)?.toDouble() ?: 0.0,
         period = data["period"] as? String ?: "",
         behavior = data["behavior"] as? String ?: "",
@@ -662,6 +667,13 @@ internal object CloudVaultSealedTextCodec {
         return runCatching { CloudVaultCrypto.openText(envelope, key) }.getOrNull()
     }
 
+    fun openOrLegacy(raw: Any?, vaultKey: ByteArray?, legacy: String?): String? {
+        if (fromMap(raw as? Map<*, *>) != null) {
+            return open(raw, vaultKey)
+        }
+        return legacy
+    }
+
     /**
      * Opaque, deterministic group-by token for a project name: keyed HMAC-SHA256
      * trapdoor (16-byte/32-hex) under the Cloud Vault search key. Normalizes the
@@ -688,7 +700,6 @@ fun BudgetEvent.toMap(): Map<String, Any?> {
         "source" to source,
         "amountAtEvent" to amountAtEvent,
         "limitAtEvent" to limitAtEvent,
-        "detailJSON" to detailJSON,
         "occurredAt" to (occurredAt?.let { com.google.firebase.Timestamp(it) } ?: com.google.firebase.firestore.FieldValue.serverTimestamp()),
         "syncedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
         "sourceDeviceID" to sourceDeviceID,

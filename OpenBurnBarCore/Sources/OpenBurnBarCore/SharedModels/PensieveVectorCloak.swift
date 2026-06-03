@@ -32,7 +32,15 @@ import Foundation
 public enum PensieveVectorCloak {
     /// Pinned production embedding model id stored on every vector. Index- and
     /// query-time vectors are only comparable within one version.
-    public static let embeddingModelVersion = "bge-small-en-v1.5"
+    ///
+    /// FLAG-DAY (dedup-v0 retirement): bumped from "bge-small-en-v1.5" to the
+    /// "-vault-dedup-v1" tag so a re-ingest lands every vector under a NEW tag.
+    /// The server search floors `dedupHashVersion == 1` AND filters this tag, so
+    /// stranded legacy v0 rows (still on the old "bge-small-en-v1.5" tag) become
+    /// unreachable by recall and are deleted by `purgeLegacyKnowledgeVectors`.
+    /// MUST stay byte-identical to `EMBEDDING_MODEL_VERSION` in
+    /// `tools/openburnbar-mcp-remote/src/embed.ts`.
+    public static let embeddingModelVersion = "bge-small-en-v1.5-vault-dedup-v1"
     /// Deterministic offline/test embedder id. Tagged distinctly so its vectors
     /// can never be mixed with real bge vectors by the version-match guard.
     public static let deterministicModelVersion = "hashing-bow-v1"

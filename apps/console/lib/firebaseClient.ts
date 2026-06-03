@@ -111,3 +111,7 @@ export function appleProvider(): OAuthProvider {
   provider.addScope("name");
   return provider;
 }
+
+export function githubProvider(): OAuthProvider {
+  return new OAuthProvider("github.com");
+}

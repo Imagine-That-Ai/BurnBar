@@ -6,5 +6,5 @@ This file is the project-level index of active and completed agent goals. It rec
 |---|---|---|---|---|
 | `burnbar-budgeting-overhaul-2026-05-25` | active | none | `.agent/runs/burnbar-budgeting-overhaul-2026-05-25/` | 2026-05-26T00:27:24Z |
 | `pensieve-mnemo-2026-06-02` | backend-complete (native UX [incomplete]) | none | `.agent/runs/pensieve-mnemo-2026-06-02/` | 2026-06-02T12:33:04Z |
-| `privacy-leak-remediation-2026-06-02` | active | none | `.agent/runs/privacy-leak-remediation-2026-06-02/` | 2026-06-03T04:48:00Z |
-| `hermes-gateway-e2e-rearchitecture` | queued (chained; design basis in parent `evidence/recon-gateway-architecture.md`) | privacy-leak-remediation-2026-06-02 | `.agent/runs/hermes-gateway-e2e-rearchitecture/` | 2026-06-03T05:14:34Z |
+| `privacy-leak-remediation-2026-06-02` | complete + verified (Wave 1+2+3; all platforms green; gateway E2E → child goal) | none | `.agent/runs/privacy-leak-remediation-2026-06-02/` | 2026-06-03T08:30:00Z |
+| `hermes-gateway-e2e-rearchitecture` | complete + verified; fork PRs #1/#2 open on Ajnunezg/hermes-agent; BurnBar companion committed (edee4da0a) | privacy-leak-remediation-2026-06-02 | `.agent/runs/hermes-gateway-e2e-rearchitecture/` | 2026-06-03T09:45:00Z |

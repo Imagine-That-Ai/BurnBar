@@ -27,7 +27,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function SignInCard() {
-  const { signInGoogle, signInApple, signInPasskey, passkeySupported, appleAuthEnabled } =
+  const { signInGoogle, signInApple, signInGitHub, signInPasskey, passkeySupported, appleAuthEnabled, githubAuthEnabled } =
     useAuth();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -72,9 +72,25 @@ function SignInCard() {
               onClick={wrap("google", signInGoogle)}
               disabled={!!busy}
             >
-              <img src="/brand/logos/google.svg" alt="" aria-hidden className="size-4 shrink-0" />
+              <img src="/brand/logos/google-g.svg" alt="" aria-hidden className="size-4 shrink-0" />
               {busy === "google" ? "…" : "Continue with Google"}
             </Button>
+            {githubAuthEnabled && (
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={wrap("github", signInGitHub)}
+                disabled={!!busy}
+              >
+                <img
+                  src="/brand/logos/github-mark.svg"
+                  alt=""
+                  aria-hidden
+                  className="size-4 shrink-0"
+                />
+                {busy === "github" ? "…" : "Continue with GitHub"}
+              </Button>
+            )}
             {appleAuthEnabled && (
               <Button
                 variant="secondary"

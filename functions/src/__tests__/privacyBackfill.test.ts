@@ -3,7 +3,14 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 import { __testing__ } from "../callables/privacyBackfill.js";
 
-const { gatedDeletions, COLLECTION_PLANS, KNOWLEDGE_REPO_FIELDS, PRIVACY_RESEAL_EPOCH, backfillUserPrivacy } =
+const {
+  gatedDeletions,
+  COLLECTION_PLANS,
+  KNOWLEDGE_REPO_FIELDS,
+  ROLLBACK_SNAPSHOT_FIELDS,
+  PRIVACY_RESEAL_EPOCH,
+  backfillUserPrivacy,
+} =
   __testing__;
 
 // FieldValue.delete() returns a fresh sentinel each call, so detect it by the
@@ -124,19 +131,51 @@ describe("COLLECTION_PLANS coverage", () => {
       "budgetRules",
       "mobile_assistant_chats",
       "cli_sessions",
-      "chat_threads",
-      "project_memory_snapshots",
-    ]) {
-      expect(names).toContain(expected);
-    }
-  });
+	      "chat_threads",
+	      "project_memory_snapshots",
+	      "approval_policies",
+	      "rollback_requests",
+	      "agent_identities",
+	      "subscription_topics",
+	      "hermes_gateway_events",
+	      "hermes_gateway_messages",
+	      "hermes_gateway_attachments",
+	      "media_attachment_manifests",
+	    ]) {
+	      expect(names).toContain(expected);
+	    }
+	    expect(ROLLBACK_SNAPSHOT_FIELDS.map((f) => f.field)).toEqual([
+	      "actionLabel",
+	      "touchedFiles",
+	      "macSnapshotPath",
+	    ]);
+	  });
 
-  it("every gated field declares a sealed gate (no unguarded plaintext deletion)", () => {
+  it("every plaintext deletion has either a sealed gate or an explicit retire-only rationale", () => {
     for (const plan of COLLECTION_PLANS) {
       for (const f of plan.fields) {
-        expect(f.requires, `${plan.collection}.${f.field} must be gated on a sealed field`).toBeTruthy();
+        expect(
+          f.requires || f.ungatedReason,
+          `${plan.collection}.${f.field} must be gated or explicitly retire-only`,
+        ).toBeTruthy();
       }
     }
+    const ungated = COLLECTION_PLANS.flatMap((plan) =>
+      plan.fields
+        .filter((field) => !field.requires)
+        .map((field) => ({
+          collection: plan.collection,
+          field: field.field,
+          reason: field.ungatedReason,
+        })),
+    );
+    expect(ungated).toEqual([
+      {
+        collection: "budgetEvents",
+        field: "detailJSON",
+        reason: "retired local-only diagnostic detail; current cloud writers omit it and rules reject it",
+      },
+    ]);
   });
 });
 
@@ -155,16 +194,82 @@ describe("backfillUserPrivacy — idempotent end-to-end", () => {
       schemaVersion: 2,
     });
     // knowledge_repos with sealed name → cleartext repo name dropped.
-    fake.seed("users/u1/knowledge_repos/r1", {
-      repoFullName: "owner/private",
-      repoMatchToken: "abc123",
-      sealedRepoFullName: { ciphertext: "y" },
-    });
+	    fake.seed("users/u1/knowledge_repos/r1", {
+	      repoFullName: "owner/private",
+	      repoMatchToken: "abc123",
+	      sealedRepoFullName: { ciphertext: "y" },
+	    });
+	    fake.seed("users/u1/approval_policies/ap_abc", {
+	      id: "decision=approve|glob=src/**|project=Secret",
+	      displayLabel: "Always approve Secret",
+	      fileGlob: "src/**",
+	      targetProject: "Secret",
+	      sealedDisplayLabel: { ciphertext: "label" },
+	      sealedFileGlob: { ciphertext: "glob" },
+	      sealedTargetProject: { ciphertext: "project" },
+	      decision: "approve",
+	    });
+	    fake.seed("users/u1/rollback_requests/req1", {
+	      scopeJSON: "{\"kind\":\"singleFile\",\"path\":\"/Users/me/secret.swift\"}",
+	      errorMessage: "failed at /Users/me",
+	      sealedScope: { ciphertext: "scope" },
+	      sealedErrorMessage: { ciphertext: "error" },
+	      status: "failed",
+	    });
+	    fake.seed("users/u1/agent_identities/a1", {
+	      displayName: "Research Scout",
+	      tagline: "Reads private projects",
+	      personas: [{ id: "p1", name: "Default" }],
+	      sealedDisplayName: { ciphertext: "name" },
+	      sealedTagline: { ciphertext: "tagline" },
+	      sealedPersonas: { ciphertext: "personas" },
+	    });
+		    fake.seed("users/u1/subscription_topics/t1", {
+		      agentURI: "agent://research",
+		      topicID: "agent-updates",
+		      displayName: "Research Scout updates",
+		      description: "Private digest",
+		      sealedAgentURI: { ciphertext: "topic-agent" },
+		      sealedTopicID: { ciphertext: "topic-id" },
+		      sealedDisplayName: { ciphertext: "topic-name" },
+		      sealedDescription: { ciphertext: "topic-desc" },
+		    });
+		    fake.seed("users/u1/hermes_gateway_events/e1", {
+		      text: "private prompt",
+		      senderDisplayName: "Alberto",
+		      threadId: "thread-secret",
+		      relayEnvelope: { payloadCiphertext: "x", wrappedKey: "y" },
+		      kind: "message",
+		    });
+		    fake.seed("users/u1/hermes_gateway_messages/m1", {
+		      text: "private reply",
+		      relayEnvelope: { payloadCiphertext: "x", wrappedKey: "y" },
+		      kind: "agent_message",
+		    });
+		    fake.seed("users/u1/hermes_gateway_attachments/a1", {
+		      fileName: "Secret.pdf",
+		      relayEnvelope: { payloadCiphertext: "x", wrappedKey: "y" },
+		      storagePath: "users/u1/hermes_gateway_attachments/c1/a1",
+		    });
+		    fake.seed("users/u1/media_attachment_manifests/mm1", {
+		      filename: "Private.png",
+		      sealedFilename: { ciphertext: "media-name" },
+		      storagePath: "users/u1/media/mm1",
+		    });
+		    fake.seed("users/u1/cli_sessions/s1", { sealedPayload: { ciphertext: "session" } });
+	    fake.seed("users/u1/cli_sessions/s1/snapshots/snap1", {
+	      actionLabel: "Edit src/secret.swift",
+	      touchedFiles: ["src/secret.swift"],
+	      macSnapshotPath: "/Users/me/.burnbar/snap1",
+	      sealedActionLabel: { ciphertext: "action" },
+	      sealedTouchedFiles: { ciphertext: "files" },
+	      sealedMacSnapshotPath: { ciphertext: "path" },
+	    });
 
     const stats = await backfillUserPrivacy(fake.asFirestore(), "u1");
 
-    expect(stats.deletedFields).toBe(4); // a.projectName, pm.{display,slug}, repo.repoFullName
-    expect(stats.resealBumped).toBe(true);
+		    expect(stats.deletedFields).toBe(26);
+	    expect(stats.resealBumped).toBe(true);
 
     // Sealed-backed doc: plaintext gone, sealed + metadata intact.
     expect(fake.store.get("users/u1/usage/a")).toEqual({
@@ -179,10 +284,53 @@ describe("backfillUserPrivacy — idempotent end-to-end", () => {
       schemaVersion: 2,
     });
     // knowledge_repos: cleartext name gone, opaque token + sealed name intact.
-    expect(fake.store.get("users/u1/knowledge_repos/r1")).toEqual({
-      repoMatchToken: "abc123",
-      sealedRepoFullName: { ciphertext: "y" },
-    });
+	    expect(fake.store.get("users/u1/knowledge_repos/r1")).toEqual({
+	      repoMatchToken: "abc123",
+	      sealedRepoFullName: { ciphertext: "y" },
+	    });
+	    expect(fake.store.get("users/u1/approval_policies/ap_abc")).toEqual({
+	      sealedDisplayLabel: { ciphertext: "label" },
+	      sealedFileGlob: { ciphertext: "glob" },
+	      sealedTargetProject: { ciphertext: "project" },
+	      decision: "approve",
+	    });
+	    expect(fake.store.get("users/u1/rollback_requests/req1")).toEqual({
+	      sealedScope: { ciphertext: "scope" },
+	      sealedErrorMessage: { ciphertext: "error" },
+	      status: "failed",
+	    });
+	    expect(fake.store.get("users/u1/agent_identities/a1")).toEqual({
+	      sealedDisplayName: { ciphertext: "name" },
+	      sealedTagline: { ciphertext: "tagline" },
+	      sealedPersonas: { ciphertext: "personas" },
+	    });
+		    expect(fake.store.get("users/u1/subscription_topics/t1")).toEqual({
+		      sealedAgentURI: { ciphertext: "topic-agent" },
+		      sealedTopicID: { ciphertext: "topic-id" },
+		      sealedDisplayName: { ciphertext: "topic-name" },
+		      sealedDescription: { ciphertext: "topic-desc" },
+		    });
+		    expect(fake.store.get("users/u1/hermes_gateway_events/e1")).toEqual({
+		      relayEnvelope: { payloadCiphertext: "x", wrappedKey: "y" },
+		      kind: "message",
+		    });
+		    expect(fake.store.get("users/u1/hermes_gateway_messages/m1")).toEqual({
+		      relayEnvelope: { payloadCiphertext: "x", wrappedKey: "y" },
+		      kind: "agent_message",
+		    });
+		    expect(fake.store.get("users/u1/hermes_gateway_attachments/a1")).toEqual({
+		      relayEnvelope: { payloadCiphertext: "x", wrappedKey: "y" },
+		      storagePath: "users/u1/hermes_gateway_attachments/c1/a1",
+		    });
+		    expect(fake.store.get("users/u1/media_attachment_manifests/mm1")).toEqual({
+		      sealedFilename: { ciphertext: "media-name" },
+		      storagePath: "users/u1/media/mm1",
+		    });
+	    expect(fake.store.get("users/u1/cli_sessions/s1/snapshots/snap1")).toEqual({
+	      sealedActionLabel: { ciphertext: "action" },
+	      sealedTouchedFiles: { ciphertext: "files" },
+	      sealedMacSnapshotPath: { ciphertext: "path" },
+	    });
     // Watermark written at the current epoch.
     expect(fake.store.get("users/u1/privacy_reseal_state/current")?.resealEpoch).toBe(PRIVACY_RESEAL_EPOCH);
 

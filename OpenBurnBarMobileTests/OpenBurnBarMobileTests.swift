@@ -143,6 +143,368 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(record?.id, "msg_123")
         XCTAssertEqual(record?.replyToEventId, "evt_123")
         XCTAssertEqual(record?.text, "Hermes received the test.")
+        XCTAssertFalse(record?.isSealed ?? true)
+        XCTAssertEqual(record?.displayText, "Hermes received the test.")
+    }
+
+    func testHermesGatewayMessageRecordParsesSealedReplyAndExposesNoPlaintext() {
+        let record = HermesGatewayMessageRecord(
+            documentID: "msg_doc",
+            data: [
+                "id": "msg_sealed",
+                "clientId": "hgw_abc",
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "threadId": HermesGatewayMessageResolver.defaultThreadID,
+                "relayEnvelope": [
+                    "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
+                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2
+            ]
+        )
+
+        XCTAssertEqual(record?.id, "msg_sealed")
+        XCTAssertNil(record?.text, "Sealed docs must not carry plaintext text")
+        XCTAssertTrue(record?.isSealed ?? false)
+        XCTAssertNil(record?.displayText, "Unopened sealed reply has no display text")
+    }
+
+    func testHermesGatewaySealedReplyRoundTripsThroughPhoneRelayKey() throws {
+        let uid = "uid_test"
+        let clientId = "hgw_abc"
+        let messageId = "msg_round_trip"
+        let plaintext = "Hermes received the encrypted test."
+
+        // The agent's role: seal the reply body to the phone's relay pubkey.
+        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let phonePublicKey = phoneKeypair.relayPublicKeyBase64
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data(plaintext.utf8),
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: phonePublicKey,
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+
+        let sealedRecord = HermesGatewayMessageRecord(
+            documentID: messageId,
+            data: [
+                "id": messageId,
+                "clientId": clientId,
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": payloadCiphertext,
+                    "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2
+            ]
+        )
+        let opened = sealedRecord?.decodedText(using: phoneKeypair, uid: uid)
+        XCTAssertEqual(opened?.resolvedText, plaintext)
+        XCTAssertEqual(opened?.displayText, plaintext)
+    }
+
+    func testHermesGatewaySealedReplyForAnotherDeviceStaysSealed() throws {
+        let uid = "uid_test"
+        let clientId = "hgw_abc"
+        let messageId = "msg_other_device"
+
+        // Seal to a *different* phone key, then try to open with this device's key.
+        let otherDevicePublicKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data("not for this device".utf8),
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: otherDevicePublicKey,
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+
+        let sealedRecord = HermesGatewayMessageRecord(
+            documentID: messageId,
+            data: [
+                "id": messageId,
+                "clientId": clientId,
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": payloadCiphertext,
+                    "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2
+            ]
+        )
+        let opened = sealedRecord?.decodedText(using: HermesGatewayRelayKeypair.loadOrCreate(), uid: uid)
+        XCTAssertTrue(opened?.isSealed ?? false)
+        XCTAssertNil(opened?.resolvedText, "A reply sealed for another device must not open here")
+        XCTAssertNil(opened?.displayText)
+    }
+
+    func testHermesGatewayClientRecordReadsAgentRelayPubkeyAndCanSeal() {
+        let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let record = HermesGatewayClientRecord(
+            documentID: "hgw_doc",
+            data: [
+                "id": "hgw_live",
+                "displayName": "OpenBurnBar Gateway",
+                "status": "active",
+                "tokenPreview": "obb_hgw_...live",
+                "homeDestinationId": "burnbar:home",
+                "createdAt": "2026-06-01T08:00:00Z",
+                "updatedAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2,
+                "relayPublicKey": agentKey,
+                "relayKeyVersion": 1,
+                "relayEncryption": HermesRelayCrypto.algorithm
+            ]
+        )
+
+        XCTAssertEqual(record?.relayPublicKey, agentKey)
+        XCTAssertEqual(record?.relayKeyVersion, 1)
+        XCTAssertEqual(record?.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertTrue(record?.canSealToAgent ?? false)
+    }
+
+    func testHermesGatewayClientWithoutAgentPubkeyCannotSeal() {
+        let record = HermesGatewayClientRecord(
+            documentID: "hgw_doc",
+            data: [
+                "id": "hgw_live",
+                "displayName": "OpenBurnBar Gateway",
+                "status": "active",
+                "tokenPreview": "obb_hgw_...live",
+                "homeDestinationId": "burnbar:home",
+                "createdAt": "2026-06-01T08:00:00Z",
+                "updatedAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 1
+            ]
+        )
+        XCTAssertFalse(record?.canSealToAgent ?? true)
+        XCTAssertNil(record?.relayPublicKey)
+    }
+
+    // MARK: - Phone-side agent key pinning (TOFU) — FIX-ios finding 1
+
+    /// Build an active, E2EE-ready client that advertises a specific agent relay
+    /// pubkey, so seal/pin tests can swap the advertised key under a fixed id.
+    private func sealableGatewayClient(id: String, agentPublicKey: String) -> HermesGatewayClientRecord {
+        HermesGatewayClientRecord(
+            id: id,
+            displayName: "Pinned Hermes",
+            status: "active",
+            tokenPreview: "obb_hgw_...pin",
+            scopes: ["hermes.gateway.read", "hermes.gateway.write"],
+            homeDestinationId: "burnbar:home",
+            lastSeenAt: nil,
+            revokedAt: nil,
+            createdAt: "2026-06-01T08:00:00Z",
+            updatedAt: "2026-06-01T08:08:04.968Z",
+            schemaVersion: 2,
+            relayPublicKey: agentPublicKey,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm
+        )
+    }
+
+    /// A fresh pin store scoped to a throwaway Keychain account namespace so the
+    /// test never collides with a previously pinned device key.
+    private func freshPinStore() -> HermesGatewayAgentKeyPinStore {
+        HermesGatewayAgentKeyPinStore()
+    }
+
+    func testAgentKeyPinFirstUsePinsAndMatchesSameKey() {
+        let store = freshPinStore()
+        let uid = "uid_pin"
+        let clientId = "hgw_pin_\(UUID().uuidString)"
+        let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: agentKey, uid: uid, clientId: clientId), .pinnedFirstUse)
+        XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), agentKey)
+        // Re-observing the same key must match (and stay sealable).
+        let again = store.verifyOrPin(agentPublicKeyBase64: agentKey, uid: uid, clientId: clientId)
+        XCTAssertEqual(again, .matches)
+        XCTAssertTrue(again.allowsSeal)
+    }
+
+    func testAgentKeyPinMismatchRefusesAndReportsPinnedKey() {
+        let store = freshPinStore()
+        let uid = "uid_pin"
+        let clientId = "hgw_pin_\(UUID().uuidString)"
+        let originalKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let attackerKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: originalKey, uid: uid, clientId: clientId), .pinnedFirstUse)
+        // A *different* advertised key (post-pairing rotation / MITM) must refuse.
+        let result = store.verifyOrPin(agentPublicKeyBase64: attackerKey, uid: uid, clientId: clientId)
+        XCTAssertEqual(result, .mismatch(pinned: originalKey))
+        XCTAssertFalse(result.allowsSeal)
+        // The pin is unchanged — the attacker key never overwrites trust.
+        XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), originalKey)
+    }
+
+    func testAgentKeyPinClearReestablishesTrustForRepair() {
+        let store = freshPinStore()
+        let uid = "uid_pin"
+        let clientId = "hgw_pin_\(UUID().uuidString)"
+        let originalKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let rotatedKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: originalKey, uid: uid, clientId: clientId), .pinnedFirstUse)
+        XCTAssertFalse(store.verifyOrPin(agentPublicKeyBase64: rotatedKey, uid: uid, clientId: clientId).allowsSeal)
+        // Re-pair deliberately clears the pin; the new key is then trusted afresh.
+        store.clearPin(uid: uid, clientId: clientId)
+        XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: rotatedKey, uid: uid, clientId: clientId), .pinnedFirstUse)
+        XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), rotatedKey)
+    }
+
+    func testGatewayEventSealPinsAgentKeyThenRefusesChangedKey() throws {
+        let store = freshPinStore()
+        let uid = "uid_seal"
+        let clientId = "hgw_seal_\(UUID().uuidString)"
+        let agentPrivate = HermesRelayCrypto.generatePrivateKey()
+        let client = sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        // First seal pins the key and produces a sealed envelope (no plaintext).
+        var payload: [String: Any] = ["destinationId": "burnbar:home"]
+        try FunctionsRepository.sealGatewayEventPayload(
+            into: &payload,
+            text: "hello hermes",
+            senderDisplayName: "iPhone",
+            threadId: "burnbar-ios-e2e",
+            modelId: nil,
+            targetClient: client,
+            uid: uid,
+            pinStore: store
+        )
+        XCTAssertNil(payload["text"], "Plaintext text must never appear at the top level")
+        XCTAssertNil(payload["senderDisplayName"])
+        let envelope = payload["relayEnvelope"] as? [String: Any]
+        XCTAssertNotNil(envelope?["payloadCiphertext"] as? String)
+        XCTAssertNotNil(envelope?["wrappedKey"] as? String)
+        XCTAssertEqual(envelope?["relayEncryption"] as? String, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), agentPrivate.publicKeyBase64)
+
+        // Server advertises a DIFFERENT agent key for the same client id → MITM.
+        let attackerClient = sealableGatewayClient(
+            id: clientId,
+            agentPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        )
+        var blockedPayload: [String: Any] = ["destinationId": "burnbar:home"]
+        XCTAssertThrowsError(
+            try FunctionsRepository.sealGatewayEventPayload(
+                into: &blockedPayload,
+                text: "secret",
+                senderDisplayName: "iPhone",
+                threadId: "burnbar-ios-e2e",
+                modelId: nil,
+                targetClient: attackerClient,
+                uid: uid,
+                pinStore: store
+            )
+        ) { error in
+            XCTAssertEqual(error as? FunctionsError, .gatewayRelayKeyChanged)
+        }
+        // Fail-closed: nothing sealed, no envelope, no plaintext leaked.
+        XCTAssertNil(blockedPayload["relayEnvelope"])
+        XCTAssertNil(blockedPayload["text"])
+        XCTAssertNil(blockedPayload["eventId"])
+    }
+
+    // MARK: - Sealed model_switch — FIX-ios finding 2
+
+    func testSealedModelSwitchCarriesModelIdInsideEnvelopeAndRoundTrips() throws {
+        let store = freshPinStore()
+        let uid = "uid_model"
+        let clientId = "hgw_model_\(UUID().uuidString)"
+        let agentPrivate = HermesRelayCrypto.generatePrivateKey()
+        let client = sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        // The phone seals a model_switch exactly like other events: modelId rides
+        // inside the sealed payload, never as a top-level cleartext field.
+        var payload: [String: Any] = [
+            "destinationId": "burnbar:home",
+            "senderId": "burnbar-ios",
+            "eventKind": "model_switch"
+        ]
+        try FunctionsRepository.sealGatewayEventPayload(
+            into: &payload,
+            text: "",
+            senderDisplayName: "iPhone",
+            threadId: "burnbar-ios-e2e",
+            modelId: "anthropic/claude-opus",
+            targetClient: client,
+            uid: uid,
+            pinStore: store
+        )
+        XCTAssertNil(payload["modelId"], "Sealed model_switch must not leak modelId in cleartext")
+        guard
+            let eventId = payload["eventId"] as? String,
+            let envelope = payload["relayEnvelope"] as? [String: Any],
+            let payloadCiphertext = envelope["payloadCiphertext"] as? String,
+            let wrappedKey = envelope["wrappedKey"] as? String
+        else {
+            return XCTFail("Sealed model_switch is missing its envelope")
+        }
+
+        // The agent opens it: unwrap the per-event key, open the payload, read modelId.
+        let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKey,
+            privateKey: agentPrivate,
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId)
+        )
+        let openedData = try HermesRelayCrypto.openBase64(
+            ciphertext: payloadCiphertext,
+            keyData: symmetricKey,
+            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
+        )
+        let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
+        XCTAssertEqual(opened["modelId"] as? String, "anthropic/claude-opus")
+        XCTAssertEqual(opened["threadId"] as? String, "burnbar-ios-e2e")
+        XCTAssertEqual(opened["senderDisplayName"] as? String, "iPhone")
+    }
+
+    func testHermesGatewayRelayKeypairPublishesX963PubkeyAtPairing() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let repository = MockHermesGatewayRepository()
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+        _ = await store.approve(userCode: "AB12-CD34", displayName: "iPhone")
+
+        let grant = repository.approvalGrants.last
+        XCTAssertEqual(grant?.userCode, "AB12-CD34")
+        XCTAssertEqual(grant?.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(grant?.relayKeyVersion, HermesRelayCrypto.keyVersion)
+        // The published pubkey decodes as a 65-byte X9.63 P-256 point (0x04 || X || Y).
+        let pubkey = grant?.relayPublicKey ?? ""
+        XCTAssertFalse(pubkey.isEmpty)
+        let decoded = Data(base64Encoded: pubkey)
+        XCTAssertEqual(decoded?.count, 65)
+        XCTAssertEqual(decoded?.first, 0x04)
     }
 
     func testHermesGatewayQueuedEventParsesTargetClientId() throws {
@@ -279,6 +641,35 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(repository.enqueuedEvents.last?.text, "Run this on the MacBook")
     }
 
+    func testHermesGatewaySettingsStoreBlocksUnsealedClientBeforeEnqueue() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(
+                id: "hgw_legacy",
+                displayName: "Legacy Mac",
+                lastSeenAt: now,
+                canSealToAgent: false
+            )
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+        let sent = await store.sendGatewayMessage(
+            text: "Do not upload plaintext",
+            senderDisplayName: "OpenBurnBar iPhone",
+            threadId: HermesGatewayMessageResolver.defaultThreadID
+        )
+
+        XCTAssertNil(sent)
+        XCTAssertTrue(repository.enqueuedEvents.isEmpty)
+        XCTAssertTrue(store.noticeText?.contains("end-to-end encrypted") ?? false)
+    }
+
     func testHermesGatewaySettingsStoreRepairsMissingSelectedClientToOnlineFallback() async {
         let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -329,9 +720,11 @@ final class OpenBurnBarMobileTests: XCTestCase {
         id: String? = nil,
         displayName: String = "Hermes Agent",
         status: String = "active",
-        lastSeenAt: String?
+        lastSeenAt: String?,
+        canSealToAgent: Bool = true
     ) -> HermesGatewayClientRecord {
-        HermesGatewayClientRecord(
+        let relayKey = canSealToAgent ? HermesRelayCrypto.generatePrivateKey().publicKeyBase64 : nil
+        return HermesGatewayClientRecord(
             id: id ?? "hgw_test_\(status)_\(lastSeenAt ?? "never")",
             displayName: displayName,
             status: status,
@@ -346,7 +739,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
             revokedAt: nil,
             createdAt: "2026-06-01T08:00:00Z",
             updatedAt: "2026-06-01T08:00:00Z",
-            schemaVersion: 1
+            schemaVersion: canSealToAgent ? 2 : 1,
+            relayPublicKey: relayKey,
+            relayKeyVersion: canSealToAgent ? HermesRelayCrypto.keyVersion : nil,
+            relayEncryption: canSealToAgent ? HermesRelayCrypto.algorithm : nil
         )
     }
 
@@ -1451,6 +1847,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let threadId: String
         let targetClientId: String?
         let senderDisplayName: String
+        let sealedToAgent: Bool
     }
 
     struct EnqueuedModelSwitch: Equatable {
@@ -1458,6 +1855,14 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let threadId: String
         let targetClientId: String?
         let senderDisplayName: String
+        let sealedToAgent: Bool
+    }
+
+    struct ApprovalGrant: Equatable {
+        let userCode: String
+        let relayPublicKey: String?
+        let relayKeyVersion: Int?
+        let relayEncryption: String?
     }
 
     struct OversightModeChange: Equatable {
@@ -1477,14 +1882,26 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
     private(set) var revokedClientIds: [String] = []
     private(set) var oversightModeChanges: [OversightModeChange] = []
     private(set) var approvalResponses: [ApprovalResponse] = []
+    private(set) var approvalGrants: [ApprovalGrant] = []
     private var sequence = 0
 
     func approveHermesGatewayDeviceGrant(
         userCode: String,
         displayName: String?,
         destinationId: String,
-        scopes: [String]
+        scopes: [String],
+        relayPublicKey: String?,
+        relayKeyVersion: Int?,
+        relayEncryption: String?
     ) async throws -> HermesGatewayClientRecord {
+        approvalGrants.append(
+            ApprovalGrant(
+                userCode: userCode,
+                relayPublicKey: relayPublicKey,
+                relayKeyVersion: relayKeyVersion,
+                relayEncryption: relayEncryption
+            )
+        )
         let client = HermesGatewayClientRecord(
             id: "hgw_approved",
             displayName: displayName ?? "Hermes Agent",
@@ -1519,6 +1936,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         text: String,
         destinationId: String,
         threadId: String,
+        targetClient: HermesGatewayClientRecord?,
         targetClientId: String?,
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent {
@@ -1528,7 +1946,8 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
                 text: text,
                 threadId: threadId,
                 targetClientId: targetClientId,
-                senderDisplayName: senderDisplayName
+                senderDisplayName: senderDisplayName,
+                sealedToAgent: targetClient?.canSealToAgent ?? false
             )
         )
         return HermesGatewayQueuedEvent(
@@ -1542,6 +1961,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         modelId: String,
         destinationId: String,
         threadId: String,
+        targetClient: HermesGatewayClientRecord?,
         targetClientId: String?,
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent {
@@ -1551,7 +1971,8 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
                 modelId: modelId,
                 threadId: threadId,
                 targetClientId: targetClientId,
-                senderDisplayName: senderDisplayName
+                senderDisplayName: senderDisplayName,
+                sealedToAgent: targetClient?.canSealToAgent ?? false
             )
         )
         return HermesGatewayQueuedEvent(

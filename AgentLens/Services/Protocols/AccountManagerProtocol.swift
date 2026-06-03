@@ -52,6 +52,10 @@ protocol AccountManagerProtocol: AnyObject {
     /// - Parameter window: The window to present the sign-in sheet on.
     func signInWithGoogle(presentingWindow window: NSWindow) async throws
 
+    /// Initiates Sign in with GitHub flow.
+    /// - Parameter window: The window to present the sign-in sheet on.
+    func signInWithGitHub(presentingWindow window: NSWindow) async throws
+
     /// Signs in with an existing email/password account.
     func signInWithEmail(email: String, password: String) async throws
 

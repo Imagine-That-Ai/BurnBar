@@ -3,12 +3,14 @@ package com.openburnbar.ui.settings
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.theme.AppAppearance
 import com.openburnbar.ui.theme.UIMode
 
 /**
@@ -63,6 +65,7 @@ object GlobalVisualSettings {
                 _excludeBrandShapesFromSwarm.value = prefs.getBoolean(KEY_EXCLUDE_BRAND_SHAPES, false)
                 GlobalVisualSettingsPalette.loadFromPrefs(prefs)
                 GlobalVisualSettingsUIMode.loadFromPrefs(prefs)
+                GlobalVisualSettingsAppearance.loadFromPrefs(prefs)
                 _providerGlyphs.value = decodeProviderGlyphs(prefs.getString(KEY_PROVIDER_GLYPHS, null))
                 GlobalVisualSettingsTabs.loadFromPrefs(prefs)
                 loaded = true
@@ -221,9 +224,22 @@ fun rememberPremiumSOTAUX(): State<Boolean> = remember { GlobalVisualSettings.us
 @Composable
 fun rememberBackgroundStyle(): State<BackgroundStyle> = remember { GlobalVisualSettings.backgroundStyle }
 
-/** Composable shorthand helper to observe global Website Background setting. */
+/**
+ * Composable shorthand helper to observe global Website Background setting.
+ *
+ * Forced `false` under the Editorial skin so the dark token-ember swarm never
+ * renders over (and never flips text white on) the light paper surfaces. The
+ * user's underlying swarm choice is preserved and restored when they return to
+ * the Aurora skin.
+ */
 @Composable
-fun rememberWebsiteBackground(): State<Boolean> = remember { GlobalVisualSettings.useWebsiteBackground }
+fun rememberWebsiteBackground(): State<Boolean> {
+    val websiteBg = GlobalVisualSettings.useWebsiteBackground
+    val appearance = GlobalVisualSettingsAppearance.appearance
+    return remember {
+        derivedStateOf { appearance.value != AppAppearance.EDITORIAL && websiteBg.value }
+    }
+}
 
 /** Composable shorthand helper to observe global Swarm Sparkles setting. */
 @Composable
@@ -238,6 +254,9 @@ fun rememberThemePalette(): State<String> = remember { GlobalVisualSettingsPalet
 
 @Composable
 fun rememberUIMode(): State<UIMode> = remember { GlobalVisualSettingsUIMode.uiMode }
+
+@Composable
+fun rememberAppearance(): State<AppAppearance> = remember { GlobalVisualSettingsAppearance.appearance }
 
 @Composable
 fun rememberProviderGlyphs(): State<Set<AgentProvider>> = remember { GlobalVisualSettings.providerGlyphs }

@@ -28,7 +28,7 @@ private final class SessionLogSyncProcessGate: @unchecked Sendable {
 ///
 /// Firestore layout:
 ///   `users/{uid}/session_logs/{safeDeviceId}_{provider}_{recordHash}` (manifest)
-///   `users/{uid}/session_logs/{docId}/chunks/{index}` (search metadata only)
+///   `users/{uid}/cloud_search_chunks/{chunkId}` (server-written encrypted search metadata)
 ///
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
@@ -275,7 +275,6 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         (manifest, manifestRef, false)
                     ]
 
-                    let chunksRef = manifestRef.collection("chunks")
                     var cloudSearchChunks: [[String: Any]] = []
                     for (idx, chunk) in chunks.enumerated() {
                         let snippet = chunk
@@ -292,26 +291,6 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
                             keyData: vaultKey
                         )
-                        writes.append(([
-                            "index": idx,
-                            "hash": chunkHash,
-                            "uid": uid,
-                            "docId": docId,
-                            "conversationId": record.id,
-                            "sessionId": record.sessionId,
-	                            "deviceId": deviceId,
-	                            "provider": record.provider.rawValue,
-	                            "model": model,
-	                            "sealedSnippet": try Self.dictionary(sealedSnippet),
-                            "tokenHashes": tokenHashes,
-                            "semanticHashes": semanticHashes,
-                            "semanticHashVersion": CloudVaultCrypto.semanticHashVersion,
-                            "bodyStorage": "firebase_storage_encrypted",
-                            "storagePath": uploadTicket.storagePath,
-                            "bodyHash": bodyHash,
-                            "schemaVersion": Self.chunkMetadataVersion,
-                            "updatedAt": FieldValue.serverTimestamp()
-                        ], chunksRef.document(String(idx)), false))
                         cloudSearchChunks.append([
                             "chunkID": "\(docId)_\(idx)",
                             "documentID": docId,
@@ -330,28 +309,6 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
 	                            "provider": record.provider.rawValue
 	                        ])
                     }
-                    if let previousChunkCount = existingManifest?["chunkCount"] as? Int,
-                       previousChunkCount > chunks.count {
-                        for idx in chunks.count..<min(previousChunkCount, chunks.count + 1_000) {
-                            writes.append(([
-                                "index": idx,
-                                "uid": uid,
-                                "docId": docId,
-                                "conversationId": record.id,
-                                "sessionId": record.sessionId,
-	                                "deviceId": deviceId,
-	                                "provider": record.provider.rawValue,
-	                                "model": model,
-	                                "bodyStorage": "firebase_storage_encrypted",
-                                "storagePath": uploadTicket.storagePath,
-                                "bodyHash": bodyHash,
-                                "schemaVersion": Self.chunkMetadataVersion,
-                                "superseded": true,
-                                "updatedAt": FieldValue.serverTimestamp()
-                            ], chunksRef.document(String(idx)), false))
-                        }
-                    }
-
                     progress?.setCurrentRecord(
                         label: label,
                         operation: "Committing search index (\(chunks.count) chunks)"
@@ -1091,9 +1048,9 @@ private enum CloudSessionLogUploadError: LocalizedError {
 extension CloudSyncService {
     // MARK: - Session Log Upload (manifest + search metadata)
 
-    /// Uploads session-log manifests and search metadata to Firestore.
+    /// Uploads session-log manifests and encrypted search metadata to Firestore.
     /// Layout: `users/{uid}/session_logs/{deviceId}_{escapedId}` (manifest)
-    ///         `users/{uid}/session_logs/{docId}/chunks/{index}` (search metadata only)
+    ///         `users/{uid}/cloud_search_chunks/{chunkId}` (server-written search metadata)
     ///
     /// Gated separately on `sessionLogCloudBackupEnabled`.
     /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
