@@ -353,6 +353,145 @@ final class AccountManager {
         }
     }
 
+    // MARK: - Sign In with GitHub
+
+    func signInWithGitHub(presentingWindow window: NSWindow) async throws {
+        guard isFirebaseAvailable else {
+            throw AccountError.firebaseNotConfigured
+        }
+        guard Self.hasConfiguredFirebaseApp else {
+            throw AccountError.firebaseNotConfigured
+        }
+
+        lastOAuthProviderID = "github"
+        lastOAuthToken = nil
+        lastOAuthEmail = nil
+        lastOAuthDisplayName = nil
+
+        let credential = try await githubCredential(presentingWindow: window)
+        try await authenticate(with: credential)
+        refreshAuthStateSnapshot()
+        if lastOAuthEmail == nil {
+            lastOAuthEmail = currentUser?.email ?? userEmail
+        }
+        if lastOAuthDisplayName == nil {
+            lastOAuthDisplayName = currentUser?.displayName ?? userDisplayName ?? lastOAuthEmail
+        }
+    }
+
+    private func githubCredential(presentingWindow window: NSWindow) async throws -> AuthCredential {
+        // macOS: FirebaseAuth v11 does not expose signIn(with:uiDelegate:) for generic OAuth.
+        // We present the Firebase-hosted OAuth handler directly via ASWebAuthenticationSession
+        // and build an AuthCredential from the redirect URL.
+        let url = try buildGitHubOAuthURL()
+        let callbackURL = try await presentOAuthWebSession(url: url, window: window)
+        return try parseOAuthCredential(from: callbackURL)
+    }
+
+    private func buildGitHubOAuthURL() throws -> URL {
+        guard let clientID = FirebaseApp.app()?.options.clientID,
+              let apiKey = FirebaseApp.app()?.options.apiKey else {
+            throw AccountError.firebaseNotConfigured
+        }
+        let authDomain = Self.firebasePlistValue("PROJECT_ID").map { "\($0).firebaseapp.com" }
+            ?? "app.burnbar.ai"
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+        let eventID = randomNonceString(length: 32)
+        let sessionID = randomNonceString(length: 32)
+        let sessionHash = sha256(sessionID)
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = authDomain
+        components.path = "/__/auth/handler"
+        components.queryItems = [
+            URLQueryItem(name: "apiKey", value: apiKey),
+            URLQueryItem(name: "authType", value: "signInWithRedirect"),
+            URLQueryItem(name: "ibi", value: bundleID),
+            URLQueryItem(name: "sessionId", value: sessionHash),
+            URLQueryItem(name: "v", value: "FirebaseAuth-iOS"),
+            URLQueryItem(name: "eventId", value: eventID),
+            URLQueryItem(name: "providerId", value: "github.com"),
+            URLQueryItem(name: "clientId", value: clientID),
+        ]
+        guard let url = components.url else {
+            throw AccountError.invalidCredential
+        }
+        return url
+    }
+
+    private func presentOAuthWebSession(url: URL, window: NSWindow) async throws -> URL {
+        let callbackScheme = Self.reversedClientID() ?? Bundle.main.bundleIdentifier ?? "com.openburnbar.app"
+        return try await withCheckedThrowingContinuation { (
+            continuation: CheckedContinuation<URL, Error>
+        ) in
+            let session = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: callbackScheme,
+                completionHandler: { callbackURL, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    guard let callbackURL else {
+                        continuation.resume(throwing: AccountError.invalidCredential)
+                        return
+                    }
+                    continuation.resume(returning: callbackURL)
+                }
+            )
+            session.presentationContextProvider = WebAuthPresentationContext(window: window)
+            session.start()
+        }
+    }
+
+    private static func reversedClientID() -> String? {
+        guard let clientID = FirebaseApp.app()?.options.clientID, !clientID.isEmpty else { return nil }
+        return clientID.components(separatedBy: ".").reversed().joined(separator: ".")
+    }
+
+    private static func firebasePlistValue(_ key: String) -> String? {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let values = NSDictionary(contentsOfFile: path) as? [String: Any] else {
+            return nil
+        }
+        return values[key] as? String
+    }
+
+    private func parseOAuthCredential(from url: URL) throws -> AuthCredential {
+        // Firebase returns tokens in the URL query or fragment:
+        // ?access_token=xxx&id_token=yyy or #access_token=xxx&id_token=yyy
+        let values = oauthCallbackValues(from: url)
+        if let accessToken = values["access_token"] ?? values["oauth_token"] {
+            return GitHubAuthProvider.credential(withToken: accessToken)
+        }
+        if let idToken = values["id_token"] {
+            return OAuthProvider.credential(
+                withProviderID: "github.com",
+                idToken: idToken,
+                accessToken: nil
+            )
+        }
+        throw AccountError.invalidCredential
+    }
+
+    private func oauthCallbackValues(from url: URL) -> [String: String] {
+        var values: [String: String] = [:]
+        func collect(from items: [URLQueryItem]?) {
+            for item in items ?? [] {
+                guard let value = item.value, !value.isEmpty else { continue }
+                values[item.name] = value
+            }
+        }
+        collect(from: URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        if let fragment = url.fragment {
+            var components = URLComponents()
+            components.percentEncodedQuery = fragment
+            collect(from: components.queryItems)
+        }
+        return values
+    }
+
     func signInWithEmail(email: String, password: String) async throws {
         guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else {
             throw AccountError.firebaseNotConfigured
@@ -821,6 +960,19 @@ enum AccountError: LocalizedError {
         case .invalidCredential:
             return "Sign in failed: invalid credential received from the provider."
         }
+    }
+}
+
+private final class WebAuthPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private weak var window: NSWindow?
+
+    init(window: NSWindow) {
+        self.window = window
+        super.init()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        window ?? NSApp.keyWindow ?? NSWindow()
     }
 }
 

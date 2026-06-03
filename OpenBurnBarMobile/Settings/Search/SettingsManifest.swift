@@ -31,6 +31,15 @@ enum SettingsManifest {
             keywords: ["dark", "light", "appearance", "mode", "color"]
         ),
         SettingsItem(
+            id: "hub.appearance.appSkin",
+            section: .appearance,
+            pageRoute: .hubRoot,
+            anchorID: SettingsAnchor.appSkin,
+            title: "App Skin",
+            subtitle: "Aurora ember look, or the Editorial paper console skin",
+            keywords: ["skin", "editorial", "paper", "aurora", "light", "ink", "coral", "console", "burnbar", "theme"]
+        ),
+        SettingsItem(
             id: "hub.appearance.usageDisplay",
             section: .appearance,
             pageRoute: .hubRoot,
@@ -403,6 +412,7 @@ enum SettingsManifest {
     /// search-only settings that cannot scroll to a visible target.
     static let visibleAnchorIDs: Set<String> = Set([
         SettingsAnchor.theme,
+        SettingsAnchor.appSkin,
         SettingsAnchor.usageDisplay,
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,

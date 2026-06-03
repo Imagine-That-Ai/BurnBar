@@ -35,6 +35,7 @@ struct AuroraBackdrop: View {
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
 
     enum AuroraDensity {
         case full       // Pulse / Burn / Hermes / You hero
@@ -44,7 +45,12 @@ struct AuroraBackdrop: View {
 
     var body: some View {
         ZStack {
-            if uiMode == .cooking {
+            if appSkin == .editorial {
+                // Editorial / Paper skin: a flat paper field, no swarm, mesh,
+                // ribbon, particles, or vignette. The "no glass/glow" rule.
+                MobileTheme.background
+                    .ignoresSafeArea()
+            } else if uiMode == .cooking {
                 VisibilityAwareEmberSurfaceBackground()
             } else if allowsWebsiteBackground && useWebsiteBackground {
                 WebsiteBackgroundView(

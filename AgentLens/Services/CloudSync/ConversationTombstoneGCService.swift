@@ -7,14 +7,15 @@ import Foundation
 ///
 /// A soft-delete sets `deletedAt` on the local row and uploads it so every other
 /// device observes the deletion. The row, its Cloud Storage body, the
-/// `session_logs` manifest + search-index chunks, and the `conversations`
+/// `session_logs` manifest + cloud search index rows, and the `conversations`
 /// metadata doc must all survive long enough for offline devices to sync the
 /// tombstone — but no longer. After `retentionWindow` has elapsed this sweep:
 ///
 /// 1. deletes the encrypted session body blob from Cloud Storage,
-/// 2. deletes the `session_logs/{docId}/chunks/*` search-index entries,
-/// 3. deletes the `session_logs/{docId}` manifest,
-/// 4. hard-deletes the local SQLite row.
+/// 2. deletes legacy `session_logs/{docId}/chunks/*` rows if present,
+/// 3. deletes `cloud_search_documents/chunks/postings` rows for the document,
+/// 4. deletes the `session_logs/{docId}` manifest,
+/// 5. hard-deletes the local SQLite row.
 ///
 /// The tiny `conversations/{deviceId}_{id}` metadata doc is deliberately left in
 /// place — `firestore.rules` makes it non-deletable and it is the durable
@@ -121,15 +122,48 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
             )
         }
 
-        // 2. Search-index chunks under the manifest.
+        // 2. Legacy search-index chunks under the manifest.
         let chunksRef = manifestRef.collection("chunks")
         let chunkSnapshot = try await chunksRef.getDocuments()
         for chunk in chunkSnapshot.documents {
             try await chunksRef.document(chunk.documentID).deleteDocument()
         }
 
-        // 3. Manifest document itself.
+        // 3. Current cloud-search index rows keyed by the same document id.
+        try await userRef.collection("cloud_search_documents").document(docId).deleteDocument()
+        try await deleteCloudSearchRows(
+            userRef: userRef,
+            collectionPath: "cloud_search_chunks",
+            documentID: docId
+        )
+        try await deleteCloudSearchRows(
+            userRef: userRef,
+            collectionPath: "cloud_search_postings",
+            documentID: docId
+        )
+
+        // 4. Manifest document itself.
         try await manifestRef.deleteDocument()
+    }
+
+    private func deleteCloudSearchRows(
+        userRef: CloudSyncDocumentGateway,
+        collectionPath: String,
+        documentID: String
+    ) async throws {
+        let collectionRef = userRef.collection(collectionPath)
+        while true {
+            let snapshot = try await collectionRef
+                .whereField("documentID", isEqualTo: documentID)
+                .limit(to: 500)
+                .getDocuments()
+            let documents = snapshot.documents
+            guard !documents.isEmpty else { return }
+            for document in documents {
+                try await collectionRef.document(document.documentID).deleteDocument()
+            }
+            if documents.count < 500 { return }
+        }
     }
 
     private func recordSyncError(_ error: Error) async {

@@ -173,7 +173,76 @@ object AuroraColors {
     /**
      * Completely shifts the entire color palette based on user preference and UI mode.
      */
-    fun updateColorsForPalette(palette: String, isDark: Boolean, uiMode: UIMode = UIMode.STANDARD) {
+    fun updateColorsForPalette(
+        palette: String,
+        isDark: Boolean,
+        uiMode: UIMode = UIMode.STANDARD,
+        appearance: AppAppearance = AppAppearance.AURORA,
+    ) {
+        if (appearance == AppAppearance.EDITORIAL) {
+            // "Quiet Editorial" / paper skin — the light, ink-on-paper console
+            // look. One coral accent, ochre + deep-coral + slate secondaries,
+            // hairline borders. Light-locked: we set BOTH the light* and dark*
+            // surface/text tokens to the paper palette so the handful of screens
+            // that read AuroraColors.dark* directly off isSystemInDarkTheme()
+            // still render as paper. Mirrors the shared editorial palette in
+            // OpenBurnBarCore's DesignSystemTokens (and the web console).
+            // ACCENTS
+            _ember.value = Color(0xFFF45B69) // coral — the one accent
+            _amber.value = Color(0xFF8A6200) // ochre (amber-on-paper)
+            _blaze.value = Color(0xFFB3243C) // deep coral
+            _whimsy.value = Color(0xFF565D68) // slate
+            _purple.value = Color(0xFF565D68) // slate
+            _teal.value = Color(0xFF0C7C69) // tier end-to-end
+            _gold.value = Color(0xFF8A6200) // ochre
+
+            _emberDark.value = Color(0xFFF45B69)
+            _amberDark.value = Color(0xFF8A6200)
+            _whimsyDark.value = Color(0xFF565D68)
+            _purpleDark.value = Color(0xFF565D68)
+            _tealDark.value = Color(0xFF0C7C69)
+            _goldDark.value = Color(0xFF8A6200)
+
+            // SURFACES & TEXT — paper, ink, ink-hairlines (both light + dark arms)
+            val paper = Color(0xFFF6F4EF)
+            val raised = Color(0xFFFFFEFB)
+            val ink = Color(0xFF16140F)
+            val body = Color(0xFF353027)
+            val mute = Color(0xFF6E685D)
+            val hairline = Color(0xFF16140F).copy(alpha = 0.12f)
+            val hairlineSubtle = Color(0xFF16140F).copy(alpha = 0.08f)
+
+            _lightBackground.value = paper
+            _lightSurface.value = raised
+            _lightSurfaceElevated.value = raised
+            _lightBorder.value = hairline
+            _lightBorderSubtle.value = hairlineSubtle
+            _lightTextPrimary.value = ink
+            _lightTextSecondary.value = body
+            _lightTextMuted.value = mute
+
+            _darkBackground.value = paper
+            _darkSurface.value = raised
+            _darkSurfaceElevated.value = raised
+            _darkBorder.value = hairline
+            _darkBorderSubtle.value = hairlineSubtle
+            _darkTextPrimary.value = ink
+            _darkTextSecondary.value = body
+            _darkTextMuted.value = mute
+
+            // HERMES & SEMANTIC — AA-legible tier identities on paper
+            _hermesMercury.value = Color(0xFF9B9488)
+            _hermesAureate.value = Color(0xFF353027)
+            _hermesMercuryDark.value = Color(0xFF9B9488)
+            _hermesAureateDark.value = Color(0xFF353027)
+            _success.value = Color(0xFF0C7C69)
+            _warning.value = Color(0xFF8A6200)
+            _error.value = Color(0xFFB22219)
+            _successDark.value = Color(0xFF0C7C69)
+            _warningDark.value = Color(0xFF8A6200)
+            _errorDark.value = Color(0xFFB22219)
+            return
+        }
         if (uiMode == UIMode.COOKING) {
             // ACCENTS
             _ember.value = Color(0xFFE74C3C) // Premium Sriracha Crimson
@@ -718,20 +787,25 @@ val LocalAuroraReduceMotion = compositionLocalOf { false }
 // ── Composable Theme Wrapper ──
 @Composable
 fun AuroraTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    // 1. Reactive color palette, UI Mode, and Mode Theme states
+    // 1. Reactive color palette, UI Mode, skin, and Mode Theme states
     val palette = rememberThemePalette().value
     val uiMode = rememberUIMode().value
+    val appearance = com.openburnbar.ui.settings.rememberAppearance().value
 
-    val modeTheme = remember(uiMode, darkTheme) { UIModeTheme(uiMode, darkTheme) }
+    // Editorial is a light-locked paper skin — never let it sit on a dark
+    // scheme regardless of the OS setting.
+    val effectiveDark = if (appearance == AppAppearance.EDITORIAL) false else darkTheme
 
-    remember(palette, darkTheme, uiMode) {
-        AuroraColors.updateColorsForPalette(palette, darkTheme, uiMode)
+    val modeTheme = remember(uiMode, effectiveDark) { UIModeTheme(uiMode, effectiveDark) }
+
+    remember(palette, effectiveDark, uiMode, appearance) {
+        AuroraColors.updateColorsForPalette(palette, effectiveDark, uiMode, appearance)
         true
     }
 
     // 2. Build the ColorScheme dynamically based on active mode theme accents and surfaces
     val colorScheme =
-        if (darkTheme) {
+        if (effectiveDark) {
             darkColorScheme(
                 primary = modeTheme.primaryAccent,
                 secondary = modeTheme.secondaryAccent,

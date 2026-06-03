@@ -26,7 +26,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
 
     var availableProviders: [MobileAuthProviderID] {
         var p: [MobileAuthProviderID] = [.apple]
-        if isFirebaseAvailable { p.append(.google) }
+        if isFirebaseAvailable { p.append(contentsOf: [.google, .github]) }
         return p
     }
 
@@ -42,6 +42,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         case .email: throw CloudGatewayError.classified(.other(message: "Use email sign-in from the email form."))
         case .apple: try await signInWithApple()
         case .google: try await signInWithGoogle()
+        case .github: try await signInWithGitHub()
         }
     }
 
@@ -108,6 +109,25 @@ final class LiveAuthGateway: NSObject, AuthGateway {
                     catch { cont.resume(throwing: CloudGatewayError.classified(.other(message: error.localizedDescription))) }
                 }
             }
+        }
+    }
+
+    // MARK: - GitHub
+
+    private func signInWithGitHub() async throws {
+        try validateFirebaseBundle()
+        let provider = OAuthProvider(providerID: "github.com")
+        try await authWithProvider(provider)
+    }
+
+    private func authWithProvider(_ provider: OAuthProvider) async throws {
+        // OAuthProvider is a FederatedAuthProvider, not an AuthCredential — drive the
+        // web OAuth flow via the provider overloads (uiDelegate: nil lets Firebase
+        // present its default SFSafariViewController from the key window).
+        if let u = Auth.auth().currentUser, u.isAnonymous {
+            try await u.link(with: provider, uiDelegate: nil)
+        } else {
+            try await Auth.auth().signIn(with: provider, uiDelegate: nil)
         }
     }
 

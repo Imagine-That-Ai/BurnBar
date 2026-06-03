@@ -512,7 +512,7 @@ struct HermesSettingsView: View {
                 }
             }
 
-            Text(reply.text ?? "Hermes sent a reply through BurnBar Cloud.")
+            Text(gatewayReplyBodyText(reply))
                 .font(.body)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -533,6 +533,23 @@ struct HermesSettingsView: View {
                 .stroke(MobileTheme.success.opacity(0.30), lineWidth: 0.75)
         )
         .accessibilityElement(children: .combine)
+    }
+
+    /// The body to render for a gateway reply. Sealed replies that opened on this
+    /// device show their plaintext; a sealed reply this device cannot open (key
+    /// mismatch / sealed for another paired device) shows a graceful explanation
+    /// instead of an empty bubble; legacy plaintext replies show their `text`.
+    private func gatewayReplyBodyText(
+        _ reply: HermesGatewayMessageRecord,
+        fallback: String = "Hermes sent a reply through BurnBar Cloud."
+    ) -> String {
+        if let body = reply.displayText, !body.isEmpty {
+            return body
+        }
+        if reply.isSealed {
+            return "This reply is sealed for another device. Open BurnBar on the device that approved this gateway to read it."
+        }
+        return fallback
     }
 
     private func gatewayPendingHero(_ pending: HermesGatewayQueuedEvent) -> some View {
@@ -1045,10 +1062,24 @@ struct HermesSettingsView: View {
     @ViewBuilder
     private var gatewayReadinessNotice: some View {
         if let selected = gatewayStore.selectedClient,
+           gatewayStore.agentRelayKeyChanged(for: selected) {
+            gatewayNotice(
+                "\(selected.displayName)'s relay key changed since you paired — a possible man-in-the-middle. Messages are blocked. Re-pair Hermes Gateway on \(selected.displayName) to trust the new key.",
+                icon: "exclamationmark.shield.fill",
+                color: MobileTheme.error
+            )
+        } else if let selected = gatewayStore.selectedClient,
+           !selected.canSealToAgent {
+            gatewayNotice(
+                "Update OpenBurnBar on \(selected.displayName), then re-pair Hermes Gateway. Cloud gateway messages are E2EE and require relay keys.",
+                icon: "exclamationmark.triangle.fill",
+                color: MobileTheme.warning
+            )
+        } else if let selected = gatewayStore.selectedClient,
            gatewayStore.isOnline(selected) {
             gatewayNotice(
-                "\(selected.displayName) is selected and online. Test messages should get picked up immediately.",
-                icon: "bolt.horizontal.circle.fill",
+                "\(selected.displayName) is selected, online, and E2EE ready. Test messages should get picked up immediately.",
+                icon: "checkmark.seal.fill",
                 color: MobileTheme.success
             )
         } else if let selected = gatewayStore.selectedClient {
@@ -1083,7 +1114,7 @@ struct HermesSettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                Text(reply.text ?? "Hermes sent a reply.")
+                Text(gatewayReplyBodyText(reply, fallback: "Hermes sent a reply."))
                     .font(.body)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1836,17 +1867,23 @@ struct HermesSettingsView: View {
 
     private func gatewayClientColor(_ client: HermesGatewayClientRecord) -> Color {
         guard client.isActive else { return MobileTheme.Colors.textMuted }
+        if gatewayStore.agentRelayKeyChanged(for: client) { return MobileTheme.error }
+        guard client.canSealToAgent else { return MobileTheme.warning }
         return gatewayStore.isOnline(client) ? MobileTheme.success : Color(hex: "8080ff")
     }
 
     private func gatewayClientIcon(_ client: HermesGatewayClientRecord) -> String {
         guard client.isActive else { return "xmark.circle.fill" }
+        if gatewayStore.agentRelayKeyChanged(for: client) { return "exclamationmark.shield.fill" }
+        guard client.canSealToAgent else { return "exclamationmark.triangle.fill" }
         return gatewayStore.isOnline(client) ? "bolt.horizontal.circle.fill" : "moon.zzz.fill"
     }
 
     private func gatewayClientSubtitle(_ client: HermesGatewayClientRecord) -> String {
+        let keyChanged = gatewayStore.agentRelayKeyChanged(for: client)
         var parts = [
             gatewayStore.selectedClient?.id == client.id ? "Selected" : nil,
+            keyChanged ? "Relay key changed — re-pair" : (client.canSealToAgent ? "E2EE ready" : "Update/re-pair for E2EE"),
             gatewayStore.isOnline(client) ? "Online now" : "Not online",
             client.homeDestinationId,
             client.tokenPreview
@@ -2061,6 +2098,7 @@ final class HermesGatewaySettingsStore {
     @ObservationIgnored private var approvalListener: ListenerRegistration?
     @ObservationIgnored private var statusClockTask: Task<Void, Never>?
     @ObservationIgnored private var listenedUID: String?
+    @ObservationIgnored private let agentKeyPinStore = HermesGatewayAgentKeyPinStore()
     @ObservationIgnored private var lastNotifiedMessageID: String?
     @ObservationIgnored private var pendingEventSentAt: Date?
     @ObservationIgnored private var messageListenerStartedAt: Date?
@@ -2148,6 +2186,39 @@ final class HermesGatewaySettingsStore {
             return nil
         }
         return trimmed
+    }
+
+    private static func gatewayE2EERequiredMessage(for client: HermesGatewayClientRecord) -> String {
+        "Update OpenBurnBar on \(client.displayName), then re-pair Hermes Gateway. Cloud gateway messages are end-to-end encrypted and require relay keys."
+    }
+
+    private static func gatewayRelayKeyChangedMessage(for client: HermesGatewayClientRecord) -> String {
+        "\(client.displayName)'s relay key changed since you paired — a possible man-in-the-middle. For your safety nothing was sent. Re-pair Hermes Gateway on \(client.displayName) to trust the new key."
+    }
+
+    /// True when the agent pubkey this client now advertises differs from the one
+    /// pinned at first pairing (possible MITM). Returns `false` when there is no
+    /// pin yet (first trust), no usable key, or no signed-in uid — the seal path
+    /// itself stays the authoritative fail-closed gate; this only drives the
+    /// pre-flight notice and the badge.
+    func agentRelayKeyChanged(for client: HermesGatewayClientRecord) -> Bool {
+        guard
+            client.canSealToAgent,
+            let advertised = client.relayPublicKey,
+            let uid = listenedUID, !uid.isEmpty,
+            let pinned = agentKeyPinStore.pinnedKey(uid: uid, clientId: client.id)
+        else {
+            return false
+        }
+        return pinned != advertised.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Clear the TOFU pin for a client so the next observed agent key is trusted
+    /// afresh. Used on deliberate re-pair / revoke so re-pairing re-establishes
+    /// trust instead of tripping the mismatch guard forever.
+    private func clearAgentKeyPin(clientId: String) {
+        guard let uid = listenedUID, !uid.isEmpty else { return }
+        agentKeyPinStore.clearPin(uid: uid, clientId: clientId)
     }
 
     var testButtonTitle: String {
@@ -2259,6 +2330,10 @@ final class HermesGatewaySettingsStore {
                 userCode: userCode,
                 displayName: displayName
             )
+            // Re-pairing is an explicit operator decision to re-establish trust:
+            // drop any stale TOFU pin so the freshly-advertised agent key is
+            // pinned on first seal instead of tripping the MITM guard forever.
+            clearAgentKeyPin(clientId: client.id)
             upsert(client)
             persistSelectedClientID(client.id)
             setNotice(
@@ -2284,6 +2359,9 @@ final class HermesGatewaySettingsStore {
 
         do {
             try await repository.revokeHermesGatewayClient(clientId: client.id)
+            // Revoking ends this pairing; drop its pin so a future re-pair (which
+            // may reuse the client id) trusts the new agent key on first use.
+            clearAgentKeyPin(clientId: client.id)
             clients = clients.filter { $0.id != client.id }
             repairSelectedClientIfNeeded()
             setNotice("Hermes client revoked.", style: .success)
@@ -2314,6 +2392,14 @@ final class HermesGatewaySettingsStore {
             setNotice("Connect Hermes first.", style: .warning)
             return nil
         }
+        guard targetClient.canSealToAgent else {
+            setNotice(Self.gatewayE2EERequiredMessage(for: targetClient), style: .warning)
+            return nil
+        }
+        guard !agentRelayKeyChanged(for: targetClient) else {
+            setNotice(Self.gatewayRelayKeyChangedMessage(for: targetClient), style: .error)
+            return nil
+        }
         guard !isSendingGatewayMessage else { return nil }
         isSendingGatewayMessage = true
         defer { isSendingGatewayMessage = false }
@@ -2322,6 +2408,7 @@ final class HermesGatewaySettingsStore {
             let event = try await repository.enqueueHermesGatewayEvent(
                 text: text,
                 threadId: threadId,
+                targetClient: targetClient,
                 targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
@@ -2355,6 +2442,14 @@ final class HermesGatewaySettingsStore {
             setNotice("Connect Hermes first.", style: .warning)
             return nil
         }
+        guard targetClient.canSealToAgent else {
+            setNotice(Self.gatewayE2EERequiredMessage(for: targetClient), style: .warning)
+            return nil
+        }
+        guard !agentRelayKeyChanged(for: targetClient) else {
+            setNotice(Self.gatewayRelayKeyChangedMessage(for: targetClient), style: .error)
+            return nil
+        }
         guard !isSwitchingModel else { return nil }
         isSwitchingModel = true
         defer { isSwitchingModel = false }
@@ -2363,6 +2458,7 @@ final class HermesGatewaySettingsStore {
             let event = try await repository.enqueueHermesGatewayModelSwitch(
                 modelId: trimmed,
                 threadId: threadId,
+                targetClient: targetClient,
                 targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
@@ -2452,6 +2548,7 @@ final class HermesGatewaySettingsStore {
         do {
             let event = try await repository.enqueueHermesGatewayEvent(
                 text: text,
+                targetClient: targetClient,
                 targetClientId: targetClient.id,
                 senderDisplayName: senderDisplayName
             )
@@ -2489,9 +2586,17 @@ final class HermesGatewaySettingsStore {
             setNotice("Could not watch Hermes replies: \(error.localizedDescription)", style: .error)
             return
         }
-        let messages = snapshot?.documents.compactMap { document in
+        // Open sealed replies with this phone's relay key before resolving/rendering.
+        // Legacy plaintext docs pass through unchanged; a doc this device cannot
+        // open keeps `resolvedText == nil` and renders the sealed-for-another-device
+        // state instead of empty.
+        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let messages = (snapshot?.documents.compactMap { document in
             HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
-        } ?? []
+        } ?? []).map { record -> HermesGatewayMessageRecord in
+            guard let uid = listenedUID, !uid.isEmpty else { return record }
+            return record.decodedText(using: keypair, uid: uid)
+        }
 
         if let pendingTestEvent {
             guard let reply = HermesGatewayMessageResolver.newestReply(
@@ -2545,7 +2650,7 @@ final class HermesGatewaySettingsStore {
         AgentReplyNotificationService.shared.presentLocalReply(
             id: reply.id,
             title: "Hermes replied",
-            preview: reply.text ?? "Hermes sent a reply through BurnBar Cloud.",
+            preview: reply.displayText ?? "Hermes sent a reply through BurnBar Cloud.",
             runtime: AssistantRuntimeID.hermes.rawValue,
             threadID: reply.threadId ?? gatewayThreadID
         )

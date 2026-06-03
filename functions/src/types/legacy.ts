@@ -589,6 +589,21 @@ export interface HermesGatewayModelOptionDoc {
   displayName: string;
 }
 
+/**
+ * Per-document sealed body for E2EE gateway docs (schema 2+). The phone seals
+ * event bodies to the agent's relay public key; the agent seals reply/attachment
+ * bodies to the phone's relay public key, both via the byte-exact
+ * HermesRelayCrypto contract ("p256-hkdf-sha256-aesgcm", keyVersion 1). Mirrors
+ * the relay-request precedent (HermesRelayRequestDoc) — the server stores and
+ * forwards opaquely and never holds a recipient private key.
+ */
+export interface GatewayRelayEnvelopeDoc {
+  payloadCiphertext: string;
+  wrappedKey: string;
+  relayEncryption: string;
+  relayKeyVersion: number;
+}
+
 export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -599,6 +614,18 @@ export interface HermesGatewayClientDoc {
   scopes: HermesGatewayScope[];
   homeDestinationId: string;
   lastSeenAt?: string;
+  // Relay E2EE pairing material (schema 2+). Agent publishes its key at
+  // device/start; phone publishes its key at approveHermesGatewayDeviceGrant.
+  // X9.63 uncompressed P-256 public key, base64 (65 bytes, 0x04-prefixed).
+  agentRelayPublicKey?: string;
+  agentRelayKeyVersion?: number;
+  agentRelayEncryption?: string;
+  phoneRelayPublicKey?: string;
+  phoneRelayKeyVersion?: number;
+  phoneRelayEncryption?: string;
+  // True once both endpoints have published a relay public key (sealing
+  // required). Legacy schema-1 clients leave this unset.
+  relayCapable?: boolean;
   runtimeModelId?: string;
   runtimeProviderId?: string;
   runtimeModelOptions?: HermesGatewayModelOptionDoc[];
@@ -626,11 +653,15 @@ export interface HermesGatewayEventDoc {
   kind: "message" | "model_switch";
   destinationId: string;
   targetClientId?: string;
+  // threadId/senderDisplayName/text are PRIVATE (schema 2+): they live inside
+  // relayEnvelope, sealed to the agent's relay key. Optional here only for the
+  // legacy schema-1 plaintext read fallback.
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
-  text: string;
+  text?: string;
   modelId?: string;
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -643,7 +674,10 @@ export interface HermesGatewayMessageDoc {
   destinationId: string;
   threadId?: string;
   replyToEventId?: string;
+  // text is PRIVATE (schema 2+): sealed inside relayEnvelope to the phone's
+  // relay key. Optional for the legacy schema-1 plaintext read fallback.
   text?: string;
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -653,11 +687,14 @@ export interface HermesGatewayAttachmentManifestDoc {
   id: string;
   clientId: string;
   destinationId?: string;
-  fileName: string;
+  // fileName is PRIVATE (schema 2+): sealed inside relayEnvelope. Optional for
+  // the legacy schema-1 read fallback.
+  fileName?: string;
   contentType: string;
   byteCount: number;
   storagePath: string;
   status: "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
   createdAt: string;
   updatedAt?: string;
   expiresAt: string;

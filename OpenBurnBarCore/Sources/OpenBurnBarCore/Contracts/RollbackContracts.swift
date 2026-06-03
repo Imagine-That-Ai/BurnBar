@@ -103,9 +103,38 @@ public struct RollbackRequest: Codable, Sendable, Hashable, Identifiable {
 
     public enum Status: String, Codable, Sendable, Hashable {
         case pending
-        case inFlight
+        case inFlight = "in_flight"
         case completed
         case failed
+        case cancelled
+
+        /// Tolerate the legacy camelCase `"inFlight"` wire value written before
+        /// the snake_case migration (privacy-leak-remediation rollback-status-bug).
+        /// `pending` / `completed` / `failed` keep their implicit single-word raw
+        /// values; the synthesized `encode(to:)` emits `"in_flight"` / `"cancelled"`.
+        public init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            switch raw {
+            case "inFlight": self = .inFlight            // legacy alias
+            default:
+                guard let value = Status(rawValue: raw) else {
+                    throw DecodingError.dataCorrupted(.init(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "Unknown RollbackRequest.Status \(raw)"))
+                }
+                self = value
+            }
+        }
+
+        /// Non-throwing resolver for the Firestore dictionary decode path (which
+        /// holds a raw `String`, not a `Decoder`). Shares the single legacy
+        /// alias table with `init(from:)` so both paths agree byte-for-byte.
+        /// Returns `nil` for genuinely-unknown wire values so the reader drops
+        /// the row rather than guessing.
+        public init?(wireValue: String) {
+            if wireValue == "inFlight" { self = .inFlight; return }   // legacy alias
+            self.init(rawValue: wireValue)
+        }
     }
 
     public init(

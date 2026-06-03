@@ -140,23 +140,30 @@ are off by default:
 | Cross-vendor degrade (B3) | Off | Settings → Agents → Advanced → Experimental routing (or `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1` + optional `…_VENDORS`) | Substitutes an allow-listed OpenAI-compatible vendor on the user's own key when the requested model cannot be served. |
 | Meter-pool diagnostic (B0) | Manual | `openburnbar-cli claude-meter-experiment` | Reports whether an interactive turn drew from the subscription window or the metered credit. |
 
-### Relay vs. hosted chat gateway — plaintext posture (honest label)
+### Relay and hosted chat gateway — both sealed end-to-end (honest label)
 
-Two distinct transport paths share the "Hermes" name and must not be conflated:
+Two distinct transport paths share the "Hermes" name; both now seal every frame
+end-to-end before it reaches Firestore:
 
 - **End-to-end relay** (`hermes_relay_requests`/`pi_agent_relay_requests` + chunks):
   device-to-device frames are sealed with `HermesRelayCrypto`
   (`p256-hkdf-sha256-aesgcm`) before they reach Firestore. The relay routes
-  ciphertext and **never sees plaintext** request/response bodies. This is the
-  claim the privacy page and registry `connected_devices` deviceOnly entry
-  scope to "end-to-end relay frame contents".
+  ciphertext and **never sees plaintext** request/response bodies.
 - **Hosted chat gateway** (`hermes_gateway_messages`/`_events`/`_attachments`):
-  a bring-your-own-token bridge to outside chat apps. The gateway client holds
-  no vault key and no relay ECIES key, so today the gateway **carries readable
-  message text, sender names, and attachment file names in transit** — the
-  server can read them. The registry lists these as `serverSees`, not
-  `deviceOnly`. An end-to-end re-architecture of the gateway is committed (a
-  chained goal); until it lands, do not describe the gateway as sealed.
+  **Shipped — the gateway is sealed end-to-end.** Each link establishes a P-256
+  pairing: the agent publishes its relay public key via `handleRuntimeStatus`,
+  the phone publishes its own at `approveHermesGatewayDeviceGrant`, and both
+  directions seal with `HermesRelayCrypto` (`p256-hkdf-sha256-aesgcm`). The
+  phone seals each event `{text, senderDisplayName, threadId}` and wraps the
+  per-event key to the agent (`hermes_gateway_events`); the agent seals each
+  reply `{text}` and wraps to the phone (`hermes_gateway_messages`); attachment
+  bytes are sealed with a per-attachment key and the manifest carries a sealed
+  `{fileName, byteCount, contentType}` (`hermes_gateway_attachments`) — the
+  plaintext file name and the file-name segment of the storage path are dropped.
+  The server stores only `relayEnvelope` ciphertext + wrapped keys + routing
+  metadata (id/sequence/kind/destination), and **never reads** message text,
+  sender names, or attachment file names. The registry now lists these as
+  `deviceOnly`; only typing/state/clients routing metadata stay `serverSees`.
 
 ## Conversation transcript parsers (Streams cockpit)
 

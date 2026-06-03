@@ -256,7 +256,7 @@ private fun EmberOrb(
     }
 }
 
-internal enum class LoginProvider { Apple, Google, Email }
+internal enum class LoginProvider { Apple, Google, GitHub, Email }
 
 internal enum class EmailMode { SignIn, Create }
 
@@ -772,6 +772,18 @@ private fun LoginProviderButtons(
                 }
             },
         )
+        GitHubButton(
+            isLoading = inFlightProvider == LoginProvider.GitHub,
+            enabled = inFlightProvider == null,
+            onClick = {
+                onSetInFlightProvider(LoginProvider.GitHub)
+                if (activity == null) {
+                    onSetInFlightProvider(null)
+                } else {
+                    userStore.signInWithGitHub(activity)
+                }
+            },
+        )
     }
 }
 
@@ -908,9 +920,65 @@ private fun AppleButton(isLoading: Boolean, enabled: Boolean, onClick: () -> Uni
     }
 }
 
-// ── Google Button ──
-// iOS: uses EmberPressButtonStyle — surfaceElevated background, border stroke,
-// ember shadow, press scale/shadow animation.
+@Composable
+private fun GitHubButton(isLoading: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val isDark = isSystemInDarkTheme()
+    val surfEl = LoginAdaptiveTokens.surfaceElevated()
+    val border = LoginAdaptiveTokens.border()
+    val textPrimary = LoginAdaptiveTokens.textPrimary()
+    val ember = LoginAdaptiveTokens.ember()
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "github-press-scale",
+    )
+
+    Row(
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .scale(pressScale)
+            .shadow(
+                elevation = if (isPressed) 4.dp else 14.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = if (isDark) ember.copy(alpha = if (isPressed) 0.10f else 0.18f) else Color.Black.copy(alpha = 0.06f),
+                spotColor = if (isDark) ember.copy(alpha = if (isPressed) 0.10f else 0.18f) else Color.Black.copy(alpha = 0.12f),
+            )
+            .clip(RoundedCornerShape(16.dp))
+            .background(surfEl)
+            .border(BorderStroke(1.dp, border), RoundedCornerShape(16.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp)
+            .alpha(if (enabled) 1f else 0.6f)
+            .testTag("signIn.github")
+            .semantics { contentDescription = "Continue with GitHub" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = textPrimary, strokeWidth = 2.dp)
+            Spacer(modifier = Modifier.width(12.dp))
+        } else {
+            Image(
+                painter = painterResource(id = R.drawable.github_logo),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+        }
+        Text(text = "Continue with GitHub", color = textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
 @Composable
 private fun GoogleButton(isLoading: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val isDark = isSystemInDarkTheme()

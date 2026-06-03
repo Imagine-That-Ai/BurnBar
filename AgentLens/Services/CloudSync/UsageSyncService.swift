@@ -155,6 +155,12 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
         if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: usage.projectName, keyData: vaultKey) {
             data["projectKeyHash"] = projectKeyHash
         }
+        // Strip any legacy plaintext now that the sealed copy is written. The
+        // firestore rule rejects a doc carrying BOTH plaintext + sealed
+        // (`rejectsPlaintextWhenSealed`), and this is a `merge: true` batch write,
+        // so a re-uploaded pre-migration usage row would otherwise merge into a
+        // both-present doc and be denied. Mirrors the Android writer.
+        data["projectName"] = FieldValue.delete()
         return data
     }
 }
@@ -174,14 +180,19 @@ extension CloudVaultCrypto {
     }
 
     /// Stable opaque group-by token for a project name (32 hex chars), derived via
-    /// the existing keyed search trapdoor. Collapses the name to a single canonical
-    /// alphanumeric term so multi-word names hash to one stable bucket, then HMACs
-    /// it under the per-user search key. Returns `nil` for empty/blank names.
+    /// the existing keyed search trapdoor. Collapses the name to a single ASCII
+    /// `[a-z0-9]` term, then HMACs it under the per-user search key. Returns `nil`
+    /// for names that normalize to fewer than two characters.
     ///
     /// Reuses `CloudVaultCrypto.tokenHashes` only — no new crypto is introduced.
+    /// The ASCII-only normalization is byte-identical to the Android writer
+    /// (`FirestoreRepository.kt projectKeyHash`) so the SAME project name produces
+    /// ONE cross-platform group-by bucket. (A previous `normalizedTokens().joined()`
+    /// pre-step dropped stopwords/short tokens and diverged from Android — e.g.
+    /// "The API v2" hashed `apiv2` here but `theapiv2` on Android.)
     static func projectKeyHash(for projectName: String, keyData: Data) -> String? {
-        let normalized = normalizedTokens(from: projectName).joined()
-        guard normalized.isEmpty == false else { return nil }
+        let normalized = projectName.lowercased().filter { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
+        guard normalized.count >= 2 else { return nil }
         return try? tokenHashes(for: normalized, keyData: keyData, limit: 1).first
     }
 

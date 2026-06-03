@@ -165,6 +165,8 @@ function providerLabel(providerId: string): string {
       return "Apple";
     case "google.com":
       return "Google";
+    case "github.com":
+      return "GitHub";
     case "password":
       return "Email";
     default:

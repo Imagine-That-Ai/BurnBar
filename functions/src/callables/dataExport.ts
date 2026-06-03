@@ -10,13 +10,19 @@
  * ENFORCED, not merely asserted (privacy-leak-remediation-2026-06-02 §5):
  *   - server_readable domains: emitted INLINE verbatim (the server can already
  *     read these facets by definition).
- *   - end_to_end + zero_access domains: a DEFAULT-DENY field allowlist
+ *   - end_to_end + zero_access domains (AND the sealed gateway content
+ *     collections under the otherwise-server_readable connected_devices domain —
+ *     see SEAL_AWARE_CONTENT_COLLECTIONS): a DEFAULT-DENY field allowlist
  *     (`sealAwareSerializeDoc`) emits ONLY the doc `id`, structurally-detected
- *     AES-256-GCM sealed envelopes (`isSealedEnvelope`), opaque cryptographic
- *     columns (slugHmac, dedupHash, vectorId, embedding, repoMatchToken, docID,
- *     projectKeyHash, …), and Timestamps/numbers/bools. Every other top-level
- *     string (where cleartext titles/paths/names/slugs live) is DROPPED and
- *     recorded in a per-collection `redactedFields[]` so the export stays honest.
+ *     sealed envelopes (`isSealedEnvelope` — AES-256-GCM text/blob AND the
+ *     Hermes gateway `relayEnvelope`, p256-hkdf-sha256-aesgcm), opaque
+ *     cryptographic columns (slugHmac, dedupHash, vectorId, embedding,
+ *     repoMatchToken, docID, projectKeyHash, relayEncryption/relayKeyVersion,
+ *     sealedFilename/sealedAgentURI/sealedTopicID, gateway routing metadata, …),
+ *     and Timestamps/numbers/bools. Every other top-level string (where cleartext
+ *     titles/paths/names/slugs/text/senderDisplayName/fileName live) is DROPPED
+ *     and recorded in a per-collection `redactedFields[]` so the export stays
+ *     honest.
  *     Large E2E bodies still flow as `sealedRefs`. The user is the vault-key
  *     holder, so the sealed envelopes decrypt locally — no plaintext is needed
  *     for the owner's benefit, and none is emitted.
@@ -81,6 +87,9 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "cli_agent_mission_requests",
       "text_snippets",
       "rollback_requests",
+      "approval_policies",
+      "agent_identities",
+      "subscription_topics",
     ],
     storagePrefixes: [],
   },
@@ -192,12 +201,32 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "escrow_audit_events",
       "entitlement_events",
       "budgetEvents",
+      "agent_notification_events",
+      "agent_notification_replies",
       "unified_audit_log",
       "audit_meta",
     ],
     storagePrefixes: [],
   },
 };
+
+/**
+ * Collections that carry SEALED content even though their parent registry
+ * domain's tier is `server_readable`/`zero_access` (a mixed domain). The hosted
+ * chat gateway's content collections live under the otherwise-server_readable
+ * `connected_devices` domain, but once the gateway is sealed end-to-end
+ * (HermesRelayCrypto, gateway-e2e Wave 4) their per-doc `relayEnvelope` + sealed
+ * fields must ride the default-deny seal-aware serializer so a plaintext
+ * `text`/`senderDisplayName`/`fileName` can never round-trip through the export.
+ * clients/destinations/typing/state/approvals stay server_readable (routing
+ * metadata only). This is the dataExport-side reclassification mandated by the
+ * CONTRACT honesty note without diverging from the registry's per-domain tier.
+ */
+const SEAL_AWARE_CONTENT_COLLECTIONS = new Set<string>([
+  "hermes_gateway_events",
+  "hermes_gateway_messages",
+  "hermes_gateway_attachments",
+]);
 
 /** Hard cap on docs exported inline per collection (keeps payloads bounded). */
 const MAX_INLINE_DOCS_PER_COLLECTION = 1000;
@@ -247,6 +276,25 @@ const OPAQUE_EXPORT_COLUMNS = new Set<string>([
   "tokenHashes",
   "semanticHashes",
   "contentHash",
+  // ── Sealed gateway / media / subscription envelopes & their opaque routing
+  //    columns (gateway-e2e Wave 4). `relayEnvelope` is a structurally-detected
+  //    sealed sub-object (see isSealedEnvelope); the *Sealed* keys are
+  //    CloudVaultSealedText envelopes that isSealedEnvelope also detects — they
+  //    are listed here too so the allowlist is explicit, and the routing-only
+  //    gateway columns (sequence/kind/blobHash/…) emit as opaque metadata.
+  "relayEnvelope",
+  "relayEncryption",
+  "relayKeyVersion",
+  "sealedFilename",
+  "sealedAgentURI",
+  "sealedTopicID",
+  "sequence",
+  "kind",
+  "blobHash",
+  "mime",
+  "size",
+  "peerDeviceIdHash",
+  "direction",
 ]);
 
 /** A sealed envelope is opaque regardless of its key name, so it is detected structurally. */
@@ -254,16 +302,22 @@ export function isSealedEnvelope(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   // Mirrors requireSealedText (shared.ts): AES-256-GCM text envelope …
-  if (
-    v.algorithm === "AES-256-GCM" &&
-    typeof v.nonce === "string" &&
-    typeof v.ciphertext === "string" &&
-    typeof v.tag === "string"
-  ) {
+  if (v.algorithm === "AES-256-GCM" && typeof v.nonce === "string" && typeof v.ciphertext === "string" && typeof v.tag === "string") {
     return true;
   }
   // … or a CloudVault blob/payload envelope (sealedBoxBase64 combined box).
   if (v.algorithm === "AES-256-GCM" && typeof v.sealedBoxBase64 === "string") {
+    return true;
+  }
+  // … or a Hermes gateway relay envelope (HermesRelayCrypto p256-hkdf-sha256-aesgcm).
+  // The sealed gateway sub-object carries only opaque base64 ciphertext +
+  // wrapped key + the algorithm/version constants — no plaintext — so it is safe
+  // to round-trip through the export verbatim (gateway-e2e Wave 4).
+  if (
+    v.relayEncryption === "p256-hkdf-sha256-aesgcm" &&
+    typeof v.payloadCiphertext === "string" &&
+    typeof v.wrappedKey === "string"
+  ) {
     return true;
   }
   return false;
@@ -274,12 +328,7 @@ function isExportablePrimitive(value: unknown): boolean {
   if (value === null) return true;
   const t = typeof value;
   if (t === "number" || t === "boolean") return true;
-  if (
-    value &&
-    t === "object" &&
-    "toDate" in (value as object) &&
-    typeof (value as { toDate: unknown }).toDate === "function"
-  ) {
+  if (value && t === "object" && "toDate" in (value as object) && typeof (value as { toDate: unknown }).toDate === "function") {
     return true;
   }
   return false;
@@ -297,8 +346,12 @@ async function collectInlineJson(
 ): Promise<{ inline: Record<string, unknown>; redactedFields: string[] }> {
   const inline: Record<string, unknown> = {};
   const redacted = new Set<string>();
-  const sealAware = paths.encryptionTier !== "server_readable";
+  const domainSealAware = paths.encryptionTier !== "server_readable";
   for (const collection of paths.firestoreCollections) {
+    // Force seal-aware serialization for sealed-content collections that live in
+    // an otherwise-server_readable domain (e.g. the now-sealed gateway content
+    // collections under connected_devices), so plaintext can never leak.
+    const sealAware = domainSealAware || SEAL_AWARE_CONTENT_COLLECTIONS.has(collection);
     try {
       const snap = await db.collection(`users/${uid}/${collection}`).limit(MAX_INLINE_DOCS_PER_COLLECTION).get();
       if (snap.empty) continue;

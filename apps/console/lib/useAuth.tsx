@@ -17,7 +17,7 @@ import {
   type User,
 } from "firebase/auth";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { auth, googleProvider, appleProvider } from "./firebaseClient";
+import { auth, googleProvider, appleProvider, githubProvider } from "./firebaseClient";
 import {
   beginPasskeyAssertion,
   registerPasskey,
@@ -30,11 +30,13 @@ interface AuthState {
   loading: boolean;
   signInGoogle: () => Promise<void>;
   signInApple: () => Promise<void>;
+  signInGitHub: () => Promise<void>;
   signInPasskey: () => Promise<void>;
   createPasskey: () => Promise<string>;
   signOut: () => Promise<void>;
   passkeySupported: boolean;
   appleAuthEnabled: boolean;
+  githubAuthEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -57,6 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInApple = useCallback(async () => {
     await signInWithPopup(auth(), appleProvider());
+  }, []);
+
+  const signInGitHub = useCallback(async () => {
+    await signInWithPopup(auth(), githubProvider());
   }, []);
 
   const signInPasskey = useCallback(async () => {
@@ -88,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const passkeySupported =
     typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined";
   const appleAuthEnabled = process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "true";
+  const githubAuthEnabled = process.env.NEXT_PUBLIC_ENABLE_GITHUB_AUTH === "true";
 
   const value = useMemo<AuthState>(
     () => ({
@@ -95,22 +102,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signInGoogle,
       signInApple,
+      signInGitHub,
       signInPasskey,
       createPasskey,
       signOut,
       passkeySupported,
       appleAuthEnabled,
+      githubAuthEnabled,
     }),
     [
       user,
       loading,
       signInGoogle,
       signInApple,
+      signInGitHub,
       signInPasskey,
       createPasskey,
       signOut,
       passkeySupported,
       appleAuthEnabled,
+      githubAuthEnabled,
     ],
   );
 

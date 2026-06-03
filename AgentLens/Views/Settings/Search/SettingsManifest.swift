@@ -57,6 +57,16 @@ enum SettingsManifest {
             helpText: "Choose whether OpenBurnBar follows macOS or pins to Light or Dark."
         ),
         SettingsItem(
+            id: "general.appearance.skin",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.appearanceSkin,
+            title: "App Skin",
+            subtitle: "Aurora ember look, or the Editorial paper console skin",
+            keywords: ["skin", "editorial", "paper", "aurora", "light", "ink", "coral", "console", "burnbar", "theme"],
+            helpText: "Editorial re-skins OpenBurnBar in the light, paper-bright app.burnbar.ai console palette: one coral accent, ink text, hairlines."
+        ),
+        SettingsItem(
             id: "general.appearance.menuBar",
             tab: .general,
             pageRoute: .appearance,
@@ -685,6 +695,7 @@ enum SettingsManifest {
     static let visibleAnchorIDs: Set<String> = Set([
         SettingsAnchor.operatorWizard,
         SettingsAnchor.appearanceTheme,
+        SettingsAnchor.appearanceSkin,
         SettingsAnchor.appearanceMenuBar,
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,

@@ -58,6 +58,89 @@ final class RollbackServiceSealTests: XCTestCase {
         XCTAssertEqual(decoded.status, .pending)
     }
 
+    // MARK: - rollback_requests — status wire contract
+
+    /// `inFlight` encodes as snake_case `"in_flight"` (matches firestore.rules,
+    /// Android `IN_FLIGHT.token`, and every adjacent status enum) and round-trips
+    /// back through `decodeRequest`.
+    func test_encodeRequest_inFlightStatus_encodesSnakeCase_andRoundTrips() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let request = RollbackRequest(
+            sessionID: "sess-1",
+            scope: .fullSession,
+            requestedBy: "mac",
+            status: .inFlight
+        )
+        var encoded = try RollbackService.encodeRequest(request, vaultKey: key)
+        // Wire value is snake_case, never camelCase `inFlight`.
+        XCTAssertEqual(encoded["status"] as? String, "in_flight")
+        encoded["requestedAt"] = ISO8601DateFormatter().string(from: request.requestedAt)
+
+        let decoded = try XCTUnwrap(
+            RollbackService.decodeRequest(data: encoded, documentID: request.id, vaultKey: key)
+        )
+        XCTAssertEqual(decoded.status, .inFlight)
+    }
+
+    /// A doc carrying the legacy camelCase `"inFlight"` status (written before
+    /// the snake_case migration) still decodes via the `wireValue` alias.
+    func test_decodeRequest_legacyCamelCaseInFlightStatus_decodes() throws {
+        let scopeJSON = String(
+            data: try JSONEncoder().encode(RollbackScope.fullSession),
+            encoding: .utf8
+        )!
+        let legacy: [String: Any] = [
+            "sessionID": "sess-legacy",
+            "scopeJSON": scopeJSON,
+            "status": "inFlight",        // legacy camelCase wire value
+            "requestedAt": ISO8601DateFormatter().string(from: Date()),
+            "requestedBy": "mac"
+        ]
+        let decoded = try XCTUnwrap(
+            RollbackService.decodeRequest(data: legacy, documentID: "req-legacy", vaultKey: nil)
+        )
+        XCTAssertEqual(decoded.status, .inFlight)
+    }
+
+    /// A `cancelled` doc (Android- or Mac-written) now decodes; before the
+    /// snake_case migration the missing case made `decodeRequest` nil-bail and
+    /// the row silently disappeared from the iOS list.
+    func test_decodeRequest_cancelledStatus_decodes() throws {
+        let scopeJSON = String(
+            data: try JSONEncoder().encode(RollbackScope.fullSession),
+            encoding: .utf8
+        )!
+        let doc: [String: Any] = [
+            "sessionID": "sess-cancelled",
+            "scopeJSON": scopeJSON,
+            "status": "cancelled",
+            "requestedAt": ISO8601DateFormatter().string(from: Date()),
+            "requestedBy": "android"
+        ]
+        let decoded = try XCTUnwrap(
+            RollbackService.decodeRequest(data: doc, documentID: "req-cancelled", vaultKey: nil)
+        )
+        XCTAssertEqual(decoded.status, .cancelled)
+    }
+
+    /// A genuinely-unknown status string drops the row (no guessing).
+    func test_decodeRequest_unknownStatus_dropsRow() throws {
+        let scopeJSON = String(
+            data: try JSONEncoder().encode(RollbackScope.fullSession),
+            encoding: .utf8
+        )!
+        let doc: [String: Any] = [
+            "sessionID": "sess-bogus",
+            "scopeJSON": scopeJSON,
+            "status": "bogus",
+            "requestedAt": ISO8601DateFormatter().string(from: Date()),
+            "requestedBy": "mac"
+        ]
+        XCTAssertNil(
+            RollbackService.decodeRequest(data: doc, documentID: "req-bogus", vaultKey: nil)
+        )
+    }
+
     func test_decodeRequest_legacyPlaintextScope_stillDecodes() throws {
         let scopeJSON = String(
             data: try JSONEncoder().encode(RollbackScope.lastN(count: 3)),
@@ -86,9 +169,13 @@ final class RollbackServiceSealTests: XCTestCase {
         )
         var encoded = try RollbackService.encodeRequest(request, vaultKey: key)
         encoded["requestedAt"] = ISO8601DateFormatter().string(from: Date())
+        encoded["scopeJSON"] = String(
+            data: try JSONEncoder().encode(RollbackScope.lastN(count: 99)),
+            encoding: .utf8
+        )!
 
-        // Without the key and no legacy plaintext, the scope cannot be opened
-        // and the row is dropped (no leak path).
+        // Without the key, the sealed scope cannot be opened. Because the sealed
+        // field is present, the legacy sibling must NOT leak.
         XCTAssertNil(RollbackService.decodeRequest(data: encoded, documentID: "req-1", vaultKey: nil))
     }
 

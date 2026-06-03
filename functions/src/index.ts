@@ -93,6 +93,8 @@ export {
   configureKnowledgeSource,
   deleteKnowledgeSource,
   purgeKnowledgeMemory,
+  purgeLegacyKnowledgeVectors,
+  purgeLegacyKnowledgeVectorsScheduled,
 } from "./callables/knowledgeMemory.js";
 export {
   onKnowledgeRepoPush,

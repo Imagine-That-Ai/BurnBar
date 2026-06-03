@@ -129,13 +129,17 @@ Hermes commit as Ajnunezg.
 
 ## 3. Tests run + results
 
+Re-run during the post-E2EE-merge review pass (numbers grew as the E2EE agent
+added its own cases to the shared files):
+
 | Command (in `functions/`) | Result |
 | --- | --- |
-| `npm run build` | ✓ pass (tsc + copy-certs) |
-| `npm run lint` | ✓ no new errors (pre-existing warnings + 1 pre-existing error in another agent's `privacyBackfill.test.ts`) |
+| `npm run build` | ✓ pass (after fixing a merge-artifact `eventId` type break + a later duplicate-`eventId` from concurrent churn) |
+| `npm run lint` (gateway files) | ✓ 0 errors (pre-existing complexity/max-lines warnings only) |
 | `npm run test:hermes-gateway` | ✓ pass — behavioral coverage of all 3 features' pure logic + route/guard/index/rules source assertions |
-| `npm run test:firestore-rules` | ✓ 40/40 — includes oversight gate owner-read + **self-approve denied** |
-| `npx vitest run src/__tests__/hermesGateway.test.ts` | ✓ 9/9 |
+| `npm run test:firestore-rules` | ✓ **45/45** — includes oversight gate owner-read + **self-approve denied** |
+| `npx vitest run src/__tests__/hermesGateway.test.ts` | ✓ **25/25** (3 feature blocks + the E2EE agent's relay/grace-window cases) |
+| `test_oversight_local.py` (adapter, Hermes venv) | ✓ 7 cases |
 
 Adapter (Hermes venv):
 
@@ -232,13 +236,74 @@ install the latest BurnBar build on the iPhone.
 
 ---
 
+## 6a. Post-merge integration with the gateway E2EE re-architecture (review pass)
+
+While this work was in flight, a separate agent landed the **gateway E2EE
+re-architecture** (`feat(gateway): end-to-end encrypt the Hermes Gateway`,
+commit `edee4da0a`) into the *same* files. Schema + protocol bumped to **2**;
+event/message/attachment bodies are now **sealed-only** (`resolveGatewayWriteBody`
+rejects plaintext with `ciphertext_required`; `gatewayPlaintextWriteAllowed()`
+returns false). The two changesets coexist; the three features survived and all
+server suites are green. Review-pass findings + fixes:
+
+All review findings below are now **RESOLVED** (remediation pass, authorized by
+Alberto). Final state: build green; `test:hermes-gateway`, `test:firestore-rules`
+(45/45), vitest (30/30), the privacy scanner, and the Hermes harness
+(`test_burnbar_plugin.py` + `test_relay_e2ee.py`, 62 tests) all pass; the adapter
+mirror is byte-identical to the verified-green `~/.hermes` deployment copy.
+
+- **[FIXED] Build break (merge artifact):** the E2EE rewrite of
+  `enqueueHermesGatewayEvent` referenced `request.data.eventId` without declaring
+  it → `tsc` error; then a duplicate `eventId` appeared from concurrent churn.
+  Added the field, de-duplicated. Build green.
+- **[RESOLVED] P1b — plaintext approval summary (boundary-enforced).** The oversight
+  gate is now **control-plane only**: `handleArmApproval` IGNORES any client-supplied
+  `summary` and stores a SERVER-DERIVED, non-sensitive label
+  (`"Approve {toolName} action"`). The agent's free-text command never reaches
+  Firestore — the human-readable detail flows end-to-end **sealed** over the message
+  channel (`_post_confirm_followup` → `_post_message(sealer=…)`, verified in the
+  E2EE adapter). Enforced at the trust boundary, so no client (even an older adapter
+  that still posts `summary`) can reintroduce server-readable private text. Locked by
+  two regression tests in `test-hermes-gateway.mjs` and two new assertions in
+  `scan-chat-cloud-plaintext.mjs` (collection is server-only-writer + the
+  control-plane invariant). The non-empty derived label means **no iOS change is
+  needed** — the approval card still renders meaningfully.
+- **[RESOLVED] P1a — sealed confirm follow-up.** The E2EE integration already routed
+  `_post_confirm_followup` through the sealed `_post_message(sealer=self._sealer)`
+  path (verified); no plaintext follow-up remains.
+- **[RESOLVED] P0 — adapter mirror divergence / "cp destroys E2EE" footgun.** The
+  `~/.hermes` adapter already fully integrated this work's oversight + features ON
+  TOP of the E2EE sealing (every oversight method present; 62 Hermes tests green).
+  The stale mirror (891 lines) was synced from the verified-green canonical copy
+  (1592 lines) — they are now **byte-identical**, so the footgun is gone (`cp` either
+  direction is safe). `plugin.yaml`/`__init__.py` confirmed identical.
+- **[RESOLVED] Redundant stopgap retired.** `test_oversight_local.py` (a standalone
+  test written when the Hermes harness couldn't run against the mirror) is removed —
+  the canonical `test_burnbar_plugin.py` now covers oversight, runtime-status,
+  model-switch, and the relay round-trip (62 tests). README repointed to the harness.
+- **[OK] `/state`, model-switch validation, `pendingModelId`, the oversight gate
+  collection + callable, and the TTL reaper are all unaffected by the seal** (they
+  operate on metadata, not sealed bodies) and remain green.
+
 ## 7. Readiness verdict
 
-- **Server (functions) + adapter + tests:** **ready** — built and green on every
-  runnable suite above.
+Updated after the gateway E2EE re-architecture landed in the same files AND the
+remediation pass closed every review finding (see §6a).
+
+- **Server (functions) — all three features, control- AND data-plane:** **ready** —
+  built green; `test:hermes-gateway`, `test:firestore-rules` (45/45), vitest (30/30),
+  and the privacy scanner all pass. The oversight gate is sealed-consistent
+  (control-plane; no server-readable command text).
+- **Hermes plugin (adapter):** **ready** — the BurnBar mirror is byte-identical to
+  the verified-green `~/.hermes` deployment copy (E2EE + oversight integrated; 62
+  Hermes tests pass). The "cp destroys E2EE" footgun is gone.
 - **Hermes plugin PR:** **ready pending Alberto's controlled steps** — commit the
-  `~/.hermes` WIP, sync the mirror, run `scripts/run_tests.sh
-  tests/gateway/test_burnbar_plugin.py` + `test_oversight_local.py` against the
-  synced copy, then open the PR (authored as Ajnunezg). **Do not push until then.**
-- **iOS client:** **needs Xcode compile + device E2E** before the demo.
+  `~/.hermes` Hermes-repo WIP (adapter + `gateway/crypto/relay_e2ee.py` + the README,
+  authored as Ajnunezg), then open the PR. The de-hyped README lives in the mirror;
+  sync it into `~/.hermes` (the canonical copy still has the old hyped README).
+  **Do not push until you say so.**
+- **iOS client:** **needs Xcode compile + device E2E** before the demo — the only
+  item that cannot be closed in this environment (no toolchain). No code change is
+  outstanding: the server-derived approval label means the existing card renders
+  correctly; brace/paren balance verified across all four touched files.
 - **Deploy:** functions + rules need your deploy credentials/Node flow.

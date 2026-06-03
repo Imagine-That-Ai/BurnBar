@@ -176,6 +176,15 @@ final class CloudBudgetService {
                 CloudVaultCrypto.sealText(label, keyData: vaultKey)
             )
         }
+        // Strip any legacy plaintext now that the sealed copies are written. The
+        // firestore rule rejects a doc carrying BOTH plaintext + sealed
+        // (`rejectsPlaintextWhenSealed`), and this is a `setData(merge: true)`
+        // write — without an explicit delete, a pre-migration rule that already
+        // holds cleartext `projectName`/`label` in the cloud would merge into a
+        // both-present doc, the write would be denied, and the rule could never
+        // re-sync. Mirrors the Android writer (FirestoreRepository.kt).
+        data["projectName"] = FieldValue.delete()
+        data["label"] = FieldValue.delete()
         // Firestore doesn't tolerate nil values in setData — remove them
         data = data.compactMapValues { $0 }
         return data
@@ -189,7 +198,6 @@ final class CloudBudgetService {
             "source": event.source as Any,
             "amountAtEvent": event.amountAtEvent,
             "limitAtEvent": event.limitAtEvent,
-            "detailJSON": event.detailJSON as Any,
             "occurredAt": event.occurredAt,
             "syncedAt": event.syncedAt as Any,
             "sourceDeviceID": event.sourceDeviceID as Any,

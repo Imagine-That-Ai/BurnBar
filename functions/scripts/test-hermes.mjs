@@ -160,8 +160,23 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.match(block, /pixelClock\.providerIDs\.size\(\) <= 24/);
   assert.match(block, /pixelClock\.lastProbeStatus in \["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"\]/);
 }
-assert.match(rules, /request\.resource\.data\.schemaVersion >= 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
-assert.match(rules, /request\.resource\.data\.schemaVersion >= 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);
+{
+  const start = rules.indexOf("function relayRequestWrite(userId, requestId)");
+  assert.notEqual(start, -1, "relayRequestWrite helper must exist");
+  const block = rules.slice(start, rules.indexOf("function relayChunkWrite(userId, requestId, chunkId)", start));
+  assert.match(block, /request\.resource\.data\.schemaVersion >= 2/);
+  assert.match(block, /!\("path" in request\.resource\.data\)[\s\S]*!\("sessionId" in request\.resource\.data\)[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*!\("error" in request\.resource\.data\)/);
+  assert.match(block, /request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string[\s\S]*request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
+  assert.doesNotMatch(block, /request\.resource\.data\.schemaVersion < 2/);
+}
+{
+  const start = rules.indexOf("function piRelayRequestWrite(userId, requestId)");
+  assert.notEqual(start, -1, "piRelayRequestWrite helper must exist");
+  const block = rules.slice(start, rules.indexOf("function piRelayChunkWrite(userId, requestId, chunkId)", start));
+  assert.match(block, /request\.resource\.data\.schemaVersion >= 2[\s\S]*request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string/);
+  assert.doesNotMatch(block, /"body"|"data"|"ciphertext"/);
+  assert.doesNotMatch(block, /request\.resource\.data\.schemaVersion < 2/);
+}
 assert.match(readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
 {
   const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");

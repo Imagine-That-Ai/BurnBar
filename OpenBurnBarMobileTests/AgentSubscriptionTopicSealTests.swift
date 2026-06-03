@@ -3,11 +3,12 @@ import Foundation
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
-/// Verifies the privacy-leak remediation for `subscription_topics`: the
-/// per-agent display text (`displayName` / `description`, which echoes which
-/// agent the user follows) is SEALED with the vault key before it touches
-/// Firestore (`sealedDisplayName` / `sealedDescription`). `agentURI` / `topicID`
-/// stay plaintext (routing / doc-ID key). The reader keeps a legacy plaintext
+/// Verifies the subscription-graph cloak for `subscription_topics`: not only is
+/// the per-agent display text sealed, the GRAPH EDGE itself (`agentURI` /
+/// `topicID`, which tells the server exactly which agents the user follows) is
+/// sealed (`sealedAgentURI` / `sealedTopicID`) and the Firestore doc id is an
+/// opaque vault-keyed HMAC (`CloudVaultCrypto.subscriptionDocID`) instead of the
+/// human-readable `agentURI:topicID`. The reader keeps a legacy plaintext
 /// fallback so pre-migration documents still render.
 @MainActor
 final class AgentSubscriptionTopicSealTests: XCTestCase {
@@ -28,35 +29,121 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
         )
     }
 
-    func test_encodeTopic_sealsDisplayText_writesNoPlaintext() throws {
+    func test_encodeTopic_sealsGraphAndDisplay_writesNoPlaintext() throws {
         let key = CloudVaultCrypto.generateVaultKey()
         let encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
 
-        // Display text is sealed; no plaintext leaks.
+        // The graph edge AND the display text are sealed; no plaintext leaks.
+        XCTAssertNotNil(encoded["sealedAgentURI"])
+        XCTAssertNotNil(encoded["sealedTopicID"])
         XCTAssertNotNil(encoded["sealedDisplayName"])
         XCTAssertNotNil(encoded["sealedDescription"])
+        XCTAssertNil(encoded["agentURI"])
+        XCTAssertNil(encoded["topicID"])
         XCTAssertNil(encoded["displayName"])
         XCTAssertNil(encoded["description"])
 
-        // Routing identifiers stay plaintext-functional.
-        XCTAssertEqual(encoded["agentURI"] as? String, "agent://burnbar/research-scout")
-        XCTAssertEqual(encoded["topicID"] as? String, "agent-updates")
+        // Server-side order/filter inputs stay cleartext (no graph identity).
+        XCTAssertEqual(encoded["cadence"] as? String, "weekly")
+        XCTAssertNotNil(encoded["consentGivenAt"])
 
-        // Canonical sealed-text envelope shape.
-        let sealed = try XCTUnwrap(encoded["sealedDisplayName"] as? [String: Any])
+        // Canonical sealed-text envelope shape on the graph edge.
+        let sealed = try XCTUnwrap(encoded["sealedAgentURI"] as? [String: Any])
         XCTAssertEqual(sealed["algorithm"] as? String, CloudVaultCrypto.aesGCMAlgorithm)
         XCTAssertNotNil(sealed["nonce"])
         XCTAssertNotNil(sealed["ciphertext"])
         XCTAssertNotNil(sealed["tag"])
     }
 
+    func test_documentID_isOpaque_deterministic_keyVarying() throws {
+        let keyA = CloudVaultCrypto.generateVaultKey()
+        let keyB = CloudVaultCrypto.generateVaultKey()
+
+        let idA1 = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            vaultKey: keyA
+        )
+        let idA2 = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            vaultKey: keyA
+        )
+        let idB = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            vaultKey: keyB
+        )
+
+        // Deterministic for the same (agentURI, topicID, key) — unsubscribe-by-id
+        // and upsert idempotency survive.
+        XCTAssertEqual(idA1, idA2)
+        // Different vault key → unrelated id.
+        XCTAssertNotEqual(idA1, idB)
+        // Opaque: it reveals nothing about the agent the user follows.
+        XCTAssertTrue(idA1.hasPrefix("sub_"))
+        XCTAssertFalse(idA1.contains("research-scout"))
+        XCTAssertFalse(idA1.contains("burnbar"))
+    }
+
+    func test_documentID_matchesCrossPlatformGoldenVector() throws {
+        // Locked interop vector — the IDENTICAL assertion guards the Android
+        // `AgentSubscriptionTopicStore.documentID` test. HKDF<SHA256>(0x5A*32,
+        // salt: ∅, info: "subscription-topic") → HMAC<SHA256>(
+        // "agent://burnbar/research-scout:agent-updates"), first 16 bytes hex.
+        let key = Data(repeating: 0x5A, count: 32)
+        let id = try CloudVaultCrypto.subscriptionDocID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            keyData: key
+        )
+        XCTAssertEqual(id, "sub_64ad3397dff90692866fcdaf93e3c028")
+
+        // Same id reached through the store wrapper (call-site parity).
+        let viaStore = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            vaultKey: key
+        )
+        XCTAssertEqual(viaStore, "sub_64ad3397dff90692866fcdaf93e3c028")
+    }
+
+    func test_documentID_distinctPerTopicAndAgent() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let scout = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout", topicID: "agent-updates", vaultKey: key
+        )
+        let other = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/other-agent", topicID: "agent-updates", vaultKey: key
+        )
+        let otherTopic = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout", topicID: "weekly-roundup", vaultKey: key
+        )
+        XCTAssertNotEqual(scout, other)
+        XCTAssertNotEqual(scout, otherTopic)
+    }
+
+    func test_legacyCleartextDocumentIDs_coverKnownPreCloakVariants() {
+        let ids = AgentSubscriptionTopicStore.legacyCleartextDocumentIDs(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates"
+        )
+        XCTAssertTrue(ids.contains("agent:__burnbar_research-scout:agent-updates"))
+        XCTAssertTrue(ids.contains("agent___burnbar_research-scout_agent-updates"))
+        XCTAssertTrue(ids.contains("agent_burnbar_research-scout_agent-updates"))
+        XCTAssertFalse(ids.contains { $0.contains("/") })
+    }
+
     func test_encodeTopic_thenDecodeTopic_roundTrips() throws {
         let key = CloudVaultCrypto.generateVaultKey()
         let topic = makeTopic()
         let encoded = try AgentSubscriptionTopicStore.encodeTopic(topic, vaultKey: key)
+        let docID = try AgentSubscriptionTopicStore.documentID(
+            agentURI: topic.agentURI, topicID: topic.topicID, vaultKey: key
+        )
 
         let decoded = try XCTUnwrap(
-            AgentSubscriptionTopicStore.decodeTopic(documentID: "doc-1", data: encoded, vaultKey: key)
+            AgentSubscriptionTopicStore.decodeTopic(documentID: docID, data: encoded, vaultKey: key)
         )
         XCTAssertEqual(decoded.displayName, "Research Scout updates")
         XCTAssertEqual(decoded.description, "Weekly digest from the Research Scout agent.")
@@ -65,6 +152,8 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_decodeTopic_legacyPlaintext_stillDecodes() throws {
+        // Pre-migration doc: plaintext graph edge + plaintext display, no sealed
+        // fields. The legacy fallback must still surface it.
         let legacy: [String: Any] = [
             "agentURI": "agent://burnbar/research-scout",
             "topicID": "agent-updates",
@@ -73,25 +162,26 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
             "cadence": "weekly"
         ]
         let decoded = try XCTUnwrap(
-            AgentSubscriptionTopicStore.decodeTopic(documentID: "doc-legacy", data: legacy, vaultKey: nil)
+            AgentSubscriptionTopicStore.decodeTopic(documentID: "agent_burnbar_research-scout_agent-updates", data: legacy, vaultKey: nil)
         )
+        XCTAssertEqual(decoded.agentURI, "agent://burnbar/research-scout")
+        XCTAssertEqual(decoded.topicID, "agent-updates")
         XCTAssertEqual(decoded.displayName, "Legacy display")
         XCTAssertEqual(decoded.description, "Legacy description")
     }
 
-    func test_decodeTopic_sealedDisplayUnreadableWithoutKey_fallsBackToDocumentID() throws {
+    func test_decodeTopic_sealedGraphUnreadableWithoutKey_returnsNil() throws {
         let key = CloudVaultCrypto.generateVaultKey()
-        let encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
+        var encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
+        encoded["agentURI"] = "agent://burnbar/legacy-leak"
+        encoded["topicID"] = "legacy-topic"
+        encoded["displayName"] = "Legacy display leak"
 
-        // Without the key (and no legacy plaintext), the sealed display name is
-        // empty, so the existing `displayName.isEmpty ? documentID` fallback
-        // renders the doc ID instead of leaking — and the row still decodes.
-        let decoded = try XCTUnwrap(
-            AgentSubscriptionTopicStore.decodeTopic(documentID: "doc-id-fallback", data: encoded, vaultKey: nil)
+        // Without the key, the sealed `agentURI`/`topicID` cannot open. Because
+        // the sealed fields are present, legacy siblings must NOT leak.
+        let decoded = AgentSubscriptionTopicStore.decodeTopic(
+            documentID: "sub_deadbeefdeadbeef", data: encoded, vaultKey: nil
         )
-        XCTAssertEqual(decoded.displayName, "doc-id-fallback")
-        XCTAssertEqual(decoded.description, "")
-        // Routing identifiers remain readable (they were never sealed).
-        XCTAssertEqual(decoded.agentURI, "agent://burnbar/research-scout")
+        XCTAssertNil(decoded)
     }
 }

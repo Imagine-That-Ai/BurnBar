@@ -1,6 +1,44 @@
 import Foundation
 import SwiftUI
 
+// MARK: - App Skin
+
+/// The app-wide visual *skin* — an axis orthogonal to light/dark appearance.
+///
+/// `aurora` is the original ember/glass look and stays the default. `editorial`
+/// is the light-locked "Quiet Editorial" paper skin lifted from the
+/// app.burnbar.ai console: paper surfaces, ink text, a single coral accent,
+/// hairlines, and no glass/glow. Selecting it re-points the design-system color
+/// tokens — every token-bound view flips coherently, exactly like the web
+/// console re-points its CSS variables.
+///
+/// Persisted under ``storageKey`` in `UserDefaults.standard` so the token layer
+/// (which has no SwiftUI context) can read the active skin while resolving a
+/// dynamic `Color`. SwiftUI views read it via `@AppStorage(AppSkin.storageKey)`.
+public enum AppSkin: String, CaseIterable, Codable, Sendable {
+    case aurora
+    case editorial
+
+    /// `UserDefaults` / `@AppStorage` key. Shared verbatim across all platforms.
+    public static let storageKey = "appSkin"
+
+    /// The currently-selected skin, read live from `UserDefaults.standard`.
+    /// Mirrors the lightweight pattern `MobileTheme.surface` already uses for
+    /// the swarm flag so dynamic color providers can branch without a view.
+    public static var current: AppSkin {
+        guard let raw = UserDefaults.standard.string(forKey: storageKey),
+              let skin = AppSkin(rawValue: raw) else { return .aurora }
+        return skin
+    }
+
+    public var displayName: String {
+        switch self {
+        case .aurora:    return "Aurora"
+        case .editorial: return "Editorial"
+        }
+    }
+}
+
 // MARK: - Hex Color Helpers
 
 public extension Color {
@@ -31,8 +69,18 @@ public extension Color {
 
     #if os(iOS)
     init(light: String, dark: String) {
+        self.init(editorial: light, light: light, dark: dark)
+    }
+
+    /// Skin- and appearance-aware token color. When the editorial skin is
+    /// active the `editorial` hex wins regardless of light/dark trait (the skin
+    /// is light-locked); otherwise resolves `light`/`dark` off the trait.
+    init(editorial: String, light: String, dark: String) {
         self.init(uiColor: UIColor(
             dynamicProvider: { traitCollection in
+                if AppSkin.current == .editorial {
+                    return UIColor(Color(hex: editorial))
+                }
                 let hex = traitCollection.userInterfaceStyle == .dark ? dark : light
                 return UIColor(Color(hex: hex))
             }
@@ -40,8 +88,18 @@ public extension Color {
     }
     #else
     init(light: String, dark: String) {
+        self.init(editorial: light, light: light, dark: dark)
+    }
+
+    /// Skin- and appearance-aware token color. When the editorial skin is
+    /// active the `editorial` hex wins regardless of aqua/dark appearance (the
+    /// skin is light-locked); otherwise resolves `light`/`dark` off appearance.
+    init(editorial: String, light: String, dark: String) {
         self.init(
             NSColor(name: nil) { appearance in
+                if AppSkin.current == .editorial {
+                    return NSColor(Color(hex: editorial))
+                }
                 let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
                 return NSColor(Color(hex: hex))
             }
@@ -105,29 +163,55 @@ public enum DesignSystemTokens {
     public static let chatUserStrokeDark       = "8B7FE8"
     public static let chatAssistantStrokeLight = "F45B69"
     public static let chatAssistantStrokeDark  = "FA5053"
+
+    // MARK: - Editorial ("Quiet Editorial" / paper) skin
+    //
+    // Light-locked values mirrored verbatim from the app.burnbar.ai console
+    // (`apps/console/styles/globals.css`): paper surfaces, ink text, a single
+    // coral accent, ink hairlines (8-digit hex is AARRGGBB), and the AA-legible
+    // encryption-tier colors repurposed for the app's semantic palette.
+    public static let emberEditorial           = "F45B69" // the one accent: coral
+    public static let amberEditorial           = "8A6200" // ochre (amber-on-paper)
+    public static let blazeEditorial           = "B3243C" // deep coral
+    public static let whimsyEditorial          = "565D68" // slate
+    public static let backgroundEditorial      = "F6F4EF" // the page (ink-void)
+    public static let surfaceEditorial         = "FFFEFB" // raised paper (ink-elevated)
+    public static let surfaceElevatedEditorial = "FFFEFB"
+    public static let borderEditorial          = "1F16140F" // ink @ 12% (glass-line)
+    public static let borderSubtleEditorial    = "1416140F" // ink @ ~8%
+    public static let textPrimaryEditorial     = "16140F" // ink (text-bright)
+    public static let textSecondaryEditorial   = "353027" // body (text-base)
+    public static let textMutedEditorial       = "6E685D" // secondary (text-mute)
+    public static let successEditorial         = "0C7C69" // tier end-to-end (teal)
+    public static let warningEditorial         = "8A6200" // tier server-readable (ochre)
+    public static let errorEditorial           = "B22219" // seal-crimson
+    public static let hermesMercuryEditorial   = "9B9488" // text-dim
+    public static let hermesAureateEditorial   = "353027" // deep ink
+    public static let chatUserStrokeEditorial      = "565D68" // slate
+    public static let chatAssistantStrokeEditorial = "F45B69" // coral
 }
 
 // MARK: - Design System SwiftUI Colors
 
 public enum DesignSystemColors {
-    public static let ember   = Color(light: DesignSystemTokens.emberLight,   dark: DesignSystemTokens.emberDark)
-    public static let amber   = Color(light: DesignSystemTokens.amberLight,   dark: DesignSystemTokens.amberDark)
-    public static let blaze   = Color(light: DesignSystemTokens.blazeLight,   dark: DesignSystemTokens.blazeDark)
-    public static let whimsy  = Color(light: DesignSystemTokens.whimsyLight,  dark: DesignSystemTokens.whimsyDark)
+    public static let ember   = Color(editorial: DesignSystemTokens.emberEditorial,  light: DesignSystemTokens.emberLight,  dark: DesignSystemTokens.emberDark)
+    public static let amber   = Color(editorial: DesignSystemTokens.amberEditorial,  light: DesignSystemTokens.amberLight,  dark: DesignSystemTokens.amberDark)
+    public static let blaze   = Color(editorial: DesignSystemTokens.blazeEditorial,  light: DesignSystemTokens.blazeLight,  dark: DesignSystemTokens.blazeDark)
+    public static let whimsy  = Color(editorial: DesignSystemTokens.whimsyEditorial, light: DesignSystemTokens.whimsyLight, dark: DesignSystemTokens.whimsyDark)
 
-    public static let background      = Color(light: DesignSystemTokens.backgroundLight,      dark: DesignSystemTokens.backgroundDark)
-    public static let surface         = Color(light: DesignSystemTokens.surfaceLight,         dark: DesignSystemTokens.surfaceDark)
-    public static let surfaceElevated = Color(light: DesignSystemTokens.surfaceElevatedLight, dark: DesignSystemTokens.surfaceElevatedDark)
-    public static let border          = Color(light: DesignSystemTokens.borderLight,          dark: DesignSystemTokens.borderDark)
-    public static let borderSubtle    = Color(light: DesignSystemTokens.borderSubtleLight,    dark: DesignSystemTokens.borderSubtleDark)
+    public static let background      = Color(editorial: DesignSystemTokens.backgroundEditorial,      light: DesignSystemTokens.backgroundLight,      dark: DesignSystemTokens.backgroundDark)
+    public static let surface         = Color(editorial: DesignSystemTokens.surfaceEditorial,         light: DesignSystemTokens.surfaceLight,         dark: DesignSystemTokens.surfaceDark)
+    public static let surfaceElevated = Color(editorial: DesignSystemTokens.surfaceElevatedEditorial, light: DesignSystemTokens.surfaceElevatedLight, dark: DesignSystemTokens.surfaceElevatedDark)
+    public static let border          = Color(editorial: DesignSystemTokens.borderEditorial,          light: DesignSystemTokens.borderLight,          dark: DesignSystemTokens.borderDark)
+    public static let borderSubtle    = Color(editorial: DesignSystemTokens.borderSubtleEditorial,    light: DesignSystemTokens.borderSubtleLight,    dark: DesignSystemTokens.borderSubtleDark)
 
-    public static let textPrimary   = Color(light: DesignSystemTokens.textPrimaryLight,   dark: DesignSystemTokens.textPrimaryDark)
-    public static let textSecondary = Color(light: DesignSystemTokens.textSecondaryLight, dark: DesignSystemTokens.textSecondaryDark)
-    public static let textMuted     = Color(light: DesignSystemTokens.textMutedLight,     dark: DesignSystemTokens.textMutedDark)
+    public static let textPrimary   = Color(editorial: DesignSystemTokens.textPrimaryEditorial,   light: DesignSystemTokens.textPrimaryLight,   dark: DesignSystemTokens.textPrimaryDark)
+    public static let textSecondary = Color(editorial: DesignSystemTokens.textSecondaryEditorial, light: DesignSystemTokens.textSecondaryLight, dark: DesignSystemTokens.textSecondaryDark)
+    public static let textMuted     = Color(editorial: DesignSystemTokens.textMutedEditorial,     light: DesignSystemTokens.textMutedLight,     dark: DesignSystemTokens.textMutedDark)
 
-    public static let success = Color(light: DesignSystemTokens.successLight, dark: DesignSystemTokens.successDark)
-    public static let warning = Color(light: DesignSystemTokens.warningLight, dark: DesignSystemTokens.warningDark)
-    public static let error   = Color(light: DesignSystemTokens.errorLight,   dark: DesignSystemTokens.errorDark)
+    public static let success = Color(editorial: DesignSystemTokens.successEditorial, light: DesignSystemTokens.successLight, dark: DesignSystemTokens.successDark)
+    public static let warning = Color(editorial: DesignSystemTokens.warningEditorial, light: DesignSystemTokens.warningLight, dark: DesignSystemTokens.warningDark)
+    public static let error   = Color(editorial: DesignSystemTokens.errorEditorial,   light: DesignSystemTokens.errorLight,   dark: DesignSystemTokens.errorDark)
 
     public static func primary(for provider: AgentProvider) -> Color {
         switch provider {

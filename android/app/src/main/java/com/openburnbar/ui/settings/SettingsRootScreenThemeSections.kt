@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Wallpaper
@@ -59,6 +60,7 @@ import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.AuroraSettingsToggle
 import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.WebsiteBackground
+import com.openburnbar.ui.theme.AppAppearance
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -402,6 +404,72 @@ internal fun RowScope.ThemePrefsUIModeCard(
 }
 
 @Composable
+internal fun ThemePrefsAppearanceSelector(useWebsiteBackground: Boolean, haptic: HapticFeedback) {
+    ThemePrefsDivider()
+    val activeAppearance by rememberAppearance()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "App Skin",
+            fontWeight = FontWeight.Bold,
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            AppAppearance.entries.forEach { appearance ->
+                ThemePrefsAppearanceCard(appearance, activeAppearance, useWebsiteBackground, haptic)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RowScope.ThemePrefsAppearanceCard(
+    appearance: AppAppearance,
+    activeAppearance: AppAppearance,
+    useWebsiteBackground: Boolean,
+    haptic: HapticFeedback,
+) {
+    val isSelected = activeAppearance == appearance
+    val primaryColor = MaterialTheme.colorScheme.primary
+    Surface(
+        modifier = Modifier.weight(1f).height(115.dp),
+        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        color = if (isSelected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
+        border =
+            if (isSelected) {
+                androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
+            } else {
+                androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                )
+            },
+        onClick = {
+            GlobalVisualSettingsAppearance.setAppearance(appearance)
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (appearance == AppAppearance.EDITORIAL) Icons.AutoMirrored.Filled.Article else Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (isSelected) {
+                    Surface(modifier = Modifier.size(8.dp), shape = CircleShape, color = primaryColor) {}
+                }
+            }
+            Column {
+                Text(text = appearance.displayName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = appearance.description, fontSize = 11.sp, lineHeight = 13.sp, color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
 internal fun ThemePrefsColorPaletteSection(useWebsiteBackground: Boolean) {
     ThemePrefsDivider()
     val themePalette by rememberThemePalette()
@@ -621,6 +689,7 @@ internal fun ThemePrefsScreenBody(
                     state.excludeBrandShapes,
                 )
                 ThemePrefsWallpaperRow(router, useWebsiteBackground)
+                ThemePrefsAppearanceSelector(useWebsiteBackground, state.haptic)
                 ThemePrefsUIModeSelector(useWebsiteBackground, state.haptic)
                 ThemePrefsColorPaletteSection(useWebsiteBackground)
                 ThemePrefsProviderGlyphsSection(

@@ -11,6 +11,8 @@
  *     sealed field that supersedes it (the `requires` gate). We never strip a
  *     plaintext value that has no sealed replacement, so no data is lost in the
  *     window before a device has re-sealed — the legacy doc still renders.
+ *     The only exception is an explicitly documented retire-only field whose
+ *     current writers omit it and whose rules now reject it.
  *  2. Re-running is a no-op once a doc is clean (the gated fields are absent),
  *     so the scheduled sweep and any manual run converge to the same fixed point.
  *  3. The reseal watermark (`privacy_reseal_state/current.resealEpoch`) is bumped
@@ -25,7 +27,12 @@
  */
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import type { CollectionReference, DocumentReference, Firestore } from "firebase-admin/firestore";
+import type {
+  CollectionReference,
+  DocumentReference,
+  Firestore,
+  QueryDocumentSnapshot,
+} from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
@@ -40,18 +47,21 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
  * fleet to re-seal legacy docs; native clients that recorded a lower epoch will
  * re-seal on next sync. Keep in lockstep with the client watermark check.
  */
-export const PRIVACY_RESEAL_EPOCH = 1;
+export const PRIVACY_RESEAL_EPOCH = 2;
 
 /** A legacy plaintext field and the sealed field whose presence gates its deletion. */
 interface GatedField {
   /** The legacy plaintext field to delete. */
   readonly field: string;
   /**
-   * Delete `field` only when this sealed field is present on the same doc. When
-   * omitted, the field is deleted unconditionally (use ONLY for fields that are
-   * pure duplication of data already inside an always-present sealed body).
+ * Delete `field` only when this sealed field is present on the same doc.
+ */
+readonly requires?: string;
+  /**
+   * Required when `requires` is omitted: explains why deleting this field cannot
+   * remove live cross-device functionality. Keep this list tiny and reviewed.
    */
-  readonly requires?: string;
+  readonly ungatedReason?: string;
 }
 
 /** One top-level collection's legacy plaintext fields, each with its sealed gate. */
@@ -63,7 +73,8 @@ interface CollectionPlan {
 /**
  * The sealable surfaces. Each plaintext field is deleted only once its sealed
  * replacement is present, so a partially-migrated doc keeps rendering until the
- * device has written the sealed copy. Mirrors CONTRACT §1/§2/§7/§8.
+ * device has written the sealed copy. Mirrors CONTRACT §1/§2/§7/§8 plus the
+ * Hermes Square W3 sealed surfaces.
  */
 const COLLECTION_PLANS: readonly CollectionPlan[] = [
   // §1 usage / budget project text → sealedProjectName / sealedLabel.
@@ -73,6 +84,15 @@ const COLLECTION_PLANS: readonly CollectionPlan[] = [
     fields: [
       { field: "projectName", requires: "sealedProjectName" },
       { field: "label", requires: "sealedLabel" },
+    ],
+  },
+  {
+    collection: "budgetEvents",
+    fields: [
+      {
+        field: "detailJSON",
+        ungatedReason: "retired local-only diagnostic detail; current cloud writers omit it and rules reject it",
+      },
     ],
   },
   // §7 chat mirrors → sealedPayload. Top-level customTitle/title/preview are
@@ -110,17 +130,89 @@ const COLLECTION_PLANS: readonly CollectionPlan[] = [
       { field: "projectSlug", requires: "sealedSnapshot" },
     ],
   },
+  {
+    collection: "approval_policies",
+    fields: [
+      { field: "id", requires: "sealedDisplayLabel" },
+      { field: "displayLabel", requires: "sealedDisplayLabel" },
+      { field: "fileGlob", requires: "sealedFileGlob" },
+      { field: "targetProject", requires: "sealedTargetProject" },
+    ],
+  },
+  {
+    collection: "rollback_requests",
+    fields: [
+      { field: "scopeJSON", requires: "sealedScope" },
+      { field: "errorMessage", requires: "sealedErrorMessage" },
+    ],
+  },
+  {
+    collection: "agent_identities",
+    fields: [
+      { field: "displayName", requires: "sealedDisplayName" },
+      { field: "tagline", requires: "sealedTagline" },
+      { field: "personas", requires: "sealedPersonas" },
+    ],
+  },
+  {
+    collection: "subscription_topics",
+    fields: [
+      { field: "agentURI", requires: "sealedAgentURI" },
+      { field: "topicID", requires: "sealedTopicID" },
+      { field: "displayName", requires: "sealedDisplayName" },
+      { field: "description", requires: "sealedDescription" },
+    ],
+  },
+  {
+    collection: "hermes_gateway_events",
+    fields: [
+      { field: "text", requires: "relayEnvelope" },
+      { field: "senderDisplayName", requires: "relayEnvelope" },
+      { field: "threadId", requires: "relayEnvelope" },
+    ],
+  },
+  {
+    collection: "hermes_gateway_messages",
+    fields: [
+      { field: "text", requires: "relayEnvelope" },
+      { field: "threadId", requires: "relayEnvelope" },
+      { field: "replyToEventId", requires: "relayEnvelope" },
+    ],
+  },
+  {
+    collection: "hermes_gateway_attachments",
+    fields: [
+      { field: "fileName", requires: "relayEnvelope" },
+    ],
+  },
+  {
+    collection: "media_attachment_manifests",
+    fields: [
+      { field: "filename", requires: "sealedFilename" },
+    ],
+  },
 ];
 
 /** §4 knowledge_repos: cleartext repoFullName is dropped once the sealed name exists. */
-const KNOWLEDGE_REPO_FIELDS: readonly GatedField[] = [{ field: "repoFullName", requires: "sealedRepoFullName" }];
+const KNOWLEDGE_REPO_FIELDS: readonly GatedField[] = [
+  { field: "repoFullName", requires: "sealedRepoFullName" },
+];
+
+const ROLLBACK_SNAPSHOT_FIELDS: readonly GatedField[] = [
+  { field: "actionLabel", requires: "sealedActionLabel" },
+  { field: "touchedFiles", requires: "sealedTouchedFiles" },
+  { field: "macSnapshotPath", requires: "sealedMacSnapshotPath" },
+];
 
 /**
  * Pure gating decision: which gated plaintext fields on a doc may be deleted
  * (the sealed gate is satisfied and the field is present). Exported for tests so
  * the safe-by-construction property is asserted without a live Firestore.
  */
-export function gatedDeletions(data: Record<string, unknown>, fields: readonly GatedField[]): string[] {
+export function gatedDeletions(
+  data: Record<string, unknown>,
+  fields: readonly GatedField[],
+): string[] {
   const deletions: string[] = [];
   for (const { field, requires } of fields) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
@@ -191,7 +283,10 @@ async function bumpResealWatermark(firestore: Firestore, uid: string, stats: Bac
   const snap = await ref.get();
   const stored = snap.exists ? Number(snap.get("resealEpoch") ?? 0) : 0;
   if (Number.isFinite(stored) && stored >= PRIVACY_RESEAL_EPOCH) return;
-  await ref.set({ resealEpoch: PRIVACY_RESEAL_EPOCH, updatedAt: Timestamp.now(), schemaVersion: 1 }, { merge: true });
+  await ref.set(
+    { resealEpoch: PRIVACY_RESEAL_EPOCH, updatedAt: Timestamp.now(), schemaVersion: 1 },
+    { merge: true },
+  );
   stats.resealBumped = true;
 }
 
@@ -206,6 +301,11 @@ export async function backfillUserPrivacy(firestore: Firestore, uid: string): Pr
 
   // knowledge_repos is keyed by an opaque repo id; sweep each doc directly.
   await sweepCollection(userRef.collection("knowledge_repos"), KNOWLEDGE_REPO_FIELDS, stats);
+
+  const cliSessions = await userRef.collection("cli_sessions").listDocuments();
+  for (const sessionRef of cliSessions) {
+    await sweepCollection(sessionRef.collection("snapshots"), ROLLBACK_SNAPSHOT_FIELDS, stats);
+  }
 
   await bumpResealWatermark(firestore, uid, stats);
   return stats;
@@ -252,20 +352,38 @@ export const backfillPrivacyPlaintextScheduled = onSchedule(
     memory: "512MiB",
   },
   async () => {
-    const users = await db.collection("users").limit(500).get();
+    const startedAt = Date.now();
     const totals = emptyStats();
     let usersScanned = 0;
     let usersResealBumped = 0;
-    for (const user of users.docs) {
-      usersScanned += 1;
-      const stats = await backfillUserPrivacy(db, user.id);
-      if (stats.resealBumped) usersResealBumped += 1;
-      mergeStats(totals, stats);
+    let cursor: QueryDocumentSnapshot | undefined;
+    let exhausted = false;
+    while (Date.now() - startedAt < 500_000) {
+      let query = db.collection("users").orderBy("__name__").limit(500);
+      if (cursor) query = query.startAfter(cursor);
+      const users = await query.get();
+      if (users.empty) {
+        exhausted = true;
+        break;
+      }
+      for (const user of users.docs) {
+        usersScanned += 1;
+        const stats = await backfillUserPrivacy(db, user.id);
+        if (stats.resealBumped) usersResealBumped += 1;
+        mergeStats(totals, stats);
+      }
+      cursor = users.docs.at(-1);
+      if (users.size < 500) {
+        exhausted = true;
+        break;
+      }
     }
     logInfo({
       event: "callable_info",
       message: "privacy plaintext backfill (scheduled)",
       usersScanned,
+      exhausted,
+      nextUserCursor: exhausted ? undefined : cursor?.id,
       usersResealBumped,
       scannedDocs: totals.scannedDocs,
       updatedDocs: totals.updatedDocs,
@@ -276,9 +394,10 @@ export const backfillPrivacyPlaintextScheduled = onSchedule(
 
 /** Test-only surface: the gating decision + the surface plans. */
 export const __testing__ = {
-  gatedDeletions,
-  COLLECTION_PLANS,
-  KNOWLEDGE_REPO_FIELDS,
-  PRIVACY_RESEAL_EPOCH,
-  backfillUserPrivacy,
-};
+	  gatedDeletions,
+	  COLLECTION_PLANS,
+	  KNOWLEDGE_REPO_FIELDS,
+	  ROLLBACK_SNAPSHOT_FIELDS,
+	  PRIVACY_RESEAL_EPOCH,
+	  backfillUserPrivacy,
+	};
