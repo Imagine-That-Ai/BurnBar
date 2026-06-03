@@ -128,7 +128,7 @@ jobs:
           } >> "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
 
-          firebase_args=(--only functions --project burnbar --non-interactive)
+          firebase_args=(--only functions --project burnbar --non-interactive --force)
           if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
             echo "Using legacy FIREBASE_TOKEN authentication. Prefer GCP_SA_KEY or workload credentials."
             firebase_args+=(--token "$FIREBASE_TOKEN")
