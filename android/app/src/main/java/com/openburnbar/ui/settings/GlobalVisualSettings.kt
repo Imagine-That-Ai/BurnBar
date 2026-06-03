@@ -52,13 +52,13 @@ object GlobalVisualSettings {
                 // Migrate the legacy boolean toggle into the richer style enum: an
                 // explicit style key wins, otherwise fall back to the old boolean.
                 val storedStyle = prefs.getString(KEY_BACKGROUND_STYLE, null)
+                // Default new installs to the live provider-glyph swarm so the app
+                // greets users with the same dot swarm the website shows. An
+                // explicit stored style always wins, so anyone who picks Aurora
+                // (or any style) keeps their choice.
                 val migratedStyle =
                     BackgroundStyle.fromKey(storedStyle)
-                        ?: if (prefs.getBoolean(KEY_WEBSITE_BACKGROUND, false)) {
-                            BackgroundStyle.SWARM
-                        } else {
-                            BackgroundStyle.AURORA
-                        }
+                        ?: BackgroundStyle.SWARM
                 _backgroundStyle.value = migratedStyle
                 _useWebsiteBackground.value = migratedStyle.usesCustomBackdrop
                 _enableSwarmSparkles.value = prefs.getBoolean(KEY_SWARM_SPARKLES, true)

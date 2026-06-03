@@ -404,6 +404,10 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         #if targetEnvironment(simulator)
         throw XCTSkip("Source-inspection compliance checks read host workspace files and are not reliable inside the simulator app-host process.")
         #endif
+        let projectURL = repoRoot().appendingPathComponent("OpenBurnBar.xcodeproj")
+        if !FileManager.default.fileExists(atPath: projectURL.path) {
+            throw XCTSkip("Source-inspection compliance checks require the Mac workspace, which is not mounted inside the physical iPhone app-host process.")
+        }
     }
 
     private func repoRoot() -> URL {

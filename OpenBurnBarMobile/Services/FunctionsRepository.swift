@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
@@ -153,6 +154,9 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         case relayPublicKey
         case relayKeyVersion
         case relayEncryption
+        case agentRelayPublicKey
+        case agentRelayKeyVersion
+        case agentRelayEncryption
         case revokedAt
         case createdAt
         case updatedAt
@@ -181,9 +185,12 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
             pendingModelId: try container.decodeIfPresent(String.self, forKey: .pendingModelId),
             pendingModelRequestedAt: try container.decodeIfPresent(String.self, forKey: .pendingModelRequestedAt),
             oversightMode: try container.decodeIfPresent(String.self, forKey: .oversightMode),
-            relayPublicKey: try container.decodeIfPresent(String.self, forKey: .relayPublicKey),
-            relayKeyVersion: try container.decodeIfPresent(Int.self, forKey: .relayKeyVersion),
+            relayPublicKey: try container.decodeIfPresent(String.self, forKey: .relayPublicKey)
+                ?? container.decodeIfPresent(String.self, forKey: .agentRelayPublicKey),
+            relayKeyVersion: try container.decodeIfPresent(Int.self, forKey: .relayKeyVersion)
+                ?? container.decodeIfPresent(Int.self, forKey: .agentRelayKeyVersion),
             relayEncryption: try container.decodeIfPresent(String.self, forKey: .relayEncryption)
+                ?? container.decodeIfPresent(String.self, forKey: .agentRelayEncryption)
         )
     }
 
@@ -267,9 +274,12 @@ extension HermesGatewayClientRecord {
             pendingModelId: Self.string(data["pendingModelId"]),
             pendingModelRequestedAt: Self.string(data["pendingModelRequestedAt"]),
             oversightMode: Self.string(data["oversightMode"]),
-            relayPublicKey: Self.string(data["relayPublicKey"]),
-            relayKeyVersion: (data["relayKeyVersion"] as? NSNumber)?.intValue ?? (data["relayKeyVersion"] as? Int),
-            relayEncryption: Self.string(data["relayEncryption"])
+            relayPublicKey: Self.string(data["relayPublicKey"]) ?? Self.string(data["agentRelayPublicKey"]),
+            relayKeyVersion: (data["relayKeyVersion"] as? NSNumber)?.intValue
+                ?? (data["relayKeyVersion"] as? Int)
+                ?? (data["agentRelayKeyVersion"] as? NSNumber)?.intValue
+                ?? (data["agentRelayKeyVersion"] as? Int),
+            relayEncryption: Self.string(data["relayEncryption"]) ?? Self.string(data["agentRelayEncryption"])
         )
     }
 
@@ -1625,8 +1635,65 @@ final class FunctionsRepository: HermesGatewayRepository {
             payload["phoneRelayEncryption"] = phoneRelayEncryption
         }
 
-        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
+        try await prepareHermesGatewayApprovalContext()
+        let executor = FirebaseCallableExecutor(callable)
+        let callablePayload = FirebaseCallablePayload(payload)
+        let result: HTTPSCallableResult
+        do {
+            result = try await executor.call(callablePayload)
+        } catch {
+            guard Self.isUnauthenticatedCallableError(error) else {
+                throw Self.mappedHermesGatewayApprovalError(error)
+            }
+            // Firebase Auth can lag the SwiftUI signed-in state immediately after
+            // a sign-out/sign-in cycle. Force one more token/App Check refresh
+            // before surfacing the error to the user.
+            try await prepareHermesGatewayApprovalContext()
+            do {
+                result = try await executor.call(callablePayload)
+            } catch {
+                throw Self.mappedHermesGatewayApprovalError(error)
+            }
+        }
         return try Self.decodeHermesGatewayValue(HermesGatewayApprovalResponse.self, from: result.data).client
+    }
+
+    private func prepareHermesGatewayApprovalContext() async throws {
+        guard let user = Auth.auth().currentUser, !user.isAnonymous else {
+            throw FunctionsError.gatewayApprovalNotAuthenticated
+        }
+        do {
+            _ = try await user.getIDTokenResult(forcingRefresh: true)
+        } catch {
+            throw FunctionsError.gatewayApprovalNotAuthenticated
+        }
+        do {
+            let token = try await AppCheck.appCheck().token(forcingRefresh: true)
+            guard !token.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw FunctionsError.gatewayApprovalAppCheckBlocked
+            }
+        } catch let error as FunctionsError {
+            throw error
+        } catch {
+            throw FunctionsError.gatewayApprovalAppCheckBlocked
+        }
+    }
+
+    private static func mappedHermesGatewayApprovalError(_ error: Error) -> Error {
+        guard isUnauthenticatedCallableError(error) else { return error }
+        let message = (error as NSError).localizedDescription
+            .replacingOccurrences(of: " ", with: "")
+            .lowercased()
+        if message.contains("appcheck") || message.contains("attestation") {
+            return FunctionsError.gatewayApprovalAppCheckBlocked
+        }
+        return FunctionsError.gatewayApprovalNotAuthenticated
+    }
+
+    private static func isUnauthenticatedCallableError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == FunctionsErrorDomain
+            && nsError.code == FunctionsErrorCode.unauthenticated.rawValue
     }
 
     func listHermesGatewayClients(includeRevoked: Bool = false) async throws -> [HermesGatewayClientRecord] {
@@ -2180,6 +2247,8 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     case gatewayTargetMissingRelayKey
     case gatewayRelayKeyChanged
     case gatewayAttachmentUnreadable
+    case gatewayApprovalNotAuthenticated
+    case gatewayApprovalAppCheckBlocked
 
     var errorDescription: String? {
         switch self {
@@ -2194,6 +2263,10 @@ enum FunctionsError: Error, LocalizedError, Equatable {
             return "This Hermes connection looks different from when you set it up, so your message was kept on this device for your safety. Reconnect Hermes on your Mac to keep sending privately."
         case .gatewayAttachmentUnreadable:
             return "This file was shared privately with another of your devices. Reconnect Hermes on this device to open files here."
+        case .gatewayApprovalNotAuthenticated:
+            return "Sign in to BurnBar Cloud, then reopen Hermes Gateway and tap Connect Hermes again."
+        case .gatewayApprovalAppCheckBlocked:
+            return "App Check rejected this build. Reinstall from the official channel, or register and stamp the local debug token before trying Connect Hermes."
         }
     }
 }

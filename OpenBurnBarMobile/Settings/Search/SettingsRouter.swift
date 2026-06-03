@@ -66,6 +66,16 @@ final class SettingsRouter {
         scheduleHighlightClear(for: item.anchorID, after: 1.4)
     }
 
+    func prepareDeepLink(anchor: String? = nil, focus: String? = nil) {
+        query = ""
+        pendingAnchor = anchor
+        highlightedAnchor = anchor
+        pendingFocus = focus
+        if let anchor {
+            scheduleHighlightClear(for: anchor, after: 1.4)
+        }
+    }
+
     /// Reset state without selecting anything (e.g. user dismissed search).
     func reset() {
         query = ""

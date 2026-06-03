@@ -190,6 +190,23 @@ class AgentSubscriptionTopicStoreSealedFieldsTest {
     }
 
     @Test
+    fun unsubscribeDeleteSetIncludesOpaqueAndEveryLegacyDocumentID() {
+        val opaque = "sub_64ad3397dff90692866fcdaf93e3c028"
+        val ids =
+            AgentSubscriptionTopicStore.subscriptionTopicDeleteDocumentIDs(
+                "agent://burnbar/research-scout",
+                "agent-updates",
+                opaque,
+            )
+
+        assertTrue(ids.contains(opaque))
+        assertTrue(ids.contains("agent:__burnbar_research-scout:agent-updates"))
+        assertTrue(ids.contains("agent___burnbar_research-scout_agent-updates"))
+        assertTrue(ids.contains("agent_burnbar_research-scout_agent-updates"))
+        assertFalse(ids.any { it.contains("/") })
+    }
+
+    @Test
     fun legacyCleartextDocumentIDsCoverKnownPreCloakVariants() {
         val ids =
             AgentSubscriptionTopicStore.legacyCleartextDocumentIDs(

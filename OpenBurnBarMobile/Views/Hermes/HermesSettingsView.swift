@@ -115,6 +115,10 @@ struct HermesSettingsView: View {
         .task(id: authStore.currentIdentity?.uid) {
             gatewayStore.startGatewayListening(uid: authStore.currentIdentity?.uid)
             await gatewayStore.refresh(isSignedIn: authStore.state.isSignedIn)
+            applyPendingGatewayPairingDeepLink()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
+            applyGatewayPairingDeepLink(notification)
         }
         .onChange(of: authStore.state.isSignedIn) { _, isSignedIn in
             gatewayStore.startGatewayListening(uid: isSignedIn ? authStore.currentIdentity?.uid : nil)
@@ -1963,6 +1967,23 @@ struct HermesSettingsView: View {
         } else {
             HapticBus.threshold()
         }
+    }
+
+    private func applyPendingGatewayPairingDeepLink() {
+        guard let code = HermesGatewayPairingDeepLink.consumePendingCode() else { return }
+        applyGatewayPairingCode(code)
+    }
+
+    private func applyGatewayPairingDeepLink(_ notification: Notification) {
+        guard let code = HermesGatewayPairingDeepLink.code(from: notification) else { return }
+        applyGatewayPairingCode(code)
+        _ = HermesGatewayPairingDeepLink.consumePendingCode()
+    }
+
+    private func applyGatewayPairingCode(_ code: String) {
+        gatewayPairingCode = HermesGatewayPairingCodeFormatter.displayString(for: code)
+        showGatewayAdditionalPairing = true
+        gatewayStore.setNotice("Pairing code ready. Review it, then tap Connect Hermes.", style: .info)
     }
 
     private func sendGatewayTestMessage() async {

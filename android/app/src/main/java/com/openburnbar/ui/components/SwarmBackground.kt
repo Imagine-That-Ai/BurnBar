@@ -64,11 +64,15 @@ fun SwarmBackground(
     isAvatarEnabled: Boolean = true,
     isBrandTextEnabled: Boolean = true,
     excludeBrandShapes: Boolean = false,
+    // Editorial / Paper skin: force the light rendering (paper backdrop + the
+    // AA-legible darker dot colours) regardless of the OS dark-mode setting, so
+    // the dot-crest reads on paper. The light-locked editorial dot-crest.
+    forceLight: Boolean = false,
 ) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val context = LocalContext.current
     val config = LocalConfiguration.current
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = if (forceLight) false else androidx.compose.foundation.isSystemInDarkTheme()
     val enableSwarmSparkles by rememberSwarmSparkles()
     val excludeBrandShapesSetting by rememberExcludeBrandShapesFromSwarm()
 

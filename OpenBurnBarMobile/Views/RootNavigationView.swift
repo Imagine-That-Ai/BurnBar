@@ -113,6 +113,9 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
+            openHermesGatewayPairingRoute(notification)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
         }
@@ -391,6 +394,14 @@ struct RootNavigationView: View {
     private func openSettingsRoute() {
         selection = .settings
         detailPath = NavigationPath()
+        updateColumnVisibility(for: .settings, animated: false)
+    }
+
+    private func openHermesGatewayPairingRoute(_: Notification) {
+        settingsRouter.prepareDeepLink(anchor: SettingsAnchor.hermesCloudGateway)
+        selection = .settings
+        detailPath = NavigationPath()
+        detailPath.append(SettingsPageRoute.hermes)
         updateColumnVisibility(for: .settings, animated: false)
     }
 

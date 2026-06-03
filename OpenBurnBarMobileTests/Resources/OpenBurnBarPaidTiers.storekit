@@ -137,6 +137,48 @@
           "referenceName": "BurnBar Cloud Pro Annual",
           "subscriptionGroupID": "BURNBARCLOUD",
           "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "59.99",
+          "familyShareable": false,
+          "groupNumber": 3,
+          "internalID": "CLOUDULTRAMONTH1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "BurnBar Cloud Ultra adds 10x private agent memory.",
+              "displayName": "BurnBar Cloud Ultra",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.ultra.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "BurnBar Cloud Ultra Monthly",
+          "subscriptionGroupID": "BURNBARCLOUD",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "599",
+          "familyShareable": false,
+          "groupNumber": 3,
+          "internalID": "CLOUDULTRAYEAR1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "BurnBar Cloud Ultra with annual billing.",
+              "displayName": "BurnBar Cloud Ultra Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.ultra.annual.v2",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "BurnBar Cloud Ultra Annual",
+          "subscriptionGroupID": "BURNBARCLOUD",
+          "type": "RecurringSubscription"
         }
       ]
     }

@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "pw6wDsaQPlmo2fIpfbAihiKTwid61FtFpe+7oK2ou8RtCaz+idQCCSJ5wqpWEEE=",
+  "chunkCiphertext" : "zZ3QpXsXC3ExWJgBVb1GNX7DoDml1QoU\/NfWCPpDHMYKB5PmJW1V3cj+Y8\/nj8U=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "sOSdMXjREb1C4vXx+P0PJ2wiETh5NHT2BE0bLx0vP2mh21+\/QG8NCwhRmtdt6uTZuxbkVEBbPtRw+ycb7ijJYHAZv7xZMPBYqEsKfgKcRRc0P7HU9cy\/nwOKbtg6Ke6M8ZqerAn5omTkd0uJIpieE7chrHVkdZY1Z0ltyxdwdR8iLt6CJwIDUwOYKkHKOHOz0yfULQsu",
+  "payloadCiphertext" : "lR\/NvOlIiPFUXUVee8EyCRcXjz\/Q+7JAUayvwLRUJ077hclBhSAezKVcJ6Sj2ipJEIpbI+ezbtbe9bcP27SpHxUwlwR3X6y9LXXpUP074ejc+N1mo6iiSB62w+kdFihe1atqCmOWXD3ZI+m3ZawubFAJxZECXe6D6gH1PDGJthy3AV1RJkyPt4xlGiVbnzzn1SeTj8JS",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BA7V8ARTRtZH2zcXhzHGrWlKQjfZ\/ES0Re+UMKX64bqf9oDxpXgGddyyUiTfumrVcXWBNtYj7oJABDzyhAo7MnQk5sa0nTR3JfaQnjP3hkURHYsvCg2op7zaiyGdwMJ3PY7x835klfP0PVVqQVXIMkpG+9dNbqMJ9oTJ9Qk="
+  "wrappedKey" : "BO0ClzXQ2JtFIbnv4L06M0ea4MoY3KETvM0XJj67xxZ3KvBMbLFoAApVXlazEGatBLOeqCpt8kw\/Rh+XHzKfYg5EWRWtUs3M2\/g2K4aiYTgsAzEgIn+v7hc4q6KOLvSKBx0BvMwOTKTSzfSX2bPXJyvx8c2n+u0\/wbVaFAY="
 }
