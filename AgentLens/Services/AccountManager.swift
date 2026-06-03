@@ -443,7 +443,6 @@ final class AccountManager {
             session.presentationContextProvider = WebAuthPresentationContext(window: window)
             session.start()
         }
-        return try parseOAuthCredential(from: callbackURL)
     }
 
     private static func reversedClientID() -> String? {
