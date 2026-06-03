@@ -179,6 +179,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "entitlement_events",
       "budgetEvents",
       "unified_audit_log",
+      "audit_meta",
     ],
     storagePrefixes: [],
   },
