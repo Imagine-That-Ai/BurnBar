@@ -176,12 +176,19 @@ export const approveEscrowDeviceTrust = onCall(
 
         const requireTrustedNativeApprover = async (): Promise<string> => {
           if (!approverDeviceId || approverDeviceId === deviceId) {
-            throw new HttpsError("failed-precondition", "A distinct trusted native device must approve this escrow device.");
+            throw new HttpsError(
+              "failed-precondition",
+              "A distinct trusted native device must approve this escrow device.",
+            );
           }
           const approverRef = db.doc(`users/${uid}/escrow_devices/${approverDeviceId}`);
           const approver = await transaction.get(approverRef);
           const approverPlatform = approver.exists ? approver.get("platform") : undefined;
-          if (!approver.exists || approver.get("trustState") !== "trusted" || !isNativeEscrowPlatform(approverPlatform)) {
+          if (
+            !approver.exists ||
+            approver.get("trustState") !== "trusted" ||
+            !isNativeEscrowPlatform(approverPlatform)
+          ) {
             throw new HttpsError("permission-denied", "Escrow approval requires a trusted native approver.");
           }
           return approverDeviceId;
@@ -196,12 +203,16 @@ export const approveEscrowDeviceTrust = onCall(
           approvedByDeviceId = await requireTrustedNativeApprover();
         }
 
-        transaction.set(ref, {
-          trustState: "trusted",
-          approvedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-          approvedByDeviceId,
-        }, { merge: true });
+        transaction.set(
+          ref,
+          {
+            trustState: "trusted",
+            approvedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            approvedByDeviceId,
+          },
+          { merge: true },
+        );
         return { alreadyTrusted: false, approvedByDeviceId };
       });
 

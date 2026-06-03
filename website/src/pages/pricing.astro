@@ -105,6 +105,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
         <!-- CLOUD — most popular -->
         <article class="plan plan--popular" data-animate-onview>
+          <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <circle cx="60" cy="60" r="14" stroke="currentColor" stroke-width="2"></circle>
             <circle
@@ -126,7 +127,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/vector/cloud_crest.svg"
+              src="/brand/vector/tier_cloud_logo.svg"
               alt=""
               aria-hidden="true"
             />
@@ -178,6 +179,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
         <!-- CLOUD PRO -->
         <article class="plan plan--pro" data-animate-onview>
+          <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <rect x="24" y="34" width="50" height="34" rx="4" stroke="currentColor" stroke-width="2"
             ></rect>
@@ -192,7 +194,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/vector/cloud_pro_crest.svg"
+              src="/brand/vector/tier_cloud_pro_logo.svg"
               alt=""
               aria-hidden="true"
             />
@@ -244,6 +246,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
         <!-- CLOUD ULTRA -->
         <article class="plan plan--ultra" data-animate-onview>
+          <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <path
               d="M60 22c11 0 20 9 20 20 0 8-5 15-12 18v18M60 22c-11 0-20 9-20 20 0 8 5 15 12 18v18"
@@ -257,7 +260,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/vector/4_burnbar_cloud_ultra_crest.svg"
+              src="/brand/vector/tier_cloud_ultra_logo.svg"
               alt=""
               aria-hidden="true"
             />
@@ -572,6 +575,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--s-5);
     align-items: stretch;
+    /* Let the hovered card + its hologram step forward without being clipped. */
+    overflow: visible;
   }
   @media (max-width: 1240px) {
     .plans__grid {
@@ -583,6 +588,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     position: relative;
     overflow: hidden;
     isolation: isolate;
+    will-change: transform;
     padding: var(--s-6);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 1px solid rgba(255, 255, 255, 0.16);

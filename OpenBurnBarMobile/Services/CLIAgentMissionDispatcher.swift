@@ -141,8 +141,7 @@ final class CLIAgentMissionDispatcher {
             sourceSurface: sourceSurface,
             deliveryMode: deliveryMode,
             parentHermesThreadID: parentHermesThreadID,
-            presentationMode: presentationMode
-        )
+            presentationMode: presentationMode,
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
