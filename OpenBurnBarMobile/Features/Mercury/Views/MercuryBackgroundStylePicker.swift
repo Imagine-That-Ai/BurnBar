@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Three mini preview cards for `.wallpaper` / `.aurora` / `.solid`. The
-/// selected card gets an accent-tinted outline + a check.
+/// One mini preview card per `MercuryBackgroundStyle`. The selected card
+/// gets an accent-tinted outline + a check.
 struct MercuryBackgroundStylePicker: View {
     @Binding var selection: MercuryBackgroundStyle
     let accent: Color
@@ -117,6 +117,44 @@ struct MercuryBackgroundStylePicker: View {
                     endRadius: 25
                 )
             }
+        case .constellation:
+            ZStack {
+                Color(red: 0.02, green: 0.02, blue: 0.03)
+                // A single logo "resolved" from accent dots, off-centre —
+                // the calm one-logo-at-a-time constellation feel.
+                ForEach(Array(Self.constellationDots.enumerated()), id: \.offset) { _, dot in
+                    Circle()
+                        .fill(accent.opacity(dot.opacity))
+                        .frame(width: dot.size, height: dot.size)
+                        .offset(x: dot.x, y: dot.y)
+                }
+                RadialGradient(
+                    colors: [accent.opacity(0.30), Color.clear],
+                    center: UnitPoint(x: 0.62, y: 0.40),
+                    startRadius: 0,
+                    endRadius: 22
+                )
+            }
         }
     }
+
+    /// Static dot cluster for the `.constellation` mini preview: a loose
+    /// off-centre crest sampled into accent dots, twinkling at rest.
+    private static let constellationDots: [ConstellationPreviewDot] = {
+        (0..<22).map { _ in
+            ConstellationPreviewDot(
+                x: CGFloat.random(in: -8...16),
+                y: CGFloat.random(in: -16...10),
+                size: CGFloat.random(in: 1.2...2.4),
+                opacity: Double.random(in: 0.35...0.9)
+            )
+        }
+    }()
+}
+
+private struct ConstellationPreviewDot {
+    let x: CGFloat
+    let y: CGFloat
+    let size: CGFloat
+    let opacity: Double
 }

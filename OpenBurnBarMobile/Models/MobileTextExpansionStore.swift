@@ -199,40 +199,11 @@ final class MobileTextExpansionStore {
     }
 
     private func unlockOrCreateCloudVaultKey(uid: String) async throws -> Data {
-        let store = CloudVaultKeyStore()
-        if let local = try store.loadKey(uid: uid) {
-            return local
-        }
-        let keypair = try iOSDeviceKeypair()
-        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let wrappers = try await Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("cloud_vault_key_wrappers")
-            .whereField("targetDeviceId", isEqualTo: deviceId)
-            .whereField("status", isEqualTo: "active")
-            .limit(to: 10)
-            .getDocuments()
-        for document in wrappers.documents {
-            let data = document.data()
-            guard let keyVersion = data["keyVersion"] as? Int,
-                  let wrappedBase64 = data["wrappedVaultKey"] as? String,
-                  let wrapped = Data(base64Encoded: wrappedBase64) else {
-                continue
-            }
-            let unwrapped: Data
-            if keyVersion == keypair.keyVersion {
-                unwrapped = try keypair.decrypt(wrapped)
-            } else {
-                unwrapped = try keypair.decryptWithOldVersion(wrapped, version: keyVersion)
-            }
-            try store.saveKey(unwrapped, uid: uid)
-            return unwrapped
-        }
-
-        return try store.getOrCreateKey(uid: uid)
+        try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid).keyData
     }
 
     private func publishCloudVaultKey(uid: String, vaultKey: Data) async throws {
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let db = Firestore.firestore()
         let userRef = db.collection("users").document(uid)
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
@@ -289,10 +260,11 @@ final class MobileTextExpansionStore {
             }
             let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
             try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(targetDeviceId)_\(keyVersion)")
-                .setData([
-                    "uid": uid,
-                    "targetDeviceId": targetDeviceId,
+	                .document("\(targetDeviceId)_\(keyVersion)")
+	                .setData([
+	                    "uid": uid,
+	                    "vaultKeyID": vaultKeyID,
+	                    "targetDeviceId": targetDeviceId,
                     "sourceDeviceId": deviceId,
                     "publicKeyFingerprint": fingerprint,
                     "keyVersion": keyVersion,
@@ -301,10 +273,10 @@ final class MobileTextExpansionStore {
                     "status": "active",
                     "createdAt": FieldValue.serverTimestamp(),
                     "updatedAt": FieldValue.serverTimestamp(),
-                    "schemaVersion": 1
-                ], merge: true)
-        }
-    }
+	                    "schemaVersion": 2
+	                ], merge: true)
+	        }
+	    }
 
     private static func sorted(_ snippets: [TextExpansionSnippet]) -> [TextExpansionSnippet] {
         snippets.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }

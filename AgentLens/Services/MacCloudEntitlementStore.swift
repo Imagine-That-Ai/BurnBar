@@ -3,6 +3,7 @@ import SwiftUI
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
+import OpenBurnBarCore
 
 // MARK: - Mac Cloud Entitlement Store
 //
@@ -23,14 +24,34 @@ import FirebaseCore
 // across the Cloud settings pane, the menu-bar popover, and the dashboard
 // sidebar identity row.
 
+/// The membership tier the server resolved for this Mac. Ordered so callers can
+/// compare hierarchy (`ultra > pro > cloud > free`). Mirrors the website's
+/// four-tier pricing model and the iOS `getDataDomainUsage().tier` string.
+enum MacCloudTier: Int, Comparable, CaseIterable {
+    case free = 0
+    case cloud = 1
+    case pro = 2
+    case ultra = 3
+
+    static func < (lhs: MacCloudTier, rhs: MacCloudTier) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
 @MainActor
 final class MacCloudEntitlementStore: ObservableObject {
     @Published private(set) var isActive: Bool = false
     @Published private(set) var hostedComputerUseIsActive: Bool = false
+    /// True when the member holds the BurnBar Ultra entitlement (server-resolved
+    /// `burnbar_ultra` doc). Ultra ⇒ Pro ⇒ Cloud, so use `currentTier` for
+    /// hierarchy decisions and this flag only for the literal Ultra check.
+    @Published private(set) var isUltraActive: Bool = false
     @Published private(set) var expirationDate: Date?
     @Published private(set) var hostedComputerUseExpirationDate: Date?
+    @Published private(set) var ultraExpirationDate: Date?
     @Published private(set) var purchaseDate: Date?
     @Published private(set) var hostedComputerUsePurchaseDate: Date?
+    @Published private(set) var ultraPurchaseDate: Date?
     @Published private(set) var error: String?
 
     static let shared = MacCloudEntitlementStore()
@@ -38,15 +59,39 @@ final class MacCloudEntitlementStore: ObservableObject {
     private var listener: ListenerRegistration?
     private var computerUseListener: ListenerRegistration?
     private var proMaxListener: ListenerRegistration?
+    private var ultraListener: ListenerRegistration?
     private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
     private var started = false
     private var hostedComputerUseState: (isActive: Bool, expiresAt: Date?, purchase: Date?) = (false, nil, nil)
     private var proMaxComputerUseState: (isActive: Bool, expiresAt: Date?, purchase: Date?) = (false, nil, nil)
 
+    /// Highest tier the member currently holds, resolved from the live
+    /// entitlement docs. Ultra implies Pro implies Cloud.
+    var currentTier: MacCloudTier {
+        if isUltraActive { return .ultra }
+        if hostedComputerUseIsActive { return .pro }
+        if isActive { return .cloud }
+        return .free
+    }
+
+    /// The shared cross-platform `CloudTier` (from `OpenBurnBarCore`) the
+    /// feature-gating catalog consumes. Resolved from the same live entitlement
+    /// predicates as `currentTier`, following spec §4.2:
+    /// `isUltraActive → .ultra`, else `hostedComputerUseIsActive → .pro`, else
+    /// `isActive → .cloud`, else `.none`. Use this with `GatedFeature` /
+    /// `FeatureUnlockSheet` / `LockedFeatureVeil` so the unlock copy matches iOS.
+    var cloudTier: CloudTier {
+        if isUltraActive { return .ultra }
+        if hostedComputerUseIsActive { return .pro }
+        if isActive { return .cloud }
+        return .none
+    }
+
     deinit {
         listener?.remove()
         computerUseListener?.remove()
         proMaxListener?.remove()
+        ultraListener?.remove()
         if let authHandle {
             Auth.auth().removeStateDidChangeListener(authHandle)
         }
@@ -75,13 +120,18 @@ final class MacCloudEntitlementStore: ObservableObject {
         computerUseListener = nil
         proMaxListener?.remove()
         proMaxListener = nil
+        ultraListener?.remove()
+        ultraListener = nil
         guard let uid else {
             isActive = false
             hostedComputerUseIsActive = false
+            isUltraActive = false
             expirationDate = nil
             hostedComputerUseExpirationDate = nil
+            ultraExpirationDate = nil
             purchaseDate = nil
             hostedComputerUsePurchaseDate = nil
+            ultraPurchaseDate = nil
             hostedComputerUseState = (false, nil, nil)
             proMaxComputerUseState = (false, nil, nil)
             return
@@ -143,6 +193,27 @@ final class MacCloudEntitlementStore: ObservableObject {
                     }
                     self.proMaxComputerUseState = self.activeEntitlementState(data: data)
                     self.publishComputerUseEntitlement()
+                }
+            }
+        ultraListener = entitlements
+            .document("burnbar_ultra")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.error = error.localizedDescription
+                        return
+                    }
+                    guard let data = snapshot?.data(), snapshot?.exists == true else {
+                        self.isUltraActive = false
+                        self.ultraExpirationDate = nil
+                        self.ultraPurchaseDate = nil
+                        return
+                    }
+                    let state = self.activeEntitlementState(data: data)
+                    self.isUltraActive = state.isActive
+                    self.ultraExpirationDate = state.expiresAt
+                    self.ultraPurchaseDate = state.purchase
                 }
             }
     }

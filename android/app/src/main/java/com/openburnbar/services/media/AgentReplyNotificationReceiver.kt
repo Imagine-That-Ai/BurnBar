@@ -5,12 +5,28 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.functions.FirebaseFunctions
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val agentReplyJson =
+    Json {
+        encodeDefaults = false
+    }
+
+@Serializable
+private data class AgentNotificationReplyPrivatePayload(
+    val replyText: String,
+)
 
 /**
  * Handles Android notification direct replies for agent messages.
@@ -36,12 +52,23 @@ class AgentReplyNotificationReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             runCatching {
                 val stableDeviceId = AgentReplyNotificationState.stableDeviceId(context)
+                val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@runCatching
+                val key = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid)
+                val sealedPayload =
+                    CloudVaultCrypto.sealedPayloadMap(
+                        CloudVaultCrypto.sealPayload(
+                            agentReplyJson.encodeToString(AgentNotificationReplyPrivatePayload(replyText = reply)).toByteArray(Charsets.UTF_8),
+                            key.keyData,
+                            key.vaultKeyID,
+                        ),
+                    )
                 FirebaseFunctions.getInstance("us-central1")
                     .getHttpsCallable("submitAgentNotificationReply")
                     .call(
                         mapOf(
                             "eventId" to eventId,
-                            "replyText" to reply,
+                            "sealedReplyPayload" to sealedPayload,
+                            "vaultKeyID" to key.vaultKeyID,
                             "deviceId" to stableDeviceId,
                             "clientReplyId" to "${eventId}_${stableDeviceId}_${System.currentTimeMillis()}",
                         ),

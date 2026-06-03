@@ -1,0 +1,164 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { DATA_DOMAIN_PATHS, isSealedEnvelope, sealAwareSerializeDoc } from "../callables/dataExport.js";
+import { UNDELETABLE_DOMAINS } from "../callables/dataDeletion.js";
+
+// vitest runs from the functions/ package root; the registry is a sibling package.
+const registry = JSON.parse(
+  readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),
+) as {
+  domains: Array<{
+    id: string;
+    encryptionTier: string;
+    firestorePaths: string[];
+    storagePaths: string[];
+    actions: string[];
+  }>;
+};
+const registryIds = registry.domains.map((d) => d.id).sort();
+
+describe("DATA_DOMAIN_PATHS ⇄ data-domain registry (no drift)", () => {
+  it("covers exactly the registry's domain ids", () => {
+    expect(Object.keys(DATA_DOMAIN_PATHS).sort()).toEqual(registryIds);
+  });
+
+  it("encryptionTier matches the registry for every domain", () => {
+    for (const domain of registry.domains) {
+      expect(DATA_DOMAIN_PATHS[domain.id].encryptionTier, `${domain.id} tier`).toBe(domain.encryptionTier);
+    }
+  });
+
+  it("firestoreCollections match the registry's firestorePaths top-level collections", () => {
+    for (const domain of registry.domains) {
+      const expected = domain.firestorePaths.map((p) => p.split("/")[0]).sort();
+      const actual = [...DATA_DOMAIN_PATHS[domain.id].firestoreCollections].sort();
+      expect(actual, `${domain.id} collections`).toEqual(expected);
+    }
+  });
+
+  it("storagePrefixes are the prefix-before-wildcard of the registry's storagePaths", () => {
+    for (const domain of registry.domains) {
+      const expected = domain.storagePaths
+        .map((p) => {
+          const idx = p.indexOf("/{");
+          const slash = p.indexOf("/**");
+          const cut = [idx, slash].filter((n) => n >= 0).sort((a, b) => a - b)[0];
+          return cut == null || cut < 0 ? p.replace(/\/$/, "") : p.slice(0, cut);
+        })
+        .sort();
+      const actual = [...DATA_DOMAIN_PATHS[domain.id].storagePrefixes].sort();
+      expect(actual, `${domain.id} storage prefixes`).toEqual(expected);
+    }
+  });
+});
+
+describe("deleteDomainData deletability gate", () => {
+  it("every domain that exposes a registry `delete` action is deletable here", () => {
+    for (const domain of registry.domains) {
+      if (domain.actions.includes("delete")) {
+        expect(UNDELETABLE_DOMAINS.has(domain.id), `${domain.id} should be deletable`).toBe(false);
+      }
+    }
+  });
+
+  it("every undeletable domain is a real registry domain", () => {
+    for (const id of UNDELETABLE_DOMAINS) {
+      expect(registryIds, `${id} is a registry domain`).toContain(id);
+    }
+  });
+
+  it("domains without a `delete` action are blocked from generic deletion", () => {
+    for (const domain of registry.domains) {
+      if (!domain.actions.includes("delete")) {
+        expect(UNDELETABLE_DOMAINS.has(domain.id), `${domain.id} should be undeletable`).toBe(true);
+      }
+    }
+  });
+});
+
+// privacy-leak-remediation-2026-06-02 §5: the inline-export of end_to_end /
+// zero_access domains must never carry a plaintext private field.
+const sealedText = {
+  algorithm: "AES-256-GCM",
+  keyVersion: 1,
+  nonce: "bm9uY2U=",
+  ciphertext: "Y2lwaGVy",
+  tag: "dGFn",
+};
+const sealedBlob = {
+  schemaVersion: 1,
+  algorithm: "AES-256-GCM",
+  keyVersion: 1,
+  plaintextSHA256: "abc123",
+  sealedBoxBase64: "Ym94",
+  createdAt: "2026-06-02T00:00:00.000Z",
+};
+
+describe("isSealedEnvelope structural detection", () => {
+  it("detects AES-256-GCM text + blob envelopes regardless of key name", () => {
+    expect(isSealedEnvelope(sealedText)).toBe(true);
+    expect(isSealedEnvelope(sealedBlob)).toBe(true);
+  });
+
+  it("rejects plaintext, partial envelopes, arrays, and scalars", () => {
+    expect(isSealedEnvelope("a project name")).toBe(false);
+    expect(isSealedEnvelope({ algorithm: "AES-256-GCM", nonce: "x" })).toBe(false);
+    expect(isSealedEnvelope({ ciphertext: "x", tag: "y", nonce: "z" })).toBe(false);
+    expect(isSealedEnvelope([sealedText])).toBe(false);
+    expect(isSealedEnvelope(42)).toBe(false);
+    expect(isSealedEnvelope(null)).toBe(false);
+  });
+});
+
+describe("sealAwareSerializeDoc default-deny allowlist", () => {
+  it("drops cleartext title/path/name/slug, keeps sealed envelopes + opaque columns", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      // cleartext private fields that MUST be redacted
+      repoFullName: "openburnbar/secret-repo",
+      projectDisplayName: "Project Atlas",
+      sourcePath: "/Users/alberto/secret/runbook.md",
+      title: "merge the gateway rewrite",
+      inferredTaskTitle: "fix the leak",
+      // sealed envelopes (keyed by arbitrary names) — emitted verbatim
+      sealedSnapshot: sealedBlob,
+      sealedProjectName: sealedText,
+      // opaque crypto columns — emitted
+      slugHmac: "f".repeat(64),
+      dedupHash: "a".repeat(64),
+      repoMatchToken: "b".repeat(64),
+      docID: "pm_0123456789abcdef0123456789abcdef",
+      projectKeyHash: "c".repeat(32),
+      embeddingModelVersion: "bge-small-en-v1.5",
+      // content-free scalars — emitted
+      byteCount: 128,
+      chunkIndex: 0,
+      schemaVersion: 2,
+      isEnabled: true,
+    });
+
+    // No cleartext private field survives.
+    for (const leaked of ["repoFullName", "projectDisplayName", "sourcePath", "title", "inferredTaskTitle"]) {
+      expect(out, `${leaked} must be dropped`).not.toHaveProperty(leaked);
+      expect(dropped, `${leaked} must be reported`).toContain(leaked);
+    }
+    // Sealed envelopes + opaque columns + scalars are preserved.
+    expect(out.sealedSnapshot).toEqual(sealedBlob);
+    expect(out.sealedProjectName).toEqual(sealedText);
+    expect(out.slugHmac).toBe("f".repeat(64));
+    expect(out.repoMatchToken).toBe("b".repeat(64));
+    expect(out.docID).toBe("pm_0123456789abcdef0123456789abcdef");
+    expect(out.byteCount).toBe(128);
+    expect(out.schemaVersion).toBe(2);
+    expect(out.isEnabled).toBe(true);
+  });
+
+  it("serializes Firestore Timestamps to ISO and keeps them", () => {
+    const ts = { toDate: () => new Date("2026-06-02T12:00:00.000Z") };
+    const { out, dropped } = sealAwareSerializeDoc({ updatedAt: ts, label: "Personal budget" });
+    expect(out.updatedAt).toBe("2026-06-02T12:00:00.000Z");
+    expect(out).not.toHaveProperty("label");
+    expect(dropped).toContain("label");
+  });
+});

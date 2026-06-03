@@ -36,8 +36,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
         <p class="lead">
           The local product is free, forever. Cloud syncs your quota and encrypted history. Cloud
           Pro adds live phone-to-Mac workflows and supervised agent work — with prepaid allowances
-          for the hosted resources that cost real money. Ultra raises encrypted Pensieve memory
-          limits for heavy multi-repo agent work.
+          for the hosted resources that cost real money. Ultra keeps all of that and gives your
+          agents 10× private memory to recall.
         </p>
       </div>
 
@@ -70,15 +70,6 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <header class="plan__head">
             <span class="plan__badge mono">Free · Local</span>
             <div class="plan__title">
-              <span class="plan__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M12 3c1.4 3.4 5 4.4 5 9a5 5 0 1 1-10 0c0-2.4 1.2-3.8 2.6-5 .5 2.4 2.4 2.4 2.4 4"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linejoin="round"></path>
-                </svg>
-              </span>
               <h2 class="plan__name">{free.name}</h2>
             </div>
             <div class="plan__price">
@@ -113,6 +104,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
         <!-- CLOUD — most popular -->
         <article class="plan plan--popular" data-animate-onview>
+          <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <circle cx="60" cy="60" r="14" stroke="currentColor" stroke-width="2"></circle>
             <circle
@@ -132,23 +124,14 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
             <circle cx="106" cy="60" r="3.5" fill="currentColor"></circle>
           </svg>
           <header class="plan__head">
+            <img
+              class="plan__crest"
+              src="/brand/vector/tier_cloud_logo.svg"
+              alt=""
+              aria-hidden="true"
+            />
             <span class="plan__badge plan__badge--hot mono">Most popular</span>
             <div class="plan__title">
-              <span class="plan__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.4A3.5 3.5 0 0 1 17 18H7Z"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linejoin="round"></path>
-                  <path
-                    d="M12 16v-5m0 0-1.8 1.8M12 11l1.8 1.8"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"></path>
-                </svg>
-              </span>
               <h2 class="plan__name">{cloud.shortName}</h2>
             </div>
             <div class="plan__price">
@@ -195,6 +178,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
         <!-- CLOUD PRO -->
         <article class="plan plan--pro" data-animate-onview>
+          <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <rect x="24" y="34" width="50" height="34" rx="4" stroke="currentColor" stroke-width="2"
             ></rect>
@@ -207,33 +191,14 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
               stroke-linecap="round"></path>
           </svg>
           <header class="plan__head">
+            <img
+              class="plan__crest"
+              src="/brand/vector/tier_cloud_ultra_logo.svg"
+              alt=""
+              aria-hidden="true"
+            />
             <span class="plan__badge mono">For power users</span>
             <div class="plan__title">
-              <span class="plan__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <rect
-                    x="3"
-                    y="5"
-                    width="11"
-                    height="8.5"
-                    rx="1.4"
-                    stroke="currentColor"
-                    stroke-width="1.6"></rect>
-                  <rect
-                    x="15"
-                    y="9"
-                    width="6"
-                    height="10"
-                    rx="1.4"
-                    stroke="currentColor"
-                    stroke-width="1.6"></rect>
-                  <path
-                    d="M8.5 16.5h3"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"></path>
-                </svg>
-              </span>
               <h2 class="plan__name">{cloudPro.shortName}</h2>
             </div>
             <div class="plan__price">
@@ -280,27 +245,26 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
         <!-- ULTRA -->
         <article class="plan plan--ultra" data-animate-onview>
+          <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
             <path
-              d="M24 72c10-26 25-39 44-39 14 0 25 7 32 21M21 86h78M35 64h42M46 48h24"
+              d="M60 22c11 0 20 9 20 20 0 8-5 15-12 18v18M60 22c-11 0-20 9-20 20 0 8 5 15 12 18v18"
               stroke="currentColor"
               stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"></path>
+              stroke-linecap="round"></path>
+            <circle cx="60" cy="42" r="7" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M44 96h32" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            ></path>
           </svg>
           <header class="plan__head">
-            <span class="plan__badge mono">For deep memory</span>
+            <img
+              class="plan__crest"
+              src="/brand/vector/tier_cloud_pro_logo.svg"
+              alt=""
+              aria-hidden="true"
+            />
+            <span class="plan__badge mono">For your whole second brain</span>
             <div class="plan__title">
-              <span class="plan__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M4 16c2.2-5.5 5.6-8.2 10-8.2 3.2 0 5.7 1.4 7.4 4.2M4 19h16M7 13h9M9 10h5"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"></path>
-                </svg>
-              </span>
               <h2 class="plan__name">{ultra.shortName}</h2>
             </div>
             <div class="plan__price">
@@ -312,7 +276,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
               </span>
               <span class="plan__per">
                 <span class="plan__save mono" data-billing="annual"
-                  >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {ultraSave}%</span
+                  >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {
+                    ultraSave
+                  }%</span
                 >
                 <span class="plan__per-dim" data-billing="monthly"
                   >${ultra.priceAnnualUSD}/yr available</span
@@ -322,20 +288,24 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
             <p class="plan__sub">{ultra.summary}</p>
           </header>
 
-          <ul class="plan__list plan__list--pro">
+          <ul class="plan__list plan__list--ultra">
             <li>Everything in BurnBar Cloud Pro</li>
             <li>15 Pensieve knowledge sources</li>
-            <li>50,000 encrypted memory chunks</li>
-            <li>250 MB encrypted storage</li>
-            <li>Higher hosted-memory query bucket for deep projects</li>
+            <li>50,000 encrypted memory chunks · 250 MB</li>
+            <li>Repo docs, notes &amp; chat memories your agents recall</li>
+            <li>Sealed on-device · the server searches without reading it</li>
+            <li>Same hosted Agent Control &amp; relay allowance as Pro</li>
           </ul>
 
           <div class="plan__included">
-            <span class="plan__inc-label mono">Built for</span>
+            <span class="plan__inc-label mono">Private semantic memory</span>
             <ul class="plan__specs">
-              <li>Long-running repos and multi-agent projects</li>
-              <li>Cross-device encrypted memory retrieval</li>
-              <li>Private knowledge search without plaintext cloud storage</li>
+              <li>Cloaked vectors + sealed text — nearest-neighbor search, never your content</li>
+              <li>
+                {allowance.hostedAgentActionsMonthly} hosted actions · {allowance.relayGBMonthly} relay-accounting
+                GB each month
+              </li>
+              <li>Prepaid overage only · BYOK never spends credits</li>
             </ul>
           </div>
 
@@ -348,7 +318,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
       <!-- Top-ups -->
       <div class="topups" data-animate-onview>
-        <span class="topups__label mono">Cloud Pro top-ups · prepaid, before use</span>
+        <span class="topups__label mono">Cloud Pro &amp; Ultra top-ups · prepaid, before use</span>
         <div class="topups__chips">
           <div class="topup">
             <span class="topup__amt mono">+{actionTopUp.unit}</span>
@@ -410,7 +380,19 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
             {allowance.relayGBMonthly} relay-accounting GB each month. Extra hosted actions are ${
               actionTopUp.priceUSD
             } for {actionTopUp.unit}; extra relay is ${relayTopUp.priceUSD} for {relayTopUp.unit}.
-            Monthly caps still apply.
+            Monthly caps still apply. BurnBar Ultra carries the same hosted allowance, caps, and
+            top-up prices as Cloud Pro.
+          </dd>
+        </div>
+        <div>
+          <dt>What does BurnBar Ultra add over Cloud Pro?</dt>
+          <dd>
+            Everything in Cloud Pro, plus 10× private agent memory. Cloud Pro gives your agents 3
+            knowledge sources, 5,000 memory chunks, and 25 MB. BurnBar Ultra raises that to 15
+            sources, 50,000 chunks, and 250 MB of repo docs, notes, and chat-derived memories your
+            agents can recall. The text is sealed on your device and the vectors are cloaked, so the
+            server runs nearest-neighbor search without reading your content. BurnBar Ultra is
+            $59.99/month or $599/year.
           </dd>
         </div>
         <div>
@@ -588,15 +570,25 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .plans__grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Four tiers: 4-up on the widest screens, 2×2 on roomy laptops,
+       single column on phones (handled in the media query below). */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--s-5);
     align-items: stretch;
+    /* Let the hovered card + its hologram step forward without being clipped. */
+    overflow: visible;
+  }
+  @media (max-width: 1240px) {
+    .plans__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .plan {
     position: relative;
     overflow: hidden;
     isolation: isolate;
+    will-change: transform;
     padding: var(--s-6);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 1px solid rgba(255, 255, 255, 0.16);
@@ -613,21 +605,25 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     transition:
       opacity 760ms var(--ease),
       translate 760ms var(--ease),
-      transform var(--dur-base) var(--ease),
+      transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
       border-color var(--dur-base) var(--ease),
       box-shadow var(--dur-base) var(--ease);
     color: var(--bb-accent, var(--ember-bright));
   }
-  .plan:hover {
-    transform: translateY(-6px);
+  /* Hover / keyboard-focus brings the card to centre stage: scale up, lift,
+     raise above siblings, deepen the glow. (Holo bloom handled separately.) */
+  .plan:hover,
+  .plan:focus-within {
+    transform: translateY(-8px) scale(1.05);
+    z-index: 5;
     border-color: color-mix(
       in oklab,
-      var(--bb-accent, var(--ember-core)) 30%,
+      var(--bb-accent, var(--ember-core)) 40%,
       rgba(255, 255, 255, 0.08)
     );
     box-shadow:
-      0 0 50px -22px var(--bb-glow, rgba(250, 107, 6, 0.5)),
-      0 32px 70px -20px rgba(0, 0, 0, 0.75);
+      0 0 64px -18px var(--bb-glow, rgba(250, 107, 6, 0.5)),
+      0 40px 90px -24px rgba(0, 0, 0, 0.82);
   }
 
   /* per-tier accent */
@@ -655,6 +651,19 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(60, 214, 192, 0.1), transparent 60%),
       rgba(8, 18, 18, 0.82);
+  }
+  /* Ultra — the top tier wears a regal gold accent (distinct from Pro's teal). */
+  .plan--ultra {
+    --bb-accent: var(--core-amber);
+    --bb-glow: rgba(253, 196, 44, 0.42);
+    border-color: color-mix(in oklab, var(--core-amber) 30%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--core-amber) 46%, rgba(255, 255, 255, 0.16));
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(253, 196, 44, 0.12), transparent 60%),
+      rgba(20, 16, 8, 0.82);
+    box-shadow:
+      0 0 70px -24px rgba(253, 196, 44, 0.32),
+      0 32px 70px -18px rgba(0, 0, 0, 0.78);
   }
 
   /* animated conic ring on the popular card */
@@ -691,8 +700,120 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan--popular {
     transform: none;
   }
-  .plan--popular:hover {
-    transform: translateY(-10px);
+  .plan--popular:hover,
+  .plan--popular:focus-within {
+    transform: translateY(-10px) scale(1.05);
+  }
+
+  /* ---------- holographic backdrop ----------
+     Each cloud tier floats a large, translucent copy of its own crest behind
+     the card — a hologram that whispers at rest and blooms on hover. */
+  .plan--popular,
+  .plan--pro,
+  .plan--ultra {
+    /* Let the hologram bleed a touch past the card edge. */
+    overflow: visible;
+  }
+  .plan__holo {
+    position: absolute;
+    inset: -4%;
+    z-index: 0;
+    pointer-events: none;
+    /* The crest's SILHOUETTE, used as a mask and filled with a shiny
+       iridescent holo-gradient that slowly sweeps — an elegant ghost of the
+       logo, not the literal image. Kept very faint so the card copy stays crisp. */
+    -webkit-mask-image: var(--holo-img);
+    mask-image: var(--holo-img);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: 50% 40%;
+    mask-position: 50% 40%;
+    -webkit-mask-size: 132% auto;
+    mask-size: 132% auto;
+    /* a colourful iridescent holo-foil that slowly sweeps through the
+       silhouette — each tier gets its own harmonious palette (--holo-grad). */
+    background: var(
+      --holo-grad,
+      linear-gradient(
+        125deg,
+        #ffd166 6%,
+        #7dd3fc 30%,
+        #c084fc 52%,
+        #5eead4 74%,
+        #ffd166 92%
+      )
+    );
+    background-size: 320% 320%;
+    background-position: 0% 50%;
+    opacity: 0.1;
+    filter: saturate(1.2) blur(0.4px);
+    transition:
+      opacity 380ms cubic-bezier(0.22, 1, 0.36, 1),
+      mask-size 380ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 380ms var(--ease);
+    animation: holoShimmer 9s ease-in-out infinite;
+  }
+  /* Warm ember iridescence for Cloud. */
+  .plan--popular {
+    --holo-img: url("/brand/vector/tier_cloud_logo.svg");
+    --holo-grad: linear-gradient(
+      125deg,
+      #ffd56b 6%,
+      #ff8a3d 26%,
+      #ff5c8a 46%,
+      #b06bff 66%,
+      #ffd56b 88%
+    );
+  }
+  /* Cool aqua iridescence for Cloud Pro. */
+  .plan--pro {
+    --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
+    --holo-grad: linear-gradient(
+      125deg,
+      #5ef0c9 6%,
+      #38d6f3 27%,
+      #4f8bff 47%,
+      #8ef0a8 67%,
+      #5ef0c9 88%
+    );
+  }
+  /* Full-spectrum premium iridescence for Cloud Ultra. */
+  .plan--ultra {
+    --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
+    --holo-grad: linear-gradient(
+      125deg,
+      #ffd56b 6%,
+      #7dd3fc 26%,
+      #c084fc 46%,
+      #5eead4 66%,
+      #ff9ec7 86%
+    );
+  }
+  /* bloom the hologram when the card steps forward */
+  /* On hover the ghost brightens just enough to feel alive — still faint
+     enough to read every line of copy through it. */
+  .plan--popular:hover .plan__holo,
+  .plan--popular:focus-within .plan__holo,
+  .plan--pro:hover .plan__holo,
+  .plan--pro:focus-within .plan__holo,
+  .plan--ultra:hover .plan__holo,
+  .plan--ultra:focus-within .plan__holo {
+    opacity: 0.24;
+    filter: saturate(1.4) blur(0.3px);
+    -webkit-mask-size: 138% auto;
+    mask-size: 138% auto;
+  }
+  /* slow iridescent sweep across the silhouette */
+  @keyframes holoShimmer {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
   }
 
   .plan__motif {
@@ -740,15 +861,50 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     align-items: center;
     gap: var(--s-3);
   }
+  /* floating tier crest — full-colour premium logo, lives top-right.
+     No tint/filter that would muddy the art; only a soft glow so it pops on dark. */
+  .plan__crest {
+    position: absolute;
+    top: -6px;
+    right: -4px;
+    width: 80px;
+    height: 80px;
+    pointer-events: none;
+    z-index: 2;
+    filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55))
+      drop-shadow(0 0 18px var(--bb-glow, rgba(250, 107, 6, 0.45)));
+    transition:
+      transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 320ms var(--ease);
+  }
+  /* the richer cloud-tier crests carry more detail — give them more room */
+  .plan--popular .plan__crest,
+  .plan--pro .plan__crest,
+  .plan--ultra .plan__crest {
+    width: 84px;
+    height: 84px;
+  }
+  .plan--popular:hover .plan__crest,
+  .plan--popular:focus-within .plan__crest,
+  .plan--pro:hover .plan__crest,
+  .plan--pro:focus-within .plan__crest,
+  .plan--ultra:hover .plan__crest,
+  .plan--ultra:focus-within .plan__crest {
+    transform: scale(1.06);
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6))
+      drop-shadow(0 0 26px var(--bb-glow, rgba(250, 107, 6, 0.6)));
+  }
   .plan__icon {
     display: grid;
     place-items: center;
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--r-2);
     color: var(--bb-accent);
     border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--ink-line));
     background: color-mix(in oklab, var(--bb-accent) 9%, rgba(255, 255, 255, 0.02));
+    overflow: hidden;
+    flex-shrink: 0;
   }
   .plan__icon svg {
     width: 20px;
@@ -1075,6 +1231,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plans__grid .plan:nth-child(3) {
     transition-delay: 180ms;
   }
+  .plans__grid .plan:nth-child(4) {
+    transition-delay: 270ms;
+  }
   .plans__grid .plan:hover {
     transition-delay: 0s;
   }
@@ -1083,11 +1242,38 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     .billing__slider,
     .billing__opt,
     .plan,
+    .plan__crest,
+    .plan__holo,
     .topups {
       transition: none !important;
     }
-    .plan--popular::before {
-      animation: none;
+    .plan--popular::before,
+    .plan__holo {
+      animation: none !important;
+    }
+    /* No scale/lift dance — keep the hovered state subtle and instant. */
+    .plan:hover,
+    .plan:focus-within,
+    .plan--popular:hover,
+    .plan--popular:focus-within {
+      transform: none;
+    }
+    .plan--popular:hover .plan__holo,
+    .plan--popular:focus-within .plan__holo,
+    .plan--pro:hover .plan__holo,
+    .plan--pro:focus-within .plan__holo,
+    .plan--ultra:hover .plan__holo,
+    .plan--ultra:focus-within .plan__holo {
+      -webkit-mask-size: 132% auto;
+      mask-size: 132% auto;
+    }
+    .plan--popular:hover .plan__crest,
+    .plan--popular:focus-within .plan__crest,
+    .plan--pro:hover .plan__crest,
+    .plan--pro:focus-within .plan__crest,
+    .plan--ultra:hover .plan__crest,
+    .plan--ultra:focus-within .plan__crest {
+      transform: none;
     }
     [data-animate-onview],
     [data-animate-onview].is-visible {

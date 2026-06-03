@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.cloud.CloudVaultSealedText
@@ -46,8 +47,7 @@ class TextExpansionSyncManager(
             registry.registerSelf(uid = uid, keypair = keypair)
 
             val vaultKey =
-                unlockVaultKey(uid, keypair)
-                    ?: return@withContext Result.failure(IllegalStateException("Cloud vault key is not active on this device yet. Please approve this device from your Mac/iPhone."))
+                AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore).keyData
 
             uploadPendingSnippets(uid, vaultKey, keypair)
             downloadAndMergeSnippets(uid, vaultKey, keypair)

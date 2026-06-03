@@ -381,7 +381,7 @@ private fun CloudSessionSheetHeader(row: CloudConversationSearchRow, onDismiss: 
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                listOfNotNull(row.provider, row.projectName).joinToString(" · ")
+                listOfNotNull(row.provider).joinToString(" · ")
                     .ifBlank { "Encrypted cloud session" },
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -433,4 +433,3 @@ private fun CloudSessionSheetBody(modifier: Modifier, isLoading: Boolean, errorT
         }
     }
 }
-

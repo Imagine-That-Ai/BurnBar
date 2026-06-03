@@ -4,14 +4,119 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
+import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 private const val VAL_3 = 3
+
+private val missionCloudJson =
+    Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = false
+    }
+
+@Serializable
+private data class AndroidMissionPrivatePayload(
+    val title: String? = null,
+    val prompt: String? = null,
+    val targetProject: String? = null,
+    val liveSummary: String? = null,
+    val resultPreview: String? = null,
+    val errorMessage: String? = null,
+    val approvalTitle: String? = null,
+    val approvalMessage: String? = null,
+    val personaScopeJSON: String? = null,
+    val synthesisSummary: String? = null,
+)
+
+@Serializable
+private data class AndroidMissionEventPrivatePayload(
+    val title: String? = null,
+    val message: String,
+    val fullMessage: String? = null,
+    val toolName: String? = null,
+    val artifactPath: String? = null,
+    val changedFilePath: String? = null,
+)
+
+private fun sealedMissionPayloadMap(payload: AndroidMissionPrivatePayload, key: AndroidCloudVaultResolvedKey): Map<String, Any> =
+    CloudVaultCrypto.sealedPayloadMap(
+        CloudVaultCrypto.sealPayload(
+            missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
+            key.keyData,
+            key.vaultKeyID,
+        ),
+    )
+
+private fun sealedMissionEventPayloadMap(payload: AndroidMissionEventPrivatePayload, key: AndroidCloudVaultResolvedKey): Map<String, Any> =
+    CloudVaultCrypto.sealedPayloadMap(
+        CloudVaultCrypto.sealPayload(
+            missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
+            key.keyData,
+            key.vaultKeyID,
+        ),
+    )
+
+private fun openMissionPayload(raw: Any?, vaultKey: ByteArray?): AndroidMissionPrivatePayload? {
+    val key = vaultKey ?: return null
+    val envelope = CloudVaultCrypto.sealedPayloadFromMap(raw as? Map<*, *>) ?: return null
+    return runCatching {
+        missionCloudJson.decodeFromString<AndroidMissionPrivatePayload>(
+            CloudVaultCrypto.openPayload(envelope, key).toString(Charsets.UTF_8),
+        )
+    }.getOrNull()
+}
+
+private fun openMissionEventPayload(raw: Any?, vaultKey: ByteArray?): AndroidMissionEventPrivatePayload? {
+    val key = vaultKey ?: return null
+    val envelope = CloudVaultCrypto.sealedPayloadFromMap(raw as? Map<*, *>) ?: return null
+    return runCatching {
+        missionCloudJson.decodeFromString<AndroidMissionEventPrivatePayload>(
+            CloudVaultCrypto.openPayload(envelope, key).toString(Charsets.UTF_8),
+        )
+    }.getOrNull()
+}
+
+private suspend fun sealedMissionStateUpdate(
+    uid: String,
+    firestore: FirebaseFirestore,
+    payload: Map<String, Any>,
+    liveSummary: String? = null,
+    resultPreview: String? = null,
+    errorMessage: String? = null,
+    approvalTitle: String? = null,
+    approvalMessage: String? = null,
+): Map<String, Any> {
+    val key = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
+    val sanitized = payload.toMutableMap()
+    listOf("liveSummary", "resultPreview", "errorMessage", "approvalTitle", "approvalMessage").forEach { sanitized.remove(it) }
+    val privatePayload =
+        AndroidMissionPrivatePayload(
+            liveSummary = liveSummary,
+            resultPreview = resultPreview,
+            errorMessage = errorMessage,
+            approvalTitle = approvalTitle,
+            approvalMessage = approvalMessage,
+        )
+    sanitized["contentSealed"] = true
+    sanitized["sealedStateSchemaVersion"] = 1
+    sanitized["sealedStateVaultKeyID"] = key.vaultKeyID
+    sanitized["sealedStatePayload"] = sealedMissionPayloadMap(privatePayload, key)
+    return sanitized
+}
 
 enum class HermesSkillRunID(val wire: String, val displayLabel: String) {
     WHAT_HAPPENED("what_happened", "What Happened?"),
@@ -66,6 +171,7 @@ enum class SkillRunEventImportance(val wire: String) {
 class CLIAgentMissionDispatcher(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     /**
      * Hermes Square §6.4 — fan-out dispatch. Writes one mission group
@@ -104,19 +210,26 @@ class CLIAgentMissionDispatcher(
         if (validationMessage != null) throw DispatchException(validationMessage)
 
         val plan = planFanOutDispatch(title, prompt, runtimeTokens)
+        val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val groupRef =
             firestore.collection("users").document(uid)
                 .collection("mission_groups").document(plan.groupID)
         val batch = firestore.batch()
         batch.set(
             groupRef,
-            fanOutGroupPayload(
-                plan = plan,
-                missionKind = missionKind,
+            CLIAgentMissionRequestPayloadFactory.sealGroupPayload(
+                fanOutGroupPayload(
+                    plan = plan,
+                    missionKind = missionKind,
+                    targetProject = targetProject,
+                    runtimeTokens = runtimeTokens,
+                    parallelismLimit = parallelismLimit,
+                    mergeStrategy = mergeStrategy,
+                ),
+                title = plan.trimmedTitle,
+                prompt = plan.trimmedPrompt,
                 targetProject = targetProject,
-                runtimeTokens = runtimeTokens,
-                parallelismLimit = parallelismLimit,
-                mergeStrategy = mergeStrategy,
+                key = resolvedKey,
             ),
         )
         appendFanOutChildMissionWrites(
@@ -137,6 +250,7 @@ class CLIAgentMissionDispatcher(
                 sourceSurface = sourceSurface,
                 deliveryMode = deliveryMode,
                 parentHermesThreadID = parentHermesThreadID,
+                key = resolvedKey,
             ),
         )
 
@@ -174,8 +288,9 @@ class CLIAgentMissionDispatcher(
         if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
 
         val id = UUID.randomUUID().toString()
+        val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val payload =
-            CLIAgentMissionRequestPayloadFactory.build(
+            CLIAgentMissionRequestPayloadFactory.buildSealed(
                 id = id,
                 title = title,
                 prompt = trimmedPrompt,
@@ -195,6 +310,7 @@ class CLIAgentMissionDispatcher(
                 deliveryMode = deliveryMode,
                 parentHermesThreadID = parentHermesThreadID,
                 presentationMode = presentationMode,
+                key = resolvedKey,
             )
         val requestRef =
             firestore.collection("users").document(uid)
@@ -203,13 +319,14 @@ class CLIAgentMissionDispatcher(
             .set(requestRef, payload)
             .set(
                 requestRef.collection("events").document("000001"),
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                     label = if (missionKind.trim().equals("chat", ignoreCase = true)) "Chat" else "Mission",
                     source =
                     sourceSurface?.trim()?.takeIf { it.isNotEmpty() }
                         ?: if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
                     sourceSkillID = sourceSkillID,
                     deliveryMode = deliveryMode,
+                    key = resolvedKey,
                 ),
             )
             .commit()
@@ -226,6 +343,7 @@ class CLIAgentMissionDispatcher(
         val requestRef =
             firestore.collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(requestID)
+        val vaultKey = runCatching { AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData }.getOrNull()
         var latestSnapshot: DocumentSnapshot? = null
         var latestEvents: List<CLIAgentMissionEvent> = emptyList()
 
@@ -234,6 +352,7 @@ class CLIAgentMissionDispatcher(
                 latestSnapshot?.toMissionSnapshot(
                     fallbackID = requestID,
                     eventOverride = latestEvents.takeIf { it.isNotEmpty() },
+                    vaultKey = vaultKey,
                 )
             if (mission != null) trySend(mission)
         }
@@ -256,7 +375,7 @@ class CLIAgentMissionDispatcher(
                         close(error)
                         return@addSnapshotListener
                     }
-                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent() }
+                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent(vaultKey) }
                     emitLatest()
                 }
         awaitClose {
@@ -266,24 +385,19 @@ class CLIAgentMissionDispatcher(
     }
 
     suspend fun respondToApproval(requestID: String, approve: Boolean) {
-        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before approving Mac agent missions.")
-        firestore.collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
-            .set(
-                mapOf(
-                    "approvalStatus" to if (approve) "approved" else "rejected",
-                    "approvalRespondedAt" to Instant.now().toString(),
-                    "liveSummary" to
-                        if (approve) {
-                            "Approval granted from mobile. Waiting for the Mac to resume."
-                        } else {
-                            "Approval rejected from mobile."
-                        },
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                ),
-                com.google.firebase.firestore.SetOptions.merge(),
-            )
-            .await()
+        auth.currentUser?.uid ?: throw DispatchException("Sign in before approving Mac agent missions.")
+        // Bind the approve/reject to this trusted native escrow device via the
+        // App-Check-enforced callable. The bare Firestore status flip is no
+        // longer accepted by firestore.rules (it must carry approvedByDeviceId
+        // resolving to a trusted escrow device), so a stolen owner token cannot
+        // self-approve a high-risk mission. The deviceId here is the same id
+        // AndroidEscrowDeviceRegistry registers/trusts.
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        securityClient.respondMissionApproval(
+            requestId = requestID,
+            approve = approve,
+            deviceId = deviceId,
+        )
     }
 
     suspend fun cancelMission(requestID: String) {
@@ -291,10 +405,15 @@ class CLIAgentMissionDispatcher(
         firestore.collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(requestID)
             .set(
-                mapOf(
-                    "status" to "cancelled",
-                    "liveSummary" to "Mission cancelled by user.",
-                    "updatedAt" to FieldValue.serverTimestamp(),
+                sealedMissionStateUpdate(
+                    uid = uid,
+                    firestore = firestore,
+                    payload =
+                        mapOf(
+                            "status" to "cancelled",
+                            "updatedAt" to FieldValue.serverTimestamp(),
+                        ),
+                    liveSummary = "Mission cancelled by user.",
                 ),
                 com.google.firebase.firestore.SetOptions.merge(),
             )
@@ -375,6 +494,90 @@ data class AgentImportJobSnapshot(
 }
 
 object CLIAgentMissionRequestPayloadFactory {
+    @Suppress("LongParameterList")
+    fun buildSealed(
+        id: String,
+        title: String,
+        prompt: String,
+        missionKind: String,
+        requestedRuntime: String,
+        targetProject: String?,
+        depth: String,
+        approvalMode: String,
+        commandsAllowed: Boolean,
+        fileEditsAllowed: Boolean,
+        requestedModelID: String? = null,
+        clientThreadID: String? = null,
+        parentSessionID: String? = null,
+        resumeAction: String? = null,
+        sourceSkillID: String? = null,
+        sourceSurface: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        parentHermesThreadID: String? = null,
+        presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+        key: AndroidCloudVaultResolvedKey,
+        now: Instant = Instant.now(),
+    ): Map<String, Any> {
+        val legacy =
+            build(
+                id = id,
+                title = title,
+                prompt = prompt,
+                missionKind = missionKind,
+                requestedRuntime = requestedRuntime,
+                targetProject = targetProject,
+                depth = depth,
+                approvalMode = approvalMode,
+                commandsAllowed = commandsAllowed,
+                fileEditsAllowed = fileEditsAllowed,
+                requestedModelID = requestedModelID,
+                clientThreadID = clientThreadID,
+                parentSessionID = parentSessionID,
+                resumeAction = resumeAction,
+                sourceSkillID = sourceSkillID,
+                sourceSurface = sourceSurface,
+                deliveryMode = deliveryMode,
+                parentHermesThreadID = parentHermesThreadID,
+                presentationMode = presentationMode,
+                now = now,
+            )
+        val isChat = missionKind.trim().equals("chat", ignoreCase = true)
+        return applySealedPrivatePayload(
+            payload = legacy,
+            privatePayload =
+                AndroidMissionPrivatePayload(
+                    title = title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" },
+                    prompt = prompt.trim(),
+                    targetProject = targetProject?.trim()?.takeIf { it.isNotEmpty() },
+                    liveSummary =
+                        if (isChat) {
+                            "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."
+                        } else {
+                            "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it."
+                        },
+                ),
+            key = key,
+        )
+    }
+
+    fun sealGroupPayload(
+        payload: Map<String, Any>,
+        title: String,
+        prompt: String,
+        targetProject: String?,
+        key: AndroidCloudVaultResolvedKey,
+    ): Map<String, Any> =
+        applySealedPrivatePayload(
+            payload = payload,
+            privatePayload =
+                AndroidMissionPrivatePayload(
+                    title = title.trim().ifBlank { "Fan-out mission" },
+                    prompt = prompt.trim(),
+                    targetProject = targetProject?.trim()?.takeIf { it.isNotEmpty() },
+                ),
+            key = key,
+        )
+
     @Suppress("LongParameterList")
     fun build(
         id: String,
@@ -457,6 +660,69 @@ object CLIAgentMissionRequestPayloadFactory {
         put("skillStepID", skillStepID)
         put("isError", false)
         sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
+    }
+
+    fun initialQueuedEventSealed(
+        label: String = "Mission",
+        source: String = "android",
+        sourceSkillID: String? = null,
+        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        eventImportance: SkillRunEventImportance = SkillRunEventImportance.NORMAL,
+        skillStepID: String = "queued",
+        now: Instant = Instant.now(),
+        key: AndroidCloudVaultResolvedKey,
+    ): Map<String, Any> {
+        val legacy =
+            initialQueuedEvent(
+                label = label,
+                source = source,
+                sourceSkillID = sourceSkillID,
+                deliveryMode = deliveryMode,
+                eventImportance = eventImportance,
+                skillStepID = skillStepID,
+                now = now,
+            )
+        val sealed = legacy.toMutableMap()
+        val privatePayload =
+            AndroidMissionEventPrivatePayload(
+                title = legacy["title"] as? String,
+                message = legacy["message"] as? String ?: "$label queued from this device.",
+                fullMessage = legacy["fullMessage"] as? String,
+                toolName = legacy["toolName"] as? String,
+                artifactPath = legacy["artifactPath"] as? String,
+                changedFilePath = legacy["changedFilePath"] as? String,
+            )
+        listOf("title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath").forEach { sealed.remove(it) }
+        sealed["contentSealed"] = true
+        sealed["sealedSchemaVersion"] = 1
+        sealed["vaultKeyID"] = key.vaultKeyID
+        sealed["sealedPayload"] = sealedMissionEventPayloadMap(privatePayload, key)
+        return sealed
+    }
+
+    private fun applySealedPrivatePayload(
+        payload: Map<String, Any>,
+        privatePayload: AndroidMissionPrivatePayload,
+        key: AndroidCloudVaultResolvedKey,
+    ): Map<String, Any> {
+        val sealed = payload.toMutableMap()
+        listOf(
+            "title",
+            "prompt",
+            "targetProject",
+            "liveSummary",
+            "resultPreview",
+            "errorMessage",
+            "approvalTitle",
+            "approvalMessage",
+            "personaScopeJSON",
+            "synthesisSummary",
+        ).forEach { sealed.remove(it) }
+        sealed["contentSealed"] = true
+        sealed["sealedSchemaVersion"] = 1
+        sealed["vaultKeyID"] = key.vaultKeyID
+        sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key)
+        return sealed
     }
 }
 
@@ -570,16 +836,22 @@ data class CLIAgentMissionEvent(
 /** Public alias used by mission/host code outside this file. Mirrors
  *  the iOS `CLIAgentMissionSnapshot` decoder so the mission console host
  *  can decode list-listener documents without re-implementing the parser. */
-fun DocumentSnapshot.toMissionSnapshotOrNull(): CLIAgentMissionSnapshot? = toMissionSnapshot(fallbackID = id)
+fun DocumentSnapshot.toMissionSnapshotOrNull(vaultKey: ByteArray? = null): CLIAgentMissionSnapshot? = toMissionSnapshot(fallbackID = id, vaultKey = vaultKey)
 
-private fun DocumentSnapshot.toMissionSnapshot(fallbackID: String, eventOverride: List<CLIAgentMissionEvent>? = null): CLIAgentMissionSnapshot? {
-    val title = getString("title") ?: return null
+private fun DocumentSnapshot.toMissionSnapshot(
+    fallbackID: String,
+    eventOverride: List<CLIAgentMissionEvent>? = null,
+    vaultKey: ByteArray? = null,
+): CLIAgentMissionSnapshot? {
+    val requestPrivate = openMissionPayload(get("sealedPayload"), vaultKey)
+    val statePrivate = openMissionPayload(get("sealedStatePayload"), vaultKey)
+    val title = requestPrivate?.title ?: getString("title") ?: return null
     val status = getString("status") ?: return null
     val rawEvents = get("events") as? List<*> ?: emptyList<Any>()
     val events =
         eventOverride ?: rawEvents.mapNotNull { raw ->
             val map = raw as? Map<*, *> ?: return@mapNotNull null
-            map.toMissionEvent()
+            map.toMissionEvent(vaultKey)
         }
     return CLIAgentMissionSnapshot(
         id = getString("id") ?: fallbackID,
@@ -590,43 +862,45 @@ private fun DocumentSnapshot.toMissionSnapshot(fallbackID: String, eventOverride
         selectedRuntime = getString("selectedRuntime"),
         selectedRuntimeName = getString("selectedRuntimeName"),
         selectedModelID = getString("selectedModelID")?.trim()?.takeIf { it.isNotEmpty() },
-        targetProject = getString("targetProject")?.trim()?.takeIf { it.isNotEmpty() },
+        targetProject = (requestPrivate?.targetProject ?: getString("targetProject"))?.trim()?.takeIf { it.isNotEmpty() },
         sourceSkillID = getString("sourceSkillID")?.trim()?.takeIf { it.isNotEmpty() },
         sourceSurface = getString("sourceSurface")?.trim()?.takeIf { it.isNotEmpty() },
         deliveryMode = SkillRunDeliveryMode.fromWire(getString("deliveryMode")),
         parentHermesThreadID = getString("parentHermesThreadID")?.trim()?.takeIf { it.isNotEmpty() },
-        liveSummary = getString("liveSummary"),
-        resultPreview = getString("resultPreview"),
-        errorMessage = getString("errorMessage"),
+        liveSummary = statePrivate?.liveSummary ?: requestPrivate?.liveSummary ?: getString("liveSummary"),
+        resultPreview = statePrivate?.resultPreview ?: requestPrivate?.resultPreview ?: getString("resultPreview"),
+        errorMessage = statePrivate?.errorMessage ?: requestPrivate?.errorMessage ?: getString("errorMessage"),
         sessionID = getString("sessionId"),
         approvalRequestId = getString("approvalRequestId"),
         approvalStatus = getString("approvalStatus"),
-        approvalTitle = getString("approvalTitle"),
-        approvalMessage = getString("approvalMessage"),
+        approvalTitle = statePrivate?.approvalTitle ?: requestPrivate?.approvalTitle ?: getString("approvalTitle"),
+        approvalMessage = statePrivate?.approvalMessage ?: requestPrivate?.approvalMessage ?: getString("approvalMessage"),
         events = events.sortedWith(compareBy<CLIAgentMissionEvent> { it.sequence }.thenBy { it.timestamp }),
         createdAt = getString("createdAt")?.let { runCatching { Instant.parse(it) }.getOrNull() },
     )
 }
 
-private fun DocumentSnapshot.toMissionEvent(): CLIAgentMissionEvent? = data?.toMissionEvent()
+private fun DocumentSnapshot.toMissionEvent(vaultKey: ByteArray? = null): CLIAgentMissionEvent? = data?.toMissionEvent(vaultKey)
 
-private fun Map<*, *>.toMissionEvent(): CLIAgentMissionEvent? {
+private fun Map<*, *>.toMissionEvent(vaultKey: ByteArray? = null): CLIAgentMissionEvent? {
     val phase = this["phase"] as? String ?: return null
+    val privatePayload = openMissionEventPayload(this["sealedPayload"], vaultKey)
+    val message = privatePayload?.message ?: this["message"] as? String ?: return null
     return CLIAgentMissionEvent(
         sequence = (this["sequence"] as? Number)?.toInt() ?: 0,
         timestamp = this["timestamp"] as? String ?: return null,
         kind = this["kind"] as? String ?: phase,
         phase = phase,
-        title = this["title"] as? String,
-        message = this["message"] as? String ?: return null,
-        fullMessage = this["fullMessage"] as? String,
+        title = privatePayload?.title ?: this["title"] as? String,
+        message = message,
+        fullMessage = privatePayload?.fullMessage ?: this["fullMessage"] as? String,
         messageLength = (this["messageLength"] as? Number)?.toInt(),
         messageTruncated = this["messageTruncated"] as? Boolean ?: false,
         runtime = this["runtime"] as? String,
         source = this["source"] as? String,
-        toolName = this["toolName"] as? String,
-        artifactPath = this["artifactPath"] as? String,
-        changedFilePath = this["changedFilePath"] as? String,
+        toolName = privatePayload?.toolName ?: this["toolName"] as? String,
+        artifactPath = privatePayload?.artifactPath ?: this["artifactPath"] as? String,
+        changedFilePath = privatePayload?.changedFilePath ?: this["changedFilePath"] as? String,
         sourceSkillID = this["sourceSkillID"] as? String,
         deliveryMode = SkillRunDeliveryMode.fromWire(this["deliveryMode"] as? String),
         eventImportance = SkillRunEventImportance.fromWire(this["eventImportance"] as? String),

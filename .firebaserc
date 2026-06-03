@@ -5,8 +5,14 @@
   "targets": {
     "burnbar": {
       "hosting": {
-        "marketing": ["burnbar"]
+        "marketing": [
+          "burnbar"
+        ],
+        "console": [
+          "burnbar-console"
+        ]
       }
     }
-  }
+  },
+  "etags": {}
 }

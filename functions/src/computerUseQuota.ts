@@ -15,6 +15,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
 import type { ComputerUseQuotaUsageDoc } from "./types.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -73,7 +74,7 @@ export const recomputeComputerUseQuotaUsage = onSchedule(
   {
     schedule: "every 60 minutes",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     timeoutSeconds: 540,
   },
   async () => {

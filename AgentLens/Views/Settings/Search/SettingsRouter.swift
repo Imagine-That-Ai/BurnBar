@@ -118,6 +118,7 @@ final class SettingsRouter: @unchecked Sendable {
              .devicesAndSyncRoot,
              .textExpansionRoot,
              .mediaRoot,
+             .dataControlCenterRoot,
              .computerUseRoot:
             return []
 

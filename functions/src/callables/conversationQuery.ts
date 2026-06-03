@@ -79,7 +79,6 @@ export function assertConversationFacetCombination(
 export interface ConversationFacetFilters extends ConversationFacetInClauseFlags {
   providers: readonly string[];
   models: readonly string[];
-  projectName?: string;
   deviceId?: string;
   sourceType?: string;
   dateFrom?: string;
@@ -108,7 +107,6 @@ export function applyConversationFacetFilters(query: Query, filters: Conversatio
   } else if (filters.models.length === 1) {
     filtered = filtered.where("model", "==", filters.models[0]);
   }
-  if (filters.projectName) filtered = filtered.where("projectName", "==", filters.projectName);
   if (filters.deviceId) filtered = filtered.where("deviceId", "==", filters.deviceId);
   if (filters.sourceType) filtered = filtered.where("sourceType", "==", filters.sourceType);
   if (filters.dateFrom) filtered = filtered.where("startTime", ">=", Timestamp.fromDate(new Date(filters.dateFrom)));
@@ -140,7 +138,6 @@ export function mapSessionLogManifestRow(id: string, docData: Record<string, unk
   return stripUndefinedObject({
     id,
     provider: docData.provider,
-    projectName: docData.projectName,
     sourceType: docData.sourceType,
     deviceId: docData.deviceId,
     model: docData.model,
@@ -154,7 +151,6 @@ export function mapSessionLogManifestRow(id: string, docData: Record<string, unk
     cacheReadTokens: docData.cacheReadTokens,
     totalTokens: docData.totalTokens,
     costUSD: docData.costUSD,
-    workingDirectory: docData.workingDirectory,
     toolTags: docData.toolTags,
     durationSeconds: docData.durationSeconds,
     sealedTitle: docData.sealedTitle,

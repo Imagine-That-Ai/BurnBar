@@ -13,7 +13,12 @@ import OpenBurnBarCore
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
 final class OpenBurnBarDatabase: Sendable {
-    private static let latestMigrationIdentifier = "v45_conversation_working_directory"
+    /// The identifier of the last registered migration, derived from the migrator
+    /// so the backup gate always tracks the newest schema and self-heals on every
+    /// future migration. Hardcoding this previously pinned it to a stale "v45",
+    /// which silently skipped the integrity-check + pre-migration backup on a
+    /// v45→v46 upgrade (any destructive v46+ step then ran with no safety net).
+    private static var latestMigrationIdentifier: String { migrator.migrations.last ?? "" }
 
     let dbQueue: any DatabaseWriter
 
@@ -1612,6 +1617,32 @@ final class OpenBurnBarDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v47_conversation_tombstones") { db in
+            // Cross-device delete propagation (B-DATA-2). Mirrors the proven
+            // `text_expansion_snippets` soft-delete substrate: `deletedAt` marks a
+            // tombstone that survives sync and propagates to other devices, while
+            // `version` is a monotonic counter bumped on every mutation. The
+            // counter is intentionally general — Phase-2 conflict convergence
+            // (last-writer-wins by version) reuses it for non-delete updates too.
+            guard try db.tableExists("conversations") else { return }
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(conversations)")
+                .compactMap { $0["name"] as? String }
+            if !columns.contains("deletedAt") {
+                try db.alter(table: "conversations") { t in
+                    t.add(column: "deletedAt", .datetime)
+                }
+            }
+            if !columns.contains("version") {
+                try db.alter(table: "conversations") { t in
+                    t.add(column: "version", .integer).notNull().defaults(to: 1)
+                }
+            }
+            // Tombstone-aware reads filter on `deletedAt IS NULL`; a covering
+            // index keeps the live-conversation scans cheap and lets the GC sweep
+            // locate expired tombstones without a full table scan.
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS conversations_deleted_idx ON conversations(deletedAt)")
+        }
+
         return migrator
     }
 
@@ -1753,6 +1784,7 @@ struct WorkingDirectoryBackfillService {
                     SELECT id, keyFiles
                     FROM conversations
                     WHERE workingDirectory IS NULL
+                      AND deletedAt IS NULL
                       AND keyFiles IS NOT NULL
                       AND keyFiles != ''
                       AND keyFiles != '[]'

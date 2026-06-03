@@ -10,22 +10,22 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { createHash } from "node:crypto";
 import { errorCode, isRecord } from "./guards.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-const REGION = "us-central1";
+const REGION = FUNCTIONS_REGION;
 const EVENT_COLLECTION = "agent_notification_events";
 const REPLY_COLLECTION = "agent_notification_replies";
 const DEVICE_COLLECTION = "devices";
 const ACTIVE_TTL_MS = 90_000;
-const MAX_PREVIEW_CHARS = 180;
+const GENERIC_PREVIEW = "OpenBurnBar has a new agent reply.";
 
 export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
 export interface AgentReplyMessage {
   id: string;
   role: string;
-  text: string;
+  text?: string;
   timestamp?: unknown;
   isError?: boolean;
 }
@@ -66,9 +66,18 @@ export interface DeviceNotificationState {
 
 export interface SubmitAgentNotificationReplyRequest {
   eventId: string;
-  replyText: string;
+  sealedReplyPayload: CloudVaultSealedPayload;
+  vaultKeyID: string;
   deviceId?: string;
   clientReplyId?: string;
+}
+
+export interface CloudVaultSealedPayload {
+  schemaVersion: number;
+  algorithm: "AES-256-GCM";
+  keyVersion: number;
+  vaultKeyID: string;
+  sealedBoxBase64: string;
 }
 
 export interface AgentNotificationReplyCommand {
@@ -78,7 +87,10 @@ export interface AgentNotificationReplyCommand {
   threadId: string;
   runtime: string;
   sourceKind: AgentNotificationSourceKind;
-  replyText: string;
+  contentSealed: true;
+  sealedSchemaVersion: 1;
+  vaultKeyID: string;
+  sealedReplyPayload: CloudVaultSealedPayload;
   deviceId?: string;
   status: "queued";
   createdAt: FirebaseFirestore.Timestamp;
@@ -87,6 +99,20 @@ export interface AgentNotificationReplyCommand {
 }
 
 export function latestAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
+  const sealedRole = stringValue(data?.lastMessageRole);
+  const sealedMessageId = stringValue(data?.lastAssistantMessageID);
+  if (
+    (data?.contentSealed === true || data?.sealedPayload !== undefined) &&
+    sealedRole === "assistant" &&
+    sealedMessageId
+  ) {
+    return {
+      id: sealedMessageId,
+      role: "assistant",
+      timestamp: data?.updatedAt ?? data?.updatedAtMillis,
+      isError: false,
+    };
+  }
   const messages = Array.isArray(data?.messages) ? data?.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const raw = isRecord(messages[index]) ? messages[index] : undefined;
@@ -113,7 +139,7 @@ export function shouldCreateNotificationEvent(args: {
   const after = latestAssistantReply(args.after);
   if (!after || after.isError) return false;
   const before = latestAssistantReply(args.before);
-  return !before || before.id !== after.id || before.text !== after.text;
+  return !before || before.id !== after.id;
 }
 
 export function normalizeRuntime(sourceKind: AgentNotificationSourceKind, data: Record<string, unknown>): string {
@@ -154,18 +180,8 @@ export function eventIdFor(args: {
   sourceKind: AgentNotificationSourceKind;
   threadId: string;
   messageId: string;
-  messageText?: string;
 }): string {
-  const contentHash = args.messageText
-    ? `_${createHash("sha256").update(args.messageText).digest("hex").slice(0, 16)}`
-    : "";
-  return `${args.sourceKind}_${safeId(args.threadId)}_${safeId(args.messageId)}${contentHash}`;
-}
-
-export function truncatePreview(text: string): string {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= MAX_PREVIEW_CHARS) return normalized;
-  return `${normalized.slice(0, MAX_PREVIEW_CHARS - 1).trimEnd()}…`;
+  return `${args.sourceKind}_${safeId(args.threadId)}_${safeId(args.messageId)}`;
 }
 
 export function shouldSuppressForDevice(
@@ -261,7 +277,6 @@ export async function createEventFromThreadWrite(args: {
     sourceKind: args.sourceKind,
     threadId: args.threadId,
     messageId: reply.id,
-    messageText: reply.text,
   });
   const now = Timestamp.now();
   const nowMillis = Date.now();
@@ -275,7 +290,7 @@ export async function createEventFromThreadWrite(args: {
     runtime,
     providerLabel: label,
     title: `${label} replied`,
-    preview: truncatePreview(reply.text),
+    preview: GENERIC_PREVIEW,
     createdAt: now,
     createdAtMillis: nowMillis,
     updatedAt: now,

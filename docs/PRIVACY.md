@@ -1,6 +1,6 @@
 # OpenBurnBar Privacy Policy
 
-**Last updated: May 15, 2026**
+**Last updated: June 3, 2026**
 
 ## Summary
 
@@ -28,8 +28,8 @@ If you choose to sign in with Google or Apple and enable cloud sync, OpenBurnBar
 
 - Usage row summaries (token counts, cost estimates, timestamps, provider names)
 - Provider account metadata and quota snapshots (redacted labels, provider IDs, refresh status, limits, remaining quota)
-- In-app chat thread metadata (thread IDs, titles/previews when enabled, timestamps, counts)
-- Conversation/session metadata and sync watermarks
+- In-app chat thread metadata (thread IDs, timestamps, counts; titles/previews/message bodies are sealed when backed up)
+- Conversation/session routing metadata and sync watermarks (private recall fields are sealed)
 - Encrypted text-expansion snippets, including sealed titles, triggers, bodies, scopes, and keyed trigger hashes
 - Encrypted BurnBar Pro session-log search metadata, including sealed titles/snippets and keyed token/semantic hashes
 - Shared artifact metadata and revisions for collaboration features
@@ -47,13 +47,15 @@ LLM rewrite snippets are previewed before insertion and use only OpenBurnBar-own
 
 OpenBurnBar can back up chat message content and session history only after you explicitly enable the relevant backup setting. Hosted cloud backup writes for chat message bodies, conversation metadata, session-log manifests, session-log chunks, and Hermes relay traffic require an active `burnbar_pro` entitlement or a legacy active `hosted_quota_sync` entitlement.
 
-BurnBar Pro searchable hosted session logs are encrypted on device before upload. Full session bodies are sealed with AES-GCM and uploaded to Firebase Storage as ciphertext. Firestore stores encrypted titles/snippets/previews, non-secret hashes, HMAC token hashes, keyed semantic hashes, and opaque semantic posting edges for matching. OpenBurnBar servers can keep the index fresh and run encrypted token/semantic matching, but they do not receive the vault key, plaintext embeddings, or plaintext needed to decrypt session bodies, titles, or snippets. Apps and explicitly configured MCP tools decrypt matching results locally after the device has an allowed wrapped vault key.
+Chat threads, mobile assistant chats, CLI session mirrors, mobile mission prompts/results/events, text snippets, and conversation recall metadata are sealed on device with the Cloud Vault key before Firestore receives them. Firestore keeps routing/count metadata such as ids, runtimes, timestamps, status, message counts, and vault key ids, but rules reject the old plaintext title/preview/message/prompt/result fields on those collections.
 
-Backed-up chat and session data may include prompts, assistant responses, file paths, project names, model names, code snippets, and other content present in your local agent logs or in-app chats. Do not enable these backup settings for repositories or conversations you do not want stored in Firebase.
+BurnBar Pro searchable hosted session logs are also encrypted on device before upload. Full session bodies are sealed with AES-GCM and uploaded to Firebase Storage as ciphertext. Firestore stores encrypted titles/snippets/previews, non-secret hashes, HMAC token hashes, keyed semantic hashes, and opaque semantic posting edges for matching. OpenBurnBar servers can keep the index fresh and run encrypted token/semantic matching, but they do not receive the vault key, plaintext embeddings, or plaintext needed to decrypt session bodies, titles, or snippets. Apps and explicitly configured MCP tools decrypt matching results locally after the device has an allowed wrapped vault key.
 
-### Optional iCloud Mirror (opt-in only)
+Backed-up chat and session ciphertext may contain prompts, assistant responses, file paths, project names, model names, code snippets, and other content present in your local agent logs or in-app chats. Do not enable these backup settings for repositories or conversations you do not want stored in Firebase, even as encrypted data.
 
-If you enable iCloud session mirroring, OpenBurnBar copies selected local session log files into your personal Apple iCloud Drive app container. This is separate from Firebase and uses Apple iCloud storage under your Apple ID. Mirrored files can contain prompts, assistant responses, file paths, and code snippets because they are copies of the original session logs.
+### Optional iCloud Mirror
+
+The legacy raw iCloud session-file mirror is disabled in current builds. OpenBurnBar does not create new raw `SessionMirror` copies until a sealed iCloud archive format ships. Existing users may still have old mirrored files in their personal Apple iCloud Drive app container; run `scripts/privacy/scrub-icloud-session-mirror.sh` for a dry-run inventory and `scripts/privacy/scrub-icloud-session-mirror.sh --apply` to remove those legacy raw copies from this Mac's iCloud Drive folder.
 
 ### Hosted Quota Refresh and Provider Credentials (opt-in, paid entitlement)
 
@@ -76,7 +78,7 @@ If you choose to notarize a Computer Use audit session, OpenBurnBar submits only
 ## Data We Never Collect
 
 - Your API keys or credentials for local-only usage tracking
-- The content of your source code or agent conversations unless you explicitly enable chat/session backup or iCloud mirroring
+- The plaintext content of your source code or agent conversations unless you explicitly send it through an optional hosted LLM/provider path. Chat/session cloud backup stores ciphertext; the legacy raw iCloud mirror is disabled for new writes.
 - Personal identifying information beyond what your Apple or Google account provides for sign-in
 - Any data from other applications
 - Payment card numbers; subscriptions are handled by Apple, Google Play, or Stripe
@@ -90,7 +92,7 @@ When cloud sync is enabled:
 | Service | Purpose | Privacy Policy |
 |---------|---------|----------------|
 | Firebase / Google Cloud | Authentication, optional Firestore sync, Cloud Functions, Secret Manager, hosted quota infrastructure | [firebase.google.com/support/privacy](https://firebase.google.com/support/privacy) |
-| Apple iCloud | Optional session-log mirroring in your personal iCloud Drive container | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
+| Apple iCloud | Legacy personal iCloud Drive mirror cleanup and future sealed archive support | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
 | Apple App Store / StoreKit | Subscription purchase, entitlement verification, and billing status | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
 | Google Play Billing | Android subscription purchase and entitlement verification | [policies.google.com/privacy](https://policies.google.com/privacy) |
 | Stripe | Web subscription checkout, customer portal, entitlement webhook processing | [stripe.com/privacy](https://stripe.com/privacy) |
@@ -113,7 +115,7 @@ You can:
 - **Delete cloud data** by signing out and selecting "Delete my data" in Settings → Account
 - **Disable all optional features** at any time in Settings
 - **Remove hosted quota credentials** by deleting the provider account from OpenBurnBar
-- **Delete iCloud mirrored files** from your iCloud Drive app container
+- **Delete legacy iCloud mirrored files** from your iCloud Drive app container
 
 ---
 

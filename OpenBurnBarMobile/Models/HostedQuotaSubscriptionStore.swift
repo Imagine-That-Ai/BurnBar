@@ -1,5 +1,6 @@
 import Foundation
 import StoreKit
+import OpenBurnBarCore
 #if os(iOS)
 import UIKit
 #endif
@@ -68,6 +69,8 @@ enum OpenBurnBarProductCatalog {
     static let cloudAnnualProductID = "com.openburnbar.pro.annual"
     static let cloudProMonthlyProductID = "com.openburnbar.proMax.v2.monthly"
     static let cloudProAnnualProductID = "com.openburnbar.proMax.annual"
+    static let cloudUltraMonthlyProductID = "com.openburnbar.ultra.monthly"
+    static let cloudUltraAnnualProductID = "com.openburnbar.ultra.annual.v2"
     static let agentControl100ActionsProductID = "com.openburnbar.agentControl.actions100"
     static let flooRelay50GBProductID = "com.openburnbar.floo.relay50gb"
     static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
@@ -119,6 +122,28 @@ enum OpenBurnBarProductCatalog {
             entitlementID: "burnbar_pro_max",
             role: .subscription,
             included: "Everything in BurnBar Cloud Pro monthly with annual billing.",
+            disclosure: "1 year, auto-renews annually. No introductory trial.",
+            topUpKind: nil
+        ),
+        OpenBurnBarStoreProduct(
+            id: cloudUltraMonthlyProductID,
+            title: "BurnBar Cloud Ultra",
+            cadence: "Monthly",
+            fallbackDisplayPrice: "$59.99",
+            entitlementID: "burnbar_ultra",
+            role: .subscription,
+            included: "Everything in BurnBar Cloud Pro plus 10x agent memory — 15 sources, 50,000 chunks, 250 MB. Memory text is sealed on-device; the server searches without reading it. Same hosted Agent Control and relay allowance as Pro.",
+            disclosure: "1 month, auto-renews monthly. No introductory trial.",
+            topUpKind: nil
+        ),
+        OpenBurnBarStoreProduct(
+            id: cloudUltraAnnualProductID,
+            title: "BurnBar Cloud Ultra",
+            cadence: "Annual",
+            fallbackDisplayPrice: "$599",
+            entitlementID: "burnbar_ultra",
+            role: .subscription,
+            included: "Everything in BurnBar Cloud Ultra monthly with annual billing.",
             disclosure: "1 year, auto-renews annually. No introductory trial.",
             topUpKind: nil
         )
@@ -224,6 +249,8 @@ final class HostedQuotaSubscriptionStore {
     static let cloudAnnualProductID = OpenBurnBarProductCatalog.cloudAnnualProductID
     static let cloudProMonthlyProductID = OpenBurnBarProductCatalog.cloudProMonthlyProductID
     static let cloudProAnnualProductID = OpenBurnBarProductCatalog.cloudProAnnualProductID
+    static let cloudUltraMonthlyProductID = OpenBurnBarProductCatalog.cloudUltraMonthlyProductID
+    static let cloudUltraAnnualProductID = OpenBurnBarProductCatalog.cloudUltraAnnualProductID
     static let agentControl100ActionsProductID = OpenBurnBarProductCatalog.agentControl100ActionsProductID
     static let flooRelay50GBProductID = OpenBurnBarProductCatalog.flooRelay50GBProductID
 
@@ -630,10 +657,43 @@ final class HostedQuotaSubscriptionStore {
     var isActivePro: Bool {
         activeProductID == Self.cloudProMonthlyProductID ||
             activeProductID == Self.cloudProAnnualProductID ||
+            // Ultra is strictly above Pro (Ultra ⇒ Pro), so an active Ultra
+            // StoreKit subscription unlocks every Pro-gated surface (top-ups,
+            // Floo, Agent Control) without re-plumbing each gate.
+            activeProductID == Self.cloudUltraMonthlyProductID ||
+            activeProductID == Self.cloudUltraAnnualProductID ||
             activeProductID == Self.legacyProMaxProductID ||
             activeProductID == Self.proMaxProductID ||
             activeProductID == Self.legacyHostedComputerUseProductID ||
             activeProductID == Self.hostedComputerUseProductID
+    }
+
+    /// True when an *Ultra* auto-renewable subscription is the active StoreKit
+    /// entitlement. Ultra's authoritative state is the server-resolved data
+    /// tier (`isActiveUltra`, defined in `HostedQuotaSubscriptionStore+Ultra`),
+    /// which has no Apple product id; this StoreKit-only predicate lets
+    /// `cloudTier` resolve to `.ultra` immediately after purchase, before a
+    /// usage read has populated the resolved tier.
+    var hasActiveUltraStoreKitProduct: Bool {
+        activeProductID == Self.cloudUltraMonthlyProductID ||
+            activeProductID == Self.cloudUltraAnnualProductID
+    }
+
+    /// The user's resolved membership tier, derived from the same canonical
+    /// entitlement predicates the relay/rules trust. Higher tiers strictly
+    /// satisfy every lower-tier gate (`CloudTier.satisfies`), so feature
+    /// gating reads `store.cloudTier.satisfies(feature.requiredTier)`.
+    ///
+    /// Resolution order mirrors the gating spec §4.2 (Ultra ⇒ Pro ⇒ Cloud):
+    ///   ultra → .ultra; else pro → .pro; else active → .cloud; else .none.
+    /// Ultra is the union of the server-resolved data tier (`isActiveUltra`,
+    /// the authority — Ultra has no Apple product id) and a freshly-purchased
+    /// Ultra StoreKit subscription.
+    var cloudTier: CloudTier {
+        if isActiveUltra || hasActiveUltraStoreKitProduct { return .ultra }
+        if isActivePro { return .pro }
+        if isActive { return .cloud }
+        return .none
     }
 
     func storeProduct(for productID: String) -> HostedQuotaStoreProduct? {

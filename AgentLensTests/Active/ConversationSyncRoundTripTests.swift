@@ -13,6 +13,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
     private var context: CloudSyncContext!
     private var conversationSync: ConversationSyncService!
     private var downloadSync: DownloadSyncService!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -26,8 +27,9 @@ final class ConversationSyncRoundTripTests: XCTestCase {
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        conversationSync = ConversationSyncService(context: context)
-        downloadSync = DownloadSyncService(context: context)
+        vaultKeyProvider = TestConversationVaultKeyProvider()
+        conversationSync = ConversationSyncService(context: context, vaultKeyProvider: vaultKeyProvider)
+        downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
     }
 
     // MARK: - Upload
@@ -66,6 +68,12 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(docData?["sessionId"] as? String, "session-1")
         XCTAssertEqual(docData?["messageCount"] as? Int, 10)
         XCTAssertEqual(docData?["deviceId"] as? String, "test-device-1")
+        XCTAssertEqual(docData?["contentSealed"] as? Bool, true)
+        XCTAssertNotNil(docData?["sealedPayload"])
+        XCTAssertNil(docData?["projectName"])
+        XCTAssertNil(docData?["inferredTaskTitle"])
+        XCTAssertNil(docData?["lastAssistantMessage"])
+        XCTAssertNil(docData?["summary"])
 
         let unsyncedAfter = try dataStore.fetchUnsyncedConversations(limit: 400)
         XCTAssertTrue(unsyncedAfter.isEmpty)
@@ -78,20 +86,34 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         let remoteDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_conv-remote-1"
         let remoteUpdatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
 
+        let sealed = try ConversationCloudSealer.seal(
+            ConversationCloudPrivatePayload(
+                projectName: "RemoteProject",
+                keyFiles: ["remote.swift"],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Remote Task",
+                lastAssistantMessage: "Remote hello",
+                workingDirectory: nil,
+                summary: nil,
+                summaryTitle: nil,
+                summaryProvider: nil,
+                summaryModel: nil
+            ),
+            key: try vaultKeyProvider.resolvedKey()
+        )
         fakeGateway.setDocumentData([
             "id": "conv-remote-1",
             "deviceId": remoteDeviceId,
             "provider": AgentProvider.cursor.rawValue,
             "sessionId": "remote-session-1",
-            "projectName": "RemoteProject",
             "messageCount": 42,
             "userWordCount": 500,
             "assistantWordCount": 1000,
-            "keyFiles": ["remote.swift"],
-            "keyCommands": [],
-            "keyTools": [],
-            "inferredTaskTitle": "Remote Task",
-            "lastAssistantMessage": "Remote hello",
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": try vaultKeyProvider.resolvedKey().vaultKeyID,
+            "sealedPayload": sealed,
             "sourceType": ConversationSourceType.providerLog.rawValue,
             "updatedAt": Timestamp(date: remoteUpdatedAt),
             "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
@@ -117,6 +139,10 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(remote.messageCount, 42)
         XCTAssertEqual(remote.sourceDeviceId, remoteDeviceId)
         XCTAssertEqual(remote.sourceDeviceName, "Remote Studio")
+        XCTAssertEqual(remote.projectName, "RemoteProject")
+        XCTAssertEqual(remote.inferredTaskTitle, "Remote Task")
+        XCTAssertEqual(remote.lastAssistantMessage, "Remote hello")
+        XCTAssertEqual(remote.keyFiles, ["remote.swift"])
         XCTAssertTrue(remote.isRemote)
     }
 
@@ -149,20 +175,34 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         // Because local uses INSERT OR IGNORE, it should NOT overwrite
         let remoteDocPath = "users/test-uid-1/conversations/remote-device-2_conv-1"
         let remoteUpdatedAt = now.addingTimeInterval(-60)
+        let remoteSealed = try ConversationCloudSealer.seal(
+            ConversationCloudPrivatePayload(
+                projectName: "ChangedProject",
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Changed Task",
+                lastAssistantMessage: "Changed hello",
+                workingDirectory: nil,
+                summary: nil,
+                summaryTitle: nil,
+                summaryProvider: nil,
+                summaryModel: nil
+            ),
+            key: try vaultKeyProvider.resolvedKey()
+        )
         fakeGateway.setDocumentData([
             "id": "conv-1",
             "deviceId": "remote-device-2",
             "provider": AgentProvider.aider.rawValue,
             "sessionId": "remote-session",
-            "projectName": "ChangedProject",
             "messageCount": 99,
             "userWordCount": 999,
             "assistantWordCount": 9999,
-            "keyFiles": [],
-            "keyCommands": [],
-            "keyTools": [],
-            "inferredTaskTitle": "Changed Task",
-            "lastAssistantMessage": "Changed hello",
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": try vaultKeyProvider.resolvedKey().vaultKeyID,
+            "sealedPayload": remoteSealed,
             "sourceType": ConversationSourceType.providerLog.rawValue,
             "updatedAt": Timestamp(date: remoteUpdatedAt),
             "startTime": Timestamp(date: remoteUpdatedAt),

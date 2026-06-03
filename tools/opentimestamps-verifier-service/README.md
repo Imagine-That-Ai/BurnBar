@@ -4,7 +4,7 @@ Small Cloud Run service for Phase 13 Computer Use audit proof validation.
 
 Firebase Functions run on Node.js and should not assume the official Python
 OpenTimestamps client is installed in the runtime image. This service packages
-`opentimestamps-client==0.7.2` and exposes one endpoint:
+`opentimestamps-client==0.7.2` and exposes two endpoints:
 
 ```http
 POST /verify
@@ -21,6 +21,27 @@ Response:
 ```json
 { "verified": true, "output": "ots verify output" }
 ```
+
+```http
+POST /stamp
+content-type: application/json
+
+{ "digestBase64": "<raw 32-byte SHA-256 digest>" }
+```
+
+Response:
+
+```json
+{ "stamped": true, "proofBase64": "<detached .ots proof>", "output": "..." }
+```
+
+`POST /stamp` notarizes a single 32-byte digest (only the digest is submitted to
+the calendars, never the underlying content) and returns the detached `.ots`
+proof. It backs the daily `anchorAuditLogHeads` job, which stamps each member's
+`audit_meta/head.headHash` so a truncated audit tail fails `verifyAuditLog`
+(B-SEC-3). The Function selects this endpoint via `OPENBURNBAR_OTS_STAMP_URL`
+(falling back to a local `OPENBURNBAR_OTS_VERIFY_BIN` / `ots` binary), reusing
+the same audience/token handling as `OPENBURNBAR_OTS_VERIFY_URL`.
 
 Deploy:
 

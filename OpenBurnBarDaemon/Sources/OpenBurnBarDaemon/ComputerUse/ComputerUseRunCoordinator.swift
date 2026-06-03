@@ -76,6 +76,10 @@ public actor ComputerUseRunCoordinator {
     private let logger: BurnBarDaemonLogger
     private var sessions: [ComputerUseSessionID: ActiveSession] = [:]
 
+    /// Sentinel `denyReason` marking a pre-dispatch reservation entry; the
+    /// paired post-dispatch entry carries the real outcome.
+    static let auditReservationSentinel = "audit_reserved_pending"
+
     public init(
         gate: ComputerUseCapabilityGate = DefaultComputerUseCapabilityGate(),
         approvalIssuer: @escaping ApprovalIssuer,
@@ -147,6 +151,9 @@ public actor ComputerUseRunCoordinator {
         case .remoteConfig: endReason = .panicRemoteConfig
         case .accessibilityRevoked: endReason = .panicAccessibilityRevoked
         case .stalled: endReason = .timeout
+        // Device/session trust revoked: torn down as an authorization loss;
+        // the panic source ("revoked") is preserved in the audit chain.
+        case .revoked: endReason = .entitlementLost
         }
         if let active = sessions[sessionId] {
             let panicAction: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
@@ -333,6 +340,37 @@ public actor ComputerUseRunCoordinator {
                         denyReason: "approval_failed: \(error.localizedDescription)"
                     )
                 }
+            }
+
+            // AUDIT-BEFORE-ACTION (fail-closed): reserve a pending audit
+            // entry on the chain BEFORE dispatch. If the reservation append
+            // throws, do NOT execute the action.
+            do {
+                let reservation = try active.logger.makeEntry(
+                    for: action,
+                    approvalId: approvalId,
+                    approvedBy: approvedBy,
+                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                    denyReason: Self.auditReservationSentinel,
+                    scopeContext: scopeContext
+                )
+                try active.logger.append(reservation)
+                sessions[sessionId] = active
+            } catch {
+                logger.warning("audit_reservation_failed", metadata: [
+                    "session": sessionId.rawValue,
+                    "error": String(describing: error)
+                ])
+                active.state.actionsRejected += 1
+                sessions[sessionId] = active
+                return ComputerUseInvokeResponse(
+                    sessionId: sessionId.rawValue,
+                    callID: invocation.callID,
+                    status: .denied,
+                    approvalId: approvalId,
+                    denyReason: ComputerUseDenyReason.auditFailure.rawValue,
+                    auditHeadHashHex: active.logger.headHashHex
+                )
             }
 
             // Dispatch.

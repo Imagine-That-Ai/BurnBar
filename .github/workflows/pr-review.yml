@@ -46,7 +46,7 @@ jobs:
 
           # Summarize what changed for the review comment
           STATS=$(git diff --stat "$BASE...$HEAD" | tail -1)
-          FILES=$(git diff --name-only "$BASE...$HEAD" | head -20 | tr '\n' ', ' | sed 's/,$//')
+          FILES=$(git diff --name-only "$BASE...$HEAD" | awk 'NR <= 20 { files = files (files ? ", " : "") $0 } END { print files }')
           LINES_ADDED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$1} END {print sum}')
           LINES_REMOVED=$(git diff --numstat "$BASE...$HEAD" | awk '{sum+=$2} END {print sum}')
 
@@ -84,15 +84,15 @@ jobs:
           fi
 
           # Check for console.log in production TS/JS (not test files)
-          PROD_LOGS=$(git diff "$BASE...$HEAD" -- '*.ts' '*.js' ':!*.test.*' ':!*.spec.*' ':!*__tests__*' | grep '^+' | grep -cE 'console\.(log|debug)\(' || echo 0)
+          PROD_LOGS=$(git diff "$BASE...$HEAD" -- '*.ts' '*.js' ':!*.test.*' ':!*.spec.*' ':!*__tests__*' | awk '/^\+/ && /console\.(log|debug)\(/ { count++ } END { print count + 0 }')
           if [[ "$PROD_LOGS" -gt 0 ]]; then
             ISSUES="${ISSUES}\n- ${PROD_LOGS} console.log/debug call(s) in production code (use the logger module)"
           fi
 
           # Check for large files added
-          LARGE=$(git diff --numstat "$BASE...$HEAD" | awk '$1 > 300 {print $3}' | head -5)
+          LARGE=$(git diff --numstat "$BASE...$HEAD" | awk '$1 > 300 && count < 5 { files = files (files ? ", " : "") $3; count++ } END { print files }')
           if [[ -n "$LARGE" ]]; then
-            ISSUES="${ISSUES}\n- Large files added (>300 lines): $(echo "$LARGE" | tr '\n' ', ')"
+            ISSUES="${ISSUES}\n- Large files added (>300 lines): ${LARGE}"
           fi
 
           # Save results

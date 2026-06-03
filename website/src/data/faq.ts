@@ -22,7 +22,11 @@ export const FAQ_CATEGORIES: FAQCategory[] = [
     label: "Accounts, cost & accuracy",
     blurb: "Sign-in, who it's for, and how numbers are computed."
   },
-  { id: "billing", label: "Plans & billing", blurb: "Cloud, Cloud Pro, allowances, and refunds." },
+  {
+    id: "billing",
+    label: "Plans & billing",
+    blurb: "Cloud, Cloud Pro, Cloud Ultra, allowances, and refunds."
+  },
   {
     id: "features",
     label: "Floo, Agent Control & editors",
@@ -156,6 +160,13 @@ export const FAQ: FAQItem[] = [
     question: "How do Cloud Pro allowances and top-ups work?",
     answer:
       "Cloud Pro includes 500 hosted Agent Control actions and 50 relay-accounting GB each month. Extra hosted usage is prepaid before use: $4.99 buys 100 hosted actions, and $4.99 buys 50 relay-accounting GB.\n\nMonthly caps still apply: 2,000 hosted actions and 300 relay-accounting GB. If allowance plus top-ups are exhausted, hosted Agent Control or Floo relay pauses instead of silently spending more. BYOK actions do not consume hosted action credits."
+  },
+  {
+    id: "burnbar-cloud-ultra",
+    category: "billing",
+    question: "What is BurnBar Cloud Ultra?",
+    answer:
+      "BurnBar Cloud Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 3 knowledge sources, 5,000 memory chunks, and 25 MB. Cloud Ultra raises that to 15 sources, 50,000 chunks, and 250 MB. The text is sealed on your device and the vectors are cloaked, so the server runs nearest-neighbor search without reading your content.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on web, App Store, and Google Play. Cloud Ultra unlocks the higher memory limits after server-side purchase verification."
   },
   {
     id: "grandfathered-hosted-quota",

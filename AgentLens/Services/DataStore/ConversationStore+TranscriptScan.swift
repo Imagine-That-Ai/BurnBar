@@ -18,7 +18,7 @@ extension ConversationStore {
                 var sql = """
                 SELECT *
                 FROM conversations AS c
-                WHERE 1 = 1
+                WHERE c.deletedAt IS NULL
                 """
                 var args: [any DatabaseValueConvertible] = []
                 if let provider {
@@ -65,7 +65,7 @@ extension ConversationStore {
                 var sql = """
                 SELECT c.id, c.fullText
                 FROM conversations AS c
-                WHERE 1 = 1
+                WHERE c.deletedAt IS NULL
                 """
                 var args: [any DatabaseValueConvertible] = []
                 if let provider {

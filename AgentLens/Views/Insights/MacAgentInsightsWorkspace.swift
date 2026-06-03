@@ -77,7 +77,11 @@ struct MacAgentInsightsWorkspace: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             if settingsManager.useWebsiteBackground {
-                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+                if settingsManager.useConstellationBackground {
+                    ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
+                } else {
+                    WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+                }
             } else {
                 UnifiedDesignSystem.Colors.background
             }

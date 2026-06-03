@@ -149,7 +149,7 @@ final class PhoneControlReceiverTests: XCTestCase {
             requestedBy: BurnBarClientID(rawValue: "agent"),
             requestedAt: Date()
         ))
-        XCTAssertEqual(response.status, .error)
+        XCTAssertEqual(response.status, ComputerUseInvokeResponse.Status.error)
         XCTAssertEqual(response.denyReason, "no_active_session")
 
         let chainURL = auditDirectory
@@ -250,6 +250,29 @@ final class PhoneControlReceiverTests: XCTestCase {
         XCTAssertEqual(approvalRequest.sessionId, started.sessionId)
         XCTAssertEqual(approvalRequest.toolKind, BurnBarToolKind.browserGoto.rawValue)
         XCTAssertEqual(coordinator.pendingApproval?.approvalId, approvalRequest.approvalId)
+
+        await dispatcher(
+            HermesRealtimeRelayFrame(
+                type: .controlApprovalResponse,
+                uid: "uid-approval",
+                connectionId: "conn-attacker",
+                control: HermesRealtimeRelayControlPayload(
+                    streamClass: MediaStreamClass.controlApproval.rawValue,
+                    sessionId: started.sessionId,
+                    approvalResponse: HermesRealtimeRelayApprovalResponse(
+                        approvalId: approvalRequest.approvalId,
+                        decision: .approve,
+                        respondedBy: "phone",
+                        respondedAt: Date()
+                    )
+                )
+            ),
+            { frame in await replyCapture.record(frame) }
+        )
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(coordinator.pendingApproval?.approvalId, approvalRequest.approvalId)
+        let actionsBeforeMatchedApproval = await browserCapture.actions()
+        XCTAssertEqual(actionsBeforeMatchedApproval.count, 0)
 
         await dispatcher(
             HermesRealtimeRelayFrame(
@@ -617,38 +640,19 @@ final class PhoneControlReceiverTests: XCTestCase {
             allowsPhoneControl: true
         ))
 
-        let placeholder = emptyAuthority()
-        var intent = HermesRealtimeRelayInputIntent(
-            kind: .tap,
-            normalizedX: 0.5,
-            normalizedY: 0.5,
-            authority: placeholder
-        )
-        let signed = try ComputerUsePhoneControlSigner().sign(
-            intent: intent,
-            peerNodeId: peerNodeId,
-            counter: 1,
-            timestamp: Date(),
-            privateKey: privateKey
-        )
-        intent.authority = envelope(from: signed)
-        await dispatcher(
-            HermesRealtimeRelayFrame(
-                type: .controlInputIntent,
-                uid: "uid-denied",
-                connectionId: "conn-denied",
-                control: HermesRealtimeRelayControlPayload(
-                    streamClass: MediaStreamClass.controlInput.rawValue,
-                    sessionId: started.sessionId,
-                    inputIntent: intent
-                )
-            ),
-            { frame in await replies.record(frame) }
-        )
+        XCTAssertEqual(coordinator.state?.endReason, .entitlementLost)
+        XCTAssertNotNil(coordinator.state?.endedAt)
 
-        let denied = try await replies.firstFrame { $0.type == .controlDenied }
-        XCTAssertEqual(denied.control?.denied?.reason, .entitlement)
-        XCTAssertEqual(denied.control?.denied?.detail, ComputerUseDenyReason.entitlement.rawValue)
+        let response = await coordinator.invoke(BurnBarToolInvocation(
+            callID: "entitlement-after-end",
+            runID: BurnBarRunID(rawValue: "run-entitlement-ended"),
+            tool: .macInputClick,
+            arguments: .object(["displayX": .number(10), "displayY": .number(10)]),
+            requestedBy: BurnBarClientID(rawValue: "agent"),
+            requestedAt: Date()
+        ))
+        XCTAssertEqual(response.status, ComputerUseInvokeResponse.Status.error)
+        XCTAssertEqual(response.denyReason, "no_active_session")
     }
 
     func testSignedScrollIntentDispatchesMacScrollAction() async throws {
@@ -1011,7 +1015,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: auditDirectory,
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,
@@ -1099,7 +1104,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: auditDirectory,
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,
@@ -1158,6 +1164,180 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testClipboardDeniedWithoutDedicatedConsentEvenWhenInputAllowed() async throws {
+        // Consent is split from allowsSystem: with a valid signed paste and
+        // full remote-control entitlement but `clipboardConsentGranted` OFF,
+        // the clipboard request must fail closed (`clipboard_consent_required`)
+        // and never touch the pasteboard.
+        let secret = "phone clipboard secret \(UUID().uuidString)"
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "ios-phone-clipboard-noconsent"
+        let provider = StaticPhoneControlAuthorityProvider(
+            expectedUID: "uid-clipboard-noconsent",
+            expectedConnectionID: "conn-clipboard-noconsent",
+            expectedPeerNodeID: peerNodeId,
+            publicKey: privateKey.publicKey
+        )
+        let pasteboard = FakeRemoteClipboardPasteboard(storedText: "before")
+        let input = FakeRemoteClipboardInputController()
+        let inspector = FakeRemoteClipboardInspector()
+        let replies = ControlFrameCapture()
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("computer-use-clipboard-noconsent-\(UUID().uuidString)", isDirectory: true)
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-clipboard-noconsent",
+                macHostNodeId: "mac-clipboard",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
+                auditBaseDirectory: auditDirectory,
+                macAppVersion: "test"
+                // clipboardConsentGranted intentionally omitted -> defaults OFF.
+            ),
+            remoteClipboardController: RemoteClipboardController(
+                pasteboard: pasteboard,
+                inputController: input,
+                inspector: inspector
+            ),
+            authorityProvider: provider,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+        let started = try await coordinator.startSession(
+            request: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                phoneViewerNodeId: peerNodeId,
+                clientID: BurnBarClientID(rawValue: "client-clipboard-noconsent")
+            )
+        )
+        let dispatcher = coordinator.controlDispatcher
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
+            frame in await replies.record(frame)
+        }
+
+        let request = try signedClipboardRequest(
+            action: .pasteToMac,
+            text: secret,
+            privateKey: privateKey,
+            peerNodeId: peerNodeId,
+            counter: 1
+        )
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId)) {
+            frame in await replies.record(frame)
+        }
+
+        let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
+        let response = try XCTUnwrap(responseFrame.control?.clipboardResponse)
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.detail, ComputerUseDenyReason.clipboardConsentRequired.rawValue)
+        XCTAssertEqual(pasteboard.storedText, "before")
+        XCTAssertEqual(input.pasteShortcutCount, 0)
+        XCTAssertEqual(coordinator.lastDeniedReason, .clipboardConsentRequired)
+        XCTAssertEqual(coordinator.actionTimeline.last?.status, .rejected)
+    }
+
+    @MainActor
+    func testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation() async throws {
+        let previousStrictSetting = SettingsManager.shared.computerUsePhoneControlAttestationRequired
+        SettingsManager.shared.computerUsePhoneControlAttestationRequired = true
+        defer { SettingsManager.shared.computerUsePhoneControlAttestationRequired = previousStrictSetting }
+
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let peerNodeId = "ios-phone-clipboard-attestation"
+        let provider = StaticPhoneControlAuthorityProvider(
+            expectedUID: "uid-clipboard-attestation",
+            expectedConnectionID: "conn-clipboard-attestation",
+            expectedPeerNodeID: peerNodeId,
+            publicKey: privateKey.publicKey
+        )
+        let pasteboard = FakeRemoteClipboardPasteboard(storedText: "before")
+        let input = FakeRemoteClipboardInputController()
+        let inspector = FakeRemoteClipboardInspector()
+        let replies = ControlFrameCapture()
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-clipboard-attestation",
+                macHostNodeId: "mac-clipboard",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsSystem: true,
+                    allowsPhoneControl: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-clipboard-attestation-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test",
+                clipboardConsentGranted: true
+            ),
+            remoteClipboardController: RemoteClipboardController(
+                pasteboard: pasteboard,
+                inputController: input,
+                inspector: inspector
+            ),
+            authorityProvider: provider,
+            displayBoundsProvider: {
+                [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
+            },
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "test",
+                    respondedAt: Date()
+                )
+            }
+        )
+        let started = try await coordinator.startSession(
+            request: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                phoneViewerNodeId: peerNodeId,
+                clientID: BurnBarClientID(rawValue: "client-clipboard-attestation")
+            )
+        )
+        let dispatcher = coordinator.controlDispatcher
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-attestation", connectionId: "conn-clipboard-attestation", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
+            frame in await replies.record(frame)
+        }
+
+        let request = try signedClipboardRequest(
+            action: .pasteToMac,
+            text: "blocked by attestation",
+            privateKey: privateKey,
+            peerNodeId: peerNodeId,
+            counter: 1
+        )
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-attestation", connectionId: "conn-clipboard-attestation", sessionId: started.sessionId)) {
+            frame in await replies.record(frame)
+        }
+
+        let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
+        let response = try XCTUnwrap(responseFrame.control?.clipboardResponse)
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.detail, "mac_attestation_unbound")
+        XCTAssertEqual(pasteboard.storedText, "before")
+        XCTAssertEqual(input.pasteShortcutCount, 0)
+        XCTAssertEqual(coordinator.lastDeniedReason, .signatureFailure)
+        XCTAssertEqual(coordinator.actionTimeline.last?.status, .rejected)
+    }
+
+    @MainActor
     func testClipboardPasteDeniedInSecureFocusBeforePasteboardOrInputMutation() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let peerNodeId = "ios-phone-clipboard-denied"
@@ -1185,7 +1365,8 @@ final class PhoneControlReceiverTests: XCTestCase {
                 ),
                 quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-05-25"),
                 auditBaseDirectory: auditDirectory,
-                macAppVersion: "test"
+                macAppVersion: "test",
+                clipboardConsentGranted: true
             ),
             remoteClipboardController: RemoteClipboardController(
                 pasteboard: pasteboard,
@@ -1333,14 +1514,16 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     private func envelope(
-        from signed: ComputerUsePhoneControlSigner.SignedAuthority
+        from signed: ComputerUsePhoneControlSigner.SignedAuthority,
+        attestationHashBlake3: String? = nil
     ) -> HermesRealtimeRelayAuthorityEnvelope {
         HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationHashBlake3
         )
     }
 }

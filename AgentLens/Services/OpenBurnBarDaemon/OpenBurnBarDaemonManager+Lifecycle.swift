@@ -225,9 +225,17 @@ extension OpenBurnBarDaemonManager {
             programArguments.append(contentsOf: ["--gateway-enable"])
             programArguments.append(contentsOf: ["--gateway-host", settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost])
             programArguments.append(contentsOf: ["--gateway-port", "\(settings.gatewayPort > 0 ? settings.gatewayPort : 8317)"])
-            let gatewayAuthToken = settings.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !gatewayAuthToken.isEmpty {
+            // Fail-closed: auto-generate and persist a bearer token unless the
+            // user explicitly opted into an unauthenticated loopback bind, so
+            // no same-host process can spend the user's provider credits.
+            // SECURITY: passed via EnvironmentVariables (above), never argv —
+            // it must stay absent from `ps auxww`.
+            if let gatewayAuthToken = settings.ensureGatewayAuthTokenForLaunch()?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !gatewayAuthToken.isEmpty {
                 environmentVariables["OPENBURNBAR_GATEWAY_AUTH_TOKEN"] = gatewayAuthToken
+            } else if settings.gatewayAllowUnauthenticatedLoopback {
+                environmentVariables["OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"] = "1"
             }
         }
 

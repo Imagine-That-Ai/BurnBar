@@ -28,6 +28,7 @@ const totalCount = PROVIDERS_ALL.length;
 const detectedCount = totalCount - primaryCount;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
+const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "cloud_ultra")!;
 ---
 
 <BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">
@@ -664,6 +665,30 @@ const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
             <li>Agent Control with grants, boundaries, and action records</li>
             <li>Includes 500 hosted actions and 50 relay-accounting GB each month</li>
             <li>Extra hosted usage is prepaid before use</li>
+          </ul>
+          <a class="btn btn--ghost" href="/pricing">
+            Compare plans <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+        </article>
+
+        <article class="ptcard ptcard--ultra">
+          <header>
+            <span class="tag tag--plain mono tag--estimated">{cloudUltra.name}</span>
+            <div class="ptcard__price">
+              <span class="mono">${cloudUltra.priceMonthlyUSD}</span><span class="ptcard__period"
+                >/month</span
+              >
+            </div>
+            <p class="muted small">
+              ${cloudUltra.priceAnnualUSD}/year · 10× private agent memory
+            </p>
+          </header>
+          <ul>
+            <li>Everything in BurnBar Cloud Pro</li>
+            <li>10× agent memory: 15 sources, 50,000 chunks, 250 MB</li>
+            <li>Repo docs, notes &amp; chat memories your agents recall</li>
+            <li>Sealed on-device — the server searches without reading it</li>
+            <li>Same hosted Agent Control &amp; relay allowance as Pro</li>
           </ul>
           <a class="btn btn--ghost" href="/pricing">
             Compare plans <span class="btn-arrow" aria-hidden="true">→</span>
@@ -1448,8 +1473,14 @@ const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
   }
   .pricing-teaser__grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Four tiers: 4-up on wide screens, 2×2 on laptops, single column on phones. */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--s-5);
+  }
+  @media (max-width: 1180px) {
+    .pricing-teaser__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
   .ptcard {
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1523,6 +1554,10 @@ const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
   .ptcard--pro {
     border-color: color-mix(in oklab, var(--mercury-core) 35%, var(--ink-line));
     background: rgba(12, 16, 20, 0.64);
+  }
+  .ptcard--ultra {
+    border-color: color-mix(in oklab, var(--core-amber) 38%, var(--ink-line));
+    background: rgba(20, 16, 8, 0.64);
   }
   @media (max-width: 900px) {
     .pricing-teaser__grid {

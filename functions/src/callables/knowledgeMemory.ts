@@ -12,8 +12,35 @@
  * Mirrors commitEncryptedSearchIndexBatch (encryptedSearch.ts): same auth gate,
  * validators, batched-write, and stripUndefinedObject conventions. Differences:
  * gated on Cloud Pro (proMax-strict), enforces per-tier chunk/byte caps, stores
- * ciphertext INLINE (no Cloud Storage coupling), and is idempotent by
- * contentHash (unchanged chunks are skipped).
+ * ciphertext INLINE (no Cloud Storage coupling), and is idempotent by `dedupHash`
+ * (unchanged chunks are skipped).
+ *
+ * B-SEC-2 — plaintext metadata side channels (now FLAG-DAY ENFORCED, privacy-
+ * leak-remediation-2026-06-02 §3). Earlier revisions persisted three plaintext
+ * side channels per vector: `contentHash` (SHA-256 of the chunk plaintext — lets
+ * a curious server confirm a *guessed* plaintext by hashing it), the real
+ * `sourcePath` (repo file paths), and the cleartext `sourceSlug`. The write path
+ * now REQUIRES the vault-keyed replacements and REJECTS the cleartext ones:
+ *   - dedup/idempotency uses `dedupHash`, a VAULT-KEYED HMAC the device computes
+ *     (HKDF-derive a per-user dedup key from the vault key, then HMAC the
+ *     plaintext) — REQUIRED. Two members committing the same plaintext therefore
+ *     produce DIFFERENT stored hashes, and the server can no longer confirm a
+ *     guess by hashing candidate plaintext (it lacks the key). The legacy
+ *     cleartext `contentHash` is no longer accepted. See `dedupHashVersion`.
+ *   - the cloaked embedding (`cloakedVector`) is REQUIRED — a raw uncloaked
+ *     `embedding` is rejected.
+ *   - `sourcePath` is dropped server-side — it already lives inside the
+ *     AES-256-GCM `sealedMetadata` blob (the device seals `source_path` there;
+ *     see PensieveKnowledgeChunker.prepareBatch), so the cleartext column was a
+ *     pure duplicate leak.
+ *   - the filter key is `slugHmac` (a vault-keyed HMAC of the slug the device
+ *     sends), REQUIRED, instead of the cleartext `sourceSlug`.
+ * Existing legacy v0 rows remain readable until the device re-ingests each
+ * source (forced by an `embeddingModelVersion`/`dedupHashVersion` bump). No
+ * server-side backfill exists — the server never holds the vault key.
+ * `sourceKind` (one of three coarse buckets) and `byteCount` (a length) remain
+ * cleartext as ACCEPTED leakage — they are server-side filter / cap inputs and
+ * carry no content; see docs/pensieve-leakage-analysis.md and docs/PENSIEVE.md.
  */
 
 import { Timestamp, FieldValue, AggregateField } from "firebase-admin/firestore";
@@ -38,27 +65,50 @@ import {
 import { stripUndefinedObject } from "../guards.js";
 import { wrapCallableHandler } from "../logging.js";
 import { randomBytes } from "node:crypto";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const KNOWLEDGE_VECTOR_DIM = 384;
 const MAX_CHUNK_BYTES = 64 * 1024; // generous per-chunk plaintext ceiling
 const MAX_BATCH_VECTORS = 800;
 const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
 
+/**
+ * Stamped onto every row so old (legacy v0) rows stay distinguishable from the
+ * vault-keyed v1 rows and a forced re-ingestion can target the laggards.
+ *   - 0 — legacy: `dedupHash` held the cleartext SHA-256 of the plaintext (a
+ *         confirm-the-guess side channel). The WRITE path no longer produces v0
+ *         rows — the version is retained only so existing legacy rows remain
+ *         readable until the device re-ingests them.
+ *   - 1 — vault-keyed: `dedupHash` is the device's vault-keyed HMAC(plaintext)
+ *         and `slugHmac` is the vault-keyed HMAC(slug); no cleartext hash/path.
+ *
+ * FLAG-DAY ENFORCEMENT (privacy-leak-remediation-2026-06-02 §3, Option A): the
+ * device derivation (PensieveKnowledgeChunker + the Node shim) ships in the same
+ * release that flips this write path to REQUIRE the vault-keyed `dedupHash` and
+ * `cloakedVector`; not-yet-updated clients sending a cleartext `contentHash`/raw
+ * `embedding` are now REJECTED. Existing legacy v0 rows stay readable until the
+ * device re-ingests each source (forced by bumping `embeddingModelVersion`/
+ * `dedupHashVersion`), which rewrites them at v1. There is no server-side
+ * backfill — the server never holds the vault key.
+ */
+const DEDUP_HASH_VERSION_LEGACY_CLEARTEXT = 0;
+const DEDUP_HASH_VERSION_VAULT_HMAC = 1;
+
 type PensieveTier = "pro" | "ultra";
-interface PensieveLimits {
+export interface PensieveLimits {
   sources: number;
   chunks: number;
   bytes: number;
 }
 
 /** Per-tier hard caps (see the Pensieve plan's tier table). User-level, not per-source. */
-const PENSIEVE_LIMITS: Record<PensieveTier, PensieveLimits> = {
+export const PENSIEVE_LIMITS: Record<PensieveTier, PensieveLimits> = {
   pro: { sources: 3, chunks: 5_000, bytes: 25 * 1024 * 1024 },
   ultra: { sources: 15, chunks: 50_000, bytes: 250 * 1024 * 1024 },
 };
 
 const CALLABLE_OPTS = {
-  region: "us-central1",
+  region: FUNCTIONS_REGION,
   enforceAppCheck: getConfig().enforceAppCheck,
   maxInstances: 100,
 } as const;
@@ -82,7 +132,13 @@ function requireSourceKind(raw: unknown, fieldName: string): string {
   return value;
 }
 
-/** Validate the on-device-cloaked embedding: exactly KNOWLEDGE_VECTOR_DIM finite numbers. */
+/**
+ * Validate the on-device-cloaked embedding: exactly KNOWLEDGE_VECTOR_DIM finite
+ * numbers. The caller passes ONLY `raw.cloakedVector` (privacy-leak-remediation-
+ * 2026-06-02 §3) — the legacy uncloaked `embedding` field is no longer accepted,
+ * so a not-yet-updated client that sends a raw embedding is rejected (the field
+ * is simply absent here, producing the "must be a 384-dimension array" error).
+ */
 function requireCloakedVector(raw: unknown, fieldName: string): number[] {
   if (!Array.isArray(raw) || raw.length !== KNOWLEDGE_VECTOR_DIM) {
     throw new HttpsError("invalid-argument", `${fieldName} must be a ${KNOWLEDGE_VECTOR_DIM}-dimension array.`);
@@ -124,9 +180,30 @@ function requireUid(request: CallableRequest): string {
 }
 
 /**
+ * Resolve the vault-keyed dedup hash for one vector. The device sends
+ * `dedupHash` = HMAC(plaintext) under an HKDF-derived per-user dedup key, so the
+ * server stores a hash it cannot recompute from a guessed plaintext, and two
+ * members storing the same plaintext get different hashes.
+ *
+ * FLAG-DAY (privacy-leak-remediation-2026-06-02 §3): the vault-keyed `dedupHash`
+ * is now REQUIRED. The legacy cleartext `contentHash` (a confirm-the-guess
+ * SHA-256 oracle) is no longer accepted as a fallback — a not-yet-updated client
+ * that omits `dedupHash` is rejected. Always stamped v1.
+ */
+function resolveDedupHash(
+  raw: Record<string, unknown>,
+  fieldPrefix: string,
+): { dedupHash: string; dedupHashVersion: number } {
+  return {
+    dedupHash: requireHexDigest(raw.dedupHash, `${fieldPrefix}.dedupHash`),
+    dedupHashVersion: DEDUP_HASH_VERSION_VAULT_HMAC,
+  };
+}
+
+/**
  * commitKnowledgeBatch — store a batch of cloaked + sealed knowledge chunks.
  * The server never decrypts; it enforces the tier chunk/byte caps and is
- * idempotent by contentHash. Returns { ok, written, skipped, tier, chunkCount }.
+ * idempotent by `dedupHash`. Returns { ok, written, skipped, tier, chunkCount }.
  */
 export const commitKnowledgeBatch = onCall(
   CALLABLE_OPTS,
@@ -135,6 +212,7 @@ export const commitKnowledgeBatch = onCall(
     async (
       request: CallableRequest<{
         sourceSlug?: unknown;
+        slugHmac?: unknown;
         vectors?: unknown;
         embeddingModelVersion?: unknown;
         deviceId?: unknown;
@@ -143,7 +221,15 @@ export const commitKnowledgeBatch = onCall(
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
 
+      // Document-id key for the per-source manifest (a slug is a safe doc id, the
+      // HMAC is not necessarily). The HMAC is the SEARCH/DELETE filter key; the
+      // slug stays out of the per-vector rows (B-SEC-2).
       const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
+      // Vault-keyed HMAC(slug) the device computes; the only slug-derived value
+      // stored on each vector. REQUIRED on the write path (privacy-leak-
+      // remediation-2026-06-02 §3) — a cleartext slug is no longer stored on the
+      // per-vector rows, so a not-yet-updated client that omits it is rejected.
+      const slugHmac = requireHexDigest(request.data.slugHmac, "slugHmac");
       const embeddingModelVersion = boundedTrimmedString(
         request.data.embeddingModelVersion,
         "embeddingModelVersion",
@@ -160,17 +246,28 @@ export const commitKnowledgeBatch = onCall(
       const coll = db.collection(`users/${uid}/cloud_search_knowledge`);
 
       // Validate every item up front — a single bad item fails the whole batch.
-      const validated = vectors.map((raw, i) => ({
-        vectorId: safeCloudDocumentID(raw.vectorId ?? raw.contentHash, `vectors[${i}].vectorId`),
-        embedding: requireCloakedVector(raw.cloakedVector ?? raw.embedding, `vectors[${i}].cloakedVector`),
-        sealedCiphertext: requireSealedText(raw.sealedCiphertext ?? raw.ciphertext, `vectors[${i}].sealedCiphertext`),
-        sealedMetadata: requireSealedText(raw.sealedMetadata, `vectors[${i}].sealedMetadata`),
-        contentHash: requireHexDigest(raw.contentHash, `vectors[${i}].contentHash`),
-        sourceKind: requireSourceKind(raw.sourceKind, `vectors[${i}].sourceKind`),
-        sourcePath: boundedTrimmedString(raw.sourcePath, `vectors[${i}].sourcePath`, 512, false),
-        chunkIndex: requireBoundedNumber(raw.chunkIndex, `vectors[${i}].chunkIndex`, 0, 1_000_000),
-        byteCount: requireBoundedNumber(raw.byteCount, `vectors[${i}].byteCount`, 0, MAX_CHUNK_BYTES),
-      }));
+      // No `sourcePath` here on purpose (B-SEC-2): the real path lives only inside
+      // the sealed metadata blob, so we never re-accept a cleartext copy to store.
+      const validated = vectors.map((raw, i) => {
+        const { dedupHash, dedupHashVersion } = resolveDedupHash(raw, `vectors[${i}]`);
+        return {
+          // Prefer an explicit device id; else the keyed dedupHash (B-SEC-2 — a
+          // keyed value, not a plaintext SHA-256). `vectorId` is only an opaque
+          // idempotency doc id; with v1 hashes it no longer confirms a guess.
+          vectorId: safeCloudDocumentID(raw.vectorId ?? dedupHash, `vectors[${i}].vectorId`),
+          // ONLY the cloaked vector is accepted — a raw `embedding` is rejected
+          // (privacy-leak-remediation-2026-06-02 §3): the server must never store
+          // an uncloaked embedding it could invert.
+          embedding: requireCloakedVector(raw.cloakedVector, `vectors[${i}].cloakedVector`),
+          sealedCiphertext: requireSealedText(raw.sealedCiphertext ?? raw.ciphertext, `vectors[${i}].sealedCiphertext`),
+          sealedMetadata: requireSealedText(raw.sealedMetadata, `vectors[${i}].sealedMetadata`),
+          dedupHash,
+          dedupHashVersion,
+          sourceKind: requireSourceKind(raw.sourceKind, `vectors[${i}].sourceKind`),
+          chunkIndex: requireBoundedNumber(raw.chunkIndex, `vectors[${i}].chunkIndex`, 0, 1_000_000),
+          byteCount: requireBoundedNumber(raw.byteCount, `vectors[${i}].byteCount`, 0, MAX_CHUNK_BYTES),
+        };
+      });
 
       // Pre-read existing docs: enables idempotent skip + accurate cap deltas.
       const refs = validated.map((v) => coll.doc(v.vectorId));
@@ -191,7 +288,12 @@ export const commitKnowledgeBatch = onCall(
       for (const v of validated) {
         const prior = existingByID.get(v.vectorId);
         const priorExists = Boolean(prior?.exists);
-        if (priorExists && prior?.get("contentHash") === v.contentHash) {
+        // Idempotent skip: compare the stored `dedupHash`. Both legacy v0 rows
+        // and vault-keyed v1 rows store it under `dedupHash`, so the cleartext
+        // `contentHash` oracle is no longer read here (privacy-leak-remediation-
+        // 2026-06-02 §3). A pre-`dedupHash` ancient row simply re-writes once.
+        const priorDedupHash = priorExists ? prior?.get("dedupHash") : undefined;
+        if (priorExists && priorDedupHash === v.dedupHash) {
           skipped += 1; // unchanged chunk — idempotent no-op
           continue;
         }
@@ -200,11 +302,15 @@ export const commitKnowledgeBatch = onCall(
         const docData = {
           uid,
           vectorId: v.vectorId,
-          sourceSlug,
+          // Vault-keyed HMAC(slug) — the search/delete filter key (B-SEC-2). No
+          // cleartext `sourceSlug`/`sourcePath` is stored: the path is sealed.
+          slugHmac,
           sourceKind: v.sourceKind,
-          sourcePath: v.sourcePath,
           chunkIndex: v.chunkIndex,
-          contentHash: v.contentHash,
+          // Vault-keyed HMAC(plaintext) (or a legacy v0 cleartext SHA-256 for
+          // not-yet-updated clients — see dedupHashVersion).
+          dedupHash: v.dedupHash,
+          dedupHashVersion: v.dedupHashVersion,
           byteCount: v.byteCount,
           embedding: FieldValue.vector(v.embedding),
           embeddingModelVersion,
@@ -234,12 +340,16 @@ export const commitKnowledgeBatch = onCall(
       }
 
       // Per-source manifest: increment counts + record sync health (no plaintext).
+      // The manifest is intentionally slug-keyed (it is the user's own source
+      // registry, read back by configureKnowledgeSource); the per-vector rows —
+      // the cross-tenant-joinable surface B-SEC-2 targets — carry only `slugHmac`.
       writes.push((batch) =>
         batch.set(
           db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`),
           stripUndefinedObject({
             uid,
             sourceSlug,
+            slugHmac,
             embeddingModelVersion,
             chunkCount: FieldValue.increment(creates),
             byteCount: FieldValue.increment(bytesDelta),
@@ -320,16 +430,32 @@ export const configureKnowledgeSource = onCall(
 /** deleteKnowledgeSource — drop all vectors for one source + its manifest. */
 export const deleteKnowledgeSource = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler("deleteKnowledgeSource", async (request: CallableRequest<{ sourceSlug?: unknown }>) => {
-    const uid = requireUid(request);
-    await assertActiveBurnBarCloudProEntitlement(uid);
-    const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
-    const deleted = await deleteQueryInBatches(
-      db.collection(`users/${uid}/cloud_search_knowledge`).where("sourceSlug", "==", sourceSlug),
-    );
-    await db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`).delete();
-    return { ok: true, deleted };
-  }),
+  wrapCallableHandler(
+    "deleteKnowledgeSource",
+    async (request: CallableRequest<{ sourceSlug?: unknown; slugHmac?: unknown }>) => {
+      const uid = requireUid(request);
+      await assertActiveBurnBarCloudProEntitlement(uid);
+      const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
+      const coll = db.collection(`users/${uid}/cloud_search_knowledge`);
+
+      // B-SEC-2 rows are filter-keyed by `slugHmac` (not the cleartext slug).
+      // Resolve it from the device (preferred) or the manifest, then also sweep
+      // any legacy `sourceSlug`-keyed rows so pre-B-SEC-2 sources fully delete.
+      const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`);
+      const slugHmac =
+        request.data.slugHmac !== undefined
+          ? requireHexDigest(request.data.slugHmac, "slugHmac")
+          : ((await manifestRef.get()).get("slugHmac") as string | undefined);
+
+      let deleted = 0;
+      if (slugHmac) {
+        deleted += await deleteQueryInBatches(coll.where("slugHmac", "==", slugHmac));
+      }
+      deleted += await deleteQueryInBatches(coll.where("sourceSlug", "==", sourceSlug));
+      await manifestRef.delete();
+      return { ok: true, deleted };
+    },
+  ),
 );
 
 /** Pure helpers exposed for unit testing (validators + tier table). */
@@ -337,8 +463,13 @@ export const __testing__ = {
   PENSIEVE_LIMITS,
   KNOWLEDGE_VECTOR_DIM,
   MAX_CHUNK_BYTES,
+  // Retained so existing legacy rows stay classifiable; the write path no longer
+  // produces v0 rows (privacy-leak-remediation-2026-06-02 §3).
+  DEDUP_HASH_VERSION_LEGACY_CLEARTEXT,
+  DEDUP_HASH_VERSION_VAULT_HMAC,
   requireSourceKind,
   requireCloakedVector,
+  resolveDedupHash,
   slugify,
 };
 

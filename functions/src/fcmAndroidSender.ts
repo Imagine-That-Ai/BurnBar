@@ -26,6 +26,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { pushWithResilience } from "./resilienceHelpers.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 export interface SendResult {
   status: "sent" | "rejected" | "retry";
@@ -108,7 +109,7 @@ export async function pushAndroidFcm(args: {
 export const sendFcmOutbound = onDocumentCreated(
   {
     document: "fcm_outbound/{docId}",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
   },
   async (event) => {
     const data = event.data?.data();

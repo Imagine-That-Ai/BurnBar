@@ -3,5 +3,10 @@
  */
 
 export { onUsageWritten } from "./triggers.js";
-export { rebuildRollups, refreshAllProviderQuotas, refreshModelLandscapeBenchmarks } from "./scheduled.js";
+export {
+  rebuildRollups,
+  refreshAllProviderQuotas,
+  refreshModelLandscapeBenchmarks,
+  anchorAuditLogHeads,
+} from "./scheduled.js";
 export { latestRouterRundown } from "./routerRundown.js";

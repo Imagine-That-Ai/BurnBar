@@ -21,7 +21,7 @@ export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloud
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
-export { sendVoIPOutbound } from "./apnsSender.js";
+export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";
 export { sendFcmOutbound } from "./fcmAndroidSender.js";
 export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification } from "./agentNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
@@ -54,6 +54,7 @@ export {
   approveHermesGatewayDeviceGrant,
   listHermesGatewayClients,
   revokeHermesGatewayClient,
+  rotateHermesGatewayClientToken,
   enqueueHermesGatewayEvent,
 } from "./callables/hermesGateway.js";
 
@@ -96,13 +97,30 @@ export {
   disconnectKnowledgeRepo,
   reconcileKnowledgeMemoryDaily,
 } from "./callables/knowledgeSync.js";
+export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
+export { searchKnowledge } from "./callables/knowledgeSearch.js";
+export { exportUserData } from "./callables/dataExport.js";
+export { deleteDomainData } from "./callables/dataDeletion.js";
+export { setupRecovery, confirmRecovery, listRecovery } from "./callables/recovery.js";
+export { consumeCredentialTransfer } from "./callables/credentialTransfer.js";
+export { revokeAllAccess } from "./callables/panic.js";
+export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
+export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";
+export {
+  registerPasskey,
+  verifyPasskeyRegistration,
+  beginPasskeyAssertion,
+  verifyPasskeyAssertion,
+} from "./callables/passkey.js";
 
 export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {
   bindAppCheckAttestation,
+  issueHighRiskActionNonce,
   registerEscrowDevice,
   approveEscrowDeviceTrust,
   revokeEscrowDeviceTrust,
+  respondMissionApproval,
 } from "./callables/computerUseSecurity.js";
 
 export { rebuildUsageRollups, seedAndroidDemoAccount } from "./callables/misc.js";
@@ -119,6 +137,7 @@ export {
   rebuildRollups,
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
+  anchorAuditLogHeads,
   latestRouterRundown,
 } from "./scheduledExports.js";
 
@@ -132,3 +151,7 @@ export {
 } from "./appstore/index.js";
 
 export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";
+
+// Privacy-leak remediation: idempotent backfill that strips legacy plaintext
+// fields once a sealed copy exists + bumps a per-user reseal watermark.
+export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./callables/privacyBackfill.js";

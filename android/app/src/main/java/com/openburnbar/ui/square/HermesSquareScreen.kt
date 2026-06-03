@@ -384,7 +384,7 @@ internal fun CloudConversationSearchRow.toHermesSquareHit(): HermesSquareHit = H
     kind = HermesSquareHit.Kind.CLOUD_SESSION,
     title = title,
     preview =
-    listOfNotNull(provider, projectName, snippet)
+    listOfNotNull(provider, snippet)
         .joinToString(" · ")
         .ifBlank { snippet },
     score = score + 0.15,

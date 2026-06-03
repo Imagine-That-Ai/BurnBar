@@ -1,8 +1,8 @@
 # OpenBurnBar v1.0.1 macOS release checksums
-# Generated at 2026-06-01T18:43:56Z
-# Commit: 06e10af2f581259b2fa32b029ac4702061f0f427
+# Generated at 2026-06-02T16:50:48Z
+# Commit: 1bbe233f0d8313a2ac389eac04cf314da100b925
 
-7aca25414595a46d11c5f3c7c421cb0b6d59b28597711b002209b87918f2ee04  OpenBurnBar-1.0.1-macOS.dmg
-9720368d64ebc029c9abcdc120e9f33ac24f157d3a2c5e65d6e1385ae5015e3669a5b40c87d5b5c4323e3b04a8e9c3f318a50a8735b8b8de3df06aec71431308  OpenBurnBar-1.0.1-macOS.dmg
-e0c389362fd51afd4e89574a2424628bf34e827bebac4defee1e29f6115cf5bf  OpenBurnBar-1.0.1-macOS.zip
-b15216f8f0ee74f98a136cf3c87666633bdf61e413efea6536dac6c64db5322fbbe91abab77869958c27a85fb1dccaf6ac1363ad797d412f84e54dbc618e8c31  OpenBurnBar-1.0.1-macOS.zip
+5e3e41a69eb62498e18b32679846aa7e91c207307094f7bd65368289ef7b1034  build/macos-website-1.0.1-40/OpenBurnBar-1.0.1-macOS.dmg
+66234b4ed2971e4a46349e535a565f1715bdfbbb9d7b12b967f045bddf438bbfb72ce99b8a2174cb06f5ae07fa4b6525ca90b2c483479d13bd2fe1768e4efd81  build/macos-website-1.0.1-40/OpenBurnBar-1.0.1-macOS.dmg
+792ca7257586dc60b01552bf6105ba36f6faf4f5e91197d7254d2313329274aa  build/macos-website-1.0.1-40/OpenBurnBar-1.0.1-macOS.zip
+8ec8e34bf9802b7a8a4dc00f5bb6ebac1d86dfe0fab4ab3be975d85c250359e1b41df7b87af18048ec8cd72705e4cdaf98e1eaf581eb1760144085577dfc7548  build/macos-website-1.0.1-40/OpenBurnBar-1.0.1-macOS.zip

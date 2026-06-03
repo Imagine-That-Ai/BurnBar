@@ -55,6 +55,7 @@
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
+    "check:region-literals": "node ../scripts/ci/check-region-literals.mjs",
     "test:unit": "vitest run --reporter=verbose",
     "test:unit:coverage": "vitest run --reporter=verbose --reporter=json --coverage",
     "test:integration": "FUNCTIONS_EMULATOR=true vitest run --testPathPattern=integration"
@@ -62,6 +63,7 @@
   "dependencies": {
     "@apple/app-store-server-library": "^3.0.0",
     "@sentry/node": "8.55.2",
+    "@simplewebauthn/server": "13.3.0",
     "cockatiel": "3.2.1",
     "firebase-admin": "13.10.0",
     "firebase-functions": "^7.2.5",

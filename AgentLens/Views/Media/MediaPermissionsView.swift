@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -32,8 +33,38 @@ struct MediaPermissionsView: View {
     /// Backed by `UserDefaults` via `MercuryConsentStore`. Surfaced here
     /// so users can find it without having to open the menu-bar popover.
     @StateObject private var consentStore = MercuryConsentStore()
+    @StateObject private var entitlement = MacCloudEntitlementStore.shared
+
+    /// Floo — phone ↔ Mac screen share / voice / video — requires Cloud Pro.
+    /// `MacMediaCapabilityGate` admits sessions on the wire; this client gate
+    /// makes the *entry point* honest, so an unentitled member sees the
+    /// evocative unlock moment instead of permission rows that lead nowhere.
+    private var isFlooUnlocked: Bool {
+        entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.floo).requiredTier)
+    }
 
     var body: some View {
+        Group {
+            if isFlooUnlocked {
+                permissionsContent
+            } else {
+                FeatureLockedVeil(feature: GatedFeature.gatedFeature(.floo)) {
+                    permissionsContent
+                }
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .navigationTitle("Media & Sharing")
+        .task { await refreshAll() }
+        .onAppear { entitlement.start() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // System Settings changes don't notify us — re-poll when the
+            // user comes back to the app so the badges update.
+            Task { await refreshAll() }
+        }
+    }
+
+    private var permissionsContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 header
@@ -46,15 +77,7 @@ struct MediaPermissionsView: View {
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
-        .navigationTitle("Media & Sharing")
-        .task { await refreshAll() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // System Settings changes don't notify us — re-poll when the
-            // user comes back to the app so the badges update.
-            Task { await refreshAll() }
-        }
     }
 
     // MARK: - Header

@@ -86,6 +86,9 @@ public enum ComputerUsePanicSource: String, Codable, CaseIterable, Hashable, Sen
     case remoteConfig = "remote_config"
     case accessibilityRevoked = "accessibility_revoked"
     case stalled
+    /// Device/session trust was revoked (escrow-device revocation or panic
+    /// revoke-all); the live session is torn down for auditable forensics.
+    case revoked
 }
 
 /// Immutable session-start manifest. Hashed by `ComputerUseAuditChain` as

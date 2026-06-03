@@ -190,7 +190,7 @@ final class ControlPlaneStore: Sendable {
     func localAuthoritySnapshot() throws -> OpenBurnBarLocalAuthoritySnapshot {
         try dbQueue.read { db in
             let usageRows = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
-            let conversationRows = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations") ?? 0
+            let conversationRows = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations WHERE deletedAt IS NULL") ?? 0
             let sourceArtifactsTableExists = try Int.fetchOne(
                 db,
                 sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'source_artifacts'"

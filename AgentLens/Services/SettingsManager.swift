@@ -120,6 +120,12 @@ final class SettingsManager {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceSubStoreDidChange),
+            name: .useConstellationBackgroundDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
             name: .enableDesktopWallpaperDidChange,
             object: nil
         )
@@ -304,6 +310,11 @@ final class SettingsManager {
         set { appearance.useWebsiteBackground = newValue }
     }
 
+    var useConstellationBackground: Bool {
+        get { _ = appearanceMutationVersion; return appearance.useConstellationBackground }
+        set { appearance.useConstellationBackground = newValue }
+    }
+
     var enableDesktopWallpaper: Bool {
         get { _ = appearanceMutationVersion; return appearance.enableDesktopWallpaper }
         set { appearance.enableDesktopWallpaper = newValue }
@@ -467,6 +478,22 @@ final class SettingsManager {
         set { gateway.gatewayAuthToken = newValue }
     }
 
+    /// Opt-in escape hatch: bind the gateway on loopback without a bearer token.
+    /// Off by default so the gateway is fail-closed against same-host credit theft.
+    var gatewayAllowUnauthenticatedLoopback: Bool {
+        get { gateway.allowUnauthenticatedLoopback }
+        set { gateway.allowUnauthenticatedLoopback = newValue }
+    }
+
+    /// Auto-generates and persists a gateway bearer token (when none exists and
+    /// the user has not opted into unauthenticated loopback) so the daemon launch
+    /// always enforces auth. Returns the token to inject, or `nil` when the user
+    /// has explicitly opted out. See `GatewaySettings.ensureAuthTokenForLaunch()`.
+    @discardableResult
+    func ensureGatewayAuthTokenForLaunch() -> String? {
+        gateway.ensureAuthTokenForLaunch()
+    }
+
     var gatewayConfigurationDict: [String: Any] {
         [
             "enabled": gatewayEnabled,
@@ -504,6 +531,16 @@ final class SettingsManager {
     var databaseEncryptionEnabled: Bool {
         get { index.databaseEncryptionEnabled }
         set { index.databaseEncryptionEnabled = newValue }
+    }
+
+    /// Set when the database had to open in plaintext despite encryption being
+    /// requested (no SQLCipher in this build, or an existing plaintext DB that
+    /// cannot be safely encrypt-migrated yet). The DB-open path writes this to
+    /// `UserDefaults.standard` before `SettingsManager` exists; surface a standing
+    /// "data is not encrypted" banner while it is true. See B-DATA-1.
+    var plaintextDatabaseAcknowledged: Bool {
+        get { index.plaintextDatabaseAcknowledged }
+        set { index.plaintextDatabaseAcknowledged = newValue }
     }
 
     var preferredIndexEmbeddingVersionID: String {

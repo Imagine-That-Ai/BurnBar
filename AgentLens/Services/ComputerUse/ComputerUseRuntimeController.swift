@@ -25,6 +25,7 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
     private let settingsManager: SettingsManager
     private weak var relayHostService: HermesRelayHostService?
     private var panicCoordinator: ComputerUsePanicHaltCoordinator?
+    private var escrowRevocationWatcher: EscrowRevocationWatcher?
     private var cancellables: Set<AnyCancellable> = []
     #if DEBUG
     private var didStartE2EProofSession = false
@@ -80,6 +81,15 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
 
     func setFocusFollowMode(_ mode: AgentFocusFollowMode) {
         coordinator.setFocusFollowMode(mode)
+    }
+
+    func startEscrowRevocationWatching() {
+        guard escrowRevocationWatcher == nil else { return }
+        let watcher = EscrowRevocationWatcher { [weak self] deviceId, peerNodeId in
+            await self?.coordinator.revokeEscrowDevice(deviceId: deviceId, peerNodeId: peerNodeId)
+        }
+        watcher.start()
+        escrowRevocationWatcher = watcher
     }
 
     func startPanicMonitoring() {

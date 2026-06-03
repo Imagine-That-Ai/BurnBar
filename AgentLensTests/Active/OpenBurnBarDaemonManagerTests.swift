@@ -200,6 +200,92 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     @MainActor
+    func test_setPreferredProviderCredentialSlot_refreshesProviderConfigurations() async throws {
+        let harness = try makeRuntimePathsHarness(name: "preferred-slot-refresh")
+        defer { harness.cleanup() }
+
+        let icloudSlot = BurnBarProviderCredentialSlot(
+            slotID: "icloud",
+            label: "iCloud",
+            isEnabled: true
+        )
+        let gmailSlot = BurnBarProviderCredentialSlot(
+            slotID: "gmail",
+            label: "Gmail",
+            isEnabled: true
+        )
+        var configSnapshot = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "anthropic",
+                    isEnabled: true,
+                    baseURL: "https://api.anthropic.com/v1",
+                    preferredModelIDs: ["claude-opus-4-1"],
+                    preferredCredentialSlotID: "icloud",
+                    credentialSlots: [icloudSlot, gmailSlot]
+                )
+            ]
+        )
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: OpenBurnBarDaemonDependencies(
+                fileManager: .default,
+                runProcess: { _, _ in "" },
+                resolveDaemonBinary: { nil },
+                requestHealth: { _ in
+                    BurnBarHealthResponse(
+                        ok: true,
+                        daemonVersion: "test-daemon",
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        socketPath: harness.paths.socketURL.path
+                    )
+                },
+                requestConfig: { _ in configSnapshot },
+                updateConfig: { _, snapshot in
+                    configSnapshot = snapshot
+                    return snapshot
+                },
+                requestRecentUsage: { _, _ in [] },
+                requestControllerProjects: { _ in [] },
+                upsertControllerProject: { _, project in project },
+                recordControllerReviewRun: { _, run in
+                    BurnBarControllerReviewRunRecordResponse(
+                        run: run,
+                        summary: BurnBarControllerSummary(
+                            updatedAt: Date(),
+                            counts: BurnBarControllerCounts(
+                                projectCount: 0,
+                                pendingQuestionCount: 0,
+                                openFollowupCount: 0,
+                                activeMissionCount: 0,
+                                staleProjectCount: 0
+                            ),
+                            freshness: .missing
+                        )
+                    )
+                }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        await manager.refreshHealth()
+        XCTAssertEqual(manager.providerConfigurations.first?.preferredCredentialSlotID, "icloud")
+
+        try await manager.setPreferredProviderCredentialSlotOrThrow(
+            providerID: "anthropic",
+            slotID: "gmail"
+        )
+
+        XCTAssertEqual(configSnapshot.providerSettings(id: "anthropic")?.preferredCredentialSlotID, "gmail")
+        XCTAssertEqual(
+            manager.providerConfigurations.first?.preferredCredentialSlotID,
+            "gmail",
+            "The Accounts modal reads providerConfigurations; preference writes must refresh it immediately."
+        )
+    }
+
+    @MainActor
     func test_refreshInstalledDaemonIfNeededRepairsStaleInstalledDaemon() async throws {
         let harness = try makeRuntimePathsHarness(name: "refresh-stale-daemon")
         defer { harness.cleanup() }

@@ -6,6 +6,7 @@ import Foundation
 enum ICloudSessionMirrorConstants {
     static let containerIdentifier = "iCloud.com.openburnbar.app"
     static let mirrorPathComponents = ["Documents", "OpenBurnBar", "SessionMirror"]
+    static let rawMirrorDisabledMessage = "Raw iCloud session mirroring is disabled because provider logs can contain prompts, replies, file paths, and code. Sealed iCloud archive support must be implemented before this feature can write new cloud copies."
 }
 
 // MARK: - Mirror state (persisted)
@@ -385,11 +386,7 @@ final class ICloudSessionMirrorService {
 
     /// Rough total size of files that would be mirrored (for setup UI). Runs off the main thread.
     func estimatedTotalBytesToMirror() async -> Int64 {
-        let snapshot = makeSnapshot()
-        await Task.yield()
-        return await Task.detached(priority: .utility) {
-            await ICloudSessionMirrorEngine.estimateBytes(snapshot)
-        }.value
+        0
     }
 
     func syncIfNeeded() async {
@@ -400,17 +397,8 @@ final class ICloudSessionMirrorService {
         lastSyncError = nil
         lastSyncUpdatedCount = 0
         lastSyncRemovedCount = 0
-
-        let snapshot = makeSnapshot()
-
-        let result = await Task.detached(priority: .utility) {
-            await ICloudSessionMirrorEngine.perform(snapshot)
-        }.value
-
-        lastSyncDate = result.lastSyncDate
-        lastSyncError = result.errorMessage
-        lastSyncUpdatedCount = result.updatedCount
-        lastSyncRemovedCount = result.removedCount
+        lastSyncDate = nil
+        lastSyncError = ICloudSessionMirrorConstants.rawMirrorDisabledMessage
         isSyncing = false
     }
 
@@ -424,6 +412,8 @@ final class ICloudSessionMirrorService {
     }
 
     func exportHermesConversationsForMobile(_ conversations: [ConversationRecord]) async throws -> Int {
+        throw ICloudSessionMirrorError.rawMirrorDisabled
+        /*
         guard !conversations.isEmpty, let mirrorRoot = mirrorRootDirectoryURL() else { return 0 }
         let exportRoot = mirrorRoot
             .appendingPathComponent("Hermes", isDirectory: true)
@@ -454,6 +444,7 @@ final class ICloudSessionMirrorService {
             exported += 1
         }
         return exported
+        */
     }
 
     // MARK: - iCloud lightweight extractor
@@ -594,6 +585,7 @@ final class ICloudSessionMirrorService {
 
 private enum ICloudSessionMirrorError: Error {
     case pathOutsideRoot
+    case rawMirrorDisabled
 }
 
 // MARK: - FileManager

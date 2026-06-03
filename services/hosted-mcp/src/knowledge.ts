@@ -13,10 +13,13 @@
  * threaded as the 2nd arg exactly like every other tool. No namespace/uid is
  * ever read from `args`.
  *
- * Server-honoured filters are PLAINTEXT only (sourceKind, sourceSlug,
- * embeddingModelVersion). sourcePath/section/category live in the sealed
- * metadata and are applied on-device after decrypt — the tool accepts them for
- * forward-compatible client post-filtering but the server cannot read them.
+ * Server-honoured filters carry NO content (privacy-leak-remediation-2026-06-02
+ * §3): `sourceKind` (one of three coarse buckets) + `embeddingModelVersion`, and
+ * the source filter is the vault-keyed `slugHmac` the shim computes on-device —
+ * NOT the cleartext `sourceSlug`. sourcePath/section/category live in the sealed
+ * metadata and are applied on-device after decrypt; the tool accepts them for
+ * forward-compatible client post-filtering but the server cannot read them. The
+ * cleartext `sourceSlug`/`contentHash` filters and returns have been dropped.
  */
 
 import type { Firestore, Query } from "firebase-admin/firestore";
@@ -35,7 +38,8 @@ export interface KnowledgeSearchArgs {
   queryVector?: unknown;
   filters?: Record<string, unknown>;
   sourceKind?: unknown;
-  sourceSlug?: unknown;
+  /** Vault-keyed HMAC of the slug the shim computes on-device (replaces cleartext sourceSlug). */
+  slugHmac?: unknown;
   embeddingModelVersion?: unknown;
   // Sealed-only (applied on-device): present for forward-compat, ignored server-side.
   sourcePath?: unknown;
@@ -85,7 +89,8 @@ export interface KnowledgeSearchHit {
   ciphertext: unknown;
   sealedMetadata: unknown;
   sourceKind: unknown;
-  sourceSlug: unknown;
+  /** Vault-keyed HMAC of the slug — opaque to the server; the shim correlates on it. */
+  slugHmac: unknown;
   score: number;
   decryptMode: "local_decrypt_shim";
 }
@@ -158,15 +163,17 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
     ? verifyCursor(String(args.cursor), uid, "burnbar_search_knowledge").offset
     : 0;
 
-  // Plaintext-only server filters. Accept both top-level and nested `filters`.
+  // Content-free server filters. Accept both top-level and nested `filters`. The
+  // source filter is the vault-keyed `slugHmac` (no cleartext `sourceSlug`); the
+  // shim computes it on-device (privacy-leak-remediation-2026-06-02 §3).
   const filters = args.filters ?? {};
   const sourceKind = boundedString(args.sourceKind ?? filters.sourceKind, 64);
-  const sourceSlug = boundedString(args.sourceSlug ?? filters.sourceSlug, 256);
+  const slugHmac = boundedString(args.slugHmac ?? filters.slugHmac, 64);
   const embeddingModelVersion = boundedString(args.embeddingModelVersion ?? filters.embeddingModelVersion, 120);
 
   let query: KnowledgeVectorQuery = db.collection(`users/${uid}/cloud_search_knowledge`);
   if (sourceKind) query = query.where("sourceKind", "==", sourceKind);
-  if (sourceSlug) query = query.where("sourceSlug", "==", sourceSlug);
+  if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
   if (embeddingModelVersion) query = query.where("embeddingModelVersion", "==", embeddingModelVersion);
 
   // Fetch one extra beyond the page so we can tell whether a nextCursor is warranted
@@ -191,7 +198,8 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
       ciphertext: doc.get("sealedCiphertext"),
       sealedMetadata: doc.get("sealedMetadata"),
       sourceKind: doc.get("sourceKind"),
-      sourceSlug: doc.get("sourceSlug"),
+      // Vault-keyed HMAC only — no cleartext slug returned (§3).
+      slugHmac: doc.get("slugHmac"),
       score: 1 - distance, // COSINE distance -> similarity (higher = closer)
       decryptMode: LOCAL_DECRYPT_MODE,
     };
@@ -235,11 +243,13 @@ export async function readKnowledgeDocument(
 
   return {
     resourceUri: uri,
-    contentHash: typeof data.contentHash === "string" ? data.contentHash : "",
+    // Vault-keyed dedup hash / slug HMAC only — no cleartext `contentHash`/
+    // `sourceSlug` returned (privacy-leak-remediation-2026-06-02 §3).
+    dedupHash: typeof data.dedupHash === "string" ? data.dedupHash : "",
     sealedCiphertext: data.sealedCiphertext,
     sealedMetadata: data.sealedMetadata,
     sourceKind: data.sourceKind,
-    sourceSlug: data.sourceSlug,
+    slugHmac: data.slugHmac,
     encrypted: true,
     decryptMode: LOCAL_DECRYPT_MODE,
     storageReads: 0,

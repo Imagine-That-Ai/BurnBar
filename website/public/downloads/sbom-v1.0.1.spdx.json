@@ -5,10 +5,10 @@
   "name": "OpenBurnBar v1.0.1",
   "documentNamespace": "https://github.com/Ajnunezg/BurnBar/sbom/v1.0.1",
   "creationInfo": {
-    "created": "2026-06-01T18:43:59Z",
+    "created": "2026-06-02T16:50:51Z",
     "creators": [
       "Tool: generate-sbom.py",
-      "Tool: git+06e10af2f581"
+      "Tool: git+1bbe233f0d83"
     ]
   },
   "packages": [
@@ -62,6 +62,16 @@
     },
     {
       "SPDXID": "SPDXRef-Package-dep-0004",
+      "name": "",
+      "versionInfo": "unknown",
+      "downloadLocation": "",
+      "filesAnalyzed": false,
+      "copyrightText": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-dep-0005",
       "name": "@sentry/node",
       "versionInfo": "8.55.2",
       "downloadLocation": "https://www.npmjs.com/package/@sentry/node",
@@ -71,7 +81,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0005",
+      "SPDXID": "SPDXRef-Package-dep-0006",
       "name": "globals",
       "versionInfo": "17.4.0",
       "downloadLocation": "https://www.npmjs.com/package/globals",
@@ -81,7 +91,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0006",
+      "SPDXID": "SPDXRef-Package-dep-0007",
       "name": "@eslint/js",
       "versionInfo": "9.39.4",
       "downloadLocation": "https://www.npmjs.com/package/@eslint/js",
@@ -91,7 +101,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0007",
+      "SPDXID": "SPDXRef-Package-dep-0008",
       "name": "@types/mocha",
       "versionInfo": "10.0.10",
       "downloadLocation": "https://www.npmjs.com/package/@types/mocha",
@@ -101,7 +111,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0008",
+      "SPDXID": "SPDXRef-Package-dep-0009",
       "name": "@types/node",
       "versionInfo": "24.12.0",
       "downloadLocation": "https://www.npmjs.com/package/@types/node",
@@ -111,7 +121,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0009",
+      "SPDXID": "SPDXRef-Package-dep-0010",
       "name": "@types/vscode",
       "versionInfo": "1.110.0",
       "downloadLocation": "https://www.npmjs.com/package/@types/vscode",
@@ -121,7 +131,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0010",
+      "SPDXID": "SPDXRef-Package-dep-0011",
       "name": "@typescript-eslint/eslint-plugin",
       "versionInfo": "8.60.0",
       "downloadLocation": "https://www.npmjs.com/package/@typescript-eslint/eslint-plugin",
@@ -131,7 +141,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0011",
+      "SPDXID": "SPDXRef-Package-dep-0012",
       "name": "@typescript-eslint/parser",
       "versionInfo": "8.60.0",
       "downloadLocation": "https://www.npmjs.com/package/@typescript-eslint/parser",
@@ -141,9 +151,9 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0012",
+      "SPDXID": "SPDXRef-Package-dep-0013",
       "name": "@vitest/coverage-v8",
-      "versionInfo": "3.2.4",
+      "versionInfo": "4.1.8",
       "downloadLocation": "https://www.npmjs.com/package/@vitest/coverage-v8",
       "filesAnalyzed": false,
       "copyrightText": "NOASSERTION",
@@ -151,7 +161,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0013",
+      "SPDXID": "SPDXRef-Package-dep-0014",
       "name": "@vscode/test-electron",
       "versionInfo": "2.5.2",
       "downloadLocation": "https://www.npmjs.com/package/@vscode/test-electron",
@@ -161,7 +171,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0014",
+      "SPDXID": "SPDXRef-Package-dep-0015",
       "name": "eslint",
       "versionInfo": "9.39.4",
       "downloadLocation": "https://www.npmjs.com/package/eslint",
@@ -171,7 +181,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0015",
+      "SPDXID": "SPDXRef-Package-dep-0016",
       "name": "eslint-config-prettier",
       "versionInfo": "10.1.8",
       "downloadLocation": "https://www.npmjs.com/package/eslint-config-prettier",
@@ -181,7 +191,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0016",
+      "SPDXID": "SPDXRef-Package-dep-0017",
       "name": "knip",
       "versionInfo": "5.88.1",
       "downloadLocation": "https://www.npmjs.com/package/knip",
@@ -191,7 +201,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0017",
+      "SPDXID": "SPDXRef-Package-dep-0018",
       "name": "mocha",
       "versionInfo": "11.7.5",
       "downloadLocation": "https://www.npmjs.com/package/mocha",
@@ -201,7 +211,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0018",
+      "SPDXID": "SPDXRef-Package-dep-0019",
       "name": "prettier",
       "versionInfo": "3.8.3",
       "downloadLocation": "https://www.npmjs.com/package/prettier",
@@ -211,7 +221,7 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0019",
+      "SPDXID": "SPDXRef-Package-dep-0020",
       "name": "typescript",
       "versionInfo": "5.9.3",
       "downloadLocation": "https://www.npmjs.com/package/typescript",
@@ -221,9 +231,9 @@
       "licenseDeclared": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0020",
+      "SPDXID": "SPDXRef-Package-dep-0021",
       "name": "vitest",
-      "versionInfo": "3.2.4",
+      "versionInfo": "4.1.8",
       "downloadLocation": "https://www.npmjs.com/package/vitest",
       "filesAnalyzed": false,
       "copyrightText": "NOASSERTION",
@@ -336,6 +346,11 @@
       "spdxElementId": "SPDXRef-Package-openburnbar",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-dep-0020"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-openburnbar",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-dep-0021"
     }
   ]
 }

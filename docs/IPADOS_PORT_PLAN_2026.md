@@ -372,7 +372,7 @@ All required collections already exist and are populated by the Mac:
 - **Providers:** List of providers with enable toggle + plan tier picker. No local paths. Add via callable function.
 - **Alerts:** Cost threshold slider, daily budget field, token alert toggle
 - **Notifications:** Enable/disable digest, time picker, preview
-- **Devices & Sync:** Device list with trust pills, sync status, iCloud mirroring toggle
+- **Devices & Sync:** Device list with trust pills, sync status, and a disabled/raw-iCloud-mirror status with future sealed archive affordance
 - **Account Switcher:** Profile list, add new, switch action
 
 **Interaction:**

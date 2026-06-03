@@ -15,8 +15,21 @@ final class IndexSettings {
         didSet { persistence.set(restrictedLogAccess, forKey: "restrictedLogAccess") }
     }
 
-    var databaseEncryptionEnabled: Bool = false {
+    /// Encryption-at-rest is default-ON for new installs (B-DATA-1). Existing
+    /// installs keep whatever value they previously persisted (see `init`).
+    var databaseEncryptionEnabled: Bool = true {
         didSet { persistence.set(databaseEncryptionEnabled, forKey: "databaseEncryptionEnabled") }
+    }
+
+    /// Explicit, persisted, user-acknowledged plaintext escape hatch. When the
+    /// build genuinely cannot encrypt (no SQLCipher) or an existing plaintext DB
+    /// cannot be safely migrated, the database opens in plaintext only while this
+    /// flag is set, and a standing banner should warn the user. Default false:
+    /// without it, an encryption failure surfaces rather than silently shipping
+    /// plaintext. Persisted under the same key the DB-open path reads from
+    /// `UserDefaults.standard` so it is available before `SettingsManager` exists.
+    var plaintextDatabaseAcknowledged: Bool = false {
+        didSet { persistence.set(plaintextDatabaseAcknowledged, forKey: "plaintextDatabaseAcknowledged") }
     }
 
     var preferredIndexEmbeddingVersionID: String = "" {
@@ -56,8 +69,10 @@ final class IndexSettings {
         if persistence.objectExists(forKey: "databaseEncryptionEnabled") {
             self.databaseEncryptionEnabled = persistence.bool(forKey: "databaseEncryptionEnabled")
         } else {
-            self.databaseEncryptionEnabled = false
+            // New install: encryption-at-rest default-on (B-DATA-1).
+            self.databaseEncryptionEnabled = true
         }
+        self.plaintextDatabaseAcknowledged = persistence.bool(forKey: "plaintextDatabaseAcknowledged")
         self.preferredIndexEmbeddingVersionID = persistence.string(forKey: "preferredIndexEmbeddingVersionID")
         if let rawProvider = persistence.optionalString(forKey: "indexEmbeddingProvider"),
            let provider = IndexEmbeddingProviderID(rawValue: rawProvider) {

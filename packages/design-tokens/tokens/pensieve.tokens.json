@@ -1,0 +1,73 @@
+{
+  "$description": "BurnBar 'The Pensieve' design tokens (DTCG). A superset of the brand 'Glass Console over Furnace Core' system plus Data & Privacy Control Center tokens (mercury-silver basin substance, frosted/sealed state, wax-crimson destructive, and encryption-tier badge colors). Style Dictionary v5 emits CSS custom properties (web console), a Swift theme (Apple), and a Compose object (Android) so all surfaces render one product.",
+  "color": {
+    "ink": {
+      "void": { "$value": "#050508", "$type": "color", "$description": "absolute canvas base" },
+      "base": { "$value": "#0a0a0e", "$type": "color" },
+      "elevated": { "$value": "#12121a", "$type": "color" },
+      "furnace": { "$value": "#180805", "$type": "color", "$description": "deep molten red-black, brand furnace core" }
+    },
+    "mercury": {
+      "bright": { "$value": "#f4f6fb", "$type": "color", "$description": "the basin substance — cool silver, the only true bright" },
+      "core": { "$value": "#c7cfdd", "$type": "color" },
+      "deep": { "$value": "#8b94a8", "$type": "color" },
+      "wash": { "$value": "rgba(199,207,221,0.06)", "$type": "color" }
+    },
+    "brass": {
+      "core": { "$value": "#fa6b06", "$type": "color", "$description": "brand ember/fire — owned/keys/CTA warmth" },
+      "bright": { "$value": "#fdc42c", "$type": "color", "$description": "brand gold highlight" },
+      "deep": { "$value": "#ee1803", "$type": "color", "$description": "brand deep red" },
+      "glow": { "$value": "rgba(250,107,6,0.40)", "$type": "color" }
+    },
+    "frost": {
+      "veil": { "$value": "rgba(199,207,221,0.10)", "$type": "color", "$description": "sealed/etched-glass overlay — what the server sees" },
+      "line": { "$value": "rgba(255,255,255,0.10)", "$type": "color" }
+    },
+    "seal": {
+      "crimson": { "$value": "#c5221f", "$type": "color", "$description": "DESTRUCTIVE ONLY — breaking a wax seal (delete/siphon)" }
+    },
+    "glass": {
+      "bg": { "$value": "rgba(10,10,15,0.50)", "$type": "color" },
+      "bgElevated": { "$value": "rgba(18,18,26,0.62)", "$type": "color" },
+      "line": { "$value": "rgba(255,255,255,0.08)", "$type": "color" },
+      "lineBright": { "$value": "rgba(255,255,255,0.15)", "$type": "color" }
+    },
+    "text": {
+      "bright": { "$value": "#ffffff", "$type": "color" },
+      "base": { "$value": "rgba(255,255,255,0.85)", "$type": "color" },
+      "mute": { "$value": "rgba(255,255,255,0.55)", "$type": "color" },
+      "dim": { "$value": "rgba(255,255,255,0.35)", "$type": "color" }
+    },
+    "tier": {
+      "serverReadable": { "$value": "#fdc42c", "$type": "color", "$description": "amber — server can read (operational telemetry)" },
+      "zeroAccess": { "$value": "#8b94a8", "$type": "color", "$description": "steel — encrypted at rest, key under your device trust" },
+      "endToEnd": { "$value": "#3cd6c0", "$type": "color", "$description": "teal-silver — only your devices can read; the hero tier" }
+    }
+  },
+  "font": {
+    "display": { "$value": "Outfit, 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif", "$type": "fontFamily" },
+    "body": { "$value": "'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif", "$type": "fontFamily" },
+    "mono": { "$value": "'JetBrains Mono Variable', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace", "$type": "fontFamily" },
+    "arcane": { "$value": "'Fraunces Variable', Georgia, serif", "$type": "fontFamily", "$description": "optional arcane accent for the basin hero label only" }
+  },
+  "space": {
+    "1": { "$value": "4px", "$type": "dimension" },
+    "2": { "$value": "8px", "$type": "dimension" },
+    "3": { "$value": "12px", "$type": "dimension" },
+    "4": { "$value": "16px", "$type": "dimension" },
+    "6": { "$value": "24px", "$type": "dimension" },
+    "8": { "$value": "32px", "$type": "dimension" },
+    "12": { "$value": "48px", "$type": "dimension" }
+  },
+  "radius": {
+    "sm": { "$value": "8px", "$type": "dimension" },
+    "md": { "$value": "14px", "$type": "dimension" },
+    "lg": { "$value": "20px", "$type": "dimension" },
+    "pill": { "$value": "999px", "$type": "dimension" }
+  },
+  "motion": {
+    "swirlSeconds": { "$value": "18", "$type": "number", "$description": "basin swirl loop period (still render under reduced-motion)" },
+    "frostFlipMs": { "$value": "520", "$type": "number", "$description": "yours <-> server view-flip frost sweep" },
+    "easeStandard": { "$value": "cubic-bezier(0.2, 0.8, 0.2, 1)", "$type": "cubicBezier" }
+  }
+}

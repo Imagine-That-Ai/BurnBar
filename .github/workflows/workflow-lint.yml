@@ -26,8 +26,18 @@ jobs:
 
       - name: Install actionlint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
-            | bash -s -- latest
+          for attempt in 1 2 3; do
+            if curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
+              -o /tmp/download-actionlint.bash \
+              && bash /tmp/download-actionlint.bash latest; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              exit 1
+            fi
+            rm -f ./actionlint /tmp/download-actionlint.bash
+            sleep $((attempt * 10))
+          done
 
       - name: Lint workflow files
         run: |

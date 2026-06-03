@@ -17,6 +17,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
 import type { ComputerUseSessionDailyRollupDoc } from "./types.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -32,7 +33,7 @@ export const rollupComputerUseDaily = onSchedule(
   {
     schedule: "30 0 * * *",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     timeoutSeconds: 540,
   },
   async () => {

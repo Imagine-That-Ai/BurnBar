@@ -9,6 +9,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import type { MediaFeature, MediaSessionDailyRollupDoc } from "./types.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ROLLUP_SCHEMA_VERSION = 1;
 const ROLLUP_COLLECTION = "ops/media_session_daily_rollups/days";
@@ -206,7 +207,7 @@ export const rollupMediaSessionDaily = onSchedule(
   {
     schedule: "every 24 hours",
     timeZone: "UTC",
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
   },
   async () => {
     const target = previousUtcDay(new Date());

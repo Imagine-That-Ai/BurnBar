@@ -50,6 +50,13 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
     let sourceDeviceName: String?
     /// True for rows downloaded from Firestore; excluded from upload sync.
     let isRemote: Bool
+    /// Non-nil once the conversation is tombstoned (cross-device soft-delete,
+    /// B-DATA-2). A tombstoned record is excluded from every user-facing read and
+    /// is collected by `ConversationTombstoneGCService` after the retention window.
+    let deletedAt: Date?
+    /// Monotonic mutation counter. Bumped on every soft-delete (and reserved for
+    /// Phase-2 conflict convergence). Defaults to 1 for legacy/live rows.
+    let version: Int
 
     init(
         id: String,
@@ -78,7 +85,9 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         sourceType: ConversationSourceType = .providerLog,
         sourceDeviceId: String? = nil,
         sourceDeviceName: String? = nil,
-        isRemote: Bool = false
+        isRemote: Bool = false,
+        deletedAt: Date? = nil,
+        version: Int = 1
     ) {
         self.id = id
         self.provider = provider
@@ -107,6 +116,8 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         self.sourceDeviceId = sourceDeviceId
         self.sourceDeviceName = sourceDeviceName
         self.isRemote = isRemote
+        self.deletedAt = deletedAt
+        self.version = version
     }
 
     /// Stable synthetic ID for the in-app CLI assistant conversation.

@@ -38,6 +38,15 @@ public enum ComputerUseDenyReason: String, Codable, Sendable, Hashable, CaseIter
     case staleTimestamp = "stale_timestamp"
     /// User explicitly rejected the action at the approval sheet.
     case userRejected = "user_rejected"
+    /// The fail-closed audit reservation could not be appended to the
+    /// hash chain BEFORE dispatch, so the action was NOT executed. A
+    /// durable audit record is mandatory; absence of one denies the action.
+    case auditFailure = "audit_failure"
+    /// Remote-clipboard read/write attempted without the dedicated,
+    /// short-lived clipboard consent. Clipboard is split from the broad
+    /// remote-control (allowsSystem) grant: the user can deny clipboard
+    /// while keeping screen-share + input. Absence of consent fails closed.
+    case clipboardConsentRequired = "clipboard_consent_required"
 }
 
 /// Outcome returned by `ComputerUseCapabilityGate.check(...)`. The
@@ -151,6 +160,12 @@ public struct ComputerUseCapabilityContext: Sendable {
     /// `true` via Remote Config `computer_use_phone_control_respects_deny_regions`
     /// if the threat model changes.
     public let phoneControlRespectsDenyRegions: Bool
+    /// Dedicated, short-lived consent for remote-clipboard read/write. This
+    /// is a SEPARATE bit from `entitlement.allowsSystem` so the user can
+    /// grant screen-share + Mac input yet still deny clipboard. Defaults to
+    /// `false` everywhere (fail-closed): existing remote-control grants do
+    /// NOT silently include clipboard, and absence is treated as denied.
+    public let clipboardConsentGranted: Bool
 
     public init(
         entitlement: ComputerUseEntitlementSnapshot,
@@ -161,7 +176,8 @@ public struct ComputerUseCapabilityContext: Sendable {
         killSwitch: Bool,
         accessibilityTrusted: Bool,
         originatedFromPhone: Bool = false,
-        phoneControlRespectsDenyRegions: Bool = false
+        phoneControlRespectsDenyRegions: Bool = false,
+        clipboardConsentGranted: Bool = false
     ) {
         self.entitlement = entitlement
         self.envelope = envelope
@@ -172,6 +188,7 @@ public struct ComputerUseCapabilityContext: Sendable {
         self.accessibilityTrusted = accessibilityTrusted
         self.originatedFromPhone = originatedFromPhone
         self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
+        self.clipboardConsentGranted = clipboardConsentGranted
     }
 }
 
@@ -217,10 +234,20 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         switch action {
         case .browser:
             if !context.entitlement.allowsBrowser { return .denied(.entitlement) }
-        case .macInput, .macInspect, .remoteClipboard:
+        case .macInput, .macInspect:
             if !context.entitlement.allowsSystem { return .denied(.entitlement) }
             if context.originatedFromPhone && !context.entitlement.allowsPhoneControl { return .denied(.entitlement) }
             if !context.accessibilityTrusted { return .denied(.accessibilityRevoked) }
+        case .remoteClipboard:
+            // Clipboard rides the same remote-control lane (allowsSystem +
+            // accessibility + phone-control) AS WELL AS its own dedicated,
+            // short-lived consent. The consent is checked LAST so that a
+            // missing clipboard grant is reported as `.clipboardConsentRequired`
+            // (not `.entitlement`), and so it fails closed when absent.
+            if !context.entitlement.allowsSystem { return .denied(.entitlement) }
+            if context.originatedFromPhone && !context.entitlement.allowsPhoneControl { return .denied(.entitlement) }
+            if !context.accessibilityTrusted { return .denied(.accessibilityRevoked) }
+            if !context.clipboardConsentGranted { return .denied(.clipboardConsentRequired) }
         case .phoneIntent:
             if !context.entitlement.allowsPhoneControl { return .denied(.entitlement) }
         }
@@ -232,6 +259,18 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             action: action,
             context: context
         )
+
+        // Safety caps are never metering. Direct phone control may be local and
+        // unbilled, but it is still a remote-control session and must obey the
+        // declared action cap and wall-clock timeout.
+        if context.session.actionsExecuted >= context.session.manifest.actionCap {
+            return .denied(.sessionLimit)
+        }
+        if context.session.manifest.sessionTimeoutSeconds > 0,
+           Date().timeIntervalSince(context.session.manifest.startedAt) >=
+           Double(context.session.manifest.sessionTimeoutSeconds) {
+            return .denied(.sessionLimit)
+        }
 
         if !skipsMeteredComputerUseCaps {
             // 3. Budget caps (hard > soft).
@@ -246,11 +285,6 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
             if context.usage.visionModelSpendUSD >= context.envelope.perUserDailySpendCeilingUSD {
                 return .denied(.dailySpendCeiling)
-            }
-
-            // 5. Per-session caps.
-            if context.session.actionsExecuted >= context.session.manifest.actionCap {
-                return .denied(.sessionLimit)
             }
         }
 

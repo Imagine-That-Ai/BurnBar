@@ -1,0 +1,483 @@
+/* Pensieve design tokens (synced verbatim from packages/design-tokens/dist/css/pensieve.css). */
+@import "./pensieve.tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   "Quiet Editorial" — a light, paper-bright console. Near-black ink, ONE
+   restrained accent (oxblood — a muted wax-seal evolution of BurnBar's red),
+   big grotesk display, mono figures, hairlines, whitespace. No glow, no
+   gradient, no glass. Elegant, evocative, premium, no bullshit.
+
+   We override the imported dark tokens to light values here (this file wins —
+   it is declared after the import and is never auto-synced), so every existing
+   token-bound component flips to the editorial palette coherently.
+   ========================================================================== */
+
+:root {
+  /* paper + ink */
+  --color-ink-void: #f6f4ef; /* the page */
+  --color-ink-base: #f0eee7; /* header / recessed */
+  --color-ink-elevated: #fffefb; /* raised paper */
+  --color-ink-furnace: #f6f4ef;
+
+  --color-text-bright: #16140f; /* ink — headings */
+  --color-text-base: #353027; /* body */
+  --color-text-mute: #6e685d; /* secondary */
+  --color-text-dim: #9b9488; /* tertiary / labels */
+
+  /* hairlines + tints */
+  --color-glass-line: rgba(22, 20, 15, 0.12);
+  --color-glass-line-bright: rgba(22, 20, 15, 0.22);
+  --color-glass-bg: #fffefb;
+  --color-glass-bg-elevated: #fffefb;
+  --color-mercury-bright: #16140f;
+  --color-mercury-core: #6e685d;
+  --color-mercury-deep: #9b9488;
+  --color-mercury-wash: rgba(22, 20, 15, 0.04);
+  --color-frost-veil: rgba(22, 20, 15, 0.035);
+  --color-frost-line: rgba(22, 20, 15, 0.12);
+
+  /* the single accent: oxblood */
+  --accent: #7c2d2a;
+  --accent-deep: #5f211e;
+  --accent-wash: rgba(124, 45, 42, 0.08);
+  --color-brass-core: var(--accent);
+  --color-brass-bright: var(--accent);
+  --color-brass-deep: var(--accent-deep);
+  --color-brass-glow: rgba(124, 45, 42, 0.16);
+
+  /* encryption tiers — same identities, AA-legible on paper */
+  --color-tier-end-to-end: #0c7c69; /* teal, darkened */
+  --color-tier-zero-access: #565d68; /* slate */
+  --color-tier-server-readable: #8a6200; /* ochre (amber on light) */
+  --tier-e2e-dot: #11a98f;
+  --tier-zero-dot: #767d8a;
+  --tier-srv-dot: #c79200;
+
+  --color-seal-crimson: #b22219; /* destructive */
+
+  /* typography */
+  --font-display: "Bricolage Grotesque", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, Consolas, monospace;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+
+  /* crisper editorial radii */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    /* paper lives on the root so the fixed z-index:-1 dot-crest canvas (a child
+       of <body>) paints above it, behind content. */
+    background: var(--color-ink-void);
+  }
+
+  html,
+  body {
+    color: var(--color-text-base);
+    font-family: var(--font-body);
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.006em;
+    font-feature-settings: "ss01" 1;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: transparent;
+  }
+
+  ::selection {
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    color: var(--color-text-bright);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+    transition: color 160ms ease;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* tabular, legible figures everywhere numbers live */
+  .font-mono,
+  [class*="font-mono"] {
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+}
+
+@layer components {
+  /* Paper panel — replaces glass. Clean, hairline, the faintest lift. */
+  .glass-pane {
+    background: var(--color-ink-elevated);
+    border: 1px solid var(--color-glass-line);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      0 1px 1px rgba(22, 20, 15, 0.03),
+      0 12px 28px -22px rgba(22, 20, 15, 0.35);
+  }
+
+  .glass-pane--elevated {
+    border-color: var(--color-glass-line-bright);
+    box-shadow:
+      0 1px 1px rgba(22, 20, 15, 0.04),
+      0 24px 48px -28px rgba(22, 20, 15, 0.4);
+  }
+
+  .frost-overlay {
+    background: var(--color-frost-veil);
+    border: 1px solid var(--color-frost-line);
+  }
+
+  /* Mono small-caps kicker. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--color-text-dim);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .eyebrow--accent {
+    color: var(--accent);
+  }
+
+  /* Evocative serif epigraph — used once, sparingly. */
+  .epigraph {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-optical-sizing: auto;
+    color: var(--color-text-mute);
+    letter-spacing: 0;
+  }
+
+  /* Hairline rules. */
+  .rule {
+    height: 1px;
+    width: 100%;
+    background: var(--color-glass-line);
+    border: 0;
+  }
+
+  /* Column header for the ledger — shares the row's grid + gutters so the
+     labels sit exactly above their tracks. */
+  .ledger-head {
+    display: grid;
+    align-items: end;
+    gap: 1.25rem;
+    padding: 0 0.25rem 0.7rem;
+  }
+
+  /* Ruled ledger rows — the privacy footprint as an editorial table. */
+  .ledger-row {
+    display: grid;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1.1rem 0.25rem;
+    border-bottom: 1px solid var(--color-glass-line);
+    transition:
+      background 160ms ease,
+      padding-left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .ledger-row:hover {
+    background: var(--color-mercury-wash);
+    padding-left: 0.9rem;
+  }
+
+  /* A small luminous-ink tier marker. */
+  .tier-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    flex: none;
+    display: inline-block;
+  }
+
+  /* Tier as a scannable, colour-coded pill in the "Access" column. */
+  .tier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    padding: 0.16rem 0.55rem 0.16rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--tier-ink) 26%, transparent);
+    background: color-mix(in srgb, var(--tier-ink) 8%, transparent);
+    color: var(--tier-ink);
+    font-variant: all-small-caps;
+    letter-spacing: 0.07em;
+    font-size: 0.72rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .tier-badge__dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: var(--tier-dot, var(--tier-ink));
+    flex: none;
+  }
+
+  /* The single, restrained editorial button set. */
+  .btn-quiet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition:
+      background 160ms ease,
+      color 160ms ease,
+      border-color 160ms ease,
+      transform 160ms ease;
+  }
+  .btn-quiet:active {
+    transform: translateY(0.5px);
+  }
+
+  .btn-accent {
+    background: var(--accent);
+    color: #fbf3ef;
+    border: 1px solid var(--accent);
+  }
+  .btn-accent:hover {
+    background: var(--accent-deep);
+    border-color: var(--accent-deep);
+    color: #fff;
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--color-text-base);
+    border: 1px solid var(--color-glass-line-bright);
+  }
+  .btn-outline:hover {
+    border-color: var(--color-text-bright);
+    color: var(--color-text-bright);
+  }
+
+  .btn-bare {
+    background: transparent;
+    color: var(--color-text-mute);
+    border: 1px solid transparent;
+  }
+  .btn-bare:hover {
+    color: var(--color-text-bright);
+    background: var(--color-mercury-wash);
+  }
+}
+
+/* underline-on-hover for inline links */
+.link-underline {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% 1px;
+  transition: background-size 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  color: var(--accent);
+}
+.link-underline:hover {
+  background-size: 100% 1px;
+}
+
+/* ---- atmosphere: a whisper of paper fibre ------------------------------- */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 200px 200px;
+}
+
+/* ---- broadsheet utilities ---------------------------------------------- */
+.nameplate {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.smallcaps {
+  font-variant: all-small-caps;
+  letter-spacing: 0.1em;
+}
+.folio {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+.index-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim);
+  transition: color 180ms ease;
+}
+.dropcap::first-letter {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 3.1em;
+  line-height: 0.72;
+  float: left;
+  margin: 0.06em 0.09em 0 0;
+  color: var(--accent);
+}
+.rule-double {
+  border-bottom: 3px double var(--color-glass-line-bright);
+}
+
+/* ---- one orchestrated page-load ---------------------------------------- */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.reveal {
+  opacity: 0;
+  animation: reveal-up 0.72s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes spine-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.spine-seg {
+  transform-origin: left center;
+  animation: spine-grow 0.95s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+
+/* a quiet iridescent sheen riding across the posture spine */
+.spine-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1px;
+}
+.spine-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 36%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 64%
+  );
+  mix-blend-mode: overlay;
+  transform: translateX(-130%);
+  animation: spine-sheen 6.5s ease-in-out infinite;
+}
+@keyframes spine-sheen {
+  0%,
+  12% {
+    transform: translateX(-130%);
+  }
+  62%,
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal,
+  .spine-seg {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .spine-wrap::after {
+    display: none;
+  }
+}
+
+/* Gentle life on the static brand mark until the looping video is present. */
+@keyframes brand-sheen {
+  0% {
+    transform: translateX(-140%) skewX(-12deg);
+  }
+  60%,
+  100% {
+    transform: translateX(140%) skewX(-12deg);
+  }
+}
+.brand-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 42%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 58%
+  );
+  transform: translateX(-140%) skewX(-12deg);
+  animation: brand-sheen 4.8s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-sheen {
+    display: none;
+  }
+}
+
+/* Login modal — translucent vellum so the drifting dot-crest shows through. */
+.signin-card {
+  background: rgba(255, 254, 251, 0.55) !important;
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
+}

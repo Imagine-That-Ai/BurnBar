@@ -31,6 +31,7 @@ import type {
 } from "./types.js";
 import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStatusDoc } from "./guards.js";
 import { logError, logWarn } from "./logging.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
 
@@ -1053,7 +1054,7 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
  */
 export const latestRouterRundown = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
   },
   async (req, res) => {

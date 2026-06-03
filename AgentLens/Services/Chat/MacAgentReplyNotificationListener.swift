@@ -4,6 +4,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarCore
 import UserNotifications
 
 private struct MacAgentReplyNotificationPayload: Sendable {
@@ -64,7 +65,7 @@ private struct MacAgentNotificationReplyCommand: Sendable {
     let eventID: String
     let runtime: String
     let threadID: String
-    let replyText: String
+    let sealedReplyPayload: CloudVaultSealedPayload
     let deviceID: String?
     let status: String
 
@@ -73,13 +74,13 @@ private struct MacAgentNotificationReplyCommand: Sendable {
         eventID = Self.string(data["eventId"]) ?? ""
         runtime = Self.string(data["runtime"]) ?? "hermes"
         threadID = Self.string(data["threadId"]) ?? ""
-        replyText = Self.string(data["replyText"]) ?? ""
+        guard let sealedReplyPayload = CloudVaultCrypto.sealedPayload(from: data["sealedReplyPayload"]) else { return nil }
+        self.sealedReplyPayload = sealedReplyPayload
         deviceID = Self.string(data["deviceId"])
         status = Self.string(data["status"]) ?? "queued"
 
         guard !eventID.isEmpty,
               !threadID.isEmpty,
-              !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               status == "queued" else {
             return nil
         }
@@ -91,7 +92,7 @@ private struct MacAgentNotificationReplyCommand: Sendable {
             runtime: runtime,
             threadID: threadID,
             title: "Agent reply",
-            preview: replyText,
+            preview: "Reply queued.",
             deepLink: nil
         )
     }
@@ -105,6 +106,31 @@ private struct MacAgentNotificationReplyCommand: Sendable {
         default:
             return nil
         }
+    }
+}
+
+private struct MacAgentNotificationReplyPrivatePayload: Codable {
+    let replyText: String
+}
+
+private enum MacAgentNotificationReplySealer {
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
+    private static let decoder = JSONDecoder()
+
+    static func sealedReplyMap(replyText: String, keyData: Data, vaultKeyID: String) throws -> [String: Any] {
+        let payload = try encoder.encode(MacAgentNotificationReplyPrivatePayload(replyText: replyText))
+        let sealed = try CloudVaultCrypto.sealPayload(payload, keyData: keyData, vaultKeyID: vaultKeyID)
+        return CloudVaultCrypto.sealedPayloadDictionary(sealed)
+    }
+
+    static func openReplyText(_ envelope: CloudVaultSealedPayload, keyData: Data) throws -> String {
+        let payload = try CloudVaultCrypto.openPayload(envelope, keyData: keyData)
+        return try decoder.decode(MacAgentNotificationReplyPrivatePayload.self, from: payload).replyText
     }
 }
 
@@ -321,9 +347,20 @@ final class MacAgentReplyNotificationListener: NSObject {
         processedReplyIDs.insert(replyId)
         let callable = Functions.functions(region: "us-central1").httpsCallable("submitAgentNotificationReply")
         do {
+            guard let uid = Auth.auth().currentUser?.uid else { return }
+            let key = try await MacCloudVaultKeyAccess.keyForWriting(
+                uid: uid,
+                deviceId: AccountManager.shared.deviceId,
+                firestore: Firestore.firestore()
+            )
             _ = try await callable.call([
                 "eventId": eventID,
-                "replyText": replyText,
+                "sealedReplyPayload": try MacAgentNotificationReplySealer.sealedReplyMap(
+                    replyText: replyText,
+                    keyData: key.keyData,
+                    vaultKeyID: key.vaultKeyID
+                ),
+                "vaultKeyID": key.vaultKeyID,
                 "deviceId": deviceID,
                 "clientReplyId": replyId,
             ])
@@ -369,7 +406,15 @@ final class MacAgentReplyNotificationListener: NSObject {
         Task {
             do {
                 try await markReplyCommand(uid: uid, replyID: command.id, status: "processing", error: nil)
-                await routeInlineReply(payload: command.payload, replyText: command.replyText, activate: false)
+                guard let key = try await MacCloudVaultKeyAccess.keyForReading(
+                    uid: uid,
+                    deviceId: AccountManager.shared.deviceId,
+                    firestore: Firestore.firestore()
+                ) else {
+                    throw CloudVaultAccessError.vaultKeyUnavailable
+                }
+                let replyText = try MacAgentNotificationReplySealer.openReplyText(command.sealedReplyPayload, keyData: key.keyData)
+                await routeInlineReply(payload: command.payload, replyText: replyText, activate: false)
                 try await markReplyCommand(uid: uid, replyID: command.id, status: "sent", error: nil)
             } catch {
                 try? await markReplyCommand(uid: uid, replyID: command.id, status: "failed", error: error.localizedDescription)

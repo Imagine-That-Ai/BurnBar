@@ -215,6 +215,112 @@ final class CLIAgentChatReaderTests: XCTestCase {
         XCTAssertEqual(thread.messages.last?.toolCalls.map(\.status), ["running", "done"])
     }
 
+    // MARK: - Sealed rename (privacy-leak remediation)
+
+    func test_applyMetadata_setsCustomTitle_preservesTranscript() {
+        let record = makeSession(id: "s1", agent: .codex, updated: Date(timeIntervalSince1970: 100))
+        let updated = CLIAgentChatReader.applyMetadata(
+            to: record,
+            customTitle: "Quarterly burn deep-dive",
+            labelColorHex: "#FF8800",
+            isPinned: true,
+            priorityOrder: 3
+        )
+        XCTAssertEqual(updated.customTitle, "Quarterly burn deep-dive")
+        XCTAssertEqual(updated.labelColorHex, "#FF8800")
+        XCTAssertEqual(updated.isPinned, true)
+        XCTAssertEqual(updated.priorityOrder, 3)
+        // Private transcript fields untouched.
+        XCTAssertEqual(updated.title, record.title)
+        XCTAssertEqual(updated.preview, record.preview)
+    }
+
+    func test_applyMetadata_emptyCustomTitle_clearsOverride() {
+        var record = makeSession(id: "s1", agent: .codex, updated: Date())
+        record.customTitle = "Existing"
+        let cleared = CLIAgentChatReader.applyMetadata(
+            to: record,
+            customTitle: "",
+            labelColorHex: nil,
+            isPinned: nil,
+            priorityOrder: nil
+        )
+        XCTAssertNil(cleared.customTitle)
+    }
+
+    func test_applyMetadata_sentinelLabelColor_clearsColor() {
+        var record = makeSession(id: "s1", agent: .codex, updated: Date())
+        record.labelColorHex = "#FF0000"
+        let cleared = CLIAgentChatReader.applyMetadata(
+            to: record,
+            customTitle: nil,
+            labelColorHex: "#NONE#",
+            isPinned: nil,
+            priorityOrder: nil
+        )
+        XCTAssertNil(cleared.labelColorHex)
+    }
+
+    /// The rename must seal `customTitle` inside `sealedPayload` and write NO
+    /// top-level plaintext `customTitle` — mirroring the Mac mirror writer.
+    func test_rename_sealsCustomTitle_noTopLevelPlaintext() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+
+        var record = makeSession(id: "s1", agent: .codex, updated: Date(timeIntervalSince1970: 100))
+        record.messages = [
+            CLIAgentMessage(id: "m1", role: .user, text: "Private prompt", timestamp: Date(timeIntervalSince1970: 100))
+        ]
+
+        let renamed = CLIAgentChatReader.applyMetadata(
+            to: record,
+            customTitle: "My private rename",
+            labelColorHex: nil,
+            isPinned: nil,
+            priorityOrder: nil
+        )
+        let sealed = try CLIAgentSessionCodec.encodeSealed(renamed, vaultKey: key, vaultKeyID: vaultKeyID)
+
+        // Sealed envelope present; no plaintext title/preview/customTitle/messages.
+        XCTAssertEqual(sealed["contentSealed"] as? Bool, true)
+        XCTAssertNotNil(sealed["sealedPayload"])
+        XCTAssertNil(sealed["customTitle"])
+        XCTAssertNil(sealed["title"])
+        XCTAssertNil(sealed["preview"])
+        XCTAssertNil(sealed["messages"])
+
+        // Round-trips back to the new custom title with the vault key.
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decodeSealed(documentID: "s1", data: sealed, vaultKey: key)
+        )
+        XCTAssertEqual(decoded.customTitle, "My private rename")
+        XCTAssertEqual(decoded.messages.first?.text, "Private prompt")
+    }
+
+    /// Without the vault key, a sealed renamed doc reveals no plaintext title.
+    func test_rename_sealedTitleUnreadableWithoutKey() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        var record = makeSession(id: "s1", agent: .codex, updated: Date())
+        record.title = "Sensitive title"
+        let renamed = CLIAgentChatReader.applyMetadata(
+            to: record,
+            customTitle: "Renamed",
+            labelColorHex: nil,
+            isPinned: nil,
+            priorityOrder: nil
+        )
+        let sealed = try CLIAgentSessionCodec.encodeSealed(renamed, vaultKey: key, vaultKeyID: vaultKeyID)
+
+        // The legacy/plaintext decode path can't surface any private text.
+        let decoded = CLIAgentChatFirestoreSource.decodeDocument(
+            documentID: "s1",
+            data: sealed,
+            vaultKey: nil
+        )
+        XCTAssertNil(decoded, "Sealed doc must not decode without the vault key")
+    }
+
     // MARK: - Helpers
 
     private func makeSession(id: String, agent: CLIAgentRuntime, updated: Date) -> CLIAgentSessionRecord {

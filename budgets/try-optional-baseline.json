@@ -1,6 +1,6 @@
 {
   "total": 797,
   "scope": "AgentLens/Services",
-  "generatedAt": "2026-06-02T01:24:14Z",
-  "note": "try? occurrences in AgentLens/Services. Current main count recaptured after branch-protection landing; CI fails on future increases."
+  "generatedAt": "2026-06-03T00:35:23Z",
+  "note": "try? occurrences in AgentLens/Services. CI fails on increase."
 }

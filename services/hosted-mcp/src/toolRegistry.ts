@@ -21,6 +21,8 @@ export interface RegisteredTool {
   requiredScopes: string[];
   costClass: CostClass;
   rateLimitBucket: string;
+  /** Optional richer bucket used when the caller is on the Ultra tier. */
+  ultraRateLimitBucket?: string;
   inputSchema: Record<string, unknown>;
   handler(ctx: ToolContext, args: Record<string, unknown>): Promise<unknown>;
 }
@@ -131,6 +133,7 @@ export const tools: RegisteredTool[] = [
     requiredScopes: ["knowledge:read"],
     costClass: "standard",
     rateLimitBucket: "knowledge:standard",
+    ultraRateLimitBucket: "search:ultra",
     inputSchema: schema(
       {
         queryVector: { type: "array", items: { type: "number" }, minItems: 384, maxItems: 384 },
@@ -198,8 +201,11 @@ export async function callTool(ctx: ToolContext, name: string, args: Record<stri
   }
   for (const scope of tool.requiredScopes) requireScope(ctx.claims, scope);
   await requireActiveRemoteMcpAccess(ctx.claims.sub, ctx.claims.client_id, ctx.claims.scopes, ctx.db);
-  await requireActiveBurnBarPro(ctx.claims.sub, ctx.db);
-  await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, tool.rateLimitBucket);
+  const entitlement = await requireActiveBurnBarPro(ctx.claims.sub, ctx.db);
+  // Ultra members get the richer rate bucket (e.g. search:ultra 180/min) when the tool offers one.
+  const bucket =
+    entitlement.tier === "ultra" && tool.ultraRateLimitBucket ? tool.ultraRateLimitBucket : tool.rateLimitBucket;
+  await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, bucket);
   const result = await tool.handler(ctx, args);
   return { content: [{ type: "text", text: JSON.stringify(result) }] };
 }

@@ -302,6 +302,72 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(event["isError"] as? Bool, false)
     }
 
+    func test_cliAgentMissionSealedPayloadRemovesPrivatePlaintextAndDecodesWithVaultKey() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+
+        let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: "mission-sealed",
+            title: "  Private launch review  ",
+            prompt: "  Inspect secrets and approval boundaries  ",
+            missionKind: "security_review",
+            requestedRuntime: "codex",
+            targetProject: "  ~/Documents/Windsurf/BurnBar  ",
+            depth: "deep",
+            approvalMode: "risky_only",
+            commandsAllowed: true,
+            fileEditsAllowed: true,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+
+        XCTAssertNil(payload["title"])
+        XCTAssertNil(payload["prompt"])
+        XCTAssertNil(payload["targetProject"])
+        XCTAssertNil(payload["liveSummary"])
+        XCTAssertEqual(payload["contentSealed"] as? Bool, true)
+        XCTAssertEqual(payload["vaultKeyID"] as? String, vaultKeyID)
+        XCTAssertNotNil(payload["sealedPayload"])
+
+        XCTAssertNil(CLIAgentMissionSnapshot(documentID: "mission-sealed", data: payload))
+
+        let snapshot = try XCTUnwrap(CLIAgentMissionSnapshot(
+            documentID: "mission-sealed",
+            data: payload,
+            vaultKey: vaultKey
+        ))
+        XCTAssertEqual(snapshot.title, "Private launch review")
+        XCTAssertEqual(snapshot.targetProject, "~/Documents/Windsurf/BurnBar")
+        XCTAssertEqual(snapshot.liveSummary, "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.")
+    }
+
+    func test_cliAgentMissionSealedEventRemovesPrivatePlaintextAndDecodesWithVaultKey() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-05-14T10:00:00Z"))
+
+        let event = try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
+            label: "Security mission",
+            source: "ios-security",
+            now: now,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+
+        XCTAssertNil(event["title"])
+        XCTAssertNil(event["message"])
+        XCTAssertEqual(event["contentSealed"] as? Bool, true)
+        XCTAssertEqual(event["vaultKeyID"] as? String, vaultKeyID)
+        XCTAssertNotNil(event["sealedPayload"])
+
+        XCTAssertNil(CLIAgentMissionEvent(data: event))
+
+        let decoded = try XCTUnwrap(CLIAgentMissionEvent(data: event, vaultKey: vaultKey))
+        XCTAssertEqual(decoded.title, "Queued")
+        XCTAssertEqual(decoded.message, "Security mission queued from this device.")
+        XCTAssertEqual(decoded.source, "ios-security")
+    }
+
     func test_cliAgentMissionSnapshotDecodesLiveFeedAndTerminalResult() throws {
         let snapshot = try XCTUnwrap(CLIAgentMissionSnapshot(documentID: "mission-1", data: [
             "id": "mission-1",

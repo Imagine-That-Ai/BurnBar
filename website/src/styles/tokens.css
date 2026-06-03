@@ -118,3 +118,52 @@
 
   color-scheme: dark;
 }
+
+/* ============================================================
+   LIGHT THEME — paper + ink. The dark :root above stays the
+   default; [data-theme="light"] flips the token values so the
+   whole site re-themes, and the dot-logo constellation becomes
+   the light-mode background.
+   ============================================================ */
+:root[data-theme="light"] {
+  /* canvas → warm paper */
+  --ink-void: #f6f4ee;
+  --ink-base: #efece4;
+  --ink-furnace: #f1ede4;
+  --ink-line: rgba(22, 19, 14, 0.12);
+  --ink-line-bright: rgba(22, 19, 14, 0.2);
+
+  /* glass → translucent vellum */
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-bg-elevated: rgba(255, 255, 255, 0.72);
+
+  /* text → ink */
+  --text-bright: #16140f;
+  --text-base: rgba(22, 19, 14, 0.86);
+  --text-mute: rgba(22, 19, 14, 0.6);
+  --text-dim: rgba(22, 19, 14, 0.42);
+
+  /* the core: keep the fire identity, darken for AA on paper */
+  --core-fire: #c8530a;
+  --core-amber: #9a6b00;
+  --core-red: #b3261c;
+  --core-glow: rgba(200, 83, 10, 0.28);
+  --core-underglow: rgba(200, 83, 10, 0.08);
+
+  /* mercury → ink-on-paper */
+  --mercury-bright: #16140f;
+  --mercury-core: rgba(22, 19, 14, 0.7);
+  --mercury-wash: rgba(22, 19, 14, 0.05);
+
+  /* inset surfaces */
+  --ink-surface: rgba(22, 19, 14, 0.04);
+  --ink-surface-2: rgba(22, 19, 14, 0.07);
+
+  /* status — AA on paper */
+  --status-exact: #0c7c69;
+  --status-estimated: #9a6b00;
+  --status-unavailable: var(--text-dim);
+  --status-burn: #b3261c;
+
+  color-scheme: light;
+}

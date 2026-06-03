@@ -89,6 +89,7 @@ struct ProviderPlanWizardView: View {
     @State private var gatewayAdvertisedProviderIDs: Set<String>?
     @State private var gatewayProviderRouteIssues: [String: String] = [:]
     @State private var gatewayAdvertisementError: String?
+    @State private var preferredSlotActionIDs: Set<String> = []
 
     // Provider step state
     @State private var selectedProviderID: String?
@@ -666,6 +667,14 @@ struct ProviderPlanWizardView: View {
                 gatewayAdvertisementNotice(provider)
                 if let error = switcherProfileLoadError {
                     errorCallout(error)
+                }
+                if let externalAccountActionMessage {
+                    miniHintCard(
+                        symbol: externalAccountActionMessage.localizedCaseInsensitiveContains("failed")
+                            ? "exclamationmark.triangle.fill"
+                            : "info.circle.fill",
+                        text: externalAccountActionMessage
+                    )
                 }
                 providerSlotList(provider)
                 addPlanCTA(providerID: provider.providerID)
@@ -1321,13 +1330,13 @@ struct ProviderPlanWizardView: View {
             }
 
             if provider.preferredCredentialSlotID != slot.slotID && slot.isEnabled {
-                slotButton("star", help: "Mark preferred") {
-                    Task {
-                        await daemonManager.setPreferredProviderCredentialSlot(
-                            providerID: provider.providerID,
-                            slotID: slot.slotID
-                        )
-                    }
+                let actionID = preferredSlotActionID(providerID: provider.providerID, slotID: slot.slotID)
+                slotButton(
+                    preferredSlotActionIDs.contains(actionID) ? "hourglass" : "star",
+                    help: "Mark preferred",
+                    disabled: preferredSlotActionIDs.contains(actionID)
+                ) {
+                    markCredentialSlotPreferred(slot, provider: provider)
                 }
             }
 
@@ -1360,18 +1369,70 @@ struct ProviderPlanWizardView: View {
         }
     }
 
+    private func preferredSlotActionID(providerID: String, slotID: String) -> String {
+        "\(ProviderID.normalize(providerID)):\(slotID)"
+    }
+
+    private func markCredentialSlotPreferred(
+        _ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot,
+        provider: OpenBurnBarDaemonProviderConfiguration
+    ) {
+        let actionID = preferredSlotActionID(providerID: provider.providerID, slotID: slot.slotID)
+        guard !preferredSlotActionIDs.contains(actionID) else { return }
+
+        preferredSlotActionIDs.insert(actionID)
+        externalAccountActionMessage = "Switching \(provider.displayName) to drain \(slot.label)..."
+
+        Task {
+            do {
+                try await daemonManager.setPreferredProviderCredentialSlotOrThrow(
+                    providerID: provider.providerID,
+                    slotID: slot.slotID
+                )
+
+                guard daemonManager.providerConfigurations.first(where: {
+                    ProviderID.normalize($0.providerID) == ProviderID.normalize(provider.providerID)
+                })?.preferredCredentialSlotID == slot.slotID else {
+                    throw ProviderPlanWizardError.message(
+                        "The daemon accepted the request, but \(provider.displayName) still reports a different preferred account. Refresh Accounts and try again."
+                    )
+                }
+
+                await refreshGatewayAdvertisementState()
+
+                await MainActor.run {
+                    preferredSlotActionIDs.remove(actionID)
+                    externalAccountActionMessage = "\(provider.displayName) now drains \(slot.label) first."
+                }
+            } catch {
+                await MainActor.run {
+                    preferredSlotActionIDs.remove(actionID)
+                    externalAccountActionMessage = "Failed to switch \(provider.displayName) to \(slot.label): \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     @ViewBuilder
-    private func slotButton(_ symbol: String, help: String, tint: Color = DesignSystem.Colors.textSecondary, action: @escaping () -> Void) -> some View {
+    private func slotButton(
+        _ symbol: String,
+        help: String,
+        tint: Color = DesignSystem.Colors.textSecondary,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(disabled ? DesignSystem.Colors.textMuted : tint)
                 .frame(width: 26, height: 26)
                 .background(DesignSystem.Colors.surfaceElevated)
                 .clipShape(Circle())
                 .overlay(Circle().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.65 : 1)
         .help(help)
     }
 

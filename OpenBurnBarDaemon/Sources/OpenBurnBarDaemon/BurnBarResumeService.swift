@@ -159,10 +159,14 @@ final class BurnBarResumeService: @unchecked Sendable {
     }
 
     private func lookupConversation(_ input: String) throws -> ConversationRow? {
+        // A tombstoned conversation (cross-device soft-delete) must not be
+        // resumable. Append the filter only when the column is present so the
+        // daemon stays safe against a pre-v47 schema it might open transiently.
+        let tombstoneFilter = columnExists("conversations", "deletedAt") ? " AND deletedAt IS NULL" : ""
         if input.contains(":") {
-            return try fetchConversations(sql: "SELECT * FROM conversations WHERE id = ?", args: [input]).first
+            return try fetchConversations(sql: "SELECT * FROM conversations WHERE id = ?\(tombstoneFilter)", args: [input]).first
         }
-        let matches = try fetchConversations(sql: "SELECT * FROM conversations WHERE sessionId = ?", args: [input])
+        let matches = try fetchConversations(sql: "SELECT * FROM conversations WHERE sessionId = ?\(tombstoneFilter)", args: [input])
         if matches.count > 1 {
             throw NSError(
                 domain: "BurnBarResumeService",

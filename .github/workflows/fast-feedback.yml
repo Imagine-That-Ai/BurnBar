@@ -179,6 +179,90 @@ jobs:
           node scripts/wiki/mem0-sync.mjs --all --dry-run | tee /tmp/reconcile.log
           grep -q "already in sync - zero writes" /tmp/reconcile.log
 
+  # ── Control Center foundations (data-domain registry + design tokens) ──────
+  control-center-foundations:
+    name: Control Center foundations (registry + tokens)
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      # Registry validation + codegen freshness + firestore.rules drift check:
+      # every users/{uid}/ collection must be registered or explicitly excluded.
+      - name: Data-domain registry (codegen + drift)
+        run: cd packages/data-domains && node codegen.mjs && node driftcheck.mjs && node --test
+
+      # DTCG tokens build to CSS/Swift/Kotlin and stay one source of truth.
+      - name: Design tokens (Style Dictionary build + tests)
+        run: |
+          cd packages/design-tokens
+          npm ci
+          npm test
+
+      # Belt-and-suspenders to the registry.test.mjs / tokens.test.mjs Android
+      # assertions: re-sync the in-tree Android copies from the (now freshly
+      # regenerated) gen/ + dist/ outputs and fail if anything moved. Catches a
+      # hand-edit committed straight into the Android tree that bypassed the
+      # codegen path — the exact failure mode that mislabeled server-readable
+      # chat as end-to-end encrypted.
+      - name: Android generated sources are in sync (no drift)
+        run: |
+          cp packages/data-domains/gen/DataDomains.kt \
+            android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt
+          cp packages/design-tokens/dist/compose/PensieveTokens.kt \
+            android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt
+          git diff --exit-code -- \
+            android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt \
+            android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt \
+            || { echo "::error::Android generated sources are stale — run ./gradlew :app:syncGeneratedSources and commit the result."; exit 1; }
+
+      # Same guarantee for the public marketing site: burnbar.ai/trust renders
+      # every encryption-tier claim from website/src/data/trust.generated.ts,
+      # which codegen emits from registry.json (+ the Pensieve tier colors). Fail
+      # red if the committed copy drifts so the website can never overstate the
+      # product — the exact failure mode that mislabeled server-readable chat as
+      # end-to-end encrypted, now gated for the website too.
+      - name: Website trust copy is in sync (no drift)
+        run: |
+          node packages/data-domains/codegen.mjs
+          git diff --exit-code -- website/src/data/trust.generated.ts \
+            || { echo "::error::website/src/data/trust.generated.ts is stale — run 'node packages/data-domains/codegen.mjs' and commit the result."; exit 1; }
+
+  # ── Web console (app.burnbar.ai): lint + types + tests + static build ──────
+  console-web:
+    name: Console (lint + types + tests + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/console/package-lock.json
+
+      - name: Install console dependencies
+        run: npm ci --prefix apps/console
+
+      # build/test scripts auto-run sync:domains (prebuild/pretest) to refresh the
+      # generated registry + token copies from packages/.
+      - name: Lint
+        run: npm run lint --prefix apps/console
+
+      - name: Type check
+        run: npm run typecheck --prefix apps/console
+
+      - name: Unit tests (incl. Swift<->WebCrypto escrow interop)
+        run: npm test --prefix apps/console
+
+      - name: Static build (next export)
+        run: npm run build --prefix apps/console
+
   # ── Version consistency ────────────────────────────────────────────────────
   version-consistency:
     name: Version consistency
@@ -227,7 +311,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+        run: |
+          for attempt in 1 2 3; do
+            if cargo install cargo-deny --locked; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: cargo deny check (openburnbar-iroh)
         run: cd crates/openburnbar-iroh && cargo deny check

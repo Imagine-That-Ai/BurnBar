@@ -92,8 +92,11 @@ const REQUIRED_GITHUB_SECURITY_SETTINGS = [
 ];
 const REQUIRED_FIREBASE_FUNCTIONS = [
   "appStoreServerNotificationsV2",
+  "approveEscrowDeviceTrust",
+  "bindAppCheckAttestation",
   "beginEntitlementBinding",
   "connectHostedQuotaAccount",
+  "consumeCredentialTransfer",
   "createStripeBurnBarProCheckoutSession",
   "createStripeBurnBarProPortalSession",
   "deleteUserCloudData",
@@ -109,9 +112,13 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "recomputeMediaQuotaUsage",
   "refreshAllProviderQuotas",
   "refreshProviderAccountQuota",
+  "registerBrowserEscrowDevice",
+  "registerEscrowDevice",
   "reserveAgentControlActionBudget",
   "reserveFlooRelayBudget",
   "restoreHostedQuotaEntitlement",
+  "revokeAllAccess",
+  "revokeEscrowDeviceTrust",
   "rollupComputerUseDaily",
   "rollupMediaSessionDaily",
   "searchStreams",
@@ -826,19 +833,26 @@ export function evaluateCloudRunServiceReadiness(name, service) {
   );
   return {
     name,
+    exists: true,
     ready,
     url: service?.status?.url || null,
+    serviceAccount: service?.spec?.template?.spec?.serviceAccountName || null,
+    ingress: service?.metadata?.annotations?.["run.googleapis.com/ingress"] ||
+      null,
   };
 }
 
 export function evaluateRetiredCloudRunServiceAbsence(name, state) {
-  const absent = state?.missing === true || (state?.exists === false && !state?.error);
+  const exists =
+    state.exists === true ||
+    state.missing === false ||
+    Boolean(state.service);
   return {
     name,
-    absent,
-    ready: state?.exists || state?.missing === false ? state?.ready ?? false : null,
-    url: state?.url || state?.service?.status?.url || null,
-    error: state?.error,
+    absent: !exists && !state.error,
+    ready: exists ? (state.ready ?? null) : null,
+    url: state.url || state.service?.status?.url || null,
+    error: state.error,
   };
 }
 
@@ -879,9 +893,6 @@ function describeCloudRunService(name) {
     ...evaluateCloudRunServiceReadiness(name, service),
     name,
     exists: true,
-    serviceAccount: service?.spec?.template?.spec?.serviceAccountName || null,
-    ingress: service?.metadata?.annotations?.["run.googleapis.com/ingress"] ||
-      null,
   };
 }
 

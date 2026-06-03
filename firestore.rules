@@ -294,13 +294,77 @@ service cloud.firestore {
         && hasActiveHostedQuotaEntitlement(userId);
     }
 
+    // Strict allowlist for the encrypted session-log manifest. The set below is
+    // the UNION of every key any write path leaves on the doc post-merge: the
+    // full create (SessionLogSyncService.swift uploadManifest) plus the
+    // facet-refresh merge update (facetFields + updatedAt). Because the writer
+    // uses merge:true, request.resource.data is the post-merge full document, so
+    // the allowlist must cover the union; the legacy plaintext fields are removed
+    // via FieldValue.delete() and therefore absent — they stay denied by both
+    // hasOnly and the belt-and-suspenders !hasAny() denylist below. No
+    // content/title/project text can ride along — only sealed envelopes, storage
+    // pointers, hashes, and bounded cockpit facets.
+    function validSessionLogManifestKeys() {
+      return request.resource.data.keys().hasOnly([
+        "id",
+        "deviceId",
+        "provider",
+        "sessionId",
+        "sourceType",
+        "inferredTaskTitle",
+        "bodyStorage",
+        "storagePath",
+        "sealedTitle",
+        "sealedBodyPreview",
+        "encryption",
+        "vaultKeyID",
+        "chunkCount",
+        "searchChunkCount",
+        "byteCount",
+        "encryptedByteCount",
+        "bodyHash",
+        "chunkSize",
+        "chunkHashes",
+        "chunkMetadataVersion",
+        "cloudSearchIndexVersion",
+        "cloudSearchIndexedAt",
+        "updatedAt",
+        "startTime",
+        "endTime",
+        "facetSchemaVersion",
+        "model",
+        "messageCount",
+        "userWordCount",
+        "assistantWordCount",
+        "inputTokens",
+        "outputTokens",
+        "cacheCreationTokens",
+        "cacheReadTokens",
+        "totalTokens",
+        "costUSD",
+        "toolTags",
+        "durationSeconds"
+      ]);
+    }
+
     function ownerWritableSessionLogManifest(userId) {
       return ownerWritableHostedCloudBackup(userId)
+        && validSessionLogManifestKeys()
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
         && !("data" in request.resource.data)
         && !("text" in request.resource.data)
+        && !("title" in request.resource.data)
+        && !("snippet" in request.resource.data)
+        && !("terms" in request.resource.data)
+        && !("projectName" in request.resource.data)
+        && !("workingDirectory" in request.resource.data)
+        && (!("inferredTaskTitle" in request.resource.data) || (request.resource.data.inferredTaskTitle is string && request.resource.data.inferredTaskTitle.size() <= 64))
+        && (!("sealedTitle" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTitle))
+        && (!("sealedBodyPreview" in request.resource.data) || validCloudSealedText(request.resource.data.sealedBodyPreview))
+        && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
+        && (!("vaultKeyID" in request.resource.data) || validVaultKeyID(request.resource.data.vaultKeyID))
         && validSessionLogFacets(request.resource.data);
     }
 
@@ -326,18 +390,55 @@ service cloud.firestore {
         && (!("model" in data) || (data.model is string && data.model.size() <= 200))
         && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
         && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
-        && (!("projectName" in data) || (data.projectName is string && data.projectName.size() <= 1024))
-        && (!("workingDirectory" in data) || (data.workingDirectory is string && data.workingDirectory.size() <= 1024))
         && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32));
+    }
+
+    // Strict allowlist for an encrypted session-log search chunk. Union of the
+    // active-chunk write and the superseded-chunk tombstone write
+    // (SessionLogSyncService.swift). Chunks are store-and-forward: a sealed
+    // snippet plus opaque token/semantic hashes and storage pointers. No
+    // plaintext snippet/terms/body ever lands here.
+    function validSessionLogChunkKeys() {
+      return request.resource.data.keys().hasOnly([
+        "index",
+        "hash",
+        "uid",
+        "docId",
+        "conversationId",
+        "sessionId",
+        "deviceId",
+        "provider",
+        "model",
+        "sealedSnippet",
+        "tokenHashes",
+        "semanticHashes",
+        "semanticHashVersion",
+        "bodyStorage",
+        "storagePath",
+        "bodyHash",
+        "schemaVersion",
+        "superseded",
+        "updatedAt"
+      ]);
     }
 
     function ownerWritableSessionLogChunk(userId) {
       return ownerWritableHostedCloudBackup(userId)
+        && validSessionLogChunkKeys()
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
         && !("data" in request.resource.data)
-        && !("text" in request.resource.data);
+        && !("text" in request.resource.data)
+        && !("title" in request.resource.data)
+        && !("snippet" in request.resource.data)
+        && !("terms" in request.resource.data)
+        && !("projectName" in request.resource.data)
+        && !("workingDirectory" in request.resource.data)
+        && (!("sealedSnippet" in request.resource.data) || validCloudSealedText(request.resource.data.sealedSnippet))
+        && (!("tokenHashes" in request.resource.data) || validCloudSearchHashes(request.resource.data.tokenHashes))
+        && (!("semanticHashes" in request.resource.data) || validCloudSearchHashes(request.resource.data.semanticHashes))
+        && (!("superseded" in request.resource.data) || request.resource.data.superseded is bool);
     }
 
     function validCloudHexDigest(value) {
@@ -374,6 +475,68 @@ service cloud.firestore {
         && value.tag is string
         && value.tag.size() <= 128
         && value.tag.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    // CloudVaultBlobEnvelopeDoc (sealed binary blob, larger than sealed text).
+    // Used by project_memory_snapshots.sealedSnapshot. Mirrors the Swift/TS
+    // CloudVaultCrypto blob envelope shape — never invent a new one.
+    function validCloudSealedBlob(value) {
+      return value is map
+        && value.keys().hasOnly([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "plaintextSHA256",
+          "sealedBoxBase64",
+          "createdAt"
+        ])
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && value.sealedBoxBase64 is string
+        && value.sealedBoxBase64.size() > 0
+        && value.sealedBoxBase64.size() <= 900000
+        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validVaultKeyID(value) {
+      return value is string
+        && value.matches("^v1_[a-f0-9]{32}$");
+    }
+
+    function validCloudSealedPayload(value) {
+      return value is map
+        && value.keys().hasOnly([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "vaultKeyID",
+          "sealedBoxBase64"
+        ])
+        && value.schemaVersion == 1
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && validVaultKeyID(value.vaultKeyID)
+        && value.sealedBoxBase64 is string
+        && value.sealedBoxBase64.size() > 0
+        && value.sealedBoxBase64.size() <= 900000
+        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function matchesCurrentVaultKey(userId, vaultKeyID) {
+      return validVaultKeyID(vaultKeyID)
+        && exists(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current)
+        && get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultKeyID == vaultKeyID
+        && get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.status == "active";
+    }
+
+    function validSealedPayloadForUser(userId, vaultKeyID, payload) {
+      return matchesCurrentVaultKey(userId, vaultKeyID)
+        && validCloudSealedPayload(payload)
+        && payload.vaultKeyID == vaultKeyID;
     }
 
     function validTextSnippetDoc(userId, snippetId) {
@@ -427,13 +590,50 @@ service cloud.firestore {
     }
 
     function chatThreadIncludesBackedUpContent() {
-      return request.resource.data.keys().hasAny(["messages", "title", "preview"])
+      return request.resource.data.keys().hasAny(["sealedPayload"])
         || (("contentIncluded" in request.resource.data)
           && request.resource.data.contentIncluded == true);
     }
 
+    function chatThreadHasPlaintextContent() {
+      return request.resource.data.keys().hasAny(["messages", "title", "preview"]);
+    }
+
+    // Strict allowlist for a cross-device chat thread mirror. Union of the
+    // free metadata-only write (contentIncluded:false; title/preview/messages
+    // FieldValue.delete()) and the sealed content-backup write
+    // (ChatThreadSyncService.swift). The plaintext content keys
+    // (title/preview/messages) are NEVER allowed — they are always deleted, so
+    // they stay absent and denied by both hasOnly and chatThreadHasPlaintextContent().
+    function validChatThreadKeys() {
+      return request.resource.data.keys().hasOnly([
+        "threadId",
+        "messageCount",
+        "createdAt",
+        "updatedAt",
+        "deviceId",
+        "contentIncluded",
+        "contentSealed",
+        "sealedSchemaVersion",
+        "vaultKeyID",
+        "sealedPayload"
+      ]);
+    }
+
+    function validChatThreadSealedContent(userId) {
+      return !chatThreadHasPlaintextContent()
+        && validChatThreadKeys()
+        && (!chatThreadIncludesBackedUpContent()
+          || (
+            request.resource.data.contentSealed == true
+            && request.resource.data.sealedSchemaVersion == 1
+            && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+          ));
+    }
+
     function ownerWritableChatThread(userId) {
       return ownerWritableNonSecret(userId)
+        && validChatThreadSealedContent(userId)
         && (!chatThreadIncludesBackedUpContent()
           || hasActiveHostedQuotaEntitlement(userId));
     }
@@ -512,25 +712,18 @@ service cloud.firestore {
         && request.resource.data.method in ["GET", "POST"]
         && request.resource.data.chunkCount is int
         && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 2
         && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId)
-        && (!("body" in request.resource.data) || (request.resource.data.body is string && request.resource.data.body.size() <= 131072))
-        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048))
-        && (!("payloadCiphertext" in request.resource.data) || (request.resource.data.payloadCiphertext is string && request.resource.data.payloadCiphertext.size() <= 900000))
-        && (!("wrappedKey" in request.resource.data) || (request.resource.data.wrappedKey is string && request.resource.data.wrappedKey.size() <= 4096))
-        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
-        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
-        && (
-          request.resource.data.schemaVersion < 2
-          || (
-            !("path" in request.resource.data)
-            && !("sessionId" in request.resource.data)
-            && !("body" in request.resource.data)
-            && !("error" in request.resource.data)
-            && request.resource.data.payloadCiphertext is string
-            && request.resource.data.wrappedKey is string
-            && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
-          )
-        );
+        && !("path" in request.resource.data)
+        && !("sessionId" in request.resource.data)
+        && !("body" in request.resource.data)
+        && !("error" in request.resource.data)
+        && request.resource.data.payloadCiphertext is string
+        && request.resource.data.payloadCiphertext.size() <= 900000
+        && request.resource.data.wrappedKey is string
+        && request.resource.data.wrappedKey.size() <= 4096
+        && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
+        && request.resource.data.relayKeyVersion is int;
     }
 
     function relayChunkWrite(userId, requestId, chunkId) {
@@ -556,23 +749,17 @@ service cloud.firestore {
         && request.resource.data.sequence is int
         && request.resource.data.kind in ["sse", "data", "error"]
         && request.resource.data.schemaVersion is int
-        && (!("data" in request.resource.data) || (request.resource.data.data is string && request.resource.data.data.size() <= 131072))
-        && (!("text" in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 131072))
-        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048))
-        && (!("ciphertext" in request.resource.data) || (request.resource.data.ciphertext is string && request.resource.data.ciphertext.size() <= 131072))
-        && (
-          request.resource.data.schemaVersion < 2
-          || (
-            !("data" in request.resource.data)
-            && !("text" in request.resource.data)
-            && !("error" in request.resource.data)
-            && request.resource.data.ciphertext is string
-          )
-        );
+        && request.resource.data.schemaVersion >= 2
+        && !("data" in request.resource.data)
+        && !("text" in request.resource.data)
+        && !("error" in request.resource.data)
+        && request.resource.data.ciphertext is string
+        && request.resource.data.ciphertext.size() <= 131072;
     }
 
     function hermesGatewayDestinationWrite(userId, destinationId) {
       return ownerWritableNonSecret(userId)
+        && destinationId is string
         && hasActiveHostedQuotaEntitlement(userId)
         && request.resource.data.keys().hasOnly([
           "id",
@@ -784,24 +971,17 @@ service cloud.firestore {
           && request.resource.data.payload.matches("^v1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
           && request.resource.data.createdAt is timestamp
           && request.resource.data.expiresAt is timestamp
+          && request.resource.data.createdAt <= request.time
+          && request.resource.data.createdAt > request.time - duration.value(5, "m")
           && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(24, "h")
           && request.resource.data.consumed == false;
       }
 
       allow create: if validCredentialTransferCreate();
-      allow get: if request.auth != null
-                 && validCredentialTransferCode()
-                 && resource.data.ownerUid == request.auth.uid
-                 && resource.data.consumed == false
-                 && resource.data.expiresAt > request.time;
-      allow update: if request.auth != null
-                    && validCredentialTransferCode()
-                    && resource.data.ownerUid == request.auth.uid
-                    && resource.data.consumed == false
-                    && resource.data.expiresAt > request.time
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["consumed", "consumedAt"])
-                    && request.resource.data.consumed == true
-                    && request.resource.data.consumedAt is timestamp;
+      // Consumption is server-transaction-only via consumeCredentialTransfer.
+      allow get: if false;
+      allow update: if false;
       allow delete: if false;
       allow list: if false;
     }
@@ -825,17 +1005,35 @@ service cloud.firestore {
       allow write: if ownsUserNamespace(userId) && requestWithinBasicLimits();
     }
 
+    // Usage rows now seal the project name into `sealedProjectName` (with an
+    // opaque `projectKeyHash` trapdoor for client group-by). The migration gate
+    // below rejects a plaintext `projectName` ONLY once the sealed copy is
+    // present, so legacy/in-flight rows that still carry the cleartext name keep
+    // syncing until the writer reseals (privacy-leak-remediation §1).
+    function rejectsPlaintextWhenSealed(plaintextField, sealedField) {
+      return !(sealedField in request.resource.data)
+        || !(plaintextField in request.resource.data);
+    }
+
     match /users/{userId}/usage/{usageId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && rejectsPlaintextWhenSealed("projectName", "sealedProjectName")
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName));
       allow delete: if ownsUserNamespace(userId);
     }
 
     // Budget rules: owner-scoped CRUD. Cross-device sync writes these from
-    // macOS CloudBudgetService and iOS BudgetRulesStore.
+    // macOS CloudBudgetService and iOS BudgetRulesStore. The project name and
+    // label are sealed (`sealedProjectName`/`sealedLabel`); the same migration
+    // gate rejects the matching plaintext key once its sealed copy is present.
     match /users/{userId}/budgetRules/{ruleId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && rejectsPlaintextWhenSealed("projectName", "sealedProjectName")
+        && rejectsPlaintextWhenSealed("label", "sealedLabel")
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName))
+        && (!("sealedLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedLabel));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -847,8 +1045,63 @@ service cloud.firestore {
     }
 
     match /users/{userId}/conversations/{conversationId} {
+      function validConversationMirror() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "deviceId",
+          "provider",
+          "sessionId",
+          "messageCount",
+          "userWordCount",
+          "assistantWordCount",
+          "startTime",
+          "endTime",
+          "updatedAt",
+          "sourceType",
+          "version",
+          "deletedAt",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload"
+        ])
+        && !request.resource.data.keys().hasAny([
+          "projectName",
+          "keyFiles",
+          "keyCommands",
+          "keyTools",
+          "inferredTaskTitle",
+          "lastAssistantMessage",
+          "workingDirectory",
+          "summary",
+          "summaryTitle",
+          "summaryProvider",
+          "summaryModel"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id.size() <= 512
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() <= 160
+        && request.resource.data.provider is string
+        && request.resource.data.provider.size() <= 80
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() <= 512
+        && request.resource.data.messageCount is int
+        && request.resource.data.messageCount >= 0
+        && request.resource.data.messageCount <= 200000
+        && request.resource.data.userWordCount is int
+        && request.resource.data.userWordCount >= 0
+        && request.resource.data.assistantWordCount is int
+        && request.resource.data.assistantWordCount >= 0
+        && (!("sourceType" in request.resource.data) || request.resource.data.sourceType is string)
+        && (!("version" in request.resource.data) || request.resource.data.version is int)
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload);
+      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && validConversationMirror();
       allow delete: if false;
     }
 
@@ -868,71 +1121,87 @@ service cloud.firestore {
     // an iOS device). Owner-only with no entitlement gate — the same data is
     // also persisted on-device, so Firestore is the cross-device mirror.
     match /users/{userId}/mobile_assistant_chats/{threadId} {
+      function validMobileAssistantChatMirror() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "runtime",
+          "createdAt",
+          "updatedAt",
+          "messageCount",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload",
+          "labelColorHex",
+          "isPinned",
+          "priorityOrder",
+          "lastMessageRole",
+          "lastAssistantMessageID"
+        ])
+        && request.resource.data.id == threadId
+        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+        && request.resource.data.messageCount is int
+        && request.resource.data.messageCount >= 0
+        && request.resource.data.messageCount <= 5000
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
+        && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
+        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
+        && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
+        && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512));
+      }
+
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validMobileAssistantChatMirror();
       allow delete: if ownsUserNamespace(userId);
     }
 
     // Mac CLI agent transcripts mirrored for the mobile Assistants tiles.
     match /users/{userId}/cli_sessions/{sessionId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
+      function validCliSessionMirror() {
+        return request.resource.data.keys().hasOnly([
           "id",
           "agent",
           "sourceKind",
-          "title",
-          "preview",
-          "modelName",
-          "workspaceLabel",
           "createdAt",
           "updatedAt",
           "endedAt",
           "schemaVersion",
-          "messages",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload",
+          "messageCount",
+          "lastMessageRole",
+          "lastAssistantMessageID",
           "tokenUsage",
-          "resumeHandle",
           "encryptedTranscriptAvailable",
-          "customTitle",
           "labelColorHex",
           "isPinned",
           "priorityOrder"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id.size() <= 512
+        && request.resource.data.id == sessionId
         && request.resource.data.agent in ["codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && (!("sourceKind" in request.resource.data) || request.resource.data.sourceKind in ["live_chat", "archived_log"])
-        && request.resource.data.title is string
-        && request.resource.data.title.size() <= 512
-        && request.resource.data.preview is string
-        && request.resource.data.preview.size() <= 2048
         && request.resource.data.schemaVersion is int
-        && (!("modelName" in request.resource.data) || (request.resource.data.modelName is string && request.resource.data.modelName.size() <= 256))
-        && (!("workspaceLabel" in request.resource.data) || (request.resource.data.workspaceLabel is string && request.resource.data.workspaceLabel.size() <= 512))
-        && (!("messages" in request.resource.data) || (request.resource.data.messages is list && request.resource.data.messages.size() <= 200))
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && (!("messageCount" in request.resource.data) || (request.resource.data.messageCount is int && request.resource.data.messageCount >= 0 && request.resource.data.messageCount <= 5000))
+        && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
+        && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512))
         && (!("encryptedTranscriptAvailable" in request.resource.data) || request.resource.data.encryptedTranscriptAvailable is bool)
-        && (!("customTitle" in request.resource.data) || (request.resource.data.customTitle is string && request.resource.data.customTitle.size() <= 512))
         && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
         && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
-        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
-        && (!("resumeHandle" in request.resource.data) || (
-          request.resource.data.resumeHandle is map
-          && request.resource.data.resumeHandle.keys().hasOnly([
-            "providerSessionID",
-            "projectLabel",
-            "commandHint",
-            "canResume",
-            "canFork",
-            "canForward"
-          ])
-          && request.resource.data.resumeHandle.providerSessionID is string
-          && request.resource.data.resumeHandle.providerSessionID.size() <= 512
-          && (!("projectLabel" in request.resource.data.resumeHandle) || (request.resource.data.resumeHandle.projectLabel is string && request.resource.data.resumeHandle.projectLabel.size() <= 512))
-          && (!("commandHint" in request.resource.data.resumeHandle) || (request.resource.data.resumeHandle.commandHint is string && request.resource.data.resumeHandle.commandHint.size() <= 512))
-          && (!("canResume" in request.resource.data.resumeHandle) || request.resource.data.resumeHandle.canResume is bool)
-          && (!("canFork" in request.resource.data.resumeHandle) || request.resource.data.resumeHandle.canFork is bool)
-          && (!("canForward" in request.resource.data.resumeHandle) || request.resource.data.resumeHandle.canForward is bool)
-        ));
+        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int);
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validCliSessionMirror();
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -943,12 +1212,9 @@ service cloud.firestore {
       function validCliAgentMissionRequest() {
         return request.resource.data.keys().hasOnly([
           "id",
-          "title",
-          "prompt",
           "missionKind",
           "requestedRuntime",
           "requestedModelID",
-          "targetProject",
           "depth",
           "approvalMode",
           "commandsAllowed",
@@ -972,12 +1238,6 @@ service cloud.firestore {
           "approvalStatus",
           "approvalRequestedAt",
           "approvalRespondedAt",
-          "approvalTitle",
-          "approvalMessage",
-          "liveSummary",
-          "events",
-          "resultPreview",
-          "errorMessage",
           "lastEventSequence",
           "schemaVersion",
           // Hermes Square Phase B — group + persona hints. All optional;
@@ -986,82 +1246,81 @@ service cloud.firestore {
           "siblingIndex",
           "siblingCount",
           "isGroupChild",
-          "personaScopeJSON",
           "personaID",
           "clientThreadID",
           "parentSessionID",
-          "resumeAction"
+          "resumeAction",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload",
+          "sealedStatePayload",
+          "sealedStateSchemaVersion",
+          "sealedStateVaultKeyID",
+          "approvedByDeviceId"
+        ])
+        && !request.resource.data.keys().hasAny([
+          "title",
+          "prompt",
+          "targetProject",
+          "approvalTitle",
+          "approvalMessage",
+          "liveSummary",
+          "events",
+          "resultPreview",
+          "errorMessage",
+          "personaScopeJSON"
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
-        && request.resource.data.title is string
-        && request.resource.data.title.size() <= 512
-        && request.resource.data.prompt is string
-        && request.resource.data.prompt.size() <= 20000
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && (!("sealedStatePayload" in request.resource.data) || (
+          request.resource.data.sealedStateSchemaVersion == 1
+          && validSealedPayloadForUser(userId, request.resource.data.sealedStateVaultKeyID, request.resource.data.sealedStatePayload)
+        ))
         && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom", "chat"]
         && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
-        && (!("requestedModelID" in request.resource.data) || (request.resource.data.requestedModelID is string && request.resource.data.requestedModelID.size() <= 240))
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
-        && (!("sourceSkillID" in request.resource.data) || (request.resource.data.sourceSkillID is string && request.resource.data.sourceSkillID.size() <= 80))
-        && (!("sourceSurface" in request.resource.data) || (request.resource.data.sourceSurface is string && request.resource.data.sourceSurface.size() <= 160))
         && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
-        && (!("parentHermesThreadID" in request.resource.data) || (request.resource.data.parentHermesThreadID is string && request.resource.data.parentHermesThreadID.size() <= 512))
-        && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
+        && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed", "vault_key_unavailable"]
         && request.resource.data.schemaVersion is int
-        && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
         && (!("depth" in request.resource.data) || request.resource.data.depth in ["light", "standard", "deep", "max"])
         && (!("approvalMode" in request.resource.data) || request.resource.data.approvalMode in ["existing_policy", "manual_all", "risky_only", "read_only"])
         && (!("commandsAllowed" in request.resource.data) || request.resource.data.commandsAllowed is bool)
         && (!("fileEditsAllowed" in request.resource.data) || request.resource.data.fileEditsAllowed is bool)
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
-        && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
-        && (!("selectedModelID" in request.resource.data) || (request.resource.data.selectedModelID is string && request.resource.data.selectedModelID.size() <= 240))
-        && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
-        && (!("approvalRequestId" in request.resource.data) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 512))
         && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
-        && (!("approvalRequestedAt" in request.resource.data) || (request.resource.data.approvalRequestedAt is string && request.resource.data.approvalRequestedAt.size() <= 80))
-        && (!("approvalRespondedAt" in request.resource.data) || (request.resource.data.approvalRespondedAt is string && request.resource.data.approvalRespondedAt.size() <= 80))
-        && (!("approvalTitle" in request.resource.data) || (request.resource.data.approvalTitle is string && request.resource.data.approvalTitle.size() <= 512))
-        && (!("approvalMessage" in request.resource.data) || (request.resource.data.approvalMessage is string && request.resource.data.approvalMessage.size() <= 2048))
-        && (!("liveSummary" in request.resource.data) || (request.resource.data.liveSummary is string && request.resource.data.liveSummary.size() <= 2048))
-        && (!("events" in request.resource.data) || (request.resource.data.events is list && request.resource.data.events.size() <= 300))
-        && (!("resultPreview" in request.resource.data) || (request.resource.data.resultPreview is string && request.resource.data.resultPreview.size() <= 2048))
-        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
+        && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
         && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int)
-        // Hermes Square Phase B — group/persona hint validators (all optional)
-        && (!("groupID" in request.resource.data) || (request.resource.data.groupID is string && request.resource.data.groupID.size() <= 128))
         && (!("siblingIndex" in request.resource.data) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
         && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
         && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
-        && (!("personaScopeJSON" in request.resource.data) || (request.resource.data.personaScopeJSON is string && request.resource.data.personaScopeJSON.size() <= 8192))
-        && (!("personaID" in request.resource.data) || (request.resource.data.personaID is string && request.resource.data.personaID.size() <= 128))
-        && (!("clientThreadID" in request.resource.data) || (request.resource.data.clientThreadID is string && request.resource.data.clientThreadID.size() <= 512))
-        && (!("parentSessionID" in request.resource.data) || (request.resource.data.parentSessionID is string && request.resource.data.parentSessionID.size() <= 512))
         && (!("resumeAction" in request.resource.data) || request.resource.data.resumeAction in ["new", "resume", "fork", "forward"]);
       }
 
       function validCliAgentMissionCreate() {
         return request.resource.data.status == "pending"
-          && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
-          && request.resource.data.prompt.size() > 0
-          && !("startedAt" in request.resource.data)
-          && !("completedAt" in request.resource.data)
-          && !("claimedBy" in request.resource.data)
-          && !("selectedRuntime" in request.resource.data)
-          && !("selectedRuntimeName" in request.resource.data)
-          && !("selectedModelID" in request.resource.data)
-          && !("sessionId" in request.resource.data)
-          && !("approvalRequestId" in request.resource.data)
-          && !("approvalStatus" in request.resource.data)
-          && !("approvalRequestedAt" in request.resource.data)
-          && !("approvalRespondedAt" in request.resource.data)
-          && !("approvalTitle" in request.resource.data)
-          && !("approvalMessage" in request.resource.data)
-          && !("events" in request.resource.data)
-          && !("resultPreview" in request.resource.data)
-          && !("errorMessage" in request.resource.data)
-          && !("lastEventSequence" in request.resource.data);
+          && !request.resource.data.keys().hasAny([
+            "startedAt",
+            "completedAt",
+            "claimedBy",
+            "selectedRuntime",
+            "selectedRuntimeName",
+            "selectedModelID",
+            "sessionId",
+            "approvalRequestId",
+            "approvalStatus",
+            "approvalRequestedAt",
+            "approvalRespondedAt",
+            "approvedByDeviceId",
+            "lastEventSequence",
+            "sealedStatePayload",
+            "sealedStateSchemaVersion",
+            "sealedStateVaultKeyID"
+          ]);
       }
 
       function trustedMissionExecutorDevice(userId) {
@@ -1074,17 +1333,40 @@ service cloud.firestore {
       function validTrustedMissionHostUpdate(userId) {
         return trustedMissionExecutorDevice(userId)
           && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["events"]);
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["events"])
+          // The trusted Mac host may REQUEST approval (approvalStatus "pending")
+          // but must NOT RESOLVE it. Flipping approvalStatus to approved/rejected
+          // is the human decision and must flow through the App-Check-enforced
+          // respondMissionApproval callable (Admin SDK) or the device-bound
+          // validMobileMissionApprovalResponse path — never a bare host write.
+          // Without this, the host branch would let any owner-auth client
+          // self-approve a mission claimed by a trusted Mac, bypassing the
+          // approvedByDeviceId binding below.
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalStatus"])
+              || !(request.resource.data.approvalStatus in ["approved", "rejected"]));
       }
 
       function validMobileMissionApprovalResponse() {
+        // A client may CANCEL a pending approval request via Firestore, but may
+        // NOT approve or reject it. Approval RESOLUTION (approved/rejected) is a
+        // high-risk decision that must flow through the App-Check + attestation
+        // enforced respondMissionApproval callable (Admin SDK), which stamps a
+        // server-verified approvedByDeviceId and bypasses these rules. Keeping
+        // resolution server-only makes client self-approval impossible at the
+        // rules layer and keeps this rule cheap (escrow_devices get()/exists()
+        // here otherwise pushed the mission-update rule past Firestore's
+        // 1000-expression evaluation limit). The trusted-host branch is likewise
+        // barred from resolving (see validTrustedMissionHostUpdate).
         return resource.data.status == "waiting_for_approval"
           && request.resource.data.status == "waiting_for_approval"
-          && request.resource.data.approvalStatus in ["approved", "rejected", "canceled", "cancelled"]
+          && request.resource.data.approvalStatus in ["canceled", "cancelled"]
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "approvalStatus",
             "approvalRespondedAt",
-            "liveSummary",
+            "contentSealed",
+            "sealedStatePayload",
+            "sealedStateSchemaVersion",
+            "sealedStateVaultKeyID",
             "updatedAt"
           ]);
       }
@@ -1094,7 +1376,28 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "lastEventSequence",
-            "liveSummary",
+            "contentSealed",
+            "sealedStatePayload",
+            "sealedStateSchemaVersion",
+            "sealedStateVaultKeyID",
+            "updatedAt"
+          ]);
+      }
+
+      // The owner device that dispatched a mission can cancel it from the phone
+      // before (or while) the Mac picks it up. The cancel transition flips
+      // status to "cancelled" and may carry only sealed state fields (the iOS
+      // CLIAgentMissionDispatcher seals a "Mission cancelled by user." live
+      // summary into sealedStatePayload — never a plaintext liveSummary). Any
+      // other key change (or a plaintext summary) falls through and is denied.
+      function validMobileMissionCancel() {
+        return request.resource.data.status == "cancelled"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status",
+            "contentSealed",
+            "sealedStatePayload",
+            "sealedStateSchemaVersion",
+            "sealedStateVaultKeyID",
             "updatedAt"
           ]);
       }
@@ -1131,6 +1434,7 @@ service cloud.firestore {
           validTrustedMissionHostUpdate(userId)
           || validMobileMissionApprovalResponse()
           || validMissionRefusalOrFailureUpdate()
+          || validMobileMissionCancel()
         );
       allow delete: if false;
 
@@ -1156,25 +1460,31 @@ service cloud.firestore {
             "toolName",
             "artifactPath",
             "changedFilePath",
-            "isError"
+            "isError",
+            "contentSealed",
+            "sealedSchemaVersion",
+            "vaultKeyID",
+            "sealedPayload"
           ])
+          && !request.resource.data.keys().hasAny([
+            "title",
+            "message",
+            "fullMessage",
+            "toolName",
+            "artifactPath",
+            "changedFilePath"
+          ])
+          && request.resource.data.contentSealed == true
+          && request.resource.data.sealedSchemaVersion == 1
+          && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
           && request.resource.data.sequence is int
           && request.resource.data.sequence >= 1
           && request.resource.data.timestamp is string
           && request.resource.data.timestamp.size() <= 80
           && request.resource.data.kind in ["status", "llm_response", "assistant_message", "tool_call", "tool_result", "error", "approval_request", "artifact", "changed_file", "final_answer"]
           && request.resource.data.phase in ["queued", "accepted", "claimed", "starting", "running", "streaming", "assistant_response", "tool_use", "tool_result", "waiting_for_approval", "approval_requested", "approval_resolved", "artifact", "changed_file", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed", "process_started", "process_running"]
-          && request.resource.data.title is string
-          && request.resource.data.title.size() <= 160
-          && request.resource.data.message is string
-          && request.resource.data.message.size() <= 2048
-          && (!("fullMessage" in request.resource.data) || (
-            request.resource.data.fullMessage is string
-            && request.resource.data.fullMessage.size() <= 24000
-          ))
           && (!("messageLength" in request.resource.data) || (
             request.resource.data.messageLength is int
-            && request.resource.data.messageLength >= request.resource.data.message.size()
             && request.resource.data.messageLength <= 24000
           ))
           && (!("messageTruncated" in request.resource.data) || request.resource.data.messageTruncated is bool)
@@ -1186,9 +1496,7 @@ service cloud.firestore {
           && validCliAgentMissionEventSource(userId, requestId, eventId)
           && request.resource.data.isError is bool
           && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
-          && (!("toolName" in request.resource.data) || (request.resource.data.toolName is string && request.resource.data.toolName.size() <= 160))
-          && (!("artifactPath" in request.resource.data) || (request.resource.data.artifactPath is string && request.resource.data.artifactPath.size() <= 512))
-          && (!("changedFilePath" in request.resource.data) || (request.resource.data.changedFilePath is string && request.resource.data.changedFilePath.size() <= 512));
+          ;
         allow update, delete: if false;
       }
     }
@@ -1262,12 +1570,18 @@ service cloud.firestore {
           "childMissionIDs", "runtimeTokens", "parallelismLimit",
           "mergeStrategy", "phase", "winnerMissionID",
           "forecast", "createdAt", "updatedAt", "schemaVersion", "source",
-          "synthesisSummary"
+          "synthesisSummary",
+          "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload",
+          "sealedStatePayload", "sealedStateSchemaVersion", "sealedStateVaultKeyID"
         ])
-        && request.resource.data.title is string
-        && request.resource.data.title.size() <= 512
-        && request.resource.data.prompt is string
-        && request.resource.data.prompt.size() <= 20000
+        && !request.resource.data.keys().hasAny(["title", "prompt", "targetProject", "synthesisSummary"])
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && (!("sealedStatePayload" in request.resource.data) || (
+          request.resource.data.sealedStateSchemaVersion == 1
+          && validSealedPayloadForUser(userId, request.resource.data.sealedStateVaultKeyID, request.resource.data.sealedStatePayload)
+        ))
         && request.resource.data.childMissionIDs is list
         && request.resource.data.childMissionIDs.size() <= 16
         && request.resource.data.runtimeTokens is list
@@ -1382,6 +1696,46 @@ service cloud.firestore {
       }
     }
 
+    // Encrypted per-project memory snapshots (privacy-leak-remediation §2). The
+    // human-readable project name now lives ONLY inside the sealed `sealedSnapshot`
+    // blob, and the doc is keyed by an opaque, vault-key-derived `docID` — the
+    // server never learns the project's name or slug. These rows are written
+    // server-side today by `commitEncryptedProjectMemorySnapshot` (Admin SDK,
+    // which bypasses these rules); the allowlist below documents the hardened
+    // contract and fences any future direct client write. Plaintext
+    // `projectDisplayName`/`projectSlug` are rejected outright.
+    match /users/{userId}/project_memory_snapshots/{docID} {
+      function validProjectMemorySnapshotKeys() {
+        return request.resource.data.keys().hasOnly([
+          "docID",
+          "contentHash",
+          "sourceSessionCount",
+          "sourceConversationCount",
+          "generatedAt",
+          "freshness",
+          "visualKinds",
+          "sealedSnapshot",
+          "encryption",
+          "schemaVersion",
+          "updatedAt"
+        ]);
+      }
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
+        && validProjectMemorySnapshotKeys()
+        && !("projectDisplayName" in request.resource.data)
+        && !("projectSlug" in request.resource.data)
+        && (!("docID" in request.resource.data) || request.resource.data.docID == docID)
+        && (!("freshness" in request.resource.data) || request.resource.data.freshness in ["fresh", "needsRefresh", "stale"])
+        && (!("visualKinds" in request.resource.data) || (request.resource.data.visualKinds is list && request.resource.data.visualKinds.size() <= 24))
+        && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
+        && validCloudSealedBlob(request.resource.data.sealedSnapshot)
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 2;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     match /users/{userId}/cloud_search_documents/{documentId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if false
@@ -1393,7 +1747,6 @@ service cloud.firestore {
           "sourceID",
           "sourceVersionID",
           "provider",
-          "projectName",
           "bodyHash",
           "storagePath",
           "sealedTitle",
@@ -1434,7 +1787,6 @@ service cloud.firestore {
           "sourceKind",
           "sourceID",
           "provider",
-          "projectName",
           "ordinal",
           "startOffset",
           "endOffset",
@@ -1477,7 +1829,6 @@ service cloud.firestore {
           "chunkID",
           "documentID",
           "provider",
-          "projectName",
           "updatedAt",
           "indexVersion",
           "schemaVersion"
@@ -1494,7 +1845,6 @@ service cloud.firestore {
         && request.resource.data.documentID is string
         && request.resource.data.documentID.size() <= 512
         && (!("provider" in request.resource.data) || (request.resource.data.provider is string && request.resource.data.provider.size() <= 80))
-        && (!("projectName" in request.resource.data) || (request.resource.data.projectName is string && request.resource.data.projectName.size() <= 512))
         && !("title" in request.resource.data)
         && !("snippet" in request.resource.data)
         && !("body" in request.resource.data)
@@ -1545,6 +1895,62 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    // Tamper-evident unified access-audit log (server-only writer). Per-user
+    // SHA-256 hash chain written exclusively by Cloud Functions (appendAuditEvent)
+    // for the Access Audit Timeline. Clients must never write or the chain could
+    // be forged; owner-read only.
+    match /users/{userId}/unified_audit_log/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Transactional head pointer for the audit chain (server-only writer). Holds
+    // { maxSeq, headHash } advanced in the same transaction as each append plus
+    // the daily OpenTimestamps anchor, so a truncated tail is detectable. Clients
+    // must never write or truncation detection could be forged; owner-read only.
+    match /users/{userId}/audit_meta/{metaId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Account recovery methods for zero-knowledge mode (server-only writer).
+    // Holds ONLY sealed wrapped-vault-key blobs + verification hashes (Apple ADP
+    // delayed-confirm pattern), written exclusively via setupRecovery/confirmRecovery.
+    match /users/{userId}/account_recovery_methods/{recoveryId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/cloud_vault_state/{stateId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && stateId == "current"
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "vaultKeyID",
+          "keyVersion",
+          "algorithm",
+          "status",
+          "createdByDeviceId",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.uid == userId
+        && validVaultKeyID(request.resource.data.vaultKeyID)
+        && request.resource.data.keyVersion is int
+        && request.resource.data.keyVersion >= 1
+        && request.resource.data.keyVersion <= 100
+        && request.resource.data.algorithm == "AES-256-GCM"
+        && request.resource.data.status == "active"
+        && request.resource.data.createdByDeviceId is string
+        && request.resource.data.createdByDeviceId.size() <= 256
+        && request.resource.data.schemaVersion == 1
+        && (!exists(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current)
+          || get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultKeyID == request.resource.data.vaultKeyID);
+      allow delete: if false;
+    }
+
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableHostedCloudBackup(userId)
@@ -1555,6 +1961,7 @@ service cloud.firestore {
           "publicKeyFingerprint",
           "keyVersion",
           "wrappedVaultKey",
+          "vaultKeyID",
           "algorithm",
           "status",
           "createdAt",
@@ -1562,6 +1969,8 @@ service cloud.firestore {
           "schemaVersion"
         ])
         && request.resource.data.uid == userId
+        && validVaultKeyID(request.resource.data.vaultKeyID)
+        && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
         && request.resource.data.wrappedVaultKey is string
         && request.resource.data.wrappedVaultKey.size() <= 8192
         && request.resource.data.status in ["active", "revoked"]
@@ -1593,7 +2002,10 @@ service cloud.firestore {
           "threadId",
           "runtime",
           "sourceKind",
-          "replyText",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedReplyPayload",
           "deviceId",
           "status",
           "createdAt",
@@ -1612,9 +2024,9 @@ service cloud.firestore {
         && request.resource.data.runtime == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.runtime
         && request.resource.data.sourceKind in ["cli_session", "mobile_assistant_chat"]
         && request.resource.data.sourceKind == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.sourceKind
-        && request.resource.data.replyText is string
-        && request.resource.data.replyText.size() > 0
-        && request.resource.data.replyText.size() <= 16000
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedReplyPayload)
         && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 160))
         && request.resource.data.status == "queued"
         && request.resource.data.schemaVersion == 1;
@@ -1625,7 +2037,10 @@ service cloud.firestore {
         && request.resource.data.threadId == resource.data.threadId
         && request.resource.data.runtime == resource.data.runtime
         && request.resource.data.sourceKind == resource.data.sourceKind
-        && request.resource.data.replyText == resource.data.replyText
+        && request.resource.data.contentSealed == resource.data.contentSealed
+        && request.resource.data.sealedSchemaVersion == resource.data.sealedSchemaVersion
+        && request.resource.data.vaultKeyID == resource.data.vaultKeyID
+        && request.resource.data.sealedReplyPayload == resource.data.sealedReplyPayload
         && request.resource.data.status in ["processing", "sent", "failed"]
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "status",
@@ -1652,8 +2067,79 @@ service cloud.firestore {
     }
 
     match /users/{userId}/provider_accounts/{accountId} {
+      function validProviderAccountDocument() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "providerID",
+          "label",
+          "identityHint",
+          "status",
+          "credentialKind",
+          "storageScope",
+          "redactedLabel",
+          "sourceDeviceID",
+          "linkedSwitcherProfileID",
+          "isDefault",
+          "sortKey",
+          "lastValidatedAt",
+          "lastRefreshAt",
+          "lastErrorCode",
+          "endpointProfileID",
+          "region",
+          "tokenPlanTier",
+          "tokenPlanBillingCycle",
+          "authMethodID",
+          "schemaVersion",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.keys().hasAll([
+          "id",
+          "providerID",
+          "label",
+          "status",
+          "credentialKind",
+          "storageScope",
+          "redactedLabel",
+          "isDefault",
+          "sortKey",
+          "schemaVersion",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.id == accountId
+        && request.resource.data.providerID is string
+        && request.resource.data.providerID.size() <= 80
+        && request.resource.data.label is string
+        && request.resource.data.label.size() <= 160
+        && (!("identityHint" in request.resource.data) || (request.resource.data.identityHint is string && request.resource.data.identityHint.size() <= 256))
+        && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
+        && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
+        && request.resource.data.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
+        && request.resource.data.redactedLabel is string
+        && request.resource.data.redactedLabel.size() <= 160
+        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
+        && (!("linkedSwitcherProfileID" in request.resource.data) || (request.resource.data.linkedSwitcherProfileID is string && request.resource.data.linkedSwitcherProfileID.size() <= 160))
+        && request.resource.data.isDefault is bool
+        && request.resource.data.sortKey is number
+        && (!("lastValidatedAt" in request.resource.data) || (request.resource.data.lastValidatedAt is string && request.resource.data.lastValidatedAt.size() <= 80))
+        && (!("lastRefreshAt" in request.resource.data) || (request.resource.data.lastRefreshAt is string && request.resource.data.lastRefreshAt.size() <= 80))
+        && (!("lastErrorCode" in request.resource.data) || (request.resource.data.lastErrorCode is string && request.resource.data.lastErrorCode.size() <= 160))
+        && (!("endpointProfileID" in request.resource.data) || (request.resource.data.endpointProfileID is string && request.resource.data.endpointProfileID.size() <= 160))
+        && (!("region" in request.resource.data) || request.resource.data.region in ["cn", "sgp", "ams", "global"])
+        && (!("tokenPlanTier" in request.resource.data) || request.resource.data.tokenPlanTier in ["lite", "standard", "pro", "max"])
+        && (!("tokenPlanBillingCycle" in request.resource.data) || request.resource.data.tokenPlanBillingCycle in ["monthly", "annual"])
+        && (!("authMethodID" in request.resource.data) || (request.resource.data.authMethodID is string && request.resource.data.authMethodID.size() <= 160))
+        && request.resource.data.schemaVersion is number
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdAt.size() <= 80
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() <= 80;
+      }
+
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validProviderAccountDocument();
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1849,14 +2335,41 @@ service cloud.firestore {
     // Per-session metadata. Bucketed enums only, never payload bytes.
     // Schema in `functions/src/types.ts` (`MediaSessionEventDoc`).
     match /users/{userId}/media_session_events/{eventId} {
+      // Strict allowlist (MediaSessionEventDoc). Bucketed enums + opaque hashed
+      // peer id only — never a filename, payload bytes, or any free-text field.
+      function validMediaSessionEventKeys() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "sessionId",
+          "feature",
+          "streamClass",
+          "startedAt",
+          "endedAt",
+          "endReason",
+          "peerDeviceIdHash",
+          "byteCountInbound",
+          "byteCountOutbound",
+          "freezeCount",
+          "p95RoundTripMillisBucket",
+          "p95BitsPerSecondBucket",
+          "durationBucket",
+          "expireAt",
+          "schemaVersion"
+        ]);
+      }
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedMediaEntitlement(userId)
+        && validMediaSessionEventKeys()
         && request.resource.data.id == eventId
         && request.resource.data.feature in ["fileTransfer", "screenShare", "videoCall"]
         && request.resource.data.startedAt is string
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1
+        && (!("peerDeviceIdHash" in request.resource.data) || (request.resource.data.peerDeviceIdHash is string && request.resource.data.peerDeviceIdHash.size() <= 128))
+        && (!("p95RoundTripMillisBucket" in request.resource.data) || request.resource.data.p95RoundTripMillisBucket in ["lt_50ms", "50_150ms", "150_400ms", "gte_400ms"])
+        && (!("p95BitsPerSecondBucket" in request.resource.data) || request.resource.data.p95BitsPerSecondBucket in ["lt_300kbps", "300_600kbps", "600kbps_1mbps", "1_2mbps", "2_4mbps", "4_8mbps", "gte_8mbps"])
+        && (!("durationBucket" in request.resource.data) || request.resource.data.durationBucket in ["lt_30s", "30s_2m", "2m_10m", "10m_30m", "30m_60m", "gte_60m"])
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
@@ -2199,18 +2712,51 @@ service cloud.firestore {
     // Per-attachment manifest. No payload bytes — the file flows
     // peer-to-peer over iroh-blobs. This doc is the audit record so DSR
     // exports + admin tooling can answer "what files have been sent."
+    //
+    // Fork F = SEAL (privacy-leak-remediation-2026-06-02 §6): the human-readable
+    // filename is PRIVATE TEXT and is sealed into `sealedFilename`
+    // (validCloudSealedText). A bounded plaintext `filename` is retained ONLY as
+    // a legacy/in-flight migration fallback and is REJECTED the moment a sealed
+    // copy is present, so a hardened writer can never accidentally co-emit the
+    // cleartext name alongside the sealed one.
     match /users/{userId}/media_attachment_manifests/{manifestId} {
+      function validMediaAttachmentManifestKeys() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "blobHash",
+          "sealedFilename",
+          "filename",
+          "mime",
+          "size",
+          "peerDeviceIdHash",
+          "direction",
+          "createdAt",
+          "expireAt",
+          "schemaVersion"
+        ]);
+      }
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedMediaEntitlement(userId)
+        && validMediaAttachmentManifestKeys()
         && request.resource.data.id == manifestId
         && request.resource.data.blobHash is string
-        && request.resource.data.filename is string
         && request.resource.data.mime is string
         && request.resource.data.size is number
         && request.resource.data.peerDeviceIdHash is string
         && request.resource.data.direction in ["macToIos", "iosToMac"]
         && request.resource.data.schemaVersion is int
+        // Sealed filename is the hardened shape; when present, no plaintext
+        // filename may ride along.
+        && (("sealedFilename" in request.resource.data) || ("filename" in request.resource.data))
+        && (!("sealedFilename" in request.resource.data) || (
+          validCloudSealedText(request.resource.data.sealedFilename)
+          && !("filename" in request.resource.data)
+        ))
+        && (!("filename" in request.resource.data) || (
+          request.resource.data.filename is string
+          && request.resource.data.filename.size() <= 256
+        ))
         && !("body" in request.resource.data)
         && !("ciphertext" in request.resource.data);
       allow update: if false;
@@ -2474,7 +3020,8 @@ service cloud.firestore {
           "createdAt",
           "updatedAt",
           "publicKeyFingerprint",
-          "keyVersion"
+          "keyVersion",
+          "approvedByDeviceId"
         ])
         && request.resource.data.deviceId == deviceId
         && request.resource.data.deviceName is string
@@ -2484,7 +3031,11 @@ service cloud.firestore {
         && request.resource.data.trustState in ["pending", "trusted", "revoked"]
         && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
         && (!("publicKeyFingerprint" in request.resource.data) || (request.resource.data.publicKeyFingerprint is string && request.resource.data.publicKeyFingerprint.size() <= 256))
-        && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int);
+        && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int)
+        && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
+        && (!("approvedAt" in request.resource.data) || request.resource.data.approvedAt is timestamp)
+        && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
       }
 
       function validEscrowDeviceCreate(deviceId) {
@@ -2605,11 +3156,68 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_public_keys/{keyId} {
+      function escrowPublicKeyDevicePath() {
+        return /databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId);
+      }
+
+      function publicKeyMatchesPendingEscrowDevice() {
+        return exists(escrowPublicKeyDevicePath())
+          && get(escrowPublicKeyDevicePath()).data.trustState == "pending"
+          && ("publicKeyFingerprint" in request.resource.data)
+          && ("publicKeyFingerprint" in get(escrowPublicKeyDevicePath()).data)
+          && request.resource.data.publicKeyFingerprint == get(escrowPublicKeyDevicePath()).data.publicKeyFingerprint
+          && ("keyVersion" in get(escrowPublicKeyDevicePath()).data)
+          && request.resource.data.keyVersion == 1
+          && request.resource.data.keyVersion == get(escrowPublicKeyDevicePath()).data.keyVersion
+          && keyId == request.resource.data.deviceId + "_1";
+      }
+
+      function validEscrowPublicKeyDocument() {
+        return request.resource.data.keys().hasOnly([
+          "deviceId",
+          "platform",
+          "fingerprint",
+          "publicKeyFingerprint",
+          "publicKeyData",
+          "publicKeyJwk",
+          "keyVersion",
+          "algorithm",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() <= 160
+        && request.resource.data.keyVersion is int
+        && request.resource.data.keyVersion >= 1
+        && request.resource.data.keyVersion <= 1000
+        && request.resource.data.publicKeyData is string
+        && request.resource.data.publicKeyData.matches("^[A-Za-z0-9+/=]{80,128}$")
+        && (!("publicKeyFingerprint" in request.resource.data)
+          || (request.resource.data.publicKeyFingerprint is string
+            && request.resource.data.publicKeyFingerprint.size() <= 128))
+        && (!("fingerprint" in request.resource.data)
+          || (request.resource.data.fingerprint is string
+            && request.resource.data.fingerprint.size() <= 128))
+        && request.resource.data.algorithm == "ECIES-P256-AESGCM"
+        && (!("platform" in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80))
+        && (!("publicKeyJwk" in request.resource.data)
+          || (request.resource.data.publicKeyJwk is map
+            && request.resource.data.publicKeyJwk.keys().hasOnly(["kty", "crv", "x", "y", "ext", "key_ops"])
+            && request.resource.data.publicKeyJwk.kty == "EC"
+            && request.resource.data.publicKeyJwk.crv == "P-256"
+            && request.resource.data.publicKeyJwk.x is string
+            && request.resource.data.publicKeyJwk.x.size() <= 80
+            && request.resource.data.publicKeyJwk.y is string
+            && request.resource.data.publicKeyJwk.y.size() <= 80));
+      }
+
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
+        && hasNoPlaintextSecretFields()
+        && validEscrowPublicKeyDocument()
+        && publicKeyMatchesPendingEscrowDevice();
+      allow update, delete: if false;
     }
 
     match /users/{userId}/escrow_grants/{grantId} {
@@ -2621,10 +3229,45 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_envelopes/{envelopeId} {
+      function validEscrowEnvelopeDocument() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "grantId",
+          "sourceDeviceId",
+          "targetDeviceId",
+          "providerId",
+          "credentialKind",
+          "accountLabel",
+          "ciphertext",
+          "keyVersion",
+          "envelopeVersion",
+          "createdAt"
+        ])
+        && request.resource.data.id == envelopeId
+        && request.resource.data.grantId is string
+        && request.resource.data.grantId.size() <= 160
+        && request.resource.data.sourceDeviceId is string
+        && request.resource.data.sourceDeviceId.size() <= 160
+        && request.resource.data.targetDeviceId is string
+        && request.resource.data.targetDeviceId.size() <= 160
+        && request.resource.data.providerId is string
+        && request.resource.data.providerId.size() <= 80
+        && request.resource.data.credentialKind in ["api_key", "oauth_token", "bearer_token", "unknown"]
+        && (!("accountLabel" in request.resource.data) || (request.resource.data.accountLabel is string && request.resource.data.accountLabel.size() <= 160))
+        && request.resource.data.ciphertext is string
+        && request.resource.data.ciphertext.size() >= 16
+        && request.resource.data.ciphertext.size() <= 20000
+        && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]*$")
+        && request.resource.data.keyVersion is int
+        && request.resource.data.envelopeVersion is int
+        && request.resource.data.createdAt is timestamp;
+      }
+
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFields()
+        && validEscrowEnvelopeDocument();
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2713,6 +3356,11 @@ service cloud.firestore {
 
     // --- Global Google Play token claims (server-only) ---
     match /google_play_token_claims/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    // --- High-risk action nonces (server-only, single-use replay defense) ---
+    match /users/{userId}/high_risk_action_nonces/{nonceId} {
       allow read, write: if false;
     }
 

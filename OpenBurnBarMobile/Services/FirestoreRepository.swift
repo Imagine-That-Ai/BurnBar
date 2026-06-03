@@ -43,6 +43,18 @@ final class FirestoreRepository {
         return "…\(uid.suffix(5))"
     }
 
+    /// Synchronously loads the locally-escrowed Cloud Vault key for the signed-in
+    /// user, used to open sealed fields (e.g. `sealedProjectName`) during decode.
+    /// Returns `nil` when Firebase is unavailable, no user is signed in, or the key
+    /// has not yet been unwrapped onto this device — callers then fall back to any
+    /// legacy plaintext field.
+    nonisolated static func cachedVaultKey() -> Data? {
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid,
+              uid.isEmpty == false else { return nil }
+        return try? CloudVaultKeyStore().loadKey(uid: uid)
+    }
+
     private func uid() throws -> String {
         guard FirebaseApp.app() != nil else {
             throw FirestoreError.firebaseUnavailable
@@ -135,6 +147,16 @@ final class FirestoreRepository {
             let effectiveCost = cost ?? costUsd ?? 0.0
             enriched["cost"] = effectiveCost
             enriched["costUsd"] = effectiveCost
+            // Project name is sealed at rest. Open it for the decoder, with a
+            // legacy plaintext fallback for in-flight / pre-migration rows. The
+            // decoder consumes plaintext `projectName`, so write the opened value
+            // back into the enriched payload and drop the sealed envelope.
+            let openedProject = CloudVaultCrypto.openSealedProjectName(
+                from: enriched,
+                keyData: Self.cachedVaultKey()
+            )
+            enriched["projectName"] = openedProject ?? ""
+            enriched["sealedProjectName"] = nil
         }
         if enriched["deviceId"] != nil && enriched["sourceDeviceId"] == nil {
             enriched["sourceDeviceId"] = enriched["deviceId"]
@@ -685,6 +707,7 @@ final class FirestoreRepository {
             .limit(to: limit)
             .getDocuments()
 
+        let vaultKey = Self.cachedVaultKey()
         return snapshot.documents.compactMap { doc -> HermesCloudLibraryManifest? in
             let data = doc.data()
             let title = data["inferredTaskTitle"] as? String
@@ -696,7 +719,7 @@ final class FirestoreRepository {
                 documentID: doc.documentID,
                 sessionId: data["sessionId"] as? String ?? doc.documentID,
                 title: title,
-                projectName: data["projectName"] as? String ?? "",
+                projectName: CloudVaultCrypto.openSealedProjectName(from: data, keyData: vaultKey) ?? "",
                 messageCount: data["messageCount"] as? Int ?? 0,
                 updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue(),
                 startTime: (data["startTime"] as? Timestamp)?.dateValue(),
@@ -773,7 +796,7 @@ final class FirestoreRepository {
             id: data["id"] as? String ?? doc.documentID,
             documentID: doc.documentID,
             sessionId: data["sessionId"] as? String ?? data["id"] as? String ?? doc.documentID,
-            projectName: data["projectName"] as? String ?? "",
+            projectName: CloudVaultCrypto.openSealedProjectName(from: data, keyData: Self.cachedVaultKey()) ?? "",
             inferredTaskTitle: data["inferredTaskTitle"] as? String ?? "",
             messageCount: data["messageCount"] as? Int ?? 0,
             chunkCount: data["chunkCount"] as? Int ?? 0,
@@ -985,5 +1008,63 @@ enum FirestoreError: Error, LocalizedError {
         case .notAuthenticated: return "Not signed in."
         case .decodingFailed(let message): return message
         }
+    }
+}
+
+// MARK: - Cloud Vault project-name sealing helpers (iOS)
+
+enum CloudVaultProjectSealError: Error {
+    case encodingFailed
+}
+
+extension CloudVaultCrypto {
+    /// Serializes a `Codable` sealed envelope into a Firestore-native dictionary.
+    static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CloudVaultProjectSealError.encodingFailed
+        }
+        return dictionary
+    }
+
+    /// Stable opaque group-by token for a project name (32 hex chars), derived via
+    /// the existing keyed search trapdoor. Collapses the name to a single canonical
+    /// alphanumeric term so multi-word names hash to one stable bucket, then HMACs
+    /// it under the per-user search key. Returns `nil` for empty/blank names.
+    ///
+    /// Reuses `CloudVaultCrypto.tokenHashes` only — no new crypto is introduced.
+    static func projectKeyHash(for projectName: String, keyData: Data) -> String? {
+        let normalized = normalizedTokens(from: projectName).joined()
+        guard normalized.isEmpty == false else { return nil }
+        return try? tokenHashes(for: normalized, keyData: keyData, limit: 1).first
+    }
+
+    /// Opens a sealed project name from a Firestore document, falling back to the
+    /// legacy plaintext `projectName` field for in-flight / pre-migration docs.
+    static func openSealedProjectName(
+        from data: [String: Any],
+        sealedField: String = "sealedProjectName",
+        legacyField: String = "projectName",
+        keyData: Data?
+    ) -> String? {
+        if let raw = data[sealedField],
+           let envelope = decodeSealedText(from: raw) {
+            if let keyData, let plaintext = try? openText(envelope, keyData: keyData) {
+                return plaintext
+            }
+            // Sealed but unreadable on this device — do not leak a legacy value.
+            return nil
+        }
+        return data[legacyField] as? String
+    }
+
+    /// Decodes a `CloudVaultSealedText` envelope from a Firestore-native dictionary,
+    /// matching the JSON round-trip pattern used by the adjacent sync services.
+    static func decodeSealedText(from raw: Any?) -> CloudVaultSealedText? {
+        guard let dict = raw as? [String: Any],
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
     }
 }

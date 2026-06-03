@@ -18,6 +18,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private var downloadSync: DownloadSyncService!
     private var providerAccountSync: ProviderAccountSyncService!
     private var quotaSnapshotSync: QuotaSnapshotSyncService!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -30,7 +31,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        usageSync = UsageSyncService(context: context)
+        vaultKeyProvider = TestConversationVaultKeyProvider()
+        usageSync = UsageSyncService(context: context, vaultKeyProvider: vaultKeyProvider)
         downloadSync = DownloadSyncService(context: context)
         providerAccountSync = ProviderAccountSyncService(context: context)
         quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
@@ -70,6 +72,82 @@ final class UsageSyncRoundTripTests: XCTestCase {
         // Postcondition: local row is marked synced
         let unsyncedAfter = try dataStore.fetchUnsynced()
         XCTAssertTrue(unsyncedAfter.isEmpty)
+    }
+
+    // MARK: - Project-name sealing
+
+    func test_usageUpload_sealsProjectName_andWritesNoPlaintext() async throws {
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "session-seal",
+            projectName: "Top Secret Project",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try dataStore.insert(usage)
+
+        await usageSync.sync()
+
+        let docPath = "users/test-uid-1/usage/test-device-1_\(usage.id.uuidString)"
+        let docData = try XCTUnwrap(fakeGateway.documentData(at: docPath))
+
+        // The raw cloud document must carry NO plaintext project name.
+        XCTAssertNil(docData["projectName"], "Raw usage doc must not contain a plaintext projectName")
+
+        // It must carry a well-formed sealed envelope and an opaque group-by hash.
+        let sealed = try XCTUnwrap(docData["sealedProjectName"] as? [String: Any])
+        XCTAssertEqual(sealed["algorithm"] as? String, "AES-256-GCM")
+        XCTAssertEqual(sealed["keyVersion"] as? Int, 1)
+        XCTAssertNotNil(sealed["nonce"] as? String)
+        XCTAssertNotNil(sealed["ciphertext"] as? String)
+        XCTAssertNotNil(sealed["tag"] as? String)
+
+        let projectKeyHash = try XCTUnwrap(docData["projectKeyHash"] as? String)
+        XCTAssertEqual(projectKeyHash.count, 32)
+        XCTAssertTrue(projectKeyHash.allSatisfy { $0.isHexDigit })
+
+        // Encoded ciphertext (base64) must not leak the cleartext name.
+        let serialized = String(describing: docData)
+        XCTAssertFalse(serialized.contains("Top Secret Project"))
+
+        // A key holder can recover the exact project name (seal → open round trip).
+        let envelope = try XCTUnwrap(CloudVaultCrypto.decodeSealedText(from: sealed))
+        let opened = try CloudVaultCrypto.openText(envelope, keyData: vaultKeyProvider.keyData)
+        XCTAssertEqual(opened, "Top Secret Project")
+
+        // The opaque hash is stable for the same name + key.
+        let expectedHash = CloudVaultCrypto.projectKeyHash(
+            for: "Top Secret Project",
+            keyData: vaultKeyProvider.keyData
+        )
+        XCTAssertEqual(projectKeyHash, expectedHash)
+    }
+
+    func test_usageUpload_emptyProjectName_omitsProjectKeyHash() async throws {
+        let usage = TokenUsage(
+            provider: .codex,
+            sessionId: "session-empty-project",
+            projectName: "",
+            model: "gpt-5.5",
+            inputTokens: 5,
+            outputTokens: 2,
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try dataStore.insert(usage)
+
+        await usageSync.sync()
+
+        let docPath = "users/test-uid-1/usage/test-device-1_\(usage.id.uuidString)"
+        let docData = try XCTUnwrap(fakeGateway.documentData(at: docPath))
+        XCTAssertNil(docData["projectName"])
+        // The sealed envelope is always present (it seals the empty string);
+        // the opaque hash is omitted because there is no normalizable token.
+        XCTAssertNotNil(docData["sealedProjectName"])
+        XCTAssertNil(docData["projectKeyHash"])
     }
 
     func test_usageUpload_drainsMultipleLocalBatchesInOneSync() async throws {

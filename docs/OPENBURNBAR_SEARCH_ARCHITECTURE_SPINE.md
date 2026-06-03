@@ -47,7 +47,9 @@ logs without changing the local search authority:
 - iOS/iPadOS and Android register device public keys, read a wrapped cloud
   vault key from `cloud_vault_key_wrappers`, query by locally derived opaque
   token/semantic hashes, and decrypt returned titles/snippets/full bodies
-  locally.
+  locally. Mobile search boxes in Streams, Hermes, and Session Logs use this
+  path for transcript/project/path terms; they fetch sealed result labels first
+  and download the encrypted full body only when a result is opened.
 - macOS publishes its public key without self-minting trusted Mac status. A Mac
   that is not already trusted can still sync with its local vault key; vault
   wrappers are written only for devices already trusted in the escrow list.
@@ -75,6 +77,28 @@ retrieval. Local `SearchService` remains the hot path for local corpus search;
 cloud search is a separate premium surface for mirrored hosted session logs and
 agent/MCP recall.
 
+### Project-identity text is sealed, even in doc ids
+
+Two surfaces previously denormalized project/repo identity into a server-readable
+field or a name-derived document id. Both are now opaque:
+
+- **`project_memory_snapshots`** carries no top-level `projectDisplayName` and no
+  project-name-derived `projectSlug`. The project name lives only inside the
+  sealed `sealedSnapshot` blob, and the document id is an opaque vault-keyed
+  HMAC (`pm_` + `HMAC_SHA256(docIDKey, slug)` prefix, see `CloudVaultCrypto`),
+  so neither the field set nor the id reveals which project a snapshot belongs
+  to. Readers derive the same opaque id from the candidate slug + vault key.
+- **`knowledge_repos`** stores only an opaque server-keyed `repoMatchToken`
+  (`HMAC_SHA256(KNOWLEDGE_REPO_MATCH_KEY, normalize(full_name))`) plus a
+  vault-sealed `sealedRepoFullName`; the cleartext `repoFullName` is no longer
+  persisted. The one place the server reads a cleartext repo name is the GitHub
+  push webhook (`onKnowledgeRepoPush`), which receives `full_name` out-of-band
+  in GitHub's HMAC-signed payload, recomputes the same match token, and
+  equality-matches it against stored rows. That cleartext is observed
+  **transiently for routing only and never stored** — it is the single
+  server-readable repo-identity touchpoint in the Pensieve surface, and the web
+  console renders the repo name from the sealed copy, decrypted client-side.
+
 ### Streams cockpit faceted query (`queryConversations`)
 
 The mobile **Streams conversation cockpit** (iOS/iPadOS and Android) is a faceted
@@ -83,14 +107,17 @@ hash-based hosted *search* above:
 
 - Every indexed provider transcript — not just the in-app CLI thread — is backed
   up by `SessionLogSyncService`. Each `session_logs/{id}` manifest carries cockpit
-  **facets** (tokens, cost, `workingDirectory`, model, provider, project, message
-  count, tags) alongside the existing sealed title/snippet. Bodies remain
-  `CloudVaultCrypto`-encrypted in Storage; the manifest holds no plaintext body.
+  **facets** (tokens, cost, model, provider, message count, timing, and generic tool
+  tags) alongside the sealed title/snippet. Project and path text are device-only
+  private search inputs; the manifest holds no raw project, path, title, snippet,
+  or body text. Bodies remain `CloudVaultCrypto`-encrypted in Storage.
 - The `queryConversations` Cloud Function answers faceted filters (provider,
-  model, project, date range), server-side sort, cursor pagination, and KPI
-  aggregates straight from the manifests. It requires an active hosted-quota
+  model, date range), server-side sort, cursor pagination, and KPI aggregates
+  straight from the manifests. It requires an active hosted-quota
   entitlement; `firestore.rules` allows the facet fields under the same paid gate
   and keeps body content server-only, with composite indexes for the facet sorts.
+  Project/path text is not a `queryConversations` filter; clients must route it
+  through the hosted hash search path above.
 - The cockpit decrypts returned titles/snippets — and full bodies on demand —
   locally via `CloudConversationSearchService`, so the server never sees
   plaintext. Hash-based full-text search (above) stays available for keyword

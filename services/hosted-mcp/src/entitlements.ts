@@ -7,7 +7,9 @@ import type { HostedMcpFirestore, RemoteMcpClientFirestore } from "./firestoreTy
 
 export interface EntitlementState {
   active: boolean;
-  source: "burnbar_pro" | "hosted_quota_sync" | "none";
+  source: "burnbar_ultra" | "burnbar_pro_max" | "burnbar_pro" | "hosted_quota_sync" | "none";
+  /** Pensieve/MCP tier: drives Ultra-only rate buckets (e.g. search:ultra). */
+  tier: "ultra" | "pro" | "none";
   expiresAt?: string;
 }
 
@@ -47,17 +49,30 @@ export async function getEntitlementState(uid: string, db: RemoteMcpClientFirest
   const cached = cache.get(uid);
   if (cached && cached.expiresAtMs > Date.now()) return cached.state;
 
-  const [pro, legacy] = await Promise.all([
+  // Ultra (source) + Cloud Pro (proMax) are read alongside legacy Pro + hosted-quota
+  // so Cloud-Pro/Ultra members can use the hosted MCP, and Ultra unlocks its rate tier.
+  const [ultra, proMax, pro, legacy] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/burnbar_ultra`).get(),
+    db.doc(`users/${uid}/entitlements/burnbar_pro_max`).get(),
     db.doc(`users/${uid}/entitlements/burnbar_pro`).get(),
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get()
   ]);
+  const ultraState = isActive(ultra.data());
+  const proMaxState = isActive(proMax.data());
   const proState = isActive(pro.data());
   const legacyState = isActive(legacy.data());
-  const state: EntitlementState = proState.active
-    ? { active: true, source: "burnbar_pro", expiresAt: proState.expiresAt?.toISOString() }
-    : legacyState.active
-      ? { active: true, source: "hosted_quota_sync", expiresAt: legacyState.expiresAt?.toISOString() }
-      : { active: false, source: "none" };
+  let state: EntitlementState;
+  if (ultraState.active) {
+    state = { active: true, source: "burnbar_ultra", tier: "ultra", expiresAt: ultraState.expiresAt?.toISOString() };
+  } else if (proMaxState.active) {
+    state = { active: true, source: "burnbar_pro_max", tier: "pro", expiresAt: proMaxState.expiresAt?.toISOString() };
+  } else if (proState.active) {
+    state = { active: true, source: "burnbar_pro", tier: "pro", expiresAt: proState.expiresAt?.toISOString() };
+  } else if (legacyState.active) {
+    state = { active: true, source: "hosted_quota_sync", tier: "pro", expiresAt: legacyState.expiresAt?.toISOString() };
+  } else {
+    state = { active: false, source: "none", tier: "none" };
+  }
   cache.set(uid, {
     state,
     expiresAtMs: Date.now() + (state.active ? POSITIVE_ENTITLEMENT_CACHE_MS : NEGATIVE_ENTITLEMENT_CACHE_MS)

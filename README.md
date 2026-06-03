@@ -23,7 +23,7 @@ OpenBurnBar is now explicitly **daemon-first** and **local-first**.
 
 - Local SQLite plus daemon-owned local state are canonical.
 - Firestore is an optional replication and collaboration plane.
-- iCloud mirroring is an optional file-copy plane.
+- Raw iCloud session-file mirroring is disabled until a sealed archive format ships.
 - Neither cloud path replaces local state as the source of truth.
 
 The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md).
@@ -33,7 +33,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 | Tier | Surfaces | Notes |
 |------|----------|--------|
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
-| **Experimental** | Optional Firestore sync, iCloud mirroring, Cursor connector + tunnel, optional cloud collaboration | Best-effort; opt-in; not canonical vs local SQLite/daemon state. |
+| **Experimental** | Optional Firestore sync, sealed cloud collaboration, Cursor connector + tunnel, future sealed iCloud archive support | Best-effort; opt-in; not canonical vs local SQLite/daemon state. Raw iCloud session-file mirroring is disabled in this tree. |
 | **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim) | Developer convenience; not required to run OpenBurnBar. |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 
@@ -65,7 +65,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - **Per-provider breakdown** — see which agent is winning the "most expensive hobby" award and whether it's gaining on yesterday's champion.
 - **Daily digest** — optional notification at a time you pick, because future-you deserves a single sentence of truth instead of a billing surprise.
 - **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
-- **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across Macs. Today that can include usage rows, in-app OpenBurnBar chat-thread metadata for cross-device resume, and any separately enabled conversation/session-log backups. Chat message bodies require their own explicit setting. Fully opt-in; flip it off anytime and your local world keeps spinning.
+- **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across devices. Usage/cost metadata remains server-readable where needed for sync; chat threads, CLI session mirrors, mobile assistant chats, mission prompts/results, text snippets, and conversation recall metadata are sealed on-device before Firestore receives them. Fully opt-in; flip it off anytime and your local world keeps spinning.
 - **Hosted Remote MCP for BurnBar Pro** — paid users can connect coding agents to OpenBurnBar's hosted MCP endpoint for encrypted hosted session-memory search, with a local shim for stdio-only clients and device-side decrypt.
 - **Optional routed-provider gateway** — route selected **Z.ai**, **MiniMax**, **Ollama Cloud**, and **Factory Droid** models through a local OpenAI-shaped router for Cursor, Factory, and OpenCode. Cursor gets a tunnel because it is picky about BYOK targets; local clients use the loopback gateway directly. OpenBurnBar logs those requests so you know where the bits actually went.
 - **Daemon-backed controller runtime** — project registry, questions, followups, missions, scheduled reviews, simulator replay, mission provenance, and auto-takeover now live behind the local daemon instead of a UI-only mirror.
@@ -377,14 +377,14 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 **Pieces:**
 
 - **Primary store:** GRDB + SQLite — fast, local, yours. **Optional at-rest encryption** uses SQLCipher (SPM `GRDB-SQLCipher`, pinned with the daemon); the encryption key lives in the Keychain. When encryption is on, the build must link SQLCipher — see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md). SQLCipher licensing: [Zetetic](https://www.zetetic.net/sqlcipher/license/).
-- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata by default; message bodies only when **Back Up Chat Message Content** is enabled), `conversations` (optional metadata backup), `text_snippets` (encrypted text-expansion snippets), `session_logs` plus encrypted cloud search rows/postings when enabled. Hosted cloud backup writes for conversation metadata, chat content, session-log manifests/search metadata, and Hermes relay traffic require the server-written `burnbar_pro` entitlement or legacy `hosted_quota_sync`; metadata-only usage/chat-thread sync remains available without that paid entitlement.
+- **Sync store:** Firestore under `users/{uid}/` — `usage` / quota / billing metadata remains server-readable; `chat_threads`, `conversations`, `text_snippets`, `mobile_assistant_chats`, `cli_sessions`, `cli_agent_mission_requests`, and notification reply commands store private content only inside Cloud Vault sealed payloads. `session_logs` plus encrypted cloud search rows/postings are enabled separately. Hosted cloud backup writes for conversation metadata, chat content, session-log manifests/search metadata, and Hermes relay traffic require the server-written `burnbar_pro` entitlement or legacy `hosted_quota_sync`; metadata-only usage sync remains available without that paid entitlement.
 - **Shared artifact sync:** Firestore under `workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID}` plus `versions/{revisionID}` for the current source-release collaboration head/history path
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
 - **App Check:** The app initializes App Check before Firebase; **production** Firebase projects must **enforce** App Check for **Cloud Firestore** in the console (Auth + rules are not enough). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 - **Device identity:** random UUID stored in local app defaults and migrated from legacy OpenBurnBar/AgentLens defaults keys
-- **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/OpenBurnBar/SessionMirror/...`). Independent of Firebase; see below.
+- **iCloud mirror:** the legacy raw session-file mirror path is disabled and reports zero bytes to mirror. Sealed iCloud archive support must land before new session-log writes resume in iCloud.
 
-**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. macOS/iOS text expansion snippets sync as sealed Cloud Vault documents with keyed trigger hashes; plaintext snippet title, trigger, body, and scope fields are rejected by Firestore rules. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content** and only when Firestore rules see an active Apple-verified premium entitlement. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and session-log manifests/search metadata remain separately gated by their own settings and the same hosted-cloud entitlement. BurnBar Pro hosted session search stores encrypted bodies in Firebase Storage and sealed metadata plus opaque token/semantic hashes in Firestore; apps and explicitly configured MCP tools decrypt matches locally. See [docs/TEXT_EXPANSION.md](docs/TEXT_EXPANSION.md) for text expansion trigger, surface, and privacy details.
+**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and operational sync metadata. Private chat/session surfaces are sealed before upload: chat-thread titles/previews/messages, mobile assistant chats, CLI session transcripts/tool pills, mission prompts/results/events, text snippets, and conversation recall fields such as project/file/command labels live inside Cloud Vault payloads. Firestore rules reject the old plaintext field names on these collections. BurnBar Pro hosted session search stores encrypted bodies in Firebase Storage and sealed metadata plus opaque token/semantic hashes in Firestore; apps and explicitly configured MCP tools decrypt matches locally. See [docs/TEXT_EXPANSION.md](docs/TEXT_EXPANSION.md) for text expansion trigger, surface, and privacy details.
 
 **Append-safe sync contract:** local SQLite/JSON insight stores remain authoritative and each enabled cloud target is treated as an append/merge replica. Firestore writes use stable document IDs plus merge semantics for usage, provider accounts, quota snapshots, sync status, and shared-artifact heads/revisions; retrying a sync is idempotent and adding new records does not delete sibling records. Local provider routing event trails persist full history even when callers request a limited display window. Remote device-local provider-account collisions are namespaced locally instead of overwriting the current Mac's Keychain-backed account, and remote download watermarks advance only after the full page has been durably persisted locally.
 
@@ -406,19 +406,18 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 6. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `OpenBurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
 7. `xcodegen generate` and rebuild.
 
-**Privacy:** synced payloads can include **project directory names** and **model names**. **OpenBurnBar in-app chat message content** is excluded unless you explicitly enable **Back Up Chat Message Content**. If you also enable conversation/session-log backup, synced data can additionally include conversation metadata plus encrypted session-log manifests, sealed snippets, and opaque search hashes. Full Markdown session-log bodies are encrypted before Firebase Storage upload and decrypted locally by trusted devices or explicitly configured MCP tools. You can disable sync in **Settings → Account** without sacrificing local history.
+**Privacy:** Firestore can still see routing/count metadata such as provider/runtime identifiers, status, timestamps, device ids, token counts, and cost estimates. It cannot read sealed chat titles, previews, messages, CLI transcripts, mission prompts/results, text snippets, or conversation recall labels because those fields are encrypted on device with the Cloud Vault key. Full Markdown session-log bodies are encrypted before Firebase Storage upload and decrypted locally by trusted devices or explicitly configured MCP tools. You can disable sync in **Settings → Account** without sacrificing local history.
 
-### iCloud session file mirror (optional)
+### iCloud session file mirror (disabled)
 
-Use this when you want session logs in **your** Apple ID’s iCloud storage instead of (or in addition to) Firestore metadata.
+The legacy raw file-copy mirror is disabled. Existing users may still have old files in their personal iCloud Drive app container, but current builds do not create new raw `SessionMirror` copies.
 
-- **Where:** After each successful refresh, OpenBurnBar incrementally copies files from each supported provider’s configured log path into the app’s iCloud container: `Documents/OpenBurnBar/SessionMirror/<provider>/…` (same layout as on disk under that root).
-- **Append safety:** mirroring never treats a missing local source path as an implicit delete. New or changed files are copied into the mirror and prior mirrored records remain until the user explicitly removes them from iCloud or a future explicit delete operation does so.
-- **UI:** **Settings → Account → iCloud session files** — toggle, status, **Set up guide** (iCloud sign-in check, privacy notes, size estimate, **Reveal in Finder**, **Mirror now**, and advanced Terminal examples for symlink-based relocation).
+- **Where old files may exist:** `Documents/OpenBurnBar/SessionMirror/<provider>/...` inside the app's iCloud container.
+- **Current behavior:** the sync service reports the raw mirror as disabled, estimates zero bytes to mirror, and throws `rawMirrorDisabled` instead of exporting Hermes conversations to iCloud.
+- **Cleanup:** run `scripts/privacy/scrub-icloud-session-mirror.sh` for a dry-run inventory, then `scripts/privacy/scrub-icloud-session-mirror.sh --apply` to remove legacy raw mirrored files from this Mac's iCloud Drive folder.
 - **Apple Developer:** Enable **iCloud** for the macOS app ID `com.openburnbar.app` with **iCloud Documents** and container `iCloud.com.openburnbar.app`, matching [AgentLens/Resources/OpenBurnBar.entitlements](AgentLens/Resources/OpenBurnBar.entitlements).
-- **Privacy:** mirrored files can contain paths, prompts, and code snippets. They are **not** uploaded to OpenBurnBar-operated Firebase storage by this feature (they sync through Apple’s iCloud like any other document).
-- **Conflicts:** editing the same mirrored file on two Macs can produce iCloud “conflict” copies; OpenBurnBar does not merge those automatically.
-- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user, confirm **App Check enforcement** and a registered [debug token](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md) for CI/local builds, and that the app bundle includes App Check (see [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md)). If it appears only when **mirroring to iCloud**, the Mac build usually needs the **iCloud Documents** capability and matching **provisioning profile** for container `iCloud.com.openburnbar.app` (see Apple Developer → Identifiers → your App ID).
+- **Privacy:** sealed iCloud archive support must be implemented before this feature writes session logs again.
+- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user, confirm **App Check enforcement** and a registered [debug token](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md) for CI/local builds, and that the app bundle includes App Check (see [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md)).
 
 ---
 
@@ -478,7 +477,7 @@ OpenBurnBar intentionally runs **without macOS App Sandbox** (`com.apple.securit
 
 3. **Firebase Auth + Keychain**: Firebase Authentication requires Keychain access which works more reliably without sandbox restrictions.
 
-4. **iCloud integration**: Session log mirroring to iCloud requires broader file system access than sandboxed apps can request.
+4. **Direct-download operational features**: the non-MAS build includes local routing, daemon, and developer-tool integrations that are not practical inside the Mac App Store sandbox. Raw iCloud session-file mirroring is disabled and is not a reason to accept plaintext cloud copies.
 
 **Security implications**: Without sandboxing, if OpenBurnBar is compromised, the attacker has access to the user's home directory. However:
 

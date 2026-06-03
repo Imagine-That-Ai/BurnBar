@@ -1,0 +1,457 @@
+/**
+ * @fileoverview exportUserData — privacy-control-center data export (GDPR/portability).
+ *
+ * Returns the member's data, one entry per data domain, derived from the
+ * canonical data-domain registry (packages/data-domains/registry.json), mirrored
+ * here as {@link DATA_DOMAIN_PATHS} with a drift guard (a unit test asserts the
+ * ids + firestorePaths match the registry, exactly like dataDomainUsage.ts).
+ *
+ * Encryption-tier policy (server NEVER sees plaintext or the vault key) —
+ * ENFORCED, not merely asserted (privacy-leak-remediation-2026-06-02 §5):
+ *   - server_readable domains: emitted INLINE verbatim (the server can already
+ *     read these facets by definition).
+ *   - end_to_end + zero_access domains: a DEFAULT-DENY field allowlist
+ *     (`sealAwareSerializeDoc`) emits ONLY the doc `id`, structurally-detected
+ *     AES-256-GCM sealed envelopes (`isSealedEnvelope`), opaque cryptographic
+ *     columns (slugHmac, dedupHash, vectorId, embedding, repoMatchToken, docID,
+ *     projectKeyHash, …), and Timestamps/numbers/bools. Every other top-level
+ *     string (where cleartext titles/paths/names/slugs live) is DROPPED and
+ *     recorded in a per-collection `redactedFields[]` so the export stays honest.
+ *     Large E2E bodies still flow as `sealedRefs`. The user is the vault-key
+ *     holder, so the sealed envelopes decrypt locally — no plaintext is needed
+ *     for the owner's benefit, and none is emitted.
+ *
+ * Reuses getEncryptedSessionBlobDownloadUrl's signed-URL pattern (encryptedSearch.ts)
+ * for sealedRefs and appends a tamper-evident audit event (auditLog.ts).
+ */
+
+import { getStorage } from "firebase-admin/storage";
+import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+
+import { getConfig } from "../config.js";
+import { enforceAuthAndAppCheck } from "../auth.js";
+import { db } from "../adminRuntime.js";
+import { wrapCallableHandler } from "../logging.js";
+import { stripUndefinedObject } from "../guards.js";
+import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
+import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+
+export type EncryptionTier = "server_readable" | "zero_access" | "end_to_end";
+
+export interface DomainPaths {
+  encryptionTier: EncryptionTier;
+  /** Top-level Firestore collection names under users/{uid}/ for this domain. */
+  firestoreCollections: string[];
+  /**
+   * Cloud Storage path templates under users/{uid}/ for this domain (the
+   * `{...}` segments are wildcards). Stored as the SEGMENT BEFORE the first
+   * `{` so the same prefix drives both export refs and recursive delete.
+   */
+  storagePrefixes: string[];
+}
+
+/**
+ * Server-authoritative per-domain path map. Ids + firestoreCollections +
+ * storagePrefixes MUST match packages/data-domains/registry.json — enforced by
+ * dataExport.test.ts so the two never drift.
+ */
+export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
+  usage_spend: {
+    encryptionTier: "server_readable",
+    firestoreCollections: [
+      "usage",
+      "usage_rollups",
+      "usage_counter_days",
+      "usage_counter_totals",
+      "recent_usage",
+      "quota_snapshots",
+      "rollup_jobs",
+      "projects",
+    ],
+    storagePrefixes: [],
+  },
+  conversations_chat: {
+    encryptionTier: "end_to_end",
+    firestoreCollections: [
+      "conversations",
+      "chat_threads",
+      "mobile_assistant_chats",
+      "cli_sessions",
+      "cli_agent_mission_requests",
+      "text_snippets",
+    ],
+    storagePrefixes: [],
+  },
+  session_logs: {
+    encryptionTier: "end_to_end",
+    firestoreCollections: [
+      "session_logs",
+      "cloud_search_documents",
+      "cloud_search_chunks",
+      "cloud_search_postings",
+      "cloud_search_index_state",
+      "cloud_search_index_manifest",
+      "project_memory_snapshots",
+    ],
+    storagePrefixes: ["session_logs"],
+  },
+  pensieve: {
+    encryptionTier: "end_to_end",
+    firestoreCollections: ["cloud_search_knowledge", "knowledge_sync_manifests", "knowledge_repos"],
+    storagePrefixes: [],
+  },
+  provider_accounts: {
+    encryptionTier: "server_readable",
+    firestoreCollections: [
+      "provider_accounts",
+      "provider_connections",
+      "provider_account_device_links",
+      "runtime_connection_preferences",
+    ],
+    storagePrefixes: [],
+  },
+  connected_devices: {
+    encryptionTier: "server_readable",
+    firestoreCollections: [
+      "devices",
+      "hermes_connections",
+      "hermes_pairings",
+      "hermes_relay_requests",
+      "hermes_session_cache",
+      "hermes_gateway_clients",
+      "hermes_gateway_destinations",
+      "hermes_gateway_events",
+      "hermes_gateway_messages",
+      "hermes_gateway_typing",
+      "hermes_gateway_state",
+      "hermes_gateway_attachments",
+      "pi_agent_connections",
+      "pi_agent_pairings",
+      "pi_agent_relay_requests",
+      "iroh_pairing",
+      "iroh_pairing_keys",
+      "runtime_connection_preferences",
+    ],
+    storagePrefixes: ["hermes_gateway_attachments"],
+  },
+  external_mcp: {
+    encryptionTier: "server_readable",
+    firestoreCollections: [
+      "remote_mcp_clients",
+      "remote_mcp_grants",
+      "remote_mcp_audit_events",
+      "remote_mcp_rate_limits",
+    ],
+    storagePrefixes: [],
+  },
+  computer_use: {
+    encryptionTier: "zero_access",
+    firestoreCollections: [
+      "computer_use_sessions",
+      "computer_use_actions",
+      "computer_use_quota_usage",
+      "agent_grant_authorities",
+      "agent_capability_grant_requests",
+    ],
+    storagePrefixes: [],
+  },
+  media: {
+    encryptionTier: "zero_access",
+    firestoreCollections: ["media_session_events", "media_quota_usage", "media_attachment_manifests"],
+    storagePrefixes: [],
+  },
+  entitlements_billing: {
+    encryptionTier: "server_readable",
+    firestoreCollections: ["entitlements", "entitlement_events", "entitlement_bindings"],
+    storagePrefixes: [],
+  },
+  device_trust_keys: {
+    encryptionTier: "end_to_end",
+    firestoreCollections: [
+      "cloud_vault_state",
+      "cloud_vault_key_wrappers",
+      "escrow_devices",
+      "escrow_public_keys",
+      "escrow_grants",
+      "escrow_envelopes",
+      "escrow_audit_events",
+      "account_recovery_methods",
+    ],
+    storagePrefixes: [],
+  },
+  audit_timeline: {
+    encryptionTier: "server_readable",
+    firestoreCollections: [
+      "remote_mcp_audit_events",
+      "hermes_audit_events",
+      "pi_agent_audit_events",
+      "iroh_audit_events",
+      "escrow_audit_events",
+      "entitlement_events",
+      "budgetEvents",
+      "unified_audit_log",
+      "audit_meta",
+    ],
+    storagePrefixes: [],
+  },
+};
+
+/** Hard cap on docs exported inline per collection (keeps payloads bounded). */
+const MAX_INLINE_DOCS_PER_COLLECTION = 1000;
+/** Hard cap on sealed-ref signed URLs minted per export call. */
+const MAX_SEALED_REFS = 2000;
+const SIGNED_URL_TTL_MS = 15 * 60 * 1000;
+
+interface DomainExport {
+  id: string;
+  encryptionTier: EncryptionTier;
+  inlineJson?: Record<string, unknown>;
+  /**
+   * For end_to_end/zero_access domains: the union of plaintext field keys the
+   * seal-aware allowlist withheld, so the export is honest about what it dropped.
+   */
+  redactedFields?: string[];
+  sealedRefs?: Array<{ path: string; bodyHash: string; signedUrl: string }>;
+}
+
+/**
+ * Opaque cryptographic columns an end_to_end / zero_access doc may legitimately
+ * round-trip through the export. These carry NO content — they are HMAC
+ * trapdoors, doc-id keys, cloaked vectors, model/version tags, byte/index
+ * counters, or other server-side filter inputs — so emitting them leaks nothing.
+ * Everything NOT on this list (and not a sealed envelope / Timestamp / number /
+ * bool) is a candidate plaintext leak and is dropped (privacy-leak-remediation-
+ * 2026-06-02 §5).
+ */
+const OPAQUE_EXPORT_COLUMNS = new Set<string>([
+  "id",
+  "uid",
+  "vectorId",
+  "embedding",
+  "embeddingModelVersion",
+  "slugHmac",
+  "dedupHash",
+  "dedupHashVersion",
+  "sourceKind",
+  "byteCount",
+  "chunkIndex",
+  "schemaVersion",
+  "repoMatchToken",
+  "docID",
+  "projectKeyHash",
+  "bodyHash",
+  "storagePath",
+  "tokenHashes",
+  "semanticHashes",
+  "contentHash",
+]);
+
+/** A sealed envelope is opaque regardless of its key name, so it is detected structurally. */
+export function isSealedEnvelope(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  // Mirrors requireSealedText (shared.ts): AES-256-GCM text envelope …
+  if (v.algorithm === "AES-256-GCM" && typeof v.nonce === "string" && typeof v.ciphertext === "string" && typeof v.tag === "string") {
+    return true;
+  }
+  // … or a CloudVault blob/payload envelope (sealedBoxBase64 combined box).
+  if (v.algorithm === "AES-256-GCM" && typeof v.sealedBoxBase64 === "string") {
+    return true;
+  }
+  return false;
+}
+
+/** True for Firestore Timestamp-like, number, boolean, or null (all content-free). */
+function isExportablePrimitive(value: unknown): boolean {
+  if (value === null) return true;
+  const t = typeof value;
+  if (t === "number" || t === "boolean") return true;
+  if (value && t === "object" && "toDate" in (value as object) && typeof (value as { toDate: unknown }).toDate === "function") {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Collect Firestore docs for a domain, capped per collection. For server_readable
+ * domains the docs are emitted verbatim; for end_to_end/zero_access domains they
+ * pass through the seal-aware default-deny allowlist, and any withheld plaintext
+ * keys are accumulated into `redactedFields`.
+ */
+async function collectInlineJson(
+  uid: string,
+  paths: DomainPaths,
+): Promise<{ inline: Record<string, unknown>; redactedFields: string[] }> {
+  const inline: Record<string, unknown> = {};
+  const redacted = new Set<string>();
+  const sealAware = paths.encryptionTier !== "server_readable";
+  for (const collection of paths.firestoreCollections) {
+    try {
+      const snap = await db.collection(`users/${uid}/${collection}`).limit(MAX_INLINE_DOCS_PER_COLLECTION).get();
+      if (snap.empty) continue;
+      inline[collection] = snap.docs.map((doc) => {
+        if (!sealAware) return { id: doc.id, ...serializeDoc(doc.data()) };
+        const { out, dropped } = sealAwareSerializeDoc(doc.data());
+        for (const key of dropped) redacted.add(key);
+        return { id: doc.id, ...out };
+      });
+    } catch {
+      // Missing/empty collection — skip rather than fail the whole export.
+    }
+  }
+  return { inline, redactedFields: [...redacted].sort() };
+}
+
+/** Firestore Timestamps → ISO strings; everything else passed through (server_readable only). */
+function serializeDoc(data: FirebaseFirestore.DocumentData): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    out[key] = serializeValue(value);
+  }
+  return out;
+}
+
+/**
+ * DEFAULT-DENY seal-aware serializer for end_to_end / zero_access docs. Emits a
+ * field only if it is (a) a structurally-detected sealed envelope, (b) on the
+ * opaque-column allowlist, or (c) a Timestamp/number/bool/null. Every other key
+ * (top-level cleartext strings, arbitrary plaintext objects/arrays) is DROPPED
+ * and reported via `dropped` so the export records `redactedFields[]`
+ * (privacy-leak-remediation-2026-06-02 §5).
+ */
+export function sealAwareSerializeDoc(data: FirebaseFirestore.DocumentData): {
+  out: Record<string, unknown>;
+  dropped: string[];
+} {
+  const out: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (isSealedEnvelope(value)) {
+      out[key] = value; // opaque ciphertext — safe to emit
+    } else if (OPAQUE_EXPORT_COLUMNS.has(key)) {
+      out[key] = serializeValue(value); // opaque crypto column — safe to emit
+    } else if (isExportablePrimitive(value)) {
+      out[key] = serializeValue(value); // content-free scalar/timestamp
+    } else {
+      dropped.push(key); // candidate plaintext leak — withhold
+    }
+  }
+  return { out, dropped };
+}
+
+function serializeValue(value: unknown): unknown {
+  if (
+    value &&
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof (value as { toDate: unknown }).toDate === "function"
+  ) {
+    try {
+      return (value as { toDate: () => Date }).toDate().toISOString();
+    } catch {
+      return String(value);
+    }
+  }
+  if (Array.isArray(value)) return value.map(serializeValue);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = serializeValue(v);
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Mint short-lived signed-URL refs for an E2E domain's Cloud Storage ciphertext
+ * objects. Mirrors getEncryptedSessionBlobDownloadUrl: v4 read URL, existence is
+ * implied by listFiles. The client downloads + decrypts on-device.
+ */
+async function collectSealedRefs(
+  uid: string,
+  paths: DomainPaths,
+  budget: { remaining: number },
+): Promise<Array<{ path: string; bodyHash: string; signedUrl: string }>> {
+  if (paths.storagePrefixes.length === 0 || budget.remaining <= 0) return [];
+  const bucket = getStorage().bucket();
+  const refs: Array<{ path: string; bodyHash: string; signedUrl: string }> = [];
+  const expires = new Date(Date.now() + SIGNED_URL_TTL_MS);
+  for (const prefix of paths.storagePrefixes) {
+    if (budget.remaining <= 0) break;
+    const [files] = await bucket.getFiles({ prefix: `users/${uid}/${prefix}/`, maxResults: budget.remaining });
+    for (const file of files) {
+      if (budget.remaining <= 0) break;
+      const [signedUrl] = await file.getSignedUrl({ version: "v4", action: "read", expires });
+      refs.push({
+        path: file.name,
+        bodyHash: deriveBodyHashFromPath(file.name),
+        signedUrl,
+      });
+      budget.remaining -= 1;
+    }
+  }
+  return refs;
+}
+
+/** The bodyHash is the object's basename sans the .json.aesgcm suffix, when present. */
+function deriveBodyHashFromPath(path: string): string {
+  const basename = path.split("/").pop() ?? path;
+  const stripped = basename.endsWith(".json.aesgcm") ? basename.slice(0, -".json.aesgcm".length) : basename;
+  return /^[a-f0-9]{32,128}$/u.test(stripped) ? stripped : sha256Hex(path);
+}
+
+export const exportUserData = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 20,
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  wrapCallableHandler("exportUserData", async (request: CallableRequest<{ domains?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before exporting your data.");
+    enforceAuthAndAppCheck(request, uid);
+
+    const requestedDomains =
+      request.data?.domains == null ? [] : requireBoundedStringArray(request.data.domains, "domains", 24, 64);
+    const ids = requestedDomains.length > 0 ? requestedDomains : Object.keys(DATA_DOMAIN_PATHS);
+    for (const id of ids) {
+      if (!(id in DATA_DOMAIN_PATHS)) {
+        throw new HttpsError("invalid-argument", `Unknown data domain "${id}".`);
+      }
+    }
+
+    const sealedBudget = { remaining: MAX_SEALED_REFS };
+    const domains: DomainExport[] = [];
+    for (const id of ids) {
+      const paths = DATA_DOMAIN_PATHS[id];
+      const [{ inline: inlineJson, redactedFields }, sealedRefs] = await Promise.all([
+        collectInlineJson(uid, paths),
+        collectSealedRefs(uid, paths, sealedBudget),
+      ]);
+      domains.push(
+        stripUndefinedObject({
+          id,
+          encryptionTier: paths.encryptionTier,
+          inlineJson: Object.keys(inlineJson).length > 0 ? inlineJson : undefined,
+          // Honest disclosure of plaintext keys withheld by the seal-aware
+          // allowlist (end_to_end/zero_access only).
+          redactedFields: redactedFields.length > 0 ? redactedFields : undefined,
+          sealedRefs: sealedRefs.length > 0 ? sealedRefs : undefined,
+        }) as DomainExport,
+      );
+    }
+
+    // Fail-CLOSED: an export is an irreversible disclosure, so it must leave an
+    // audit record. If the audit write fails the error propagates and the export
+    // is refused — a server cannot silently disclose data without a record.
+    await appendAuditEventRequired(uid, {
+      actor: auditActorLabel(request),
+      action: AUDIT_ACTIONS.dataExport,
+      domain: ids.length === Object.keys(DATA_DOMAIN_PATHS).length ? "all" : ids.join(","),
+    });
+
+    return { ok: true, generatedAt: nowISO(), domains, schemaVersion: 1 };
+  }),
+);

@@ -452,6 +452,7 @@ final class OpenBurnBarRuntimeContext {
             controller.attach(relayHostService: relayHost)
         }
         AgentCapabilityGrantQueueListener.shared.start()
+        controller.startEscrowRevocationWatching()
         #if DEBUG
         controller.startE2EProofSessionIfRequested()
         #endif

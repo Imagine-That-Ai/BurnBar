@@ -351,8 +351,8 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
 // MARK: - Firestore mirror
 
 /// Mirrors threads to `users/{uid}/mobile_assistant_chats/{threadId}` with
-/// inline messages. Inline messages keep the read path one round-trip; chat
-/// docs almost never exceed Firestore's 1 MiB limit on mobile.
+/// private chat content sealed inside `sealedPayload`. Top-level fields are
+/// limited to routing/count/list metadata.
 @MainActor
 final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     private let firestoreProvider: () -> Firestore
@@ -384,20 +384,25 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     func upsert(_ thread: MobileChatThread) async throws {
         let uid = try resolveUID()
         let db = firestoreProvider()
+        let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
+        let cloudThread = Self.threadForCloud(thread)
+        let payloadData = try Self.cloudPayloadEncoder.encode(cloudThread)
+        let sealedPayload = try CloudVaultCrypto.sealPayload(
+            payloadData,
+            keyData: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID
+        )
         var payload: [String: Any] = [
             "id": thread.id,
             "runtime": thread.runtime,
-            "title": thread.title,
-            "preview": thread.preview,
-            "modelName": thread.modelName as Any,
             "createdAt": Timestamp(date: thread.createdAt),
             "updatedAt": Timestamp(date: thread.updatedAt),
             "messageCount": thread.messageCount,
-            "messages": thread.messages.map(Self.encodeMessageForCloud)
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": resolvedKey.vaultKeyID,
+            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
         ]
-        if let customTitle = thread.customTitle {
-            payload["customTitle"] = customTitle
-        }
         if let labelColorHex = thread.labelColorHex {
             payload["labelColorHex"] = labelColorHex
         }
@@ -407,7 +412,44 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         if let priorityOrder = thread.priorityOrder {
             payload["priorityOrder"] = priorityOrder
         }
+        if let last = thread.messages.last {
+            payload["lastMessageRole"] = last.role
+        }
+        if let assistant = thread.messages.last(where: { $0.role == "assistant" }) {
+            payload["lastAssistantMessageID"] = assistant.id
+        }
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
+    }
+
+    static func encodeThreadForCloud(_ thread: MobileChatThread, vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+        let cloudThread = threadForCloud(thread)
+        let payloadData = try cloudPayloadEncoder.encode(cloudThread)
+        let sealedPayload = try CloudVaultCrypto.sealPayload(payloadData, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        return [
+            "id": thread.id,
+            "runtime": thread.runtime,
+            "createdAt": Timestamp(date: thread.createdAt),
+            "updatedAt": Timestamp(date: thread.updatedAt),
+            "messageCount": thread.messageCount,
+            "contentSealed": true,
+            "sealedSchemaVersion": 1,
+            "vaultKeyID": vaultKeyID,
+            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
+        ]
+    }
+
+    private static func threadForCloud(_ thread: MobileChatThread) -> MobileChatThread {
+        var copy = thread
+        copy.messages = copy.messages.map { message in
+            var next = message
+            next.attachments = next.attachments.map { attachment in
+                var stripped = attachment
+                stripped.thumbnailPNG = nil
+                return stripped
+            }
+            return next
+        }
+        return copy
     }
 
     static func encodeMessageForCloud(_ message: MobileChatMessage) -> [String: Any] {
@@ -506,13 +548,26 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             .order(by: "updatedAt", descending: true)
             .limit(to: 200)
             .getDocuments()
+        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid, firestore: db)
 
         return snapshot.documents.compactMap { document in
-            Self.decodeThread(documentID: document.documentID, data: document.data())
+            Self.decodeThread(documentID: document.documentID, data: document.data(), vaultKey: key?.keyData)
         }
     }
 
-    static func decodeThread(documentID: String, data: [String: Any]) -> MobileChatThread? {
+    static func decodeThread(documentID: String, data: [String: Any], vaultKey: Data? = nil) -> MobileChatThread? {
+        if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
+            guard let vaultKey,
+                  let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
+                return nil
+            }
+            do {
+                let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+                return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
+            } catch {
+                return nil
+            }
+        }
         let runtime = (data["runtime"] as? String) ?? ""
         guard !runtime.isEmpty else { return nil }
         let id = (data["id"] as? String) ?? documentID
@@ -543,6 +598,19 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             isPinned: isPinned,
             priorityOrder: priorityOrder
         )
+    }
+
+    private static var cloudPayloadEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+
+    private static var cloudPayloadDecoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 
     static func decodeMessage(_ raw: [String: Any]) -> MobileChatMessage? {
