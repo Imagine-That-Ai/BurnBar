@@ -1599,22 +1599,37 @@ service cloud.firestore {
     }
 
     // Hermes Square Phase B — class-based approval policies. Phone writes,
-    // phone reads. Synced across devices via the user namespace.
+    // phone reads. Synced across devices via the user namespace. The display
+    // label, file glob, and target project are sealed into
+    // `sealedDisplayLabel`/`sealedFileGlob`/`sealedTargetProject` (with opaque
+    // `projectKeyHash`/`fileGlobHash` trapdoors for client-side bucketing); the
+    // doc ID itself becomes an opaque keyed hash. The migration gate rejects a
+    // plaintext key ONLY once its sealed copy is present, so legacy/in-flight
+    // rows keep syncing until the writer reseals (privacy-leak-remediation).
     match /users/{userId}/approval_policies/{policyId} {
       function validApprovalPolicy() {
         return request.resource.data.keys().hasOnly([
           "id", "displayLabel", "decision", "missionKind", "toolName",
-          "fileGlob", "runtimeID", "targetProject", "createdAt",
-          "expiresAt", "matchCount", "schemaVersion"
+          "fileGlob", "runtimeID", "targetProject",
+          "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
+          "projectKeyHash", "fileGlobHash",
+          "createdAt", "expiresAt", "matchCount", "schemaVersion"
         ])
         && request.resource.data.decision in ["approve", "deny"]
-        && request.resource.data.displayLabel is string
-        && request.resource.data.displayLabel.size() <= 256
+        && rejectsPlaintextWhenSealed("displayLabel", "sealedDisplayLabel")
+        && rejectsPlaintextWhenSealed("fileGlob", "sealedFileGlob")
+        && rejectsPlaintextWhenSealed("targetProject", "sealedTargetProject")
+        && (!("displayLabel" in request.resource.data) || (request.resource.data.displayLabel is string && request.resource.data.displayLabel.size() <= 256))
+        && (!("fileGlob" in request.resource.data) || (request.resource.data.fileGlob is string && request.resource.data.fileGlob.size() <= 256))
+        && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
         && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
         && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
-        && (!("fileGlob" in request.resource.data) || (request.resource.data.fileGlob is string && request.resource.data.fileGlob.size() <= 256))
         && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
-        && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
+        && (!("sealedDisplayLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDisplayLabel))
+        && (!("sealedFileGlob" in request.resource.data) || validCloudSealedText(request.resource.data.sealedFileGlob))
+        && (!("sealedTargetProject" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTargetProject))
+        && (!("projectKeyHash" in request.resource.data) || request.resource.data.projectKeyHash.matches("^[a-f0-9]{32}$"))
+        && (!("fileGlobHash" in request.resource.data) || request.resource.data.fileGlobHash.matches("^[a-f0-9]{32}$"))
         && (!("matchCount" in request.resource.data) || request.resource.data.matchCount is int);
       }
       allow read: if ownsUserNamespace(userId);
@@ -1624,18 +1639,25 @@ service cloud.firestore {
 
     // Hermes Square Phase C — rollback requests. Phone submits, Mac claims
     // and resolves. Snapshots themselves live under cli_sessions/{id}/snapshots.
+    // The scope JSON (carries absolute file paths for singleFile scope) and the
+    // Mac-written error diagnostic are sealed into `sealedScope`/
+    // `sealedErrorMessage`; the migration gate rejects the matching plaintext
+    // key once its sealed copy is present (privacy-leak-remediation).
     match /users/{userId}/rollback_requests/{requestId} {
       function validRollbackRequest() {
         return request.resource.data.keys().hasOnly([
-          "id", "sessionID", "scopeJSON", "requestedAt", "requestedBy",
-          "status", "resolvedAt", "errorMessage", "schemaVersion", "source"
+          "id", "sessionID", "scopeJSON", "sealedScope", "requestedAt", "requestedBy",
+          "status", "resolvedAt", "errorMessage", "sealedErrorMessage", "schemaVersion", "source"
         ])
         && request.resource.data.sessionID is string
         && request.resource.data.sessionID.size() <= 256
-        && request.resource.data.scopeJSON is string
-        && request.resource.data.scopeJSON.size() <= 4096
-        && request.resource.data.status in ["pending", "in_flight", "completed", "failed"]
-        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048));
+        && rejectsPlaintextWhenSealed("scopeJSON", "sealedScope")
+        && rejectsPlaintextWhenSealed("errorMessage", "sealedErrorMessage")
+        && (!("scopeJSON" in request.resource.data) || (request.resource.data.scopeJSON is string && request.resource.data.scopeJSON.size() <= 4096))
+        && (!("sealedScope" in request.resource.data) || validCloudSealedText(request.resource.data.sealedScope))
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
+        && (!("sealedErrorMessage" in request.resource.data) || validCloudSealedText(request.resource.data.sealedErrorMessage))
+        && request.resource.data.status in ["pending", "in_flight", "completed", "failed"];
       }
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validRollbackRequest();
@@ -1644,18 +1666,24 @@ service cloud.firestore {
 
     // Hermes Square Phase A — per-session rollback snapshot index. Mac
     // writes (claimed device only); phone reads for the rollback picker.
+    // No live writer ships today, so the action label, touched-file paths, and
+    // Mac filesystem path are sealed-only from day one: the plaintext keys are
+    // hard-dropped from the allowlist and the values live in
+    // `sealedActionLabel`/`sealedTouchedFiles`/`sealedMacSnapshotPath`
+    // (sealedTouchedFiles is the whole [String] array sealed as one
+    // CloudVaultSealedText) — privacy-leak-remediation.
     match /users/{userId}/cli_sessions/{sessionId}/snapshots/{snapshotId} {
       function validRollbackSnapshot() {
         return request.resource.data.keys().hasOnly([
-          "id", "sessionID", "sequence", "takenAt", "actionLabel",
-          "touchedFiles", "macSnapshotPath", "restoredAt", "schemaVersion"
+          "id", "sessionID", "sequence", "takenAt",
+          "sealedActionLabel", "sealedTouchedFiles", "sealedMacSnapshotPath",
+          "restoredAt", "schemaVersion"
         ])
         && request.resource.data.sequence is int
         && request.resource.data.sequence >= 0
-        && request.resource.data.actionLabel is string
-        && request.resource.data.actionLabel.size() <= 512
-        && request.resource.data.touchedFiles is list
-        && request.resource.data.touchedFiles.size() <= 64;
+        && (!("sealedActionLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedActionLabel))
+        && (!("sealedTouchedFiles" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTouchedFiles))
+        && (!("sealedMacSnapshotPath" in request.resource.data) || validCloudSealedText(request.resource.data.sealedMacSnapshotPath));
       }
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validRollbackSnapshot();
@@ -1664,19 +1692,56 @@ service cloud.firestore {
 
     // Hermes Square Phase A/B — user-installed agent identities + persona
     // overrides. Phone-only writes. Cached locally; cloud copy survives
-    // re-install.
+    // re-install. No live cloud writer ships today, so the sealed contract is
+    // forward-declared: identity/persona free-text (displayName, tagline, and
+    // the whole personas[] array) is sealed into
+    // `sealedDisplayName`/`sealedTagline`/`sealedPersonas` and cleartext copies
+    // are rejected outright (no legacy migration window) —
+    // privacy-leak-remediation.
     match /users/{userId}/agent_identities/{identityId} {
+      function validAgentIdentity() {
+        return request.resource.data.keys().hasOnly([
+          "id", "runtimeID", "glyph", "paletteHex", "tier", "availability",
+          "installSource", "capabilities", "dispatchTransport",
+          "lastSevenDays", "lastRefreshedAt",
+          "sealedDisplayName", "sealedTagline", "sealedPersonas", "updatedAt"
+        ])
+        && rejectsPlaintextWhenSealed("displayName", "sealedDisplayName")
+        && rejectsPlaintextWhenSealed("tagline", "sealedTagline")
+        && rejectsPlaintextWhenSealed("personas", "sealedPersonas")
+        && (!("sealedDisplayName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDisplayName))
+        && (!("sealedTagline" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTagline))
+        && (!("sealedPersonas" in request.resource.data) || validCloudSealedText(request.resource.data.sealedPersonas))
+        && !("displayName" in request.resource.data)
+        && !("tagline" in request.resource.data)
+        && !("personas" in request.resource.data);
+      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().size() <= 24;
+      allow create, update: if ownerWritableNonSecret(userId) && validAgentIdentity();
       allow delete: if ownsUserNamespace(userId);
     }
 
     // Hermes Square Phase A — subscription topics with per-template consent.
+    // The topic display text (which agent the user follows) is sealed into
+    // `sealedDisplayName`/`sealedDescription`; `agentURI`/`topicID` stay
+    // plaintext-functional (routing/doc-ID keys). Legacy plaintext
+    // displayName/description are tolerated only when the sealed copy is absent;
+    // the migration gate rejects the plaintext key once its sealed copy is
+    // present, and merge:true partial writes (setMuted/setDeliveryMode) pass
+    // trivially since they omit both — privacy-leak-remediation.
     match /users/{userId}/subscription_topics/{topicId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().size() <= 20
+        && request.resource.data.keys().hasOnly([
+          "agentURI", "topicID", "sealedDisplayName", "sealedDescription",
+          "cadence", "consentGivenAt", "isMuted", "deliveryMode",
+          "minimumEventImportance", "deliveryCountThisMonth", "lastDeliveredAt", "updatedAt",
+          "displayName", "description"
+        ])
+        && rejectsPlaintextWhenSealed("displayName", "sealedDisplayName")
+        && rejectsPlaintextWhenSealed("description", "sealedDescription")
+        && (!("sealedDisplayName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDisplayName))
+        && (!("sealedDescription" in request.resource.data) || validCloudSealedText(request.resource.data.sealedDescription))
         && (!("cadence" in request.resource.data) || request.resource.data.cadence in ["on_demand", "daily", "weekly", "monthly"])
         && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
         && (!("minimumEventImportance" in request.resource.data) || request.resource.data.minimumEventImportance in ["quiet", "normal", "action_required", "terminal"])

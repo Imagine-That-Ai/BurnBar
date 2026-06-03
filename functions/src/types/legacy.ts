@@ -3077,8 +3077,16 @@ export interface CLIAgentMissionRequestDoc {
 export interface SubscriptionTopicDoc {
   agentURI: string;
   topicID: string;
-  displayName: string;
-  description: string;
+  /**
+   * Legacy plaintext topic display text. Optional now that the private display
+   * strings are vault-sealed into `sealedDisplayName`/`sealedDescription`;
+   * readers keep these as a legacy fallback when the sealed copy is absent.
+   */
+  displayName?: string;
+  description?: string;
+  /** Vault-sealed topic display text (CloudVaultSealedText envelope). */
+  sealedDisplayName?: CloudVaultSealedTextDoc;
+  sealedDescription?: CloudVaultSealedTextDoc;
   cadence: "on_demand" | "daily" | "weekly" | "monthly";
   consentGivenAt?: import("firebase-admin/firestore").Timestamp | string | number;
   isMuted: boolean;

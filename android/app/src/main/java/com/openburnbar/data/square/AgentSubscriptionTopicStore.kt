@@ -8,9 +8,16 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.SkillRunEventImportance
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.firebase.CloudVaultSealedTextCodec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -65,6 +72,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     private val firestore = FirebaseFirestore.getInstance()
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreListener: ListenerRegistration? = null
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         _topics.value = load()
@@ -159,42 +167,77 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         firestoreListener?.remove()
         firestoreListener = null
         if (uid == null) return
-        firestoreListener =
-            firestore.collection("users").document(uid)
-                .collection("subscription_topics")
-                .orderBy("consentGivenAt")
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null || snapshot == null) return@addSnapshotListener
-                    val decoded =
-                        snapshot.documents.mapNotNull { doc ->
-                            val data = doc.data ?: return@mapNotNull null
-                            decodeFirestoreTopic(data)
-                        }
-                    _topics.value = decoded.sortedByDescending { it.createdAtEpoch }
-                    save()
-                }
+        // Topic display text seals `sealedDisplayName`/`sealedDescription`. Resolve
+        // the read key once so the decoder can open them; legacy plaintext docs fall
+        // back inside `decodeFirestoreTopic`. The listener is registered after the
+        // key resolves so the very first snapshot already decrypts.
+        ioScope.launch {
+            val vaultKey =
+                runCatching {
+                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+                }.getOrNull()
+            // A newer auth change may have replaced the listener while we resolved;
+            // only install if nothing else claimed the slot.
+            if (firestoreListener != null) return@launch
+            firestoreListener =
+                firestore.collection("users").document(uid)
+                    .collection("subscription_topics")
+                    .orderBy("consentGivenAt")
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+                        val decoded =
+                            snapshot.documents.mapNotNull { doc ->
+                                val data = doc.data ?: return@mapNotNull null
+                                decodeFirestoreTopic(data, vaultKey)
+                            }
+                        _topics.value = decoded.sortedByDescending { it.createdAtEpoch }
+                        save()
+                    }
+        }
     }
 
     private fun writeFirestore(topic: AgentSubscriptionTopic) {
         val uid = auth.currentUser?.uid ?: return
-        val payload =
-            mapOf(
-                "agentURI" to topic.agentURI,
-                "topicID" to topic.topicID,
-                "displayName" to topic.displayName,
-                "description" to topic.description,
-                "cadence" to topic.cadence.token,
-                "consentGivenAt" to topic.createdAtEpoch,
-                "isMuted" to topic.muted,
-                "deliveryMode" to topic.deliveryMode.wire,
-                "minimumEventImportance" to topic.minimumEventImportance.wire,
-                "deliveryCountThisMonth" to 0,
-                "updatedAt" to FieldValue.serverTimestamp(),
-            )
-        firestore.collection("users").document(uid)
-            .collection("subscription_topics")
-            .document(documentID(topic.agentURI, topic.topicID))
-            .set(payload, com.google.firebase.firestore.SetOptions.merge())
+        // The display strings echo which agent the user follows (a behavioral
+        // fingerprint), so seal `displayName` → `sealedDisplayName` and
+        // `description` → `sealedDescription` with the Cloud Vault key before the
+        // write, mirroring the budget-rule writer. `agentURI`/`topicID` stay
+        // plaintext — they are the routing key and the doc ID is derived from them.
+        // If the key is unavailable (device not yet approved) the write degrades to
+        // legacy plaintext so subscriptions still sync; a key-holding peer re-seals
+        // on its next write.
+        ioScope.launch {
+            val vaultKey =
+                runCatching {
+                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+                }.getOrNull()
+            val payload =
+                mutableMapOf<String, Any>(
+                    "agentURI" to topic.agentURI,
+                    "topicID" to topic.topicID,
+                    "cadence" to topic.cadence.token,
+                    "consentGivenAt" to topic.createdAtEpoch,
+                    "isMuted" to topic.muted,
+                    "deliveryMode" to topic.deliveryMode.wire,
+                    "minimumEventImportance" to topic.minimumEventImportance.wire,
+                    "deliveryCountThisMonth" to 0,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                )
+            if (vaultKey != null) {
+                payload["sealedDisplayName"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.displayName, vaultKey))
+                payload["sealedDescription"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.description, vaultKey))
+                // Strip any legacy plaintext a prior client merged in.
+                payload["displayName"] = FieldValue.delete()
+                payload["description"] = FieldValue.delete()
+            } else {
+                payload["displayName"] = topic.displayName
+                payload["description"] = topic.description
+            }
+            firestore.collection("users").document(uid)
+                .collection("subscription_topics")
+                .document(documentID(topic.agentURI, topic.topicID))
+                .set(payload, com.google.firebase.firestore.SetOptions.merge())
+        }
     }
 
     private fun deleteFirestore(agentURI: String, topicID: String) {
@@ -205,15 +248,16 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             .delete()
     }
 
-    private fun decodeFirestoreTopic(data: Map<String, Any>): AgentSubscriptionTopic? {
+    private fun decodeFirestoreTopic(data: Map<String, Any>, vaultKey: ByteArray? = null): AgentSubscriptionTopic? {
         val agentURI = (data["agentURI"] as? String)?.takeIf { it.isNotBlank() } ?: return null
         val topicID = (data["topicID"] as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_TOPIC_ID
         val mode = SkillRunDeliveryMode.fromWire(data["deliveryMode"] as? String)
+        val (displayName, description) = decodeSubscriptionTopicDisplay(data, vaultKey)
         return AgentSubscriptionTopic(
             agentURI = agentURI,
             topicID = topicID,
-            displayName = (data["displayName"] as? String)?.takeIf { it.isNotBlank() } ?: agentURI,
-            description = data["description"] as? String ?: "",
+            displayName = displayName?.takeIf { it.isNotBlank() } ?: agentURI,
+            description = description ?: "",
             cadence = SubscriptionCadence.fromToken(data["cadence"] as? String),
             muted = data["isMuted"] as? Boolean ?: (mode == SkillRunDeliveryMode.MUTED),
             deliveryMode = mode,
@@ -289,4 +333,26 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             else -> null
         }
     }
+}
+
+/**
+ * Resolves the topic display strings sealed-first: open `sealedDisplayName` /
+ * `sealedDescription` with the Cloud Vault key, then fall back to legacy plaintext
+ * `displayName` / `description` for in-flight docs (CONTRACT legacy fallback).
+ * Lifted to a top-level `internal` seam so the privacy round-trip is unit-testable
+ * without the Firestore listener / Android keystore. Returns `(displayName,
+ * description)` — either may be null when neither the sealed nor the legacy field
+ * is present/openable.
+ */
+internal fun decodeSubscriptionTopicDisplay(
+    data: Map<String, Any?>,
+    vaultKey: ByteArray?,
+): Pair<String?, String?> {
+    val displayName =
+        CloudVaultSealedTextCodec.open(data["sealedDisplayName"], vaultKey)
+            ?: data["displayName"] as? String
+    val description =
+        CloudVaultSealedTextCodec.open(data["sealedDescription"], vaultKey)
+            ?: data["description"] as? String
+    return displayName to description
 }

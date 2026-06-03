@@ -190,20 +190,21 @@ class ThreadInboxStore private constructor(
         if (customTitle != null) {
             val resealed =
                 runCatching { resealSessionWithCustomTitle(uid, docRef, customTitle) }.getOrDefault(false)
-            // If we couldn't read/re-seal (legacy plaintext doc with no sealed
-            // body, or vault key unavailable), fall back to a top-level merge so
-            // the rename still lands; the next Mac mirror reconciles it sealed.
             if (resealed) {
                 applyTopLevelMetadata(docRef, labelColorHex, isPinned, priorityOrder)
                 refreshFromCloud()
                 return
             }
+            // Reseal failed (vault key unavailable, or a legacy doc with no sealed
+            // body). Do NOT fall back to a plaintext top-level `customTitle`: the
+            // tightened cli_sessions rules reject it, and that rejection would also
+            // drop the allowlisted metadata below. The rename waits for a key-holding
+            // device / the next Mac sealed mirror; only the rename is deferred, while
+            // the non-private metadata (color/pin/order) still lands. (Mirrors iOS,
+            // which returns early when the key is unavailable.)
         }
 
         val updates = mutableMapOf<String, Any?>()
-        if (customTitle != null) {
-            updates["customTitle"] = if (customTitle.isEmpty()) FieldValue.delete() else customTitle
-        }
         if (labelColorHex != null) {
             updates["labelColorHex"] = if (labelColorHex == "#NONE#") FieldValue.delete() else labelColorHex
         }

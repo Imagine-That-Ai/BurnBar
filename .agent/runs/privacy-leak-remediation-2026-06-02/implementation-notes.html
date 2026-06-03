@@ -202,7 +202,42 @@
         status: "doing",
         phase: "verify-closure",
         actor: "agent",
-        summary: "Launched 5-agent adversarial closure re-scan (confirm each named leak CLOSED + hunt residual plaintext) + Mac BudgetRule app test (validates S2 budget seal + fix-A DownloadSyncService recompile). Pending: verdicts, iOS S3 tests, docs+memory+ledger finalize."
+        summary: "Launched 5-agent adversarial closure re-scan + Mac BudgetRule app test."
+      },
+      {
+        ts: "2026-06-03T07:05:00Z",
+        status: "validated",
+        phase: "verify-closure",
+        actor: "agent",
+        summary: "CLOSURE CONFIRMED: every named leak from the original review is CLOSED + test-backed (project_memory, usage/budget all platforms, dataExport seal-aware, knowledge_repos token, Pensieve cloaking+dedup, rules hasOnly, client regressions, gateway honest-label). Mac BudgetRuleSealingRoundTripTests PASSED 4/4. Evidence in evidence/closure-*.md."
+      },
+      {
+        ts: "2026-06-03T07:10:00Z",
+        status: "decision",
+        phase: "verify-closure",
+        actor: "agent",
+        summary: "NEW SCOPE found by the deeper residual sweep (beyond the original named leaks): same-class server-readable private text in approval_policies, cli_sessions/{id}/snapshots, rollback_requests, agent_identities, subscription_topics. Alberto chose: SEAL THEM ALL (Wave 3). Also fixed Android customTitle reseal-fallback (now matches iOS); Android recompiles clean."
+      },
+      {
+        ts: "2026-06-03T07:30:00Z",
+        status: "done",
+        phase: "recon3",
+        actor: "agent",
+        summary: "Wave-3 recon complete (evidence/w3-*.md). ALL 5 surfaces SERVER-READ=NONE (pure store-and-forward). Key findings: approval_policies leaks in the DOC ID too (classHash bakes targetProject/fileGlob -> needs opaque keyed-hash id), iOS-only cloud writer; cli_sessions/snapshots + agent_identities have NO live writer (forward-declared rule holes -> rule-only seal contract); rollback_requests + subscription_topics have live iOS+Android writers; all seal via sealText (no sealBlob -> Android-safe)."
+      },
+      {
+        ts: "2026-06-03T07:35:00Z",
+        status: "doing",
+        phase: "implement3",
+        actor: "agent",
+        summary: "Wave-3 impl launched: 5 disjoint streams (W3-rules [5 rule blocks + T13-T17], W3-ios-approval [seal + opaque doc id], W3-ios-rollback-sub, W3-android, W3-honesty [registry+legacy.ts+scanner])."
+      },
+      {
+        ts: "2026-06-03T08:00:00Z",
+        status: "validated",
+        phase: "implement3",
+        actor: "agent",
+        summary: "Wave-3 GREEN: firestore rules emulator 45/45 (T13-T17: snapshots/approval_policies/rollback_requests/agent_identities/subscription_topics all enforce seal + reject-plaintext-when-sealed); functions tsc clean; data-domains 16/16 (2 new W3 honesty asserts) + DataDomains.kt in sync; privacy scan PASS (scanner extended to the 5 new surfaces); Android :app:compileDebugKotlin 0 errors. W3 also made approval_policies doc id opaque (was leaking targetProject/fileGlob via classHash). Pending: iOS OpenBurnBarMobile build-for-testing (running) to compile the Wave-2 S3 + Wave-3 iOS changes. W3 handoffs benign (Android listener key threaded via coroutine; pre-existing dormant RollbackRequest.Status enum mismatch flagged, orthogonal)."
       }
     ];
 

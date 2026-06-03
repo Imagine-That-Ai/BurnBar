@@ -36,20 +36,34 @@ private struct EasterEggScrollProbe: UIViewRepresentable {
 
     func updateUIView(_ uiView: ProbeView, context: Context) {
         uiView.apply(tag: tag, isDark: isDark, reduceMotion: reduceMotion)
+        // A SwiftUI update can mean the active ScrollView changed (e.g. a Streams
+        // segment swap mounts a different scroll view under the same probe).
+        // Re-validate so we always observe the live scroller.
+        uiView.revalidate()
     }
 
     static func dismantleUIView(_ uiView: ProbeView, coordinator: ()) {
         uiView.detach()
     }
 
-    /// The actual probe view. Finds its `UIScrollView` ancestor once it lands in
-    /// the hierarchy and observes its scrolling state.
+    /// The actual probe view. Finds the `UIScrollView` it should observe once it
+    /// lands in the hierarchy and watches its scrolling state.
+    ///
+    /// Robust attachment is the whole point: depending on where
+    /// `.trackEasterEggScroll` is applied, the target `UIScrollView` can be an
+    /// ANCESTOR of the probe (when applied directly to a `ScrollView`, as in
+    /// Burn/Pulse) or a DESCENDANT of the probe's host (when applied to a
+    /// container whose children each hold a `ScrollView`, as in Streams' segment
+    /// `Group`). We search ancestors first, then descendants, and retry a couple
+    /// of times because the scroll view may mount a frame or two after the probe.
     final class ProbeView: UIView {
         private var surfaceTag = ""
         private var isDark = false
         private var reduceMotion = false
         private weak var scrollView: UIScrollView?
         private var observation: NSKeyValueObservation?
+        private var attachAttempts = 0
+        private let maxAttachAttempts = 8
 
         func apply(tag: String, isDark: Bool, reduceMotion: Bool) {
             surfaceTag = tag
@@ -60,6 +74,7 @@ private struct EasterEggScrollProbe: UIViewRepresentable {
         override func didMoveToWindow() {
             super.didMoveToWindow()
             if window != nil {
+                attachAttempts = 0
                 attachIfNeeded()
             } else {
                 detach()
@@ -67,22 +82,92 @@ private struct EasterEggScrollProbe: UIViewRepresentable {
         }
 
         private func attachIfNeeded() {
-            guard scrollView == nil else { return }
+            guard window != nil, scrollView == nil else { return }
+            if let scroll = locateScrollView() {
+                bind(scroll)
+                return
+            }
+            // The ScrollView may not be in the tree yet (SwiftUI mounts content
+            // lazily / a frame later). Retry briefly before giving up.
+            guard attachAttempts < maxAttachAttempts else { return }
+            attachAttempts += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                self?.attachIfNeeded()
+            }
+        }
+
+        /// Search ancestors first (modifier on the ScrollView), then the nearest
+        /// common host's descendant subtree (modifier on a container above the
+        /// ScrollViews). Picks the largest descendant scroll view so we bind the
+        /// real content scroller, not an incidental inner one.
+        private func locateScrollView() -> UIScrollView? {
             var ancestor: UIView? = superview
             while let current = ancestor {
-                if let scroll = current as? UIScrollView {
-                    bind(scroll)
-                    return
-                }
+                if let scroll = current as? UIScrollView { return scroll }
                 ancestor = current.superview
+            }
+            // Walk up to a host that has siblings/children beyond the probe, then
+            // search that subtree downward for the active scroll view.
+            var host: UIView? = superview ?? self
+            while let current = host {
+                if let scroll = largestScrollView(in: current) { return scroll }
+                host = current.superview
+            }
+            return nil
+        }
+
+        private func largestScrollView(in root: UIView) -> UIScrollView? {
+            var best: UIScrollView?
+            var stack: [UIView] = root.subviews
+            while let view = stack.popLast() {
+                if let scroll = view as? UIScrollView, scroll !== self {
+                    let area = scroll.bounds.width * scroll.bounds.height
+                    let bestArea = best.map { $0.bounds.width * $0.bounds.height } ?? 0
+                    if area > bestArea { best = scroll }
+                }
+                stack.append(contentsOf: view.subviews)
+            }
+            return best
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // Rebind opportunistically once the host has laid out its content,
+            // which is when a freshly-mounted ScrollView first has real bounds.
+            revalidate()
+        }
+
+        /// Re-attach if we lost our scroll view (it deallocated on a segment
+        /// swap) or if a larger, now-active scroll view should be observed
+        /// instead. Cheap and idempotent.
+        func revalidate() {
+            guard window != nil else { return }
+            if scrollView == nil {
+                attachAttempts = 0
+                attachIfNeeded()
+                return
+            }
+            // If a different scroll view is now the active content scroller,
+            // switch the observation to it.
+            if let active = locateScrollView(), active !== scrollView {
+                rebind(active)
             }
         }
 
         private func bind(_ scroll: UIScrollView) {
             scrollView = scroll
             observation = scroll.observe(\.contentOffset, options: [.new]) { [weak self] scroll, _ in
-                self?.report(scroll)
+                // KVO on `contentOffset` is delivered on the main thread, and
+                // `ProbeView` is `@MainActor` (UIView), so this is safe to treat
+                // as isolated — that also keeps `report` reading UI state directly.
+                MainActor.assumeIsolated { self?.report(scroll) }
             }
+        }
+
+        private func rebind(_ scroll: UIScrollView) {
+            observation?.invalidate()
+            observation = nil
+            bind(scroll)
         }
 
         private func report(_ scroll: UIScrollView) {

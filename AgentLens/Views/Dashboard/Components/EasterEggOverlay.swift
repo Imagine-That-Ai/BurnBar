@@ -9,23 +9,24 @@ import SwiftUI
 // `TimelineView(.animation)` + `Canvas` for the event's lifetime and tears the
 // whole thing down when the event ends.
 //
-// Triggers (the "summon"), mirrored verbatim across web + native so every
-// surface feels identical:
-//   * Rapid up/down scroll (>= 5 direction reversals within ~1.5s) fires ONE
-//     theme-appropriate event, then a ~8s cooldown so it can't spam.
-//       - Dark appearance  -> "Logo storm": elegant repeated bursts of the
-//         BurnBar crests + provider logos popping in, drifting outward,
-//         twinkling, and fading over ~4.5s.
-//       - Light appearance -> "Cloud token rain": soft grey clouds wearing
-//         cloud-tier crests drift across the top and rain golden + silver token
-//         coins that fall with gravity and BOUNCE off the screen boundaries,
-//         then settle and fade over ~5.5s.
-//   * Boundary "you've reached the end": overscrolling at the very TOP or
-//     BOTTOM pops a cute little row of gold/silver tokens that bounce once with
-//     a soft squash (~0.8s, throttled).
+// Triggers (the "summon"), mirrored verbatim against the burnbar.ai `#bgFx`
+// engine so every surface feels identical:
+//   * Rapid up/down scroll (>= 5 direction REVERSALS within ~1.5s) fires ONE
+//     theme-appropriate 5-second takeover, then a 9s cooldown so it can't spam.
+//       - Dark appearance  -> "Logo storm": 96 BurnBar-crest + provider-logo
+//         sprites explode as fireworks and periodically CONVERGE into typographic
+//         shapes ($ :) </> { }) by spring-pulling each sprite to a glyph point,
+//         over the spec's phase timeline.
+//       - Light appearance -> "Cloud token rain": 7 large fluffy procedural
+//         clouds drift overhead and rain gold + silver coins with real gravity,
+//         air drag, restitution, wall/floor bounces, a settle phase, and an
+//         edge-on FLIP coin render.
+//   * Boundary "you've reached the end": overscrolling at the very TOP or BOTTOM
+//     pops a row of 10 gold/silver coins that arc out under REVERSE gravity and
+//     fall back (~0.95s, throttled), independent of theme and of any takeover.
 //
-// Reduce Motion is honoured: rapid-scroll events collapse to a single calm
-// frame and the boundary tap is skipped.
+// Reduce Motion is honoured: the storm, the rain, AND the boundary pop are all
+// suppressed entirely (the simulation no-ops at `begin`).
 //
 // Asset reuse: the logo marks are the SAME bundled imagesets the constellation
 // background draws — resolved through `AgentProvider.bundledLogoName` and the
@@ -48,6 +49,10 @@ struct EasterEggOverlay: View {
                     size: proxy.size,
                     colorScheme: colorScheme,
                     reduceMotion: reduceMotion,
+                    // macOS has no DOM ledge geometry to mirror the website's
+                    // `.btn/.card/h1…` rects; the spec permits an empty set, so
+                    // rain coins bounce off the walls + floor only.
+                    ledges: [],
                     onFinished: { controller.eventDidFinish(event.id) }
                 )
                 .id(event.id)
@@ -80,12 +85,17 @@ struct EasterEggEvent: Identifiable, Equatable {
     let startedAt: Date
 
     /// Total lifetime of the effect; the canvas fades out and the controller
-    /// tears the overlay down once elapsed exceeds this.
+    /// tears the overlay down once elapsed exceeds this. The 5s takeover length
+    /// (`EasterEggFX.duration`) plus each flavour's tail:
+    ///   * storm  — sparks clear exactly at FXDUR; a short tail covers the fade.
+    ///   * rain   — tokens are removed by FXDUR+800ms and the mode idles once the
+    ///     field empties, so ~5.9s covers the longest fall.
+    ///   * boundary — coins die at t > 0.95s (one ballistic arc).
     var duration: TimeInterval {
         switch kind {
-        case .logoStorm: return 4.6
-        case .cloudTokenRain: return 5.6
-        case .boundary: return 0.8
+        case .logoStorm: return EasterEggFX.duration + 0.3       // 5.3s
+        case .cloudTokenRain: return EasterEggFX.duration + 0.9  // 5.9s
+        case .boundary: return 1.0
         }
     }
 
@@ -124,7 +134,7 @@ final class EasterEggController {
 
     private let reversalWindow: TimeInterval = 1.5
     private let reversalsToSummon = 5
-    private let summonCooldown: TimeInterval = 8.0
+    private let summonCooldown: TimeInterval = 9.0  // matches the website's 9000ms
     /// Ignore offset jitter below this so a trackpad's micro-noise can't be
     /// mistaken for a reversal.
     private let minReversalDelta: CGFloat = 6
@@ -154,7 +164,7 @@ final class EasterEggController {
         reduceMotion: Bool
     ) {
         guard isEnabled else { return }
-        detectReversal(offset: offset, isDark: isDark)
+        detectReversal(offset: offset, isDark: isDark, reduceMotion: reduceMotion)
         detectBoundary(
             offset: offset,
             contentHeight: contentHeight,
@@ -163,7 +173,7 @@ final class EasterEggController {
         )
     }
 
-    private func detectReversal(offset: CGFloat, isDark: Bool) {
+    private func detectReversal(offset: CGFloat, isDark: Bool, reduceMotion: Bool) {
         defer { lastOffset = offset }
         guard let previous = lastOffset else { return }
         let delta = offset - previous
@@ -179,8 +189,11 @@ final class EasterEggController {
         reversalTimestamps.removeAll { now.timeIntervalSince($0) > reversalWindow }
 
         if reversalTimestamps.count >= reversalsToSummon {
-            summonStorm(isDark: isDark)
+            // Reversal threshold reached: arm the cooldown and clear the window
+            // even under Reduce Motion (so the spec's "abort before any takeover"
+            // still consumes the gesture), then summon only when motion is allowed.
             reversalTimestamps.removeAll()
+            summonStorm(isDark: isDark, reduceMotion: reduceMotion)
         }
     }
 
@@ -214,13 +227,16 @@ final class EasterEggController {
 
     // MARK: Summon + teardown
 
-    private func summonStorm(isDark: Bool) {
+    private func summonStorm(isDark: Bool, reduceMotion: Bool) {
         let now = Date()
         if let last = lastSummonAt, now.timeIntervalSince(last) < summonCooldown {
             return
         }
         guard activeEvent == nil else { return }
         lastSummonAt = now
+        // Reduce Motion: the gesture is consumed (cooldown armed above) but no
+        // takeover is presented, matching the website's reduced-motion abort.
+        guard !reduceMotion else { return }
         let kind: EasterEggEvent.Kind = isDark ? .logoStorm : .cloudTokenRain
         present(EasterEggEvent(kind: kind, startedAt: now))
     }
