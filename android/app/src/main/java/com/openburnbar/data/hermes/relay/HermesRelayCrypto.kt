@@ -5,6 +5,7 @@ import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import org.json.JSONObject
 
 /**
  * Hermes relay symmetric crypto primitives. Wire-format identical to the
@@ -170,4 +171,52 @@ object HermesRelayCrypto {
     }
 
     fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
+
+    /** Sealed gateway message payload schema (MP-27): `{text, actionId?, kind?}`. */
+    data class HermesGatewaySealedPayload(val text: String, val actionId: String?, val kind: String?)
+
+    /**
+     * Signal-style two-key pairing safety code (MP-1). SHA-256 over BOTH raw X9.63
+     * relay public keys, sorted lexicographically by unsigned byte value so the Mac
+     * and this device derive the IDENTICAL code without agreeing on roles, displayed
+     * as the first 16 digest bytes (>=128 bits) in eight uppercase hex groups.
+     * Byte-identical to the Swift/Python derivation.
+     *
+     * Hashing both keys closes the single-key MITM (a relay substituting the phone
+     * key at first pin would otherwise still match an agent-only code); the 128-bit
+     * width closes the ~2^64 grind on the displayed code.
+     */
+    fun gatewayRelaySafetyCode(agentPublicKeyX963: ByteArray, phonePublicKeyX963: ByteArray): String {
+        val ordered = listOf(agentPublicKeyX963, phonePublicKeyX963)
+            .sortedWith { a, b -> compareUnsignedLex(a, b) }
+        val digest = sha256(ordered[0] + ordered[1])
+        return (0 until 16 step 2).joinToString(" ") { i ->
+            "%02X%02X".format(digest[i].toInt() and 0xFF, digest[i + 1].toInt() and 0xFF)
+        }
+    }
+
+    private fun compareUnsignedLex(a: ByteArray, b: ByteArray): Int {
+        val n = minOf(a.size, b.size)
+        for (i in 0 until n) {
+            val d = (a[i].toInt() and 0xFF) - (b[i].toInt() and 0xFF)
+            if (d != 0) return d
+        }
+        return a.size - b.size
+    }
+
+    /**
+     * Decode a sealed gateway message payload (MP-27). The agent seals JSON
+     * `{text, actionId?, kind?}`; this decodes it (never rendering the raw bytes,
+     * which would surface a literal `{"text":...}`). Throws if `text` is absent, so
+     * a malformed sealed body is treated as unopenable rather than shown.
+     */
+    fun openGatewaySealedPayload(ciphertext: String, keyData: ByteArray, aad: ByteArray): HermesGatewaySealedPayload {
+        val plain = openBase64(ciphertext, keyData, aad)
+        val json = JSONObject(String(plain, Charsets.UTF_8))
+        return HermesGatewaySealedPayload(
+            text = json.getString("text"),
+            actionId = if (json.has("actionId")) json.getString("actionId") else null,
+            kind = if (json.has("kind")) json.getString("kind") else null,
+        )
+    }
 }

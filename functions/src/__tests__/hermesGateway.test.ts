@@ -12,6 +12,7 @@ import {
   publicApprovalView,
   publicClientView,
   requireGatewayRelayEnvelope,
+  requireV2GatewayRelayEnvelope,
   sanitizeGatewayRelayEnvelope,
   sanitizeHermesGatewayScopes,
   serializeHermesGatewayTypingDoc,
@@ -233,6 +234,22 @@ describe("requireGatewayRelayEnvelope", () => {
   });
   it("rejects a non-record", () => {
     expect(() => requireGatewayRelayEnvelope("nope", "relayEnvelope")).toThrow(/relay envelope/);
+  });
+});
+
+describe("requireV2GatewayRelayEnvelope (MP-28 — new writes must be v2)", () => {
+  it("accepts a v2 envelope and round-trips it verbatim", () => {
+    expect(requireV2GatewayRelayEnvelope(relayEnvelope(), "relayEnvelope")).toEqual(relayEnvelope());
+  });
+  it("REJECTS a legacy v1 envelope on a new write (downgrade surface) while the v1-tolerant read path still accepts it", () => {
+    // The write guard fails closed on v1...
+    expect(() => requireV2GatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope")).toThrow(/relayKeyVersion must be 2/);
+    // ...but the read/legacy sanitizer keeps v1 readable so stored docs are not bricked.
+    expect(requireGatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope").relayKeyVersion).toBe(1);
+  });
+  it("still enforces the v2 senderPublicKey requirement (delegates to requireGatewayRelayEnvelope)", () => {
+    const { senderPublicKey: _omit, ...v2NoSender } = relayEnvelope();
+    expect(() => requireV2GatewayRelayEnvelope(v2NoSender, "relayEnvelope")).toThrow(/senderPublicKey/);
   });
 });
 

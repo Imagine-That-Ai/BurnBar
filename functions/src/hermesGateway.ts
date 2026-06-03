@@ -541,6 +541,26 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
 }
 
 /**
+ * MP-28: WRITE-path guard. Every NEW gateway write (a sealed message, an
+ * attachment init, or a sealed model_switch event) MUST be v2 — the authenticated
+ * 2-DH wrap. {@link requireGatewayRelayEnvelope} deliberately stays v1|v2 tolerant
+ * for the READ / legacy-sanitizer path so already-stored v1 docs are not bricked;
+ * but once the agent and phone are v2-only, the server must never accept a NEW,
+ * unreadable schema-1 gateway doc (which would silently brick the channel and is a
+ * downgrade surface). Rejecting at the trust boundary keeps v1 a read-only legacy.
+ */
+export function requireV2GatewayRelayEnvelope(raw: unknown, fieldName: string): GatewayRelayEnvelopeDoc {
+  const envelope = requireGatewayRelayEnvelope(raw, fieldName);
+  if (envelope.relayKeyVersion !== 2) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName}.relayKeyVersion must be 2 (the authenticated gateway wrap) for new gateway writes.`,
+    );
+  }
+  return envelope;
+}
+
+/**
  * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
  * Event) to pass through a stored envelope verbatim without rejecting the whole
  * doc. Applies the SAME validation semantics as requireGatewayRelayEnvelope
