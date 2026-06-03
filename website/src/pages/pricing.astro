@@ -724,38 +724,64 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     mask-position: 50% 40%;
     -webkit-mask-size: 132% auto;
     mask-size: 132% auto;
-    background: linear-gradient(
-      125deg,
-      transparent 8%,
-      var(--holo-sheen, rgba(255, 255, 255, 0.5)) 28%,
-      rgba(255, 255, 255, 0.92) 47%,
-      var(--holo-sheen, rgba(125, 211, 252, 0.55)) 62%,
-      transparent 86%
+    /* a colourful iridescent holo-foil that slowly sweeps through the
+       silhouette — each tier gets its own harmonious palette (--holo-grad). */
+    background: var(
+      --holo-grad,
+      linear-gradient(
+        125deg,
+        #ffd166 6%,
+        #7dd3fc 30%,
+        #c084fc 52%,
+        #5eead4 74%,
+        #ffd166 92%
+      )
     );
-    background-size: 280% 280%;
+    background-size: 320% 320%;
     background-position: 0% 50%;
-    opacity: 0.06;
-    filter: hue-rotate(var(--holo-hue, 0deg)) blur(0.4px);
+    opacity: 0.1;
+    filter: saturate(1.2) blur(0.4px);
     transition:
       opacity 380ms cubic-bezier(0.22, 1, 0.36, 1),
       mask-size 380ms cubic-bezier(0.22, 1, 0.36, 1),
       filter 380ms var(--ease);
     animation: holoShimmer 9s ease-in-out infinite;
   }
+  /* Warm ember iridescence for Cloud. */
   .plan--popular {
     --holo-img: url("/brand/vector/tier_cloud_logo.svg");
-    --holo-hue: -6deg;
-    --holo-sheen: rgba(253, 196, 44, 0.55);
+    --holo-grad: linear-gradient(
+      125deg,
+      #ffd56b 6%,
+      #ff8a3d 26%,
+      #ff5c8a 46%,
+      #b06bff 66%,
+      #ffd56b 88%
+    );
   }
+  /* Cool aqua iridescence for Cloud Pro. */
   .plan--pro {
     --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
-    --holo-hue: 8deg;
-    --holo-sheen: rgba(60, 214, 192, 0.55);
+    --holo-grad: linear-gradient(
+      125deg,
+      #5ef0c9 6%,
+      #38d6f3 27%,
+      #4f8bff 47%,
+      #8ef0a8 67%,
+      #5ef0c9 88%
+    );
   }
+  /* Full-spectrum premium iridescence for Cloud Ultra. */
   .plan--ultra {
     --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
-    --holo-hue: 4deg;
-    --holo-sheen: rgba(125, 211, 252, 0.55);
+    --holo-grad: linear-gradient(
+      125deg,
+      #ffd56b 6%,
+      #7dd3fc 26%,
+      #c084fc 46%,
+      #5eead4 66%,
+      #ff9ec7 86%
+    );
   }
   /* bloom the hologram when the card steps forward */
   /* On hover the ghost brightens just enough to feel alive — still faint
@@ -766,7 +792,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan--pro:focus-within .plan__holo,
   .plan--ultra:hover .plan__holo,
   .plan--ultra:focus-within .plan__holo {
-    opacity: 0.16;
+    opacity: 0.24;
+    filter: saturate(1.4) blur(0.3px);
     -webkit-mask-size: 138% auto;
     mask-size: 138% auto;
   }
