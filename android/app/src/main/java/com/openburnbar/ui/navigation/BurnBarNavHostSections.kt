@@ -3,11 +3,12 @@
 
 package com.openburnbar.ui.navigation
 
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -15,17 +16,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -406,34 +414,87 @@ private fun androidx.navigation.NavGraphBuilder.burnBarDashboardRedirectRoute(na
 
 @Composable
 internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab) -> Unit, modifier: Modifier = Modifier) {
-    NavigationRail(
+    Column(
         modifier =
         modifier
             .fillMaxHeight()
-            .width(96.dp),
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+            .width(104.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BurnBarLogo(
-            size = 44.dp,
-            modifier = Modifier.padding(top = 18.dp, bottom = 18.dp),
+            size = 42.dp,
+            modifier = Modifier.padding(bottom = 6.dp),
         )
-        BurnBarTab.all.forEach { tab ->
-            NavigationRailItem(
-                selected = currentTab == tab,
-                onClick = { onSelect(tab) },
-                icon = {
-                    AuroraNavIcon(
-                        destination = tab.destination,
-                        size = 24,
-                        isSelected = currentTab == tab,
-                        userDisplayName = null,
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            BurnBarTab.all.forEach { tab ->
+                val selected = currentTab == tab
+                Column(
+                    modifier =
+                    Modifier
+                        .width(96.dp)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .clickable { onSelect(tab) }
+                        .padding(horizontal = 4.dp, vertical = 3.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Box(
+                        modifier =
+                        Modifier
+                            .size(20.dp)
+                            .clip(CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AuroraNavIcon(
+                            destination = tab.destination,
+                            size = 18,
+                            isSelected = selected,
+                            userDisplayName = null,
+                        )
+                    }
+                    Text(
+                        tab.railLabel,
+                        color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                        },
+                        fontSize = 9.sp,
+                        lineHeight = 10.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
                     )
-                },
-                label = { Text(tab.label) },
-            )
+                }
+            }
         }
     }
 }
+
+private val BurnBarTab.railLabel: String
+    get() =
+        when (this) {
+            BurnBarTab.INSIGHTS -> "Insights"
+            BurnBarTab.HERMES -> "Agents"
+            BurnBarTab.YOU -> "Store"
+            else -> label
+        }
 
 internal data class BurnBarSignedInShellState(
     val isWideScreen: Boolean,
