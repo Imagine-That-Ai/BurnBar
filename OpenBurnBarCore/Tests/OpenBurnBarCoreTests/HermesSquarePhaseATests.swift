@@ -388,6 +388,71 @@ final class HermesSquareMissionGroupTests: XCTestCase {
         XCTAssertEqual(decoded?.phase, .queued)
     }
 
+    func testGroupDocumentDecodesRedactedMetadataWhenSealedPayloadUnreadable() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let sealedRequest = try CloudVaultCrypto.sealPayload(
+            JSONSerialization.data(withJSONObject: [
+                "title": "Fan-out mission",
+                "prompt": "Investigate the spike.",
+                "targetProject": "/private/repo"
+            ]),
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+        let sealedState = try CloudVaultCrypto.sealPayload(
+            JSONSerialization.data(withJSONObject: [
+                "synthesisSummary": "Secret synthesis."
+            ]),
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+
+        let payload: [String: Any] = [
+            "id": "group-1",
+            "missionKind": "diligence",
+            "childMissionIDs": ["m1", "m2"],
+            "runtimeTokens": ["codex", "claude"],
+            "parallelismLimit": 2,
+            "mergeStrategy": MissionGroupMergeStrategy.pickOne.rawValue,
+            "phase": MissionGroupPhase.merged.rawValue,
+            "createdAt": "2026-06-02T12:00:00Z",
+            "updatedAt": "2026-06-02T12:00:00Z",
+            "contentSealed": true,
+            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedRequest),
+            "sealedStatePayload": CloudVaultCrypto.sealedPayloadDictionary(sealedState),
+            "sealedStateSchemaVersion": 1,
+            "sealedStateVaultKeyID": vaultKeyID,
+            "schemaVersion": 1
+        ]
+
+        let decoded = try XCTUnwrap(MissionGroupDocument(documentID: "group-1", data: payload, vaultKey: nil))
+        XCTAssertEqual(decoded.id, "group-1")
+        XCTAssertEqual(decoded.title, "Encrypted mission group")
+        XCTAssertEqual(decoded.prompt, "")
+        XCTAssertNil(decoded.targetProject)
+        XCTAssertNil(decoded.synthesisSummary)
+        XCTAssertEqual(decoded.phase, .merged)
+    }
+
+    func testGroupDocumentMissingPrivateTextRequiresSealedPayloadForRedaction() {
+        let payload: [String: Any] = [
+            "id": "group-1",
+            "missionKind": "diligence",
+            "childMissionIDs": ["m1"],
+            "runtimeTokens": ["codex"],
+            "parallelismLimit": 1,
+            "mergeStrategy": MissionGroupMergeStrategy.pickOne.rawValue,
+            "phase": MissionGroupPhase.queued.rawValue,
+            "createdAt": "2026-06-02T12:00:00Z",
+            "updatedAt": "2026-06-02T12:00:00Z",
+            "contentSealed": true,
+            "schemaVersion": 1
+        ]
+
+        XCTAssertNil(MissionGroupDocument(documentID: "group-1", data: payload, vaultKey: nil))
+    }
+
     func testChildPayloadOverlayContainsGroupHints() {
         let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
             groupID: "g1",
