@@ -433,7 +433,13 @@ export async function backfillUserPrivacy(
   }
 
   // knowledge_repos is keyed by an opaque repo id; sweep each doc directly.
-  await sweepNamedCollection("knowledge_repos", userRef.collection("knowledge_repos"), KNOWLEDGE_REPO_FIELDS, stats, progress);
+  await sweepNamedCollection(
+    "knowledge_repos",
+    userRef.collection("knowledge_repos"),
+    KNOWLEDGE_REPO_FIELDS,
+    stats,
+    progress,
+  );
 
   const cliSessions = await userRef.collection("cli_sessions").listDocuments();
   const snapshotsStartedAt = Date.now();

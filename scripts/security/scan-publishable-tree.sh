@@ -7,6 +7,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 file_list="$tmp_dir/publishable-files.zlist"
 scan_root="$tmp_dir/publishable-tree"
+gitleaks_config="$repo_root/.gitleaks.toml"
 mkdir -p "$scan_root"
 
 if ! command -v gitleaks >/dev/null 2>&1; then
@@ -17,6 +18,11 @@ fi
 if ! command -v trufflehog >/dev/null 2>&1; then
   echo "trufflehog is required. Install it with: brew install trufflehog" >&2
   exit 127
+fi
+
+if [[ ! -f "$gitleaks_config" ]]; then
+  echo "Missing gitleaks config at $gitleaks_config" >&2
+  exit 1
 fi
 
 cd "$repo_root"
@@ -37,6 +43,7 @@ echo "Scanning $file_count publishable files with gitleaks..."
 (
   cd "$scan_root"
   gitleaks dir . \
+    --config "$gitleaks_config" \
     --redact \
     --no-banner \
     --report-format json \

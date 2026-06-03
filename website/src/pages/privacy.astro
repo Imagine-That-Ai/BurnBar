@@ -129,10 +129,10 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
               entitlements against the App Store Server API
             </li>
             <li>
-              <strong>Cloud Run · end-to-end relay</strong> routes sealed frames between your own
-              devices; never sees plaintext request or response bodies. The hosted chat gateway — a
-              bring-your-own-token bridge to outside chat apps — is likewise sealed end-to-end: it
-              routes ciphertext only and never reads message text, sender names, or file names.
+              <strong>Cloud Run · end-to-end relay</strong> routes sealed frames between your own devices;
+              never sees plaintext request or response bodies. The hosted chat gateway — a bring-your-own-token
+              bridge to outside chat apps — is likewise sealed end-to-end: it routes ciphertext only and
+              never reads message text, sender names, or file names.
             </li>
             <li>
               <strong>Owner-scoped, secret-field-name-denied</strong> — Firestore rules reject documents
@@ -315,10 +315,10 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
         <li class="glass-pane">
           <h3>Hermes Remote Relay (paid)</h3>
           <p>
-            Off by default; paid entitlement required to activate. This device-to-device relay
-            seals every frame end-to-end from OpenBurnBar's perspective — the relay never receives
-            plaintext. The hosted chat gateway (a bridge to outside chat apps) seals every frame
-            the same way: both directions are end-to-end encrypted, so the gateway routes ciphertext
+            Off by default; paid entitlement required to activate. This device-to-device relay seals
+            every frame end-to-end from OpenBurnBar's perspective — the relay never receives
+            plaintext. The hosted chat gateway (a bridge to outside chat apps) seals every frame the
+            same way: both directions are end-to-end encrypted, so the gateway routes ciphertext
             only and never receives readable message text, sender names, or file names.
           </p>
         </li>
