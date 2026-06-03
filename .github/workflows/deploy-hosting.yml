@@ -59,13 +59,13 @@ jobs:
 
       - name: Authenticate to Google Cloud (service account)
         if: ${{ github.event.inputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true' }}
-        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        uses: google-github-actions/auth@v2 # v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Authenticate to Google Cloud (legacy Play service account)
         if: ${{ github.event.inputs.dry_run != 'true' && env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
-        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        uses: google-github-actions/auth@v2 # v2
         with:
           credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
 
