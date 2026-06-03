@@ -82,12 +82,14 @@ struct EasterEggEvent: Identifiable, Equatable {
     let startedAt: Date
 
     /// Total lifetime of the effect; the canvas fades out and the controller
-    /// tears the overlay down once elapsed exceeds this.
+    /// tears the overlay down once elapsed exceeds this. Both takeovers run the
+    /// spec's 5.0s `FXDUR`; rain holds a short tail (+0.8s) so the last coins can
+    /// settle and the global fade (gone by +5.7s) completes before teardown.
     var duration: TimeInterval {
         switch kind {
-        case .logoStorm: return 4.6
-        case .cloudTokenRain: return 5.6
-        case .boundary: return 0.8
+        case .logoStorm: return 5.0
+        case .cloudTokenRain: return 5.8
+        case .boundary: return 0.95
         }
     }
 
@@ -136,7 +138,8 @@ final class EasterEggController {
 
     private let reversalWindow: TimeInterval = 1.5
     private let reversalsToSummon = 5
-    private let summonCooldown: TimeInterval = 8.0
+    /// Matches the website FX engine's 9s post-takeover cooldown.
+    private let summonCooldown: TimeInterval = 9.0
     /// Ignore offset jitter below this so trackpad / rubber-band micro-noise
     /// can't be mistaken for a reversal.
     private let minReversalDelta: CGFloat = 6
@@ -151,6 +154,12 @@ final class EasterEggController {
     private let boundaryOverscroll: CGFloat = 14
 
     private init() {}
+
+    #if DEBUG
+    /// A fresh, non-shared controller for unit tests so each case starts with a
+    /// clean reversal window + cooldown and never perturbs the app singleton.
+    static func makeForTesting() -> EasterEggController { EasterEggController() }
+    #endif
 
     // MARK: Scroll input
 

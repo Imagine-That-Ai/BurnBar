@@ -132,7 +132,7 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "conversations_chat",
     "title": "Conversations & Chat",
     "tier": "end_to_end",
-    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, and conversation recall metadata are sealed on-device before Firestore receives them.",
+    "blurb": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, and conversation recall metadata are sealed on-device before Firestore receives them.",
     "caveat": null,
     "serverSees": [
       "provider/runtime identifiers",
@@ -148,7 +148,9 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
       "CLI transcripts",
       "mission prompts/results",
       "saved text snippets",
-      "project/file/command labels"
+      "project/file/command labels",
+      "rollback scope paths",
+      "rollback error diagnostics"
     ]
   },
   {

@@ -382,6 +382,7 @@ struct HermesSettingsView: View {
                         gatewayPairingRevealButton
                     }
                     gatewayClientList
+                    gatewayApprovalsList
                     gatewayTestControls
                 }
             }
@@ -908,6 +909,91 @@ struct HermesSettingsView: View {
         }
     }
 
+    /// Inline approve/deny cards for armed oversight gates. This is a separate
+    /// requestID namespace from the CLI-mission `ApprovalInboxStrip`, so it has
+    /// its own focused surface and never touches that wiring.
+    @ViewBuilder
+    private var gatewayApprovalsList: some View {
+        let waiting = gatewayStore.waitingApprovals
+        if !waiting.isEmpty {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                HStack {
+                    label("Awaiting Approval")
+                    Spacer()
+                    Text("\(waiting.count)")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(MobileTheme.warning)
+                }
+                ForEach(waiting) { approval in
+                    gatewayApprovalCard(approval)
+                }
+            }
+        }
+    }
+
+    private func gatewayApprovalCard(_ approval: HermesGatewayApprovalRecord) -> some View {
+        let isResponding = gatewayStore.isRespondingToApproval(approval)
+        return VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(MobileTheme.warning)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    if let toolName = approval.toolName, !toolName.isEmpty {
+                        Text(toolName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                    }
+                    Text(approval.summary.isEmpty ? "Hermes is requesting approval to continue." : approval.summary)
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                Button {
+                    HapticBus.destructive()
+                    Task { await gatewayStore.respondToApproval(approvalId: approval.id, approve: false) }
+                } label: {
+                    Text("Deny")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(MobileTheme.error)
+                .disabled(isResponding)
+
+                Button {
+                    HapticBus.primaryAction()
+                    Task { await gatewayStore.respondToApproval(approvalId: approval.id, approve: true) }
+                } label: {
+                    HStack(spacing: 4) {
+                        if isResponding {
+                            ProgressView()
+                                .controlSize(.mini)
+                        }
+                        Text("Approve")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(MobileTheme.success)
+                .disabled(isResponding)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(MobileTheme.warning.opacity(0.10))
+                .stroke(MobileTheme.warning.opacity(0.28), lineWidth: 0.75)
+        )
+    }
+
     private var gatewayTestControls: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             label("Test Message")
@@ -1023,7 +1109,8 @@ struct HermesSettingsView: View {
 
     private func gatewayClientRow(_ client: HermesGatewayClientRecord) -> some View {
         let isSelected = gatewayStore.selectedClient?.id == client.id
-        return HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+        return VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
             ZStack {
                 Circle()
                     .fill(gatewayClientColor(client).opacity(0.18))
@@ -1078,6 +1165,9 @@ struct HermesSettingsView: View {
             .buttonStyle(.plain)
             .disabled(!client.isActive || gatewayStore.isRevoking(client))
             .accessibilityLabel("Revoke \(client.displayName)")
+            }
+
+            gatewayClientOversightRow(client)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
@@ -1089,6 +1179,93 @@ struct HermesSettingsView: View {
             RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
                 .stroke(isSelected ? MobileTheme.hermesAureate.opacity(0.42) : Color.clear, lineWidth: 0.8)
         )
+    }
+
+    /// Oversight controls + runtime hints under a gateway client row:
+    /// a Supervised/Autonomous segmented control, an optional agent version
+    /// badge, and a transient "Switching…" indicator while a model swap lands.
+    @ViewBuilder
+    private func gatewayClientOversightRow(_ client: HermesGatewayClientRecord) -> some View {
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            gatewayOversightToggle(client)
+
+            if let agentVersion = client.agentVersion, !agentVersion.isEmpty {
+                Text("v\(agentVersion)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if client.isSwitchingModel {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("Switching\u{2026}")
+                        .font(.caption2)
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func gatewayOversightToggle(_ client: HermesGatewayClientRecord) -> some View {
+        let isSupervised = client.isOversightSupervised
+        HStack(spacing: 6) {
+            gatewayOversightChip(
+                title: "Supervised",
+                isOn: isSupervised,
+                tint: MobileTheme.success,
+                client: client,
+                mode: "supervised"
+            )
+            gatewayOversightChip(
+                title: "Autonomous",
+                isOn: !isSupervised,
+                tint: MobileTheme.warning,
+                client: client,
+                mode: "autonomous"
+            )
+            if gatewayStore.isSettingOversight(client) {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+        }
+    }
+
+    private func gatewayOversightChip(
+        title: String,
+        isOn: Bool,
+        tint: Color,
+        client: HermesGatewayClientRecord,
+        mode: String
+    ) -> some View {
+        Button {
+            guard !isOn else { return }
+            HapticBus.toggle()
+            Task { await gatewayStore.setOversight(clientId: client.id, mode: mode) }
+        } label: {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(isOn ? tint : MobileTheme.Colors.textMuted)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isOn ? tint.opacity(0.16) : MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(isOn ? tint.opacity(0.5) : Color.clear, lineWidth: 0.8)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!client.isActive || gatewayStore.isSettingOversight(client))
+        .accessibilityLabel("\(title) oversight for \(client.displayName)")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     // MARK: - 2. Models
@@ -1874,10 +2051,14 @@ final class HermesGatewaySettingsStore {
     private(set) var pendingTestEvent: HermesGatewayQueuedEvent?
     private(set) var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
     private(set) var latestReply: HermesGatewayMessageRecord?
+    private(set) var approvals: [HermesGatewayApprovalRecord] = []
+    private(set) var respondingApprovalId: String?
+    private(set) var settingOversightClientId: String?
     private(set) var statusNow = Date()
 
     @ObservationIgnored private var clientListener: ListenerRegistration?
     @ObservationIgnored private var messageListener: ListenerRegistration?
+    @ObservationIgnored private var approvalListener: ListenerRegistration?
     @ObservationIgnored private var statusClockTask: Task<Void, Never>?
     @ObservationIgnored private var listenedUID: String?
     @ObservationIgnored private var lastNotifiedMessageID: String?
@@ -1897,6 +2078,14 @@ final class HermesGatewaySettingsStore {
 
     var onlineClients: [HermesGatewayClientRecord] {
         activeClients.filter { $0.isOnline(relativeTo: statusNow) }
+    }
+
+    /// Oversight gates still waiting for a decision and not past their
+    /// server-stamped expiry, newest first.
+    var waitingApprovals: [HermesGatewayApprovalRecord] {
+        approvals
+            .filter { $0.isActionable(relativeTo: statusNow) }
+            .sorted { $0.requestedAt > $1.requestedAt }
     }
 
     var selectedClient: HermesGatewayClientRecord? {
@@ -2010,6 +2199,16 @@ final class HermesGatewaySettingsStore {
                     self?.handleMessagesSnapshot(snapshot: snapshot, error: error)
                 }
             }
+        approvalListener = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("hermes_gateway_approvals")
+            .order(by: "requestedAt", descending: true)
+            .limit(to: 40)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    self?.handleApprovalsSnapshot(snapshot: snapshot, error: error)
+                }
+            }
     }
 
     func stopGatewayListening() {
@@ -2017,6 +2216,8 @@ final class HermesGatewaySettingsStore {
         clientListener = nil
         messageListener?.remove()
         messageListener = nil
+        approvalListener?.remove()
+        approvalListener = nil
         statusClockTask?.cancel()
         statusClockTask = nil
         listenedUID = nil
@@ -2026,6 +2227,7 @@ final class HermesGatewaySettingsStore {
     func refresh(isSignedIn: Bool) async {
         guard isSignedIn else {
             clients = []
+            approvals = []
             persistSelectedClientID(nil)
             noticeText = nil
             pendingTestEvent = nil
@@ -2180,6 +2382,62 @@ final class HermesGatewaySettingsStore {
         }
     }
 
+    /// Flip a gateway client between supervised (every action gated) and
+    /// autonomous oversight. `mode` must be "supervised" or "autonomous".
+    func setOversight(clientId: String, mode: String) async {
+        let trimmedClientId = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedClientId.isEmpty else { return }
+        guard settingOversightClientId == nil else { return }
+        settingOversightClientId = trimmedClientId
+        defer { settingOversightClientId = nil }
+
+        do {
+            try await repository.setHermesGatewayOversightMode(clientId: trimmedClientId, mode: mode)
+            setNotice(
+                mode == "autonomous"
+                    ? "Autonomous mode on. This Hermes will run without per-action approval."
+                    : "Supervised mode on. This Hermes will wait for your approval on gated actions.",
+                style: mode == "autonomous" ? .warning : .success
+            )
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+        }
+    }
+
+    /// Approve or reject an armed oversight gate. The decision is bound to this
+    /// trusted native escrow device (same path as CLI-mission approvals) so a
+    /// stolen owner token cannot self-approve a gated gateway action.
+    func respondToApproval(approvalId: String, approve: Bool) async {
+        let trimmedApprovalId = approvalId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedApprovalId.isEmpty else { return }
+        guard respondingApprovalId == nil else { return }
+        respondingApprovalId = trimmedApprovalId
+        defer { respondingApprovalId = nil }
+
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        do {
+            try await repository.respondHermesGatewayApproval(
+                approvalId: trimmedApprovalId,
+                approve: approve,
+                deviceId: deviceId
+            )
+            setNotice(
+                approve ? "Action approved. Hermes will continue." : "Action rejected.",
+                style: approve ? .success : .warning
+            )
+        } catch {
+            setNotice(error.localizedDescription, style: .error)
+        }
+    }
+
+    func isRespondingToApproval(_ approval: HermesGatewayApprovalRecord) -> Bool {
+        respondingApprovalId == approval.id
+    }
+
+    func isSettingOversight(_ client: HermesGatewayClientRecord) -> Bool {
+        settingOversightClientId == client.id
+    }
+
     @discardableResult
     func sendTest(text: String, senderDisplayName: String) async -> Bool {
         syncSelectedClientIDFromDefaults()
@@ -2268,6 +2526,17 @@ final class HermesGatewaySettingsStore {
             HapticBus.milestone()
             presentReplyNotification(reply)
         }
+    }
+
+    private func handleApprovalsSnapshot(snapshot: QuerySnapshot?, error: Error?) {
+        if let error {
+            setNotice("Could not watch Hermes approvals: \(error.localizedDescription)", style: .error)
+            return
+        }
+        approvals = snapshot?.documents.compactMap { document in
+            HermesGatewayApprovalRecord(documentID: document.documentID, data: document.data())
+        } ?? []
+        statusNow = Date()
     }
 
     private func presentReplyNotification(_ reply: HermesGatewayMessageRecord) {

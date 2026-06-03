@@ -1401,7 +1401,6 @@ final class OpenBurnBarMobileTests: XCTestCase {
         title: String = "Encrypted result",
         snippet: String = "Search snippet",
         provider: String? = "Claude Code",
-        projectName: String? = "Project",
         score: Double = 0.25,
         tokenScore: Double? = nil,
         semanticScore: Double? = nil,
@@ -1412,7 +1411,6 @@ final class OpenBurnBarMobileTests: XCTestCase {
             title: title,
             snippet: snippet,
             provider: provider,
-            projectName: projectName,
             storagePath: "users/test-user/session_logs/\(id)/bodies/hash.json.aesgcm",
             bodyHash: String(repeating: "a", count: 64),
             score: score,
@@ -1462,10 +1460,23 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let senderDisplayName: String
     }
 
+    struct OversightModeChange: Equatable {
+        let clientId: String
+        let mode: String
+    }
+
+    struct ApprovalResponse: Equatable {
+        let approvalId: String
+        let approve: Bool
+        let deviceId: String
+    }
+
     var clients: [HermesGatewayClientRecord] = []
     private(set) var enqueuedEvents: [EnqueuedEvent] = []
     private(set) var enqueuedModelSwitches: [EnqueuedModelSwitch] = []
     private(set) var revokedClientIds: [String] = []
+    private(set) var oversightModeChanges: [OversightModeChange] = []
+    private(set) var approvalResponses: [ApprovalResponse] = []
     private var sequence = 0
 
     func approveHermesGatewayDeviceGrant(
@@ -1548,6 +1559,14 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
             sequence: sequence,
             targetClientId: targetClientId
         )
+    }
+
+    func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
+        oversightModeChanges.append(OversightModeChange(clientId: clientId, mode: mode))
+    }
+
+    func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws {
+        approvalResponses.append(ApprovalResponse(approvalId: approvalId, approve: approve, deviceId: deviceId))
     }
 }
 
