@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-03T07:32:31.268Z",
+  "generatedAt": "2026-06-03T07:44:01.873Z",
   "scanner": {
     "tsMode": "typescript-eslint-parser",
     "excluded": {
@@ -987,25 +987,16 @@
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 272,
-      "column": 47,
+      "line": 280,
+      "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "if (value && t === \"object\" && \"toDate\" in (value as object) && typeof (value as { toDate: unknown }).toDate === \"function\") {",
+      "snippet": "\"toDate\" in (value as object) &&",
       "detail": "object"
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 272,
-      "column": 75,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "if (value && t === \"object\" && \"toDate\" in (value as object) && typeof (value as { toDate: unknown }).toDate === \"function\") {",
-      "detail": "{ toDate: unknown }"
-    },
-    {
-      "path": "functions/src/callables/dataExport.ts",
-      "line": 350,
+      "line": 281,
       "column": 13,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1014,7 +1005,16 @@
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 353,
+      "line": 360,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "typeof (value as { toDate: unknown }).toDate === \"function\"",
+      "detail": "{ toDate: unknown }"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 363,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1023,7 +1023,7 @@
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 361,
+      "line": 371,
       "column": 41,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1032,7 +1032,7 @@
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 436,
+      "line": 446,
       "column": 9,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1041,7 +1041,7 @@
     },
     {
       "path": "functions/src/callables/hermesGateway.ts",
-      "line": 1302,
+      "line": 1305,
       "column": 50,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1158,7 +1158,7 @@
     },
     {
       "path": "functions/src/callables/privacyBackfill.ts",
-      "line": 183,
+      "line": 174,
       "column": 16,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1248,11 +1248,11 @@
     },
     {
       "path": "functions/src/computerUseOpenTimestamps.ts",
-      "line": 458,
-      "column": 79,
+      "line": 461,
+      "column": 10,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "await enforceHighRiskComputerUseCallableWithNonce(request, parsed.uid, (request.data as { nonce?: unknown })?.nonce);",
+      "snippet": "(request.data as { nonce?: unknown })?.nonce,",
       "detail": "{ nonce?: unknown }"
     },
     {
