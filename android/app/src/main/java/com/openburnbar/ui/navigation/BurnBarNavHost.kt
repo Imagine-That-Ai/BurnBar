@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedScroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -25,7 +26,9 @@ import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.auth.LoginScreen
 import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.components.AuroraNavDestination
+import com.openburnbar.ui.components.EasterEggOverlay
 import com.openburnbar.ui.components.FloatingChatMode
+import com.openburnbar.ui.components.rememberEasterEggController
 
 /**
  * Tab catalog. Route strings are deep-link addressable via `burnbar://`.

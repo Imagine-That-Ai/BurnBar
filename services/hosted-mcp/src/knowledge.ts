@@ -13,10 +13,13 @@
  * threaded as the 2nd arg exactly like every other tool. No namespace/uid is
  * ever read from `args`.
  *
- * Server-honoured filters are PLAINTEXT only (sourceKind, sourceSlug,
- * embeddingModelVersion). sourcePath/section/category live in the sealed
- * metadata and are applied on-device after decrypt — the tool accepts them for
- * forward-compatible client post-filtering but the server cannot read them.
+ * Server-honoured filters carry NO content (privacy-leak-remediation-2026-06-02
+ * §3): `sourceKind` (one of three coarse buckets) + `embeddingModelVersion`, and
+ * the source filter is the vault-keyed `slugHmac` the shim computes on-device —
+ * NOT the cleartext `sourceSlug`. sourcePath/section/category live in the sealed
+ * metadata and are applied on-device after decrypt; the tool accepts them for
+ * forward-compatible client post-filtering but the server cannot read them. The
+ * cleartext `sourceSlug`/`contentHash` filters and returns have been dropped.
  */
 
 import type { Firestore, Query } from "firebase-admin/firestore";
@@ -35,7 +38,8 @@ export interface KnowledgeSearchArgs {
   queryVector?: unknown;
   filters?: Record<string, unknown>;
   sourceKind?: unknown;
-  sourceSlug?: unknown;
+  /** Vault-keyed HMAC of the slug the shim computes on-device (replaces cleartext sourceSlug). */
+  slugHmac?: unknown;
   embeddingModelVersion?: unknown;
   // Sealed-only (applied on-device): present for forward-compat, ignored server-side.
   sourcePath?: unknown;

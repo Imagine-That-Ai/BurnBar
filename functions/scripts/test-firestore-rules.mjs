@@ -129,6 +129,33 @@ function sealedPayload(vaultKeyID = TEST_VAULT_KEY_ID, sealedBoxBase64 = "c2VhbG
   };
 }
 
+// Canonical CloudVaultSealedText envelope (validCloudSealedText shape):
+// algorithm/keyVersion/nonce/ciphertext/tag, base64-charset strings only.
+function sealedText(overrides = {}) {
+  return {
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    nonce: "bm9uY2U=",
+    ciphertext: "Y2lwaGVydGV4dA==",
+    tag: "dGFn",
+    ...overrides,
+  };
+}
+
+// Canonical CloudVaultBlobEnvelope (validCloudSealedBlob shape):
+// schemaVersion/algorithm/keyVersion/plaintextSHA256/sealedBoxBase64/createdAt.
+function sealedBlob(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    plaintextSHA256: "a".repeat(64),
+    sealedBoxBase64: "c2VhbGVkLWJsb2I=",
+    createdAt: "2026-06-02T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 async function seedCloudVaultState(uid, vaultKeyID = TEST_VAULT_KEY_ID) {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), `users/${uid}/cloud_vault_state/current`), {
@@ -1564,16 +1591,16 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     })
   );
 
-	  await assertSucceeds(
-	    setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
-	      index: 0,
-	      hash: "hash",
-	      sealedSnippet: { schemaVersion: 1, algorithm: "AES-256-GCM", ciphertext: "cipher", nonce: "nonce", tag: "tag" },
-	      tokenHashes: ["a".repeat(32)],
-	      semanticHashes: ["b".repeat(32)],
-	      bodyStorage: "local_or_icloud",
-	      schemaVersion: 3,
-	      updatedAt: serverTimestamp(),
+  await assertSucceeds(
+    setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
+      index: 0,
+      hash: "hash",
+      sealedSnippet: sealedText(),
+      tokenHashes: ["a".repeat(32)],
+      semanticHashes: ["b".repeat(32)],
+      bodyStorage: "local_or_icloud",
+      schemaVersion: 3,
+      updatedAt: serverTimestamp(),
     })
   );
 

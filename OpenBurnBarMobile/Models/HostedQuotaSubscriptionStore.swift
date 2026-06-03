@@ -668,9 +668,13 @@ final class HostedQuotaSubscriptionStore {
             activeProductID == Self.hostedComputerUseProductID
     }
 
-    /// True only when the *Ultra* subscription is the active entitlement —
-    /// strictly above Pro. Used to resolve `cloudTier` to `.ultra`.
-    var isActiveUltra: Bool {
+    /// True when an *Ultra* auto-renewable subscription is the active StoreKit
+    /// entitlement. Ultra's authoritative state is the server-resolved data
+    /// tier (`isActiveUltra`, defined in `HostedQuotaSubscriptionStore+Ultra`),
+    /// which has no Apple product id; this StoreKit-only predicate lets
+    /// `cloudTier` resolve to `.ultra` immediately after purchase, before a
+    /// usage read has populated the resolved tier.
+    var hasActiveUltraStoreKitProduct: Bool {
         activeProductID == Self.cloudUltraMonthlyProductID ||
             activeProductID == Self.cloudUltraAnnualProductID
     }
@@ -680,10 +684,13 @@ final class HostedQuotaSubscriptionStore {
     /// satisfy every lower-tier gate (`CloudTier.satisfies`), so feature
     /// gating reads `store.cloudTier.satisfies(feature.requiredTier)`.
     ///
-    /// Resolution order mirrors the gating spec §4.2:
-    ///   isActiveUltra → .ultra; else isActivePro → .pro; else isActive → .cloud; else .none.
+    /// Resolution order mirrors the gating spec §4.2 (Ultra ⇒ Pro ⇒ Cloud):
+    ///   ultra → .ultra; else pro → .pro; else active → .cloud; else .none.
+    /// Ultra is the union of the server-resolved data tier (`isActiveUltra`,
+    /// the authority — Ultra has no Apple product id) and a freshly-purchased
+    /// Ultra StoreKit subscription.
     var cloudTier: CloudTier {
-        if isActiveUltra { return .ultra }
+        if isActiveUltra || hasActiveUltraStoreKitProduct { return .ultra }
         if isActivePro { return .pro }
         if isActive { return .cloud }
         return .none

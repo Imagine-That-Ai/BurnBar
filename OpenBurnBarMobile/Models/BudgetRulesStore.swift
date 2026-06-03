@@ -54,7 +54,8 @@ final class BudgetRulesStore {
         }
         #endif
         guard let collection = rulesCollection() else { return }
-        let data = encodeRule(rule)
+        let vaultKey = try await writableVaultKey()
+        let data = try encodeRule(rule, vaultKey: vaultKey)
         try await collection.document(rule.id).setData(data, merge: true)
     }
 
@@ -93,7 +94,8 @@ final class BudgetRulesStore {
         }
 
         let snapshot = try await query.getDocuments()
-        return snapshot.documents.compactMap { decodeRule(from: $0.data(), id: $0.documentID) }
+        let vaultKey = await readableVaultKey()
+        return snapshot.documents.compactMap { decodeRule(from: $0.data(), id: $0.documentID, vaultKey: vaultKey) }
     }
 
     /// Fetches a single rule by ID. Returns `nil` if not found or user is not signed in.
@@ -106,7 +108,8 @@ final class BudgetRulesStore {
         guard let collection = rulesCollection() else { return nil }
         let doc = try await collection.document(id).getDocument()
         guard let data = doc.data() else { return nil }
-        return decodeRule(from: data, id: doc.documentID)
+        let vaultKey = await readableVaultKey()
+        return decodeRule(from: data, id: doc.documentID, vaultKey: vaultKey)
     }
 
     // MARK: - Events
@@ -169,10 +172,11 @@ final class BudgetRulesStore {
 
         listener = collection
             .whereField("isEnabled", isEqualTo: true)
-            .addSnapshotListener { snapshot, error in
-                guard let snapshot, error == nil else { return }
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self, let snapshot, error == nil else { return }
+                let vaultKey = self.cachedVaultKey()
                 let rules = snapshot.documents
-                    .compactMap { self.decodeRule(from: $0.data(), id: $0.documentID) }
+                    .compactMap { self.decodeRule(from: $0.data(), id: $0.documentID, vaultKey: vaultKey) }
                     .sorted { ($0.createdAt) > ($1.createdAt) }
                 onChange(rules)
             }
@@ -338,6 +342,31 @@ final class BudgetRulesStore {
             syncedAt: dateFromField(data["syncedAt"]),
             sourceDeviceID: data["sourceDeviceID"] as? String
         )
+    }
+
+    // MARK: - Cloud Vault key resolution
+
+    /// Resolves the per-user Cloud Vault key for sealing project names/labels on write.
+    /// Mirrors the adjacent mobile sync services (`MobileCloudVaultKeyAccess`).
+    private func writableVaultKey() async throws -> Data {
+        guard let uid else { throw MobileCloudVaultAccessError.vaultKeyUnavailable }
+        return try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid).keyData
+    }
+
+    /// Best-effort read key for opening sealed project names/labels. Returns `nil`
+    /// when the key is not yet escrowed onto this device; callers then fall back to
+    /// any legacy plaintext field.
+    private func readableVaultKey() async -> Data? {
+        guard let uid else { return nil }
+        return try? await MobileCloudVaultKeyAccess.keyForReading(uid: uid)?.keyData
+    }
+
+    /// Synchronous local-keychain read of the Cloud Vault key for use inside the
+    /// snapshot-listener callback (which cannot await). Returns `nil` if the key is
+    /// not present locally yet.
+    private func cachedVaultKey() -> Data? {
+        guard let uid else { return nil }
+        return try? CloudVaultKeyStore().loadKey(uid: uid)
     }
 
     // MARK: - Private helpers

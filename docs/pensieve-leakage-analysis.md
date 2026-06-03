@@ -124,8 +124,14 @@ channels are gone: `commitKnowledgeBatch` no longer stores the SHA-256
 inside the AES-256-GCM `sealedMetadata` blob), or the cleartext `sourceSlug`.
 Dedup/idempotency now uses `dedupHash` — a **vault-keyed HMAC of the plaintext**
 the device computes (HKDF-derive a per-user dedup key from the vault key, then
-HMAC), stamped with `dedupHashVersion` (0 = legacy cleartext SHA-256 awaiting
-re-ingestion, 1 = vault-keyed). The source filter key is `slugHmac`, a vault-keyed
+HMAC), stamped with `dedupHashVersion` (1 = vault-keyed). The flag-day cut is now
+**enforced**: `commitKnowledgeBatch` requires `cloakedVector` + a vault-keyed
+`dedupHash` and **rejects** a raw `embedding` or a legacy cleartext SHA-256
+`contentHash` (the old `dedupHashVersion: 0` oracle path is gone). Any legacy v0
+rows written before the cut stay readable but carry the old oracle until the
+device re-ingests them — a forced re-ingest is triggered by bumping the
+`dedupHashVersion`/`embeddingModelVersion` watermark, so the transient window
+closes on next sync. The source filter key is `slugHmac`, a vault-keyed
 HMAC of the slug. Both are keyed, so the same plaintext/slug under two members'
 keys produces **different** stored values and the server cannot confirm a guessed
 plaintext by hashing it. The two remaining cleartext per-vector columns are
