@@ -8,8 +8,8 @@ import OpenBurnBarCore
 /// Uploads local chat threads to Firestore for cross-device resume.
 ///
 /// Message bodies, thread titles, and previews are backed up only after explicit
-/// `chatThreadContentCloudBackupEnabled` consent. Without that consent, the cloud
-/// record contains non-content metadata only.
+/// `chatThreadContentCloudBackupEnabled` consent and are sealed before upload.
+/// Without that consent, the cloud record contains non-content metadata only.
 /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}`
 ///
 /// Uses existing DataStore APIs:

@@ -429,16 +429,23 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
-            let vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+            var vaultKey: CloudVaultResolvedKey?
 
             for doc in snapshot.documents {
                 let data = doc.data()
                 guard let remoteDeviceId = data["deviceId"] as? String, remoteDeviceId != localDeviceId,
                       let rawProvider = data["provider"] as? String, let provider = AgentProvider(rawValue: rawProvider),
                       let sessionId = data["sessionId"] as? String else { continue }
-                let privatePayload = ConversationCloudSealer.open(data, keyData: vaultKey?.keyData)
-                if (data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil), privatePayload == nil {
-                    continue
+                let isSealed = data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil
+                let privatePayload: ConversationCloudPrivatePayload?
+                if isSealed {
+                    if vaultKey == nil {
+                        vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+                    }
+                    privatePayload = ConversationCloudSealer.open(data, keyData: vaultKey?.keyData)
+                    if privatePayload == nil { continue }
+                } else {
+                    privatePayload = nil
                 }
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"

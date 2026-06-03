@@ -12,7 +12,7 @@ The canonical authorities are:
 Cloud systems are not canonical:
 
 - Firestore is an optional replication and collaboration plane
-- iCloud mirroring is an optional file-copy plane
+- raw iCloud session-file mirroring is disabled until a sealed archive format ships
 - neither replaces local SQLite or daemon state as the source of truth
 
 ## What Ships Now
@@ -29,7 +29,7 @@ OpenBurnBar currently ships four coordinated control surfaces:
 | Tier | What it covers |
 |------|----------------|
 | **Core** | macOS app (dashboard, menu bar, session logs, settings), local daemon (provider routing, run state), Cursor/VS Code extension shell, CLI, shared `OpenBurnBarCore` contracts. Local SQLite + daemon-owned files remain canonical. |
-| **Experimental** | Optional Firestore replication, iCloud file mirroring, Cursor connector + tunnel, connector plane (GitHub/Slack/Linear/PostHog/Sentry/Gmail), mission control / controller runtime, Telegram bot integration, browser tooling plane, Hermes/OpenClaw chat backends. These are opt-in, best-effort, and may be redesigned or removed before `1.0`. |
+| **Experimental** | Optional Firestore replication, future sealed iCloud archive support, Cursor connector + tunnel, connector plane (GitHub/Slack/Linear/PostHog/Sentry/Gmail), mission control / controller runtime, Telegram bot integration, browser tooling plane, Hermes/OpenClaw chat backends. These are opt-in, best-effort, and may be redesigned or removed before `1.0`. Raw iCloud session-file mirroring is disabled in this tree. |
 | **Adjacent tooling** | Repo helper at `tools/openburnbar-mcp/` (read-only MCP bridge to local SQLite) — optional for developers, not part of the runtime spine. |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` — stale suites kept as migration reference only, but intentionally excluded from `OpenBurnBarTests` until fixed and moved back to `Active/`; see `AgentLensTests/README.md`. |
 
@@ -61,7 +61,7 @@ Local OpenBurnBar daemon
 
 Optional cloud planes
   -> Firestore replication/collaboration for opted-in data
-  -> iCloud file mirroring for opted-in session copies
+  -> future sealed iCloud archive support (raw file mirroring disabled)
 ```
 
 ## State Ownership
@@ -147,7 +147,7 @@ Intentional divergence:
 
 - OpenBurnBar remains local-first and daemon-first
 - Firestore is optional replication/collaboration infrastructure
-- iCloud is optional mirroring infrastructure
+- raw iCloud mirroring is disabled; sealed archive support is future infrastructure
 - sync conflicts are resolved against the local canonical state, not by promoting cloud to authority
 
 ## CLI Surface

@@ -1,10 +1,12 @@
 # CLI Agent Chat Mirror (Mac → Mobile)
 
 When the user chats with **Codex**, **Claude Code**, **OpenClaw**, **Droid**,
-**Forge**, or **Antigravity** on their Mac, OpenBurnBar mirrors the full
-transcript — text *and* tool-use pills — to Firestore so mobile Assistants tabs
-can render the same conversation. Mobile chat can also send new turns back
-through the trusted Mac relay for these Mac-backed runtimes.
+**Forge**, or **Antigravity** on their Mac, OpenBurnBar mirrors the session to
+Firestore so mobile Assistants tabs can render the same conversation. The
+transcript text, tool-use details, title, preview, model, workspace label, and
+resume hints are sealed on device before Firestore receives them. Mobile chat
+can also send new turns back through the trusted Mac relay for these Mac-backed
+runtimes.
 
 ## Mobile session interface modes
 
@@ -32,42 +34,59 @@ Path: `users/{uid}/cli_sessions/{threadID}`.
 
 The document body is encoded by
 [`CLIAgentSessionCodec`](../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentSessionRecord.swift).
-Important fields:
+Current sealed fields:
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | string | Thread id; matches the macOS `activeThreadID`. |
 | `agent` | string | One of `codex` / `claude` / `openclaw` / `droid` / `forge` / `antigravity`. |
-| `title` | string | Derived from the first user message (≤ 64 chars). |
-| `preview` | string | Last non-empty body (≤ 160 chars). |
-| `modelName` | string? | Model the Mac requested. |
-| `workspaceLabel` | string? | `chatWorkspaceURL.lastPathComponent` for context. |
+| `sourceKind` | string | `live_chat` or `archived_log`. |
 | `createdAt` / `updatedAt` | timestamp | Firestore `Timestamp` (SDK auto-converts). |
 | `endedAt` | timestamp? | Present when the session finalised. |
 | `schemaVersion` | int | Current value: `CLIAgentSessionRecord.currentSchemaVersion`. Readers refuse newer versions. |
-| `messages` | array | Inline array — keeps a single document round trip per session. |
+| `contentSealed` | bool | Must be `true` for current writers. |
+| `sealedSchemaVersion` | int | Current sealed payload schema, currently `1`. |
+| `vaultKeyID` | string | Active Cloud Vault key id; Firestore rules require it to match `cloud_vault_state/current`. |
+| `sealedPayload` | object | AES-GCM Cloud Vault envelope containing the private `CLIAgentSessionRecord`. |
+| `messageCount` | int | Count only; no message text. |
+| `lastMessageRole` | string? | Generic notification/sync hint. |
+| `lastAssistantMessageID` | string? | Deterministic notification de-dupe hint. |
 | `tokenUsage` | object? | Flat `inputTokens` / `outputTokens` / cache + reasoning tokens. |
+| `encryptedTranscriptAvailable` | bool | True when an archived transcript also has an encrypted session-log body. |
+| `labelColorHex` / `isPinned` / `priorityOrder` | optional metadata | Non-content list organization metadata. |
 
-Per-message shape:
+The sealed payload contains the private record that used to live in plaintext:
 
 ```json
 {
-  "id": "...",
-  "role": "user" | "assistant" | "system",
-  "text": "joined assistant body",
-  "timestamp": Timestamp,
-  "isError": false,
-  "toolUses": [
+  "title": "derived first user message",
+  "preview": "last non-empty body",
+  "modelName": "requested model",
+  "workspaceLabel": "project folder label",
+  "messages": [
     {
-      "id": "transcript-piece-id",
-      "name": "Read",
-      "status": "done",
-      "detail": "AgentLens/Services/AuthRepository.swift",
-      "startedAt": Timestamp
+      "id": "...",
+      "role": "user|assistant|system",
+      "text": "joined assistant body",
+      "toolUses": [
+        {
+          "name": "Read",
+          "detail": "AgentLens/Services/AuthRepository.swift"
+        }
+      ]
     }
-  ]
+  ],
+  "resumeHandle": {
+    "providerSessionID": "...",
+    "projectLabel": "...",
+    "commandHint": "codex resume ..."
+  }
 }
 ```
+
+Legacy readers still tolerate old plaintext `title`, `preview`, and `messages`
+documents so users can migrate existing rows. Firestore rules reject new
+plaintext writes.
 
 ## Mac writer
 
@@ -79,10 +98,12 @@ Authorization gate:
 
 1. Firebase configured + signed in.
 2. `accountManager.isCloudSyncEnabled` is true.
-3. `UserDefaults.standard.bool(forKey: CLIAgentSessionMirror.preferenceKey)`
-   is true (default: yes). Power users can disable transcript
-   mirroring without disabling the broader cloud sync toggle.
+3. `UserDefaults.standard.bool(forKey: CLIAgentSessionMirror.preferenceKey)` is
+   true (default: yes). Power users can disable the mirror without disabling the
+   broader cloud sync toggle.
 4. The chat backend is one of the Mac-backed CLI runtimes.
+5. The Mac has an active Cloud Vault key wrapper; otherwise the write fails
+   closed instead of falling back to plaintext.
 
 Call site:
 [`ChatSessionController`](../AgentLens/Views/Chat/ChatSessionController.swift)
@@ -124,11 +145,16 @@ in place of the previous "Connect your Mac" placeholder.
 ## Firestore security
 
 The collection path is per-user (`users/{uid}/cli_sessions/{...}`), so the
-existing rule (`match /users/{uid}/{document=**} { allow read, write: if
-request.auth.uid == uid; }`) covers it. No new rule required.
+checked-in rules require:
+
+- `contentSealed == true`
+- `sealedPayload` is a valid Cloud Vault AES-GCM envelope
+- `vaultKeyID` matches the user's active `cloud_vault_state/current`
+- top-level plaintext fields such as `title`, `preview`, `modelName`,
+  `workspaceLabel`, `messages`, `resumeHandle`, and `customTitle` are absent
 
 If/when subcollections are added (e.g. per-tool-call attachments), the
-rule must be extended to allow reads on the new path.
+rule must be extended to require the same sealed-private-field boundary.
 
 ## Schema evolution
 
@@ -149,5 +175,9 @@ fields.
   errors, concurrency coalescing, id lookup).
 - `AgentLensTests/Active/CLIAgentSessionMirrorTests.swift` — mirror
   builder: backend → CLI runtime mapping, transcript piece →
-  CLI tool use conversion, title / preview derivation, legacy
-  transcript fallback.
+  CLI tool use conversion, title / preview derivation, sealed payload
+  encoding, and legacy transcript fallback.
+- `functions/scripts/test-firestore-rules.mjs` — rejects plaintext
+  `cli_sessions` writes and accepts sealed payloads only.
+- `scripts/privacy/scan-chat-cloud-plaintext.mjs` — static guard that checks
+  writers and rules for this boundary.

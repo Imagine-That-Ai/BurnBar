@@ -6,17 +6,18 @@ import Foundation
 // (`CLIAgentSessionMirror` in AgentLens) and the iOS reader
 // (`CLIAgentChatReader` in OpenBurnBarMobile). Mirrors what users see when
 // they chat with Codex / Claude Code / OpenClaw on their Mac so the same
-// transcript surfaces inside the iOS Assistants tab, complete with the
-// streamed tool-use pills.
+// transcript surfaces inside the iOS Assistants tab. The Firestore row keeps
+// routing/count metadata outside and seals transcript text/tool details inside
+// `sealedPayload`.
 //
 // Flow (per session):
 //   Mac CLI bridge → CLIChatStreamEvent → `CLIAgentSessionMirror.append(...)`
 //     → Firestore: users/{uid}/cli_sessions/{sessionID}
 //   iOS Assistants tab → `CLIAgentChatReader.refresh()` → renders.
 //
-// Live and archived sessions are mirrored into `cli_sessions` for readable
-// mobile chat. The encrypted cloud session-log vault remains the durable
-// source for semantic search, resume metadata, and long transcript backup.
+// Live and archived sessions are mirrored into `cli_sessions` for mobile chat.
+// The encrypted cloud session-log vault remains the durable source for semantic
+// search and long transcript backup.
 
 /// Three CLI agent runtimes whose transcripts can be mirrored from the
 /// user's Mac to their iOS app. The raw values are stable Firestore
@@ -76,10 +77,9 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-/// One persisted CLI agent session, mirrored from a Mac chat into
-/// Firestore for iOS visibility. Keys mirror `MobileChatThread` where the
-/// shapes overlap so the iOS UI can render them with the same bubble
-/// components.
+/// One persisted CLI agent session. Current Firestore writers store this record
+/// as a Cloud Vault sealed payload; the plaintext codec remains only for legacy
+/// migration readers and focused round-trip tests.
 public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var agent: CLIAgentRuntime

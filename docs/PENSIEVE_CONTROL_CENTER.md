@@ -13,7 +13,9 @@ Two adversarial passes ran over the privacy-critical backend; **neither found a
   instead of a false "complete" when a surface throws or a Secret-Manager destroy is swallowed.
 - **deleteDomainData** now `recursiveDelete()`s — nested subcollections are purged (no residual PII).
 - **recovery confirm** enforces real re-verification (re-entered key hash must match).
-- **conversations_chat** relabeled `server_readable` (honest — cli_sessions/mobile_assistant_chats are plaintext mirrors).
+- **conversations_chat** restored to `end_to_end`: chat threads, CLI sessions,
+  mobile assistant chats, mission prompts/results/events, text snippets, and
+  conversation recall metadata now seal private fields before Firestore writes.
 - **audit actor** clamps the self-reported platform hint (identity is the server-side authed uid).
 - **escrow web reader** aligned to the real `cloud_vault_key_wrappers` schema.
 Recovery `recovery_contact` confirmation has no in-callable proof re-check — by design, the
@@ -97,7 +99,11 @@ Add to the relevant app/test targets in `OpenBurnBar.xcodeproj`:
 4. ~~Escrow wrapper field reconciliation~~ — **DONE (review pass)**: `apps/console/app/escrow/page.tsx` now reads the real `cloud_vault_key_wrappers` schema (`targetDeviceId`, `wrappedVaultKey`, `status === "active"`). Live escrow round-trip still needs a deployed environment to exercise end-to-end.
 5. **Escrow source-platform hardening**: optionally require `cloud_vault_key_wrappers` source device `platform != Web` in `firestore.rules` (core defense already holds — a browser cannot self-approve).
 6. **Static-export CSP**: the console ships static, so CSP is enforced via Firebase Hosting headers (this doc's deploy section) and uses `script-src 'unsafe-inline'` (a Next static-export constraint); revisit with a server target if a nonce is required.
-7. **Seal `cli_sessions` / `mobile_assistant_chats` at rest**: today these are plaintext mirrors, so `conversations_chat` is honestly labeled `server_readable`; sealing them would let it return to `end_to_end`.
+7. ~~Seal `cli_sessions` / `mobile_assistant_chats` at rest~~ — **DONE
+   (cloud-chat hardening pass)**: `conversations_chat` is `end_to_end` again.
+   The server sees routing/count metadata; titles, previews, message bodies,
+   tool-use text, mission prompt/result/event content, snippets, and
+   conversation recall labels are Cloud Vault sealed.
 8. **Recovery is backend-complete, client-flow-incomplete** (justified, not a silent gap). The `setupRecovery`/`confirmRecovery`/`listRecovery` callables are implemented, validated, and (post-review) `confirmRecovery` enforces real re-verification: a `recovery_key` method requires the re-entered key's `verificationHash` to match what was stored at setup. What remains on each client: (a) generate the recovery key on device, derive a wrapping key, wrap the vault key, and upload `{algorithm, wrappedVaultKey, verificationHash, keyVersion}` (the web/native `setupRecovery` callers don't yet build this envelope), and (b) a re-entry UI that re-derives `verificationHash` and passes it to `confirmRecovery` (the callable signatures are now forward-compatible — web `confirmRecovery(recoveryId, verificationHash?)`, native `confirmRecovery(recoveryId:verificationHash:)`). This is a real crypto+UX feature needing the in-browser/on-device vault key (available only after escrow approval); it is intentionally deferred, not faked. The server is fail-closed in the meantime (confirm without the hash is rejected).
 
 ## Verification (what was run)

@@ -378,9 +378,10 @@ final class OpenBurnBarDaemonManager {
         exportControllerActivitySnapshotIfStale()
         status = .checking
         let socketURL = paths.socketURL
+        let requestHealth = dependencies.requestHealth
         do {
             let response = try await daemonRPC {
-                try OpenBurnBarDaemonSocketClient.health(at: socketURL)
+                try requestHealth(socketURL)
             }
             let snapshot = OpenBurnBarDaemonHealthSnapshot(response: response)
             if snapshot.versionMismatch {
@@ -427,11 +428,14 @@ final class OpenBurnBarDaemonManager {
     func refreshRuntimeSnapshot() async {
         if case .healthy = status {
             let socketURL = paths.socketURL
+            let requestConfig = dependencies.requestConfig
+            let requestRecentUsage = dependencies.requestRecentUsage
+            let requestControllerProjects = dependencies.requestControllerProjects
             do {
                 let (configSnapshot, usageEvents, projects) = try await daemonRPC {
-                    let config = try OpenBurnBarDaemonSocketClient.config(at: socketURL)
-                    let usage = try OpenBurnBarDaemonSocketClient.recentUsage(at: socketURL, limit: 20)
-                    let projects = try OpenBurnBarDaemonSocketClient.controllerProjects(at: socketURL)
+                    let config = try requestConfig(socketURL)
+                    let usage = try requestRecentUsage(socketURL, 20)
+                    let projects = try requestControllerProjects(socketURL)
                     return (config, usage, projects)
                 }
                 let snapshot = usageSyncService.runtimeSnapshot(
