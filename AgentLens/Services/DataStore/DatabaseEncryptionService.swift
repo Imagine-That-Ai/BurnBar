@@ -361,9 +361,22 @@ extension DatabaseEncryptionService {
     ///   missing, empty, or plaintext file.
     static func isEncryptedDatabaseFile(at path: String) -> Bool {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
-        defer { try? handle.close() }
-        guard let header = try? handle.read(upToCount: plaintextSQLiteMagic.count),
-              header.count == plaintextSQLiteMagic.count else {
+        defer {
+            do {
+                try handle.close()
+            } catch {
+                AppLogger.dataStore.debug("Failed to close database header probe handle: \(error.localizedDescription)")
+            }
+        }
+        let header: Data
+        do {
+            guard let data = try handle.read(upToCount: plaintextSQLiteMagic.count),
+                  data.count == plaintextSQLiteMagic.count else {
+                // Missing or shorter-than-header file: nothing encrypted to protect.
+                return false
+            }
+            header = data
+        } catch {
             // Missing or shorter-than-header file: nothing encrypted to protect.
             return false
         }

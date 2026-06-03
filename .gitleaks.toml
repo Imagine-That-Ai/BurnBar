@@ -49,3 +49,18 @@ paths = [
   '''OpenBurnBarMobile/Models/ActivityStore\.swift''',
   '''OpenBurnBarMobile/Tests/MissionFABResurrectionControllerTests\.swift''',
 ]
+
+[[allowlists]]
+description = "Console escrow documentation and interoperability vectors contain public wrapped-key fixtures only"
+regexTarget = "match"
+regexes = [
+  '''Wrapped vault key\s*=\s*ephemeral ECDH public key''',
+  '''wrapVaultKey output bytes\s*=\s*ephemeral ECDH public key''',
+  '''Swift wrapVaultKey exactly:\s*ephemeral ECDH public key''',
+  '''"vaultKeyB64"\s*:\s*"[A-Za-z0-9+/=]+"''',
+]
+paths = [
+  '''apps/console/README\.md''',
+  '''apps/console/lib/escrow\.ts''',
+  '''apps/console/test/interop/swift-fixture\.json''',
+]
