@@ -132,6 +132,14 @@ export function latestAssistantReply(data: Record<string, unknown> | undefined):
   return undefined;
 }
 
+export function truncatePreview(raw: string, maxLength = 180): string {
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
 export function shouldCreateNotificationEvent(args: {
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
@@ -290,7 +298,7 @@ export async function createEventFromThreadWrite(args: {
     runtime,
     providerLabel: label,
     title: `${label} replied`,
-    preview: GENERIC_PREVIEW,
+    preview: reply.text ? truncatePreview(reply.text) : GENERIC_PREVIEW,
     createdAt: now,
     createdAtMillis: nowMillis,
     updatedAt: now,
