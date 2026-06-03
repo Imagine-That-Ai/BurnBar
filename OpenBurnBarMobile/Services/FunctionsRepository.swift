@@ -538,7 +538,8 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     let threadId: String?
     let replyToEventId: String?
     /// Legacy plaintext reply body. Present only on pre-seal (schemaVersion < 2)
-    /// docs; sealed docs carry the body in `payloadCiphertext` instead.
+    /// docs; sealed docs carry the body in `relayEnvelope.payloadCiphertext`
+    /// instead.
     let text: String?
     let attachmentIds: [String]
     let createdAt: String
@@ -571,10 +572,15 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         self.attachmentIds = (data["attachmentIds"] as? [Any])?.compactMap(Self.string) ?? []
         self.createdAt = createdAt
         self.schemaVersion = (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1
-        self.payloadCiphertext = Self.string(data["payloadCiphertext"])
-        self.wrappedKey = Self.string(data["wrappedKey"])
-        self.relayEncryption = Self.string(data["relayEncryption"])
-        self.relayKeyVersion = (data["relayKeyVersion"] as? NSNumber)?.intValue ?? (data["relayKeyVersion"] as? Int)
+        let relayEnvelope = Self.dictionary(data["relayEnvelope"])
+        self.payloadCiphertext = Self.string(relayEnvelope?["payloadCiphertext"]) ?? Self.string(data["payloadCiphertext"])
+        self.wrappedKey = Self.string(relayEnvelope?["wrappedKey"]) ?? Self.string(data["wrappedKey"])
+        self.relayEncryption = Self.string(relayEnvelope?["relayEncryption"]) ?? Self.string(data["relayEncryption"])
+        self.relayKeyVersion =
+            (relayEnvelope?["relayKeyVersion"] as? NSNumber)?.intValue
+            ?? (relayEnvelope?["relayKeyVersion"] as? Int)
+            ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
+            ?? (data["relayKeyVersion"] as? Int)
         self.resolvedText = nil
     }
 
@@ -637,6 +643,17 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             return nil
         }
     }
+
+    private static func dictionary(_ raw: Any?) -> [String: Any]? {
+        switch raw {
+        case let dict as [String: Any]:
+            return dict
+        case let dict as NSDictionary:
+            return dict as? [String: Any]
+        default:
+            return nil
+        }
+    }
 }
 
 enum HermesGatewayMessageResolver {
@@ -657,7 +674,9 @@ enum HermesGatewayMessageResolver {
         }
 
         return messages.first { message in
-            guard message.threadId == threadID else { return false }
+            let hasThreadMatch = message.threadId == threadID
+            let canUseSealedTimeFallback = message.isSealed && message.threadId == nil && pendingEventSentAt != nil
+            guard hasThreadMatch || canUseSealedTimeFallback else { return false }
             guard matchesTarget(message, targetClientId: resolvedTargetClientId) else { return false }
             guard let pendingEventSentAt else { return true }
             guard let createdAt = gatewayDate(from: message.createdAt) else { return false }
@@ -671,7 +690,7 @@ enum HermesGatewayMessageResolver {
         targetClientId: String? = nil
     ) -> HermesGatewayMessageRecord? {
         messages.first { message in
-            guard message.threadId == threadID else { return false }
+            guard message.threadId == threadID || (message.isSealed && message.threadId == nil) else { return false }
             guard matchesTarget(message, targetClientId: nonEmpty(targetClientId)) else { return false }
             // A sealed reply is selectable even before it is opened — the snapshot
             // handler opens it and renders `displayText`. Legacy docs gate on the
@@ -1341,23 +1360,32 @@ final class FunctionsRepository: HermesGatewayRepository {
         let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
         var payload: [String: Any] = [
             "destinationId": destinationId,
-            "threadId": threadId,
             "senderId": "burnbar-ios",
-            "eventKind": "model_switch",
-            // Routing-only model id stays cleartext per the gateway wire contract.
-            "modelId": modelId
+            "eventKind": "model_switch"
         ]
         if let resolvedTargetClientId = Self.trimmedClientID(targetClientId) {
             payload["targetClientId"] = resolvedTargetClientId
         }
-        try Self.applyGatewayEventSeal(
-            into: &payload,
-            text: "/model \(modelId)",
-            senderDisplayName: senderDisplayName,
-            threadId: threadId,
-            modelId: modelId,
-            targetClient: targetClient
-        )
+        if targetClient?.canSealToAgent == true {
+            // E2E link: seal the model id into `relayEnvelope.payloadCiphertext`
+            // (alongside text/senderDisplayName/threadId) like every other event,
+            // so the routing model id never leaves the device in cleartext. The
+            // server reads `modelId` from inside the sealed payload after opening.
+            try Self.applyGatewayEventSeal(
+                into: &payload,
+                text: "",
+                senderDisplayName: senderDisplayName,
+                threadId: threadId,
+                modelId: modelId,
+                targetClient: targetClient
+            )
+        } else {
+            // Legacy (non-canSealToAgent) link during the grace window: the agent
+            // has no relay key to wrap to, so the routing-only model id stays
+            // cleartext per the gateway wire contract until that Mac re-pairs.
+            // Wire stays identical to the pre-seal model_switch (no threadId).
+            payload["modelId"] = modelId
+        }
         let result = try await callable.call(payload)
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
@@ -1375,31 +1403,64 @@ final class FunctionsRepository: HermesGatewayRepository {
     /// device: a per-event symmetric key seals `{text, senderDisplayName,
     /// threadId[, modelId]}` and is wrapped to the agent's pubkey. The phone
     /// generates the `eventId` so it binds the AAD; the server honors it as the
-    /// doc id.
-    ///
-    /// LEGACY fallback: if the agent has not published a relay pubkey yet (mid
-    /// migration, un-upgraded agent), the body is sent as plaintext `text` /
-    /// `senderDisplayName` so pairing and first contact still work. The agent's
-    /// `relayEnvelope` then arrives once it upgrades.
+    /// doc id. If the target cannot seal, the call fails before constructing any
+    /// plaintext cloud payload.
     private static func applyGatewayEventSeal(
         into payload: inout [String: Any],
         text: String,
         senderDisplayName: String,
         threadId: String,
         modelId: String?,
-        targetClient: HermesGatewayClientRecord?
+        targetClient: HermesGatewayClientRecord?,
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+    ) throws {
+        guard let uid = Auth.auth().currentUser?.uid, !uid.isEmpty else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+        try sealGatewayEventPayload(
+            into: &payload,
+            text: text,
+            senderDisplayName: senderDisplayName,
+            threadId: threadId,
+            modelId: modelId,
+            targetClient: targetClient,
+            uid: uid,
+            pinStore: pinStore
+        )
+    }
+
+    /// Pure, `uid`-injected seal core shared by the live path and tests. Refuses
+    /// to seal unless the target can seal AND its advertised relay pubkey passes
+    /// the phone's TOFU pin check. Fails closed on every gap.
+    nonisolated static func sealGatewayEventPayload(
+        into payload: inout [String: Any],
+        text: String,
+        senderDisplayName: String,
+        threadId: String,
+        modelId: String?,
+        targetClient: HermesGatewayClientRecord?,
+        uid: String,
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
     ) throws {
         guard
             let targetClient,
             targetClient.canSealToAgent,
             let relayPublicKey = targetClient.relayPublicKey,
-            let uid = Auth.auth().currentUser?.uid, !uid.isEmpty
+            !uid.isEmpty
         else {
-            // LEGACY plaintext path — body is server-readable until the agent
-            // publishes a relay pubkey.
-            payload["text"] = text
-            payload["senderDisplayName"] = senderDisplayName
-            return
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        // Phone-side TOFU pin (defense-in-depth alongside the server immutability
+        // fix): refuse to seal to a key that differs from the one we pinned at
+        // first pairing. A mismatch — or a Keychain read failure we can't verify
+        // against — fails closed: the encrypted payload is never built, so no
+        // plaintext or attacker-readable ciphertext leaves the device.
+        guard pinStore
+            .verifyOrPin(agentPublicKeyBase64: relayPublicKey, uid: uid, clientId: targetClient.id)
+            .allowsSeal
+        else {
+            throw FunctionsError.gatewayRelayKeyChanged
         }
 
         let eventId = "evt_\(UUID().uuidString.lowercased())"
@@ -1426,10 +1487,12 @@ final class FunctionsRepository: HermesGatewayRepository {
         // Drop plaintext text/senderDisplayName/threadId from the top level — they
         // now live only inside `payloadCiphertext`. Keep routing fields.
         payload["eventId"] = eventId
-        payload["payloadCiphertext"] = payloadCiphertext
-        payload["wrappedKey"] = wrappedKey
-        payload["relayEncryption"] = HermesRelayCrypto.algorithm
-        payload["relayKeyVersion"] = targetClient.relayKeyVersion ?? HermesRelayCrypto.keyVersion
+        payload["relayEnvelope"] = [
+            "payloadCiphertext": payloadCiphertext,
+            "wrappedKey": wrappedKey,
+            "relayEncryption": HermesRelayCrypto.algorithm,
+            "relayKeyVersion": targetClient.relayKeyVersion ?? HermesRelayCrypto.keyVersion
+        ]
     }
 
     func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
@@ -1792,12 +1855,18 @@ private extension ProviderQuotaSnapshot {
 
 // MARK: - Functions Error
 
-enum FunctionsError: Error, LocalizedError {
+enum FunctionsError: Error, LocalizedError, Equatable {
     case decodingFailed
+    case gatewayTargetMissingRelayKey
+    case gatewayRelayKeyChanged
 
     var errorDescription: String? {
         switch self {
         case .decodingFailed: return "Failed to decode cloud function response."
+        case .gatewayTargetMissingRelayKey:
+            return "Update OpenBurnBar on the Mac and re-pair Hermes Gateway. Cloud gateway messages are end-to-end encrypted and cannot be sent until that Mac publishes a relay key."
+        case .gatewayRelayKeyChanged:
+            return "This Hermes gateway's relay key changed since you paired — a possible man-in-the-middle. For your safety the encrypted message was not sent. Re-pair Hermes Gateway on this Mac to trust the new key."
         }
     }
 }

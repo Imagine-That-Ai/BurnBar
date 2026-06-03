@@ -12,12 +12,13 @@ import {
   publicApprovalView,
   publicClientView,
   requireGatewayRelayEnvelope,
+  sanitizeGatewayRelayEnvelope,
   sanitizeHermesGatewayScopes,
   serializeHermesGatewayEvent,
-  HERMES_GATEWAY_GRACE_WINDOW_CUTOFF,
   HERMES_GATEWAY_PRESENCE_WINDOW_MS,
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
+  HERMES_GATEWAY_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SCHEMA_VERSION,
   type GatewayRelayEnvelopeDoc,
   type HermesGatewayClientDoc,
@@ -137,8 +138,17 @@ describe("requireGatewayRelayEnvelope", () => {
       requireGatewayRelayEnvelope({ ...relayEnvelope(), relayEncryption: "AES-256-GCM" }, "relayEnvelope"),
     ).toThrow(/relayEncryption/);
   });
-  it("rejects an out-of-range key version", () => {
+  it("accepts ONLY the supported key version (1) and rejects every other", () => {
+    // Codex KEY-VERSION CLAMP: only v1 crypto exists, so a permissive 1..100
+    // range is closed to exactly 1 until a v2 wrapper ships.
+    expect(HERMES_GATEWAY_RELAY_KEY_VERSION).toBe(1);
+    expect(requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 1 }, "x").relayKeyVersion).toBe(1);
     expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 0 }, "relayEnvelope")).toThrow(
+      /relayKeyVersion/,
+    );
+    // v2 (and any other version) must be rejected — not silently accepted by an
+    // upper bound of 100.
+    expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 2 }, "relayEnvelope")).toThrow(
       /relayKeyVersion/,
     );
     expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 101 }, "relayEnvelope")).toThrow(
@@ -183,6 +193,81 @@ describe("serializeHermesGatewayEvent — sealed pass-through + legacy fallback"
   it("rejects a doc that has neither a sealed envelope nor plaintext text", () => {
     expect(serializeHermesGatewayEvent(base)).toBeUndefined();
   });
+  it("passes a model switch through by modelId without requiring plaintext text", () => {
+    const out = serializeHermesGatewayEvent({
+      ...base,
+      kind: "model_switch" as const,
+      modelId: "minimax-m2.7",
+    });
+    expect(out?.kind).toBe("model_switch");
+    expect(out?.modelId).toBe("minimax-m2.7");
+    expect(out?.text).toBeUndefined();
+  });
+  it("UNCONDITIONALLY drops plaintext siblings when a relayEnvelope is present", () => {
+    // Codex SERIALIZE STRIP-SIBLINGS: a backfilled/admin/corrupt doc that carries
+    // BOTH a sealed envelope and stray plaintext text/senderDisplayName/threadId
+    // must surface NONE of the plaintext — the envelope wins, sealed-doc invariant
+    // holds regardless of how the doc was written.
+    const out = serializeHermesGatewayEvent({
+      ...base,
+      relayEnvelope: relayEnvelope(),
+      text: "leaked body",
+      senderDisplayName: "Alberto",
+      threadId: "thread-secret",
+    });
+    expect(out?.relayEnvelope).toEqual(relayEnvelope());
+    expect(out?.text).toBeUndefined();
+    expect(out?.senderDisplayName).toBeUndefined();
+    expect(out?.threadId).toBeUndefined();
+  });
+  it("drops plaintext siblings on a schema-2 doc even without an envelope (no legacy leak)", () => {
+    // schemaVersion>=2 marks a sealed-doc generation: never echo plaintext.
+    const out = serializeHermesGatewayEvent({
+      ...base,
+      schemaVersion: 2,
+      relayEnvelope: relayEnvelope(),
+      text: "leaked body",
+    });
+    expect(out?.text).toBeUndefined();
+  });
+});
+
+describe("sanitizeGatewayRelayEnvelope — strict read-side validation (Codex SANITIZE STRICT)", () => {
+  it("accepts a well-formed stored envelope", () => {
+    expect(sanitizeGatewayRelayEnvelope(relayEnvelope())).toEqual(relayEnvelope());
+  });
+  it("rejects a malformed stored envelope the write side would never have accepted", () => {
+    // Wrong algorithm constant.
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayEncryption: "AES-256-GCM" })).toBeUndefined();
+    // Unsupported key version (only v1 crypto exists).
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 2 })).toBeUndefined();
+    // Non-base64 ciphertext / wrapped key.
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), payloadCiphertext: "not base64 !!" })).toBeUndefined();
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), wrappedKey: "not base64 !!" })).toBeUndefined();
+    // Empty strings.
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), payloadCiphertext: "" })).toBeUndefined();
+    // Non-record.
+    expect(sanitizeGatewayRelayEnvelope("nope")).toBeUndefined();
+    expect(sanitizeGatewayRelayEnvelope(undefined)).toBeUndefined();
+  });
+  it("treats a doc with a malformed stored envelope as having no readable envelope", () => {
+    // A schema-2 event whose envelope is corrupt must NOT pass the corrupt
+    // envelope through, and (since it is a sealed doc) must NOT leak plaintext —
+    // so it serializes to undefined rather than exposing a malformed/forged body.
+    const out = serializeHermesGatewayEvent({
+      id: "evt_x",
+      sequence: 9,
+      kind: "message" as const,
+      destinationId: "burnbar:home",
+      senderId: "burnbar-user",
+      attachmentIds: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      schemaVersion: 2,
+      relayEnvelope: { ...relayEnvelope(), relayKeyVersion: 99 },
+      text: "should not leak",
+    });
+    expect(out).toBeUndefined();
+  });
 });
 
 describe("publicClientView — surfaces relay public keys", () => {
@@ -226,18 +311,14 @@ describe("publicClientView — surfaces relay public keys", () => {
   });
 });
 
-describe("Gateway plaintext grace window", () => {
-  const beforeCutoff = Date.parse(HERMES_GATEWAY_GRACE_WINDOW_CUTOFF) - 1;
-  const afterCutoff = Date.parse(HERMES_GATEWAY_GRACE_WINDOW_CUTOFF) + 1;
-  it("is open before the cutoff and closed after it", () => {
-    expect(isWithinGatewayGraceWindow(beforeCutoff)).toBe(true);
-    expect(isWithinGatewayGraceWindow(afterCutoff)).toBe(false);
+describe("Gateway plaintext write gate", () => {
+  it("is permanently closed for new writes", () => {
+    expect(isWithinGatewayGraceWindow(0)).toBe(false);
+    expect(isWithinGatewayGraceWindow(Date.now())).toBe(false);
   });
-  it("allows plaintext only from a non-relay-capable client inside the window", () => {
-    expect(gatewayPlaintextWriteAllowed(false, beforeCutoff)).toBe(true);
-    // A relay-capable client must always seal, even before the cutoff.
-    expect(gatewayPlaintextWriteAllowed(true, beforeCutoff)).toBe(false);
-    // After the cutoff nobody may write plaintext.
-    expect(gatewayPlaintextWriteAllowed(false, afterCutoff)).toBe(false);
+  it("rejects plaintext for every client capability state", () => {
+    expect(gatewayPlaintextWriteAllowed(false, 0)).toBe(false);
+    expect(gatewayPlaintextWriteAllowed(true, 0)).toBe(false);
+    expect(gatewayPlaintextWriteAllowed(undefined, 0)).toBe(false);
   });
 });

@@ -60,32 +60,31 @@ export const HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 = 900_000;
 // wrappedKey base64 cap. The wrapped symmetric key is a fixed ~125 bytes
 // (ephPubX963(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16)); 4096 leaves ample headroom.
 export const HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 = 4_096;
-// Grace window: legacy schema-1 clients with no published relay public key
-// (relayCapable !== true) may still send/receive PLAINTEXT bodies until this UTC
-// cutoff so an in-flight migration never bricks a paired phone. After the cutoff
-// the handlers fail toward privacy and reject any unsealed write. Reads keep a
-// legacy plaintext fallback indefinitely so already-queued v1 docs still render.
-export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-09-01T00:00:00.000Z";
+// The ONLY relay key version whose crypto exists today (keyVersion 1 of the
+// "p256-hkdf-sha256-aesgcm" contract). Until a v2 wrapper ships, the server must
+// reject every other version on both the write (requireGatewayRelayEnvelope) and
+// the read (sanitizeGatewayRelayEnvelope) side so a forged/future version can
+// never slip past a permissive range check. Rotation = a future SIGNED protocol.
+export const HERMES_GATEWAY_RELAY_KEY_VERSION = 1;
+// Historical cutoff for the now-closed schema-1 plaintext migration. New writes
+// are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
+// still render while backfills/scrubbers drain them.
+export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-06-03T00:00:00.000Z";
 
 /**
- * Whether the gateway is still inside the plaintext grace window. After the
- * cutoff every body MUST be sealed; before it, a `relayCapable:false` legacy
- * client may still write plaintext (the handler logs a deprecation counter).
+ * The plaintext grace window is closed. Keep the helper for old callers/tests,
+ * but never approve a new server-readable body regardless of wall-clock time.
  */
-export function isWithinGatewayGraceWindow(now = Date.now()): boolean {
-  const cutoff = Date.parse(HERMES_GATEWAY_GRACE_WINDOW_CUTOFF);
-  return Number.isFinite(cutoff) && now < cutoff;
+export function isWithinGatewayGraceWindow(_now = Date.now()): boolean {
+  return false;
 }
 
 /**
- * A client may legally write a plaintext body only when it is NOT relay-capable
- * (never published a relay public key) AND the grace window has not yet closed.
- * A relay-capable client is always required to seal; once the window closes
- * every client must seal regardless of capability.
+ * New gateway writes are sealed-only. Legacy plaintext remains a read fallback,
+ * not a write path.
  */
-export function gatewayPlaintextWriteAllowed(relayCapable: unknown, now = Date.now()): boolean {
-  if (relayCapable === true) return false;
-  return isWithinGatewayGraceWindow(now);
+export function gatewayPlaintextWriteAllowed(_relayCapable: unknown, _now = Date.now()): boolean {
+  return false;
 }
 
 export const HERMES_GATEWAY_SCOPES = ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"] as const;
@@ -152,10 +151,8 @@ export interface HermesGatewayClientDoc {
   phoneRelayPublicKey?: string;
   phoneRelayKeyVersion?: number;
   phoneRelayEncryption?: string;
-  // True once BOTH endpoints have published a relay public key, so the handlers
-  // require sealed bodies. A legacy schema-1 client leaves this unset/false and
-  // may write plaintext only within the grace window (see
-  // HERMES_GATEWAY_GRACE_WINDOW_CUTOFF).
+  // True once BOTH endpoints have published a relay public key. New gateway
+  // writes require this sealed path; legacy schema-1 plaintext is read-only.
   relayCapable?: boolean;
   runtimeModelId?: string;
   runtimeProviderId?: string;
@@ -471,8 +468,13 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
   }
   const relayKeyVersion =
     typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
-  if (!Number.isFinite(relayKeyVersion) || relayKeyVersion < 1 || relayKeyVersion > 100) {
-    throw new HttpsError("invalid-argument", `${fieldName}.relayKeyVersion must be between 1 and 100.`);
+  // Only keyVersion 1 crypto exists; reject every other version (no v2 wrapper
+  // shipped yet) so a forged future version can never be accepted as sealed.
+  if (relayKeyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName}.relayKeyVersion must be ${HERMES_GATEWAY_RELAY_KEY_VERSION}.`,
+    );
   }
   const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
   if (
@@ -496,19 +498,33 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
 /**
  * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
  * Event) to pass through a stored envelope verbatim without rejecting the whole
- * doc. Returns the validated envelope or undefined.
+ * doc. Applies the SAME validation semantics as requireGatewayRelayEnvelope
+ * (algorithm constant, the single supported key version, base64 + size caps) so
+ * the read path can never surface a malformed/forged envelope that the write path
+ * would have rejected — a corrupt, backfilled, or admin-written doc that fails any
+ * check is treated as unreadable (returns undefined) rather than passed through.
  */
 export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelopeDoc | undefined {
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
-  const { payloadCiphertext, wrappedKey, relayEncryption, relayKeyVersion } = record;
+  const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
+  if (relayEncryption !== HERMES_GATEWAY_RELAY_ENCRYPTION) return undefined;
+  const relayKeyVersion =
+    typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
+  if (relayKeyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) return undefined;
+  const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
   if (
-    typeof payloadCiphertext !== "string" ||
-    typeof wrappedKey !== "string" ||
-    typeof relayEncryption !== "string" ||
-    typeof relayKeyVersion !== "number" ||
     !payloadCiphertext ||
-    !wrappedKey
+    payloadCiphertext.length > HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 ||
+    !/^[A-Za-z0-9+/=]+$/u.test(payloadCiphertext)
+  ) {
+    return undefined;
+  }
+  const wrappedKey = typeof record.wrappedKey === "string" ? record.wrappedKey.trim() : "";
+  if (
+    !wrappedKey ||
+    wrappedKey.length > HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 ||
+    !/^[A-Za-z0-9+/=]+$/u.test(wrappedKey)
   ) {
     return undefined;
   }
@@ -655,17 +671,24 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
   const relayEnvelope = sanitizeGatewayRelayEnvelope(record.relayEnvelope);
-  // schema 2+ docs carry a sealed relayEnvelope and NO plaintext text; legacy
-  // schema-1 docs carry a plaintext text and no envelope. Accept either, but
-  // reject a doc that has neither (a corrupt/empty event the agent can't read).
-  const hasLegacyText = typeof record.text === "string";
+  // A doc is "sealed" once it carries a valid relayEnvelope OR advertises
+  // schemaVersion >= 2. For ANY sealed doc the private fields (text /
+  // senderDisplayName / threadId) MUST be dropped, even if a backfilled, admin-
+  // written, or corrupt doc still has them as siblings of the envelope — keeping
+  // them would re-expose plaintext the sealed-doc invariant promises is gone.
+  // Legacy plaintext is surfaced ONLY for an unsealed schema-1 doc.
+  const schemaVersion = typeof record.schemaVersion === "number" ? record.schemaVersion : NaN;
+  const isSealedDoc = relayEnvelope !== undefined || schemaVersion >= 2;
+  const hasLegacyText = !isSealedDoc && typeof record.text === "string";
+  const isModelSwitch = record.kind === "model_switch";
+  const hasModelSwitchRoute = isModelSwitch && typeof record.modelId === "string";
   if (
     typeof record.id !== "string" ||
     typeof record.sequence !== "number" ||
     (record.kind !== "message" && record.kind !== "model_switch") ||
     typeof record.destinationId !== "string" ||
     typeof record.senderId !== "string" ||
-    (!relayEnvelope && !hasLegacyText) ||
+    (!hasModelSwitchRoute && !relayEnvelope && !hasLegacyText) ||
     !Array.isArray(record.attachmentIds) ||
     typeof record.createdAt !== "string" ||
     typeof record.schemaVersion !== "number"
@@ -678,12 +701,14 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     kind: record.kind,
     destinationId: record.destinationId,
     targetClientId: typeof record.targetClientId === "string" ? record.targetClientId : undefined,
-    // threadId/senderDisplayName/text are echoed ONLY for legacy schema-1 docs
-    // (read fallback). For sealed schema-2 docs they are absent here — the agent
-    // recovers them by opening relayEnvelope with its relay private key.
-    threadId: typeof record.threadId === "string" ? record.threadId : undefined,
+    // threadId/senderDisplayName/text are echoed ONLY for an unsealed legacy
+    // schema-1 doc (read fallback). For a sealed doc they are UNCONDITIONALLY
+    // omitted — the agent recovers them by opening relayEnvelope with its relay
+    // private key — so a stray plaintext sibling can never leak through.
+    threadId: !isSealedDoc && typeof record.threadId === "string" ? record.threadId : undefined,
     senderId: record.senderId,
-    senderDisplayName: typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,
+    senderDisplayName:
+      !isSealedDoc && typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,
     text: hasLegacyText ? (record.text as string) : undefined,
     modelId: typeof record.modelId === "string" ? record.modelId : undefined,
     relayEnvelope,
