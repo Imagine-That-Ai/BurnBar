@@ -65,3 +65,34 @@ paths = [
   '''apps/console/lib/escrow\.ts''',
   '''apps/console/test/interop/swift-fixture\.json''',
 ]
+
+[[allowlists]]
+description = "Console Firebase web config contains public client identifiers, not server credentials"
+regexTarget = "match"
+regexes = [
+  '''AIza[0-9A-Za-z_-]{35}''',
+]
+paths = [
+  '''apps/console/lib/firebaseClient\.ts''',
+]
+
+[[allowlists]]
+description = "Data export tests use synthetic relay-envelope wrapped-key fixtures"
+regexTarget = "match"
+regexes = [
+  '''wrappedKey:\s*"[A-Za-z0-9+/=]+"''',
+]
+paths = [
+  '''functions/src/__tests__/dataExport\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Launch evidence stores SHA-256 purchase token hashes, not raw purchase tokens"
+regexTarget = "match"
+regexes = [
+  '''"purchaseTokenHash"\s*:\s*"[a-f0-9]{64}"''',
+]
+paths = [
+  '''launch-evidence/android-play-v25-ultra-live-proof-20260603T115300Z\.json''',
+  '''launch-evidence/paid-proof-google_play_ultra-v25-20260603T115132Z\.out''',
+]
