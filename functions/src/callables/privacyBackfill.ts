@@ -25,11 +25,7 @@
  */
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import type {
-  CollectionReference,
-  DocumentReference,
-  Firestore,
-} from "firebase-admin/firestore";
+import type { CollectionReference, DocumentReference, Firestore } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
@@ -117,19 +113,14 @@ const COLLECTION_PLANS: readonly CollectionPlan[] = [
 ];
 
 /** §4 knowledge_repos: cleartext repoFullName is dropped once the sealed name exists. */
-const KNOWLEDGE_REPO_FIELDS: readonly GatedField[] = [
-  { field: "repoFullName", requires: "sealedRepoFullName" },
-];
+const KNOWLEDGE_REPO_FIELDS: readonly GatedField[] = [{ field: "repoFullName", requires: "sealedRepoFullName" }];
 
 /**
  * Pure gating decision: which gated plaintext fields on a doc may be deleted
  * (the sealed gate is satisfied and the field is present). Exported for tests so
  * the safe-by-construction property is asserted without a live Firestore.
  */
-export function gatedDeletions(
-  data: Record<string, unknown>,
-  fields: readonly GatedField[],
-): string[] {
+export function gatedDeletions(data: Record<string, unknown>, fields: readonly GatedField[]): string[] {
   const deletions: string[] = [];
   for (const { field, requires } of fields) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
@@ -200,10 +191,7 @@ async function bumpResealWatermark(firestore: Firestore, uid: string, stats: Bac
   const snap = await ref.get();
   const stored = snap.exists ? Number(snap.get("resealEpoch") ?? 0) : 0;
   if (Number.isFinite(stored) && stored >= PRIVACY_RESEAL_EPOCH) return;
-  await ref.set(
-    { resealEpoch: PRIVACY_RESEAL_EPOCH, updatedAt: Timestamp.now(), schemaVersion: 1 },
-    { merge: true },
-  );
+  await ref.set({ resealEpoch: PRIVACY_RESEAL_EPOCH, updatedAt: Timestamp.now(), schemaVersion: 1 }, { merge: true });
   stats.resealBumped = true;
 }
 

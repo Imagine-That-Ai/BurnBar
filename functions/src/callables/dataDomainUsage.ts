@@ -92,9 +92,7 @@ function timestampString(value: unknown): string | undefined {
   return optionalString(value);
 }
 
-export function summarizeCloudProfile(
-  data: Record<string, unknown> | undefined | null,
-): CloudProfileSummary {
+export function summarizeCloudProfile(data: Record<string, unknown> | undefined | null): CloudProfileSummary {
   if (!data) return { state: "missing" };
 
   return {

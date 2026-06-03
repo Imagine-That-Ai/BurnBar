@@ -251,55 +251,58 @@ export const revokeEscrowDeviceTrust = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  wrapCallableHandler("revokeEscrowDeviceTrust", async (request: CallableRequest<{ deviceId?: unknown; nonce?: unknown }>) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking device trust.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+  wrapCallableHandler(
+    "revokeEscrowDeviceTrust",
+    async (request: CallableRequest<{ deviceId?: unknown; nonce?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking device trust.");
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
 
-    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
-    const snapshot = await ref.get();
-    if (!snapshot.exists) {
-      throw new HttpsError("not-found", "Escrow device is not registered.");
-    }
+      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+      const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+      const snapshot = await ref.get();
+      if (!snapshot.exists) {
+        throw new HttpsError("not-found", "Escrow device is not registered.");
+      }
 
-    await ref.set(
-      {
-        trustState: "revoked",
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    const grants = await db
-      .collection(`users/${uid}/escrow_grants`)
-      .where("targetDeviceId", "==", deviceId)
-      .where("status", "==", "granted")
-      .get();
-    const now = Timestamp.now();
-    const batch = db.batch();
-    for (const grant of grants.docs) {
-      batch.set(
-        grant.ref,
+      await ref.set(
         {
-          status: "revoked",
-          revokedAt: now,
+          trustState: "revoked",
+          updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
-    }
-    if (!grants.empty) {
-      await batch.commit();
-    }
 
-    logInfo({
-      event: "callable_info",
-      message: "escrow_device_trust_revoked",
-      device_id: deviceId,
-      revoked_grants: grants.size,
-    });
-    return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
-  }),
+      const grants = await db
+        .collection(`users/${uid}/escrow_grants`)
+        .where("targetDeviceId", "==", deviceId)
+        .where("status", "==", "granted")
+        .get();
+      const now = Timestamp.now();
+      const batch = db.batch();
+      for (const grant of grants.docs) {
+        batch.set(
+          grant.ref,
+          {
+            status: "revoked",
+            revokedAt: now,
+          },
+          { merge: true },
+        );
+      }
+      if (!grants.empty) {
+        await batch.commit();
+      }
+
+      logInfo({
+        event: "callable_info",
+        message: "escrow_device_trust_revoked",
+        device_id: deviceId,
+        revoked_grants: grants.size,
+      });
+      return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
+    },
+  ),
 );
 
 const NATIVE_ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
