@@ -269,6 +269,22 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         return nil
     }
 
+    /// Whether replies from this client MUST be sealed (used by the read path to
+    /// refuse a server-injected unsealed reply). Fail-CLOSED, mirroring
+    /// `verifyOrPin`'s write-side posture ("a read failure stays fail-closed"): a
+    /// `.found` pin OR an `.unreadable` Keychain both require sealing — we refuse to
+    /// render server plaintext unless we can POSITIVELY confirm there is no
+    /// established sealed channel. Only a definitive `.absent` (a genuine un-paired
+    /// / legacy client) permits the legacy plaintext read fallback. Distinct from
+    /// `pinnedKey() != nil`, which collapses `.absent` and `.unreadable` to `nil`
+    /// and would fail OPEN on a Keychain error.
+    func requiresSealedReplies(uid: String, clientId: String) -> Bool {
+        switch loadPin(uid: uid, clientId: clientId) {
+        case .found, .unreadable: return true
+        case .absent: return false
+        }
+    }
+
     /// A short, human-comparable "safety code" derived deterministically from a
     /// paired agent's public key. Two devices that trust the **same** agent key
     /// render the **same** code, so a user can read it aloud / glance across their
