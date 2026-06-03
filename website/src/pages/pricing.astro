@@ -605,21 +605,25 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     transition:
       opacity 760ms var(--ease),
       translate 760ms var(--ease),
-      transform var(--dur-base) var(--ease),
+      transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
       border-color var(--dur-base) var(--ease),
       box-shadow var(--dur-base) var(--ease);
     color: var(--bb-accent, var(--ember-bright));
   }
-  .plan:hover {
-    transform: translateY(-6px);
+  /* Hover / keyboard-focus brings the card to centre stage: scale up, lift,
+     raise above siblings, deepen the glow. (Holo bloom handled separately.) */
+  .plan:hover,
+  .plan:focus-within {
+    transform: translateY(-8px) scale(1.05);
+    z-index: 5;
     border-color: color-mix(
       in oklab,
-      var(--bb-accent, var(--ember-core)) 30%,
+      var(--bb-accent, var(--ember-core)) 40%,
       rgba(255, 255, 255, 0.08)
     );
     box-shadow:
-      0 0 50px -22px var(--bb-glow, rgba(250, 107, 6, 0.5)),
-      0 32px 70px -20px rgba(0, 0, 0, 0.75);
+      0 0 64px -18px var(--bb-glow, rgba(250, 107, 6, 0.5)),
+      0 40px 90px -24px rgba(0, 0, 0, 0.82);
   }
 
   /* per-tier accent */
@@ -696,8 +700,105 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .plan--popular {
     transform: none;
   }
-  .plan--popular:hover {
-    transform: translateY(-10px);
+  .plan--popular:hover,
+  .plan--popular:focus-within {
+    transform: translateY(-10px) scale(1.05);
+  }
+
+  /* ---------- holographic backdrop ----------
+     Each cloud tier floats a large, translucent copy of its own crest behind
+     the card — a hologram that whispers at rest and blooms on hover. */
+  .plan--popular,
+  .plan--pro,
+  .plan--ultra {
+    /* Let the hologram bleed a touch past the card edge. */
+    overflow: visible;
+  }
+  .plan__holo {
+    position: absolute;
+    inset: -6%;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: var(--r-4);
+    overflow: hidden;
+    /* the crest image, blown up and centred */
+    background-image: var(--holo-img);
+    background-repeat: no-repeat;
+    background-position: 50% 46%;
+    background-size: 160% auto;
+    opacity: 0.12;
+    filter: saturate(1.4) hue-rotate(var(--holo-hue, 0deg)) blur(0.3px)
+      drop-shadow(0 0 30px var(--bb-glow, rgba(250, 107, 6, 0.4)));
+    transition:
+      opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-size 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 320ms var(--ease);
+    animation: holoDrift 12s ease-in-out infinite alternate;
+  }
+  /* iridescent sheen riding over the hologram */
+  .plan__holo::after {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    background: conic-gradient(
+      from var(--bb-angle),
+      transparent 0deg,
+      var(--holo-sheen, rgba(255, 255, 255, 0.5)) 60deg,
+      transparent 130deg,
+      var(--bb-accent, rgba(255, 255, 255, 0.4)) 220deg,
+      transparent 300deg
+    );
+    mix-blend-mode: screen;
+    opacity: 0.35;
+    animation: holoSheen 14s linear infinite;
+  }
+  .plan--popular {
+    --holo-img: url("/brand/vector/tier_cloud_logo.svg");
+    --holo-hue: -6deg;
+    --holo-sheen: rgba(253, 196, 44, 0.55);
+  }
+  .plan--pro {
+    --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
+    --holo-hue: 8deg;
+    --holo-sheen: rgba(60, 214, 192, 0.55);
+  }
+  .plan--ultra {
+    --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
+    --holo-hue: 4deg;
+    --holo-sheen: rgba(125, 211, 252, 0.55);
+  }
+  /* bloom the hologram when the card steps forward */
+  .plan--popular:hover .plan__holo,
+  .plan--popular:focus-within .plan__holo,
+  .plan--pro:hover .plan__holo,
+  .plan--pro:focus-within .plan__holo,
+  .plan--ultra:hover .plan__holo,
+  .plan--ultra:focus-within .plan__holo {
+    opacity: 0.4;
+    background-size: 184% auto;
+    filter: saturate(1.7) hue-rotate(var(--holo-hue, 0deg)) blur(0.2px)
+      drop-shadow(0 0 50px var(--bb-glow, rgba(250, 107, 6, 0.55)));
+  }
+  .plan--popular:hover .plan__holo::after,
+  .plan--popular:focus-within .plan__holo::after,
+  .plan--pro:hover .plan__holo::after,
+  .plan--pro:focus-within .plan__holo::after,
+  .plan--ultra:hover .plan__holo::after,
+  .plan--ultra:focus-within .plan__holo::after {
+    opacity: 0.55;
+  }
+  @keyframes holoDrift {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(0, -2.2%, 0) scale(1.04);
+    }
+  }
+  @keyframes holoSheen {
+    to {
+      --bb-angle: 360deg;
+    }
   }
 
   .plan__motif {
@@ -745,15 +846,38 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     align-items: center;
     gap: var(--s-3);
   }
-  /* floating app-icon crest — lives top-right of the card header */
+  /* floating tier crest — full-colour premium logo, lives top-right.
+     No tint/filter that would muddy the art; only a soft glow so it pops on dark. */
   .plan__crest {
     position: absolute;
-    top: 0;
-    right: 0;
+    top: -6px;
+    right: -4px;
     width: 80px;
     height: 80px;
     pointer-events: none;
     z-index: 2;
+    filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55))
+      drop-shadow(0 0 18px var(--bb-glow, rgba(250, 107, 6, 0.45)));
+    transition:
+      transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 320ms var(--ease);
+  }
+  /* the richer cloud-tier crests carry more detail — give them more room */
+  .plan--popular .plan__crest,
+  .plan--pro .plan__crest,
+  .plan--ultra .plan__crest {
+    width: 84px;
+    height: 84px;
+  }
+  .plan--popular:hover .plan__crest,
+  .plan--popular:focus-within .plan__crest,
+  .plan--pro:hover .plan__crest,
+  .plan--pro:focus-within .plan__crest,
+  .plan--ultra:hover .plan__crest,
+  .plan--ultra:focus-within .plan__crest {
+    transform: scale(1.06);
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6))
+      drop-shadow(0 0 26px var(--bb-glow, rgba(250, 107, 6, 0.6)));
   }
   .plan__icon {
     display: grid;
@@ -1103,11 +1227,38 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     .billing__slider,
     .billing__opt,
     .plan,
+    .plan__crest,
+    .plan__holo,
     .topups {
       transition: none !important;
     }
-    .plan--popular::before {
-      animation: none;
+    .plan--popular::before,
+    .plan__holo,
+    .plan__holo::after {
+      animation: none !important;
+    }
+    /* No scale/lift dance — keep the hovered state subtle and instant. */
+    .plan:hover,
+    .plan:focus-within,
+    .plan--popular:hover,
+    .plan--popular:focus-within {
+      transform: none;
+    }
+    .plan--popular:hover .plan__holo,
+    .plan--popular:focus-within .plan__holo,
+    .plan--pro:hover .plan__holo,
+    .plan--pro:focus-within .plan__holo,
+    .plan--ultra:hover .plan__holo,
+    .plan--ultra:focus-within .plan__holo {
+      background-size: 160% auto;
+    }
+    .plan--popular:hover .plan__crest,
+    .plan--popular:focus-within .plan__crest,
+    .plan--pro:hover .plan__crest,
+    .plan--pro:focus-within .plan__crest,
+    .plan--ultra:hover .plan__crest,
+    .plan--ultra:focus-within .plan__crest {
+      transform: none;
     }
     [data-animate-onview],
     [data-animate-onview].is-visible {

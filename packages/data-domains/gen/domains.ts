@@ -447,6 +447,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "the vault key itself (Keychain / 0600 file, never uploaded)"
     ],
     "firestorePaths": [
+      "cloud_vault_state",
       "cloud_vault_key_wrappers",
       "escrow_devices",
       "escrow_public_keys",

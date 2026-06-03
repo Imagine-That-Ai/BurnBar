@@ -204,7 +204,7 @@
       "summary": "Which devices are trusted to decrypt your data, and the wrapped vault keys that make zero-knowledge possible. The crux of the whole E2EE model.",
       "serverSees": ["device trust state", "public key fingerprints", "wrapped (ciphertext) key blobs"],
       "deviceOnly": ["the vault key itself (Keychain / 0600 file, never uploaded)"],
-      "firestorePaths": ["cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"],
+      "firestorePaths": ["cloud_vault_state", "cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"],
       "storagePaths": [],
       "countSource": "escrow_devices",
       "byteSource": null,
