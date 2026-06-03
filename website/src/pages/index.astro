@@ -28,7 +28,7 @@ const totalCount = PROVIDERS_ALL.length;
 const detectedCount = totalCount - primaryCount;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
-const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "cloud_ultra")!;
+const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
 ---
 
 <BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">

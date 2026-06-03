@@ -98,8 +98,8 @@ export const SITE = {
     ],
     legacyProductIds: ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
   },
-  macReleaseLatest: "1.0.1",
-  macReleaseFile: "OpenBurnBar-1.0.1-macOS.dmg",
+  macReleaseLatest: "1.0.2",
+  macReleaseFile: "OpenBurnBar-1.0.2-macOS.dmg",
   macDownloadBaseUrl: "",
   macMin: "macOS 14 Sonoma",
   iosMin: "iOS 17",

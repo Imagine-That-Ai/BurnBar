@@ -2,6 +2,7 @@ package com.openburnbar.data.firebase
 
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.models.BudgetEvent
 import com.openburnbar.data.models.BudgetRule
 import kotlinx.coroutines.tasks.await
@@ -44,6 +45,12 @@ internal class FirestoreBudgetRepository(
 
     suspend fun downloadAllBudgetRules(): List<BudgetRule> {
         val snapshot = budgetRulesCollection.get().await()
-        return snapshot.documents.mapNotNull { it.toBudgetRule() }
+        // Peer budget rules seal `sealedProjectName`/`sealedLabel`; resolve the read
+        // vault key once so the decoder can open them. Legacy plaintext rules fall
+        // back inside `toBudgetRule`; an un-approved device degrades to plaintext-only.
+        val vaultKey = runCatching {
+            AndroidCloudVaultKeyAccess.keyForReading(uid = currentUserId(), firestore = db)?.keyData
+        }.getOrNull()
+        return snapshot.documents.mapNotNull { it.toBudgetRule(vaultKey) }
     }
 }

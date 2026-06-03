@@ -247,6 +247,13 @@ for (const field of ["title", "snippet", "terms", "projectName", "workingDirecto
     `session-log chunk rejects ${field}`,
   );
 }
+assertSectionIncludes(
+  "firestore.rules",
+  "function ownerWritableSessionLogManifest(",
+  "function validSessionLogFacetCount(",
+  'request.resource.data.inferredTaskTitle == "Encrypted session"',
+  "session-log manifest only accepts the generic inferredTaskTitle placeholder",
+);
 assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_documents/{documentId}", ["projectName"], "allow delete:");
 assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_chunks/{chunkId}", ["projectName"], "allow delete:");
 assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_postings/{postingId}", ["projectName"], "allow delete:");

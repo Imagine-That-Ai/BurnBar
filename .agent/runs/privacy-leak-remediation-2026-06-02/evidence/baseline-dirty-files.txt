@@ -1,0 +1,199 @@
+ D AgentLens/Resources/Assets.xcassets/CloudTierCrest.imageset/crest.jpg
+ D AgentLens/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro.jpg
+ D AgentLens/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra.jpg
+ D android/app/src/main/res/drawable/cloud_tier_crest_pro.jpg
+ D android/app/src/main/res/drawable/cloud_tier_crest_ultra.jpg
+ D android/app/src/main/res/drawable/cloud_tier_crest.jpg
+ D OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrest.imageset/crest.jpg
+ D OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro.jpg
+ D OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra.jpg
+ D website/src/pages/trust.astro
+ M .agent/GOALS.md
+ M .gitignore
+ M AgentLens/Resources/Assets.xcassets/CloudTierCrest.imageset/Contents.json
+ M AgentLens/Resources/Assets.xcassets/CloudTierCrestPro.imageset/Contents.json
+ M AgentLens/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/Contents.json
+ M AgentLens/Services/CloudSync/CloudSyncCoordinator.swift
+ M AgentLens/Services/CloudSync/DownloadSyncService.swift
+ M AgentLens/Services/CloudSync/SessionLogSyncService.swift
+ M AgentLens/Services/ComputerUse/ComputerUseRuntimeController.swift
+ M AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
+ M AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift
+ M AgentLens/Services/ComputerUse/Mac/RemoteClipboardController.swift
+ M AgentLens/Services/ComputerUse/PhoneControlAuthorityValidator.swift
+ M AgentLens/Services/MacCloudEntitlementStore.swift
+ M AgentLens/Services/OpenBurnBarStartupRecovery.swift
+ M AgentLens/Services/Settings/Stores/AppearanceSettings.swift
+ M AgentLens/Services/SettingsManager.swift
+ M AgentLens/Views/ComputerUse/ComputerUseSettingsView.swift
+ M AgentLens/Views/Dashboard/Components/DashboardDepthBackdrop.swift
+ M AgentLens/Views/Dashboard/Components/DashboardToolbarAndBackdrop.swift
+ M AgentLens/Views/Insights/MacAgentInsightsWorkspace.swift
+ M AgentLens/Views/Media/MediaPermissionsView.swift
+ M AgentLens/Views/Settings/AppearanceCorkboardSection.swift
+ M AgentLens/Views/Settings/CloudStoreSettingsView.swift
+ M AgentLens/Views/Settings/Search/SettingsItem.swift
+ M AgentLens/Views/Settings/Search/SettingsManifest.swift
+ M AgentLens/Views/Settings/SettingsView.swift
+ M AgentLensTests/Active/ComputerUse/PhoneControlAuthorityValidatorAttestationTests.swift
+ M AgentLensTests/Active/ComputerUse/PhoneControlReceiverTests.swift
+ M AgentLensTests/Active/ConversationTombstoneTests.swift
+ M AgentLensTests/Active/SessionLogSyncRoundTripTests.swift
+ M AgentLensTests/Support/CloudSyncTestSupport.swift
+ M android/app/build.gradle.kts
+ M android/app/src/main/java/com/openburnbar/data/assistants/CLIAgentMissionDispatcher.kt
+ M android/app/src/main/java/com/openburnbar/data/cloud/CloudConversationSearchService.kt
+ M android/app/src/main/java/com/openburnbar/data/computeruse/ComputerUseSecurityCallableClient.kt
+ M android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt
+ M android/app/src/main/java/com/openburnbar/data/firebase/FunctionsRepository.kt
+ M android/app/src/main/java/com/openburnbar/data/stores/ConversationCockpitFilterActions.kt
+ M android/app/src/main/java/com/openburnbar/data/stores/ConversationCockpitQueryRunner.kt
+ M android/app/src/main/java/com/openburnbar/data/stores/ConversationCockpitStore.kt
+ M android/app/src/main/java/com/openburnbar/data/stores/DevicesStore.kt
+ M android/app/src/main/java/com/openburnbar/data/stores/HostedQuotaSubscriptionStore.kt
+ M android/app/src/main/java/com/openburnbar/ui/components/AuroraComponents.kt
+ M android/app/src/main/java/com/openburnbar/ui/control/ControlCenterModels.kt
+ M android/app/src/main/java/com/openburnbar/ui/control/ControlCenterScreen.kt
+ M android/app/src/main/java/com/openburnbar/ui/control/TransparencyInventory.kt
+ M android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt
+ M android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHostSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/pro/LockedFeatureVeil.kt
+ M android/app/src/main/java/com/openburnbar/ui/settings/GlobalVisualSettings.kt
+ M android/app/src/main/java/com/openburnbar/ui/settings/SettingsRootScreenThemeSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/square/HermesSquareBodySessionSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/square/HermesSquareScreen.kt
+ M android/app/src/main/java/com/openburnbar/ui/store/CloudStoreViewPlanSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/streams/ConversationCockpitScreenDetailSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/streams/ConversationCockpitScreenSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/streams/StreamsViewSections.kt
+ M android/app/src/main/java/com/openburnbar/ui/you/YouViewSections.kt
+ M android/app/src/test/java/com/openburnbar/data/stores/DevicesStoreTest.kt
+ M android/app/src/test/java/com/openburnbar/data/stores/HostedQuotaSubscriptionStoreTest.kt
+ M apps/console/app/layout.tsx
+ M apps/console/app/page.tsx
+ M apps/console/components/AppShell.tsx
+ M apps/console/components/AuthGate.tsx
+ M apps/console/components/basin/Basin.tsx
+ M apps/console/components/inventory/TransparencyInventory.tsx
+ M apps/console/lib/api.ts
+ M apps/console/lib/useAuth.tsx
+ M apps/console/README.md
+ M apps/console/styles/globals.css
+ M docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md
+ M docs/PROVIDERS.md
+ M firebase.json
+ M firestore.indexes.json
+ M firestore.rules
+ M functions/scripts/test-firestore-rules.mjs
+ M functions/scripts/test-hermes-gateway.mjs
+ M functions/src/__tests__/appCheckAttestation.test.ts
+ M functions/src/__tests__/dataDomainUsage.test.ts
+ M functions/src/appCheckAttestation.ts
+ M functions/src/callables/cliLink.ts
+ M functions/src/callables/computerUseSecurity.ts
+ M functions/src/callables/conversationQuery.ts
+ M functions/src/callables/dataDomainUsage.ts
+ M functions/src/callables/encryptedSearch.ts
+ M functions/src/callables/encryptedSearchIndex.ts
+ M functions/src/callables/hermesGateway.ts
+ M functions/src/callables/remoteMcp.ts
+ M functions/src/computerUseOpenTimestamps.ts
+ M functions/src/config.ts
+ M functions/src/hermesGateway.ts
+ M functions/src/index.ts
+ M functions/src/types/legacy.ts
+ M OpenBurnBar.xcodeproj/project.pbxproj
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseCapabilityGate.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseSessionMetadata.swift
+ M OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/ComputerUseCapabilityGateTests.swift
+ M OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector.json
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseRunCoordinator.swift
+ M OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ComputerUseRunCoordinatorPlaywrightScenarioTests.swift
+ M OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ComputerUseRunCoordinatorTests.swift
+ M OpenBurnBarMobile/Features/Mercury/Models/MercuryBackgroundStyle.swift
+ M OpenBurnBarMobile/Features/Mercury/Views/MercuryBackgroundStylePicker.swift
+ M OpenBurnBarMobile/Models/ActivityStore.swift
+ M OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift
+ M OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrest.imageset/Contents.json
+ M OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestPro.imageset/Contents.json
+ M OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/Contents.json
+ M OpenBurnBarMobile/Services/CLIAgentChatReader.swift
+ M OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift
+ M OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
+ M OpenBurnBarMobile/Services/FunctionsRepository.swift
+ M OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift
+ M OpenBurnBarMobile/Views/Components/Pro/LockedFeatureVeil.swift
+ M OpenBurnBarMobile/Views/Control/DataVaultControlView.swift
+ M OpenBurnBarMobile/Views/Control/PensieveMemorySearchView.swift
+ M OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift
+ M OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift
+ M OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift
+ M OpenBurnBarMobile/Views/SessionLogsView.swift
+ M OpenBurnBarMobile/Views/Store/CloudStoreView.swift
+ M OpenBurnBarMobile/Views/Store/CloudTierComponents.swift
+ M OpenBurnBarMobile/Views/Streams/StreamsView.swift
+ M OpenBurnBarMobile/Views/You/YouView.swift
+ M packages/data-domains/gen/DataDomains.kt
+ M packages/data-domains/gen/DataDomains.swift
+ M packages/data-domains/gen/domains.ts
+ M packages/data-domains/registry.json
+ M scripts/privacy/scan-chat-cloud-plaintext.mjs
+ M scripts/privacy/scrub-chat-cloud-plaintext.mjs
+ M website/src/components/Header.astro
+ M website/src/data/router-rundown-history/2026-06-03.json
+ M website/src/data/router-rundown-history/latest.json
+ M website/src/data/site.ts
+ M website/src/data/trust.generated.ts
+ M website/src/layouts/BaseLayout.astro
+ M website/src/pages/privacy.astro
+ M website/src/styles/globals.css
+ M website/src/styles/tokens.css
+?? .agent/runs/hermes-gateway-e2e-rearchitecture/
+?? .agent/runs/privacy-leak-remediation-2026-06-02/
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrest.imageset/crest.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrest.imageset/crest@2x.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrest.imageset/crest@3x.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro@2x.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro@3x.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra@2x.png
+?? AgentLens/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra@3x.png
+?? AgentLens/Services/ComputerUse/EscrowRevocationWatcher.swift
+?? AgentLens/Views/Components/Pro/FeatureUnlockSheet.swift
+?? AgentLens/Views/Dashboard/Components/ConstellationBackgroundView.swift
+?? android/app/src/main/java/com/openburnbar/ui/components/DotConstellationBackground.kt
+?? android/app/src/main/java/com/openburnbar/ui/pro/FeatureUnlock.kt
+?? android/app/src/main/java/com/openburnbar/ui/pro/GatedFeature.kt
+?? android/app/src/main/java/com/openburnbar/ui/pro/TierHolo.kt
+?? android/app/src/main/res/drawable-mdpi/
+?? android/app/src/main/res/drawable-xhdpi/
+?? android/app/src/main/res/drawable-xxhdpi/
+?? android/app/src/test/java/com/openburnbar/ui/settings/BackgroundStyleTest.kt
+?? apps/console/app/apple-icon.png
+?? apps/console/app/icon.png
+?? apps/console/app/settings/
+?? apps/console/components/account/
+?? apps/console/components/basin/TierGlyph.tsx
+?? apps/console/components/BrandMark.tsx
+?? apps/console/components/DotCrestField.tsx
+?? apps/console/lib/accountStatus.ts
+?? apps/console/public/brand/apple-touch-icon.png
+?? apps/console/public/brand/burnbar-logo-mark.png
+?? apps/console/public/brand/burnbar-logo.png
+?? apps/console/public/brand/logos/
+?? apps/console/test/accountStatus.test.ts
+?? apps/console/test/passkeyEnrollment.test.ts
+?? docs/FEATURE_GATING_SPEC.md
+?? OpenBurnBarCore/Sources/OpenBurnBarCore/Membership/
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrest.imageset/crest.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrest.imageset/crest@2x.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrest.imageset/crest@3x.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro@2x.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestPro.imageset/crest_pro@3x.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra@2x.png
+?? OpenBurnBarMobile/Resources/Assets.xcassets/CloudTierCrestUltra.imageset/crest_ultra@3x.png
+?? OpenBurnBarMobile/Views/Aurora/ConstellationBackgroundView.swift
+?? OpenBurnBarMobile/Views/Components/Pro/FeatureUnlockExperience.swift

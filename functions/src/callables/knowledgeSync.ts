@@ -88,7 +88,7 @@ export const onKnowledgeRepoPush = onRequest(
   },
   async (req, res): Promise<void> => {
     const secret = KNOWLEDGE_GITHUB_WEBHOOK_SECRET.value();
-    if (!secret) {
+    if (!secret || !KNOWLEDGE_REPO_MATCH_KEY.value()) {
       res.status(503).send("Knowledge webhook is not configured.");
       return;
     }

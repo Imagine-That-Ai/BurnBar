@@ -284,7 +284,7 @@ extension EasterEggScene {
         let drawElapsed = reduceMotion ? 1.0 : elapsed
 
         // Clouds (drawn first, behind their rain).
-        guard let cloudSymbol = context.resolveSymbol(id: .cloud) else { return }
+        guard let cloudSymbol = context.resolveSymbol(id: EasterEggSymbolID.cloud) else { return }
         let globalFade = self.rainFade(elapsed: elapsed, reduceMotion: reduceMotion)
 
         for (index, cloud) in clouds.enumerated() {
@@ -476,9 +476,10 @@ extension EasterEggScene {
         let spacing: CGFloat = 34
         let totalWidth = CGFloat(count - 1) * spacing
         let startX = size.width / 2 - totalWidth / 2
-        return (0..<count).map { index in
-            BoundaryCoin(
-                symbolID: .coin(metal: index % 2 == 0 ? .gold : .silver),
+        return (0..<count).map { index -> BoundaryCoin in
+            let metal: TokenMetal = index % 2 == 0 ? .gold : .silver
+            return BoundaryCoin(
+                symbolID: .coin(metal: metal),
                 x: startX + CGFloat(index) * spacing,
                 phase: Double(index) * 0.05
             )

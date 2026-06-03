@@ -56,6 +56,9 @@ export {
   revokeHermesGatewayClient,
   rotateHermesGatewayClientToken,
   enqueueHermesGatewayEvent,
+  setHermesGatewayOversightMode,
+  respondHermesGatewayApproval,
+  reapHermesGatewayApprovals,
 } from "./callables/hermesGateway.js";
 
 export {

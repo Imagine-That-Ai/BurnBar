@@ -17,7 +17,7 @@ const buttonVariants = cva(
         // Wax-crimson is DESTRUCTIVE ONLY.
         destructive:
           "bg-transparent text-[color:var(--color-seal-crimson)] border border-[color:var(--color-seal-crimson)] hover:bg-[color:var(--color-seal-crimson)] hover:text-white",
-        link: "text-[color:var(--accent)] underline-offset-4 hover:underline",
+        link: "text-[color:var(--accent-deep)] underline-offset-4 hover:underline",
       },
       size: {
         sm: "h-8 px-3 text-xs",

@@ -19,6 +19,25 @@ export const HERMES_GATEWAY_MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 export const HERMES_GATEWAY_DEFAULT_DESTINATION_ID = "burnbar:home";
 export const HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID = "home";
 
+// Wire protocol version of the gateway HTTP surface, surfaced verbatim by the
+// /state route. Distinct from HERMES_GATEWAY_SCHEMA_VERSION (which versions the
+// Firestore document shapes): clients use this to gate features that depend on
+// a newer gateway contract without inspecting individual document fields.
+export const HERMES_GATEWAY_PROTOCOL_VERSION = 1;
+// A client counts as "online" when it last checked in within this window.
+// Presence is DERIVED from lastSeenAt at read time and never persisted — a poll
+// bumps lastSeenAt on every authenticated request, so a stored online flag would
+// cause continuous write amplification and stale-on-crash presence.
+export const HERMES_GATEWAY_PRESENCE_WINDOW_MS = 90 * 1000;
+// A requested model switch the runtime has not acknowledged within this window
+// is treated as settled (the pending marker is ignored), so a dropped/invalid
+// switch never pins the client in a permanent "switching…" state.
+export const HERMES_GATEWAY_PENDING_MODEL_TTL_MS = 2 * 60 * 1000;
+// A supervised oversight gate left unanswered past this window is reaped to
+// "expired" so a risky action never blocks the agent forever.
+export const HERMES_GATEWAY_APPROVAL_TTL_MS = 5 * 60 * 1000;
+export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
+
 export const HERMES_GATEWAY_SCOPES = ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"] as const;
 export const HERMES_GATEWAY_DEFAULT_SCOPES = ["hermes.gateway.read", "hermes.gateway.write"] as const;
 
@@ -30,6 +49,12 @@ export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
 export type HermesGatewayEventKind = "message" | "model_switch";
 export type HermesGatewayMessageKind = "agent_message" | "typing";
 export type HermesGatewayAttachmentStatus = "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
+// Human-in-the-loop oversight toggle. "supervised" arms an approval gate before
+// each risky agent action; "autonomous" lets the agent run unattended. The safe
+// default (supervised) applies whenever the field is unset.
+export type HermesGatewayOversightMode = "supervised" | "autonomous";
+export const HERMES_GATEWAY_DEFAULT_OVERSIGHT_MODE: HermesGatewayOversightMode = "supervised";
+export type HermesGatewayApprovalStatus = "waiting_for_approval" | "approved" | "rejected" | "expired";
 
 export interface HermesGatewayModelOptionDoc {
   providerId: string;
@@ -54,9 +79,37 @@ export interface HermesGatewayClientDoc {
   runtimeProviderId?: string;
   runtimeModelOptions?: HermesGatewayModelOptionDoc[];
   runtimeUpdatedAt?: string;
+  // Free-form version string the runtime self-reports via /runtime (e.g. the
+  // Hermes Agent build id). Surfaced in /state for truthful "gateway version".
+  agentVersion?: string;
+  // Optimistic model-switch marker: set when a switch is enqueued, cleared once
+  // the runtime republishes runtimeModelId matching it (or after the TTL).
+  pendingModelId?: string;
+  pendingModelRequestedAt?: string;
+  // Human-in-the-loop oversight toggle. Unset is treated as "supervised".
+  oversightMode?: HermesGatewayOversightMode;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesGatewayApprovalDoc {
+  id: string;
+  clientId: string;
+  destinationId: string;
+  // Stable per-action identifier chosen by the agent so a retried arm request is
+  // idempotent and the runtime can correlate the resolution with its action.
+  actionId: string;
+  toolName?: string;
+  summary: string;
+  status: HermesGatewayApprovalStatus;
+  requestedAt: string;
+  expiresAt: string;
+  respondedAt?: string;
+  // Bound by the server to the trusted native device that resolved the gate —
+  // never written by the client (mirrors cli_agent_mission_requests).
+  approvedByDeviceId?: string;
   schemaVersion: number;
 }
 
@@ -161,6 +214,94 @@ export function isHermesGatewayTokenExpired(expiresAt: unknown, now = Date.now()
   const ms = Date.parse(expiresAt);
   if (!Number.isFinite(ms)) return true;
   return ms <= now;
+}
+
+/**
+ * Derive online/offline from a client's lastSeenAt. Fail-closed: a missing or
+ * unparseable timestamp reads as OFFLINE so a stopped gateway never shows online.
+ * Pure — presence is computed at read time and is never persisted.
+ */
+export function isHermesGatewayClientOnline(lastSeenAt: unknown, now = Date.now()): boolean {
+  if (typeof lastSeenAt !== "string" || lastSeenAt === "") return false;
+  const ms = Date.parse(lastSeenAt);
+  if (!Number.isFinite(ms)) return false;
+  return now - ms <= HERMES_GATEWAY_PRESENCE_WINDOW_MS;
+}
+
+/**
+ * Strict, case-insensitive membership test against a client's advertised model
+ * catalog. Returns false when the model is absent. Callers decide how to treat an
+ * empty/unknown catalog (the gateway allows a switch when no catalog is published
+ * yet, so custom model ids are not blocked before the runtime reports inventory).
+ */
+export function clientAdvertisesModel(client: Pick<HermesGatewayClientDoc, "runtimeModelOptions">, modelId: string): boolean {
+  const options = client.runtimeModelOptions;
+  if (!Array.isArray(options) || options.length === 0) return false;
+  const target = modelId.trim().toLowerCase();
+  if (!target) return false;
+  return options.some((option) => typeof option?.modelId === "string" && option.modelId.trim().toLowerCase() === target);
+}
+
+/**
+ * Resolve a client's effective oversight mode, defaulting to the safe option
+ * (supervised) whenever the field is unset or invalid.
+ */
+export function effectiveOversightMode(raw: unknown): HermesGatewayOversightMode {
+  return raw === "autonomous" ? "autonomous" : HERMES_GATEWAY_DEFAULT_OVERSIGHT_MODE;
+}
+
+export function sanitizeHermesGatewayOversightMode(raw: unknown): HermesGatewayOversightMode | undefined {
+  if (raw === "autonomous" || raw === "supervised") return raw;
+  return undefined;
+}
+
+/**
+ * Whether a client's pending-model marker should still be shown as "switching".
+ * A pending switch older than the TTL, or one the runtime has already applied
+ * (runtimeModelId matches, case-insensitively), is considered settled.
+ */
+export function pendingModelSwitchInFlight(
+  client: Pick<HermesGatewayClientDoc, "pendingModelId" | "pendingModelRequestedAt" | "runtimeModelId">,
+  now = Date.now(),
+): boolean {
+  const pending = typeof client.pendingModelId === "string" ? client.pendingModelId.trim() : "";
+  if (!pending) return false;
+  const applied = typeof client.runtimeModelId === "string" ? client.runtimeModelId.trim() : "";
+  if (applied && applied.toLowerCase() === pending.toLowerCase()) return false;
+  const requestedAt = typeof client.pendingModelRequestedAt === "string" ? Date.parse(client.pendingModelRequestedAt) : NaN;
+  if (!Number.isFinite(requestedAt)) return false;
+  return now - requestedAt <= HERMES_GATEWAY_PENDING_MODEL_TTL_MS;
+}
+
+export function gatewayApprovalExpiryISO(fromMillis = Date.now()): string {
+  return new Date(fromMillis + HERMES_GATEWAY_APPROVAL_TTL_MS).toISOString();
+}
+
+/**
+ * Fail-closed expiry check for an oversight gate. A missing expiresAt reads as
+ * expired so a malformed gate cannot block an agent indefinitely.
+ */
+export function isHermesGatewayApprovalExpired(expiresAt: unknown, now = Date.now()): boolean {
+  if (typeof expiresAt !== "string" || expiresAt === "") return true;
+  const ms = Date.parse(expiresAt);
+  if (!Number.isFinite(ms)) return true;
+  return ms <= now;
+}
+
+/**
+ * An oversight gate is still actionable (a device may approve/deny it) only while
+ * it is waiting and unexpired.
+ */
+export function isHermesGatewayApprovalActionable(
+  approval: Pick<HermesGatewayApprovalDoc, "status" | "expiresAt">,
+  now = Date.now(),
+): boolean {
+  return approval.status === "waiting_for_approval" && !isHermesGatewayApprovalExpired(approval.expiresAt, now);
+}
+
+export function sanitizeHermesGatewayApprovalSummary(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, HERMES_GATEWAY_MAX_APPROVAL_SUMMARY);
 }
 
 export function hashHermesGatewayBearerToken(token: string): string {
@@ -394,10 +535,54 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     runtimeProviderId: client.runtimeProviderId,
     runtimeModelOptions: client.runtimeModelOptions,
     runtimeUpdatedAt: client.runtimeUpdatedAt,
+    agentVersion: client.agentVersion,
+    pendingModelId: client.pendingModelId,
+    pendingModelRequestedAt: client.pendingModelRequestedAt,
+    oversightMode: effectiveOversightMode(client.oversightMode),
     revokedAt: client.revokedAt,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,
     schemaVersion: client.schemaVersion,
+  };
+}
+
+export function isHermesGatewayApprovalDoc(raw: unknown): raw is HermesGatewayApprovalDoc {
+  const record = recordOrUndefined(raw);
+  if (!record) return false;
+  const status = record.status;
+  return (
+    typeof record.id === "string" &&
+    typeof record.clientId === "string" &&
+    typeof record.destinationId === "string" &&
+    typeof record.actionId === "string" &&
+    (typeof record.toolName === "string" || record.toolName === undefined) &&
+    typeof record.summary === "string" &&
+    (status === "waiting_for_approval" || status === "approved" || status === "rejected" || status === "expired") &&
+    typeof record.requestedAt === "string" &&
+    typeof record.expiresAt === "string" &&
+    (typeof record.respondedAt === "string" || record.respondedAt === undefined) &&
+    (typeof record.approvedByDeviceId === "string" || record.approvedByDeviceId === undefined) &&
+    typeof record.schemaVersion === "number"
+  );
+}
+
+export function publicApprovalView(approval: HermesGatewayApprovalDoc, now = Date.now()): Record<string, unknown> {
+  const expired = approval.status === "waiting_for_approval" && isHermesGatewayApprovalExpired(approval.expiresAt, now);
+  return {
+    id: approval.id,
+    clientId: approval.clientId,
+    destinationId: approval.destinationId,
+    actionId: approval.actionId,
+    toolName: approval.toolName,
+    summary: approval.summary,
+    // Surface a derived "expired" status to readers even before the reaper has
+    // rewritten the stored status, so a stale gate never reads as still-waiting.
+    status: expired ? "expired" : approval.status,
+    requestedAt: approval.requestedAt,
+    expiresAt: approval.expiresAt,
+    respondedAt: approval.respondedAt,
+    approvedByDeviceId: approval.approvedByDeviceId,
+    schemaVersion: approval.schemaVersion,
   };
 }
 

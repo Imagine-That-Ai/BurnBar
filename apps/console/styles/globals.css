@@ -40,14 +40,14 @@
   --color-frost-veil: rgba(22, 20, 15, 0.035);
   --color-frost-line: rgba(22, 20, 15, 0.12);
 
-  /* the single accent: oxblood */
-  --accent: #7c2d2a;
-  --accent-deep: #5f211e;
-  --accent-wash: rgba(124, 45, 42, 0.08);
+  /* the single accent: coral */
+  --accent: #f45b69;
+  --accent-deep: #b3243c;
+  --accent-wash: rgba(244, 91, 105, 0.1);
   --color-brass-core: var(--accent);
   --color-brass-bright: var(--accent);
   --color-brass-deep: var(--accent-deep);
-  --color-brass-glow: rgba(124, 45, 42, 0.16);
+  --color-brass-glow: rgba(244, 91, 105, 0.16);
 
   /* encryption tiers — same identities, AA-legible on paper */
   --color-tier-end-to-end: #0c7c69; /* teal, darkened */
@@ -171,7 +171,7 @@
   }
 
   .eyebrow--accent {
-    color: var(--accent);
+    color: var(--accent-deep);
   }
 
   /* Evocative serif epigraph — used once, sparingly. */
@@ -308,7 +308,7 @@
   background-repeat: no-repeat;
   background-size: 0% 1px;
   transition: background-size 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  color: var(--accent);
+  color: var(--accent-deep);
 }
 .link-underline:hover {
   background-size: 100% 1px;
@@ -357,7 +357,7 @@ body::after {
   line-height: 0.72;
   float: left;
   margin: 0.06em 0.09em 0 0;
-  color: var(--accent);
+  color: var(--accent-deep);
 }
 .rule-double {
   border-bottom: 3px double var(--color-glass-line-bright);
