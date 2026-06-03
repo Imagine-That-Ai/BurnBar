@@ -98,4 +98,21 @@ final class BudgetRuleSealingRoundTripTests: XCTestCase {
         XCTAssertNil(CloudVaultCrypto.projectKeyHash(for: "", keyData: vaultKey))
         XCTAssertNil(CloudVaultCrypto.projectKeyHash(for: "   ", keyData: vaultKey))
     }
+
+    /// The group-by trapdoor MUST normalize identically to the Android writer
+    /// (`FirestoreRepository.kt projectKeyHash`) so a project used on Mac/iOS AND
+    /// Android lands in ONE bucket. Both collapse to ASCII `[a-z0-9]` only —
+    /// stopwords/short tokens are KEPT — so "The API v2" hashes the same as its raw
+    /// filtered form "theapiv2" (NOT the stopword-stripped "apiv2" the old
+    /// `normalizedTokens().joined()` produced, which diverged from Android).
+    func test_projectKeyHash_matchesAndroidAsciiContract() {
+        let stopwordName = CloudVaultCrypto.projectKeyHash(for: "The API v2", keyData: vaultKey)
+        XCTAssertNotNil(stopwordName)
+        XCTAssertEqual(stopwordName, CloudVaultCrypto.projectKeyHash(for: "theapiv2", keyData: vaultKey))
+        // Case + punctuation are folded, content is preserved.
+        XCTAssertEqual(
+            CloudVaultCrypto.projectKeyHash(for: "Mercury Media", keyData: vaultKey),
+            CloudVaultCrypto.projectKeyHash(for: "mercury-media", keyData: vaultKey)
+        )
+    }
 }

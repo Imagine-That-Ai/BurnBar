@@ -110,6 +110,22 @@ const COLLECTIONS = [
     name: "hermes_gateway_attachments",
     fields: ["fileName"],
   },
+  {
+    name: "approval_policies",
+    fields: ["id", "displayLabel", "fileGlob", "targetProject"],
+  },
+  {
+    name: "rollback_requests",
+    fields: ["scopeJSON", "errorMessage"],
+  },
+  {
+    name: "agent_identities",
+    fields: ["displayName", "tagline", "personas"],
+  },
+  {
+    name: "subscription_topics",
+    fields: ["agentURI", "topicID", "displayName", "description"],
+  },
 ];
 
 // Relay requests + their /chunks subcollections: legacy schema-v1 plaintext
@@ -121,6 +137,7 @@ const RELAY_REQUEST_FIELDS = ["path", "sessionId", "body", "error", "data", "tex
 const RELAY_CHUNK_FIELDS = ["body", "error", "data", "text"];
 
 const MISSION_EVENT_FIELDS = ["title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath"];
+const ROLLBACK_SNAPSHOT_FIELDS = ["actionLabel", "touchedFiles", "macSnapshotPath"];
 const SESSION_LOG_CHUNK_FIELDS = [
   "projectName",
   "workingDirectory",
@@ -183,6 +200,10 @@ async function scrubUser(uid) {
   const sessionLogDocs = await userRef.collection("session_logs").listDocuments();
   for (const sessionLogRef of sessionLogDocs) {
     await scrubCollection(sessionLogRef.collection("chunks"), SESSION_LOG_CHUNK_FIELDS);
+  }
+  const cliSessionDocs = await userRef.collection("cli_sessions").listDocuments();
+  for (const cliSessionRef of cliSessionDocs) {
+    await scrubCollection(cliSessionRef.collection("snapshots"), ROLLBACK_SNAPSHOT_FIELDS);
   }
 
   // Relay requests + their /chunks subcollections (Hermes + Pi agent). Scrub the
@@ -274,7 +295,9 @@ function printHelp() {
 Defaults to dry-run. Uses firebase-admin Application Default Credentials or
 GOOGLE_APPLICATION_CREDENTIALS. Deletes only legacy plaintext fields; it does
 not delete documents or sealed payloads. Covers chat/session-log collections,
-project_memory_snapshots (projectDisplayName/projectSlug), text_snippets,
-hermes/pi_agent relay requests + chunks, and the hosted chat gateway
-(hermes_gateway_messages/events/attachments).`);
-}
+	project_memory_snapshots (projectDisplayName/projectSlug), text_snippets,
+	Hermes Square sealed-only surfaces (approval policies, rollback requests,
+	agent identities, subscription topics, CLI rollback snapshots),
+	hermes/pi_agent relay requests + chunks, and the hosted chat gateway
+	(hermes_gateway_messages/events/attachments).`);
+  }

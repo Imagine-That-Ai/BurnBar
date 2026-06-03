@@ -375,9 +375,9 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
 }
 
 /**
- * Resolves the topic display strings sealed-first: open `sealedDisplayName` /
- * `sealedDescription` with the Cloud Vault key, then fall back to legacy plaintext
- * `displayName` / `description` for in-flight docs (CONTRACT legacy fallback).
+ * Resolves the topic display strings. A present sealed field is authoritative:
+ * decrypt it or fail closed; legacy plaintext is used only when the sealed field
+ * is absent.
  * Lifted to a top-level `internal` seam so the privacy round-trip is unit-testable
  * without the Firestore listener / Android keystore. Returns `(displayName,
  * description)` — either may be null when neither the sealed nor the legacy field
@@ -388,18 +388,16 @@ internal fun decodeSubscriptionTopicDisplay(
     vaultKey: ByteArray?,
 ): Pair<String?, String?> {
     val displayName =
-        CloudVaultSealedTextCodec.open(data["sealedDisplayName"], vaultKey)
-            ?: data["displayName"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(data["sealedDisplayName"], vaultKey, data["displayName"] as? String)
     val description =
-        CloudVaultSealedTextCodec.open(data["sealedDescription"], vaultKey)
-            ?: data["description"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(data["sealedDescription"], vaultKey, data["description"] as? String)
     return displayName to description
 }
 
 /**
- * Resolves the subscription graph edge sealed-first: open `sealedAgentURI` /
- * `sealedTopicID` with the Cloud Vault key, then fall back to legacy plaintext
- * `agentURI` / `topicID` for in-flight docs (CONTRACT legacy fallback). Lifted to
+ * Resolves the subscription graph edge. A present sealed field is authoritative:
+ * decrypt it or fail closed; legacy plaintext is used only when the sealed field
+ * is absent. Lifted to
  * a top-level `internal` seam so the cloak round-trip is unit-testable without the
  * Firestore listener / Android keystore. Returns `(agentURI, topicID)` — either
  * may be null when neither the sealed nor the legacy field is present/openable
@@ -410,11 +408,9 @@ internal fun decodeSubscriptionTopicGraph(
     vaultKey: ByteArray?,
 ): Pair<String?, String?> {
     val agentURI =
-        CloudVaultSealedTextCodec.open(data["sealedAgentURI"], vaultKey)
-            ?: data["agentURI"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(data["sealedAgentURI"], vaultKey, data["agentURI"] as? String)
     val topicID =
-        CloudVaultSealedTextCodec.open(data["sealedTopicID"], vaultKey)
-            ?: data["topicID"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(data["sealedTopicID"], vaultKey, data["topicID"] as? String)
     return agentURI to topicID
 }
 

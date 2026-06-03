@@ -149,6 +149,13 @@
         phase: "shipped",
         actor: "agent",
         summary: "SHIPPED. Alberto: PRs->Ajnunezg fork, companion->current branch, push+open now. (1) BurnBar companion+tails committed edee4da0a (76 files; left unrelated website-marketing churn + prior-wave budget/usage/approval/backfill files UNcommitted, reported). (2) Pushed both fork branches to Ajnunezg/hermes-agent. (3) Opened PR #1 (BurnBar platform, base main) + PR #2 (Gateway E2EE, base PR1 branch, stacked). Temp worktrees removed. PR #1 https://github.com/Ajnunezg/hermes-agent/pull/1 ; PR #2 https://github.com/Ajnunezg/hermes-agent/pull/2"
+      },
+      {
+        ts: "2026-06-03T11:00:00Z",
+        status: "done",
+        phase: "codex-remediation",
+        actor: "agent",
+        summary: "Codex 2-pass review found the E2E PRIMITIVES sound but the PROTOCOL layer exploitable (key-swap MITM, fail-open, standalone bypass, replay, broken key persistence, attachment AAD, plaintext model_switch). Fixed ALL 10 (6 P1 + 4 P2): pin pairing key + reject swaps (adapter+server+phone), fail-closed, seal standalone, persist key 0600, replay cache, distinct attachment AAD, sealed model_switch, serialize strip-siblings, strict read validation, key-version clamp. Verified: fork pytest 62/62, gateway tests 9/9, functions tsc clean. Pushed PR2 87465d3ac + companion 3988402dc. Then remediated the 2 reported blockers: LiveAuthGateway GitHub-OAuth (iOS build SUCCEEDED) + 3 dedup tests (opaque-sourceSlug). 1 failure left = user-active privacyBackfill budgetEvents.detailJSON (needs seal-vs-drop decision)."
       }
     ];
 

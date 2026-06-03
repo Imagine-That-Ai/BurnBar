@@ -327,7 +327,8 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
       "action",
       "domain",
       "timestamp",
-      "hash-chain links"
+      "hash-chain links",
+      "generic notification routing ids"
     ],
     "deviceOnly": []
   }

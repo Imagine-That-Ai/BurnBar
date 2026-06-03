@@ -106,7 +106,6 @@ public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
     ) async throws -> String {
         let callable = Functions.functions(region: "us-central1").httpsCallable("configureKnowledgeSource")
         var payload: [String: Any] = ["sourceKind": sourceKind]
-        if let rootPath, !rootPath.isEmpty { payload["rootPath"] = rootPath }
         if let sourceSlug, !sourceSlug.isEmpty { payload["sourceSlug"] = sourceSlug }
         let result = try await callable.call(payload)
         guard let dict = result.data as? [String: Any],
@@ -192,11 +191,15 @@ public final class KnowledgeSyncService: @unchecked Sendable {
 
         do {
             for item in items {
+                let sourceID = try CloudVaultCrypto.pensieveSlugHmac(Self.slugify(item.sourcePath), keyData: vaultKey)
+
                 // 1) Register the source (server enforces the per-tier source cap).
+                // The server sees only an opaque vault-keyed source id; the path is
+                // sealed later in the per-vector metadata.
                 let slug = try await callable.configureKnowledgeSource(
                     sourceKind: item.sourceKind.rawValue,
-                    rootPath: item.sourcePath,
-                    sourceSlug: Self.slugify(item.sourcePath)
+                    rootPath: nil,
+                    sourceSlug: sourceID
                 )
 
                 // 2) chunk → embed → cloak → seal on device.

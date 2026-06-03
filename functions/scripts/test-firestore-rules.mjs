@@ -1591,7 +1591,7 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
       index: 0,
       hash: "hash",
@@ -2643,7 +2643,7 @@ test("Hermes Gateway state is server-owned and destinations are Cloud-gated", as
   };
   await assertFails(setDoc(doc(ownerDb, destinationPath), destination));
   await seedBurnBarProMaxEntitlement("hgw-owner");
-  await assertSucceeds(setDoc(doc(ownerDb, destinationPath), destination));
+  await assertFails(setDoc(doc(ownerDb, destinationPath), destination));
   await assertSucceeds(getDoc(doc(ownerDb, destinationPath)));
   await assertFails(getDoc(doc(otherDb, destinationPath)));
   await assertFails(
@@ -2828,8 +2828,10 @@ test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
   );
 });
 
-// T4 — session_logs chunk rejects unlisted + plaintext keys (hasOnly).
-test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
+// T4 — session_logs chunk writes are server-only. Search chunks are committed
+// through commitEncryptedSearchIndexBatch, where the callable validates every
+// token/semantic hash before Admin SDK writes `cloud_search_chunks`.
+test("T4 session_logs chunk denies all direct client writes", async () => {
   const db = authedDb("slc-owner");
   await seedHostedCloudEntitlement("slc-owner");
   const chunkBase = {
@@ -2843,7 +2845,7 @@ test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
     updatedAt: serverTimestamp(),
   };
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/0"), chunkBase)
   );
   await assertFails(
@@ -2856,6 +2858,18 @@ test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
     setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/2"), {
       ...chunkBase,
       text: "leak",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/3"), {
+      ...chunkBase,
+      tokenHashes: ["private prompt"],
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/4"), {
+      ...chunkBase,
+      semanticHashes: ["not-a-valid-hash"],
     })
   );
 });
@@ -3218,6 +3232,33 @@ test("T12 usage and budgetRules fail closed on plaintext project text", async ()
       id: "leak-label",
       sealedLabel: sealedText(),
       label: "Monthly cap",
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/budgetEvents/event-ok"), {
+      id: "event-ok",
+      ruleID: "sealed",
+      kind: "ruleUpdated",
+      source: "settings_ui",
+      amountAtEvent: 0,
+      limitAtEvent: 100,
+      occurredAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
+      sourceDeviceID: "device-a",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetEvents/event-leak"), {
+      id: "event-leak",
+      ruleID: "sealed",
+      kind: "ruleUpdated",
+      source: "settings_ui",
+      amountAtEvent: 0,
+      limitAtEvent: 100,
+      detailJSON: "{\"label\":\"Secret Project\"}",
+      occurredAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
     })
   );
 });

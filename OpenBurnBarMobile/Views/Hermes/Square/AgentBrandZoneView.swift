@@ -1344,17 +1344,18 @@ final class AgentSubscriptionTopicStore {
 
     // MARK: - Seal helpers
 
-    /// Opens a sealed-text field, falling back to a legacy plaintext field when
-    /// the sealed field is absent (or the key is unavailable).
+    /// Opens a sealed-text field, falling back to a legacy plaintext field only
+    /// when the sealed field is absent. A present sealed field is authoritative:
+    /// decrypt it or fail closed instead of leaking a stale plaintext sibling.
     private static func openSealedString(
         data: [String: Any],
         sealedField: String,
         legacyField: String,
         vaultKey: Data?
     ) -> String? {
-        if let vaultKey, let envelope = sealedText(from: data[sealedField]),
-           let opened = try? CloudVaultCrypto.openText(envelope, keyData: vaultKey) {
-            return opened
+        if let envelope = sealedText(from: data[sealedField]) {
+            guard let vaultKey else { return nil }
+            return try? CloudVaultCrypto.openText(envelope, keyData: vaultKey)
         }
         return data[legacyField] as? String
     }

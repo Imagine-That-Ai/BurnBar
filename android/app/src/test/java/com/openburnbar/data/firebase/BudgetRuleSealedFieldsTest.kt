@@ -97,18 +97,19 @@ class BudgetRuleSealedFieldsTest {
     }
 
     @Test
-    fun toBudgetRuleWithoutKeyLeavesSealedFieldsUnreadButLegacyWorks() {
+    fun toBudgetRuleWithSealedFieldDoesNotFallBackToLegacyPlaintext() {
         val sealedData: Map<String, Any?> =
             mapOf(
                 "scope" to "project",
                 "sealedProjectName" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("Hidden", vaultKey)),
+                "projectName" to "Legacy leak",
             )
         val sealedSnapshot = mockk<DocumentSnapshot>()
         every { sealedSnapshot.data } returns sealedData
         every { sealedSnapshot.id } returns "rule-sealed"
 
-        // No vault key: sealed project name cannot be opened, and there is no
-        // legacy plaintext, so projectName is null (rendered as "Unnamed project").
+        // No vault key: sealed project name cannot be opened. Because the sealed
+        // field is present, the legacy sibling must NOT leak.
         val rule = sealedSnapshot.toBudgetRule(vaultKey = null)
         requireNotNull(rule)
         assertNull(rule.projectName)
@@ -149,5 +150,20 @@ class BudgetRuleSealedFieldsTest {
         // 16-byte (32-hex) opaque trapdoor; never the plaintext.
         assertTrue(Regex("^[a-f0-9]{32}$").matches(a))
         assertNull(CloudVaultSealedTextCodec.projectKeyHash("   ", vaultKey))
+    }
+
+    /**
+     * Cross-platform contract with the Swift writer
+     * (`CloudVaultCrypto.projectKeyHash`): both collapse a project name to ASCII
+     * `[a-z0-9]` ONLY — stopwords/short tokens are KEPT — so the same project used
+     * on Android and Mac/iOS lands in ONE group-by bucket. "The API v2" must hash
+     * the same as its raw filtered form "theapiv2" (NOT a stopword-stripped
+     * "apiv2"), which is what Swift now produces after aligning to this contract.
+     */
+    @Test
+    fun projectKeyHashUsesAsciiOnlyCrossPlatformContract() {
+        val stopwordName = CloudVaultSealedTextCodec.projectKeyHash("The API v2", vaultKey)
+        requireNotNull(stopwordName)
+        assertEquals(stopwordName, CloudVaultSealedTextCodec.projectKeyHash("theapiv2", vaultKey))
     }
 }

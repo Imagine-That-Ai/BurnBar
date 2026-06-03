@@ -239,13 +239,6 @@ for (const field of ["title", "snippet", "terms", "projectName", "workingDirecto
     `!("${field}" in request.resource.data)`,
     `session-log manifest rejects ${field}`,
   );
-  assertSectionIncludes(
-    "firestore.rules",
-    "function ownerWritableSessionLogChunk(",
-    "function validCloudHexDigest(",
-    `!("${field}" in request.resource.data)`,
-    `session-log chunk rejects ${field}`,
-  );
 }
 assertSectionIncludes(
   "firestore.rules",
@@ -254,6 +247,59 @@ assertSectionIncludes(
   'request.resource.data.inferredTaskTitle == "Encrypted session"',
   "session-log manifest only accepts the generic inferredTaskTitle placeholder",
 );
+assertNotIncludes(
+  "firestore.rules",
+  ".all(",
+  "unsupported Firestore Rules list predicate in privacy-critical hash validation",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/session_logs/{logId}",
+  "match /users/{userId}/project_memory_snapshots/{docID}",
+  "allow create, update: if false;",
+  "legacy session_logs/{id}/chunks client writes must be server-only",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/cloud_search_chunks/{chunkId}",
+  "match /users/{userId}/cloud_search_postings/{postingId}",
+  "allow create, update: if false;",
+  "cloud_search_chunks client writes must be server-only",
+);
+assertIncludes(
+  "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
+  "private static let cloudSearchChunkMaxBytes = 16_000",
+  "Mac session-log search chunk size preserves encrypted search recall",
+);
+assertIncludes(
+  "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
+  "private static let cloudSearchChunkTokenHashLimit = 1_024",
+  "Mac session-log token hash writes preserve encrypted search recall",
+);
+assertIncludes(
+  "functions/src/callables/encryptedSearch.ts",
+  'const tokenHashes = requireTokenHashes(raw.tokenHashes, "chunk.tokenHashes");',
+  "commitEncryptedSearchIndexBatch must validate token hash arrays in trusted code",
+);
+assertIncludes(
+  "functions/src/callables/encryptedSearch.ts",
+  'const semanticHashes = requireOptionalSearchHashes(raw.semanticHashes, "chunk.semanticHashes");',
+  "commitEncryptedSearchIndexBatch must validate semantic hash arrays in trusted code",
+);
+for (const collection of ["cloud_search_documents", "cloud_search_chunks", "cloud_search_postings"]) {
+  assertIncludes(
+    "AgentLens/Services/CloudSync/ConversationTombstoneGCService.swift",
+    collection,
+    `tombstone GC must purge ${collection} rows after retention`,
+  );
+}
+for (const script of [
+  "functions/scripts/backfill-legacy-session-log-cloud-search-v3.mjs",
+  "functions/scripts/upload-local-sqlite-session-logs-v4.mjs",
+]) {
+  assertIncludes(script, "const CHUNK_MAX_BYTES = 16_000;", `${script} preserves encrypted search chunk capacity`);
+  assertIncludes(script, "const CHUNK_TOKEN_HASH_LIMIT = 1_024;", `${script} preserves encrypted search hash capacity`);
+}
 assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_documents/{documentId}", ["projectName"], "allow delete:");
 assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_chunks/{chunkId}", ["projectName"], "allow delete:");
 assertRulesAllowlistExcludes("match /users/{userId}/cloud_search_postings/{postingId}", ["projectName"], "allow delete:");
@@ -555,6 +601,11 @@ assertNotIncludes("functions/src/agentNotifications.ts", "createHash", "notifica
 assertNotIncludes("functions/src/agentNotifications.ts", "truncatePreview", "notification text preview truncation");
 assertNotIncludes("functions/src/agentNotifications.ts", "messageText", "notification message text event id input");
 assertNotIncludes("functions/src/agentNotifications.ts", "preview: reply.text", "notification plaintext preview");
+assertNotIncludes(
+  "packages/data-domains/registry.json",
+  '"agent_notification_events": "Ephemeral notification queue."',
+  "notification events must not be hidden from data domains",
+);
 assertIncludes(
   "functions/src/callables/agentNotifications.ts",
   "sealedReplyPayload",
@@ -590,7 +641,6 @@ for (const [section, note] of [
   ["function relayRequestWrite(", "relayRequestWrite lacks keys().hasOnly allowlist"],
   ["function relayChunkWrite(", "relayChunkWrite lacks keys().hasOnly allowlist"],
   ["function ownerWritableSessionLogManifest(", "session-log manifest lacks keys().hasOnly allowlist"],
-  ["function ownerWritableSessionLogChunk(", "session-log chunk lacks keys().hasOnly allowlist"],
   ["function validProjectMemorySnapshotKeys()", "project_memory_snapshots lacks keys().hasOnly allowlist"],
   ["function validMediaSessionEventKeys()", "media_session_events lacks keys().hasOnly allowlist"],
   ["function validMediaAttachmentManifestKeys()", "media_attachment_manifests lacks keys().hasOnly allowlist"],
@@ -635,6 +685,45 @@ assertSectionIncludes(
   '!("repoFullName" in request.resource.data)',
   "knowledge_repos must reject client-supplied cleartext repoFullName",
 );
+assertIncludes(
+  "functions/src/callables/knowledgeMemory.ts",
+  "rootPath is private and must stay sealed on device.",
+  "configureKnowledgeSource must reject rootPath",
+);
+assertNotIncludes(
+  "AgentLens/Services/CloudSync/KnowledgeSyncService.swift",
+  'payload["rootPath"]',
+  "Knowledge sync must not send rootPath to the server",
+);
+assertSectionNotIncludes(
+  "functions/src/callables/knowledgeMemory.ts",
+  "configureKnowledgeSource",
+  "deleteKnowledgeSource",
+  "rootPath,",
+  "knowledge manifests must not store rootPath",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/budgetEvents/{eventId}",
+  "match /users/{userId}/conversations/{conversationId}",
+  '!("detailJSON" in request.resource.data)',
+  "budgetEvents must reject detailJSON",
+);
+assertNotIncludes(
+  "AgentLens/Services/CloudBudgetService.swift",
+  '"detailJSON": event.detailJSON as Any',
+  "macOS cloud budget events must not upload detailJSON",
+);
+assertNotIncludes(
+  "OpenBurnBarMobile/Models/BudgetRulesStore.swift",
+  '"detailJSON": event.detailJSON as Any',
+  "iOS cloud budget events must not upload detailJSON",
+);
+assertNotIncludes(
+  "android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt",
+  '"detailJSON" to detailJSON',
+  "Android cloud budget events must not upload detailJSON",
+);
 
 // ── Hosted chat gateway: server-only writer, NOW sealed end-to-end ───────────
 // The gateway collections stay server-written (allow write: if false); the
@@ -654,6 +743,10 @@ assertRulesBlockDeniesClientWrite(
 assertRulesBlockDeniesClientWrite(
   "match /users/{userId}/hermes_gateway_attachments/{attachmentId}",
   "hermes_gateway_attachments must deny client writes (server-only writer)",
+);
+assertRulesBlockDeniesClientWrite(
+  "match /users/{userId}/hermes_gateway_approvals/{approvalId}",
+  "hermes_gateway_approvals must deny client writes (server-only writer)",
 );
 
 // ── Hermes Gateway callable source: the seal gate lives in the handler ───────
@@ -687,6 +780,20 @@ assertNotIncludes(
   HERMES_GATEWAY_CALLABLE,
   "protocolVersion: 1",
   "gateway callable must NOT hardcode the legacy plaintext protocol version 1",
+);
+// Oversight gate is CONTROL-PLANE only: the server must never persist a
+// client-supplied free-text approval `summary` (the action detail flows E2E
+// sealed over the message channel). Pin that the leak path is gone so a
+// regression re-adding it fails red here.
+assertNotIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "sanitizeHermesGatewayApprovalSummary(body.summary)",
+  "oversight gate must NOT persist client-supplied summary text (control-plane only)",
+);
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "CONTROL-PLANE only",
+  "oversight gate must document the control-plane privacy boundary",
 );
 
 // ── Pensieve knowledge callables: keyed-dedup + cloaked-vector contract ──────
@@ -745,6 +852,35 @@ for (const collection of [
     `dataExport must force seal-aware serialization for ${collection}`,
   );
 }
+assertNotIncludes(
+  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  'payload["text"] = text',
+  "iOS gateway must not construct plaintext event payloads",
+);
+assertNotIncludes(
+  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  'payload["senderDisplayName"] = senderDisplayName',
+  "iOS gateway must not construct plaintext sender payloads",
+);
+assertIncludes(
+  "functions/src/hermesGateway.ts",
+  "return false;",
+  "gateway plaintext write gate must be permanently closed",
+);
+assertSectionIncludes(
+  "functions/src/callables/privacyBackfill.ts",
+  'collection: "hermes_gateway_messages"',
+  'collection: "hermes_gateway_attachments"',
+  '{ field: "threadId", requires: "relayEnvelope" }',
+  "privacy backfill must scrub sealed gateway message threadId",
+);
+assertSectionIncludes(
+  "functions/src/callables/privacyBackfill.ts",
+  'collection: "hermes_gateway_messages"',
+  'collection: "hermes_gateway_attachments"',
+  '{ field: "replyToEventId", requires: "relayEnvelope" }',
+  "privacy backfill must scrub sealed gateway message replyToEventId",
+);
 // 3. The sealed envelope keys for media filename + subscription graph are
 //    recognized opaque columns (so they pass) and the bare plaintext keys are not.
 for (const sealedKey of ["sealedFilename", "sealedAgentURI", "sealedTopicID", "relayEnvelope"]) {

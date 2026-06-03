@@ -39,6 +39,7 @@ struct SettingsHubView: View {
     @AppStorage("costAlertThreshold") private var costAlertThreshold: Double = 25.0
     @AppStorage("usePremiumSOTAUX") private var usePremiumSOTAUX: Bool = false
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
 
     var body: some View {
         hubContent
@@ -151,6 +152,15 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Theme")
                     }
                     .settingsAnchor(SettingsAnchor.theme)
+
+                    Picker(selection: $appSkin) {
+                        Text("Aurora").tag(AppSkin.aurora)
+                        Text("Editorial").tag(AppSkin.editorial)
+                    } label: {
+                        SettingsLabel(icon: "doc.richtext", color: MobileTheme.ember, title: "App Skin")
+                    }
+                    .pickerStyle(.menu)
+                    .settingsAnchor(SettingsAnchor.appSkin)
 
                     NavigationLink(value: SettingsPageRoute.quotaCustomization) {
                         SettingsLabel(icon: "gauge.with.dots.needle.67percent", color: MobileTheme.ember, title: "Quota Customization")

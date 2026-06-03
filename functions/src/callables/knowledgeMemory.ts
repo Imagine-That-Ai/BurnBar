@@ -51,7 +51,7 @@
  */
 
 import { Timestamp, FieldValue, AggregateField } from "firebase-admin/firestore";
-import type { Query, WriteBatch } from "firebase-admin/firestore";
+import type { Query, QueryDocumentSnapshot, WriteBatch } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
@@ -244,10 +244,9 @@ export const commitKnowledgeBatch = onCall(
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
 
-      // Document-id key for the per-source manifest (a slug is a safe doc id, the
-      // HMAC is not necessarily). The HMAC is the SEARCH/DELETE filter key; the
-      // slug stays out of the per-vector rows (B-SEC-2).
-      const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
+      // Opaque vault-keyed source id for the per-source manifest. Path-derived
+      // slugs are rejected; source paths live only inside sealed metadata.
+      const sourceSlug = requireHexDigest(request.data.sourceSlug, "sourceSlug");
       // Vault-keyed HMAC(slug) the device computes; the only slug-derived value
       // stored on each vector. REQUIRED on the write path (privacy-leak-
       // remediation-2026-06-02 §3) — a cleartext slug is no longer stored on the
@@ -368,9 +367,8 @@ export const commitKnowledgeBatch = onCall(
       }
 
       // Per-source manifest: increment counts + record sync health (no plaintext).
-      // The manifest is intentionally slug-keyed (it is the user's own source
-      // registry, read back by configureKnowledgeSource); the per-vector rows —
-      // the cross-tenant-joinable surface B-SEC-2 targets — carry only `slugHmac`.
+      // The manifest id/sourceSlug is an opaque vault-keyed source id; source
+      // paths and labels live only inside sealed per-vector metadata.
       writes.push((batch) =>
         batch.set(
           db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`),
@@ -397,8 +395,8 @@ export const commitKnowledgeBatch = onCall(
 
 /**
  * configureKnowledgeSource — register a knowledge source (repo docs / notes /
- * chat memory) and return its stable slug. Enforces the per-tier source cap for
- * NEW sources only. Returns { sourceSlug }.
+ * chat memory) and return its stable opaque source id. Enforces the per-tier
+ * source cap for NEW sources only. Returns { sourceSlug }.
  */
 export const configureKnowledgeSource = onCall(
   CALLABLE_OPTS,
@@ -417,11 +415,12 @@ export const configureKnowledgeSource = onCall(
       await assertActiveBurnBarCloudProEntitlement(uid);
 
       const sourceKind = requireSourceKind(request.data.sourceKind, "sourceKind");
-      const rootPath = boundedTrimmedString(request.data.rootPath, "rootPath", 1024, false);
+      if (request.data.rootPath !== undefined && request.data.rootPath !== null) {
+        throw new HttpsError("invalid-argument", "rootPath is private and must stay sealed on device.");
+      }
       const repoInstallId = boundedTrimmedString(request.data.repoInstallId, "repoInstallId", 256, false);
-      const requested =
-        boundedTrimmedString(request.data.sourceSlug, "sourceSlug", 200, false) ?? rootPath ?? repoInstallId;
-      const sourceSlug = safeCloudDocumentID(slugify(requested ?? randomBytes(8).toString("hex")), "sourceSlug");
+      const requested = request.data.sourceSlug ?? repoInstallId ?? randomBytes(32).toString("hex");
+      const sourceSlug = requireHexDigest(requested, "sourceSlug");
 
       const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`);
       const existing = await manifestRef.get();
@@ -441,7 +440,6 @@ export const configureKnowledgeSource = onCall(
           uid,
           sourceSlug,
           sourceKind,
-          rootPath,
           repoInstallId,
           chunkCount: existing.exists ? (existing.get("chunkCount") ?? 0) : 0,
           byteCount: existing.exists ? (existing.get("byteCount") ?? 0) : 0,
@@ -463,7 +461,7 @@ export const deleteKnowledgeSource = onCall(
     async (request: CallableRequest<{ sourceSlug?: unknown; slugHmac?: unknown }>) => {
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
-      const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
+      const sourceSlug = requireHexDigest(request.data.sourceSlug, "sourceSlug");
       const coll = db.collection(`users/${uid}/cloud_search_knowledge`);
 
       // B-SEC-2 rows are filter-keyed by `slugHmac` (not the cleartext slug).
@@ -574,20 +572,38 @@ export const purgeLegacyKnowledgeVectorsScheduled = onSchedule(
     memory: "512MiB",
   },
   async () => {
-    const users = await db.collection("users").limit(500).get();
+    const startedAt = Date.now();
     let usersScanned = 0;
     let deletedByVersion = 0;
     let deletedByRetiredTag = 0;
-    for (const user of users.docs) {
-      usersScanned += 1;
-      const stats = await purgeLegacyKnowledgeVectorsForUser(user.id);
-      deletedByVersion += stats.deletedByVersion;
-      deletedByRetiredTag += stats.deletedByRetiredTag;
+    let cursor: QueryDocumentSnapshot | undefined;
+    let exhausted = false;
+    while (Date.now() - startedAt < 500_000) {
+      let query = db.collection("users").orderBy("__name__").limit(500);
+      if (cursor) query = query.startAfter(cursor);
+      const users = await query.get();
+      if (users.empty) {
+        exhausted = true;
+        break;
+      }
+      for (const user of users.docs) {
+        usersScanned += 1;
+        const stats = await purgeLegacyKnowledgeVectorsForUser(user.id);
+        deletedByVersion += stats.deletedByVersion;
+        deletedByRetiredTag += stats.deletedByRetiredTag;
+      }
+      cursor = users.docs.at(-1);
+      if (users.size < 500) {
+        exhausted = true;
+        break;
+      }
     }
     logInfo({
       event: "callable_info",
       message: "legacy knowledge vector purge (scheduled)",
       usersScanned,
+      exhausted,
+      nextUserCursor: exhausted ? undefined : cursor?.id,
       deletedByVersion,
       deletedByRetiredTag,
     });

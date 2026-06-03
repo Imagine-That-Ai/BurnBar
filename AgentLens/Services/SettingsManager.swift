@@ -114,6 +114,12 @@ final class SettingsManager {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceSubStoreDidChange),
+            name: .appearanceSkinDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
             name: .useWebsiteBackgroundDidChange,
             object: nil
         )
@@ -290,6 +296,12 @@ final class SettingsManager {
         set { appearance.appearanceMode = newValue }
     }
 
+    /// The app skin (Aurora ember vs. Editorial paper). See `AppSkin`.
+    var appearanceSkin: AppSkin {
+        get { _ = appearanceMutationVersion; return appearance.appearanceSkin }
+        set { appearance.appearanceSkin = newValue }
+    }
+
     var showInMenuBar: Bool {
         get { _ = appearanceMutationVersion; return appearance.showInMenuBar }
         set { appearance.showInMenuBar = newValue }
@@ -362,6 +374,9 @@ final class SettingsManager {
 
     var preferredSwiftUIColorScheme: ColorScheme? {
         _ = appearanceMutationVersion
+        // Editorial is light-locked — its paper palette never sits on a dark
+        // appearance, so pin the scheme to light regardless of the mode picker.
+        if appearance.appearanceSkin == .editorial { return .light }
         return appearance.appearanceMode.colorScheme
     }
 

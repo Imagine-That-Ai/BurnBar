@@ -11,6 +11,12 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
   messages to the agent.
 - **Replies** via `/messages` and **typing** state via `/typing`.
 - **Attachments** via `/attachments/init` + signed upload + `/attachments/finalize`.
+- **End-to-end relay encryption** (`p256-hkdf-sha256-aesgcm`, via
+  `gateway.crypto.relay_e2ee`): once the paired phone publishes a relay public
+  key, the adapter seals every outgoing reply body / attachment to the phone's key
+  and opens phone-sealed inbound events with its own key; on an E2E-paired link it
+  refuses to send plaintext. The BurnBar Cloud gateway is a blind relay — it never
+  sees message/event/attachment bodies, sender names, or file names.
 - **Runtime status** to `/runtime` (on connect and every 30s): the agent's model
   catalog, current model/provider, and agent version. The gateway exposes this on
   `/state`, which is how BurnBar clients show whether the gateway is online and
@@ -20,7 +26,10 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
   `/state` within ~1s instead of waiting for the next heartbeat.
 - **Human-in-the-loop oversight**: when oversight is *supervised* (set per client
   from the BurnBar app), Hermes' slash-confirm prompts are routed through a BurnBar
-  approval gate (`/approvals`). The action waits until the user approves it on a
+  approval gate (`/approvals`). The gate is **control-plane only** — it carries the
+  action id and a coarse tool category, never the agent's free-text command; the
+  human-readable detail is delivered over the end-to-end encrypted message channel,
+  so the server never reads it. The action waits until the user approves it on a
   trusted BurnBar device; an unanswered gate expires. In *autonomous* mode the
   agent runs without prompting. Decisions are applied through Hermes' own
   `tools.slash_confirm`, so this only gates actions Hermes already routes through
@@ -53,18 +62,13 @@ hermes gateway status
 From the Hermes repo root:
 
 ```bash
-# Plugin registration, event mapping, send/typing/attachments.
-scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py
-
-# Oversight + runtime-state + model-switch logic (no network, no live runtime).
-plugins/platforms/burnbar/test_oversight_local.py     # run with the repo venv
+# Plugin registration, event mapping, send/typing/attachments, oversight,
+# runtime status + model switch, and the relay seal -> open round-trip.
+scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py tests/gateway/test_relay_e2ee.py
 
 # Deterministic smoke against a fake gateway (copies the plugin into a checkout).
 python plugins/platforms/burnbar/smoke_local.py smoke --hermes-repo .
 ```
-
-`test_oversight_local.py` finds the Hermes checkout via `HERMES_REPO` (defaults to
-`~/.hermes/hermes-agent`); set it to the checkout you are testing.
 
 ## Manual full-gateway local test
 

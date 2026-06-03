@@ -17,6 +17,7 @@ struct AccountSettingsView: View {
     let onEmailSignIn: (String, String) async throws -> Void
     let onEmailSignUp: (String, String) async throws -> Void
     let onLinkApple: () async throws -> Void
+    let onLinkGitHub: () async throws -> Void
     let onUpgradeToPremium: () -> Void
     let onDeleteAccount: () -> Void
     let onSignOut: () -> Void
@@ -208,6 +209,14 @@ struct AccountSettingsView: View {
                 )
                 Divider().background(DesignSystem.Colors.border)
                 signInMethodRow(
+                    logo: .github,
+                    title: "Sign in with GitHub",
+                    subtitle: "Use your GitHub account",
+                    provider: .github,
+                    action: onLinkGitHub
+                )
+                Divider().background(DesignSystem.Colors.border)
+                signInMethodRow(
                     logo: .email,
                     title: "Continue with Email",
                     subtitle: "Sign in or create an account",
@@ -295,6 +304,12 @@ struct AccountSettingsView: View {
                     logo: .google,
                     title: "Google",
                     isLinked: currentUser?.providerData.contains { $0.providerID == "google.com" } ?? false
+                )
+                Divider().background(DesignSystem.Colors.border)
+                linkedAccountRow(
+                    logo: .github,
+                    title: "GitHub",
+                    isLinked: currentUser?.providerData.contains { $0.providerID == "github.com" } ?? false
                 )
             }
             .background(DesignSystem.Colors.surface)
@@ -630,6 +645,7 @@ enum ICloudBackupOption {
 private enum AuthProviderAction {
     case apple
     case google
+    case github
     case email
 }
 
@@ -638,10 +654,11 @@ private enum AuthProviderAction {
 private enum AuthProviderLogo {
     case apple
     case google
+    case github
     case email
 }
 
-/// Renders real brand logos for auth providers (Apple, Google) with an
+/// Renders real brand logos for auth providers (Apple, Google, GitHub) with an
 /// SF Symbol fallback for email. Sized to fit a square frame of `size` pts.
 private struct AuthProviderLogoView: View {
     let logo: AuthProviderLogo
@@ -656,6 +673,8 @@ private struct AuthProviderLogoView: View {
                 appleLogoView
             case .google:
                 googleLogoView
+            case .github:
+                githubLogoView
             case .email:
                 Image(systemName: "envelope.fill")
                     .font(.system(size: size * 0.7))
@@ -693,6 +712,22 @@ private struct AuthProviderLogoView: View {
             Image(systemName: "g.circle.fill")
                 .font(.system(size: size * 0.7))
                 .foregroundStyle(Color(hex: "4285F4"))
+                .frame(width: size, height: size)
+        }
+    }
+
+    @ViewBuilder
+    private var githubLogoView: some View {
+        if NSImage(named: "GitHubLogo") != nil {
+            Image("GitHubLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        } else {
+            Image(systemName: "person.fill")
+                .font(.system(size: size * 0.7))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .frame(width: size, height: size)
         }
     }

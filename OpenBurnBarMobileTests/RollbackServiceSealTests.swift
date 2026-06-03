@@ -169,9 +169,13 @@ final class RollbackServiceSealTests: XCTestCase {
         )
         var encoded = try RollbackService.encodeRequest(request, vaultKey: key)
         encoded["requestedAt"] = ISO8601DateFormatter().string(from: Date())
+        encoded["scopeJSON"] = String(
+            data: try JSONEncoder().encode(RollbackScope.lastN(count: 99)),
+            encoding: .utf8
+        )!
 
-        // Without the key and no legacy plaintext, the scope cannot be opened
-        // and the row is dropped (no leak path).
+        // Without the key, the sealed scope cannot be opened. Because the sealed
+        // field is present, the legacy sibling must NOT leak.
         XCTAssertNil(RollbackService.decodeRequest(data: encoded, documentID: "req-1", vaultKey: nil))
     }
 

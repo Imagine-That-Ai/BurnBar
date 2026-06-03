@@ -172,11 +172,13 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
 
     func test_decodeTopic_sealedGraphUnreadableWithoutKey_returnsNil() throws {
         let key = CloudVaultCrypto.generateVaultKey()
-        let encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
+        var encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
+        encoded["agentURI"] = "agent://burnbar/legacy-leak"
+        encoded["topicID"] = "legacy-topic"
+        encoded["displayName"] = "Legacy display leak"
 
-        // Without the key (and no legacy plaintext graph edge), the sealed
-        // `agentURI`/`topicID` cannot open, so the row decodes to nil rather than
-        // leaking the opaque doc id — the graph stays invisible.
+        // Without the key, the sealed `agentURI`/`topicID` cannot open. Because
+        // the sealed fields are present, legacy siblings must NOT leak.
         let decoded = AgentSubscriptionTopicStore.decodeTopic(
             documentID: "sub_deadbeefdeadbeef", data: encoded, vaultKey: nil
         )

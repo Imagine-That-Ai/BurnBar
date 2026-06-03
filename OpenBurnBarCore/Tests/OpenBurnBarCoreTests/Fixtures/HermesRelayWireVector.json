@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "whs2eYmuHwEmKDdKdTPHwk8BZJR0PuxoElwngtBG8HfWNz7xHwWhtHqa5AcmLC0=",
+  "chunkCiphertext" : "MmiYNZ\/ykZAvOgXaDeiXnjFwMqFCND3d0LQTj6tci9EOTEymvYCaWdyrSRE6f1c=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "Ae6561BH52H3+ZBwEzV\/sRFUcZRGY5McZa1Md2Bj+XbVdCIuTKM\/0aFMBqvM+5J6tDbcZirhVZEbiatuDv+\/SNqETzimx93CU\/R78uCLvscsA1U19WXadlz4jl1vu9nOXP8fS5VajeDE3yxotnOKYcZdNTZK0VYPxHaIrZNLUjLC3+gqI5JTEiY+s6+oTSh0cP9rdzI+",
+  "payloadCiphertext" : "12Bds9vcIXnzkxUMUyMvLDIfxdVQoeGj1kAS92Y\/3FQkejT+F\/Pptv5Hc47ovifNi\/42cltMerwvcSwm3fOvPaikzpOAJ7bgvcjcSZxF6fBSdp4bTUIOI79vIFHdMa1Y\/+5apm1nvHTzzsGQ6evQvE4Ei+nV9TqoLNmYKnSyRpQhxahsNgEtoapvneyqjHnWzYF4v1J3",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BH46nwiglfglDrR3YnU8qM5pp2WDWvMwAik0OgS59NzQYoZ+Gs1C17CfY2aXGgLQpadG7JUo5VwZWoEQPLzFIESVGNefpJ7JD1Qio4NQrJr7Xt1GDQIO9fOTObwOc7NkaFwLdoBf2pwI7pyLQPCueJ8OQlCzKkN\/M7F64bg="
+  "wrappedKey" : "BF\/bBy6MMBFfS6LBiI4K+rfwxxqMNwXGbL4bKJny9SAXrwWzzAg75YokwzKUfPzkivB8pN3mKDBFjkR32lzYqkcB3lyZaqFc6vfivLOSqC0hW6xIPH4CAz7KnpTDOFKKmF+HHnFhbE0ItsyTEFYdPLXLsyd8PmZKHPWkcZs="
 }

@@ -278,26 +278,20 @@ internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
     val sequence = (this["sequence"] as? Number)?.toInt()
     val takenAtIso = this["takenAt"] as? String
     val takenAtEpoch = takenAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
-    // Sealed-first: open `sealedActionLabel`, then fall back to legacy plaintext
-    // `actionLabel` for in-flight docs (CONTRACT legacy fallback).
     val actionLabel =
-        CloudVaultSealedTextCodec.open(this["sealedActionLabel"], vaultKey)
-            ?: this["actionLabel"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(this["sealedActionLabel"], vaultKey, this["actionLabel"] as? String)
     if (sequence == null || takenAtEpoch == null || actionLabel == null) return null
-    // `sealedTouchedFiles` seals the whole `[String]` array as one JSON string;
-    // open + reparse, falling back to legacy plaintext `touchedFiles` list.
+    // `sealedTouchedFiles` seals the whole `[String]` array as one JSON string.
+    // If the sealed field exists, fail closed instead of falling back to a stale
+    // plaintext sibling.
     val touched =
-        CloudVaultSealedTextCodec.open(this["sealedTouchedFiles"], vaultKey)?.let { json ->
-            runCatching {
-                val arr = org.json.JSONArray(json)
-                (0 until arr.length()).map { arr.getString(it) }
-            }.getOrNull()
-        }
-            ?: (this["touchedFiles"] as? List<*>)?.mapNotNull { it as? String }
-            ?: emptyList()
+        openSealedStringListOrLegacy(this["sealedTouchedFiles"], vaultKey, this["touchedFiles"])
     val macSnapshotPath =
-        CloudVaultSealedTextCodec.open(this["sealedMacSnapshotPath"], vaultKey)
-            ?: this["macSnapshotPath"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(
+            this["sealedMacSnapshotPath"],
+            vaultKey,
+            this["macSnapshotPath"] as? String,
+        )
     val restoredAtIso = this["restoredAt"] as? String
     val restoredAtEpoch = restoredAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
     return RollbackSnapshot(
@@ -314,11 +308,8 @@ internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
 
 internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vaultKey: ByteArray? = null): RollbackRequest? {
     val sessionID = this["sessionID"] as? String ?: return null
-    // Sealed-first: open `sealedScope`, then fall back to legacy plaintext
-    // `scopeJSON` for in-flight docs (CONTRACT legacy fallback).
     val scopeJSON =
-        CloudVaultSealedTextCodec.open(this["sealedScope"], vaultKey)
-            ?: this["scopeJSON"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(this["sealedScope"], vaultKey, this["scopeJSON"] as? String)
             ?: return null
     val scope = parseScope(scopeJSON)
     val statusRaw = this["status"] as? String
@@ -332,10 +323,8 @@ internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vault
             runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
         }
     val requestedBy = this["requestedBy"] as? String ?: "unknown"
-    // Sealed-first for the Mac-written resolution diagnostic, legacy fallback.
     val errorMessage =
-        CloudVaultSealedTextCodec.open(this["sealedErrorMessage"], vaultKey)
-            ?: this["errorMessage"] as? String
+        CloudVaultSealedTextCodec.openOrLegacy(this["sealedErrorMessage"], vaultKey, this["errorMessage"] as? String)
     return RollbackRequest(
         id = documentID,
         sessionID = sessionID,
@@ -346,6 +335,17 @@ internal fun Map<String, Any?>.toRollbackRequestOrNull(documentID: String, vault
         resolvedAtEpoch = resolvedAt,
         errorMessage = errorMessage,
     )
+}
+
+private fun openSealedStringListOrLegacy(rawSealed: Any?, vaultKey: ByteArray?, rawLegacy: Any?): List<String> {
+    if (CloudVaultSealedTextCodec.fromMap(rawSealed as? Map<*, *>) != null) {
+        val json = CloudVaultSealedTextCodec.open(rawSealed, vaultKey) ?: return emptyList()
+        return runCatching {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrNull() ?: emptyList()
+    }
+    return (rawLegacy as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
 }
 
 private fun parseScope(json: String): RollbackScope {
