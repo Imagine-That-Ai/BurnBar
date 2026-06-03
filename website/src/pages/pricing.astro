@@ -633,22 +633,26 @@ const headlineSave = Math.max(cloudSave, proSave);
   .plan__icon {
     display: grid;
     place-items: center;
-    width: 38px;
-    height: 38px;
-    border-radius: var(--r-2);
+    width: 72px;
+    height: 72px;
+    border-radius: var(--r-3);
     color: var(--bb-accent);
     border: 1px solid color-mix(in oklab, var(--bb-accent) 24%, var(--ink-line));
     background: color-mix(in oklab, var(--bb-accent) 9%, rgba(255, 255, 255, 0.02));
+    overflow: hidden;
+    flex-shrink: 0;
   }
   .plan__icon svg {
-    width: 20px;
-    height: 20px;
+    width: 36px;
+    height: 36px;
   }
   .plan__icon img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
     border-radius: inherit;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.18));
   }
   .plan__name {
     font-family: var(--font-display);

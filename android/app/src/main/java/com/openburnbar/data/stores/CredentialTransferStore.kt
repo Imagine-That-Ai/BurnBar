@@ -202,7 +202,7 @@ class CredentialTransferStore : ViewModel() {
                 val result = functions.getHttpsCallable("consumeCredentialTransfer")
                     .call(mapOf("code" to normalizedCode))
                     .await()
-                val data = result.data as? Map<*, *>
+                val data = result.getData() as? Map<*, *>
                 val encryptedPayload = data?.get("payload") as? String
                 if (encryptedPayload == null) {
                     _lastError.value = "Invalid transfer payload"

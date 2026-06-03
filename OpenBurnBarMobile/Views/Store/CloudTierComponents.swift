@@ -240,9 +240,19 @@ struct CloudTierCard: View {
         }
     }
 
+    private var crestImageName: String {
+        if plan.title.localizedCaseInsensitiveContains("ultra") {
+            return "CloudTierCrestUltra"
+        } else if plan.title.localizedCaseInsensitiveContains("pro") {
+            return "CloudTierCrestPro"
+        } else {
+            return "CloudTierCrest"
+        }
+    }
+
     private var header: some View {
         HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-            Image(isFlagship ? "CloudTierCrestPro" : "CloudTierCrest")
+            Image(crestImageName)
                 .resizable()
                 .renderingMode(.original)
                 .scaledToFit()

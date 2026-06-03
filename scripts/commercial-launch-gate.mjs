@@ -862,10 +862,14 @@ export function evaluateCloudRunServiceReadiness(name, service) {
 }
 
 export function evaluateRetiredCloudRunServiceAbsence(name, state) {
+  const exists =
+    state.exists === true ||
+    state.missing === false ||
+    Boolean(state.service);
   return {
     name,
-    absent: !state.exists && !state.error,
-    ready: state.exists ? state.ready : null,
+    absent: !exists && !state.error,
+    ready: exists ? (state.ready ?? null) : null,
     url: state.url || state.service?.status?.url || null,
     error: state.error,
   };

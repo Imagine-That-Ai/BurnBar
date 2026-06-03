@@ -70,13 +70,17 @@ enum ComputerUseSecurityCallableClient {
     }
 
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
-    static func approveEscrowDeviceTrust(deviceId: String) async throws {
+    static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
-        let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call([
+        var payload: [String: Any] = [
             "deviceId": deviceId
-        ])
+        ]
+        if let approverDeviceId, !approverDeviceId.isEmpty {
+            payload["approverDeviceId"] = approverDeviceId
+        }
+        let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call(payload)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust approval failed.")
         }
