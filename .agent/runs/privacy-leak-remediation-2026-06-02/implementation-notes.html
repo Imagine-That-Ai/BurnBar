@@ -91,8 +91,9 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> [doing] Recon phase — 8 read-only agents mapping data flow + exact change points to lock the sealing design before parallel implementation.</li>
-    <li><strong>Current phase:</strong> RECON (architecture lock). Next: PHASE 1 design decision (esp. whether Hermes Gateway is sealable E2E vs intentionally server-readable), then PHASE 2 parallel implementation streams (TS / Swift-Mac / Swift-iOS / Kotlin / rules+tests / honesty+tooling).</li>
+    <li><strong>Status:</strong> [doing] INTEGRATION/VALIDATION — Wave 2 (7 streams) landed; functions/rules/android/core/data-domains all GREEN; orchestrator closed 4 cross-stream handoffs (A-D below); adversarial closure re-scan + Mac BudgetRule app test running.</li>
+    <li><strong>Current phase:</strong> INTEGRATE. Validation done so far: data-domains 14/14; functions tsc clean; firestore rules emulator 40/40; functions vitest 195 pass; agent-notifications/encrypted-search/encrypted-session-blob/conversation-query all pass; privacy scan PASS; OpenBurnBarCore build + crypto/Pensieve tests pass; Android :app:compileDebugKotlin CLEAN (0 errors); Mac app UsageSyncRoundTripTests PASS. Remaining: BudgetRule app test (running), iOS S3 tests, adversarial closure verdicts, docs/memory/ledger finalize.</li>
+    <li><strong>Orchestrator integration fixes (un-owned-file handoffs the streams correctly flagged):</strong> (A) DownloadSyncService.swift Mac usage peer-download now opens sealedProjectName; (B) android FirestoreBudgetRepository.downloadAllBudgetRules now resolves+passes the read vault key; (C) legacy.ts MediaAttachmentManifestDoc gained sealedFilename (filename now optional/legacy); (D) encryptedSearch.ts commit now honors S1's legacyDocID to delete the stranded plaintext-slug project_memory doc. Also added knowledge_repos repoFullName/sourcePath rejection to firestore.rules (SE scanner caught the gap) and fixed 1 stale conversation-query test (removed a server-side projectName facet expectation) + 1 S1 Pensieve test (JSON-slash-escaping false negative).</li>
     <li><strong>Source of truth for the bugs:</strong> the 2026-06-02 adversarial review (see memory <code>project_privacy_hardening_open_leaks</code>). Confirmed leaks: Hermes Gateway plaintext (P0), project_memory_snapshots name (P1), dataExport verbatim dump (P1), knowledge_repos + Pensieve (P1), usage/budget project text (P2). Plus denylist-only rules, client regressions, blind scanner/tests, manual-only migration.</li>
     <li><strong>Blockers:</strong> None yet. Possible product fork pending recon: if the gateway needs server-side plaintext (hosted inference), sealing is impossible and the fix becomes honest-labeling — will resolve from code or ask Alberto.</li>
     <li><strong>Next action:</strong> When recon returns, synthesize the locked design into this file's "Decisions" section, then launch the implementation workflow. Do NOT start edits before the gateway seal-vs-label decision is made.</li>
@@ -187,7 +188,21 @@
         status: "validated",
         phase: "integrate",
         actor: "agent",
-        summary: "Functions/Node/rules GREEN: data-domains 14/14 (incl new honesty assertions); privacy scan PASS (after I added knowledge_repos repoFullName/sourcePath rejection to firestore.rules - a cross-stream gap SE's scanner caught); functions tsc build clean; firestore rules emulator 40/40 (SD added T1-T12, incl sealed-cancel/project-memory/usage denial); vitest 195 pass; agent-notifications pass; encrypted-search-index 4/4; encrypted-session-blob 13/13; conversation-query 13/13 (fixed 1 stale pre-existing test asserting a removed server-side projectName facet). Next: Swift core build + Android compile + DataDomains sync."
+        summary: "Functions/Node/rules GREEN: data-domains 14/14 (incl new honesty assertions); privacy scan PASS (after I added knowledge_repos repoFullName/sourcePath rejection to firestore.rules - a cross-stream gap SE's scanner caught); functions tsc build clean; firestore rules emulator 40/40 (SD added T1-T12, incl sealed-cancel/project-memory/usage denial); vitest 195 pass; agent-notifications pass; encrypted-search-index 4/4; encrypted-session-blob 13/13; conversation-query 13/13 (fixed 1 stale pre-existing test asserting a removed server-side projectName facet)."
+      },
+      {
+        ts: "2026-06-03T06:30:00Z",
+        status: "validated",
+        phase: "integrate",
+        actor: "agent",
+        summary: "Swift + Android GREEN. OpenBurnBarCore swift build clean; CloudVaultCryptoTests 11/11 (3 new helpers); PensieveKnowledgeChunkerTests 5/5 (fixed 1 JSON-slash-escaping false-negative test). Android :app:compileDebugKotlin 0 errors (after fix B import). Mac app UsageSyncRoundTripTests PASS (exit 0). Closed orchestrator handoffs A/B/C/D; functions rebuild clean + scan still PASS."
+      },
+      {
+        ts: "2026-06-03T06:35:00Z",
+        status: "doing",
+        phase: "verify-closure",
+        actor: "agent",
+        summary: "Launched 5-agent adversarial closure re-scan (confirm each named leak CLOSED + hunt residual plaintext) + Mac BudgetRule app test (validates S2 budget seal + fix-A DownloadSyncService recompile). Pending: verdicts, iOS S3 tests, docs+memory+ledger finalize."
       }
     ];
 

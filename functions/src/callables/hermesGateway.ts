@@ -2,12 +2,14 @@
  * @fileoverview BurnBar Cloud Hermes Gateway HTTP API and management callables.
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { createHash, randomBytes } from "node:crypto";
 
 import { db } from "../adminRuntime.js";
+import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
@@ -15,11 +17,17 @@ import {
   bearerTokenFromAuthorizationHeader,
   canonicalHermesGatewayUserCode,
   clampHermesGatewayLimit,
+  clientAdvertisesModel,
+  effectiveOversightMode,
+  gatewayApprovalExpiryISO,
   generateHermesGatewayBearerToken,
   gatewayTokenExpiryISO,
   generateHermesGatewayDeviceCode,
   generateHermesGatewayDeviceSecret,
   hashHermesGatewayBearerToken,
+  isHermesGatewayApprovalDoc,
+  isHermesGatewayApprovalExpired,
+  isHermesGatewayClientOnline,
   isHermesGatewayTokenExpired,
   hashHermesGatewayDeviceSecret,
   hasHermesGatewayScope,
@@ -28,23 +36,30 @@ import {
   HERMES_GATEWAY_MAX_ATTACHMENT_BYTES,
   HERMES_GATEWAY_MAX_EVENT_TEXT,
   HERMES_GATEWAY_MAX_MESSAGE_TEXT,
+  HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_SCHEMA_VERSION,
   isHermesGatewayClientDoc,
   isHermesGatewayAttachmentManifestDoc,
   isSha256Hex,
   makeHermesGatewaySSE,
   parseHermesGatewayCursor,
+  pendingModelSwitchInFlight,
+  publicApprovalView,
   publicClientView,
   randomHermesGatewayUserCode,
   safeEqualHex,
+  sha256Hex,
+  sanitizeHermesGatewayApprovalSummary,
   sanitizeHermesGatewayDestinationId,
   sanitizeHermesGatewayModelId,
   sanitizeHermesGatewayModelOptions,
+  sanitizeHermesGatewayOversightMode,
   sanitizeHermesGatewayScopes,
   sanitizedAttachmentIds,
   sanitizedGatewayDisplayName,
   serializeHermesGatewayEvent,
   tokenPreview,
+  type HermesGatewayApprovalDoc,
   type HermesGatewayAttachmentManifestDoc,
   type HermesGatewayClientDoc,
   type HermesGatewayScope,
@@ -99,6 +114,11 @@ interface GatewayHttpError {
 
 type StorageBucket = ReturnType<ReturnType<typeof getStorage>["bucket"]>;
 type StorageFile = ReturnType<StorageBucket["file"]>;
+
+// Platforms eligible to resolve an oversight gate. Mirrors the trusted-native
+// escrow set enforced by the CLI-agent mission approval path so the gateway and
+// mission oversight share one trust model (a web/headless device cannot approve).
+const NATIVE_ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 
 function httpError(status: number, error: string, detail?: string): GatewayHttpError {
   return { status, error, detail };
@@ -241,13 +261,14 @@ async function assertActiveHermesGatewayEntitlement(uid: string): Promise<void> 
   throw new HttpsError("permission-denied", "BurnBar Cloud or BurnBar Cloud Pro is required for Hermes Gateway.");
 }
 
-async function assertActiveHermesGatewayClient(uid: string, targetClientId: string): Promise<void> {
+async function assertActiveHermesGatewayClient(uid: string, targetClientId: string): Promise<HermesGatewayClientDoc> {
   const ref = db.doc(`users/${uid}/hermes_gateway_clients/${targetClientId}`);
   const snap = await ref.get();
   const client = snap.data();
   if (!snap.exists || !isHermesGatewayClientDoc(client) || client.status !== "active" || client.id !== targetClientId) {
     throw new HttpsError("failed-precondition", "Selected Hermes Gateway client is not active.");
   }
+  return client;
 }
 
 async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope): Promise<ResolvedGatewayGrant> {
@@ -506,15 +527,24 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   const runtimeModelId = sanitizeHermesGatewayModelId(body.currentModelId);
   const runtimeProviderId = boundedTrimmedString(body.currentProviderId, "currentProviderId", 80, false);
   const runtimeModelOptions = sanitizeHermesGatewayModelOptions(body.modelOptions);
+  const agentVersion = boundedTrimmedString(body.agentVersion, "agentVersion", 120, false);
   const now = nowISO();
+  // Reconcile the optimistic model-switch marker: once the runtime reports it is
+  // actually running the requested model, clear pendingModelId so /state stops
+  // reporting "switching…". A no-op when there is no pending switch.
+  const pending = typeof grant.client.pendingModelId === "string" ? grant.client.pendingModelId.trim() : "";
+  const settled = !!pending && !!runtimeModelId && pending.toLowerCase() === runtimeModelId.trim().toLowerCase();
   await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(
     stripUndefinedObject({
       runtimeModelId,
       runtimeProviderId,
       runtimeModelOptions,
+      agentVersion,
       runtimeUpdatedAt: now,
       lastSeenAt: now,
       updatedAt: now,
+      pendingModelId: settled ? FieldValue.delete() : undefined,
+      pendingModelRequestedAt: settled ? FieldValue.delete() : undefined,
       schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
     }),
     { merge: true },
@@ -523,8 +553,58 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
     success: true,
     runtimeModelId,
     runtimeProviderId,
+    agentVersion,
     modelOptionCount: runtimeModelOptions.length,
+    pendingModelSwitchSettled: settled,
     runtimeUpdatedAt: now,
+  });
+}
+
+/**
+ * GET /state — a single truthful snapshot of the gateway: the event cursor, the
+ * paired clients with DERIVED online/offline + in-flight model switch, the
+ * current model, the oversight mode, and version metadata. Read-only: it never
+ * bumps the event cursor. Presence is derived from lastSeenAt at read time, so a
+ * stopped gateway reports offline without any write.
+ */
+async function handleGatewayState(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method !== "GET") throw httpError(405, "method_not_allowed");
+  const grant = await resolveGatewayGrant(req, "hermes.gateway.read");
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const [stateSnap, clientsSnap] = await Promise.all([
+    db.doc(`users/${grant.uid}/hermes_gateway_state/cursors`).get(),
+    db.collection(`users/${grant.uid}/hermes_gateway_clients`).get(),
+  ]);
+  const eventSequence = Number(stateSnap.get("eventSequence") ?? 0);
+  const activeClients = clientsSnap.docs
+    .flatMap((doc): HermesGatewayClientDoc[] => {
+      const client = doc.data();
+      return isHermesGatewayClientDoc(client) ? [client] : [];
+    })
+    .filter((client) => client.status === "active")
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const clients = activeClients.map((client) => ({
+    ...publicClientView(client),
+    online: isHermesGatewayClientOnline(client.lastSeenAt, now),
+    pendingModelSwitch: pendingModelSwitchInFlight(client, now),
+  }));
+  const onlineCount = activeClients.filter((client) => isHermesGatewayClientOnline(client.lastSeenAt, now)).length;
+  // The "current model" is whatever the freshest online client is running.
+  const primary = activeClients.find((client) => isHermesGatewayClientOnline(client.lastSeenAt, now));
+  sendJSON(res, 200, {
+    online: onlineCount > 0,
+    generatedAt: nowIso,
+    eventSequence: Number.isFinite(eventSequence) ? eventSequence : 0,
+    schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+    protocolVersion: HERMES_GATEWAY_PROTOCOL_VERSION,
+    currentModelId: primary?.runtimeModelId ?? null,
+    currentProviderId: primary?.runtimeProviderId ?? null,
+    agentVersion: primary?.agentVersion ?? null,
+    oversightMode: effectiveOversightMode(primary?.oversightMode),
+    connectedClientCount: onlineCount,
+    clientCount: clients.length,
+    clients,
   });
 }
 
@@ -656,6 +736,96 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
   sendJSON(res, 200, { attachment: finalized });
 }
 
+// Deterministic gate id so a retried arm request from the agent is idempotent
+// (same client + actionId always maps to the same approval document).
+function gatewayApprovalDocId(clientId: string, actionId: string): string {
+  return `hga_${sha256Hex(`${clientId}:${actionId}`).slice(0, 40)}`;
+}
+
+/**
+ * POST /approvals — the agent arms a human-in-the-loop gate before a risky
+ * action. Idempotent: arming the same (clientId, actionId) twice returns the
+ * existing gate (and its resolution if already decided). The gate is resolved by
+ * a trusted native device via the respondHermesGatewayApproval callable; the
+ * agent's write scope can never self-approve.
+ */
+async function handleArmApproval(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
+  const body = requestBody(req);
+  const actionId = requiredHttpIdentifier(body.actionId, "actionId");
+  const toolName = boundedTrimmedString(body.toolName, "toolName", 120, false);
+  const summary = sanitizeHermesGatewayApprovalSummary(body.summary);
+  const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
+  const approvalId = gatewayApprovalDocId(grant.client.id, actionId);
+  const ref = db.doc(`users/${grant.uid}/hermes_gateway_approvals/${approvalId}`);
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const existingSnap = await ref.get();
+  const existing = existingSnap.data();
+  if (existingSnap.exists && isHermesGatewayApprovalDoc(existing)) {
+    // Return the live gate (idempotent re-arm). publicApprovalView derives an
+    // expired status for a stale waiting gate so the agent stops blocking.
+    setNoStore(res);
+    sendJSON(res, 200, { approval: publicApprovalView(existing, now) });
+    return;
+  }
+  const doc: HermesGatewayApprovalDoc = {
+    id: approvalId,
+    clientId: grant.client.id,
+    destinationId,
+    actionId,
+    toolName,
+    summary,
+    status: "waiting_for_approval",
+    requestedAt: nowIso,
+    expiresAt: gatewayApprovalExpiryISO(now),
+    schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+  };
+  await ref.set(stripUndefinedObject(doc), { merge: false });
+  logInfo({ event: "hermes_gateway.approval_armed", client_id: grant.client.id, approval_id: approvalId });
+  setNoStore(res);
+  sendJSON(res, 200, { approval: publicApprovalView(doc, now) });
+}
+
+/**
+ * GET /approvals — the agent polls its gates for resolution. Returns the calling
+ * client's approvals (optionally one, via ?actionId=). Read-only; status is
+ * derived so an expired-but-unreaped gate reads as "expired".
+ */
+async function handleListApprovals(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method !== "GET") throw httpError(405, "method_not_allowed");
+  const grant = await resolveGatewayGrant(req, "hermes.gateway.read");
+  const now = Date.now();
+  const actionId = typeof req.query.actionId === "string" ? req.query.actionId.trim() : "";
+  if (actionId) {
+    const ref = db.doc(`users/${grant.uid}/hermes_gateway_approvals/${gatewayApprovalDocId(grant.client.id, actionId)}`);
+    const snap = await ref.get();
+    const doc = snap.data();
+    setNoStore(res);
+    if (!snap.exists || !isHermesGatewayApprovalDoc(doc) || doc.clientId !== grant.client.id) {
+      sendJSON(res, 404, { error: "not_found" });
+      return;
+    }
+    sendJSON(res, 200, { approval: publicApprovalView(doc, now) });
+    return;
+  }
+  const snap = await db
+    .collection(`users/${grant.uid}/hermes_gateway_approvals`)
+    .where("clientId", "==", grant.client.id)
+    .get();
+  const approvals = snap.docs
+    .flatMap((doc): HermesGatewayApprovalDoc[] => {
+      const approval = doc.data();
+      return isHermesGatewayApprovalDoc(approval) ? [approval] : [];
+    })
+    .sort((left, right) => right.requestedAt.localeCompare(left.requestedAt))
+    .slice(0, 50)
+    .map((approval) => publicApprovalView(approval, now));
+  setNoStore(res);
+  sendJSON(res, 200, { approvals });
+}
+
 export const burnBarHermesGateway = onRequest(
   {
     region: FUNCTIONS_REGION,
@@ -677,6 +847,10 @@ export const burnBarHermesGateway = onRequest(
       if (path === "/messages") return await handleMessageSend(req, res);
       if (path === "/typing") return await handleTyping(req, res);
       if (path === "/runtime") return await handleRuntimeStatus(req, res);
+      if (path === "/state") return await handleGatewayState(req, res);
+      if (path === "/approvals") {
+        return req.method === "GET" ? await handleListApprovals(req, res) : await handleArmApproval(req, res);
+      }
       if (path === "/attachments/init") return await handleAttachmentInit(req, res);
       if (path === "/attachments/finalize") return await handleAttachmentFinalize(req, res);
       sendJSON(res, 404, { error: "not_found" });
@@ -960,8 +1134,22 @@ export const enqueueHermesGatewayEvent = onCall(
       const targetClientId = request.data.targetClientId
         ? requiredIdentifier(request.data.targetClientId, "targetClientId")
         : undefined;
+      let targetClient: HermesGatewayClientDoc | undefined;
       if (targetClientId) {
-        await assertActiveHermesGatewayClient(uid, targetClientId);
+        targetClient = await assertActiveHermesGatewayClient(uid, targetClientId);
+      }
+      // Validate the requested model against the target runtime's advertised
+      // catalog. We only reject when the runtime has actually published a
+      // non-empty catalog and the model is absent — before inventory is known, a
+      // custom model id is allowed through (the runtime is the final authority).
+      if (eventKind === "model_switch" && requestedModelId && targetClient) {
+        const hasCatalog = (targetClient.runtimeModelOptions?.length ?? 0) > 0;
+        if (hasCatalog && !clientAdvertisesModel(targetClient, requestedModelId)) {
+          throw new HttpsError(
+            "invalid-argument",
+            `model_not_available: ${requestedModelId} is not in the selected client's advertised models.`,
+          );
+        }
       }
       const destinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
       const attachmentIds = sanitizedAttachmentIds(request.data.attachmentIds);
@@ -997,8 +1185,167 @@ export const enqueueHermesGatewayEvent = onCall(
             schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
           }),
         );
+        // Optimistically mark the switch in flight so /state reports "switching…"
+        // until the runtime republishes the applied model (or the TTL lapses).
+        if (eventKind === "model_switch" && requestedModelId && targetClientId) {
+          tx.set(
+            db.doc(`users/${uid}/hermes_gateway_clients/${targetClientId}`),
+            { pendingModelId: requestedModelId, pendingModelRequestedAt: now, updatedAt: now },
+            { merge: true },
+          );
+        }
       });
-      return stripUndefinedObject({ id: eventId, sequence, targetClientId });
+      return stripUndefinedObject({ id: eventId, sequence, targetClientId, pendingModelId: eventKind === "model_switch" ? requestedModelId : undefined });
     },
   ),
+);
+
+/**
+ * Set a paired client's human-in-the-loop oversight mode. "supervised" arms an
+ * approval gate before each risky agent action; "autonomous" runs unattended.
+ * The runtime reads this via /state and obeys it. Default (unset) is supervised.
+ */
+export const setHermesGatewayOversightMode = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 50,
+  },
+  wrapCallableHandler(
+    "setHermesGatewayOversightMode",
+    async (request: CallableRequest<{ clientId?: unknown; mode?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before changing Hermes Gateway oversight.");
+      enforceAuthAndAppCheck(request, uid);
+      await assertActiveHermesGatewayEntitlement(uid);
+      const clientId = requiredIdentifier(request.data.clientId, "clientId");
+      const mode = sanitizeHermesGatewayOversightMode(request.data.mode);
+      if (!mode) throw new HttpsError("invalid-argument", "mode must be 'supervised' or 'autonomous'.");
+      await assertActiveHermesGatewayClient(uid, clientId);
+      const now = nowISO();
+      await db
+        .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
+        .set({ oversightMode: mode, updatedAt: now }, { merge: true });
+      logInfo({ event: "hermes_gateway.oversight_mode_set", client_id: clientId, mode });
+      return { clientId, oversightMode: mode };
+    },
+  ),
+);
+
+/**
+ * Resolve a Hermes Gateway oversight gate from a TRUSTED NATIVE device.
+ *
+ * This reuses the exact hardened approval semantics of the CLI-agent mission
+ * primitive — App-Check-bound caller, a trusted native escrow device, single
+ * transactional resolution, and a server-stamped `approvedByDeviceId` — but
+ * targets the gateway's own `hermes_gateway_approvals` collection (the agent
+ * arms gates over a bearer token and can never self-approve). It does NOT touch
+ * the E2E-sealed `cli_agent_mission_requests` collection, which is client-created
+ * and cannot be armed by a server-side gateway action.
+ */
+export const respondHermesGatewayApproval = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler(
+    "respondHermesGatewayApproval",
+    async (request: CallableRequest<{ approvalId?: unknown; approve?: unknown; deviceId?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before responding to an oversight request.");
+      enforceHighRiskComputerUseCallable(request, uid);
+      const approvalId = boundedTrimmedString(request.data.approvalId, "approvalId", 160, true);
+      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+      if (typeof request.data.approve !== "boolean") {
+        throw new HttpsError("invalid-argument", "approve must be a boolean.");
+      }
+      const approve = request.data.approve;
+
+      const approvalRef = db.doc(`users/${uid}/hermes_gateway_approvals/${approvalId}`);
+      const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+
+      const result = await db.runTransaction(async (transaction) => {
+        const [approvalSnap, deviceSnap] = await Promise.all([
+          transaction.get(approvalRef),
+          transaction.get(deviceRef),
+        ]);
+        const approval = approvalSnap.data();
+        if (!approvalSnap.exists || !isHermesGatewayApprovalDoc(approval)) {
+          throw new HttpsError("not-found", "Oversight request was not found.");
+        }
+        if (approval.status !== "waiting_for_approval") {
+          throw new HttpsError("failed-precondition", "Oversight request has already been resolved.");
+        }
+        if (isHermesGatewayApprovalExpired(approval.expiresAt)) {
+          throw new HttpsError("failed-precondition", "Oversight request has expired.");
+        }
+        if (
+          !deviceSnap.exists ||
+          deviceSnap.get("trustState") !== "trusted" ||
+          !NATIVE_ESCROW_PLATFORMS.has(deviceSnap.get("platform"))
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "Oversight approvals require a trusted native device. Trust this device first.",
+          );
+        }
+        transaction.set(
+          approvalRef,
+          {
+            status: approve ? "approved" : "rejected",
+            respondedAt: nowISO(),
+            approvedByDeviceId: deviceId,
+          },
+          { merge: true },
+        );
+        return { status: approve ? "approved" : ("rejected" as HermesGatewayApprovalDoc["status"]) };
+      });
+
+      logInfo({
+        event: "hermes_gateway.approval_resolved",
+        approval_id: approvalId,
+        approved_by_device_id: deviceId,
+        status: result.status,
+      });
+      return { ok: true, approvalId, status: result.status, approvedByDeviceId: deviceId };
+    },
+  ),
+);
+
+/**
+ * Reap oversight gates left unanswered past their TTL by flipping them to
+ * "expired" so the phone UI and the agent both see a terminal state. Resolution
+ * paths already fail-close on expiry (publicApprovalView derives "expired"), so
+ * this is a tidy-up sweep, not a correctness dependency.
+ */
+export const reapHermesGatewayApprovals = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "UTC",
+    region: FUNCTIONS_REGION,
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const now = Date.now();
+    const snap = await db
+      .collectionGroup("hermes_gateway_approvals")
+      .where("status", "==", "waiting_for_approval")
+      .limit(400)
+      .get();
+    let reaped = 0;
+    let batch = db.batch();
+    for (const doc of snap.docs) {
+      const approval = doc.data();
+      if (!isHermesGatewayApprovalDoc(approval) || !isHermesGatewayApprovalExpired(approval.expiresAt, now)) continue;
+      batch.set(doc.ref, { status: "expired", respondedAt: new Date(now).toISOString() }, { merge: true });
+      reaped += 1;
+      if (reaped % 400 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
+    }
+    if (reaped % 400 !== 0) await batch.commit();
+    if (reaped > 0) logInfo({ event: "hermes_gateway.approvals_reaped", count: reaped });
+  },
 );

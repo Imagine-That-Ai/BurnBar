@@ -114,7 +114,7 @@
       "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
       "serverSees": ["device ids", "pairing metadata", "last seen", "relay routing", "hosted chat gateway message text", "hosted chat gateway sender names", "hosted chat gateway attachment file names"],
       "deviceOnly": ["end-to-end relay frame contents (sealed per their own domains)"],
-      "firestorePaths": ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "runtime_connection_preferences"],
+      "firestorePaths": ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "hermes_gateway_approvals", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "runtime_connection_preferences"],
       "storagePaths": ["hermes_gateway_attachments/**"],
       "countSource": "devices",
       "byteSource": null,
