@@ -311,7 +311,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+        run: |
+          for attempt in 1 2 3; do
+            if cargo install cargo-deny --locked; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: cargo deny check (openburnbar-iroh)
         run: cd crates/openburnbar-iroh && cargo deny check
