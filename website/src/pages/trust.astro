@@ -1,32 +1,39 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import TrustTierBadge from "@components/TrustTierBadge.astro";
+import DomainIcon from "@components/DomainIcon.astro";
 import { SITE } from "@data/site";
-import { TRUST_TIERS, TRUST_DOMAINS, TRUST_TIER_BY_ID } from "@data/trust.generated";
+import { TRUST_TIER_BY_ID, TRUST_DOMAINS } from "@data/trust.generated";
 
 /**
  * burnbar.ai/trust — the public mirror of the in-app Data & Privacy Control
- * Center. Every encryption-tier claim on this page is GENERATED from
- * packages/data-domains/registry.json (see website/src/data/trust.generated.ts),
- * and a CI drift gate fails red if this page's data ever diverges from the
- * registry. The marketing site cannot overstate what the product does, by
- * construction — not by a reviewer's good intentions.
+ * Center. Every claim here is GENERATED from packages/data-domains/registry.json
+ * (see website/src/data/trust.generated.ts) and CI fails if this page's data
+ * drifts from the registry — so the site can't overstate what the product does.
+ *
+ * Presentation: three plain buckets by who-can-read, strongest protection first.
+ * No raw facet dumps — just the human answer per kind of data.
  */
+const HEADINGS = {
+  end_to_end: "Only you can read these",
+  zero_access: "Locked — we keep only the sealed copy",
+  server_readable: "We can read these"
+} as const;
 
-const tierCounts = TRUST_TIERS.map((t) => ({
-  tier: t,
-  count: TRUST_DOMAINS.filter((d) => d.tier === t.id).length
+const TIER_ORDER = ["end_to_end", "zero_access", "server_readable"] as const;
+const groups = TIER_ORDER.map((id) => ({
+  tier: TRUST_TIER_BY_ID[id],
+  heading: HEADINGS[id],
+  domains: TRUST_DOMAINS.filter((d) => d.tier === id)
 }));
 
 const registryUrl = `${SITE.github}/blob/main/packages/data-domains/registry.json`;
 const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
-const pensieveDocUrl = `${SITE.github}/blob/main/docs/PENSIEVE.md`;
-const rulesUrl = `${SITE.github}/blob/main/firestore.rules`;
 ---
 
 <BaseLayout
   title="What we can and can't see"
-  description="Every kind of data BurnBar holds for you, and the honest encryption tier of each — server-readable, zero-access, or end-to-end. Generated from the same registry the apps use, so the claims can't drift."
+  description="A plain map of everything BurnBar keeps for you, sorted by who can read it — only your devices, sealed, or our servers. Generated from the same rules the apps run on."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -34,222 +41,113 @@ const rulesUrl = `${SITE.github}/blob/main/firestore.rules`;
       <h1 class="pagehead__h">What we can — and can't — see.</h1>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          Every kind of data BurnBar holds for you, with the honest encryption tier of each. This
-          page is generated from the very same registry our apps read — so what you see here is
-          exactly what the product enforces, never a marketing gloss on top of it.
+          A plain map of everything BurnBar keeps for you, sorted by who can read it. It's built
+          from the same rules our apps run on, so it can't quietly drift from the truth.
         </p>
       </div>
-      <p class="pagehead__meta mono">
-        {TRUST_DOMAINS.length} data domains · generated from <a
-          href={registryUrl}
-          target="_blank"
-          rel="noopener noreferrer">registry.json</a
-        > · CI-drift-gated
-      </p>
     </div>
   </section>
 
-  <!-- ── The three tiers (the color language) ─────────────────────────────── -->
-  <section class="tiers">
-    <div class="container">
-      <header class="sec-head">
-        <span class="eyebrow eyebrow--plain">Read the colors</span>
-        <h2>Three tiers. One honest scale.</h2>
-        <p class="lead">
-          From data we keep as readable operational metadata, to envelopes only your own devices can
-          open. The same colors you see in the app's control center.
-        </p>
-      </header>
+  {
+    groups.map((g) => (
+      <section class="bucket" style={`--tier-c: ${g.tier.colorHex}`}>
+        <div class="container bucket__inner">
+          <header class="bucket__head">
+            <TrustTierBadge tier={g.tier} size="lg" />
+            <h2 class="bucket__h">{g.heading}</h2>
+            <p class="bucket__line">{g.tier.serverLine}</p>
+          </header>
 
-      <ol class="tiers__grid">
-        {
-          TRUST_TIERS.map((t) => (
-            <li class="tiercard" style={`--tier-c: ${t.colorHex}`}>
-              <div class="tiercard__top">
-                <TrustTierBadge tier={t} size="lg" />
-                <span class="tiercard__chip mono">{t.badge}</span>
-              </div>
-              <p class="tiercard__def">{t.definition}</p>
-              <p class="tiercard__line">{t.serverLine}</p>
-            </li>
-          ))
-        }
-      </ol>
-
-      <ul class="tiers__counts" aria-label="Domain counts by tier">
-        {
-          tierCounts.map(({ tier, count }) => (
-            <li style={`--tier-c: ${tier.colorHex}`}>
-              <span class="tiers__counts-n">{count}</span>
-              <span class="tiers__counts-l">{tier.label}</span>
-            </li>
-          ))
-        }
-      </ul>
-    </div>
-  </section>
-
-  <!-- ── The inventory ────────────────────────────────────────────────────── -->
-  <section class="inventory">
-    <div class="container">
-      <header class="sec-head">
-        <span class="eyebrow eyebrow--ember">The full inventory</span>
-        <h2>Every domain, what stays yours, what we can read.</h2>
-        <p class="lead">
-          Each card flips between the two honest views: what only your devices can read, and what
-          our servers actually see. Nothing here is aspirational — it's the live registry.
-        </p>
-      </header>
-
-      <div class="inv__grid">
-        {
-          TRUST_DOMAINS.map((d) => {
-            const tier = TRUST_TIER_BY_ID[d.tier];
-            return (
-              <article class="invcard" style={`--tier-c: ${tier.colorHex}`}>
-                <div class="invcard__head">
-                  <h3 class="invcard__title">{d.title}</h3>
-                  <TrustTierBadge tier={tier} />
+          <ul class="bucket__list">
+            {g.domains.map((d) => (
+              <li class="dom">
+                <div class="dom__top">
+                  <span class="dom__icon">
+                    <DomainIcon id={d.id} />
+                  </span>
+                  <h3 class="dom__t">{d.title}</h3>
                 </div>
-                <p class="invcard__blurb">{d.blurb}</p>
-                <p class="invcard__line">{tier.serverLine}</p>
-
-                <div class="invcard__facets">
-                  <div class="facet facet--device">
-                    <span class="facet__h mono">Only your devices read</span>
-                    {d.deviceOnly.length > 0 ? (
-                      <ul class="facet__list">
-                        {d.deviceOnly.map((f) => (
-                          <li class="chip chip--device">{f}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p class="facet__empty">
-                        Nothing extra is hidden — this is operational metadata.
-                      </p>
-                    )}
-                  </div>
-                  <div class="facet facet--server">
-                    <span class="facet__h mono">Our servers can read</span>
-                    {d.serverSees.length > 0 ? (
-                      <ul class="facet__list">
-                        {d.serverSees.map((f) => (
-                          <li class="chip chip--server">{f}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p class="facet__empty">
-                        Nothing here — the server sees no facets for this domain.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {d.caveat && (
-                  <p class="invcard__caveat">
-                    <span class="invcard__caveat-tag mono">Worth knowing</span>
-                    {d.caveat}
-                  </p>
-                )}
-
+                <p class="dom__b">{d.blurb}</p>
+                {d.caveat && <p class="dom__note">{d.caveat}</p>}
                 {d.id === "pensieve" && (
-                  <a class="invcard__more" href="#cloak">
-                    How the vector cloak really works
-                    <span aria-hidden="true">↓</span>
+                  <a class="dom__more" href="#cloak">
+                    How the cloak works <span aria-hidden="true">↓</span>
                   </a>
                 )}
-              </article>
-            );
-          })
-        }
-      </div>
-    </div>
-  </section>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    ))
+  }
 
-  <!-- ── The cloak, told straight ─────────────────────────────────────────── -->
+  <!-- The one genuinely hard thing, told straight. -->
   <section class="cloak" id="cloak">
     <div class="container container--narrow">
       <header class="sec-head">
-        <span class="eyebrow eyebrow--plain">The hard part, told straight</span>
-        <h2>How Pensieve's vector cloak really works.</h2>
+        <span class="eyebrow eyebrow--plain">The hard part, in plain words</span>
+        <h2>How the Pensieve cloak works.</h2>
         <p class="lead">
-          Pensieve keeps your knowledge sealed on your own devices. The one thing the server has to
-          work with is a <em>cloaked</em> version of each note's math — just enough to find what's relevant
-          without ever reading it. Here is exactly what that cloak does, and what it deliberately doesn't.
+          Your notes are sealed on your own devices. To find the right one for your agent, our
+          server works with a scrambled version of each note's “shape” — never the words.
         </p>
       </header>
 
       <div class="cloak__cols">
         <div class="cloak__col cloak__col--does">
-          <h3 class="cloak__colh">What it does</h3>
+          <h3 class="cloak__colh">What it hides</h3>
           <ul class="cloak__list">
             <li>
-              <strong>Hides the public model's basis.</strong> Your stored vectors don't live in the off-the-shelf
-              coordinate frame the public embedding model uses, so tools built to reconstruct text from
-              those public vectors can't be aimed straight at yours. It raises the bar — it isn't a proof
-              that a stored vector can never be reversed.
+              <strong>The words.</strong> Your notes stay sealed. The server only ever touches scrambled
+              math, not text.
             </li>
             <li>
-              <strong>Makes the same note look different for every member.</strong> Each member's vault
-              key rotates their vectors a different way, so an identical note stored under two accounts
-              lands on different bytes. An exact-match lookup across accounts finds nothing.
+              <strong>The exact copy.</strong> The same note looks different on every account, so we can't
+              match it across people by an exact copy.
             </li>
           </ul>
         </div>
 
         <div class="cloak__col cloak__col--doesnt">
-          <h3 class="cloak__colh">What it doesn't</h3>
+          <h3 class="cloak__colh">What it can still tell</h3>
           <ul class="cloak__list">
             <li>
-              <strong>Hide the shape of your graph.</strong> The cloak preserves how close any two of
-              your notes are — that's exactly what lets recall run on the server without your key. So
-              the server can see the <em>structure</em> of your knowledge — clusters, near-duplicates,
-              how far a recall fans out — never the <em>content</em>.
+              <strong>The shape.</strong> It can see which of <em>your</em> notes are alike — clusters
+              and near-duplicates — but never what any of them say.
             </li>
             <li>
-              <strong>Fully unlink you across accounts.</strong> At today's settings the same note still
-              scores about <span class="mono">0.77</span> similar across two members' cloaks, so the server
-              could tell two accounts likely hold a near-identical item — never which item. Stronger cross-account
-              unlinkability is a documented, triggered upgrade, not a shipped claim.
+              <strong>A rough match.</strong> Across accounts, a near-identical note still scores about
+              <span class="mono">0.77</span> similar — so we could guess two people saved something alike,
+              never what it was.
             </li>
           </ul>
         </div>
       </div>
 
       <p class="cloak__close">
-        We treat this as accepted, documented leakage — confidence through honesty. Your content
-        stays sealed; what the server can infer is <em>structure</em>, and we say so out loud.
+        We treat that as a known, written-down trade-off. Your content stays private; only the
+        <em>shape</em> can leak — and we say so out loud.
       </p>
 
-      <div class="cloak__links">
-        <a class="btn btn--ghost" href={leakageUrl} target="_blank" rel="noopener noreferrer">
-          Read the full leakage analysis
-        </a>
-        <a class="btn btn--ghost" href={pensieveDocUrl} target="_blank" rel="noopener noreferrer">
-          Pensieve threat model
-        </a>
-      </div>
+      <a class="btn btn--ghost" href={leakageUrl} target="_blank" rel="noopener noreferrer">
+        Read the full analysis
+      </a>
     </div>
   </section>
 
-  <!-- ── Verify it yourself ───────────────────────────────────────────────── -->
+  <!-- Verify. -->
   <section class="verify">
     <div class="container container--narrow verify__inner">
       <h2>Don't take our word for it.</h2>
-      <div class="lead-glass-wrap glass-pane">
-        <p class="lead">
-          Every tier on this page is generated from one file you can read, and a CI gate fails the
-          build the moment this copy and that file disagree. The same registry drives the macOS,
-          iOS, Android, and web control centers — one source of truth, four surfaces, zero drift.
-        </p>
-      </div>
+      <p class="lead">
+        Every label here is generated from one file you can read, and our build fails the moment
+        this page and that file disagree.
+      </p>
       <div class="verify__links">
-        <a class="btn btn--ghost" href={registryUrl} target="_blank" rel="noopener noreferrer"
-          >registry.json</a
-        >
-        <a class="btn btn--ghost" href={rulesUrl} target="_blank" rel="noopener noreferrer"
-          >firestore.rules</a
-        >
+        <a class="btn btn--ghost" href={registryUrl} target="_blank" rel="noopener noreferrer">
+          registry.json
+        </a>
         <a class="btn btn--ghost" href="/privacy">Privacy model</a>
         <a class="btn btn--ghost" href="/security">Security model</a>
       </div>
@@ -259,270 +157,151 @@ const rulesUrl = `${SITE.github}/blob/main/firestore.rules`;
 
 <style>
   .pagehead {
-    padding-block: var(--s-9) var(--s-6);
+    padding-block: var(--s-9) var(--s-7);
   }
   .pagehead__inner {
-    max-width: 960px;
+    max-width: 920px;
     margin: 0 auto;
   }
   .pagehead__h {
     margin-top: var(--s-3);
-    max-width: 18ch;
+    max-width: 16ch;
   }
   .pagehead .lead {
     margin-top: var(--s-4);
-    max-width: 62ch;
-  }
-  .pagehead__meta {
-    margin-top: var(--s-4);
-    font-size: 0.78rem;
-    color: var(--text-mute);
-    letter-spacing: 0.02em;
-  }
-  .pagehead__meta a {
-    color: var(--ember-bright);
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    max-width: 56ch;
   }
 
+  /* ── buckets ───────────────────────────────────────────────────────────── */
+  .bucket {
+    padding-block: var(--s-8);
+    border-top: 1px solid var(--ink-line);
+  }
+  .bucket__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    gap: var(--s-7);
+    align-items: start;
+  }
+  .bucket__head {
+    display: grid;
+    gap: var(--s-3);
+    position: sticky;
+    top: var(--s-6);
+    align-content: start;
+    justify-items: start;
+  }
+  .bucket__h {
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    line-height: 1.1;
+    color: var(--text-bright);
+    letter-spacing: -0.02em;
+    max-width: 16ch;
+  }
+  .bucket__line {
+    color: color-mix(in oklab, var(--tier-c) 65%, var(--text-base));
+    font-size: 0.95rem;
+    line-height: 1.55;
+    max-width: 34ch;
+  }
+
+  .bucket__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-4);
+  }
+  .dom {
+    /* inherits --tier-c from the parent .bucket section */
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    padding: var(--s-5);
+    min-width: 0;
+    border-radius: var(--r-4);
+    background: rgba(12, 12, 18, 0.5);
+    border: 1px solid var(--ink-line);
+    border-left: 2px solid color-mix(in oklab, var(--tier-c) 55%, transparent);
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease);
+  }
+  .dom:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--tier-c) 32%, var(--ink-line));
+  }
+  .dom__top {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .dom__icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--r-3);
+    color: var(--tier-c);
+    background: color-mix(in oklab, var(--tier-c) 12%, rgba(8, 8, 12, 0.6));
+    border: 1px solid color-mix(in oklab, var(--tier-c) 30%, var(--ink-line));
+  }
+  .dom__icon :global(svg) {
+    width: 1.45rem;
+    height: 1.45rem;
+    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--tier-c) 45%, transparent));
+  }
+  .dom__t {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 560;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    min-width: 0;
+  }
+  .dom__b {
+    color: var(--text-base);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .dom__note {
+    margin-top: var(--s-1);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    color: var(--text-mute);
+    padding: var(--s-3);
+    border-radius: var(--r-3);
+    background: color-mix(in oklab, var(--tier-c) 7%, transparent);
+    border: 1px solid color-mix(in oklab, var(--tier-c) 18%, var(--ink-line));
+  }
+  .dom__more {
+    justify-self: start;
+    margin-top: var(--s-1);
+    font-size: 0.85rem;
+    color: var(--tier-c);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--tier-c) 40%, transparent);
+    padding-bottom: 1px;
+  }
+  .dom__more:hover {
+    border-bottom-color: var(--tier-c);
+  }
+
+  /* ── cloak ─────────────────────────────────────────────────────────────── */
   .sec-head {
     display: grid;
     gap: var(--s-3);
     margin-bottom: var(--s-6);
-    max-width: 64ch;
-  }
-  .sec-head .lead {
     max-width: 60ch;
   }
-
-  /* ── tiers ─────────────────────────────────────────────────────────────── */
-  .tiers,
-  .inventory,
   .cloak,
   .verify {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
   }
-  .tiers__grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--s-4);
-  }
-  .tiercard {
-    --tier-c: var(--text-mute);
-    display: grid;
-    gap: var(--s-3);
-    align-content: start;
-    padding: var(--s-5);
-    border-radius: var(--r-4);
-    background: rgba(10, 10, 15, 0.6);
-    border: 1px solid var(--ink-line);
-    border-top: 2px solid color-mix(in oklab, var(--tier-c) 70%, transparent);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  }
-  .tiercard__top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--s-3);
-  }
-  .tiercard__chip {
-    font-size: 0.68rem;
-    letter-spacing: 0.04em;
-    color: color-mix(in oklab, var(--tier-c) 80%, var(--text-base));
-    padding: 0.3em 0.55em;
-    border-radius: var(--r-pill);
-    border: 1px solid color-mix(in oklab, var(--tier-c) 28%, var(--ink-line));
-    white-space: nowrap;
-  }
-  .tiercard__def {
-    color: var(--text-base);
-    font-size: 0.95rem;
-    line-height: 1.55;
-  }
-  .tiercard__line {
-    color: var(--text-mute);
-    font-size: 0.86rem;
-    line-height: 1.5;
-    padding-top: var(--s-3);
-    border-top: 1px solid var(--ink-line);
-  }
-
-  .tiers__counts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-5);
-    margin-top: var(--s-6);
-    padding-top: var(--s-5);
-    border-top: 1px solid var(--ink-line);
-  }
-  .tiers__counts li {
-    --tier-c: var(--text-mute);
-    display: flex;
-    align-items: baseline;
-    gap: var(--s-2);
-  }
-  .tiers__counts-n {
-    font-family: var(--font-display);
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--tier-c);
-    line-height: 1;
-    text-shadow: 0 0 18px color-mix(in oklab, var(--tier-c) 40%, transparent);
-  }
-  .tiers__counts-l {
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    color: var(--text-mute);
-    letter-spacing: 0.03em;
-  }
-
-  /* ── inventory ─────────────────────────────────────────────────────────── */
-  .inv__grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--s-4);
-  }
-  .invcard {
-    --tier-c: var(--text-mute);
-    display: grid;
-    gap: var(--s-3);
-    align-content: start;
-    padding: var(--s-5);
-    min-width: 0;
-    border-radius: var(--r-4);
-    background: rgba(10, 10, 15, 0.62);
-    border: 1px solid var(--ink-line);
-    border-left: 2px solid color-mix(in oklab, var(--tier-c) 65%, transparent);
-    backdrop-filter: blur(22px) saturate(170%);
-    -webkit-backdrop-filter: blur(22px) saturate(170%);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.42);
-    transition:
-      border-color var(--dur-base) var(--ease),
-      box-shadow var(--dur-base) var(--ease),
-      transform var(--dur-base) var(--ease);
-  }
-  .invcard:hover {
-    transform: translateY(-2px);
-    border-color: color-mix(in oklab, var(--tier-c) 30%, var(--ink-line));
-    box-shadow:
-      0 16px 44px rgba(0, 0, 0, 0.5),
-      0 0 0 1px color-mix(in oklab, var(--tier-c) 18%, transparent);
-  }
-  .invcard__head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--s-3);
-  }
-  .invcard__title {
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 560;
-    line-height: 1.15;
-    letter-spacing: -0.01em;
-  }
-  .invcard__blurb {
-    color: var(--text-base);
-    font-size: 0.92rem;
-    line-height: 1.55;
-  }
-  .invcard__line {
-    color: color-mix(in oklab, var(--tier-c) 70%, var(--text-base));
-    font-size: 0.84rem;
-    line-height: 1.45;
-    font-style: italic;
-  }
-  .invcard__facets {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--s-4);
-    padding-top: var(--s-3);
-    border-top: 1px solid var(--ink-line);
-  }
-  .facet {
-    display: grid;
-    gap: var(--s-2);
-    align-content: start;
-    min-width: 0;
-  }
-  .facet__h {
-    font-size: 0.66rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-  }
-  .facet--device .facet__h {
-    color: color-mix(in oklab, var(--tier-c) 75%, var(--text-mute));
-  }
-  .facet__list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-  }
-  .chip {
-    font-size: 0.72rem;
-    line-height: 1.3;
-    padding: 0.22em 0.55em;
-    border-radius: var(--r-pill);
-    border: 1px solid var(--ink-line);
-    color: var(--text-base);
-    background: rgba(255, 255, 255, 0.03);
-  }
-  .chip--device {
-    border-color: color-mix(in oklab, var(--tier-c) 35%, var(--ink-line));
-    color: color-mix(in oklab, var(--tier-c) 35%, var(--text-bright));
-    background: color-mix(in oklab, var(--tier-c) 8%, transparent);
-  }
-  .chip--server {
-    border-color: rgba(199, 207, 221, 0.16);
-    color: var(--text-mute);
-  }
-  .facet__empty {
-    font-size: 0.78rem;
-    color: var(--text-dim);
-    font-style: italic;
-    line-height: 1.45;
-  }
-  .invcard__caveat {
-    font-size: 0.82rem;
-    line-height: 1.55;
-    color: var(--text-mute);
-    padding: var(--s-3);
-    border-radius: var(--r-3);
-    background: rgba(253, 196, 44, 0.05);
-    border: 1px solid rgba(253, 196, 44, 0.16);
-  }
-  .invcard__caveat-tag {
-    display: inline-block;
-    margin-right: 0.5em;
-    font-size: 0.64rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--core-amber);
-  }
-  .invcard__more {
-    justify-self: start;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4em;
-    font-size: 0.82rem;
-    color: var(--tier-c);
-    text-decoration: none;
-    border-bottom: 1px solid color-mix(in oklab, var(--tier-c) 40%, transparent);
-    padding-bottom: 1px;
-    transition: gap var(--dur-fast) var(--ease);
-  }
-  .invcard__more:hover {
-    gap: 0.7em;
-  }
-
-  /* ── cloak ─────────────────────────────────────────────────────────────── */
   .cloak {
     background: radial-gradient(80% 60% at 50% 0%, rgba(60, 214, 192, 0.05), transparent 70%);
   }
@@ -534,10 +313,8 @@ const rulesUrl = `${SITE.github}/blob/main/firestore.rules`;
   .cloak__col {
     padding: var(--s-5);
     border-radius: var(--r-4);
-    background: rgba(10, 10, 15, 0.55);
+    background: rgba(12, 12, 18, 0.5);
     border: 1px solid var(--ink-line);
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
   }
   .cloak__col--does {
     border-top: 2px solid color-mix(in oklab, #3cd6c0 60%, transparent);
@@ -560,34 +337,19 @@ const rulesUrl = `${SITE.github}/blob/main/firestore.rules`;
   }
   .cloak__list li {
     color: var(--text-base);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     line-height: 1.6;
-    padding-left: 1.1em;
-    position: relative;
-  }
-  .cloak__list li::before {
-    content: "—";
-    position: absolute;
-    left: 0;
-    color: var(--text-dim);
   }
   .cloak__list strong {
     color: var(--text-bright);
     font-variation-settings: "wght" 560;
   }
   .cloak__close {
-    margin-top: var(--s-5);
+    margin-block: var(--s-5);
     color: var(--text-base);
-    font-size: 0.95rem;
-    line-height: 1.6;
-    max-width: 60ch;
-  }
-  .cloak__links,
-  .verify__links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-3);
-    margin-top: var(--s-5);
+    font-size: 1rem;
+    line-height: 1.65;
+    max-width: 58ch;
   }
 
   /* ── verify ────────────────────────────────────────────────────────────── */
@@ -601,32 +363,31 @@ const rulesUrl = `${SITE.github}/blob/main/firestore.rules`;
     justify-items: center;
   }
   .verify__inner .lead {
-    max-width: 64ch;
+    max-width: 52ch;
   }
   .verify__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
     justify-content: center;
   }
 
   /* ── responsive ────────────────────────────────────────────────────────── */
   @media (max-width: 920px) {
-    .tiers__grid {
+    .bucket__inner {
       grid-template-columns: 1fr;
+      gap: var(--s-5);
     }
-    .inv__grid {
-      grid-template-columns: 1fr;
+    .bucket__head {
+      position: static;
     }
     .cloak__cols {
       grid-template-columns: 1fr;
     }
   }
-  @media (max-width: 560px) {
-    .invcard__facets {
+  @media (max-width: 600px) {
+    .bucket__list {
       grid-template-columns: 1fr;
-      gap: var(--s-3);
-    }
-    .invcard__head {
-      flex-direction: column;
-      gap: var(--s-2);
     }
   }
 </style>
