@@ -198,23 +198,23 @@ struct EasterEggParticleSystem {
             let tokenID = i % crestAssets.count
             let coinsPerCloud = performance.reduceMotion ? 3 : Int(rng.double(in: 5...8))
             let range = coinCursor..<(coinCursor + coinsPerCloud)
-            let startX = rng.double(in: -0.1...0.85)
+            let startX = rng.cgFloat(in: -0.1...0.85)
             clouds.append(CloudSprite(
                 tokenID: tokenID,
                 startX: startX,
-                driftX: rng.double(in: 30...70),
-                topY: rng.double(in: 0.06...0.16),
-                scale: rng.double(in: 0.85...1.15),
+                driftX: rng.cgFloat(in: 30...70),
+                topY: rng.cgFloat(in: 0.06...0.16),
+                scale: rng.cgFloat(in: 0.85...1.15),
                 dropStart: performance.reduceMotion ? 0 : rng.double(in: 0.2...1.1),
                 coinIndices: range
             ))
             for _ in 0..<coinsPerCloud {
                 coins.append(CoinSprite(
                     metal: rng.next() % 2 == 0 ? .gold : .silver,
-                    spawnX: startX + rng.double(in: 0.02...0.14),
+                    spawnX: startX + rng.cgFloat(in: 0.02...0.14),
                     spawnDelay: rng.double(in: 0...1.0),
-                    vx0: rng.double(in: -40...40),
-                    radius: rng.double(in: 7...12),
+                    vx0: rng.cgFloat(in: -40...40),
+                    radius: rng.cgFloat(in: 7...12),
                     spinRate: rng.double(in: 2...5)
                 ))
             }
@@ -301,7 +301,7 @@ struct EasterEggParticleSystem {
             edgeCoins.append(EdgeCoin(
                 metal: i % 2 == 0 ? .gold : .silver,
                 xFraction: 0.5 + CGFloat(i - count / 2) * 0.085,
-                radius: rng.double(in: 9...12),
+                radius: rng.cgFloat(in: 9...12),
                 phase: Double(i) * 0.05
             ))
         }
