@@ -4,6 +4,7 @@
 package com.openburnbar.data.missions
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,8 +49,9 @@ class RollbackServiceTest {
         for (status in RollbackRequest.Status.values()) {
             assertEquals(status, RollbackRequest.Status.fromToken(status.token))
         }
-        assertEquals(RollbackRequest.Status.PENDING, RollbackRequest.Status.fromToken(null))
-        assertEquals(RollbackRequest.Status.PENDING, RollbackRequest.Status.fromToken("unknown"))
+        assertEquals(RollbackRequest.Status.IN_FLIGHT, RollbackRequest.Status.fromToken("inFlight"))
+        assertNull(RollbackRequest.Status.fromToken(null))
+        assertNull(RollbackRequest.Status.fromToken("unknown"))
     }
 
     // `RollbackService.shared()` is exercised end-to-end against a

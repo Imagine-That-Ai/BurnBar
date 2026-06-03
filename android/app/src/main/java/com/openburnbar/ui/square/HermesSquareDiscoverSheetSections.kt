@@ -27,6 +27,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,8 +48,10 @@ import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.AgentSubscriptionTopic
 import com.openburnbar.data.square.AgentSubscriptionTopicStore
+import com.openburnbar.data.square.AgentSubscriptionUnsubscribeResult
 import com.openburnbar.data.square.AgentTier
 import com.openburnbar.data.square.PinnedAgentGridConfig
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun RecentList(recent: List<AgentIdentity>) {
@@ -456,6 +463,8 @@ internal fun SubscriptionsSheetContent(
     topics: List<AgentSubscriptionTopic>,
     store: AgentSubscriptionTopicStore,
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    var unsubscribeNotice by remember { mutableStateOf<String?>(null) }
     Column(
         modifier =
         Modifier
@@ -474,13 +483,37 @@ internal fun SubscriptionsSheetContent(
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        unsubscribeNotice?.let { notice ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                notice,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(modifier = Modifier.height(14.dp))
         if (topics.isEmpty()) {
             SubscriptionsEmptyState()
         } else {
             SubscriptionsTopicList(
                 topics = topics,
-                onUnsubscribe = store::unsubscribe,
+                onUnsubscribe = { agentURI ->
+                    unsubscribeNotice = "Removing subscription..."
+                    coroutineScope.launch {
+                        val message =
+                            runCatching {
+                                when (store.unsubscribe(agentURI)) {
+                                    AgentSubscriptionUnsubscribeResult.REMOVED -> "Subscription removed."
+                                    AgentSubscriptionUnsubscribeResult.LOCAL_ONLY_REMOVED -> "Local subscription removed."
+                                    AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY ->
+                                        "Connect this device to private cloud backup, then try again."
+                                }
+                            }.getOrElse {
+                                "Could not remove subscription. Try again."
+                            }
+                        unsubscribeNotice = message
+                    }
+                },
             )
         }
     }

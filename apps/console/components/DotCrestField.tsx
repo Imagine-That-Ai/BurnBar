@@ -12,27 +12,44 @@ import { useEffect, useRef } from "react";
 
 type Logo = { src: string; scale: number };
 
+// The full provider roster — every AI coding agent OpenBurnBar tracks, mirroring
+// the native `AgentProvider.swarmGlyphProviders` order, interleaved with the
+// three BurnBar Cloud crests. (Cursor Agent shares Cursor's mark; Anthropic and
+// Qwen ride along as recognizable model-family brand moments.)
 const LOGOS: Logo[] = [
   { src: "/brand/burnbar_cloud_crest.svg", scale: 0.4 },
   { src: "/brand/logos/openai.png", scale: 0.26 },
-  { src: "/brand/burnbar_cloud_pro_crest.svg", scale: 0.4 },
   { src: "/brand/logos/claude-code.png", scale: 0.26 },
   { src: "/brand/logos/codex.png", scale: 0.26 },
-  { src: "/brand/logos/antigravity.png", scale: 0.27 },
-  { src: "/brand/burnbar_cloud_ultra_crest.svg", scale: 0.4 },
-  { src: "/brand/logos/hermes.png", scale: 0.26 },
-  { src: "/brand/logos/openclaw.png", scale: 0.27 },
-  { src: "/brand/logos/anthropic.png", scale: 0.25 },
-  { src: "/brand/logos/cursor.png", scale: 0.26 },
   { src: "/brand/logos/gemini-cli.png", scale: 0.26 },
-  { src: "/brand/logos/xai.png", scale: 0.24 },
-  { src: "/brand/logos/windsurf.png", scale: 0.26 },
-  { src: "/brand/logos/kimi.svg", scale: 0.26 },
-  { src: "/brand/logos/deepseek.svg", scale: 0.27 },
-  { src: "/brand/logos/qwen.svg", scale: 0.26 },
+  { src: "/brand/logos/cursor.png", scale: 0.26 },
   { src: "/brand/logos/copilot.png", scale: 0.25 },
-  { src: "/brand/logos/factory.png", scale: 0.26 },
+  { src: "/brand/burnbar_cloud_pro_crest.svg", scale: 0.4 },
+  { src: "/brand/logos/deepseek.svg", scale: 0.27 },
+  { src: "/brand/logos/kimi.svg", scale: 0.26 },
+  { src: "/brand/logos/minimax.png", scale: 0.26 },
+  { src: "/brand/logos/zai.png", scale: 0.26 },
+  { src: "/brand/logos/xai.png", scale: 0.24 },
+  { src: "/brand/logos/mimo.svg", scale: 0.26 },
+  { src: "/brand/logos/qwen.svg", scale: 0.26 },
+  { src: "/brand/logos/ollama.png", scale: 0.26 },
+  { src: "/brand/burnbar_cloud_ultra_crest.svg", scale: 0.4 },
+  { src: "/brand/logos/windsurf.png", scale: 0.26 },
   { src: "/brand/logos/warp.png", scale: 0.26 },
+  { src: "/brand/logos/factory.png", scale: 0.26 },
+  { src: "/brand/logos/antigravity.png", scale: 0.27 },
+  { src: "/brand/logos/aider.png", scale: 0.26 },
+  { src: "/brand/logos/cline.png", scale: 0.26 },
+  { src: "/brand/logos/kilo-code.png", scale: 0.26 },
+  { src: "/brand/logos/roo-code.png", scale: 0.26 },
+  { src: "/brand/logos/forge.png", scale: 0.26 },
+  { src: "/brand/logos/augment.png", scale: 0.26 },
+  { src: "/brand/logos/opencode.png", scale: 0.26 },
+  { src: "/brand/logos/goose.png", scale: 0.26 },
+  { src: "/brand/logos/openclaw.png", scale: 0.27 },
+  { src: "/brand/logos/pi-agent.svg", scale: 0.26 },
+  { src: "/brand/logos/anthropic.png", scale: 0.25 },
+  { src: "/brand/logos/hermes.png", scale: 0.26 },
 ];
 
 const PERIOD = 9.5; // seconds a logo holds before it dissolves into the next

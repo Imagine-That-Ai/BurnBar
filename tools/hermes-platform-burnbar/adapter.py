@@ -183,9 +183,10 @@ def _gateway_aad(*parts: str) -> bytes:
     The bytes are ``"OpenBurnBar-HermesRelay-v1|" + "|".join(parts)`` UTF-8, the
     exact rule used by the Swift/Kotlin ``HermesRelayCrypto.aad`` and by
     :func:`relay_e2ee.request_aad`. Only the *parts list* differs for the gateway
-    flavour (``gatewayEvent`` / ``gatewayMessage`` / ``gatewayAttachmentBody`` /
-    ``gatewayAttachmentKey``), so the byte invariant stays single-sourced through
-    :meth:`relay_e2ee.RelayNamespace.aad`.
+    flavour (``gatewayEvent`` / ``gatewayEventKey`` / ``gatewayMessage`` /
+    ``gatewayMessageKey`` / ``gatewayAttachmentBody`` /
+    ``gatewayAttachmentKey``), so the byte invariant stays single-sourced
+    through :meth:`relay_e2ee.RelayNamespace.aad`.
     """
     string_parts = [str(p) for p in parts]
     if _RELAY_NAMESPACE is not None:
@@ -197,19 +198,16 @@ def _gateway_event_aad(uid: str, client_id: str, event_id: str) -> bytes:
     return _gateway_aad("gatewayEvent", uid, client_id, event_id)
 
 
-def _gateway_model_switch_aad(uid: str, client_id: str, event_id: str) -> bytes:
-    """AAD for a sealed ``model_switch`` control event.
-
-    ``model_switch`` is a control event a relay must not be able to inject in
-    cleartext on an E2E link. Sealing its ``{modelId}`` payload binds the model
-    id to ``(uid, clientId, eventId)`` under a distinct label so it cannot be
-    replayed as (or swapped with) a normal chat event.
-    """
-    return _gateway_aad("gatewayModelSwitch", uid, client_id, event_id)
+def _gateway_event_key_aad(uid: str, client_id: str, event_id: str) -> bytes:
+    return _gateway_aad("gatewayEventKey", uid, client_id, event_id)
 
 
 def _gateway_message_aad(uid: str, client_id: str, message_id: str) -> bytes:
     return _gateway_aad("gatewayMessage", uid, client_id, message_id)
+
+
+def _gateway_message_key_aad(uid: str, client_id: str, message_id: str) -> bytes:
+    return _gateway_aad("gatewayMessageKey", uid, client_id, message_id)
 
 
 def _gateway_attachment_manifest_aad(uid: str, client_id: str, attachment_id: str) -> bytes:
@@ -532,7 +530,7 @@ class _RelaySealer:
             _gateway_message_aad(self._uid, self._client_id, message_id),
         )
         wrapped = relay_e2ee.wrap_symmetric_key(
-            sym, peer, _gateway_message_aad(self._uid, self._client_id, message_id)
+            sym, peer, _gateway_message_key_aad(self._uid, self._client_id, message_id)
         )
         return {
             "payloadCiphertext": payload_ct,
@@ -613,7 +611,7 @@ class _RelaySealer:
                 "end-to-end encryption is required but this agent's relay key could not be loaded; "
                 "cannot open the inbound event"
             )
-        return self._open_envelope(raw, envelope, private_key, _gateway_event_aad)
+        return self._open_envelope(raw, envelope, private_key, _gateway_event_aad, _gateway_event_key_aad)
 
     def open_model_switch(self, raw: dict) -> Optional[dict]:
         """Open a sealed ``model_switch`` control event.
@@ -637,7 +635,10 @@ class _RelaySealer:
                 "end-to-end encryption is required but this agent's relay key could not be loaded; "
                 "cannot open the model_switch control event"
             )
-        return self._open_envelope(raw, envelope, private_key, _gateway_model_switch_aad)
+        # iOS emits model_switch as a normal sealed gateway event with
+        # {"modelId": ...} inside the event payload. Keep the AAD labels
+        # identical to the event path so phone-generated switches open here.
+        return self._open_envelope(raw, envelope, private_key, _gateway_event_aad, _gateway_event_key_aad)
 
     def seal_model_switch(self, *, destination_id: str, model_id: str) -> dict:
         """Seal a ``model_switch`` control payload to the peer (E2E send path)."""
@@ -645,12 +646,13 @@ class _RelaySealer:
         if not peer:
             raise _RelayPlaintextRefused(self.cannot_seal_reason("switch the model"))
         event_id = secrets.token_hex(16)
-        aad = _gateway_model_switch_aad(self._uid, self._client_id, event_id)
+        payload_aad = _gateway_event_aad(self._uid, self._client_id, event_id)
+        key_aad = _gateway_event_key_aad(self._uid, self._client_id, event_id)
         sym = relay_e2ee.generate_symmetric_key()
         payload_ct = relay_e2ee.seal_to_base64(
-            json.dumps({"modelId": model_id}).encode("utf-8"), sym, aad
+            json.dumps({"modelId": model_id}).encode("utf-8"), sym, payload_aad
         )
-        wrapped = relay_e2ee.wrap_symmetric_key(sym, peer, aad)
+        wrapped = relay_e2ee.wrap_symmetric_key(sym, peer, key_aad)
         return {
             "payloadCiphertext": payload_ct,
             "wrappedKey": wrapped,
@@ -659,24 +661,35 @@ class _RelaySealer:
             "eventId": event_id,
         }
 
-    def _open_envelope(self, raw: dict, envelope: dict, private_key, aad_builder) -> dict:
+    def _open_envelope(self, raw: dict, envelope: dict, private_key, payload_aad_builder, key_aad_builder=None) -> dict:
         """Unwrap + open one sealed envelope, then pin the peer key (TOFU/immutable).
 
-        ``aad_builder(uid, client_id, event_id)`` selects the gateway AAD label
-        (event vs model_switch). Peer-key pinning is enforced here: the sender's
-        published key is only adopted when no key is pinned yet (trust-on-first-
-        use); a *changed* key is rejected (logged, not adopted) as a possible MITM.
+        ``payload_aad_builder(uid, client_id, event_id)`` selects the payload
+        AAD label and ``key_aad_builder`` selects the key-wrap label. Swift uses
+        distinct ``...Key`` AADs for the wrapped symmetric key, and Python must
+        mirror that split exactly for cross-language opens to work. Peer-key
+        pinning is enforced here, but ONLY to confirm/guard an already-pinned key
+        (``allow_new_pin=False``): a *changed* key is rejected (logged, not
+        adopted) as a possible MITM. We never establish the FIRST pin from an
+        inbound ``senderPublicKey`` — the agent's own public key is published, so
+        a malicious relay can seal a valid event to it while riding in its own
+        ``senderPublicKey``; only the authenticated pairing handshake seeds a new
+        pin.
         """
         event_id = str(raw.get("id") or envelope.get("eventId") or "")
-        aad = aad_builder(self._uid, self._client_id, event_id)
-        sym = relay_e2ee.unwrap_symmetric_key(envelope["wrappedKey"], private_key, aad)
-        plaintext = relay_e2ee.open_base64(envelope["payloadCiphertext"], sym, aad)
-        # Pin the phone's published key the first time only; never overwrite a
-        # pinned key from an (unauthenticated) inbound field.
+        payload_aad = payload_aad_builder(self._uid, self._client_id, event_id)
+        key_builder = key_aad_builder or payload_aad_builder
+        key_aad = key_builder(self._uid, self._client_id, event_id)
+        sym = relay_e2ee.unwrap_symmetric_key(envelope["wrappedKey"], private_key, key_aad)
+        plaintext = relay_e2ee.open_base64(envelope["payloadCiphertext"], sym, payload_aad)
+        # Confirm/guard the pinned key only; never seed a new pin from an
+        # (unauthenticated) inbound field. The successful unwrap proves the frame
+        # was sealed to the agent's PUBLIC key — which the relay also knows — so it
+        # does not authenticate the carried senderPublicKey.
         peer = raw.get("senderPublicKey") or envelope.get("senderPublicKey")
         if peer:
             self._adapter._pin_peer_public_key(
-                str(raw.get("destinationId") or ""), str(peer), source="event"
+                str(raw.get("destinationId") or ""), str(peer), source="event", allow_new_pin=False
             )
         decoded = json.loads(plaintext.decode("utf-8"))
         return decoded if isinstance(decoded, dict) else {"text": str(decoded)}
@@ -791,15 +804,25 @@ class BurnBarAdapter(BasePlatformAdapter):
             logger.debug("[%s] Could not derive relay public key", self.name, exc_info=True)
             return None
 
-    def _pin_peer_public_key(self, destination_id: str, public_key_b64: str, *, source: str) -> bool:
+    def _pin_peer_public_key(
+        self, destination_id: str, public_key_b64: str, *, source: str, allow_new_pin: bool = True
+    ) -> bool:
         """Pin the peer relay public key once (trust-on-first-use), then treat it as IMMUTABLE.
 
         The relay server is untrusted: ``senderPublicKey`` / ``relayPublicKey`` on
-        an inbound doc are NOT authenticated. So we adopt a peer key only when
-        none is pinned yet (TOFU at pairing time). If a *different* key arrives
-        after pinning, we do NOT update it — that is a possible MITM / key
-        substitution. We log a security warning and return ``False`` so callers
-        (e.g. event handling) can drop the event.
+        an inbound doc are NOT authenticated. So a NEW pin (the very first peer
+        key for this link) may only be established from the authenticated pairing
+        handshake (``interactive_setup`` / device-grant, persisted to
+        ``BURNBAR_RELAY_PEER_PUBLIC_KEY`` and read at ``__init__``). The live
+        runtime responses (``/destinations`` / ``/events`` / ``/state``) flow in
+        through :meth:`_absorb_relay_state` with ``allow_new_pin=False`` so a
+        compromised relay can never TOFU-seed an attacker key once a persisted pin
+        was lost — it refuses to seal (clear error) instead of pin-jacking.
+
+        Once a key IS pinned, this is the immutability guard for every source: a
+        *changed* key is rejected (logged, not adopted) as a possible MITM and we
+        return ``False`` so callers (e.g. event handling) can drop the event. A
+        re-advertised matching key is idempotent.
 
         Signed key rotation is a deferred follow-up; pin-only is the policy now.
         """
@@ -807,8 +830,22 @@ class BurnBarAdapter(BasePlatformAdapter):
             return True
         pinned = self._peer_public_key
         if pinned is None:
-            # First key wins (TOFU). Persist so it survives restart and stays the
-            # single pinned identity for this link.
+            if not allow_new_pin:
+                # No persisted pin AND an untrusted runtime source: NEVER TOFU-seed
+                # a new peer key from the relay. Adopting it here would let a
+                # malicious /destinations|/events|/state response substitute an
+                # attacker key and read every agent->phone reply (pin-jacking). We
+                # refuse to establish the pin; the send path then fails closed.
+                logger.warning(
+                    "[%s] SECURITY: refusing to pin a peer relay key from untrusted source=%s "
+                    "(no authenticated pairing pin present); will refuse to seal until re-paired",
+                    self.name,
+                    source,
+                )
+                return False
+            # First key wins (TOFU) — only from the authenticated pairing path.
+            # Persist so it survives restart and stays the single pinned identity
+            # for this link.
             self._peer_public_key = public_key_b64
             if destination_id:
                 self._peer_public_keys[destination_id] = public_key_b64
@@ -856,30 +893,43 @@ class BurnBarAdapter(BasePlatformAdapter):
         return False
 
     def _absorb_relay_state(self, payload: dict) -> None:
-        """Pick up uid / clientId / E2E capability from a server doc.
+        """Pick up uid / clientId from an UNTRUSTED server doc (live runtime path).
 
-        Peer pubkeys carried by a server doc (``relayPublicKey`` /
-        ``phoneRelayPublicKey``) are only adopted to PIN the key the first time
-        (TOFU); a key that differs from the pinned one is ignored with a security
-        warning — the untrusted relay must not be able to rotate the peer key
-        post-pairing. uid/clientId are routing ids the server echoes (not secret)
-        and may update freely.
+        This is fed by ``/destinations`` (connect), ``/events`` (poll) and
+        ``/state`` (oversight) — all relay-controlled and unauthenticated. So:
+
+        * Peer pubkeys (``relayPublicKey`` / ``phoneRelayPublicKey``) are passed
+          through with ``allow_new_pin=False``: they can only CONFIRM an
+          already-pinned key (or trip the MITM warning on a changed one); they can
+          NEVER establish the first pin. A new pin comes solely from the
+          authenticated pairing handshake (``interactive_setup`` / device-grant),
+          so a relay that lost/never-saw the persisted pin cannot seed an attacker
+          key here.
+        * ``relayCapable`` / ``e2eEnabled`` are NOT allowed to flip a never-paired
+          agent into E2E. Promoting an unpaired agent to "encrypted" on the
+          untrusted relay's say-so only fabricates an encrypted UI state (and, with
+          the pin gap above, would otherwise hand the channel to the relay). E2E is
+          negotiated at pairing time and read from ``BURNBAR_RELAY_E2E`` at
+          ``__init__`` — never toggled on by a runtime response.
+
+        uid/clientId are routing ids the server echoes (not secret) and may update.
         """
         if not isinstance(payload, dict):
             return
         peer = payload.get("relayPublicKey") or payload.get("phoneRelayPublicKey")
         if peer:
-            self._pin_peer_public_key(str(payload.get("destinationId") or ""), str(peer), source="state")
+            # allow_new_pin=False: confirm/guard only — never TOFU-seed from the relay.
+            self._pin_peer_public_key(
+                str(payload.get("destinationId") or ""), str(peer), source="state", allow_new_pin=False
+            )
         uid = payload.get("uid") or payload.get("userId")
         if uid:
             self._relay_uid = str(uid)
         client_id = payload.get("clientId") or payload.get("id")
         if client_id:
             self._relay_client_id = str(client_id)
-        if payload.get("relayCapable") is True or payload.get("e2eEnabled") is True:
-            if not self._relay_e2e_enabled:
-                self._relay_e2e_enabled = True
-                self._ensure_relay_identity()
+        # Deliberately NOT acting on relayCapable/e2eEnabled here: an untrusted
+        # runtime response must not flip a never-paired agent into E2E.
 
     async def connect(self) -> bool:
         if not HTTPX_AVAILABLE:
@@ -955,7 +1005,8 @@ class BurnBarAdapter(BasePlatformAdapter):
     async def _handle_burnbar_event(self, raw: dict) -> None:
         # Replay defense: a relay can redeliver a valid sealed event to re-trigger
         # it. The AAD binds the id; drop a duplicate id BEFORE any handling.
-        event_id = str(raw.get("id") or "")
+        envelope = raw.get("relayEnvelope") if isinstance(raw.get("relayEnvelope"), dict) else {}
+        event_id = str(raw.get("id") or envelope.get("eventId") or "")
         if self._event_already_seen(event_id):
             logger.info("[%s] dropped duplicate event id (replay) %s", self.name, event_id)
             return

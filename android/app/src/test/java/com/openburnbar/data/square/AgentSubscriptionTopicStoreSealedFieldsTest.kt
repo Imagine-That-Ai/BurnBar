@@ -2,6 +2,7 @@
 
 package com.openburnbar.data.square
 
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.SkillRunEventImportance
@@ -11,6 +12,7 @@ import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import java.util.Base64
+import java.util.Date
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -169,6 +171,25 @@ class AgentSubscriptionTopicStoreSealedFieldsTest {
     }
 
     @Test
+    fun unsubscribeDeleteIDFailsClosedWithoutVaultKey() {
+        assertNull(
+            resolveSubscriptionTopicDeleteDocumentID(
+                agentURI = "agent://burnbar/research-scout",
+                topicID = "agent-updates",
+                vaultKey = null,
+            ),
+        )
+        assertEquals(
+            "sub_64ad3397dff90692866fcdaf93e3c028",
+            resolveSubscriptionTopicDeleteDocumentID(
+                agentURI = "agent://burnbar/research-scout",
+                topicID = "agent-updates",
+                vaultKey = vaultKey,
+            ),
+        )
+    }
+
+    @Test
     fun legacyCleartextDocumentIDsCoverKnownPreCloakVariants() {
         val ids =
             AgentSubscriptionTopicStore.legacyCleartextDocumentIDs(
@@ -231,5 +252,65 @@ class AgentSubscriptionTopicStoreSealedFieldsTest {
         // Legacy plaintext still resolves even without a key.
         val legacy: Map<String, Any?> = mapOf("displayName" to "Plain", "description" to "Desc")
         assertEquals("Plain" to "Desc", decodeSubscriptionTopicDisplay(legacy, vaultKey = null))
+    }
+
+    // ── consentGivenAt canonical Firestore type (cross-platform orderBy parity) ──
+
+    /**
+     * The serialized `consentGivenAt` is a Firestore `Timestamp`, NOT a `Long`.
+     * Firestore sorts mixed-type fields by type-group first (Number < Timestamp),
+     * so writing a Long here would land ALL Android docs before ALL iOS docs under
+     * the server `orderBy("consentGivenAt")`. iOS already writes a Timestamp (from
+     * its Swift `Date?`); converging Android on the same canonical type keeps both
+     * platforms in one sort group — load-bearing the moment anyone adds `.limit()`.
+     */
+    @Test
+    fun sealedSubscriptionTopicPayloadWritesConsentGivenAtAsTimestamp() {
+        val createdAt = 1_700_000_000_000
+        val topic =
+            AgentSubscriptionTopic(
+                agentURI = "agent://burnbar/research-scout",
+                topicID = "agent-updates",
+                displayName = "Research Scout updates",
+                description = "Digests from Research Scout.",
+                cadence = SubscriptionCadence.WEEKLY,
+                muted = false,
+                deliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+                minimumEventImportance = SkillRunEventImportance.NORMAL,
+                createdAtEpoch = createdAt,
+            )
+
+        val consent = sealedSubscriptionTopicPayload(topic, vaultKey)["consentGivenAt"]
+
+        // Canonical type is a Firestore Timestamp — never a raw Long/Number.
+        assertTrue("consentGivenAt must be a Firestore Timestamp, was $consent", consent is Timestamp)
+        assertFalse("consentGivenAt must not be written as a Long", consent is Long)
+        // The Timestamp preserves the exact epoch millis (round-trips losslessly).
+        assertEquals(createdAt, (consent as Timestamp).toDate().time)
+    }
+
+    /**
+     * `decodeSubscriptionTopicConsentEpoch` stays FULLY type-tolerant: the new
+     * canonical `Timestamp` AND a legacy `Long`/`Number`/`String` all resolve to
+     * the same epoch millis, so no production doc becomes unreadable as the corpus
+     * lazily converges on Timestamp. The production `decodeFirestoreTopic`
+     * delegates here, so this locks the real read path against a regression that
+     * drops a legacy Number doc.
+     */
+    @Test
+    fun decodeConsentEpochToleratesTimestampNumberAndStringEquivalently() {
+        val epoch = 1_700_000_000_000
+
+        // Canonical Timestamp (what both platforms now write).
+        assertEquals(epoch, decodeSubscriptionTopicConsentEpoch(Timestamp(Date(epoch))))
+        // Legacy Android Number/Long (epoch millis).
+        assertEquals(epoch, decodeSubscriptionTopicConsentEpoch(epoch))
+        assertEquals(epoch, decodeSubscriptionTopicConsentEpoch(epoch.toDouble()))
+        // Stray java.util.Date and numeric String still resolve.
+        assertEquals(epoch, decodeSubscriptionTopicConsentEpoch(Date(epoch)))
+        assertEquals(epoch, decodeSubscriptionTopicConsentEpoch(epoch.toString()))
+        // Absent/unparseable → null (caller falls back to "now").
+        assertNull(decodeSubscriptionTopicConsentEpoch(null))
+        assertNull(decodeSubscriptionTopicConsentEpoch("not-a-number"))
     }
 }

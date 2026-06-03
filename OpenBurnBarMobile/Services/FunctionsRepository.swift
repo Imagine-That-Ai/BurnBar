@@ -553,6 +553,11 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// Plaintext recovered by opening `payloadCiphertext` in the snapshot handler.
     /// Held in-memory only; never persisted. `nil` until opened.
     var resolvedText: String?
+    /// Files recovered from `hermes_gateway_attachments`, downloaded from
+    /// Storage, opened on this device, and written into the normal chat
+    /// attachment workspace. Held in-memory until the chat service persists the
+    /// rendered message.
+    var openedAttachments: [HermesAttachment]
 
     init?(documentID: String, data: [String: Any]) {
         guard
@@ -582,6 +587,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (data["relayKeyVersion"] as? Int)
         self.resolvedText = nil
+        self.openedAttachments = []
     }
 
     /// True when the reply carries a sealed body that must be opened with the
@@ -598,6 +604,50 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     var displayText: String? {
         if isSealed { return resolvedText }
         return text
+    }
+
+    /// True when this reply is sealed for a different paired device (or otherwise
+    /// could not be opened on this device): a sealed doc whose `resolvedText`
+    /// stayed `nil` after `decodedText`. The chat surface renders a calm,
+    /// jargon-free re-pair state for this instead of an empty/"no text" bubble.
+    var isUndecryptableHere: Bool {
+        isSealed && resolvedText == nil
+    }
+
+    /// Calm, jargon-free copy shown when a reply was encrypted for another
+    /// device this account paired. Deliberately avoids transport/crypto terms
+    /// (no "relay key", "E2EE", "man-in-the-middle") per the copy policy, and
+    /// names the recoverable action — re-pair on this device.
+    static let sealedForAnotherDeviceText =
+        "This reply was sent privately to another of your devices. Reconnect Hermes on this device to read replies here."
+
+    /// The single source of truth for what the conversation thread should show
+    /// for a gateway reply: the opened body, the legacy plaintext, the
+    /// re-pair state for a reply this device cannot open, or a benign fallback
+    /// for an attachment-only / empty reply. Used by the live chat path and the
+    /// Settings hero so the copy never diverges.
+    func chatRenderText(
+        emptyFallback: String = "Hermes sent a reply through BurnBar Cloud."
+    ) -> String {
+        if let body = displayText?.trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty {
+            return body
+        }
+        // Files that already opened on this device render in the bubble; the
+        // caption stays neutral rather than implying a re-pair is needed.
+        if !openedAttachments.isEmpty {
+            let count = openedAttachments.count
+            return "Hermes sent \(count) attachment\(count == 1 ? "" : "s")."
+        }
+        // A sealed reply this device cannot open (and with no opened files) shows
+        // the calm re-pair state, never a blank/"no text" bubble or crypto jargon.
+        if isUndecryptableHere {
+            return Self.sealedForAnotherDeviceText
+        }
+        if !attachmentIds.isEmpty {
+            let count = attachmentIds.count
+            return "Hermes sent \(count) attachment\(count == 1 ? "" : "s")."
+        }
+        return emptyFallback
     }
 
     /// Open the sealed reply body with this phone's relay key, returning a copy of
@@ -631,7 +681,13 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         return resolved
     }
 
-    private static func string(_ raw: Any?) -> String? {
+    func withOpenedAttachments(_ attachments: [HermesAttachment]) -> HermesGatewayMessageRecord {
+        var copy = self
+        copy.openedAttachments = attachments
+        return copy
+    }
+
+    static func string(_ raw: Any?) -> String? {
         switch raw {
         case let value as String where !value.isEmpty:
             return value
@@ -644,7 +700,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         }
     }
 
-    private static func dictionary(_ raw: Any?) -> [String: Any]? {
+    static func dictionary(_ raw: Any?) -> [String: Any]? {
         switch raw {
         case let dict as [String: Any]:
             return dict
@@ -653,6 +709,176 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         default:
             return nil
         }
+    }
+}
+
+/// The opened content of an agent→phone sealed gateway attachment: the manifest
+/// (filename / size / content type) plus the decrypted file bytes.
+struct HermesGatewayOpenedAttachment: Hashable, Sendable {
+    let attachmentId: String
+    let fileName: String
+    let byteCount: Int
+    let contentType: String?
+    let data: Data
+}
+
+/// An agent→phone sealed gateway attachment as stored in
+/// `hermes_gateway_attachments`. The agent seals the file with a per-attachment
+/// symmetric key wrapped to this phone's relay pubkey, stores the sealed
+/// *manifest* (`{fileName, byteCount, contentType}`) in `payloadCiphertext`, and
+/// uploads the sealed *body* bytes to Cloud Storage at `bodyStoragePath`. The
+/// phone unwraps the body key once and opens both the manifest and the body,
+/// each bound to a distinct AAD label so a relay cannot swap one slot for the
+/// other. Mirrors the Python adapter `seal_attachment` wire format.
+///
+/// The gateway settings store fetches only the attachment ids referenced by the
+/// selected reply, downloads their sealed body blobs, calls these open
+/// primitives, and renders the resulting `HermesAttachment` records through the
+/// normal chat bubble strip. No bulk attachment download is needed.
+struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
+    let id: String
+    let clientId: String
+    let destinationId: String?
+    let bodyStoragePath: String?
+    let payloadCiphertext: String?
+    let wrappedKey: String?
+    let relayEncryption: String?
+    let relayKeyVersion: Int?
+    let createdAt: String?
+
+    init?(documentID: String, data: [String: Any]) {
+        guard
+            let id = HermesGatewayMessageRecord.string(data["id"]) ?? HermesGatewayMessageRecord.string(data["attachmentId"]) ?? documentID.nilIfEmpty,
+            let clientId = HermesGatewayMessageRecord.string(data["clientId"])
+        else { return nil }
+        self.id = id
+        self.clientId = clientId
+        self.destinationId = HermesGatewayMessageRecord.string(data["destinationId"])
+        self.bodyStoragePath =
+            HermesGatewayMessageRecord.string(data["bodyStoragePath"])
+            ?? HermesGatewayMessageRecord.string(data["storagePath"])
+        let relayEnvelope = HermesGatewayMessageRecord.dictionary(data["relayEnvelope"])
+        self.payloadCiphertext =
+            HermesGatewayMessageRecord.string(relayEnvelope?["payloadCiphertext"])
+            ?? HermesGatewayMessageRecord.string(data["payloadCiphertext"])
+        self.wrappedKey =
+            HermesGatewayMessageRecord.string(relayEnvelope?["wrappedKey"])
+            ?? HermesGatewayMessageRecord.string(data["wrappedKey"])
+        self.relayEncryption =
+            HermesGatewayMessageRecord.string(relayEnvelope?["relayEncryption"])
+            ?? HermesGatewayMessageRecord.string(data["relayEncryption"])
+        self.relayKeyVersion =
+            (relayEnvelope?["relayKeyVersion"] as? NSNumber)?.intValue
+            ?? (relayEnvelope?["relayKeyVersion"] as? Int)
+            ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
+            ?? (data["relayKeyVersion"] as? Int)
+        self.createdAt = HermesGatewayMessageRecord.string(data["createdAt"])
+    }
+
+    /// True when this attachment carries a sealed body the phone must open with
+    /// its relay key (vs. a legacy plaintext attachment).
+    var isSealed: Bool {
+        relayEncryption == HermesRelayCrypto.algorithm
+            && (payloadCiphertext?.isEmpty == false)
+            && (wrappedKey?.isEmpty == false)
+    }
+
+    /// Unwrap the per-attachment body key with this phone's relay key, binding
+    /// the *key* AAD (`gatewayAttachmentKey`). Returns `nil` when the attachment
+    /// is unsealed or the wrap was sealed for another device. This is the open
+    /// primitive shared by the manifest-only and full-body paths.
+    func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String) -> Data? {
+        guard isSealed, let wrappedKey else { return nil }
+        return try? HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKey,
+            privateKey: keypair.privateKey,
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
+        )
+    }
+
+    /// Open the sealed manifest (`{fileName, byteCount, contentType}`) with the
+    /// already-unwrapped body key, binding the *manifest* AAD. Throws on a
+    /// cross-slot swap (the body ciphertext fails the manifest tag) or malformed
+    /// manifest JSON.
+    func openManifest(bodyKey: Data, uid: String) throws -> HermesGatewayAttachmentManifest {
+        guard let payloadCiphertext else {
+            throw FunctionsError.gatewayAttachmentUnreadable
+        }
+        let manifestData = try HermesRelayCrypto.openBase64(
+            ciphertext: payloadCiphertext,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: id)
+        )
+        guard let manifest = HermesGatewayAttachmentManifest(jsonData: manifestData) else {
+            throw FunctionsError.gatewayAttachmentUnreadable
+        }
+        return manifest
+    }
+
+    /// Open the sealed body bytes with the already-unwrapped body key, binding
+    /// the *body* AAD. `downloadedBody` is the raw blob fetched from
+    /// `bodyStoragePath`; the agent uploads the base64 of the sealed body, so the
+    /// blob is the ASCII base64 string of the ciphertext (matching the Python
+    /// `seal_attachment` wire). Throws on a wrong-device key or a tampered body.
+    func openBody(downloadedBody: Data, bodyKey: Data, uid: String) throws -> Data {
+        guard let ciphertextBase64 = String(data: downloadedBody, encoding: .utf8),
+              !ciphertextBase64.isEmpty else {
+            throw FunctionsError.gatewayAttachmentUnreadable
+        }
+        return try HermesRelayCrypto.openBase64(
+            ciphertext: ciphertextBase64,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: id)
+        )
+    }
+
+    /// Full open: unwrap the body key, open the manifest for the filename, and
+    /// open the body bytes — returning the rendered attachment. `downloadedBody`
+    /// is the blob fetched from `bodyStoragePath` by the caller (the network
+    /// download is the caller's responsibility so this stays pure/testable).
+    /// Returns `nil` when this device cannot open the attachment (sealed for
+    /// another device), so the caller can show the same calm re-pair state as a
+    /// sealed reply.
+    func opened(
+        downloadedBody: Data,
+        using keypair: HermesGatewayRelayKeypair,
+        uid: String
+    ) -> HermesGatewayOpenedAttachment? {
+        guard let bodyKey = unwrapBodyKey(using: keypair, uid: uid) else { return nil }
+        do {
+            let manifest = try openManifest(bodyKey: bodyKey, uid: uid)
+            let body = try openBody(downloadedBody: downloadedBody, bodyKey: bodyKey, uid: uid)
+            return HermesGatewayOpenedAttachment(
+                attachmentId: id,
+                fileName: manifest.fileName,
+                byteCount: manifest.byteCount,
+                contentType: manifest.contentType,
+                data: body
+            )
+        } catch {
+            return nil
+        }
+    }
+}
+
+/// Decoded gateway-attachment manifest. The agent seals exactly
+/// `{fileName, byteCount, contentType}` so the phone can name and size the file
+/// without ever exposing it to the server.
+struct HermesGatewayAttachmentManifest: Hashable, Sendable {
+    let fileName: String
+    let byteCount: Int
+    let contentType: String?
+
+    init?(jsonData: Data) {
+        guard let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let fileName = HermesGatewayMessageRecord.string(object["fileName"])
+        else { return nil }
+        self.fileName = fileName
+        self.byteCount =
+            (object["byteCount"] as? NSNumber)?.intValue
+            ?? (object["byteCount"] as? Int)
+            ?? 0
+        self.contentType = HermesGatewayMessageRecord.string(object["contentType"])
     }
 }
 
@@ -1859,14 +2085,21 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     case decodingFailed
     case gatewayTargetMissingRelayKey
     case gatewayRelayKeyChanged
+    case gatewayAttachmentUnreadable
 
     var errorDescription: String? {
         switch self {
         case .decodingFailed: return "Failed to decode cloud function response."
         case .gatewayTargetMissingRelayKey:
-            return "Update OpenBurnBar on the Mac and re-pair Hermes Gateway. Cloud gateway messages are end-to-end encrypted and cannot be sent until that Mac publishes a relay key."
+            // Benefit-first, jargon-free per the copy policy: messages stay
+            // private, so they can only send once the Mac is ready.
+            return "Update OpenBurnBar on your Mac and pair Hermes again. Messages here stay private to your devices, so they can only be sent once that Mac is set up."
         case .gatewayRelayKeyChanged:
-            return "This Hermes gateway's relay key changed since you paired — a possible man-in-the-middle. For your safety the encrypted message was not sent. Re-pair Hermes Gateway on this Mac to trust the new key."
+            // No transport/security jargon ("relay key", "man-in-the-middle"):
+            // calm, action-first copy that protects the user and names the fix.
+            return "This Hermes connection looks different from when you set it up, so your message was kept on this device for your safety. Pair Hermes again on your Mac to keep sending privately."
+        case .gatewayAttachmentUnreadable:
+            return "This file was shared privately with another device you paired. Re-pair this device to open files here."
         }
     }
 }

@@ -128,6 +128,34 @@ public enum HermesRelayCrypto {
         aad(["gatewayMessageKey", uid, clientId, messageId])
     }
 
+    // MARK: Gateway attachment AAD namespacing
+    //
+    // An agent→phone gateway attachment is sealed with a single per-attachment
+    // symmetric key that is wrapped to the phone's relay pubkey. The key wrap, the
+    // manifest payload (`{fileName, byteCount, contentType}`), and the body bytes
+    // each authenticate under a DISTINCT AAD label so a relay can never move a
+    // manifest ciphertext into the body slot (or vice versa): a cross-slot swap
+    // fails the AES-GCM tag. The phone unwraps the body key once (under the *key*
+    // AAD) and opens both the manifest and the body, each bound to its own label.
+    // These labels mirror the Python adapter's `gatewayAttachmentManifest` /
+    // `gatewayAttachmentBody` / `gatewayAttachmentKey` so the only counterparty
+    // can open what the agent sealed.
+
+    /// AAD for the sealed attachment *manifest* (`{fileName, byteCount, contentType}`).
+    public static func gatewayAttachmentManifestAAD(uid: String, clientId: String, attachmentId: String) -> Data {
+        aad(["gatewayAttachmentManifest", uid, clientId, attachmentId])
+    }
+
+    /// AAD for the sealed attachment *body* (the raw file bytes).
+    public static func gatewayAttachmentBodyAAD(uid: String, clientId: String, attachmentId: String) -> Data {
+        aad(["gatewayAttachmentBody", uid, clientId, attachmentId])
+    }
+
+    /// AAD for wrapping/unwrapping the per-attachment body key to the phone's relay pubkey.
+    public static func gatewayAttachmentKeyAAD(uid: String, clientId: String, attachmentId: String) -> Data {
+        aad(["gatewayAttachmentKey", uid, clientId, attachmentId])
+    }
+
     public static func sealToBase64(plaintext: Data, keyData: Data, aad: Data) throws -> String {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey

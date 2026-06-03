@@ -2,6 +2,7 @@ package com.openburnbar.data.square
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -62,6 +64,12 @@ data class AgentSubscriptionTopic(
     val minimumEventImportance: SkillRunEventImportance,
     val createdAtEpoch: Long,
 )
+
+enum class AgentSubscriptionUnsubscribeResult {
+    REMOVED,
+    LOCAL_ONLY_REMOVED,
+    MISSING_CLOUD_KEY,
+}
 
 class AgentSubscriptionTopicStore private constructor(context: Context) {
     private val prefs: SharedPreferences =
@@ -118,11 +126,18 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         return updated
     }
 
-    fun unsubscribe(agentURI: String) {
+    suspend fun unsubscribe(agentURI: String): AgentSubscriptionUnsubscribeResult {
         val existing = topic(agentURI)
-        _topics.value = _topics.value.filterNot { it.agentURI == agentURI }
-        save()
-        deleteFirestore(agentURI, existing?.topicID ?: DEFAULT_TOPIC_ID)
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            removeLocal(agentURI)
+            return AgentSubscriptionUnsubscribeResult.LOCAL_ONLY_REMOVED
+        }
+        val result = deleteFirestore(uid, agentURI, existing?.topicID ?: DEFAULT_TOPIC_ID)
+        if (result == AgentSubscriptionUnsubscribeResult.REMOVED) {
+            removeLocal(agentURI)
+        }
+        return result
     }
 
     fun setMuted(agentURI: String, muted: Boolean): AgentSubscriptionTopic? {
@@ -223,22 +238,28 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         }
     }
 
-    private fun deleteFirestore(agentURI: String, topicID: String) {
-        val uid = auth.currentUser?.uid ?: return
+    private suspend fun deleteFirestore(uid: String, agentURI: String, topicID: String): AgentSubscriptionUnsubscribeResult {
         // The opaque doc id needs the vault key. Resolve the read key (the doc-id
         // key is deterministic for the active vault key) before recomputing the id.
-        ioScope.launch {
-            val vaultKey =
-                runCatching {
-                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
-                }.getOrNull()
-            val collection = firestore.collection("users").document(uid)
-                .collection("subscription_topics")
-            if (vaultKey != null) {
-                collection.document(documentID(agentURI, topicID, vaultKey)).delete()
-            }
-            legacyCleartextDocumentIDs(agentURI, topicID).forEach { collection.document(it).delete() }
+        val vaultKey =
+            runCatching {
+                AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+            }.getOrNull()
+        val opaqueDocID =
+            resolveSubscriptionTopicDeleteDocumentID(agentURI = agentURI, topicID = topicID, vaultKey = vaultKey)
+                ?: return AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY
+        val collection = firestore.collection("users").document(uid)
+            .collection("subscription_topics")
+        collection.document(opaqueDocID).delete().await()
+        legacyCleartextDocumentIDs(agentURI, topicID).forEach {
+            runCatching { collection.document(it).delete().await() }
         }
+        return AgentSubscriptionUnsubscribeResult.REMOVED
+    }
+
+    private fun removeLocal(agentURI: String) {
+        _topics.value = _topics.value.filterNot { it.agentURI == agentURI }
+        save()
     }
 
     private fun decodeFirestoreTopic(data: Map<String, Any>, vaultKey: ByteArray? = null): AgentSubscriptionTopic? {
@@ -260,7 +281,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             muted = data["isMuted"] as? Boolean ?: (mode == SkillRunDeliveryMode.MUTED),
             deliveryMode = mode,
             minimumEventImportance = SkillRunEventImportance.fromWire(data["minimumEventImportance"] as? String),
-            createdAtEpoch = decodeEpoch(data["consentGivenAt"]) ?: System.currentTimeMillis(),
+            createdAtEpoch = decodeSubscriptionTopicConsentEpoch(data["consentGivenAt"]) ?: System.currentTimeMillis(),
         )
     }
 
@@ -363,15 +384,28 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         } else {
             SkillRunEventImportance.ACTION_REQUIRED
         }
-
-        private fun decodeEpoch(raw: Any?): Long? = when (raw) {
-            is Number -> raw.toLong()
-            is com.google.firebase.Timestamp -> raw.toDate().time
-            is java.util.Date -> raw.time
-            is String -> raw.toLongOrNull()
-            else -> null
-        }
     }
+}
+
+/**
+ * Normalizes a stored `consentGivenAt` value to epoch millis. FULLY TYPE-TOLERANT
+ * by design: the canonical write type is now a Firestore `Timestamp` (see
+ * `sealedSubscriptionTopicPayload`), but legacy Android docs carry a `Number`
+ * (epoch millis) and any stray `Date`/`String` still resolves — so no production
+ * doc becomes unreadable as the corpus lazily converges on Timestamp. Lifted to a
+ * top-level `internal` seam (mirroring `decodeSubscriptionTopicDisplay` /
+ * `decodeSubscriptionTopicGraph`) so the cross-type round-trip is unit-testable
+ * without the Firestore listener; the production `decodeFirestoreTopic` delegates
+ * here so there is zero drift between the test and the real read path. Returns
+ * `null` only when the value is absent/unparseable, leaving the caller to fall
+ * back to "now".
+ */
+internal fun decodeSubscriptionTopicConsentEpoch(raw: Any?): Long? = when (raw) {
+    is Number -> raw.toLong()
+    is Timestamp -> raw.toDate().time
+    is java.util.Date -> raw.time
+    is String -> raw.toLongOrNull()
+    else -> null
 }
 
 /**
@@ -423,10 +457,21 @@ internal fun sealedSubscriptionTopicPayload(
         // (`agentURI`/`topicID`) and the display text are sealed, and merge
         // writes actively delete any legacy plaintext copies. `cadence`/
         // `consentGivenAt` stay cleartext — server order/filter inputs only.
+        // CANONICAL TYPE: `consentGivenAt` is a Firestore Timestamp (matches what
+        // iOS writes from its Swift `Date?` and what `.orderBy("consentGivenAt")`
+        // is designed for). Firestore sorts mixed-type fields by type-group first
+        // (Number < Timestamp), so a Long here would land ALL Android docs before
+        // ALL iOS docs under server orderBy. Writing a Timestamp keeps the two
+        // platforms in one sort group. Old Android docs are Numbers but self-heal:
+        // the doc is fully rewritten on every topic update (see `writeFirestore`),
+        // so the next update normalizes the type — no eager backfill is needed
+        // (the per-user corpus is tiny and both clients re-sort in memory). A
+        // future maintainer who adds `.limit()`/pagination to the ordered query
+        // can rely on the corpus converging on Timestamp.
         "sealedAgentURI" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.agentURI, vaultKey)),
         "sealedTopicID" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.topicID, vaultKey)),
         "cadence" to topic.cadence.token,
-        "consentGivenAt" to topic.createdAtEpoch,
+        "consentGivenAt" to Timestamp(java.util.Date(topic.createdAtEpoch)),
         "isMuted" to topic.muted,
         "deliveryMode" to topic.deliveryMode.wire,
         "minimumEventImportance" to topic.minimumEventImportance.wire,
@@ -439,3 +484,6 @@ internal fun sealedSubscriptionTopicPayload(
         "displayName" to FieldValue.delete(),
         "description" to FieldValue.delete(),
     )
+
+internal fun resolveSubscriptionTopicDeleteDocumentID(agentURI: String, topicID: String, vaultKey: ByteArray?): String? =
+    vaultKey?.let { AgentSubscriptionTopicStore.documentID(agentURI, topicID, it) }

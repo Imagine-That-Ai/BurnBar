@@ -9,6 +9,7 @@ import com.openburnbar.data.square.AgentSubscriptionTopicStore
 
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.square.SubscriptionCadence
+import kotlinx.coroutines.CoroutineScope
 
 sealed class SubscribeAction {
     data class Subscribe(val cadence: SubscriptionCadence, val deliveryMode: SkillRunDeliveryMode) : SubscribeAction()
@@ -135,6 +136,7 @@ internal data class AgentBrandZoneOverlayContext(
     val missionHost: MobileMissionConsoleHost,
     val subscriptionStore: AgentSubscriptionTopicStore,
     val activeTopic: AgentSubscriptionTopic?,
+    val coroutineScope: CoroutineScope,
 )
 
 internal data class FanOutSheetUiState(
