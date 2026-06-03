@@ -1,0 +1,85 @@
+---
+/**
+ * Encryption-tier badge for the public trust surface (burnbar.ai/trust).
+ *
+ * The color comes straight from the generated `tier.colorHex` — which codegen
+ * sources from packages/design-tokens/tokens/pensieve.tokens.json — so the badge
+ * matches the in-app Data & Privacy Control Center byte-for-byte. Do not hardcode
+ * tier colors here; pass a TrustTier from trust.generated.ts.
+ */
+import type { TrustTier } from "@data/trust.generated";
+
+interface Props {
+  tier: TrustTier;
+  size?: "sm" | "lg";
+}
+
+const { tier, size = "sm" } = Astro.props;
+---
+
+<span class:list={["tierbadge", `tierbadge--${size}`]} style={`--tier-c: ${tier.colorHex}`}>
+  <span class="tierbadge__ico" aria-hidden="true">
+    {
+      tier.icon === "eye" && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )
+    }
+    {
+      tier.icon === "shield" && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3 5 6v5.5c0 4.2 2.9 7.4 7 9 4.1-1.6 7-4.8 7-9V6l-7-3Z" />
+          <path d="m9 12 2 2 4-4.5" />
+        </svg>
+      )
+    }
+    {
+      tier.icon === "lock" && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4.5" y="10.5" width="15" height="10" rx="2.2" />
+          <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+          <circle cx="12" cy="15" r="1.3" />
+        </svg>
+      )
+    }
+  </span>
+  <span class="tierbadge__label">{tier.label}</span>
+</span>
+
+<style>
+  .tierbadge {
+    --tier-c: var(--text-mute);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    padding: 0.4em 0.7em 0.4em 0.55em;
+    border-radius: var(--r-pill);
+    color: var(--tier-c);
+    /* AA-safe: full-saturation tier hue on a low-alpha tint of itself. */
+    border: 1px solid color-mix(in oklab, var(--tier-c) 45%, transparent);
+    background: color-mix(in oklab, var(--tier-c) 12%, rgba(8, 8, 12, 0.85));
+    white-space: nowrap;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  }
+  .tierbadge--lg {
+    font-size: 0.82rem;
+    padding: 0.5em 0.9em 0.5em 0.7em;
+  }
+  .tierbadge__ico {
+    display: inline-flex;
+  }
+  .tierbadge__ico svg {
+    width: 1.15em;
+    height: 1.15em;
+    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--tier-c) 55%, transparent));
+  }
+  .tierbadge__label {
+    font-variation-settings: "wght" 540;
+  }
+</style>

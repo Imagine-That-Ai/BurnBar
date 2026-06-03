@@ -37,6 +37,7 @@ export const RECOVERY_SCHEMA_VERSION = 1;
 const RECOVERY_COLLECTION = "account_recovery_methods";
 const MAX_RECOVERY_CONTACTS = 5;
 const MAX_WRAPPED_BLOB_LENGTH = 8192;
+const RECOVERY_ID_PATTERN = /^rec_[a-z0-9_-]{8,80}$/u;
 
 const CALLABLE_OPTS = {
   region: FUNCTIONS_REGION,
@@ -128,6 +129,14 @@ export function verifyRecoveryConfirmation(data: Record<string, unknown>, suppli
   }
 }
 
+function requireRecoveryId(raw: unknown): string {
+  const recoveryId = boundedTrimmedString(raw, "recoveryId", 128, true);
+  if (!RECOVERY_ID_PATTERN.test(recoveryId)) {
+    throw new HttpsError("invalid-argument", "recoveryId is invalid.");
+  }
+  return recoveryId;
+}
+
 export const setupRecovery = onCall(
   CALLABLE_OPTS,
   wrapCallableHandler("setupRecovery", async (request: CallableRequest<{ method?: unknown; payload?: unknown }>) => {
@@ -186,7 +195,7 @@ export const confirmRecovery = onCall(
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before confirming recovery.");
       enforceAuthAndAppCheck(request, uid);
 
-      const recoveryId = boundedTrimmedString(request.data?.recoveryId, "recoveryId", 128, true);
+      const recoveryId = requireRecoveryId(request.data?.recoveryId);
       const suppliedHash =
         request.data?.verificationHash !== undefined
           ? requireHexDigest(request.data.verificationHash, "verificationHash")
@@ -226,6 +235,7 @@ export const __testing__ = {
   parseRecoveryKeyPayload,
   parseRecoveryContactPayload,
   verifyRecoveryConfirmation,
+  requireRecoveryId,
 };
 
 export const listRecovery = onCall(

@@ -5,9 +5,8 @@
  *
  * Trust model (server NEVER sees the vault key):
  *   1. The browser generates an ECDH/ECDSA keypair in the Web Crypto API
- *      (non-extractable private key) and POSTs its PUBLIC key JWK here, gated by
- *      Firebase App Check (reCAPTCHA Enterprise on web) + a recaptchaToken bot
- *      signal.
+ *      (non-extractable private key) and POSTs its PUBLIC P-256 JWK here,
+ *      gated by Firebase App Check (reCAPTCHA Enterprise on web).
  *   2. This callable registers a PENDING escrow device (platform "Web") plus its
  *      public key, exactly like registerEscrowDevice does for native devices.
  *   3. The user opens a TRUSTED native device (Mac/iPhone) and approves it via
@@ -21,7 +20,7 @@
 
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -32,21 +31,31 @@ import { stripUndefinedObject } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const ESCROW_WEB_PLATFORM = "Web";
-const MAX_JWK_FIELD = 4096;
-
-/** Supported web-crypto JWK key types for browser escrow public keys. */
-const ALLOWED_JWK_KTY = new Set(["EC", "RSA", "OKP"]);
+const P256_COORDINATE_LENGTH = 32;
+const P256_X963_LENGTH = 65;
 
 interface ParsedJwk {
   jwk: Record<string, unknown>;
   fingerprint: string;
+  publicKeyDataBase64: string;
   canonical: string;
 }
 
+function base64UrlDecode(raw: unknown, fieldName: string): Buffer {
+  if (typeof raw !== "string" || raw.length === 0 || !/^[A-Za-z0-9_-]+$/u.test(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be base64url.`);
+  }
+  const decoded = Buffer.from(raw, "base64url");
+  if (decoded.length !== P256_COORDINATE_LENGTH) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be a P-256 coordinate.`);
+  }
+  return decoded;
+}
+
 /**
- * Validate a public-key JWK: must be a public key (no private components), a
- * supported kty, and within size bounds. Returns a canonical string +
- * SHA-256 fingerprint used as the escrow public-key id.
+ * Validate a public-key JWK: it must be a P-256 ECDH public key and must not
+ * include private material. Returns the native-compatible X9.63 public key bytes
+ * as base64 plus the same base64 SHA-256 fingerprint native devices publish.
  */
 function parsePublicKeyJwk(raw: unknown): ParsedJwk {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -54,8 +63,9 @@ function parsePublicKeyJwk(raw: unknown): ParsedJwk {
   }
   const jwk = raw as Record<string, unknown>;
   const kty = typeof jwk.kty === "string" ? jwk.kty : "";
-  if (!ALLOWED_JWK_KTY.has(kty)) {
-    throw new HttpsError("invalid-argument", "publicKeyJwk.kty must be EC, RSA, or OKP.");
+  const crv = typeof jwk.crv === "string" ? jwk.crv : "";
+  if (kty !== "EC" || crv !== "P-256") {
+    throw new HttpsError("invalid-argument", "publicKeyJwk must be an EC P-256 public key.");
   }
   // Reject any private-key material — only public keys may be uploaded.
   for (const privateField of ["d", "p", "q", "dp", "dq", "qi", "k"]) {
@@ -63,32 +73,35 @@ function parsePublicKeyJwk(raw: unknown): ParsedJwk {
       throw new HttpsError("invalid-argument", "publicKeyJwk must not contain private key material.");
     }
   }
-  // Bound every string field to keep the doc small.
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(jwk)) {
-    if (typeof value === "string") {
-      if (value.length > MAX_JWK_FIELD) {
-        throw new HttpsError("invalid-argument", `publicKeyJwk.${key} is too large.`);
-      }
-      sanitized[key] = value;
-    } else if (typeof value === "boolean" || typeof value === "number") {
-      sanitized[key] = value;
-    } else if (Array.isArray(value)) {
-      sanitized[key] = value.filter((v): v is string => typeof v === "string").slice(0, 16);
-    }
+  const x = base64UrlDecode(jwk.x, "publicKeyJwk.x");
+  const y = base64UrlDecode(jwk.y, "publicKeyJwk.y");
+  const publicKeyData = Buffer.concat([Buffer.from([0x04]), x, y]);
+  if (publicKeyData.length !== P256_X963_LENGTH) {
+    throw new HttpsError("invalid-argument", "publicKeyJwk must export a 65-byte X9.63 public key.");
   }
-  // Canonicalize on sorted keys so the fingerprint is stable.
-  const canonical = JSON.stringify(
-    Object.fromEntries(Object.entries(sanitized).sort(([a], [b]) => a.localeCompare(b))),
-  );
-  const fingerprint = createHash("sha256").update(canonical).digest("hex");
-  return { jwk: sanitized, fingerprint, canonical };
+  const sanitized = stripUndefinedObject({
+    kty: "EC",
+    crv: "P-256",
+    x: jwk.x,
+    y: jwk.y,
+    ext: jwk.ext === true ? true : undefined,
+    key_ops: Array.isArray(jwk.key_ops)
+      ? jwk.key_ops.filter((v): v is string => typeof v === "string").slice(0, 4)
+      : undefined,
+  });
+  const canonical = JSON.stringify(sanitized);
+  const fingerprint = createHash("sha256").update(publicKeyData).digest("base64");
+  return {
+    jwk: sanitized,
+    fingerprint,
+    publicKeyDataBase64: publicKeyData.toString("base64"),
+    canonical,
+  };
 }
 
 /** Test-only surface for the pure JWK validator (no Firestore). */
 export const __testing__ = {
   ESCROW_WEB_PLATFORM,
-  ALLOWED_JWK_KTY,
   parsePublicKeyJwk,
 };
 
@@ -100,26 +113,17 @@ export const registerBrowserEscrowDevice = onCall(
   },
   wrapCallableHandler(
     "registerBrowserEscrowDevice",
-    async (request: CallableRequest<{ publicKeyJwk?: unknown; recaptchaToken?: unknown; deviceName?: unknown }>) => {
+    async (request: CallableRequest<{ publicKeyJwk?: unknown; deviceName?: unknown }>) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before registering a browser for escrow.");
-      // App Check (reCAPTCHA Enterprise on web) is the primary attestation; the
-      // recaptchaToken below is an additional bot signal carried for the web
-      // surface. Ownership + Auth + App Check are enforced here.
+      // App Check (reCAPTCHA Enterprise on web) is the bot/device attestation.
+      // Ownership + Auth + App Check are enforced here.
       enforceAuthAndAppCheck(request, uid);
 
-      // recaptchaToken is required on the web surface as a defense-in-depth bot
-      // signal. We validate it is present + well-formed; full reCAPTCHA Enterprise
-      // assessment is performed by App Check's web provider upstream.
-      const recaptchaToken = boundedTrimmedString(request.data?.recaptchaToken, "recaptchaToken", 4096, true);
-      if (recaptchaToken.length < 8) {
-        throw new HttpsError("invalid-argument", "recaptchaToken is invalid.");
-      }
-
-      const { jwk, fingerprint } = parsePublicKeyJwk(request.data?.publicKeyJwk);
+      const { jwk, fingerprint, publicKeyDataBase64 } = parsePublicKeyJwk(request.data?.publicKeyJwk);
       const deviceName =
         boundedTrimmedString(request.data?.deviceName, "deviceName", 256, false) ?? "Browser (burnbar.ai)";
-      const escrowDeviceId = `web_${fingerprint.slice(0, 24)}`;
+      const escrowDeviceId = `web_${createHash("sha256").update(fingerprint).digest("hex").slice(0, 24)}`;
 
       const deviceRef = db.doc(`users/${uid}/escrow_devices/${escrowDeviceId}`);
       const existing = await deviceRef.get();
@@ -148,8 +152,11 @@ export const registerBrowserEscrowDevice = onCall(
           deviceId: escrowDeviceId,
           platform: ESCROW_WEB_PLATFORM,
           fingerprint,
+          publicKeyFingerprint: fingerprint,
+          publicKeyData: publicKeyDataBase64,
           publicKeyJwk: jwk,
           keyVersion: 1,
+          algorithm: "ECIES-P256-AESGCM",
           createdAt: existing.exists ? undefined : FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         }),
@@ -163,12 +170,6 @@ export const registerBrowserEscrowDevice = onCall(
         device_id: escrowDeviceId,
         platform: ESCROW_WEB_PLATFORM,
       });
-
-      // Note: the browser uses an opaque, deterministic id derived from its
-      // public-key fingerprint so re-registration is idempotent and the
-      // approving native device can match it. randomBytes kept available for any
-      // future per-session nonce needs.
-      void randomBytes;
 
       return { ok: true, escrowDeviceId, status: "pending" };
     },

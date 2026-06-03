@@ -797,21 +797,16 @@ function checkCloudRun() {
   const retiredRelay = describeCloudRunService(
     RETIRED_HERMES_REALTIME_RELAY_SERVICE,
   );
-  const retiredRelayAbsent = !retiredRelay.exists && !retiredRelay.error;
+  const retiredRelayState = evaluateRetiredCloudRunServiceAbsence(
+    RETIRED_HERMES_REALTIME_RELAY_SERVICE,
+    retiredRelay,
+  );
   return {
     ok:
       serviceStates.every((service) => service.exists && service.ready) &&
-      retiredRelayAbsent,
+      retiredRelayState.absent,
     services: serviceStates,
-    retiredServices: [
-      {
-        name: RETIRED_HERMES_REALTIME_RELAY_SERVICE,
-        absent: retiredRelayAbsent,
-        ready: retiredRelay.exists ? retiredRelay.ready : null,
-        url: retiredRelay.url || null,
-        error: retiredRelay.error,
-      },
-    ],
+    retiredServices: [retiredRelayState],
   };
 }
 
@@ -848,6 +843,10 @@ function describeCloudRunService(name) {
       error: `invalid Cloud Run service JSON: ${error.message}`,
     };
   }
+  return evaluateCloudRunServiceReadiness(name, service);
+}
+
+export function evaluateCloudRunServiceReadiness(name, service) {
   const ready = (service?.status?.conditions || []).some(
     (condition) => condition.type === "Ready" && condition.status === "True",
   );
@@ -859,6 +858,16 @@ function describeCloudRunService(name) {
     serviceAccount: service?.spec?.template?.spec?.serviceAccountName || null,
     ingress: service?.metadata?.annotations?.["run.googleapis.com/ingress"] ||
       null,
+  };
+}
+
+export function evaluateRetiredCloudRunServiceAbsence(name, state) {
+  return {
+    name,
+    absent: !state.exists && !state.error,
+    ready: state.exists ? state.ready : null,
+    url: state.url || state.service?.status?.url || null,
+    error: state.error,
   };
 }
 
