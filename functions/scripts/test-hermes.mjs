@@ -160,8 +160,8 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.match(block, /pixelClock\.providerIDs\.size\(\) <= 24/);
   assert.match(block, /pixelClock\.lastProbeStatus in \["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"\]/);
 }
-assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
-assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);
+assert.match(rules, /request\.resource\.data\.schemaVersion >= 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
+assert.match(rules, /request\.resource\.data\.schemaVersion >= 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);
 assert.match(readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
 {
   const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");

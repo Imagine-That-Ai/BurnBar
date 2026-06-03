@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 import { __testing__ } from "../callables/privacyBackfill.js";
 
@@ -82,18 +82,15 @@ class FakeFirestore {
   seed(path: string, data: Doc) {
     this.store.set(path, data);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  asFirestore() {
-    return this as unknown as any;
+  asFirestore(): Firestore {
+    return this as unknown as Firestore;
   }
 }
 
 describe("gatedDeletions — safe-by-construction", () => {
   it("deletes a plaintext field ONLY when its sealed gate is present", () => {
     const fields = [{ field: "projectName", requires: "sealedProjectName" }];
-    expect(gatedDeletions({ projectName: "secret-proj", sealedProjectName: {} }, fields)).toEqual([
-      "projectName",
-    ]);
+    expect(gatedDeletions({ projectName: "secret-proj", sealedProjectName: {} }, fields)).toEqual(["projectName"]);
   });
 
   it("never deletes a plaintext field while its sealed copy is absent", () => {
@@ -113,9 +110,9 @@ describe("gatedDeletions — safe-by-construction", () => {
 
   it("knowledge_repos drops cleartext repoFullName once the sealed name exists", () => {
     expect(gatedDeletions({ repoFullName: "owner/secret" }, KNOWLEDGE_REPO_FIELDS)).toEqual([]);
-    expect(
-      gatedDeletions({ repoFullName: "owner/secret", sealedRepoFullName: {} }, KNOWLEDGE_REPO_FIELDS),
-    ).toEqual(["repoFullName"]);
+    expect(gatedDeletions({ repoFullName: "owner/secret", sealedRepoFullName: {} }, KNOWLEDGE_REPO_FIELDS)).toEqual([
+      "repoFullName",
+    ]);
   });
 });
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-06-03
+
+### Fixed
+
+- Aligned release metadata for the commercial launch candidate.
+
 ### Added — agent knowledge in mem0 (token-efficient retrieval)
 
 - Mirrored the canonical Droid wiki (`droid-wiki/`) into a dedicated BurnBar mem0 project as verbatim, retrievable chunks via `scripts/wiki/mem0-sync.mjs` (mem0 REST, `infer=false`, scope `user_id=burnbar`), so agents query for the exact knowledge a task needs instead of bulk-loading whole wiki pages or `docs/`.

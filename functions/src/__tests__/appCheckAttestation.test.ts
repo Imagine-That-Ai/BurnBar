@@ -137,27 +137,23 @@ describe("high-risk action nonces", () => {
     const now = 2_000_000;
     const { nonce } = await issueHighRiskNonceForUid("userA", now);
     await expect(consumeHighRiskNonceForUid("userA", nonce, now + 1)).resolves.toBeUndefined();
-    await expect(consumeHighRiskNonceForUid("userA", nonce, now + 2)).rejects.toThrow(
-      /expired or was already used/,
-    );
+    await expect(consumeHighRiskNonceForUid("userA", nonce, now + 2)).rejects.toThrow(/expired or was already used/);
   });
 
   it("rejects an expired nonce", async () => {
     store.clear();
     const now = 3_000_000;
     const { nonce } = await issueHighRiskNonceForUid("userA", now);
-    await expect(
-      consumeHighRiskNonceForUid("userA", nonce, now + HIGH_RISK_NONCE_TTL_MS + 1),
-    ).rejects.toThrow(/expired or was already used/);
+    await expect(consumeHighRiskNonceForUid("userA", nonce, now + HIGH_RISK_NONCE_TTL_MS + 1)).rejects.toThrow(
+      /expired or was already used/,
+    );
   });
 
   it("scopes nonces per-uid (user B cannot consume user A's nonce)", async () => {
     store.clear();
     const now = 4_000_000;
     const { nonce } = await issueHighRiskNonceForUid("userA", now);
-    await expect(consumeHighRiskNonceForUid("userB", nonce, now + 1)).rejects.toThrow(
-      /expired or was already used/,
-    );
+    await expect(consumeHighRiskNonceForUid("userB", nonce, now + 1)).rejects.toThrow(/expired or was already used/);
     // userA can still consume it.
     await expect(consumeHighRiskNonceForUid("userA", nonce, now + 1)).resolves.toBeUndefined();
   });
@@ -175,9 +171,7 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     store.clear();
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = false;
-    await expect(
-      enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined),
-    ).resolves.toBeUndefined();
+    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).resolves.toBeUndefined();
   });
 
   it("flag on + no nonce throws", async () => {
@@ -185,9 +179,9 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = true;
     try {
-      await expect(
-        enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined),
-      ).rejects.toThrow(/issueHighRiskActionNonce/);
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).rejects.toThrow(
+        /issueHighRiskActionNonce/,
+      );
     } finally {
       configMock.requireHighRiskNonce = false;
     }
@@ -197,9 +191,9 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     store.clear();
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = false;
-    await expect(
-      enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", "x".repeat(64)),
-    ).rejects.toThrow(/expired or was already used/);
+    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", "x".repeat(64))).rejects.toThrow(
+      /expired or was already used/,
+    );
   });
 
   it("a valid issued nonce is consumed and allows the action once", async () => {
@@ -208,13 +202,11 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     configMock.requireHighRiskNonce = true;
     try {
       const { nonce } = await issueHighRiskNonceForUid("userA", Date.now());
-      await expect(
-        enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce),
-      ).resolves.toBeUndefined();
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).resolves.toBeUndefined();
       // Replay of the same nonce now fails (single-use).
-      await expect(
-        enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce),
-      ).rejects.toThrow(/expired or was already used/);
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).rejects.toThrow(
+        /expired or was already used/,
+      );
     } finally {
       configMock.requireHighRiskNonce = false;
     }

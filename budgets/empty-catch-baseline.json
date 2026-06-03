@@ -1,7 +1,7 @@
 {
-  "total": 118,
+  "total": 25,
   "agent_lens": 22,
-  "daemon": 96,
-  "generatedAt": "2026-05-31T19:03:00Z",
+  "daemon": 3,
+  "generatedAt": "2026-06-03T07:34:39Z",
   "note": "Empty catch {} blocks in AgentLens + OpenBurnBarDaemon. CI fails on increase."
 }
