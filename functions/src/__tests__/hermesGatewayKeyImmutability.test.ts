@@ -134,6 +134,27 @@ function runtimeRequest(body: Record<string, unknown>) {
   };
 }
 
+async function runHttpHandler(
+  handler: unknown,
+  req: ReturnType<typeof runtimeRequest>,
+  res: FakeRes,
+): Promise<void> {
+  const run = Reflect.get(Object(handler), "run");
+  const callable = typeof run === "function" ? run : handler;
+  if (typeof callable !== "function") {
+    throw new Error("Expected HTTP handler to be callable");
+  }
+  await callable(req, res);
+}
+
+function storedClient(): Record<string, unknown> {
+  const client = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`);
+  if (!client) {
+    throw new Error("Expected seeded Hermes gateway client to be stored");
+  }
+  return client;
+}
+
 async function seedPairedClient(tokenHash: string, agentKey: string | undefined): Promise<void> {
   stored.set(`hermes_gateway_token_index/${tokenHash}`, { uid: UID, clientId: CLIENT_ID, status: "active" });
   stored.set(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`, {
@@ -170,13 +191,14 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
 
     const res = fakeRes();
-    await (burnBarHermesGateway as unknown as (req: unknown, res: unknown) => Promise<void>)(
+    await runHttpHandler(
+      burnBarHermesGateway,
       runtimeRequest({ agentRelayPublicKey: ATTACKER_AGENT_KEY, currentModelId: "minimax-m2.7" }),
       res,
     );
     expect(res._status).toBe(200);
 
-    const client = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`)!;
+    const client = storedClient();
     // The pinned key is UNCHANGED — the attacker's substituted key never lands.
     expect(client.agentRelayPublicKey).toBe(PINNED_AGENT_KEY);
     expect(client.agentRelayPublicKey).not.toBe(ATTACKER_AGENT_KEY);
@@ -191,13 +213,10 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     await seedPairedClient(tokenHash, undefined); // no agent key yet
 
     const res = fakeRes();
-    await (burnBarHermesGateway as unknown as (req: unknown, res: unknown) => Promise<void>)(
-      runtimeRequest({ agentRelayPublicKey: PINNED_AGENT_KEY }),
-      res,
-    );
+    await runHttpHandler(burnBarHermesGateway, runtimeRequest({ agentRelayPublicKey: PINNED_AGENT_KEY }), res);
     expect(res._status).toBe(200);
 
-    const client = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`)!;
+    const client = storedClient();
     // First-pairing pin succeeds, and relayCapable flips true (phone key on record).
     expect(client.agentRelayPublicKey).toBe(PINNED_AGENT_KEY);
     expect(client.relayCapable).toBe(true);
@@ -210,12 +229,9 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
 
     const res = fakeRes();
-    await (burnBarHermesGateway as unknown as (req: unknown, res: unknown) => Promise<void>)(
-      runtimeRequest({ agentRelayPublicKey: PINNED_AGENT_KEY }),
-      res,
-    );
+    await runHttpHandler(burnBarHermesGateway, runtimeRequest({ agentRelayPublicKey: PINNED_AGENT_KEY }), res);
     expect(res._status).toBe(200);
-    const client = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`)!;
+    const client = storedClient();
     expect(client.agentRelayPublicKey).toBe(PINNED_AGENT_KEY);
   });
 });

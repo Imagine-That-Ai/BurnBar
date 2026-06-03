@@ -89,8 +89,6 @@ vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-type Runnable = { run: (request: unknown) => Promise<unknown> };
-
 const UID = "userA";
 const TARGET_CLIENT_ID = "hgw_target";
 const SEALED_EVENT_ID = "evt_test_envelope";
@@ -137,6 +135,30 @@ function request(data: Record<string, unknown>) {
   return { auth: { uid: UID, token: {} }, app: { appId: "test-app" }, rawRequest: { headers: {} }, data };
 }
 
+function callableRun(callable: unknown): (request: unknown) => Promise<unknown> {
+  const run = Reflect.get(Object(callable), "run");
+  if (typeof run !== "function") {
+    throw new Error("Expected callable to expose run()");
+  }
+  return run;
+}
+
+function firstEventPath(): string {
+  const path = [...stored.keys()].find((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
+  if (!path) {
+    throw new Error("Expected Hermes gateway event document");
+  }
+  return path;
+}
+
+function storedEvent(): Record<string, unknown> {
+  const event = stored.get(firstEventPath());
+  if (!event) {
+    throw new Error("Expected Hermes gateway event document to be stored");
+  }
+  return event;
+}
+
 describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   beforeEach(() => {
     stored.clear();
@@ -146,23 +168,19 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
 
   it("forwards the relayEnvelope opaquely and persists NO plaintext body", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    const run = callableRun(enqueueHermesGatewayEvent);
 
-    const res = (await run(
+    const res = await run(
       request({
         targetClientId: TARGET_CLIENT_ID,
         eventId: SEALED_EVENT_ID,
         relayEnvelope: sealedEnvelope(),
         senderId: "burnbar-user",
       }),
-    )) as { id: string };
-    expect(res.id).toBe(SEALED_EVENT_ID);
-
-    const eventPath = Object.keys(Object.fromEntries(stored)).find((p) =>
-      p.startsWith(`users/${UID}/hermes_gateway_events/`),
     );
-    expect(eventPath).toBeDefined();
-    const event = stored.get(eventPath!)!;
+    expect(res).toMatchObject({ id: SEALED_EVENT_ID });
+
+    const event = storedEvent();
 
     // Sealed envelope is stored verbatim; routing fields kept.
     expect(event.relayEnvelope).toEqual(sealedEnvelope());
@@ -188,7 +206,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
 
   it("rejects a relay-capable client that sends plaintext text with no envelope", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    const run = callableRun(enqueueHermesGatewayEvent);
     await expect(
       run(
         request({
@@ -206,7 +224,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
 
   it("rejects a malformed relayEnvelope (wrong algorithm constant)", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    const run = callableRun(enqueueHermesGatewayEvent);
     await expect(
       run(
         request({
@@ -219,7 +237,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
 
   it("requires a sealed relayEnvelope for a model_switch on a relay-capable client", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    const run = callableRun(enqueueHermesGatewayEvent);
     // An unsealed model_switch (plaintext command, no envelope) is rejected: the
     // server no longer reads/validates the model command in cleartext.
     await expect(
@@ -238,7 +256,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
 
   it("does NOT block a sealed model_switch on a model absent from the catalog (agent decides)", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    const run = callableRun(enqueueHermesGatewayEvent);
     // The seeded client advertises only "minimax-m2.7". A sealed switch to an
     // unadvertised model must NOT be pre-rejected by the server — the agent
     // validates against its own catalog after opening the sealed command.
@@ -251,15 +269,14 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
         relayEnvelope: sealedEnvelope(),
       }),
     );
-    const eventPath = [...stored.keys()].find((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
-    const event = stored.get(eventPath!)!;
+    const event = storedEvent();
     expect(event.kind).toBe("model_switch");
     expect(event.modelId).toBe("gpt-5-unlisted");
   });
 
   it("stores a sealed model_switch with the envelope + cleartext modelId, no private body fields", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    const run = callableRun(enqueueHermesGatewayEvent);
     await run(
       request({
         targetClientId: TARGET_CLIENT_ID,
@@ -272,8 +289,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
         text: "/model minimax-m2.7",
       }),
     );
-    const eventPath = [...stored.keys()].find((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
-    const event = stored.get(eventPath!)!;
+    const event = storedEvent();
     expect(event.kind).toBe("model_switch");
     expect(event.modelId).toBe("minimax-m2.7");
     // The sealed command body rides in the envelope; routing modelId is cleartext.
