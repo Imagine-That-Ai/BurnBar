@@ -74,7 +74,7 @@ final class iPadNavigationUITests: XCTestCase {
     }
 
     func testYouRouteIncludesEveryAccountCardDestination() {
-        XCTAssertEqual(Set(YouRoute.allCases), [.sync, .devices, .providers, .settings, .computerUse])
+        XCTAssertEqual(Set(YouRoute.allCases), [.settings, .dataVault, .sync, .providers, .devices, .computerUse, .memory])
     }
 
     func testCloudSyncHealthPresentationCopyIsActionable() {
