@@ -52,7 +52,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        uses: google-github-actions/auth@v2 # v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
