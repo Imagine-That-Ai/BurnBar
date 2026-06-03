@@ -5,9 +5,35 @@ import {
   canonicalAuditPayload,
   computeAuditHash,
   auditActorLabel,
+  verifyAuditChain,
   AUDIT_GENESIS_PREV_HASH,
   type AuditEventCore,
+  type AuditHead,
 } from "../callables/auditLog.js";
+
+/** Build a valid, self-consistent chain of `length` events (seq 0..length-1). */
+function buildChain(length: number): Array<AuditEventCore & { hash: string }> {
+  const chain: Array<AuditEventCore & { hash: string }> = [];
+  let prevHash = AUDIT_GENESIS_PREV_HASH;
+  for (let seq = 0; seq < length; seq += 1) {
+    const core = makeEvent(seq, prevHash);
+    const hash = computeAuditHash(core);
+    chain.push({ ...core, hash });
+    prevHash = hash;
+  }
+  return chain;
+}
+
+/** The head doc a server would honestly record for a chain of `length` events. */
+function headFor(chain: Array<AuditEventCore & { hash: string }>, anchoredSeq?: number): AuditHead {
+  const tail = chain[chain.length - 1];
+  return {
+    maxSeq: tail.seq,
+    headHash: tail.hash,
+    anchoredSeq,
+    anchoredHash: anchoredSeq != null ? chain[anchoredSeq].hash : undefined,
+  };
+}
 
 describe("auditActorLabel — self-reported platform hint is clamped", () => {
   const withHeader = (v: unknown) =>
@@ -116,5 +142,54 @@ describe("hash chain integrity", () => {
     // once event[2] is recomputed honestly.
     expect(chain[3].core.prevHash).toBe(chain[2].hash);
     expect(chain[3].core.prevHash).not.toBe(computeAuditHash(tampered));
+  });
+});
+
+describe("verifyAuditChain — truncation detection (B-SEC-3)", () => {
+  it("a full chain that reaches the recorded head is valid", () => {
+    const chain = buildChain(5);
+    const result = verifyAuditChain(chain, headFor(chain));
+    expect(result).toEqual({ valid: true, verifiedMaxSeq: 4 });
+  });
+
+  it("an empty chain with no head is valid", () => {
+    expect(verifyAuditChain([], null)).toEqual({ valid: true, verifiedMaxSeq: -1 });
+  });
+
+  it("FAILS when the tail is truncated below head.maxSeq (server suppression)", () => {
+    const full = buildChain(5);
+    const head = headFor(full); // head still records maxSeq=4
+    const truncated = full.slice(0, 3); // server deleted seq 3 and 4
+    const result = verifyAuditChain(truncated, head);
+    expect(result).toEqual({ valid: false, brokenAt: 3, reason: "truncated", expectedMaxSeq: 4 });
+  });
+
+  it("FAILS when the tail is truncated below the OTS anchor even if head is rewritten", () => {
+    const full = buildChain(5);
+    // A colluding server deletes seq 3-4 AND rewrites the head pointer to match
+    // the surviving prefix — but the head was OTS-anchored at seq 4 earlier.
+    const truncated = full.slice(0, 3);
+    const rewrittenHead: AuditHead = {
+      maxSeq: 2,
+      headHash: full[2].hash,
+      anchoredSeq: 4,
+      anchoredHash: full[4].hash,
+    };
+    const result = verifyAuditChain(truncated, rewrittenHead);
+    expect(result).toEqual({ valid: false, brokenAt: 3, reason: "truncated", expectedMaxSeq: 4 });
+  });
+
+  it("still flags a broken link before applying the truncation check", () => {
+    const chain = buildChain(4);
+    // Corrupt the stored hash of seq 2 → link reason wins over truncation.
+    chain[2] = { ...chain[2], hash: "deadbeef" };
+    const result = verifyAuditChain(chain, headFor(chain));
+    expect(result).toEqual({ valid: false, brokenAt: 2, reason: "link" });
+  });
+
+  it("a chain that exactly meets the anchor (no tail loss) stays valid", () => {
+    const chain = buildChain(5);
+    const result = verifyAuditChain(chain, headFor(chain, 4));
+    expect(result).toEqual({ valid: true, verifiedMaxSeq: 4 });
   });
 });

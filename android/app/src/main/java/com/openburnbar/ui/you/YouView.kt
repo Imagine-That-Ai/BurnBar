@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.stores.CloudSyncHealthStore
 import com.openburnbar.data.stores.DevicesStore
@@ -81,6 +82,7 @@ fun YouView(
                         onOpenMenuBarPrefs = { subScreen = YouSubScreen.MenuBarPrefs },
                         onOpenChatTiles = { subScreen = YouSubScreen.ChatTiles },
                         onOpenSettings = { subScreen = YouSubScreen.Settings },
+                        onOpenControlCenter = youRootOpenControlCenterHandler(LocalContext.current),
                     ),
                 )
             YouSubScreen.SmartDisplays -> SmartDisplayView(onBack = { subScreen = YouSubScreen.Root })
@@ -94,6 +96,15 @@ fun YouView(
                 )
             YouSubScreen.ComputerUse -> ComputerUseAgentWatchScreen()
         }
+    }
+}
+
+private fun youRootOpenControlCenterHandler(context: android.content.Context): () -> Unit = {
+    runCatching {
+        val intent =
+            android.content.Intent(android.content.Intent.ACTION_VIEW, "burnbar://data".toUri())
+                .setPackage(context.packageName)
+        context.startActivity(intent)
     }
 }
 

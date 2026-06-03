@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import {
   getOrCreateDeviceKeyPair,
   exportDevicePublicJwk,
-  unwrapVaultKey,
+  importVaultKey,
+  unwrapVaultKeyBytes,
   base64ToBytes,
   webAuthnPrfSupported,
   EscrowError,
@@ -36,8 +37,8 @@ export function EscrowFlow({
   fetchWrappedKey: (escrowDeviceId: string) => Promise<string | null>;
   /** App Check / reCAPTCHA token; the host page supplies it. */
   recaptchaToken: string;
-  /** Called once with the in-memory vault key (non-extractable CryptoKey). */
-  onVaultKeyReady?: (vaultKey: CryptoKey) => void;
+  /** Called once with the in-memory vault key and raw key bytes for local-only cloak/decrypt work. */
+  onVaultKeyReady?: (vaultKey: CryptoKey, rawVaultKey: Uint8Array) => void;
 }) {
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -69,8 +70,9 @@ export function EscrowFlow({
       }
       setStep("unwrapping");
       const pair = await getOrCreateDeviceKeyPair();
-      const vaultKey = await unwrapVaultKey(base64ToBytes(wrappedB64), pair.privateKey);
-      onVaultKeyReady?.(vaultKey);
+      const rawVaultKey = await unwrapVaultKeyBytes(base64ToBytes(wrappedB64), pair.privateKey);
+      const vaultKey = await importVaultKey(rawVaultKey);
+      onVaultKeyReady?.(vaultKey, rawVaultKey);
       setStep("ready");
     } catch (err) {
       if (err instanceof EscrowError) setError(err.message);

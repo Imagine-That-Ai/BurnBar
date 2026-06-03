@@ -10,6 +10,7 @@ import { db } from "../adminRuntime.js";
 import { computeUserRollups, writeUserRollups } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: rebuildUsageRollups
@@ -17,7 +18,7 @@ import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 
 export const rebuildUsageRollups = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 10,
   },
@@ -60,7 +61,7 @@ export const rebuildUsageRollups = onCall(
 
 export const seedAndroidDemoAccount = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 20,
   },

@@ -9,6 +9,10 @@ extension ConversationStore {
 
         func fetchUnsyncedConversations(limit: Int = 400) throws -> [ConversationRecord] {
             try dbQueue.read { db in
+                // Deliberately includes tombstones: a soft-delete clears
+                // `conversationSyncedAt`, so the row resurfaces here and its
+                // `deletedAt` is uploaded to Firestore — that upload is exactly how
+                // the delete reaches device B.
                 let rows = try Row.fetchAll(
                     db,
                     sql: """
@@ -46,8 +50,9 @@ extension ConversationStore {
                             keyFiles, keyCommands, keyTools,
                             inferredTaskTitle, lastAssistantMessage, fullText,
                             indexedAt, workingDirectory, fileModifiedAt, sourceType,
-                            sourceDeviceId, sourceDeviceName, isRemote, conversationSyncedAt
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                            sourceDeviceId, sourceDeviceName, isRemote, conversationSyncedAt,
+                            deletedAt, version
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                         """,
                     arguments: [
                         record.id, record.provider.rawValue, record.sessionId,
@@ -58,9 +63,26 @@ extension ConversationStore {
                         OpenBurnBarDatabase.encodeJSONStringArray(record.keyTools),
                         record.inferredTaskTitle, record.lastAssistantMessage, record.fullText,
                         record.indexedAt, record.workingDirectory, record.fileModifiedAt, record.sourceType.rawValue,
-                        record.sourceDeviceId, record.sourceDeviceName, Date()
+                        record.sourceDeviceId, record.sourceDeviceName, Date(),
+                        record.deletedAt, record.version
                     ]
                 )
+
+                // Honor a remote tombstone even for a row that already exists
+                // locally: `INSERT OR IGNORE` skips existing rows, so the delete
+                // would otherwise never land. Mirror the remote `deletedAt`
+                // (and advance `version`) only when the remote tombstone is newer,
+                // so a delete on device A propagates to this device (B-DATA-2).
+                if let deletedAt = record.deletedAt {
+                    try db.execute(
+                        sql: """
+                        UPDATE conversations
+                        SET deletedAt = ?, version = MAX(version, ?)
+                        WHERE id = ? AND (deletedAt IS NULL OR version < ?)
+                        """,
+                        arguments: [deletedAt, record.version, record.id, record.version]
+                    )
+                }
             }
         }
 
@@ -70,7 +92,7 @@ extension ConversationStore {
                     db,
                     sql: """
                     SELECT * FROM conversations
-                    WHERE logSyncedAt IS NULL AND isRemote = 0
+                    WHERE logSyncedAt IS NULL AND isRemote = 0 AND deletedAt IS NULL
                     ORDER BY COALESCE(endTime, startTime) ASC
                     LIMIT ?
                     """,
@@ -86,7 +108,7 @@ extension ConversationStore {
                     db,
                     sql: """
                     SELECT COUNT(*) FROM conversations
-                    WHERE logSyncedAt IS NULL AND isRemote = 0
+                    WHERE logSyncedAt IS NULL AND isRemote = 0 AND deletedAt IS NULL
                     """
                 ) ?? 0
             }
@@ -110,14 +132,14 @@ extension ConversationStore {
         @discardableResult
         func markAllSessionLogsUnsynced() throws -> Int {
             try dbQueue.write { db in
-                try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE isRemote = 0")
+                try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE isRemote = 0 AND deletedAt IS NULL")
                 return db.changesCount
             }
         }
 
         func countConversations() throws -> Int {
             try dbQueue.read { db in
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations") ?? 0
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations WHERE deletedAt IS NULL") ?? 0
             }
         }
 }

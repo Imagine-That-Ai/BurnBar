@@ -6,6 +6,12 @@
 import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { functions } from "./firebaseClient";
 import type { EncryptionTier } from "./domains";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/browser";
 
 async function call<Req, Res>(name: string, payload?: Req): Promise<Res> {
   const fn = httpsCallable<Req, Res>(functions(), name);
@@ -149,3 +155,43 @@ export interface EscrowApprovalStatus {
   /** Base64 (Swift x963||combined) wrapped vault key, present once approved. */
   wrappedKeyBase64?: string;
 }
+
+// ── Pensieve recall (client embeds+cloaks, server ANN-searches opaque vectors) ─
+export interface SearchKnowledgeHit {
+  vectorId: string;
+  ciphertext: unknown;
+  sealedMetadata: unknown;
+  sourceKind: "repo_docs" | "notes" | "chat_memory";
+  sourceSlug: string;
+  contentHash: string;
+  score: number;
+  decryptMode: "local_decrypt";
+}
+export interface SearchKnowledgeResponse {
+  ok: boolean;
+  hits: SearchKnowledgeHit[];
+  embeddingModelVersion: string;
+}
+export const searchKnowledge = (payload: {
+  queryVector: number[];
+  embeddingModelVersion: string;
+  sourceKind?: "repo_docs" | "notes" | "chat_memory";
+  sourceSlug?: string;
+  limit?: number;
+}) => call<typeof payload, SearchKnowledgeResponse>("searchKnowledge", payload);
+
+// ── Passkeys ───────────────────────────────────────────────────────────────
+export const registerPasskey = () =>
+  call<void, { ok: boolean; options: PublicKeyCredentialCreationOptionsJSON }>("registerPasskey");
+export const verifyPasskeyRegistration = (response: RegistrationResponseJSON, challenge: string) =>
+  call<
+    { response: RegistrationResponseJSON; challenge: string },
+    { ok: boolean; credentialId: string }
+  >("verifyPasskeyRegistration", { response, challenge });
+export const beginPasskeyAssertion = () =>
+  call<void, { ok: boolean; options: PublicKeyCredentialRequestOptionsJSON }>("beginPasskeyAssertion");
+export const verifyPasskeyAssertion = (assertion: AuthenticationResponseJSON, challenge: string) =>
+  call<
+    { assertion: AuthenticationResponseJSON; challenge: string },
+    { ok: boolean; token: string }
+  >("verifyPasskeyAssertion", { assertion, challenge });

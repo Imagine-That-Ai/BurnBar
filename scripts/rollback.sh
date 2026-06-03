@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
-# OpenBurnBar rollback script
+# OpenBurnBar full SOURCE rollback (slow — rebuild + redeploy).
 #
-# Rolls back Cloud Functions to a specific git tag or the previous release.
-# Rollback is performed by checking out the tag and redeploying.
+# Rolls back Cloud Functions to a specific git tag or the previous release by
+# checking out the tag, rebuilding, and running `firebase deploy`. This is the
+# FALLBACK path: it takes tens of minutes (MTTR).
+#
+# FAST PATH FIRST: for most incidents, pin traffic back to a previous-good
+# Cloud Run revision in seconds (no rebuild) via:
+#     scripts/ops/rollback-revision.sh <cloud-run-service> [target-revision]
+# Use this source rollback only when no good revision exists (e.g. the bug is in
+# committed source you must revert, or revisions were pruned).
 #
 # Usage:
 #   ./scripts/rollback.sh                    # Roll back to the previous release tag
 #   ./scripts/rollback.sh v0.1.2-beta.11     # Roll back to a specific tag
 #   ./scripts/rollback.sh --dry-run          # Preview what would be rolled back
+#   ./scripts/rollback.sh --yes              # Non-interactive (skip confirmation)
 #
 # Prerequisites:
 #   - firebase CLI installed and authenticated
@@ -18,10 +26,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DRY_RUN=false
+ASSUME_YES=false
 TARGET_TAG=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
+    --yes|-y) ASSUME_YES=true ;;
     v*) TARGET_TAG="$arg" ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
@@ -93,10 +103,12 @@ fi
 
 # ── Confirm rollback ──────────────────────────────────────────────────────
 
-read -r -p "Proceed with rollback to ${TARGET_TAG}? [y/N] " CONFIRM
-if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
-  echo "Rollback cancelled."
-  exit 0
+if [[ "$ASSUME_YES" != "true" ]]; then
+  read -r -p "Proceed with rollback to ${TARGET_TAG}? [y/N] " CONFIRM
+  if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
+    echo "Rollback cancelled."
+    exit 0
+  fi
 fi
 
 # ── Execute rollback ─────────────────────────────────────────────────────

@@ -17,18 +17,46 @@ import CommonCrypto
 // stored as a base64-encoded string. A UUID-based identifier is used as the
 // Keychain account name to support future key rotation.
 //
-// SECURITY: The PRAGMA key is applied using hex encoding (x'' notation) to
-// prevent SQL injection through string interpolation. Hex encoding is safe
-// because the output charset is limited to [0-9a-f], making injection impossible.
+// SECURITY: The key is applied in SQLCipher *passphrase* mode via
+// `PRAGMA key = '<key>'` (NOT raw `x'<hex>'` mode). Passphrase mode runs the
+// stored base64 string through SQLCipher's PBKDF2 key-derivation; raw mode would
+// instead use the bytes as the AES key directly and derive a *different* key, so
+// the two formats are not interchangeable for an existing database. Before
+// interpolation the key is validated to contain only base64 characters
+// (A-Z, a-z, 0-9, +, /, =) plus '-', none of which can escape a single-quoted
+// SQL string literal, so string injection is impossible. See `makeConfiguration`.
 //
 // RECOVERY: There is no automatic plaintext recovery file. Keychain loss means
 // data loss. Users may explicitly export an encrypted recovery bundle protected
 // by a user-chosen passphrase (PBKDF2 + AES-GCM). See exportRecoveryBundle
 // and importRecoveryBundle.
 
+/// Failures raised while configuring or opening an encrypted database.
+enum DatabaseEncryptionError: Error, CustomStringConvertible {
+    /// The build links a SQLite that is NOT SQLCipher (the `PRAGMA key` was a
+    /// silent no-op, proven by `PRAGMA cipher_version` returning empty/nil), so
+    /// the database would have been written in PLAINTEXT despite encryption being
+    /// requested. We hard-fail instead of silently shipping plaintext.
+    case cipherUnavailable
+
+    var description: String {
+        switch self {
+        case .cipherUnavailable:
+            return "SQLCipher is not active in this build (PRAGMA cipher_version was empty); "
+                + "the database would be written in plaintext. Refusing to open with encryption requested."
+        }
+    }
+}
+
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
     private static let keyIdentifierAccount = "database-encryption-key-v1"
+
+    /// The 16-byte magic header every *plaintext* SQLite 3 file begins with.
+    /// A SQLCipher-encrypted file's first page is ciphertext and does NOT carry
+    /// this header, so its presence/absence cheaply distinguishes the two without
+    /// needing the key. Reference: <https://www.sqlite.org/fileformat2.html#the_database_header>.
+    private static let plaintextSQLiteMagic = Data("SQLite format 3\u{0}".utf8)
 
     // MARK: - Key Management
 
@@ -241,25 +269,45 @@ enum DatabaseEncryptionService {
 // MARK: - Database Configuration with Encryption
 
 extension DatabaseEncryptionService {
-    /// Builds a GRDB `Configuration` object with SQLCipher encryption applied
-    /// when `encryptionKey` is non-nil and GRDBCipher is available in the build.
+    /// Builds a GRDB `Configuration`. When `encryptionKey` is non-nil the
+    /// configuration applies the SQLCipher passphrase on every connection AND
+    /// self-checks that SQLCipher is genuinely active, throwing
+    /// `DatabaseEncryptionError.cipherUnavailable` if it is not.
     ///
-    /// **Key application:**
-    /// The key is base64-encoded (alphabet: A-Z, a-z, 0-9, +, /, =). Before
-    /// interpolation into `PRAGMA key`, the key is validated to contain only
-    /// these characters, which cannot escape the SQL string literal. This is
-    /// safe because none of these characters are single quotes or backslashes.
+    /// **Why this is now the only path (the dead-guard bug):**
+    /// The linked package `SahebRoy92/GRDB-SQLCipher` exposes its module as
+    /// `GRDB` — there is NO `GRDBCipher` product or target. The previous
+    /// `#if canImport(GRDBCipher)` gate was therefore DEAD CODE: the `PRAGMA key`
+    /// block never compiled in, so the database was written in PLAINTEXT for
+    /// everyone regardless of the `databaseEncryptionEnabled` setting. The key is
+    /// now applied through the real `import GRDB` build.
     ///
-    /// **Raw key format (x''):**
-    /// Previously, raw key hex format (`x'<hex>'`) was considered to eliminate
-    /// any injection risk. However, `PRAGMA key = x'...'` uses the bytes as
-    /// the raw AES key directly (bypassing PBKDF2 derivation), while
-    /// `PRAGMA key = '...'` derives the AES key from the passphrase via PBKDF2.
-    /// These produce completely different derived keys, so switching from one
-    /// format to the other would make existing encrypted databases unreadable.
-    /// We use passphrase mode for backward compatibility with existing databases,
-    /// and validate the key character set to prevent injection.
-    static func makeConfiguration(encryptionKey: String?) -> Configuration {
+    /// **Key application (passphrase mode):**
+    /// The key is base64 (A-Z, a-z, 0-9, +, /, =) plus '-'. It is validated to
+    /// contain only those characters before interpolation into
+    /// `PRAGMA key = '<key>'`; none of them can escape a single-quoted SQL string
+    /// literal (only `'` and `\` can), so string injection is impossible. We use
+    /// passphrase mode (PBKDF2 derivation) — NOT raw `x'<hex>'` mode — because the
+    /// two derive different AES keys and are not interchangeable for an existing
+    /// encrypted database.
+    ///
+    /// **`cipher_version` self-check:**
+    /// Immediately after applying the key, inside `prepareDatabase`, we read
+    /// `PRAGMA cipher_version`. On a SQLCipher build this returns the SQLCipher
+    /// version string; on a plain SQLite build (where `PRAGMA key` was silently
+    /// ignored) it returns nil/empty, and we throw
+    /// `DatabaseEncryptionError.cipherUnavailable`. This is exactly the check that
+    /// would have caught the dead-guard bug above. Because GRDB evaluates
+    /// `prepareDatabase` lazily for each connection, this self-check fires when the
+    /// pool actually opens a connection — so a keyed `DatabasePool(...)` open
+    /// HARD-FAILS rather than ever silently shipping plaintext. The caller
+    /// (`DataStoreCoordinator.makeDatabasePool`) catches that error and falls back
+    /// to the acknowledged-plaintext escape hatch instead of crashing.
+    ///
+    /// - Throws: `DatabaseEncryptionError.cipherUnavailable` synchronously when the
+    ///   key fails charset validation; and via `prepareDatabase` (at connection
+    ///   open) when a key was requested but SQLCipher is not active in this build.
+    static func makeConfiguration(encryptionKey: String?) throws -> Configuration {
         var config = Configuration()
         // The daemon writes to the same SQLite file (switcher profiles, indexed search).
         // Without a busy timeout, any cross-process write contention immediately raises
@@ -267,28 +315,58 @@ extension DatabaseEncryptionService {
         config.busyMode = .timeout(5)
         guard let key = encryptionKey else { return config }
 
-        #if canImport(GRDBCipher)
         // Validate that the key contains only safe characters before interpolation.
         // Allowed: base64 alphabet (A-Z, a-z, 0-9, +, /, =) plus hyphens for
         // backward compatibility with test keys. None of these characters can
         // escape a single-quoted SQL string literal (only ' and \ can do that).
         let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
         guard key.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
-            AppLogger.dataStore.error("encryption_key_validation_failed", metadata: ["reason": "Key contains characters outside the allowed set"])
-            return config
+            AppLogger.dataStore.error(
+                "encryption_key_validation_failed",
+                metadata: ["reason": "Key contains characters outside the allowed set"]
+            )
+            throw DatabaseEncryptionError.cipherUnavailable
         }
 
         config.prepareDatabase { db in
             try db.execute(sql: "PRAGMA key = '\(key)'")
+            // SQLCipher activity self-check. On a plain (non-SQLCipher) SQLite the
+            // PRAGMA above is an ignored no-op and this returns empty/nil; we refuse
+            // to proceed because the data would be plaintext.
+            let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
+            guard let version = cipherVersion, version.isEmpty == false else {
+                AppLogger.dataStore.error(
+                    "cipher_self_check_failed",
+                    metadata: ["reason": "PRAGMA cipher_version empty; SQLCipher not active in this build"]
+                )
+                throw DatabaseEncryptionError.cipherUnavailable
+            }
         }
-        #else
-        // GRDBCipher not available in this build — encryption cannot be enabled.
-        // Log a warning so the user knows their data is NOT encrypted despite
-        // having enabled the setting. This is a build-time configuration issue.
-        AppLogger.dataStore.error("Database encryption enabled in settings but GRDBCipher is not available in this build. The database will NOT be encrypted. Ensure the app is built with the SQLCipher target to enable encryption.")
-        _ = key  // Suppress unused warning
-        #endif
 
         return config
+    }
+
+    // MARK: - Plaintext vs Encrypted File Detection
+
+    /// Reports whether the file at `path` is an *encrypted* SQLCipher database, by
+    /// inspecting only the first 16 bytes (no key required).
+    ///
+    /// A plaintext SQLite 3 file always begins with the magic header
+    /// `"SQLite format 3\0"`. A SQLCipher-encrypted file's first page is
+    /// ciphertext and does not carry that header. A brand-new / missing / empty
+    /// file is treated as "not encrypted" so the caller can create it fresh.
+    ///
+    /// - Returns: `true` if the file exists, is non-trivial, and does NOT start
+    ///   with the plaintext SQLite magic (i.e. it is encrypted); `false` for a
+    ///   missing, empty, or plaintext file.
+    static func isEncryptedDatabaseFile(at path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: plaintextSQLiteMagic.count),
+              header.count == plaintextSQLiteMagic.count else {
+            // Missing or shorter-than-header file: nothing encrypted to protect.
+            return false
+        }
+        return header != plaintextSQLiteMagic
     }
 }

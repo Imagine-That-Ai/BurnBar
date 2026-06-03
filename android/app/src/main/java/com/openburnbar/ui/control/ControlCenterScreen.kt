@@ -58,7 +58,7 @@ import com.openburnbar.ui.theme.AuroraType
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ControlCenterScreen(
+internal fun ControlCenterScreen(
     modifier: Modifier = Modifier,
     store: ControlCenterStore = viewModel(),
     onBack: () -> Unit = {},

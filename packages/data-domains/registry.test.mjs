@@ -46,6 +46,37 @@ test("generated files on disk are up to date with registry (run `npm run build` 
   }
 });
 
+// Apple consumes gen/DataDomains.swift directly via project.yml source paths,
+// but Android cannot reference files outside its module, so it keeps a copied
+// in-tree DataDomains.kt synced by the `:app:syncGeneratedSources` Gradle task.
+// This is exactly how the false "end-to-end encrypted" chat label drifted in
+// once (a hand-edited GENERATED-DO-NOT-EDIT copy), so CI — not a reviewer —
+// must catch any divergence between the Android copy and the registry.
+test("android in-tree DataDomains.kt matches generated output (run ./gradlew :app:syncGeneratedSources)", () => {
+  const generated = generateAll(registry)["gen/DataDomains.kt"];
+  const androidPath = join(
+    HERE,
+    "..",
+    "..",
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "com",
+    "openburnbar",
+    "data",
+    "domains",
+    "DataDomains.kt"
+  );
+  const onDisk = readFileSync(androidPath, "utf8");
+  assert.equal(
+    onDisk,
+    generated,
+    "android DataDomains.kt is stale — run ./gradlew :app:syncGeneratedSources (the Android privacy labels must equal registry.json byte-for-byte)"
+  );
+});
+
 test("firestore.rules parser finds the known Pensieve + core collections", () => {
   const rulesText = readFileSync(join(HERE, "..", "..", "firestore.rules"), "utf8");
   const cols = userCollectionsInRules(rulesText);

@@ -30,6 +30,16 @@ final class GatewaySettings {
         }
     }
 
+    /// Opt-in, off-by-default escape hatch that permits the HTTP gateway to bind
+    /// loopback (127.0.0.1) without a bearer token. Fail-closed by default: any
+    /// same-host process can POST to the gateway and spend the user's provider
+    /// credits, so the gateway auto-generates and enforces a token unless the
+    /// user explicitly opts out here. Maps to the daemon
+    /// `OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK` env var at launch.
+    var allowUnauthenticatedLoopback: Bool = false {
+        didSet { persistence.set(allowUnauthenticatedLoopback, forKey: "gatewayAllowUnauthenticatedLoopback") }
+    }
+
     /// **Experimental, off by default.** Routes eligible Anthropic subscription
     /// requests through a genuine interactive `claude` TUI (no `-p`) instead of
     /// the metered programmatic path. Gray-area: Anthropic's terms prohibit
@@ -69,7 +79,39 @@ final class GatewaySettings {
             account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
         )
+        self.allowUnauthenticatedLoopback = persistence.bool(forKey: "gatewayAllowUnauthenticatedLoopback")
         self.experimentalInteractiveClaudeEnabled = persistence.bool(forKey: "experimentalInteractiveClaudeEnabled")
         self.crossVendorDegradeEnabled = persistence.bool(forKey: "crossVendorDegradeEnabled")
+    }
+
+    /// Generates a random URL-safe bearer token. The hex-encoded UUID form
+    /// matches `rotateDaemonSocketAuthToken()` so both runtime secrets read the
+    /// same way and survive a `ps auxww` redaction audit identically.
+    static func generateAuthToken() -> String {
+        UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    }
+
+    /// Ensures the gateway has a bearer token to enforce before the daemon is
+    /// launched. Returns the token that should be injected as
+    /// `OPENBURNBAR_GATEWAY_AUTH_TOKEN`, or `nil` when the user has explicitly
+    /// opted into an unauthenticated loopback bind.
+    ///
+    /// Fail-closed: when no token is stored and the user has NOT opted out, a
+    /// fresh token is generated and persisted to the keychain so every gateway
+    /// launch is authenticated by default. An existing token is preserved so
+    /// configured clients (CLI bridges, connectors) keep working across restarts.
+    @discardableResult
+    func ensureAuthTokenForLaunch() -> String? {
+        let trimmed = gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+        guard !allowUnauthenticatedLoopback else {
+            return nil
+        }
+        let generated = Self.generateAuthToken()
+        gatewayAuthToken = generated
+        return generated
     }
 }

@@ -138,6 +138,76 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount))
     }
 
+    func test_generateGatewayAuthToken_producesUniqueURLSafeSecrets() {
+        let first = GatewaySettings.generateAuthToken()
+        let second = GatewaySettings.generateAuthToken()
+        XCTAssertNotEqual(first, second, "Each launch must mint a distinct token")
+        XCTAssertFalse(first.isEmpty)
+        XCTAssertGreaterThanOrEqual(first.count, 32, "Token must carry meaningful entropy")
+        // URL-safe + ps-redaction-safe: hex only, no separators or whitespace.
+        let allowed = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        XCTAssertTrue(
+            first.unicodeScalars.allSatisfy { allowed.contains($0) },
+            "Token must be hex so it survives plist + header transport unescaped"
+        )
+    }
+
+    func test_ensureGatewayAuthTokenForLaunch_failsClosedByAutoGeneratingToken() {
+        let settings = makeIsolatedSettingsManager()
+
+        // A1 fail-closed: a blank token with no explicit opt-in must mint and
+        // persist a bearer token so the gateway never launches unauthenticated.
+        XCTAssertTrue(settings.gatewayAuthToken.isEmpty)
+        XCTAssertFalse(settings.gatewayAllowUnauthenticatedLoopback)
+
+        let generated = settings.ensureGatewayAuthTokenForLaunch()
+        let token = try? XCTUnwrap(generated)
+        XCTAssertEqual(token, settings.gatewayAuthToken, "Generated token must be persisted to settings")
+        XCTAssertFalse((token ?? "").isEmpty)
+    }
+
+    func test_ensureGatewayAuthTokenForLaunch_preservesExistingTokenAcrossLaunches() {
+        let settings = makeIsolatedSettingsManager()
+        settings.gatewayAuthToken = "operator-supplied-token"
+
+        let resolved = settings.ensureGatewayAuthTokenForLaunch()
+        XCTAssertEqual(resolved, "operator-supplied-token", "An existing token must survive restarts unchanged")
+        XCTAssertEqual(settings.gatewayAuthToken, "operator-supplied-token")
+    }
+
+    func test_ensureGatewayAuthTokenForLaunch_returnsNilWhenUnauthenticatedLoopbackOptIn() {
+        let settings = makeIsolatedSettingsManager()
+        settings.gatewayAllowUnauthenticatedLoopback = true
+
+        let resolved = settings.ensureGatewayAuthTokenForLaunch()
+        XCTAssertNil(resolved, "Explicit opt-in must skip token generation")
+        XCTAssertTrue(settings.gatewayAuthToken.isEmpty, "No token should be minted when opted out")
+    }
+
+    /// Builds a `SettingsManager` backed by an isolated defaults suite and
+    /// in-memory keychains so token persistence does not touch the real keychain.
+    private func makeIsolatedSettingsManager() -> SettingsManager {
+        let suiteName = "com.openburnbar.tests.settings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+
+        return SettingsManager(
+            defaults: defaults,
+            controllerRuntimeSecrets: KeychainStore(
+                service: "tests.controller.\(UUID().uuidString)",
+                legacyServices: [],
+                backend: SettingsManagerTestKeychainBackend()
+            ),
+            chatGatewaySecrets: KeychainStore(
+                service: "tests.gateway.\(UUID().uuidString)",
+                legacyServices: [],
+                backend: SettingsManagerTestKeychainBackend()
+            ),
+            flushDelayNanoseconds: 0
+        )
+    }
+
     func test_keychainSet_rewritesEntryWhenNonInteractiveReadInitiallyFails() throws {
         let service = "tests.keychain.rewrite.\(UUID().uuidString)"
         let backend = InteractionLockedWriteTestKeychainBackend()

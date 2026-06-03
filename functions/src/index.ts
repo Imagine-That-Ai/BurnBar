@@ -21,7 +21,7 @@ export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloud
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
-export { sendVoIPOutbound } from "./apnsSender.js";
+export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";
 export { sendFcmOutbound } from "./fcmAndroidSender.js";
 export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification } from "./agentNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
@@ -104,6 +104,12 @@ export { setupRecovery, confirmRecovery, listRecovery } from "./callables/recove
 export { revokeAllAccess } from "./callables/panic.js";
 export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
 export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";
+export {
+  registerPasskey,
+  verifyPasskeyRegistration,
+  beginPasskeyAssertion,
+  verifyPasskeyAssertion,
+} from "./callables/passkey.js";
 
 export { issueRemoteMcpGrant, revokeRemoteMcpClient, searchStreams } from "./callables/remoteMcp.js";
 export {
@@ -127,6 +133,7 @@ export {
   rebuildRollups,
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
+  anchorAuditLogHeads,
   latestRouterRundown,
 } from "./scheduledExports.js";
 

@@ -13,6 +13,8 @@ struct RecoverySetupSheet: View {
 
     @State private var method: DataControlCenterViewModel.RecoveryKind = .recoveryKey
     @State private var recoveryKey = ""
+    @State private var confirmationKey = ""
+    @State private var confirmingRecoveryID: String?
     @State private var contactEmail = ""
     @State private var contactLabel = ""
 
@@ -49,6 +51,38 @@ struct RecoverySetupSheet: View {
         .frame(width: 460)
         .background(EmberSurfaceBackground().ignoresSafeArea())
         .task { await viewModel.refreshRecovery() }
+        .sheet(item: Binding(
+            get: { confirmingRecoveryID.map(RecoveryConfirmationID.init) },
+            set: { confirmingRecoveryID = $0?.rawValue }
+        )) { item in
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Confirm recovery key")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                SecureField("Recovery key", text: $confirmationKey)
+                    .textFieldStyle(.roundedBorder)
+                Text("This device derives the verification hash locally. The raw recovery key is never sent.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                HStack {
+                    Button("Cancel") {
+                        confirmationKey = ""
+                        confirmingRecoveryID = nil
+                    }
+                    Spacer()
+                    Button("Confirm") {
+                        Task {
+                            _ = await viewModel.confirmRecoveryKey(recoveryId: item.rawValue, recoveryKey: confirmationKey)
+                            confirmationKey = ""
+                            confirmingRecoveryID = nil
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(confirmationKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(20)
+            .frame(width: 380)
+        }
     }
 
     private var header: some View {
@@ -73,7 +107,7 @@ struct RecoverySetupSheet: View {
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(1.2)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            TextField("28-character recovery key", text: $recoveryKey)
+            TextField("recovery key", text: $recoveryKey)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 13, design: .monospaced))
             Text("Write this down and store it somewhere only you can reach. We never see it.")
@@ -127,7 +161,11 @@ struct RecoverySetupSheet: View {
                                 .foregroundStyle(DesignSystem.Colors.success)
                         } else {
                             Button("Confirm") {
-                                Task { await viewModel.confirmRecovery(recoveryId: recoveryMethod.recoveryId) }
+                                if recoveryMethod.kind == "recovery_key" {
+                                    confirmingRecoveryID = recoveryMethod.recoveryId
+                                } else {
+                                    Task { await viewModel.confirmRecovery(recoveryId: recoveryMethod.recoveryId) }
+                                }
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
@@ -149,7 +187,10 @@ struct RecoverySetupSheet: View {
                 Task {
                     let payload: [String: Any]
                     if method == .recoveryKey {
-                        payload = ["recoveryKey": recoveryKey]
+                        if await viewModel.setupRecoveryKey(recoveryKey) != nil {
+                            recoveryKey = ""
+                        }
+                        return
                     } else {
                         payload = ["contactEmail": contactEmail, "contactLabel": contactLabel]
                     }
@@ -374,4 +415,9 @@ struct DeleteDomainSheet: View {
         .frame(width: 460)
         .background(EmberSurfaceBackground().ignoresSafeArea())
     }
+}
+
+private struct RecoveryConfirmationID: Identifiable {
+    let rawValue: String
+    var id: String { rawValue }
 }

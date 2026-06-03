@@ -70,6 +70,95 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayConfigurationFailsClosedOnLoopbackWithoutToken() {
+        // A1: an unauthenticated loopback bind would let any same-host process
+        // POST to the gateway and spend the user's provider credits. Reject it
+        // unless the operator explicitly opts in.
+        for host in ["127.0.0.1", "localhost", "::1"] {
+            XCTAssertEqual(
+                BurnBarGatewayConfiguration(isEnabled: true, host: host, port: 8317, authToken: nil).validationError,
+                "The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1 without one.",
+                "Loopback host \(host) must fail closed without a token"
+            )
+            XCTAssertEqual(
+                BurnBarGatewayConfiguration(isEnabled: true, host: host, port: 8317, authToken: "   ").validationError,
+                "The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1 without one.",
+                "A whitespace-only token must be treated as absent for \(host)"
+            )
+        }
+    }
+
+    func testGatewayConfigurationAcceptsLoopbackWithTokenOrExplicitOptIn() {
+        // With a token, loopback is valid.
+        XCTAssertNil(
+            BurnBarGatewayConfiguration(isEnabled: true, host: "127.0.0.1", port: 8317, authToken: "gateway-secret").validationError
+        )
+        // With the explicit opt-in, an unauthenticated loopback bind is permitted.
+        XCTAssertNil(
+            BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: 8317,
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
+            ).validationError
+        )
+        // The opt-in never relaxes a non-loopback bind: those still require a token.
+        XCTAssertEqual(
+            BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "192.168.0.10",
+                port: 8317,
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
+            ).validationError,
+            "A non-loopback gateway bind address requires an auth token for security."
+        )
+        // A disabled gateway is always valid regardless of token state.
+        XCTAssertNil(
+            BurnBarGatewayConfiguration(isEnabled: false, host: "127.0.0.1", port: 8317, authToken: nil).validationError
+        )
+    }
+
+    func testGatewayStartRefusesUnauthenticatedLoopbackBind() async throws {
+        // The server must refuse to bind a fail-closed configuration so a stray
+        // unauthenticated gateway can never come up and serve credits. Reuse the
+        // harness wiring but swap in a token-less loopback configuration.
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-gateway-failclosed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let configStore = BurnBarConfigStore(
+            fileURL: tempDirectory.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
+        let server = BurnBarHTTPGatewayServer(
+            configuration: BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: 8317,
+                authToken: nil
+            ),
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
+        do {
+            try await server.start()
+            await server.stop()
+            XCTFail("Gateway started without a token on loopback")
+        } catch let BurnBarHTTPGatewayError.invalidConfiguration(reason) {
+            XCTAssertEqual(
+                reason,
+                "The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1 without one."
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testGatewayReturns400ForInvalidCompletionPayload() async throws {
         let harness = try GatewayHarness()
         try await harness.start()
@@ -4495,6 +4584,10 @@ private final class GatewayHarness: @unchecked Sendable {
                 host: "127.0.0.1",
                 port: port,
                 authToken: authToken,
+                // Token-less harness cases deliberately exercise routing without
+                // auth; opt into the loopback escape hatch so the production
+                // fail-closed default stays exercised by the dedicated A1 tests.
+                allowUnauthenticatedLoopback: authToken == nil,
                 rateLimit: rateLimit
             ),
             configStore: configStore,
@@ -4517,6 +4610,10 @@ private final class GatewayHarness: @unchecked Sendable {
                 host: "127.0.0.1",
                 port: port,
                 authToken: authToken,
+                // Token-less harness cases deliberately exercise routing without
+                // auth; opt into the loopback escape hatch so the production
+                // fail-closed default stays exercised by the dedicated A1 tests.
+                allowUnauthenticatedLoopback: authToken == nil,
                 rateLimit: rateLimit
             ),
             configStore: configStore,

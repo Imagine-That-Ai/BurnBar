@@ -15,6 +15,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case devicesAndSync
     case textExpansion
     case media
+    case dataPrivacy
     case computerUse
 
     var id: String { rawValue }
@@ -31,6 +32,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .textExpansion: return "Text Expansion"
         case .media: return "Media & Sharing"
+        case .dataPrivacy: return "Data & Privacy"
         case .computerUse: return "Computer Use"
         }
     }
@@ -59,6 +61,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "&& triggers, snippets, keyboard sync, and LLM previews"
         case .media:
             return "Mercury file transfer, screen share, calls — permissions and partner preferences"
+        case .dataPrivacy:
+            return "Pensieve vault, exports, deletion, recovery, and panic controls"
         case .computerUse:
             return "Agent Watch, browser driving, Mac input, approvals, and audit chain"
         }
@@ -76,6 +80,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return "macbook.and.iphone"
         case .textExpansion: return "text.cursor"
         case .media: return "play.rectangle.on.rectangle"
+        case .dataPrivacy: return "lock.shield.fill"
         case .computerUse: return "cursorarrow.click.2"
         }
     }
@@ -92,6 +97,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return DesignSystem.Colors.teal
         case .textExpansion: return DesignSystem.Colors.amber
         case .media: return DesignSystem.Colors.hermesMercury
+        case .dataPrivacy: return DesignSystem.Colors.teal
         case .computerUse: return DesignSystem.Colors.blaze
         }
     }

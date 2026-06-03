@@ -102,6 +102,16 @@ extension DataStore {
         try conversationStore.deleteConversation(id: id)
     }
 
+    /// Tombstones a conversation so the delete propagates across devices (B-DATA-2).
+    nonisolated func softDeleteConversation(id: String, at date: Date = Date()) throws {
+        try conversationStore.softDeleteConversation(id: id, at: date)
+    }
+
+    /// Local tombstones older than `before`, eligible for retention-window GC.
+    nonisolated func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) throws -> [ConversationRecord] {
+        try conversationStore.fetchExpiredConversationTombstones(before: before, limit: limit)
+    }
+
     nonisolated func approximateConversationStorageBytes() throws -> Int64 {
         try conversationStore.approximateConversationStorageBytes()
     }

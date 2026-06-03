@@ -102,6 +102,7 @@ internal fun BurnBarContent(
         burnBarHermesRoutes(navController)
         burnBarYouRoute()
         burnBarStoreRoute(navController)
+        burnBarControlCenterRoute(navController)
         burnBarComputerUseRoute(navController, navigateToHermes)
         burnBarPairedMacRoutes()
         burnBarDashboardRedirectRoute(navController)
@@ -322,6 +323,22 @@ private fun androidx.navigation.NavGraphBuilder.burnBarStoreRoute(navController:
     ) {
         com.openburnbar.ui.store.CloudStoreView(
             onClose = { navController.popBackStack() },
+        )
+    }
+}
+
+private fun androidx.navigation.NavGraphBuilder.burnBarControlCenterRoute(
+    navController: NavHostController,
+) {
+    composable(
+        "control_center",
+        deepLinks = listOf(navDeepLink { uriPattern = "burnbar://data" }),
+    ) {
+        com.openburnbar.ui.control.ControlCenterScreen(
+            modifier = Modifier.fillMaxSize(),
+            onBack = { navController.popBackStack() },
+            onManagePlan = { navController.navigate("cloud_store") },
+            onDomainDeepLink = { _, _ -> },
         )
     }
 }

@@ -17,23 +17,151 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         super.tearDown()
     }
 
-    func testMakeConfigurationWithKey_reportsCipherVersion() throws {
-        try XCTSkipIf(true, "Stale contract — SQLCipher PRAGMA cipher_version reporting requires a release build configuration.")
+    /// Whether the current build links a real SQLCipher. Determined by opening a
+    /// keyed in-memory database and reading `PRAGMA cipher_version`: non-empty means
+    /// SQLCipher is active. Used to branch tests that can only assert encrypted
+    /// behavior on a SQLCipher-linked build.
+    private static func sqlCipherIsActive() -> Bool {
+        var config = Configuration()
+        config.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA key = 'probe'")
+        }
+        guard let pool = try? DatabaseQueue(path: ":memory:", configuration: config) else { return false }
+        let version = try? pool.read { db in
+            try String.fetchOne(db, sql: "PRAGMA cipher_version")
+        }
+        return (version ?? nil).map { $0.isEmpty == false } ?? false
+    }
+
+    /// (a) With a key applied, either `cipher_version` is non-empty (SQLCipher
+    /// active) OR `makeConfiguration` throws `cipherUnavailable` when the cipher is
+    /// genuinely unavailable. Both outcomes are correct; silently shipping plaintext
+    /// is not — and that third outcome is exactly what the dead `#if canImport`
+    /// guard used to produce.
+    func testMakeConfigurationWithKey_eitherReportsCipherVersionOrHardFails() throws {
         let key = "k3y-" + String(repeating: "a", count: 32)
-        let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-enc-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(atPath: path) }
 
-        let pool = try DatabasePool(path: path, configuration: config)
-        let version = try pool.read { db in
-            try String.fetchOne(db, sql: "PRAGMA cipher_version")
+        do {
+            let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
+            // Cipher reported available; opening must yield a non-empty cipher_version.
+            let pool = try DatabasePool(path: path, configuration: config)
+            let version = try pool.read { db in
+                try String.fetchOne(db, sql: "PRAGMA cipher_version")
+            }
+            XCTAssertNotNil(version)
+            XCTAssertFalse(version?.isEmpty ?? true, "cipher_version should be set when using SQLCipher")
+            try pool.close()
+        } catch DatabaseEncryptionError.cipherUnavailable {
+            // Acceptable: this build has no SQLCipher and we hard-failed rather than
+            // writing plaintext. This is the check that catches the dead-guard bug.
         }
-        XCTAssertNotNil(version)
-        XCTAssertFalse(version?.isEmpty ?? true, "cipher_version should be set when using SQLCipher")
+    }
+
+    /// (a) When the cipher is unavailable, opening a keyed pool throws
+    /// `DatabaseEncryptionError.cipherUnavailable` (the `cipher_version` self-check
+    /// runs in `prepareDatabase`, which GRDB evaluates lazily when the first
+    /// connection opens — so the hard-fail surfaces at pool-open, never as a silent
+    /// plaintext config). On a SQLCipher-linked build the open succeeds instead.
+    /// Either way, a keyed open never silently produces plaintext.
+    func testKeyedOpen_hardFailsWhenCipherUnavailable() throws {
+        let key = "k3y-" + String(repeating: "a", count: 32)
+        let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-hardfail-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+        }
+
+        if Self.sqlCipherIsActive() {
+            XCTAssertNoThrow(try DatabasePool(path: path, configuration: config))
+        } else {
+            XCTAssertThrowsError(try DatabasePool(path: path, configuration: config)) { error in
+                XCTAssertTrue(
+                    error is DatabaseEncryptionError,
+                    "A keyed open on a non-SQLCipher build must hard-fail with DatabaseEncryptionError, got \(error)"
+                )
+            }
+        }
+    }
+
+    /// (c) A plaintext `DatabasePool` cannot open a file written with encryption on.
+    /// Only meaningful when SQLCipher is active (otherwise there is no encrypted file
+    /// to fail against); skipped on a plain-SQLite build.
+    func testPlaintextPoolCannotOpenEncryptedFile() throws {
+        try XCTSkipUnless(Self.sqlCipherIsActive(), "Requires a SQLCipher-linked build to produce an encrypted file.")
+        let key = DatabaseEncryptionService.getOrCreateKey()
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-enc-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+        }
+
+        let encConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
+        let encPool = try DatabasePool(path: path, configuration: encConfig)
+        try encPool.write { db in
+            try db.execute(sql: "CREATE TABLE secret (v INTEGER)")
+            try db.execute(sql: "INSERT INTO secret (v) VALUES (42)")
+        }
+        try encPool.close()
+
+        // The file must be detected as encrypted (no plaintext SQLite magic header).
+        XCTAssertTrue(
+            DatabaseEncryptionService.isEncryptedDatabaseFile(at: path),
+            "File written with encryption on must be detected as encrypted"
+        )
+
+        // A plaintext pool (no key) must NOT be able to read the encrypted contents.
+        let plainConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        XCTAssertThrowsError(
+            try {
+                let plainPool = try DatabasePool(path: path, configuration: plainConfig)
+                _ = try plainPool.read { db in
+                    try Int.fetchOne(db, sql: "SELECT v FROM secret")
+                }
+            }(),
+            "A plaintext pool must not open/read an encrypted database file"
+        )
+    }
+
+    /// (d) An existing PLAINTEXT database still opens without data loss. A plaintext
+    /// file is correctly detected as not-encrypted and re-opens via the plaintext
+    /// (nil-key) configuration, preserving its rows. This is the no-brick guarantee
+    /// for the millions of plaintext DBs that exist today.
+    func testExistingPlaintextDatabaseStillOpensWithoutDataLoss() throws {
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-existing-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+        }
+
+        // Create a plaintext database with real data (simulating an existing install).
+        let plainConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        let original = try DatabasePool(path: path, configuration: plainConfig)
+        try original.write { db in
+            try db.execute(sql: "CREATE TABLE usage (id INTEGER PRIMARY KEY, cost REAL)")
+            try db.execute(sql: "INSERT INTO usage (cost) VALUES (1.5), (2.5)")
+        }
+        try original.close()
+
+        // The file is plaintext, so it must be detected as NOT encrypted.
+        XCTAssertFalse(
+            DatabaseEncryptionService.isEncryptedDatabaseFile(at: path),
+            "A plaintext SQLite file must be detected as not encrypted"
+        )
+
+        // Re-open via the plaintext path (the no-brick fallback) and verify all rows survive.
+        let reopened = try DatabasePool(path: path, configuration: plainConfig)
+        let (count, total) = try reopened.read { db -> (Int, Double) in
+            let c = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM usage") ?? -1
+            let t = try Double.fetchOne(db, sql: "SELECT SUM(cost) FROM usage") ?? -1
+            return (c, t)
+        }
+        XCTAssertEqual(count, 2, "Existing plaintext rows must survive re-open")
+        XCTAssertEqual(total, 4.0, accuracy: 0.0001, "Existing plaintext data must be intact")
+        try reopened.close()
     }
 
     func testMakeConfigurationWithoutKey_allowsPlainDatabase() throws {
-        let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(atPath: path) }
 
@@ -153,8 +281,9 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     }
 
     func testDatabaseOpensAfterKeychainRecovery() throws {
+        try XCTSkipUnless(Self.sqlCipherIsActive(), "Requires a SQLCipher-linked build to create + reopen an encrypted database.")
         let testKey = DatabaseEncryptionService.getOrCreateKey()
-        let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: testKey)
+        let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: testKey)
         let dbPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-recovery-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(atPath: dbPath) }
 
@@ -178,7 +307,7 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertEqual(recoveredKey, testKey)
 
         // Verify the database can be opened with the recovered key
-        let recoveredConfig = DatabaseEncryptionService.makeConfiguration(encryptionKey: recoveredKey)
+        let recoveredConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: recoveredKey)
         let recoveredPool = try DatabasePool(path: dbPath, configuration: recoveredConfig)
         let count = try recoveredPool.read { db in
             try Int64.fetchOne(db, sql: "SELECT COUNT(*) FROM test_recovery")

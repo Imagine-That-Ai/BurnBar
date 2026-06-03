@@ -45,6 +45,34 @@ test("all three platforms emit the same token count (one source of truth)", () =
   assert.ok(cssCount >= 40, `expected >=40 tokens, got ${cssCount}`);
 });
 
+// Android keeps an in-tree copy of the generated Compose tokens (synced by the
+// `:app:syncGeneratedSources` Gradle task) because a module can't reference
+// files outside itself. CI must catch any drift between that copy and the
+// freshly-built dist output, the same way registry.test.mjs guards DataDomains.kt.
+test("android in-tree PensieveTokens.kt matches generated Compose output (run ./gradlew :app:syncGeneratedSources)", () => {
+  const androidPath = join(
+    HERE,
+    "..",
+    "..",
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "com",
+    "openburnbar",
+    "ui",
+    "tokens",
+    "PensieveTokens.kt"
+  );
+  const onDisk = readFileSync(androidPath, "utf8");
+  assert.equal(
+    onDisk,
+    kotlin,
+    "android PensieveTokens.kt is stale — run ./gradlew :app:syncGeneratedSources (Compose design tokens must equal the generated output byte-for-byte)"
+  );
+});
+
 test("encryption-tier colors are distinct (legible tier badges)", () => {
   const e2e = "#3cd6c0";
   const zero = "#8b94a8";

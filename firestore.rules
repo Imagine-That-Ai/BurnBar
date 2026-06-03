@@ -1551,6 +1551,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Transactional head pointer for the audit chain (server-only writer). Holds
+    // { maxSeq, headHash } advanced in the same transaction as each append plus
+    // the daily OpenTimestamps anchor, so a truncated tail is detectable. Clients
+    // must never write or truncation detection could be forged; owner-read only.
+    match /users/{userId}/audit_meta/{metaId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
     // Account recovery methods for zero-knowledge mode (server-only writer).
     // Holds ONLY sealed wrapped-vault-key blobs + verification hashes (Apple ADP
     // delayed-confirm pattern), written exclusively via setupRecovery/confirmRecovery.

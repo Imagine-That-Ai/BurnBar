@@ -21,10 +21,11 @@ import {
 } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export const issueRemoteMcpGrant = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
     secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
@@ -87,7 +88,7 @@ export const issueRemoteMcpGrant = onCall(
 
 export const revokeRemoteMcpClient = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -108,7 +109,7 @@ export const revokeRemoteMcpClient = onCall(
 
 export const searchStreams = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

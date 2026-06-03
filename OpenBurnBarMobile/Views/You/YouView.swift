@@ -53,12 +53,15 @@ struct YouView: View {
                     computerUseRow
                         .staggeredEntrance(delay: 0.18)
 
-                    settingsRow
+                    dataVaultRow
                         .staggeredEntrance(delay: 0.20)
+
+                    settingsRow
+                        .staggeredEntrance(delay: 0.22)
 
                     accountActionButton
                         .padding(.top, MobileTheme.Spacing.md)
-                        .staggeredEntrance(delay: 0.25)
+                        .staggeredEntrance(delay: 0.27)
                 }
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
                 .padding(.vertical, MobileTheme.Spacing.md)
@@ -381,6 +384,37 @@ struct YouView: View {
         .buttonStyle(.plain)
     }
 
+    private var dataVaultRow: some View {
+        NavigationLink(value: YouRoute.dataVault) {
+            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(MobileTheme.success)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(MobileTheme.success.opacity(0.16))
+                        )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Data Vault")
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Privacy inventory · recovery · export · panic")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Sign Out
 
     private var accountActionButton: some View {
@@ -411,6 +445,8 @@ enum YouRoute: Hashable, CaseIterable {
     case devices
     case providers
     case computerUse
+    case dataVault
+    case memory
 }
 
 // MARK: - Cloud Member Crest Row

@@ -22,7 +22,8 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
-import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
+import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString, requireHexDigest } from "./shared.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const KNOWLEDGE_VECTOR_DIM = 384;
 const MAX_LIMIT = 50;
@@ -45,7 +46,7 @@ export function clampLimit(raw: unknown): number {
 }
 
 export const searchKnowledge = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
   wrapCallableHandler(
     "searchKnowledge",
     async (
@@ -54,6 +55,7 @@ export const searchKnowledge = onCall(
         embeddingModelVersion?: unknown;
         sourceKind?: unknown;
         sourceSlug?: unknown;
+        slugHmac?: unknown;
         limit?: unknown;
       }>,
     ) => {
@@ -65,19 +67,35 @@ export const searchKnowledge = onCall(
       const queryVector = requireCloakedQueryVector(request.data?.queryVector);
       // Pin the model so we only compare vectors embedded the same way (cosine
       // across model versions is meaningless).
-      const embeddingModelVersion = boundedTrimmedString(request.data?.embeddingModelVersion, "embeddingModelVersion", 120, true);
+      const embeddingModelVersion = boundedTrimmedString(
+        request.data?.embeddingModelVersion,
+        "embeddingModelVersion",
+        120,
+        true,
+      );
       const limit = clampLimit(request.data?.limit);
 
-      // Plaintext-only server filters (sourceKind/sourceSlug are stored unsealed).
+      // Server filters carry no content (B-SEC-2): `sourceKind` is one of three
+      // coarse buckets (accepted leakage) and the source filter is keyed by the
+      // vault-keyed `slugHmac` the device sends — not the cleartext slug. Older
+      // clients may still pass `sourceSlug`; we honor it so pre-B-SEC-2 rows stay
+      // filterable until they are re-ingested under `slugHmac`.
       const sourceKindRaw = boundedTrimmedString(request.data?.sourceKind, "sourceKind", 64, false);
       if (sourceKindRaw && !SOURCE_KINDS.has(sourceKindRaw)) {
         throw new HttpsError("invalid-argument", `sourceKind must be one of: ${[...SOURCE_KINDS].join(", ")}.`);
       }
-      const sourceSlug = boundedTrimmedString(request.data?.sourceSlug, "sourceSlug", 256, false);
+      const slugHmac =
+        request.data?.slugHmac !== undefined ? requireHexDigest(request.data?.slugHmac, "slugHmac") : undefined;
+      const sourceSlug = slugHmac
+        ? undefined
+        : boundedTrimmedString(request.data?.sourceSlug, "sourceSlug", 256, false);
 
-      let query: Query = db.collection(`users/${uid}/cloud_search_knowledge`).where("embeddingModelVersion", "==", embeddingModelVersion);
+      let query: Query = db
+        .collection(`users/${uid}/cloud_search_knowledge`)
+        .where("embeddingModelVersion", "==", embeddingModelVersion);
       if (sourceKindRaw) query = query.where("sourceKind", "==", sourceKindRaw);
-      if (sourceSlug) query = query.where("sourceSlug", "==", sourceSlug);
+      if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
+      else if (sourceSlug) query = query.where("sourceSlug", "==", sourceSlug);
 
       const snap = await query
         .findNearest({
@@ -94,11 +112,15 @@ export const searchKnowledge = onCall(
         // Sealed envelopes — opaque to the server; the client decrypts on-device.
         // Field names match the hosted-MCP burnbar_search_knowledge hit shape AND
         // the iOS reader (PensieveMemorySearchView): `ciphertext` + `sealedMetadata`.
+        // The real source path/slug live inside `sealedMetadata` (decrypted on
+        // device); the server returns only the vault-keyed `slugHmac`/`dedupHash`
+        // so the client can correlate hits without exposing a cleartext hash/path
+        // (B-SEC-2). Legacy rows fall back to their pre-B-SEC-2 fields.
         ciphertext: doc.get("sealedCiphertext"),
         sealedMetadata: doc.get("sealedMetadata"),
         sourceKind: doc.get("sourceKind"),
-        sourceSlug: doc.get("sourceSlug"),
-        contentHash: doc.get("contentHash"),
+        slugHmac: doc.get("slugHmac") ?? doc.get("sourceSlug"),
+        dedupHash: doc.get("dedupHash") ?? doc.get("contentHash"),
         score: 1 - Number(doc.get("_distance") ?? 1), // COSINE distance -> similarity
         decryptMode: "local_decrypt",
       }));

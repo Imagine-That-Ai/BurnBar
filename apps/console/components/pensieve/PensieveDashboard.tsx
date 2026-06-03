@@ -9,6 +9,7 @@ import { TierBadge } from "@/components/inventory/TierBadge";
 import { dataDomain } from "@/lib/domains";
 import { useDomainUsage, usageById } from "@/lib/useDomainUsage";
 import { formatBytes, formatCount } from "@/lib/utils";
+import { PensieveRecallCard } from "./PensieveRecallCard";
 
 const PENSIEVE = dataDomain("pensieve")!;
 
@@ -152,6 +153,8 @@ export function PensieveDashboard() {
           )}
         </CardContent>
       </Card>
+
+      <PensieveRecallCard />
     </div>
   );
 }

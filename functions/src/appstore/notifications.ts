@@ -30,8 +30,9 @@ import { getFirestore } from "firebase-admin/firestore";
 import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { getAppleJWSVerifier, JWSVerificationFailure } from "./verifier.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
-const REGION = "us-central1";
+const REGION = FUNCTIONS_REGION;
 
 /**
  * Apple's `signedPayload` notification bodies are well under 32 KB in
@@ -54,6 +55,7 @@ export const appStoreServerNotificationsV2 = onRequest(
     maxInstances: 50,
     timeoutSeconds: 30,
     secrets: APP_STORE_SECRETS,
+    ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
     if (req.method !== "POST") {

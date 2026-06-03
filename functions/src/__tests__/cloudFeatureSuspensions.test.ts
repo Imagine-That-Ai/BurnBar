@@ -11,8 +11,9 @@ import {
 
 describe("cloudFeatureSuspensions", () => {
   it("uses the launch-plan suspension document path", () => {
-    expect(CLOUD_FEATURE_SUSPENSION_DOC_PATH_TEMPLATE).toBe("users/{uid}/ops/suspensions/cloudFeatures");
-    expect(cloudFeatureSuspensionPath("user_123")).toBe("users/user_123/ops/suspensions/cloudFeatures");
+    expect(CLOUD_FEATURE_SUSPENSION_DOC_PATH_TEMPLATE).toBe("users/{uid}/ops/suspensions/cloudFeatures/current");
+    expect(cloudFeatureSuspensionPath("user_123")).toBe("users/user_123/ops/suspensions/cloudFeatures/current");
+    expect(cloudFeatureSuspensionPath("user_123").split("/")).toHaveLength(6);
   });
 
   it("defaults active suspensions to every required denied surface and a five-refresh hosted quota limit", () => {

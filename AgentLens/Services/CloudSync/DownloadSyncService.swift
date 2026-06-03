@@ -453,7 +453,12 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
                     fileModifiedAt: nil,
                     summary: data["summary"] as? String,
                     sourceType: ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
-                    sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true
+                    sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true,
+                    // Honor a remote tombstone: if device A soft-deleted this
+                    // conversation, carry `deletedAt` through so the local copy is
+                    // tombstoned too (B-DATA-2 cross-device delete propagation).
+                    deletedAt: (data["deletedAt"] as? Timestamp)?.dateValue(),
+                    version: data["version"] as? Int ?? 1
                 )
                 try context.dataStore.insertRemoteConversation(record)
                 insertedIds.append(stableId)

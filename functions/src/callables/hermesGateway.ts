@@ -63,6 +63,7 @@ import {
   requiredIdentifier,
   safeIdentifier,
 } from "./shared.js";
+import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 type HttpRequest = {
   method?: string;
@@ -641,9 +642,10 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
 
 export const burnBarHermesGateway = onRequest(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     cors: true,
     maxInstances: 100,
+    ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
     if (req.method === "OPTIONS") {
@@ -680,7 +682,7 @@ export const burnBarHermesGateway = onRequest(
 
 export const approveHermesGatewayDeviceGrant = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -773,7 +775,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
 
 export const listHermesGatewayClients = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -797,7 +799,7 @@ export const listHermesGatewayClients = onCall(
 
 export const revokeHermesGatewayClient = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
@@ -824,7 +826,7 @@ export const revokeHermesGatewayClient = onCall(
 
 export const enqueueHermesGatewayEvent = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

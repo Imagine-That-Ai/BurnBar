@@ -37,6 +37,7 @@ import {
 } from "../piAgent.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import type { PiAgentConnectionDoc, PiAgentConnectionMode, PiAgentPairingDoc } from "../types.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: Pi Agent pairing and connection management
@@ -44,7 +45,7 @@ import type { PiAgentConnectionDoc, PiAgentConnectionMode, PiAgentPairingDoc } f
 
 export const createPiAgentPairing = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -100,7 +101,7 @@ export const createPiAgentPairing = onCall(
 
 export const completePiAgentPairing = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -258,7 +259,7 @@ export const completePiAgentPairing = onCall(
 
 export const listPiAgentConnections = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -284,7 +285,7 @@ export const listPiAgentConnections = onCall(
 
 export const revokePiAgentConnection = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
@@ -322,7 +323,7 @@ export const revokePiAgentConnection = onCall(
 
 export const updatePiAgentConnectionStatus = onCall(
   {
-    region: "us-central1",
+    region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },

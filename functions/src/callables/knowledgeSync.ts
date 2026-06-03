@@ -24,6 +24,7 @@ import { getConfig } from "../config.js";
 import { wrapCallableHandler } from "../logging.js";
 import { runScheduledJob } from "../scheduledOps.js";
 import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString, safeCloudDocumentID } from "./shared.js";
+import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export const KNOWLEDGE_GITHUB_WEBHOOK_SECRET = defineSecret("KNOWLEDGE_GITHUB_WEBHOOK_SECRET");
 
@@ -44,7 +45,7 @@ function verifyGitHubSignature(rawBody: Buffer, signatureHeader: string | undefi
  * Enqueue-only; never reads repo contents (preserves E2EE).
  */
 export const onKnowledgeRepoPush = onRequest(
-  { region: "us-central1", maxInstances: 20, secrets: [KNOWLEDGE_GITHUB_WEBHOOK_SECRET], invoker: "public" },
+  { region: FUNCTIONS_REGION, maxInstances: 20, secrets: [KNOWLEDGE_GITHUB_WEBHOOK_SECRET], invoker: "public" },
   async (req, res): Promise<void> => {
     const secret = KNOWLEDGE_GITHUB_WEBHOOK_SECRET.value();
     if (!secret) {
@@ -86,7 +87,7 @@ export const onKnowledgeRepoPush = onRequest(
 
 /** Register a repo as a Pensieve source for the dirty signal. */
 export const connectKnowledgeRepo = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
   wrapCallableHandler(
     "connectKnowledgeRepo",
     async (request: CallableRequest<{ repoFullName?: unknown; sourceSlug?: unknown; installId?: unknown }>) => {
@@ -113,7 +114,7 @@ export const connectKnowledgeRepo = onCall(
 
 /** Unregister a connected repo. */
 export const disconnectKnowledgeRepo = onCall(
-  { region: "us-central1", enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
   wrapCallableHandler("disconnectKnowledgeRepo", async (request: CallableRequest<{ repoId?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to disconnect a repo.");
@@ -131,7 +132,7 @@ export const disconnectKnowledgeRepo = onCall(
  * nightly safety net; it never re-embeds (no plaintext server-side).
  */
 export const reconcileKnowledgeMemoryDaily = onSchedule(
-  { schedule: "30 9 * * *", timeZone: "UTC", region: "us-central1", timeoutSeconds: 300 },
+  { schedule: "30 9 * * *", timeZone: "UTC", region: FUNCTIONS_REGION, timeoutSeconds: 300 },
   async () => {
     await runScheduledJob("reconcileKnowledgeMemoryDaily", async () => {
       const firestore = getFirestore();

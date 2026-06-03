@@ -32,7 +32,7 @@ struct MercuryLiveStatusStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        FlowLayout(spacing: 8) {
+        MercuryLiveStatusFlowLayout(spacing: 8) {
             phaseChip
             capabilitiesChip
             if inFlightCount > 0 {
@@ -362,7 +362,7 @@ private struct ChipButtonStyle: ButtonStyle {
 /// Minimal flow layout used by the chip strip — same shape as the one
 /// living in `MercuryBadgePicker.swift` but duplicated here so the two
 /// pickers don't share a type and we keep ranking layout focused.
-private struct FlowLayout: Layout {
+private struct MercuryLiveStatusFlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

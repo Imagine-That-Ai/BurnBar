@@ -145,4 +145,22 @@ final class CloudVaultCryptoTests: XCTestCase {
 
         XCTAssertEqual(unwrapped, vaultKey)
     }
+
+    func test_recoveryWrappedVaultKeyRoundTrip_usesSymmetricRecoveryEnvelope() throws {
+        let vaultKey = Data((0..<32).map(UInt8.init))
+        let recoveryKey = try CloudVaultCrypto.generateRecoveryKey()
+
+        let wrapped = try CloudVaultCrypto.wrapVaultKeyWithRecovery(
+            vaultKey: vaultKey,
+            recoveryKey: recoveryKey
+        )
+        let unwrapped = try CloudVaultCrypto.unwrapVaultKeyWithRecovery(
+            wrappedVaultKeyBase64: wrapped.wrappedVaultKeyBase64,
+            recoveryKey: recoveryKey
+        )
+
+        XCTAssertEqual(unwrapped, vaultKey)
+        XCTAssertEqual(wrapped.verificationHash, try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey))
+        XCTAssertTrue(wrapped.verificationHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+    }
 }

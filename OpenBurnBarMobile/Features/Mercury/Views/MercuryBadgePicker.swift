@@ -12,7 +12,7 @@ struct MercuryBadgePicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FlowLayout(spacing: 8) {
+            MercuryBadgeFlowLayout(spacing: 8) {
                 ForEach(MercuryBadgeKind.allCases) { kind in
                     chip(for: kind)
                 }
@@ -78,7 +78,7 @@ struct MercuryBadgePicker: View {
 /// Minimal flow layout for the badge chip cloud. Re-implementing because
 /// `Layout` requires iOS 16+ which the rest of the screen already
 /// targets, and pulling in a third-party flowlayout is overkill.
-private struct FlowLayout: Layout {
+private struct MercuryBadgeFlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

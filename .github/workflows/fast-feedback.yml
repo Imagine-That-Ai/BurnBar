@@ -203,6 +203,23 @@ jobs:
           npm ci
           npm test
 
+      # Belt-and-suspenders to the registry.test.mjs / tokens.test.mjs Android
+      # assertions: re-sync the in-tree Android copies from the (now freshly
+      # regenerated) gen/ + dist/ outputs and fail if anything moved. Catches a
+      # hand-edit committed straight into the Android tree that bypassed the
+      # codegen path — the exact failure mode that mislabeled server-readable
+      # chat as end-to-end encrypted.
+      - name: Android generated sources are in sync (no drift)
+        run: |
+          cp packages/data-domains/gen/DataDomains.kt \
+            android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt
+          cp packages/design-tokens/dist/compose/PensieveTokens.kt \
+            android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt
+          git diff --exit-code -- \
+            android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt \
+            android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt \
+            || { echo "::error::Android generated sources are stale — run ./gradlew :app:syncGeneratedSources and commit the result."; exit 1; }
+
   # ── Web console (app.burnbar.ai): lint + types + tests + static build ──────
   console-web:
     name: Console (lint + types + tests + build)
