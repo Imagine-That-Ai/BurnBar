@@ -198,7 +198,8 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
       ciphertext: doc.get("sealedCiphertext"),
       sealedMetadata: doc.get("sealedMetadata"),
       sourceKind: doc.get("sourceKind"),
-      sourceSlug: doc.get("sourceSlug"),
+      // Vault-keyed HMAC only — no cleartext slug returned (§3).
+      slugHmac: doc.get("slugHmac"),
       score: 1 - distance, // COSINE distance -> similarity (higher = closer)
       decryptMode: LOCAL_DECRYPT_MODE,
     };
@@ -242,11 +243,13 @@ export async function readKnowledgeDocument(
 
   return {
     resourceUri: uri,
-    contentHash: typeof data.contentHash === "string" ? data.contentHash : "",
+    // Vault-keyed dedup hash / slug HMAC only — no cleartext `contentHash`/
+    // `sourceSlug` returned (privacy-leak-remediation-2026-06-02 §3).
+    dedupHash: typeof data.dedupHash === "string" ? data.dedupHash : "",
     sealedCiphertext: data.sealedCiphertext,
     sealedMetadata: data.sealedMetadata,
     sourceKind: data.sourceKind,
-    sourceSlug: data.sourceSlug,
+    slugHmac: data.slugHmac,
     encrypted: true,
     decryptMode: LOCAL_DECRYPT_MODE,
     storageReads: 0,
