@@ -163,6 +163,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
   device_trust_keys: {
     encryptionTier: "end_to_end",
     firestoreCollections: [
+      "cloud_vault_state",
       "cloud_vault_key_wrappers",
       "escrow_devices",
       "escrow_public_keys",
