@@ -748,6 +748,7 @@
 		785A384DF1994EE8DAB5DECE /* HermesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDE272960AF1D36131DBD7C /* HermesServiceTests.swift */; };
 		785F70FBE626E8FCE93C2F47 /* MacMediaCapabilityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46BDC9DF31D462D13ABADD5 /* MacMediaCapabilityGate.swift */; };
 		78D61EAB7318A9E9CD5AB744 /* IndexSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94B2A2E5E4DA4F8EA66F054 /* IndexSettings.swift */; };
+		78F4D974648C8531EC8B5E96 /* asc-api.js in Resources */ = {isa = PBXBuildFile; fileRef = 0E764DC1162C980F0D2457E8 /* asc-api.js */; };
 		790740424DEF6752812C24AD /* OpenBurnBarComputerUseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A017836C8826012B59F75383 /* OpenBurnBarComputerUseCore */; };
 		790B6C99C0B55D7C8B1C13C6 /* XAIQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42288984FA8489364522A233 /* XAIQuotaAdapter.swift */; };
 		791A29422209734F066CC0A3 /* ProjectsMergedProjectsCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537BFC590A4F11F970A2C3CD /* ProjectsMergedProjectsCacheTests.swift */; };
@@ -1088,6 +1089,7 @@
 		B039C64448A5BD4DDC176141 /* HybridRetrievalServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E9F1997A5F06A69D36D811 /* HybridRetrievalServiceTests.swift */; };
 		B091E2634B4ED8DE7A46AA0F /* ChatInlineContextRibbon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 410579E136A5EB93B3E8539B /* ChatInlineContextRibbon.swift */; };
 		B09D04CAD6652E3820D4CB5A /* ContextPackDashboardSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F0C614CF08FB09A79D2DB6 /* ContextPackDashboardSurfaceTests.swift */; };
+		B0A69FB67601C15D5F6AF831 /* OpenBurnBarMAS.entitlements in Resources */ = {isa = PBXBuildFile; fileRef = EB735B330517DAC7EA04D4FA /* OpenBurnBarMAS.entitlements */; };
 		B0D922A4394EF45C0EAAC480 /* MiniSparklineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EDB57075454977C720922F /* MiniSparklineTests.swift */; };
 		B0E827C51CBB04E2C0D0BC9C /* SessionSummaryWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EE64443DF146CA4597F6904 /* SessionSummaryWizardView.swift */; };
 		B0F8D7A1E5FDD9D6879841A0 /* HermesLiveGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */; };
@@ -1815,6 +1817,7 @@
 		0E1DD85EEEED0833F315597A /* AgentLiveStageChatPuck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLiveStageChatPuck.swift; sourceTree = "<group>"; };
 		0E27BD4F29FE892A79082C03 /* BurnBarDaemonServer+RPCSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BurnBarDaemonServer+RPCSearch.swift"; sourceTree = "<group>"; };
 		0E6B9A52E744A7897FD4ECF6 /* CrossSurfaceUpgradeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSurfaceUpgradeTests.swift; sourceTree = "<group>"; };
+		0E764DC1162C980F0D2457E8 /* asc-api.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "asc-api.js"; sourceTree = "<group>"; };
 		0F23D75671D37E737FD862CA /* test_chatMessageView_user.chatMessage-user-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_chatMessageView_user.chatMessage-user-light.png"; sourceTree = "<group>"; };
 		0F8F46D62BD44C4CACB46484 /* OpenBurnBarPrivilegedInputExecutionMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarPrivilegedInputExecutionMain.swift; sourceTree = "<group>"; };
 		0F9A0E85DC1975806463C5BA /* SwitcherSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherSettingsUITests.swift; sourceTree = "<group>"; };
@@ -4100,11 +4103,21 @@
 			path = SmartHub;
 			sourceTree = "<group>";
 		};
+		32F6AE8A752900200108D9E8 /* app-store-connect */ = {
+			isa = PBXGroup;
+			children = (
+				0E764DC1162C980F0D2457E8 /* asc-api.js */,
+			);
+			name = "app-store-connect";
+			path = "tools/app-store-connect";
+			sourceTree = "<group>";
+		};
 		3306A884CD33324704268BB5 = {
 			isa = PBXGroup;
 			children = (
 				91C83F5D0742CEBA8BFE87BC /* Active */,
 				372BE26114B6B6DC8E37881A /* AgentLens */,
+				32F6AE8A752900200108D9E8 /* app-store-connect */,
 				ED35E5E6AE93A0FEE86DF3A1 /* Fixtures */,
 				5D99827D35BA84ACE6E97C13 /* gen */,
 				5FA17595EB355C9E729FAE16 /* OpenBurnBarDaemon */,
@@ -6348,6 +6361,7 @@
 				E35F1758B10CAD71B485DA35 /* Sources */,
 				1F83D1DF661693A989D9EDCA /* Resources */,
 				506FF7B42C183A468025A191 /* Frameworks */,
+				18934AF0A2F616829484CBD8 /* Bundle App Store Compliance Source Fixtures */,
 			);
 			buildRules = (
 			);
@@ -6757,6 +6771,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B0A69FB67601C15D5F6AF831 /* OpenBurnBarMAS.entitlements in Resources */,
+				78F4D974648C8531EC8B5E96 /* asc-api.js in Resources */,
 				18D795152310AE6B3E306457 /* authoring-draft-refine-grounding.json in Resources */,
 				B23BEAC1D039988B90AEDF7E /* chat_history.jsonl in Resources */,
 				640D3CB36D4C2F077AFBEBB4 /* retrieval-ann-vs-exact-baseline.json in Resources */,
@@ -6859,6 +6875,34 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		18934AF0A2F616829484CBD8 /* Bundle App Store Compliance Source Fixtures */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift",
+				"$(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift",
+				"$(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+				"$(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift",
+				"$(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
+			);
+			name = "Bundle App Store Compliance Source Fixtures";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
+		};
 		2FF71114694A1CECACA080FE /* Block App Check Debug Token In Release */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -8584,11 +8628,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_F779CDFA-D360-4AFE-B728-8B50DD480F07" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_FC668C52-9BEE-4A3D-8DB4-FCA279FF6CE3" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_31AF6D5F-722E-46B6-B03F-2F1097D4D941" /* OpenBurnBarCore */;
+			productRef = "TEMP_EAD9F5D2-6FC6-46DD-8049-08B5CE37A0FD" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -8636,7 +8680,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_7BFF5FF3-9A80-4CAA-A79F-ADF9E1B2EFCB" /* OpenBurnBarCore */;
+			productRef = "TEMP_A5BD34C4-999B-475B-AF04-CD3CC83A85F3" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -8650,15 +8694,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_36CC219A-B7D3-4950-BBAF-D01F5B86BBCC" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_7C48478A-B5C8-4C7E-99BF-EF731C23B9EC" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_BFCB8A1C-BF78-4982-A0EE-B4ED9B46E7A0" /* OpenBurnBarMedia */;
+			productRef = "TEMP_6B24DE99-858B-4622-BD95-B17761369845" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_BA1BE88B-D5D4-48D5-AC17-B1FFFD2AFE47" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_20210FA8-4566-4A18-89B8-A9549E2FC925" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -9730,27 +9774,27 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_31AF6D5F-722E-46B6-B03F-2F1097D4D941" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_36CC219A-B7D3-4950-BBAF-D01F5B86BBCC" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_20210FA8-4566-4A18-89B8-A9549E2FC925" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_7BFF5FF3-9A80-4CAA-A79F-ADF9E1B2EFCB" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_BA1BE88B-D5D4-48D5-AC17-B1FFFD2AFE47" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_BFCB8A1C-BF78-4982-A0EE-B4ED9B46E7A0" /* OpenBurnBarMedia */ = {
+		"TEMP_6B24DE99-858B-4622-BD95-B17761369845" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_F779CDFA-D360-4AFE-B728-8B50DD480F07" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_7C48478A-B5C8-4C7E-99BF-EF731C23B9EC" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_A5BD34C4-999B-475B-AF04-CD3CC83A85F3" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_EAD9F5D2-6FC6-46DD-8049-08B5CE37A0FD" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_FC668C52-9BEE-4A3D-8DB4-FCA279FF6CE3" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};

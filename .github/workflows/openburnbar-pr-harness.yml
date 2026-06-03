@@ -40,6 +40,9 @@ jobs:
           done
           echo "All shell scripts pass syntax validation."
 
+      - name: Test OpenBurnBar app-test log classifier
+        run: bash scripts/test-openburnbar-app-classifier.sh
+
       - name: Verify version consistency
         run: ./scripts/verify-version-consistency.sh
 

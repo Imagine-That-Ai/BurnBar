@@ -33,6 +33,9 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cache_dir="$repo_root/.spm-cache-new"
 artifact_root="$repo_root/.derived-data"
 
+# shellcheck source=scripts/lib/openburnbar-app-test-classifier.sh
+source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
+
 # Keep runnable app/test-host products out of the repo's Documents path. macOS
 # can launch test hosts via launchd/testmanagerd, and those child processes do
 # not always inherit the caller's TCC grant for Documents, which can wedge dyld
@@ -273,59 +276,6 @@ fi
 # ---------------------------------------------------------------------------
 # Hang detection
 # ---------------------------------------------------------------------------
-
-# Known XCTest host startup/handshake failure substrings. Match any of these
-# and retry; everything else is a real failure.
-hang_substrings=(
-    "test runner hung before establishing connection"
-    "Test runner never began executing tests"
-    "Test session timed out"
-    "Failed to launch test runner"
-    "failed to launch"
-    "Lost connection to the test runner"
-    "Could not attach to pid"
-    "TestRunner crashed"
-)
-
-is_known_hang() {
-    local log_path="$1"
-    local pattern
-    for pattern in "${hang_substrings[@]}"; do
-        if grep -Fq "$pattern" "$log_path"; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-is_xcode_false_negative_pass() {
-    local log_path="$1"
-
-    # Xcode can occasionally return 65 and print "** TEST FAILED **" after the
-    # selected XCTest suite has already reported a clean run. Only accept that
-    # as success when the XCTest summary is unambiguously green and no failing
-    # test marker appears anywhere in the log.
-    grep -Fq "Test Suite 'Selected tests' passed" "$log_path" || return 1
-    grep -Eq "Executed [1-9][0-9]* tests, with ([0-9]+ tests skipped and )?0 failures" "$log_path" || return 1
-
-    # Reject when xcodebuild lists concrete failing tests or XCTest logged failures.
-    if grep -Eq "Test Case '-\\[[^]]+\\]' failed" "$log_path"; then
-        return 1
-    fi
-    # Ignore Xcode's trailing "** TEST FAILED **" banner when XCTest has already
-    # emitted a clean final Selected-tests summary. Concrete failing test markers
-    # above still reject the false-negative path.
-    if ! grep -Fq "Test Suite 'Selected tests' passed" "$log_path"; then
-        if grep -A20 "^Failing tests:" "$log_path" | tail -n +2 | grep -qE '^[[:space:]]+[^[:space:]]'; then
-            return 1
-        fi
-    fi
-    if awk "/Test Suite 'Selected tests'/{found=1} found && /Executed [0-9]+ tests/ && /with .*[^0] failures/" "$log_path" | grep -q .; then
-        return 1
-    fi
-
-    return 0
-}
 
 # ---------------------------------------------------------------------------
 # Backoff schedule
