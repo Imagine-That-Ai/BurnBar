@@ -8,14 +8,18 @@
  *   transcript → runExtractor (claude -p ... --output-format json)  [billed to user]
  *             → parse [{title,text,category,confidence}]
  *             → confidence filter + secret redaction
- *             → dedup (vector search) → keep net-new
+ *             → dedup (vault-keyed dedupHash) → keep net-new
  *             → embed + cloak + seal → commit (device-authed path)
+ *
+ * Privacy: every vector carries the VAULT-KEYED `dedupHash`/`slugHmac` the server
+ * requires and NO cleartext `contentHash`/`sourcePath` (privacy-leak-remediation-
+ * 2026-06-02 §3) — the real path lives only inside the sealed metadata blob.
  *
  * All IO (the extractor spawn, the duplicate check, the commit sink, the
  * filesystem) is injectable so the pipeline is fully unit-testable offline.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { closeSync, constants, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -63,15 +67,34 @@ export interface PreparedVector {
   cloakedVector: number[];
   sealedCiphertext: SealedEnvelope;
   sealedMetadata: SealedEnvelope;
-  contentHash: string;
+  /**
+   * Vault-keyed HMAC(plaintext) — the dedup/idempotency key the server requires
+   * (privacy-leak-remediation-2026-06-02 §3). NOT a cleartext SHA-256: the server
+   * cannot recompute it from a guessed plaintext, and the same text under two
+   * members' keys yields different hashes.
+   */
+  dedupHash: string;
+  /** Vault-keyed HMAC(slug) — the server's content-free source filter key. */
+  slugHmac: string;
   sourceKind: "chat_memory";
-  sourcePath: string;
   chunkIndex: number;
   byteCount: number;
 }
 
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * Vault-keyed dedup/slug HMAC. HKDF-derives a per-user dedup key from the vault
+ * key (salt ∅, info `pensieve-dedup:<label>`), then HMAC_SHA256s the value. This
+ * is byte-identical to the Swift CloudVaultCrypto helpers and to the server's
+ * test fixture (functions/.../knowledgeMemoryDedupHash.test.ts):
+ *   HKDF(vaultKey, salt=∅, info="pensieve-dedup:content"|"…:slug") → HMAC(value).
+ */
+function vaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug", value: string): string {
+  const dedupKey = Buffer.from(hkdfSync("sha256", vaultKey, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
+  return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
 }
 
 // -- secret redaction ---------------------------------------------------------
@@ -159,17 +182,24 @@ export interface PrepareDeps {
 }
 
 /**
- * Redact, filter by confidence, dedup by content hash, then embed + cloak + seal
- * each net-new memory into a commitKnowledgeBatch vector entry.
+ * Redact, filter by confidence, dedup, then embed + cloak + seal each net-new
+ * memory into a commitKnowledgeBatch vector entry.
+ *
+ * The server now requires the vault-keyed `dedupHash`/`slugHmac` and rejects the
+ * cleartext `contentHash`/`sourcePath` (privacy-leak-remediation-2026-06-02 §3),
+ * so the keyed `dedupHash` is the dedup key, the `vectorId`, and the value passed
+ * to `isDuplicate`. The real `source_path` lives ONLY inside the sealed metadata
+ * blob (decrypted on device); no cleartext path/hash leaves the device.
  */
 export async function prepareMemoriesForCommit(
   memories: ExtractedMemory[],
   sourceSlug: string,
   deps: PrepareDeps,
-  isDuplicate: (memory: ExtractedMemory, contentHash: string) => Promise<boolean> = async () => false,
+  isDuplicate: (memory: ExtractedMemory, dedupHash: string) => Promise<boolean> = async () => false,
 ): Promise<PreparedVector[]> {
   const cloak = deps.cloak ?? cloakVector;
   const seal = deps.seal ?? sealText;
+  const slugHmac = vaultKeyedHmac(deps.vaultKey, "slug", sourceSlug);
   const seen = new Set<string>();
   const prepared: PreparedVector[] = [];
 
@@ -177,16 +207,18 @@ export async function prepareMemoriesForCommit(
     if (memory.confidence < MIN_CONFIDENCE) continue;
     const cleaned = redactSecrets(memory.text).text.slice(0, MAX_MEMORY_BYTES);
     if (!cleaned.trim()) continue;
-    const contentHash = sha256(cleaned);
-    if (seen.has(contentHash)) continue;
-    seen.add(contentHash);
-    if (await isDuplicate(memory, contentHash)) continue;
+    // Vault-keyed dedup hash — opaque to the server. A local non-keyed hash is
+    // still used only to label the sealed-metadata source_path fallback below.
+    const dedupHash = vaultKeyedHmac(deps.vaultKey, "content", cleaned);
+    if (seen.has(dedupHash)) continue;
+    seen.add(dedupHash);
+    if (await isDuplicate(memory, dedupHash)) continue;
 
     const [vector] = await deps.embedder.embed([cleaned]);
     const cloaked = Array.from(cloak(vector, { vaultKey: deps.vaultKey, modelVersion: deps.embedder.modelVersion }));
     const metadata = {
       source: "member-knowledge",
-      source_path: `chat/${redactSecrets(memory.title).text.slice(0, 80) || contentHash.slice(0, 12)}`,
+      source_path: `chat/${redactSecrets(memory.title).text.slice(0, 80) || dedupHash.slice(0, 12)}`,
       page_title: redactSecrets(memory.title).text.slice(0, 120),
       section: memory.category,
       category: memory.category,
@@ -195,13 +227,13 @@ export async function prepareMemoriesForCommit(
       sourceSlug,
     };
     prepared.push({
-      vectorId: contentHash,
+      vectorId: dedupHash,
       cloakedVector: cloaked,
       sealedCiphertext: seal(cleaned, deps.vaultKey),
       sealedMetadata: seal(JSON.stringify(metadata), deps.vaultKey),
-      contentHash,
+      dedupHash,
+      slugHmac,
       sourceKind: "chat_memory",
-      sourcePath: metadata.source_path,
       chunkIndex: 0,
       byteCount: Buffer.byteLength(cleaned, "utf8"),
     });
@@ -219,7 +251,7 @@ export interface RunMemorySyncOptions {
   runExtractor?: (transcript: string) => string;
   loadEmbedder?: () => Promise<Embedder>;
   vaultKey?: () => Buffer | undefined;
-  isDuplicate?: (memory: ExtractedMemory, contentHash: string) => Promise<boolean>;
+  isDuplicate?: (memory: ExtractedMemory, dedupHash: string) => Promise<boolean>;
   /** Sink for the prepared batch. Default: append to the device commit queue. */
   commit?: (batch: { sourceSlug: string; embeddingModelVersion: string; vectors: PreparedVector[] }) => void;
 }

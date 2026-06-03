@@ -57,6 +57,7 @@ struct BurnView: View {
                 .padding(.bottom, 100) // clear the tab tray
                 .padding(.top, MobileTheme.Spacing.sm)
             }
+            .trackEasterEggScroll(tag: "burn")
             .refreshable {
                 HapticBus.refreshStarted()
                 await refresh()

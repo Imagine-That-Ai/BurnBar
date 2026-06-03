@@ -6,14 +6,20 @@
  * here as {@link DATA_DOMAIN_PATHS} with a drift guard (a unit test asserts the
  * ids + firestorePaths match the registry, exactly like dataDomainUsage.ts).
  *
- * Encryption-tier policy (server NEVER sees plaintext or the vault key):
- *   - server_readable + zero_access domains: emitted INLINE as plaintext JSON
- *     (the server can already read these facets; for zero_access only the opaque
- *     metadata/manifests live in Firestore, the sealed payload stays on device).
- *   - end_to_end domains: emitted as `sealedRefs` — signed-URL references to the
- *     Cloud Storage ciphertext objects the client downloads + decrypts on-device
- *     with its vault key. Inline Firestore docs for E2E domains carry only sealed
- *     envelopes / opaque hashes, so they are also returned inline (still opaque).
+ * Encryption-tier policy (server NEVER sees plaintext or the vault key) —
+ * ENFORCED, not merely asserted (privacy-leak-remediation-2026-06-02 §5):
+ *   - server_readable domains: emitted INLINE verbatim (the server can already
+ *     read these facets by definition).
+ *   - end_to_end + zero_access domains: a DEFAULT-DENY field allowlist
+ *     (`sealAwareSerializeDoc`) emits ONLY the doc `id`, structurally-detected
+ *     AES-256-GCM sealed envelopes (`isSealedEnvelope`), opaque cryptographic
+ *     columns (slugHmac, dedupHash, vectorId, embedding, repoMatchToken, docID,
+ *     projectKeyHash, …), and Timestamps/numbers/bools. Every other top-level
+ *     string (where cleartext titles/paths/names/slugs live) is DROPPED and
+ *     recorded in a per-collection `redactedFields[]` so the export stays honest.
+ *     Large E2E bodies still flow as `sealedRefs`. The user is the vault-key
+ *     holder, so the sealed envelopes decrypt locally — no plaintext is needed
+ *     for the owner's benefit, and none is emitted.
  *
  * Reuses getEncryptedSessionBlobDownloadUrl's signed-URL pattern (encryptedSearch.ts)
  * for sealedRefs and appends a tamper-evident audit event (auditLog.ts).
@@ -201,31 +207,137 @@ interface DomainExport {
   id: string;
   encryptionTier: EncryptionTier;
   inlineJson?: Record<string, unknown>;
+  /**
+   * For end_to_end/zero_access domains: the union of plaintext field keys the
+   * seal-aware allowlist withheld, so the export is honest about what it dropped.
+   */
+  redactedFields?: string[];
   sealedRefs?: Array<{ path: string; bodyHash: string; signedUrl: string }>;
 }
 
-/** Collect plaintext/opaque Firestore docs for a domain, capped per collection. */
-async function collectInlineJson(uid: string, paths: DomainPaths): Promise<Record<string, unknown>> {
+/**
+ * Opaque cryptographic columns an end_to_end / zero_access doc may legitimately
+ * round-trip through the export. These carry NO content — they are HMAC
+ * trapdoors, doc-id keys, cloaked vectors, model/version tags, byte/index
+ * counters, or other server-side filter inputs — so emitting them leaks nothing.
+ * Everything NOT on this list (and not a sealed envelope / Timestamp / number /
+ * bool) is a candidate plaintext leak and is dropped (privacy-leak-remediation-
+ * 2026-06-02 §5).
+ */
+const OPAQUE_EXPORT_COLUMNS = new Set<string>([
+  "id",
+  "uid",
+  "vectorId",
+  "embedding",
+  "embeddingModelVersion",
+  "slugHmac",
+  "dedupHash",
+  "dedupHashVersion",
+  "sourceKind",
+  "byteCount",
+  "chunkIndex",
+  "schemaVersion",
+  "repoMatchToken",
+  "docID",
+  "projectKeyHash",
+  "bodyHash",
+  "storagePath",
+  "tokenHashes",
+  "semanticHashes",
+  "contentHash",
+]);
+
+/** A sealed envelope is opaque regardless of its key name, so it is detected structurally. */
+export function isSealedEnvelope(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  // Mirrors requireSealedText (shared.ts): AES-256-GCM text envelope …
+  if (v.algorithm === "AES-256-GCM" && typeof v.nonce === "string" && typeof v.ciphertext === "string" && typeof v.tag === "string") {
+    return true;
+  }
+  // … or a CloudVault blob/payload envelope (sealedBoxBase64 combined box).
+  if (v.algorithm === "AES-256-GCM" && typeof v.sealedBoxBase64 === "string") {
+    return true;
+  }
+  return false;
+}
+
+/** True for Firestore Timestamp-like, number, boolean, or null (all content-free). */
+function isExportablePrimitive(value: unknown): boolean {
+  if (value === null) return true;
+  const t = typeof value;
+  if (t === "number" || t === "boolean") return true;
+  if (value && t === "object" && "toDate" in (value as object) && typeof (value as { toDate: unknown }).toDate === "function") {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Collect Firestore docs for a domain, capped per collection. For server_readable
+ * domains the docs are emitted verbatim; for end_to_end/zero_access domains they
+ * pass through the seal-aware default-deny allowlist, and any withheld plaintext
+ * keys are accumulated into `redactedFields`.
+ */
+async function collectInlineJson(
+  uid: string,
+  paths: DomainPaths,
+): Promise<{ inline: Record<string, unknown>; redactedFields: string[] }> {
   const inline: Record<string, unknown> = {};
+  const redacted = new Set<string>();
+  const sealAware = paths.encryptionTier !== "server_readable";
   for (const collection of paths.firestoreCollections) {
     try {
       const snap = await db.collection(`users/${uid}/${collection}`).limit(MAX_INLINE_DOCS_PER_COLLECTION).get();
       if (snap.empty) continue;
-      inline[collection] = snap.docs.map((doc) => ({ id: doc.id, ...serializeDoc(doc.data()) }));
+      inline[collection] = snap.docs.map((doc) => {
+        if (!sealAware) return { id: doc.id, ...serializeDoc(doc.data()) };
+        const { out, dropped } = sealAwareSerializeDoc(doc.data());
+        for (const key of dropped) redacted.add(key);
+        return { id: doc.id, ...out };
+      });
     } catch {
       // Missing/empty collection — skip rather than fail the whole export.
     }
   }
-  return inline;
+  return { inline, redactedFields: [...redacted].sort() };
 }
 
-/** Firestore Timestamps → ISO strings; everything else passed through. */
+/** Firestore Timestamps → ISO strings; everything else passed through (server_readable only). */
 function serializeDoc(data: FirebaseFirestore.DocumentData): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     out[key] = serializeValue(value);
   }
   return out;
+}
+
+/**
+ * DEFAULT-DENY seal-aware serializer for end_to_end / zero_access docs. Emits a
+ * field only if it is (a) a structurally-detected sealed envelope, (b) on the
+ * opaque-column allowlist, or (c) a Timestamp/number/bool/null. Every other key
+ * (top-level cleartext strings, arbitrary plaintext objects/arrays) is DROPPED
+ * and reported via `dropped` so the export records `redactedFields[]`
+ * (privacy-leak-remediation-2026-06-02 §5).
+ */
+export function sealAwareSerializeDoc(data: FirebaseFirestore.DocumentData): {
+  out: Record<string, unknown>;
+  dropped: string[];
+} {
+  const out: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (isSealedEnvelope(value)) {
+      out[key] = value; // opaque ciphertext — safe to emit
+    } else if (OPAQUE_EXPORT_COLUMNS.has(key)) {
+      out[key] = serializeValue(value); // opaque crypto column — safe to emit
+    } else if (isExportablePrimitive(value)) {
+      out[key] = serializeValue(value); // content-free scalar/timestamp
+    } else {
+      dropped.push(key); // candidate plaintext leak — withhold
+    }
+  }
+  return { out, dropped };
 }
 
 function serializeValue(value: unknown): unknown {
@@ -314,7 +426,7 @@ export const exportUserData = onCall(
     const domains: DomainExport[] = [];
     for (const id of ids) {
       const paths = DATA_DOMAIN_PATHS[id];
-      const [inlineJson, sealedRefs] = await Promise.all([
+      const [{ inline: inlineJson, redactedFields }, sealedRefs] = await Promise.all([
         collectInlineJson(uid, paths),
         collectSealedRefs(uid, paths, sealedBudget),
       ]);
@@ -323,6 +435,9 @@ export const exportUserData = onCall(
           id,
           encryptionTier: paths.encryptionTier,
           inlineJson: Object.keys(inlineJson).length > 0 ? inlineJson : undefined,
+          // Honest disclosure of plaintext keys withheld by the seal-aware
+          // allowlist (end_to_end/zero_access only).
+          redactedFields: redactedFields.length > 0 ? redactedFields : undefined,
           sealedRefs: sealedRefs.length > 0 ? sealedRefs : undefined,
         }) as DomainExport,
       );

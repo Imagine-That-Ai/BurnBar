@@ -58,22 +58,25 @@ export const SITE = {
         }
       },
       {
-        id: "cloud_ultra",
-        name: "BurnBar Cloud Ultra",
-        shortName: "Cloud Ultra",
+        id: "ultra",
+        name: "BurnBar Ultra",
+        shortName: "Ultra",
         priceMonthlyUSD: "59.99",
         priceAnnualUSD: "599",
         period: "month",
         productIds: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual.v2"],
         entitlementId: "burnbar_ultra",
         summary:
-          "Everything in Cloud Pro, plus 10× your agent memory — 15 sources, 50,000 sealed chunks, 250 MB your agents can recall.",
-        cta: "Choose Cloud Ultra",
+          "Everything in Cloud Pro, plus 10× your private agent memory — 15 sources, 50,000 sealed chunks, and 250 MB your agents can recall.",
+        cta: "Choose Ultra",
         allowance: {
           hostedAgentActionsMonthly: 500,
           relayGBMonthly: 50,
           hostedAgentActionMonthlyCap: 2000,
-          relayGBMonthlyCap: 300
+          relayGBMonthlyCap: 300,
+          knowledgeSources: 15,
+          memoryChunks: 50000,
+          encryptedStorageMB: 250
         }
       }
     ],

@@ -37,6 +37,8 @@ struct DashboardView: View {
     @State var sessionLogJumpTarget: ConversationJumpTarget?
     @State var dashboardCanvasSize: CGSize = .zero
     @State private var overviewUsesStackedLanes = false
+    @State private var overviewViewportHeight: CGFloat = 0
+    private static let overviewScrollSpace = "dashboardOverviewScroll"
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
@@ -561,11 +563,35 @@ struct DashboardView: View {
                                 }
                         }
                     }
+                    // Publish scroll geometry for the easter egg detector.
+                    .easterEggScrollProbe(space: Self.overviewScrollSpace)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .scrollContentBackground(.hidden)
+                .coordinateSpace(name: Self.overviewScrollSpace)
+                .onPreferenceChange(EasterEggScrollMetricsKey.self) { metrics in
+                    easterEggController.registerScrollMetrics(
+                        offset: metrics.offset,
+                        contentHeight: metrics.contentHeight,
+                        viewportHeight: overviewViewportHeight,
+                        isDark: colorScheme == .dark,
+                        reduceMotion: reduceMotion
+                    )
+                }
+                // Top overlay over the dashboard content: full-bleed, hit-test
+                // disabled, idles at zero cost until summoned.
+                EasterEggOverlay(controller: easterEggController)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { overviewViewportHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { _, height in
+                            overviewViewportHeight = height
+                        }
+                }
+            }
             .onAppear { overviewAppeared = true }
         }
     }

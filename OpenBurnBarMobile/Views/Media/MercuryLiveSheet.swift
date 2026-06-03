@@ -473,9 +473,8 @@ struct MercuryLiveSheet: View {
                 visibility: backgroundVisibility
             )
         case .constellation:
-            WebsiteBackgroundView(
+            ConstellationBackgroundView(
                 accent: accent,
-                colorDriver: dashboardStore.swarmColorDriver,
                 visibility: backgroundVisibility
             )
         }

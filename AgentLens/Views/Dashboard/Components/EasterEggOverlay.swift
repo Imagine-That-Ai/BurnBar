@@ -70,7 +70,7 @@ struct EasterEggEvent: Identifiable, Equatable {
         /// Light-appearance shower: cloud crests raining gold/silver coins.
         case cloudTokenRain
         /// Edge feedback at the top or bottom of the scroll view.
-        case boundary(edge: VerticalEdge)
+        case boundary(edge: EasterEggEdge)
     }
 
     let id = UUID()
@@ -94,7 +94,7 @@ struct EasterEggEvent: Identifiable, Equatable {
     }
 }
 
-enum VerticalEdge: Equatable {
+enum EasterEggEdge: Equatable {
     case top
     case bottom
 }
@@ -134,16 +134,37 @@ final class EasterEggController {
     // Boundary throttle -------------------------------------------------------
     private var lastBoundaryAt: Date?
     private let boundaryCooldown: TimeInterval = 1.2
+    /// Overscroll past the natural extent (in points) before a boundary tap
+    /// fires, so resting exactly at an edge doesn't trigger it.
+    private let boundaryOverscroll: CGFloat = 14
 
     // MARK: Scroll input
 
-    /// Feed the overview ScrollView's vertical content offset. `offset` follows
-    /// SwiftUI's anchor convention from the preference (more negative = scrolled
-    /// further down); only the sign of the delta matters here.
-    func registerScrollOffset(_ offset: CGFloat, isDark: Bool) {
+    /// Feed the overview ScrollView's scroll geometry once per frame. Handles
+    /// both the rapid up/down reversal summon and the top/bottom boundary tap.
+    ///
+    /// `offset` follows SwiftUI's anchor convention: `0` at the very top and
+    /// growing negative as the user scrolls down. `contentHeight` and
+    /// `viewportHeight` let us recognise the bottom edge.
+    func registerScrollMetrics(
+        offset: CGFloat,
+        contentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        isDark: Bool,
+        reduceMotion: Bool
+    ) {
         guard isEnabled else { return }
-        defer { lastOffset = offset }
+        detectReversal(offset: offset, isDark: isDark)
+        detectBoundary(
+            offset: offset,
+            contentHeight: contentHeight,
+            viewportHeight: viewportHeight,
+            reduceMotion: reduceMotion
+        )
+    }
 
+    private func detectReversal(offset: CGFloat, isDark: Bool) {
+        defer { lastOffset = offset }
         guard let previous = lastOffset else { return }
         let delta = offset - previous
         guard abs(delta) >= minReversalDelta else { return }
@@ -163,10 +184,24 @@ final class EasterEggController {
         }
     }
 
-    /// Called when the user is pinned at an edge and pushes further. `edge`
-    /// names which end they hit.
-    func registerBoundaryOverscroll(_ edge: VerticalEdge, reduceMotion: Bool) {
-        guard isEnabled, !reduceMotion else { return }
+    private func detectBoundary(
+        offset: CGFloat,
+        contentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        reduceMotion: Bool
+    ) {
+        guard !reduceMotion else { return }
+        // Bouncy scroll views push `offset` positive at the top and below the
+        // floor at the bottom once the user overscrolls.
+        let scrollable = contentHeight - viewportHeight
+        if offset > boundaryOverscroll {
+            fireBoundary(.top)
+        } else if scrollable > 1, offset < -(scrollable + boundaryOverscroll) {
+            fireBoundary(.bottom)
+        }
+    }
+
+    private func fireBoundary(_ edge: EasterEggEdge) {
         let now = Date()
         if let last = lastBoundaryAt, now.timeIntervalSince(last) < boundaryCooldown {
             return
@@ -208,26 +243,39 @@ final class EasterEggController {
 
 // MARK: - Scroll offset reporting
 
-/// Reports the overview ScrollView's vertical content offset up the tree.
-/// Mirrors the canonical SwiftUI "named-coordinate-space minY" pattern so the
-/// detector reads one monotonic number per frame.
-struct EasterEggScrollOffsetKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+/// One frame's scroll geometry: the content's top offset within the scroll's
+/// named coordinate space (≤ 0 once scrolled), plus the content height so the
+/// detector can recognise the bottom boundary.
+struct EasterEggScrollMetrics: Equatable, Sendable {
+    var offset: CGFloat = 0
+    var contentHeight: CGFloat = 0
+}
+
+/// Reports the overview ScrollView's scroll geometry up the tree. Mirrors the
+/// canonical SwiftUI "named-coordinate-space minY" pattern so the detector
+/// reads one monotonic number per frame.
+struct EasterEggScrollMetricsKey: PreferenceKey {
+    static let defaultValue = EasterEggScrollMetrics()
+    static func reduce(value: inout EasterEggScrollMetrics, nextValue: () -> EasterEggScrollMetrics) {
+        let next = nextValue()
+        // Keep the meaningful (non-default) report.
+        if next != EasterEggScrollMetrics() { value = next }
     }
 }
 
 extension View {
     /// Drop this inside a `ScrollView`'s content `.background` to publish its
-    /// scroll offset (and content height) for easter egg detection. `space` is
-    /// the name of the `.coordinateSpace` placed on the `ScrollView`.
+    /// scroll offset + content height for easter egg detection. `space` is the
+    /// name of the `.coordinateSpace` placed on the `ScrollView`.
     func easterEggScrollProbe(space: String) -> some View {
         background(
             GeometryReader { geo in
                 Color.clear.preference(
-                    key: EasterEggScrollOffsetKey.self,
-                    value: geo.frame(in: .named(space)).minY
+                    key: EasterEggScrollMetricsKey.self,
+                    value: EasterEggScrollMetrics(
+                        offset: geo.frame(in: .named(space)).minY,
+                        contentHeight: geo.size.height
+                    )
                 )
             }
         )

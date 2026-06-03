@@ -90,9 +90,10 @@ function row(ns: string, id: string, embedding: number[], over: Record<string, u
       sealedCiphertext: `ct-${id}`,
       sealedMetadata: `meta-${id}`,
       sourceKind: "notes",
-      sourceSlug: "journal",
+      // Vault-keyed HMAC of the slug — the cleartext `sourceSlug` is gone (§3).
+      slugHmac: "a".repeat(64),
       embeddingModelVersion: "bge-small-en-v1.5",
-      contentHash: `h-${id}`,
+      dedupHash: `d-${id}`,
       ...over,
     },
   };
@@ -125,19 +126,28 @@ test("searchKnowledge is isolated per namespace", async () => {
   assert.deepEqual((await searchKnowledge(db, "uidC", { queryVector: Q384([1, 0, 0]) })).hits, []);
 });
 
-test("searchKnowledge honours plaintext server filters", async () => {
+test("searchKnowledge honours content-free server filters (sourceKind + slugHmac)", async () => {
+  const journalHmac = "1".repeat(64);
+  const repoHmac = "2".repeat(64);
   const db = makeStubDb([
-    row("uidA", "n1", Q384([1, 0, 0]), { sourceKind: "notes", sourceSlug: "journal" }),
-    row("uidA", "d1", Q384([1, 0, 0]), { sourceKind: "repo_docs", sourceSlug: "repoX" }),
+    row("uidA", "n1", Q384([1, 0, 0]), { sourceKind: "notes", slugHmac: journalHmac }),
+    row("uidA", "d1", Q384([1, 0, 0]), { sourceKind: "repo_docs", slugHmac: repoHmac }),
   ]);
   assert.deepEqual(
     (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), sourceKind: "repo_docs" })).hits.map((h) => h.vectorId),
     ["d1"],
   );
+  // The source filter is the vault-keyed slugHmac (no cleartext sourceSlug).
   assert.deepEqual(
-    (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), filters: { sourceSlug: "journal" } })).hits.map((h) => h.vectorId),
+    (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), filters: { slugHmac: journalHmac } })).hits.map((h) => h.vectorId),
     ["n1"],
   );
+  // Every returned hit exposes only the opaque slugHmac, never a cleartext slug.
+  const hits = (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]) })).hits;
+  for (const hit of hits) {
+    assert.equal(typeof hit.slugHmac, "string");
+    assert.ok(!Object.prototype.hasOwnProperty.call(hit, "sourceSlug"));
+  }
 });
 
 test("searchKnowledge rejects a malformed query vector", async () => {
@@ -164,12 +174,16 @@ test("readKnowledgeDocument returns the inline atomic sealed envelope", async ()
   const envelope = { algorithm: "AES-256-GCM", keyVersion: 1, nonce: "n", ciphertext: "ct", tag: "t" };
   const meta = { algorithm: "AES-256-GCM", keyVersion: 1, nonce: "n2", ciphertext: "m", tag: "t2" };
   const db = makeStubDb([
-    row("uidA", "v1", Q384([1, 0, 0]), { sealedCiphertext: envelope, sealedMetadata: meta, contentHash: "deadbeef" }),
+    row("uidA", "v1", Q384([1, 0, 0]), { sealedCiphertext: envelope, sealedMetadata: meta, dedupHash: "deadbeef", slugHmac: "f".repeat(64) }),
   ]);
   const doc = await readKnowledgeDocument(db, "uidA", { resourceUri: "burnbar://knowledge/v1" });
   assert.deepEqual(doc.sealedCiphertext, envelope);
   assert.deepEqual(doc.sealedMetadata, meta);
-  assert.equal(doc.contentHash, "deadbeef");
+  // Vault-keyed dedupHash + slugHmac only; no cleartext contentHash/sourceSlug (§3).
+  assert.equal(doc.dedupHash, "deadbeef");
+  assert.equal(doc.slugHmac, "f".repeat(64));
+  assert.ok(!Object.prototype.hasOwnProperty.call(doc, "contentHash"));
+  assert.ok(!Object.prototype.hasOwnProperty.call(doc, "sourceSlug"));
   assert.equal(doc.encrypted, true);
   assert.equal(doc.decryptMode, "local_decrypt_shim");
 });

@@ -536,8 +536,11 @@ private fun DocumentSnapshot.toProjectSummary(): ProjectSummary? {
  * Suspends to resolve the Cloud Vault write key. The existing zero-arg call
  * sites (`FirestoreBudgetRepository.uploadBudgetRule`/`uploadBudgetRules`) run in
  * a suspend context, so they pick up the seal with no change. If the vault key
- * is unavailable (device not yet approved), this throws — the same posture as
- * every other Android sealed writer (`keyForWriting`).
+ * is unavailable (device not yet approved), the write degrades to legacy
+ * plaintext so budget sync keeps working during the migration — a key-holding
+ * peer re-seals the rule on its next write. This deliberately does NOT throw
+ * (unlike chat writers) because budget sync predates the vault and must not
+ * hard-fail on an un-approved device.
  */
 suspend fun BudgetRule.toMap(
     firestore: FirebaseFirestore = Firebase.firestore,
@@ -545,7 +548,9 @@ suspend fun BudgetRule.toMap(
 ): Map<String, Any?> {
     val resolvedUid = uid ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
     val resolvedKey =
-        resolvedUid?.let { AndroidCloudVaultKeyAccess.keyForWriting(uid = it, firestore = firestore) }
+        resolvedUid?.let {
+            runCatching { AndroidCloudVaultKeyAccess.keyForWriting(uid = it, firestore = firestore) }.getOrNull()
+        }
 
     val map =
         mutableMapOf<String, Any?>(
@@ -664,8 +669,12 @@ internal object CloudVaultSealedTextCodec {
      * `tokenHashes`). Returns null for an empty normalization.
      */
     fun projectKeyHash(projectName: String, vaultKey: ByteArray): String? {
-        val normalized = projectName.lowercase().filter { it.isLetterOrDigit() }
-        if (normalized.isEmpty()) return null
+        // ASCII-only `[a-z0-9]` so the single normalized token survives the
+        // internal `normalizedTokens` ASCII split inside `tokenHashes` identically
+        // on every platform (Swift `CharacterSet.alphanumerics.inverted` split +
+        // `[a-z0-9]` filter). This is the cross-platform contract for the trapdoor.
+        val normalized = projectName.lowercase().filter { it in 'a'..'z' || it in '0'..'9' }
+        if (normalized.length < 2) return null
         return CloudVaultCrypto.tokenHashes(normalized, vaultKey, limit = 1).firstOrNull()
     }
 }

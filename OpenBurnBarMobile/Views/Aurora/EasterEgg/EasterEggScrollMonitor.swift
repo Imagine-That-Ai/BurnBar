@@ -187,24 +187,97 @@ final class EasterEggScrollMonitor: ObservableObject {
 
 // MARK: - Tracking modifier
 
-/// The named coordinate space every tracked scroll view shares so its content
-/// offset reads against a stable frame.
-private enum EasterEggScroll {
-    static let coordinateSpace = "EasterEggScrollSpace"
-}
+#if canImport(UIKit)
+import UIKit
 
-/// PreferenceKey carrying the live offset + geometry of a tracked scroll view
-/// up to the modifier, which forwards it to the shared monitor.
-private struct EasterEggScrollSample: Equatable {
-    var offset: CGFloat
-    var viewportHeight: CGFloat
-    var contentHeight: CGFloat
-}
+/// A zero-size probe placed in a tracked `ScrollView`'s background. It walks up
+/// to its enclosing `UIScrollView` and observes `contentOffset` (and the
+/// content/bounds sizes) via KVO, forwarding every change to the shared
+/// monitor.
+///
+/// Reading the real `UIScrollView` — rather than a SwiftUI coordinate-space
+/// frame — works on the iOS 17 deployment target and reports the live offset
+/// even during rubber-band over-scroll, which the top/bottom boundary effect
+/// needs. The probe adds no views and runs nothing until the scroll view moves.
+private struct EasterEggScrollProbe: UIViewRepresentable {
+    let tag: String
 
-private struct EasterEggScrollPreferenceKey: PreferenceKey {
-    static let defaultValue: EasterEggScrollSample? = nil
-    static func reduce(value: inout EasterEggScrollSample?, nextValue: () -> EasterEggScrollSample?) {
-        value = nextValue() ?? value
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.tag2 = tag
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.tag2 = tag
+    }
+
+    static func dismantleUIView(_ uiView: ProbeView, coordinator: ()) {
+        uiView.detach()
+    }
+
+    /// The actual probe view. Finds its `UIScrollView` ancestor once it lands in
+    /// the hierarchy and observes its scrolling state.
+    final class ProbeView: UIView {
+        var tag2: String = ""
+        private weak var scrollView: UIScrollView?
+        private var observations: [NSKeyValueObservation] = []
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil {
+                attachIfNeeded()
+            } else {
+                detach()
+            }
+        }
+
+        private func attachIfNeeded() {
+            guard scrollView == nil else { return }
+            var ancestor: UIView? = superview
+            while let current = ancestor {
+                if let scroll = current as? UIScrollView {
+                    bind(scroll)
+                    return
+                }
+                ancestor = current.superview
+            }
+        }
+
+        private func bind(_ scroll: UIScrollView) {
+            scrollView = scroll
+            let report: (UIScrollView) -> Void = { [weak self] scroll in
+                guard let self else { return }
+                let monitorTag = self.tag2
+                let offset = scroll.contentOffset.y + scroll.adjustedContentInset.top
+                let viewport = scroll.bounds.height
+                    - scroll.adjustedContentInset.top
+                    - scroll.adjustedContentInset.bottom
+                let content = scroll.contentSize.height
+                Task { @MainActor in
+                    EasterEggScrollMonitor.shared.ingest(
+                        offset: offset,
+                        viewportHeight: viewport,
+                        contentHeight: content,
+                        tag: monitorTag
+                    )
+                }
+            }
+            observations = [
+                scroll.observe(\.contentOffset, options: [.new]) { scroll, _ in report(scroll) }
+            ]
+        }
+
+        func detach() {
+            let wasBound = scrollView != nil
+            observations.forEach { $0.invalidate() }
+            observations.removeAll()
+            scrollView = nil
+            guard wasBound else { return }
+            let monitorTag = tag2
+            Task { @MainActor in EasterEggScrollMonitor.shared.forget(tag: monitorTag) }
+        }
     }
 }
 
@@ -213,58 +286,30 @@ private struct TrackEasterEggScrollModifier: ViewModifier {
     let tag: String
 
     func body(content: Content) -> some View {
-        content
-            // A zero-size reader pinned to the scroll content reports the
-            // content's min-Y against the viewport's coordinate space; negate
-            // it so "scrolled down" reads as a growing positive offset.
-            .background {
-                GeometryReader { contentProxy in
-                    let space = EasterEggScroll.coordinateSpace
-                    let frame = contentProxy.frame(in: .named(space))
-                    Color.clear.preference(
-                        key: EasterEggScrollPreferenceKey.self,
-                        value: EasterEggScrollSample(
-                            offset: -frame.minY,
-                            viewportHeight: viewportHeight(contentProxy, space: space),
-                            contentHeight: frame.height
-                        )
-                    )
-                }
-            }
-            .coordinateSpace(name: EasterEggScroll.coordinateSpace)
-            .onPreferenceChange(EasterEggScrollPreferenceKey.self) { sample in
-                guard let sample else { return }
-                Task { @MainActor in
-                    EasterEggScrollMonitor.shared.ingest(
-                        offset: sample.offset,
-                        viewportHeight: sample.viewportHeight,
-                        contentHeight: sample.contentHeight,
-                        tag: tag
-                    )
-                }
-            }
-            .onDisappear { EasterEggScrollMonitor.shared.forget(tag: tag) }
-    }
-
-    /// The viewport height is the height of the named coordinate space's own
-    /// frame; reading the global frame's height through the same proxy keeps
-    /// the boundary math self-contained without a second GeometryReader.
-    private func viewportHeight(_ proxy: GeometryProxy, space: String) -> CGFloat {
-        // The coordinate-space frame is anchored to the scroll view itself, so
-        // its size equals the viewport. `proxy.size` reflects the content's
-        // size; the viewport is recovered from the space's bounds.
-        proxy.bounds(of: .named(space))?.height ?? proxy.size.height
+        content.background {
+            EasterEggScrollProbe(tag: tag)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        }
     }
 }
+#else
+private struct TrackEasterEggScrollModifier: ViewModifier {
+    let tag: String
+    func body(content: Content) -> some View { content }
+}
+#endif
 
 extension View {
     /// Feed this scroll view's live vertical offset into the app-scope
     /// `EasterEggScrollMonitor`, enabling the rapid up/down "summon" gesture
     /// and the top/bottom "you've reached the end" edge bounce on this surface.
     ///
-    /// Apply directly to a `ScrollView`. The `tag` keeps each surface's
-    /// reversal counter independent so switching tabs never injects a phantom
-    /// flip from another scroll view's offset.
+    /// Apply directly to a `ScrollView`. The probe walks up to the underlying
+    /// `UIScrollView` and observes its real offset, so over-scroll at the very
+    /// top/bottom registers for the boundary effect. The `tag` keeps each
+    /// surface's reversal counter independent so switching tabs never injects a
+    /// phantom flip from another scroll view's offset.
     func trackEasterEggScroll(tag: String) -> some View {
         modifier(TrackEasterEggScrollModifier(tag: tag))
     }

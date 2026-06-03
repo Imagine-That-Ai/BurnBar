@@ -151,3 +151,7 @@ export {
 } from "./appstore/index.js";
 
 export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";
+
+// Privacy-leak remediation: idempotent backfill that strips legacy plaintext
+// fields once a sealed copy exists + bumps a per-user reseal watermark.
+export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./callables/privacyBackfill.js";

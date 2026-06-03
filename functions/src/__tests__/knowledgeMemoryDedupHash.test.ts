@@ -207,7 +207,11 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     expect(typeof record.slugHmac).toBe("string");
   });
 
-  it("legacy clients (cleartext contentHash, no dedupHash) are stamped v0 for re-ingestion", async () => {
+  it("FLAG-DAY: a legacy client (cleartext contentHash, no dedupHash/slugHmac) is REJECTED", async () => {
+    // privacy-leak-remediation-2026-06-02 §3 (Option A): the write path now
+    // REQUIRES the vault-keyed dedupHash + slugHmac and no longer accepts the
+    // cleartext SHA-256 contentHash oracle, so a not-yet-updated client fails
+    // instead of writing a v0 row.
     const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
     const run = (commitKnowledgeBatch as unknown as Runnable).run;
 
@@ -218,10 +222,21 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     (req.data.vectors[0] as Record<string, unknown>).contentHash = KNOWN_PLAINTEXT_SHA256;
     delete (req.data as Record<string, unknown>).slugHmac;
 
-    await run(req);
-    const [, record] = [...stored.entries()].find(([k]) => k.startsWith("users/userLegacy/cloud_search_knowledge/"))!;
+    await expect(run(req)).rejects.toThrow();
+    // Nothing was persisted for this legacy caller.
+    expect([...stored.keys()].some((k) => k.startsWith("users/userLegacy/cloud_search_knowledge/"))).toBe(false);
+  });
 
-    expect(record.dedupHashVersion).toBe(0);
-    expect(record.dedupHash).toBe(KNOWN_PLAINTEXT_SHA256); // legacy, awaiting re-ingestion
+  it("a v1 client that omits cloakedVector (sends a raw embedding) is REJECTED", async () => {
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = (commitKnowledgeBatch as unknown as Runnable).run;
+
+    const req = commitRequestForUser("userRawEmbed", Buffer.alloc(32, 0xd4));
+    const vec = req.data.vectors[0] as Record<string, unknown>;
+    vec.embedding = vec.cloakedVector; // legacy field name
+    delete vec.cloakedVector;
+
+    await expect(run(req)).rejects.toThrow(/cloakedVector/);
+    expect([...stored.keys()].some((k) => k.startsWith("users/userRawEmbed/cloud_search_knowledge/"))).toBe(false);
   });
 });

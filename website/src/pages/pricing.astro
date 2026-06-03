@@ -6,8 +6,13 @@ import { SITE } from "@data/site";
 const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
-const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "cloud_ultra")!;
-const allowance = cloudPro.allowance!;
+const ultra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
+const allowance = cloudPro.allowance as {
+  hostedAgentActionsMonthly: number;
+  relayGBMonthly: number;
+  hostedAgentActionMonthlyCap: number;
+  relayGBMonthlyCap: number;
+};
 const actionTopUp = SITE.pricing.topUps[0]!;
 const relayTopUp = SITE.pricing.topUps[1]!;
 
@@ -15,13 +20,13 @@ const savePct = (monthly: string, annual: string) =>
   Math.round((1 - Number(annual) / (Number(monthly) * 12)) * 100);
 const cloudSave = savePct(cloud.priceMonthlyUSD, cloud.priceAnnualUSD!);
 const proSave = savePct(cloudPro.priceMonthlyUSD, cloudPro.priceAnnualUSD!);
-const ultraSave = savePct(cloudUltra.priceMonthlyUSD, cloudUltra.priceAnnualUSD!);
+const ultraSave = savePct(ultra.priceMonthlyUSD, ultra.priceAnnualUSD!);
 const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 ---
 
 <BaseLayout
   title="Pricing"
-  description="OpenBurnBar pricing — OpenBurnBar Local at $0, BurnBar Cloud at $7.99/month or $79/year, BurnBar Cloud Pro at $24.99/month or $249/year, and BurnBar Cloud Ultra at $59.99/month or $599/year."
+  description="OpenBurnBar pricing — OpenBurnBar Local at $0, BurnBar Cloud at $7.99/month or $79/year, BurnBar Cloud Pro at $24.99/month or $249/year, and BurnBar Ultra at $59.99/month or $599/year."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -31,8 +36,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
         <p class="lead">
           The local product is free, forever. Cloud syncs your quota and encrypted history. Cloud
           Pro adds live phone-to-Mac workflows and supervised agent work — with prepaid allowances
-          for the hosted resources that cost real money. Cloud Ultra keeps all of that and gives
-          your agents 10× private memory to recall.
+          for the hosted resources that cost real money. Ultra keeps all of that and gives your
+          agents 10× private memory to recall.
         </p>
       </div>
 
@@ -238,7 +243,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           </a>
         </article>
 
-        <!-- CLOUD ULTRA -->
+        <!-- ULTRA -->
         <article class="plan plan--ultra" data-animate-onview>
           <div class="plan__holo" aria-hidden="true"></div>
           <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
@@ -260,32 +265,33 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
             />
             <span class="plan__badge mono">For your whole second brain</span>
             <div class="plan__title">
-              <h2 class="plan__name">{cloudUltra.shortName}</h2>
+              <h2 class="plan__name">{ultra.shortName}</h2>
             </div>
             <div class="plan__price">
               <span class="plan__amount mono" data-billing="monthly">
-                ${cloudUltra.priceMonthlyUSD}<span class="plan__unit">/mo</span>
+                ${ultra.priceMonthlyUSD}<span class="plan__unit">/mo</span>
               </span>
               <span class="plan__amount mono" data-billing="annual">
-                ${cloudUltra.priceAnnualUSD}<span class="plan__unit">/yr</span>
+                ${ultra.priceAnnualUSD}<span class="plan__unit">/yr</span>
               </span>
               <span class="plan__per">
                 <span class="plan__save mono" data-billing="annual"
-                  >${(Number(cloudUltra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {
+                  >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {
                     ultraSave
                   }%</span
                 >
                 <span class="plan__per-dim" data-billing="monthly"
-                  >${cloudUltra.priceAnnualUSD}/yr available</span
+                  >${ultra.priceAnnualUSD}/yr available</span
                 >
               </span>
             </div>
-            <p class="plan__sub">{cloudUltra.summary}</p>
+            <p class="plan__sub">{ultra.summary}</p>
           </header>
 
           <ul class="plan__list plan__list--ultra">
             <li>Everything in BurnBar Cloud Pro</li>
-            <li>10× agent memory: 15 sources · 50,000 chunks · 250 MB</li>
+            <li>15 Pensieve knowledge sources</li>
+            <li>50,000 encrypted memory chunks · 250 MB</li>
             <li>Repo docs, notes &amp; chat memories your agents recall</li>
             <li>Sealed on-device · the server searches without reading it</li>
             <li>Same hosted Agent Control &amp; relay allowance as Pro</li>
@@ -304,7 +310,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           </div>
 
           <a class="btn btn--ember plan__cta" href="/download">
-            {cloudUltra.cta}
+            {ultra.cta}
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
         </article>
@@ -354,7 +360,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <dt>Is there a free trial?</dt>
           <dd>
             BurnBar Cloud monthly and annual include a 14-day introductory free trial for new
-            subscribers. BurnBar Cloud Pro, Cloud Ultra, and top-ups do not have an introductory
+            subscribers. BurnBar Cloud Pro, BurnBar Ultra, and top-ups do not have an introductory
             trial.
           </dd>
         </div>
@@ -374,18 +380,18 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
             {allowance.relayGBMonthly} relay-accounting GB each month. Extra hosted actions are ${
               actionTopUp.priceUSD
             } for {actionTopUp.unit}; extra relay is ${relayTopUp.priceUSD} for {relayTopUp.unit}.
-            Monthly caps still apply. Cloud Ultra carries the same hosted allowance, caps, and
+            Monthly caps still apply. BurnBar Ultra carries the same hosted allowance, caps, and
             top-up prices as Cloud Pro.
           </dd>
         </div>
         <div>
-          <dt>What does Cloud Ultra add over Cloud Pro?</dt>
+          <dt>What does BurnBar Ultra add over Cloud Pro?</dt>
           <dd>
             Everything in Cloud Pro, plus 10× private agent memory. Cloud Pro gives your agents 3
-            knowledge sources, 5,000 memory chunks, and 25 MB. Cloud Ultra raises that to 15
+            knowledge sources, 5,000 memory chunks, and 25 MB. BurnBar Ultra raises that to 15
             sources, 50,000 chunks, and 250 MB of repo docs, notes, and chat-derived memories your
             agents can recall. The text is sealed on your device and the vectors are cloaked, so the
-            server runs nearest-neighbor search without reading your content. Cloud Ultra is
+            server runs nearest-neighbor search without reading your content. BurnBar Ultra is
             $59.99/month or $599/year.
           </dd>
         </div>

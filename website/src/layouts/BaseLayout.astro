@@ -1174,12 +1174,6 @@ const fullTitle =
             else if (atBottom() && dy < 0) { lastBoundary = now; boundary("bottom", now); }
           }
         }, { passive: true });
-
-        /* FXDEBUG */
-        if (location.hash === "#fxstorm") setTimeout(function () { startStorm(performance.now()); }, 1200);
-        if (location.hash === "#fxrain") setTimeout(function () { startRain(performance.now()); }, 1200);
-        if (location.hash === "#fxedge") setTimeout(function () { boundary("bottom", performance.now()); }, 400);
-        /* /FXDEBUG */
       })();
     </script>
 
