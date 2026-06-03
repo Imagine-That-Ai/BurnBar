@@ -329,6 +329,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
     async (
       request: CallableRequest<{
         docID?: unknown;
+        legacyDocID?: unknown;
         contentHash?: unknown;
         sourceSessionCount?: unknown;
         sourceConversationCount?: unknown;
@@ -394,6 +395,23 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       await db
         .doc(`users/${uid}/project_memory_snapshots/${docID}`)
         .set(stripUndefinedObject(doc), { merge: true });
+
+      // Migration: the device sends `legacyDocID` (the old project-name-derived
+      // slug) when it differs from the opaque `docID`. Delete the stranded legacy
+      // doc so its cleartext `projectDisplayName` field and name-revealing doc id
+      // do not linger server-readable (privacy-leak-remediation-2026-06-02 §2).
+      const legacyDocID =
+        typeof request.data.legacyDocID === "string" && request.data.legacyDocID.length > 0
+          ? request.data.legacyDocID
+          : undefined;
+      if (legacyDocID && legacyDocID !== docID) {
+        await db
+          .doc(`users/${uid}/project_memory_snapshots/${legacyDocID}`)
+          .delete()
+          .catch(() => {
+            /* best-effort cleanup; the scheduled privacy backfill is the backstop */
+          });
+      }
       return {
         ok: true,
         docID,

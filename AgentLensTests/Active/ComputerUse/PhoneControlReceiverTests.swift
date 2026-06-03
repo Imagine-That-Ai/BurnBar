@@ -316,9 +316,16 @@ final class PhoneControlReceiverTests: XCTestCase {
                     from: Data(line.utf8)
                 )
             }
-        XCTAssertEqual(entries.count, 1)
+        // Blocker 1 (audit-before-action): an executed action now writes a
+        // reservation row (carrying the audit-reserved sentinel) BEFORE dispatch
+        // and a completion row after — two rows total.
+        XCTAssertEqual(entries.count, 2)
         XCTAssertEqual(entries.first?.approvedBy, .phone)
         XCTAssertEqual(entries.first?.approvalId, approvalRequest.approvalId)
+        XCTAssertEqual(entries.first?.denyReason, "audit_reserved_pending")
+        XCTAssertEqual(entries.last?.approvedBy, .phone)
+        XCTAssertEqual(entries.last?.approvalId, approvalRequest.approvalId)
+        XCTAssertNil(entries.last?.denyReason)
     }
 
     @MainActor

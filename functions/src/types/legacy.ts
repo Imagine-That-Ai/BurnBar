@@ -2702,7 +2702,15 @@ export interface MediaQuotaUsageDoc {
 export interface MediaAttachmentManifestDoc {
   id: string; // manifestId
   blobHash: string; // BLAKE3 hex
-  filename: string;
+  /**
+   * @deprecated Legacy plaintext filename. New writers send `sealedFilename`
+   * (vault-sealed AES-256-GCM). The Firestore rule rejects a plaintext `filename`
+   * once a `sealedFilename` is present; this stays optional only for in-flight /
+   * pre-migration docs (privacy-leak-remediation-2026-06-02 Fork F = SEAL).
+   */
+  filename?: string;
+  /** Vault-sealed filename — the server never sees the cleartext name. */
+  sealedFilename?: CloudVaultSealedTextDoc;
   mime: string;
   size: number; // bytes
   peerDeviceIdHash: string; // SHA-256 of NodeId, never plaintext

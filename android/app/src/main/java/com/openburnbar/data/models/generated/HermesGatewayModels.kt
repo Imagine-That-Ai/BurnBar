@@ -32,9 +32,30 @@ data class FirestoreHermesGatewayClientDoc(
     val runtimeProviderId: String? = null,
     val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
     val runtimeUpdatedAt: String? = null,
+    val agentVersion: String? = null,
+    val pendingModelId: String? = null,
+    val pendingModelRequestedAt: String? = null,
+    val oversightMode: String? = null,
     val revokedAt: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayApprovalDoc(
+    val id: String = "",
+    val clientId: String = "",
+    val destinationId: String = "",
+    val actionId: String = "",
+    val toolName: String? = null,
+    val summary: String = "",
+    val status: String = "",
+    val requestedAt: String = "",
+    val expiresAt: String = "",
+    val respondedAt: String? = null,
+    val approvedByDeviceId: String? = null,
     val schemaVersion: Long = 0,
 )
 
