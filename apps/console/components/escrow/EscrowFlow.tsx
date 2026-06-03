@@ -30,13 +30,10 @@ type Step = "idle" | "registering" | "pending" | "unwrapping" | "ready" | "error
  */
 export function EscrowFlow({
   fetchWrappedKey,
-  recaptchaToken,
   onVaultKeyReady,
 }: {
   /** Resolves the wrapped-key base64 once the native device approves (else null). */
   fetchWrappedKey: (escrowDeviceId: string) => Promise<string | null>;
-  /** App Check / reCAPTCHA token; the host page supplies it. */
-  recaptchaToken: string;
   /** Called once with the in-memory vault key and raw key bytes for local-only cloak/decrypt work. */
   onVaultKeyReady?: (vaultKey: CryptoKey, rawVaultKey: Uint8Array) => void;
 }) {
@@ -50,14 +47,14 @@ export function EscrowFlow({
     try {
       const pair = await getOrCreateDeviceKeyPair();
       const jwk = await exportDevicePublicJwk(pair);
-      const res = await registerBrowserEscrowDevice(jwk, recaptchaToken);
+      const res = await registerBrowserEscrowDevice(jwk);
       setEscrowDeviceId(res.escrowDeviceId);
       setStep("pending");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not register this browser.");
       setStep("error");
     }
-  }, [recaptchaToken]);
+  }, []);
 
   const poll = useCallback(async () => {
     if (!escrowDeviceId) return;

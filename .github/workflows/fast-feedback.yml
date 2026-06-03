@@ -220,6 +220,18 @@ jobs:
             android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt \
             || { echo "::error::Android generated sources are stale — run ./gradlew :app:syncGeneratedSources and commit the result."; exit 1; }
 
+      # Same guarantee for the public marketing site: burnbar.ai/trust renders
+      # every encryption-tier claim from website/src/data/trust.generated.ts,
+      # which codegen emits from registry.json (+ the Pensieve tier colors). Fail
+      # red if the committed copy drifts so the website can never overstate the
+      # product — the exact failure mode that mislabeled server-readable chat as
+      # end-to-end encrypted, now gated for the website too.
+      - name: Website trust copy is in sync (no drift)
+        run: |
+          node packages/data-domains/codegen.mjs
+          git diff --exit-code -- website/src/data/trust.generated.ts \
+            || { echo "::error::website/src/data/trust.generated.ts is stale — run 'node packages/data-domains/codegen.mjs' and commit the result."; exit 1; }
+
   # ── Web console (app.burnbar.ai): lint + types + tests + static build ──────
   console-web:
     name: Console (lint + types + tests + build)

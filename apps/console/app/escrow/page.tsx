@@ -38,9 +38,6 @@ export default function EscrowPage() {
 
       <EscrowFlow
         fetchWrappedKey={fetchWrappedKey}
-        // App Check supplies the attestation; reCAPTCHA Enterprise token is wired
-        // when the site key is configured. Empty string is rejected server-side.
-        recaptchaToken=""
         onVaultKeyReady={(vaultKey, rawVaultKey) => {
           // The in-memory vault key is now available to decrypt sealed content
           // and cloak Pensieve recall queries. It remains tab-local.

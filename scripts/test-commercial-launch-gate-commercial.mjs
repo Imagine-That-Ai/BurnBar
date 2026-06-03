@@ -296,8 +296,11 @@ function passingChecks(overrides = {}) {
   );
   assert.deepEqual(readiness, {
     name: "openburnbar-quota-runner",
+    exists: true,
     ready: true,
     url: "https://openburnbar-quota-runner.example.run.app",
+    serviceAccount: null,
+    ingress: null,
   });
 }
 

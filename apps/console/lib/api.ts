@@ -135,13 +135,10 @@ export const verifyAuditLog = () =>
 export interface RegisterBrowserEscrowResponse {
   ok: boolean;
   escrowDeviceId: string;
-  status: "pending";
+  status: "pending" | "trusted";
 }
-export const registerBrowserEscrowDevice = (publicKeyJwk: JsonWebKey, recaptchaToken: string) =>
-  call<{ publicKeyJwk: JsonWebKey; recaptchaToken: string }, RegisterBrowserEscrowResponse>(
-    "registerBrowserEscrowDevice",
-    { publicKeyJwk, recaptchaToken },
-  );
+export const registerBrowserEscrowDevice = (publicKeyJwk: JsonWebKey) =>
+  call<{ publicKeyJwk: JsonWebKey }, RegisterBrowserEscrowResponse>("registerBrowserEscrowDevice", { publicKeyJwk });
 
 /**
  * Poll an escrow device for trusted-device approval. The native device approves

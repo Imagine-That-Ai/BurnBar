@@ -718,6 +718,7 @@ enum SettingsManifest {
         SettingsAnchor.textExpansionSnippets,
         SettingsAnchor.textExpansionRuntime,
         SettingsAnchor.mediaPermissions,
+        SettingsAnchor.dataControlCenterInventory,
         SettingsAnchor.computerUseReadiness,
         SettingsAnchor.computerUsePermissionsSetup,
         SettingsAnchor.switcherBrowser,

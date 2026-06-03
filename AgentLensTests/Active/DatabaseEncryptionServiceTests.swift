@@ -206,7 +206,7 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
 
     func testExportRecoveryBundle_roundTripsKey() {
         let originalKey = DatabaseEncryptionService.getOrCreateKey()
-        let password = "correct-horse-battery-staple-42"
+        let password = "unit test recovery phrase 42"
 
         guard let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: password) else {
             XCTFail("exportRecoveryBundle should return non-nil data")

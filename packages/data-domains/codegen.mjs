@@ -197,6 +197,203 @@ function camel(snake) {
   return snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Website trust surface (burnbar.ai/trust)
+//
+// The public marketing site renders every *factual* claim about what BurnBar can
+// and cannot see from the same registry the apps consume. We emit a TS module —
+// website/src/data/trust.generated.ts — and a CI drift gate (registry.test.mjs +
+// `git diff --exit-code`) fails red if the in-tree copy diverges. This is the
+// website-equivalent of the Android DataDomains.kt sync: the marketing copy can
+// never quietly overstate the product, because the tier + facets are generated,
+// not hand-authored.
+//
+// Tier badge colors are sourced from the Pensieve design-token DTCG file so the
+// website's tier colors match the in-app Data & Privacy Control Center
+// byte-for-byte (see packages/design-tokens/tokens/pensieve.tokens.json).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TOKENS_PATH = join(HERE, "..", "design-tokens", "tokens", "pensieve.tokens.json");
+
+/** snake_case tier id -> camelCase key under `color.tier` in the DTCG token file. */
+const TIER_TOKEN_KEY = {
+  server_readable: "serverReadable",
+  zero_access: "zeroAccess",
+  end_to_end: "endToEnd",
+};
+
+/**
+ * Read the canonical encryption-tier hex colors from the design-token source of
+ * truth. Throws if the token file or a tier color is missing — CI always has the
+ * full checkout, and a silent fallback could let the website tier colors drift
+ * from the in-app control center.
+ */
+export function loadTierColors() {
+  const tokens = JSON.parse(readFileSync(TOKENS_PATH, "utf8"));
+  const out = {};
+  for (const tier of TIERS) {
+    const hex = tokens?.color?.tier?.[TIER_TOKEN_KEY[tier]]?.$value;
+    if (typeof hex !== "string") {
+      throw new Error(`design-tokens pensieve.tokens.json missing color.tier.${TIER_TOKEN_KEY[tier]} for ${tier}`);
+    }
+    out[tier] = hex;
+  }
+  return out;
+}
+
+/** Display metadata per tier, mirroring apps/console TIER_META so the public surface speaks the same language. */
+const TIER_DISPLAY = {
+  server_readable: {
+    label: "Server-readable",
+    badge: "Operational",
+    icon: "eye",
+    serverLine: "Operational metadata, stored as readable text — our servers can read this.",
+    cssVar: "--color-tier-server-readable",
+  },
+  zero_access: {
+    label: "Zero-access",
+    badge: "Encrypted at rest",
+    icon: "shield",
+    serverLine:
+      "Sealed envelopes. Our servers hold ciphertext, not content — the key stays under your device trust.",
+    cssVar: "--color-tier-zero-access",
+  },
+  end_to_end: {
+    label: "End-to-end",
+    badge: "Only your devices",
+    icon: "lock",
+    serverLine: "Sealed on your device. Our servers never see the content or the key.",
+    cssVar: "--color-tier-end-to-end",
+  },
+};
+
+/**
+ * Internal transport / relay / project codenames that the registry names freely
+ * (the in-app inspector is for the signed-in owner), but the public marketing
+ * site must never expose — only the public names ("Floo", "Agent Control") ship.
+ * See website/src/data/capabilities.ts and the burnbar.ai copy policy.
+ */
+const INTERNAL_CODENAMES = /\b(?:Hermes|iroh|Mercury|Pi agent)\b/;
+
+/**
+ * Make a registry string public-safe and benefit-first, deterministically:
+ *   1. drop any parenthetical that names an internal codename,
+ *      e.g. " (Hermes, Pi agent, iroh)";
+ *   2. drop parenthetical lists of internal Firestore collection names,
+ *      e.g. " (mobile_assistant_chats, cli_sessions)";
+ *   3. neutralize the over-loaded "zero-knowledge" marketing term — the honest,
+ *      registry-backed claim is end-to-end encryption (the wrapped-key model);
+ *   4. humanize any remaining standalone snake_case identifier,
+ *      e.g. "chat_threads" -> "chat threads";
+ *   5. scrub any stray codename token and collapse leftover whitespace.
+ * The transform is pure, so the drift gate (codegen output vs. on-disk) still
+ * holds: the website copy is *derived* from registry.json, never hand-typed.
+ */
+function websiteSafe(s) {
+  return String(s)
+    .replace(/\s*\([^)]*\)/g, (m) => (INTERNAL_CODENAMES.test(m) ? "" : m))
+    .replace(/\s*\((?:[a-z][a-z0-9]*_[a-z0-9_]*)(?:,\s*[a-z][a-z0-9]*_[a-z0-9_]*)*\)/g, "")
+    .replace(/\bzero-knowledge\b/gi, "end-to-end encryption")
+    .replace(/\b[a-z][a-z0-9]*_[a-z0-9_]+\b/g, (m) => m.replace(/_/g, " "))
+    .replace(new RegExp(INTERNAL_CODENAMES.source, "g"), "")
+    .replace(/\s+([.,;])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/** Split a registry summary into a benefit-first blurb and an optional honest caveat (the "NOTE:" tail). */
+function splitSummary(summary) {
+  const idx = summary.indexOf("NOTE:");
+  if (idx === -1) return { blurb: websiteSafe(summary), caveat: null };
+  const blurb = websiteSafe(summary.slice(0, idx));
+  const caveat = websiteSafe(summary.slice(idx + "NOTE:".length));
+  return { blurb, caveat: caveat ? caveat.charAt(0).toUpperCase() + caveat.slice(1) : null };
+}
+
+/** Repo-relative path to the generated website trust module (also the drift-gate target). */
+export const WEBSITE_TRUST_PATH = join(HERE, "..", "..", "website", "src", "data", "trust.generated.ts");
+
+export function emitWebsiteTrust(reg, tierColors) {
+  const tiers = TIERS.map((id) => ({
+    id,
+    label: TIER_DISPLAY[id].label,
+    badge: TIER_DISPLAY[id].badge,
+    definition: reg.encryptionTiers[id],
+    serverLine: TIER_DISPLAY[id].serverLine,
+    colorHex: tierColors[id],
+    cssVar: TIER_DISPLAY[id].cssVar,
+    icon: TIER_DISPLAY[id].icon,
+  }));
+
+  const domains = reg.domains.map((d) => {
+    const { blurb, caveat } = splitSummary(d.summary);
+    return {
+      id: d.id,
+      title: d.title,
+      tier: d.encryptionTier,
+      blurb,
+      caveat,
+      serverSees: d.serverSees.map(websiteSafe),
+      deviceOnly: d.deviceOnly.map(websiteSafe),
+    };
+  });
+
+  const tierById = Object.fromEntries(tiers.map((t) => [t.id, t]));
+
+  const lines = [
+    "// GENERATED by packages/data-domains/codegen.mjs — DO NOT EDIT.",
+    "// Source: registry.json + packages/design-tokens/tokens/pensieve.tokens.json",
+    "//",
+    "// The public trust surface (burnbar.ai/trust) renders every factual claim from",
+    "// this file. Re-generate with: node packages/data-domains/codegen.mjs",
+    "// A CI drift gate (registry.test.mjs + git diff --exit-code) fails if this file",
+    "// diverges from the registry, so the marketing site can never overstate what",
+    "// the product does. Tier colors match the in-app control center byte-for-byte.",
+    "",
+    `export type TrustTierId = ${TIERS.map((t) => `"${t}"`).join(" | ")};`,
+    "",
+    "export interface TrustTier {",
+    "  id: TrustTierId;",
+    "  /** Display label, e.g. \"End-to-end\". */",
+    "  label: string;",
+    "  /** Short badge word, e.g. \"Only your devices\". */",
+    "  badge: string;",
+    "  /** Canonical one-line definition, verbatim from registry.encryptionTiers. */",
+    "  definition: string;",
+    "  /** Plain-language \"what the server can and cannot see\" line for this tier. */",
+    "  serverLine: string;",
+    "  /** Hex from packages/design-tokens — matches the in-app control center exactly. */",
+    "  colorHex: string;",
+    "  /** The matching CSS custom property name in the Pensieve token system. */",
+    "  cssVar: string;",
+    "  /** Tier icon key: \"eye\" | \"shield\" | \"lock\". */",
+    "  icon: string;",
+    "}",
+    "",
+    "export interface TrustDomain {",
+    "  id: string;",
+    "  title: string;",
+    "  tier: TrustTierId;",
+    "  /** Benefit-first \"what it is\", derived from registry.summary. */",
+    "  blurb: string;",
+    "  /** Honest caveat (the registry NOTE), or null. */",
+    "  caveat: string | null;",
+    "  /** Plain-language facets our servers can read. */",
+    "  serverSees: string[];",
+    "  /** Plain-language facets only your devices can read. */",
+    "  deviceOnly: string[];",
+    "}",
+    "",
+    `export const TRUST_TIERS: readonly TrustTier[] = ${JSON.stringify(tiers, null, 2)} as const;`,
+    "",
+    `export const TRUST_TIER_BY_ID: Record<TrustTierId, TrustTier> = ${JSON.stringify(tierById, null, 2)};`,
+    "",
+    `export const TRUST_DOMAINS: readonly TrustDomain[] = ${JSON.stringify(domains, null, 2)} as const;`,
+    "",
+  ];
+  return lines.join("\n");
+}
+
 export function generateAll(reg) {
   return {
     "gen/domains.ts": emitTs(reg),
@@ -212,7 +409,12 @@ function main() {
   for (const [rel, content] of Object.entries(files)) {
     writeFileSync(join(HERE, rel), content);
   }
-  console.log(`[data-domains] generated ${Object.keys(files).length} files for ${reg.domains.length} domains.`);
+  // Website trust surface (burnbar.ai/trust) — tier colors come from the
+  // design-token source so they match the in-app control center byte-for-byte.
+  writeFileSync(WEBSITE_TRUST_PATH, emitWebsiteTrust(reg, loadTierColors()));
+  console.log(
+    `[data-domains] generated ${Object.keys(files).length} platform files + website trust module for ${reg.domains.length} domains.`
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
