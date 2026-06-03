@@ -7,7 +7,7 @@ This roadmap reflects OpenBurnBar's current product direction: from local-first 
 - Local-first usage tracking across supported providers
 - Conversation/session ingestion and summaries
 - Menu bar app, dashboard, chat panel, and insight surfaces
-- Optional Firebase sync and optional iCloud session mirroring
+- Optional Firebase sync with sealed chat/session domains; raw iCloud session mirroring disabled until sealed archive support exists
 - OpenBurnBar daemon plus Cursor / VS Code extension shell
 
 ## Now

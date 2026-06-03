@@ -730,8 +730,10 @@ extension OpenBurnBarDaemonManager {
         mutate: @escaping (BurnBarProviderSettings) throws -> BurnBarProviderSettings
     ) async throws {
         let socketURL = paths.socketURL
+        let requestConfig = dependencies.requestConfig
+        let updateConfig = dependencies.updateConfig
         var snapshot = try await daemonRPC {
-            try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+            try requestConfig(socketURL)
         }
         guard let index = snapshot.providers.firstIndex(where: { $0.providerID == providerID }) else {
             throw OpenBurnBarDaemonManagerError.rpcError("Provider '\(providerID)' is not available in daemon config.")
@@ -739,8 +741,9 @@ extension OpenBurnBarDaemonManager {
         snapshot.providers[index] = try mutate(snapshot.providers[index])
         let snapshotToWrite = snapshot
         _ = try await daemonRPC {
-            try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
+            try updateConfig(socketURL, snapshotToWrite)
         }
+        await refreshRuntimeSnapshot()
     }
 
     func slotSecretAccount(providerID: String, slotID: String) -> String {

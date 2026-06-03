@@ -141,14 +141,15 @@ If the app is compromised, the attacker has full access to the user's home direc
 - **App Check (Firestore):** The macOS app initializes App Check before Firebase. **Production** projects must **enforce** App Check for **Cloud Firestore** in the Firebase console so traffic without a valid attestation is rejected; Auth alone is not a substitute (see [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)).
 - **Firestore:** Owner-scoped explicit collection rules cover supported `users/{uid}/...` sync paths and `workspaces/workspace-{uid}/...` shared-artifact paths. Client-writable sync documents reject plaintext-looking secret field names. Usage rollups, rate-limit docs, and top-level `provider_account_secret_refs` credential reference docs are server-only. Basic size limits are enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
 - **Hermes hosted relay (retired 2026-05-28):** The Cloud Run WebSocket relay and Redis backend were deleted from the `burnbar` project. Remote Hermes now uses **iroh** peer transport with **Firestore** as the last-resort fallback. Legacy WSS URLs must not be advertised; see [`HERMES_REALTIME_RELAY.md`](HERMES_REALTIME_RELAY.md) and [`HERMES_IROH_TRANSPORT.md`](HERMES_IROH_TRANSPORT.md).
-- **What syncs:** Usage rows, chat-thread metadata (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Chat message bodies, conversation metadata, and full session-log backup are separately gated.
-- **Privacy note:** Synced data can include project directory names and model names. Chat content requires **Back Up Chat Message Content**; full session log bodies with prompts or code require the session-log backup setting.
+- **What syncs:** Usage rows, quota/billing metadata, owner-scoped shared-artifact heads/revisions, and optional sealed chat/session domains. Chat threads, mobile assistant chats, CLI session mirrors, mission prompts/results/events, text snippets, and conversation recall metadata put private fields inside Cloud Vault sealed payloads before Firestore receives them. Full session-log backup remains separately gated.
+- **Privacy note:** Firestore can read routing/count metadata such as provider/runtime identifiers, status, timestamps, token counts, costs, and device ids. It cannot read sealed chat titles, previews, messages, CLI transcripts, mission prompt/result/event content, text snippets, or conversation recall labels. Full session log bodies with prompts or code require the session-log backup setting and are encrypted before Firebase Storage upload.
 
 ### iCloud
 
-- Copies parsed session log files into the user's personal iCloud Drive container.
+- The legacy raw session-file mirror is disabled and reports zero bytes to mirror.
+- Existing users may still have old raw files in the user's personal iCloud Drive container; use `scripts/privacy/scrub-icloud-session-mirror.sh` to inventory or remove them.
+- Future iCloud archive support must use a sealed format before writing session logs.
 - Files sync through Apple's infrastructure, not OpenBurnBar servers.
-- No merge/conflict resolution — iCloud may produce conflict copies.
 
 ### Cursor Connector Tunnel
 
@@ -180,8 +181,8 @@ The app makes outbound network requests in the following categories:
 |---|---|---|---|
 | Provider logos | `raw.githubusercontent.com/lobehub/lobe-icons/...` | On UI render (SwiftUI `AsyncImage`) | None (standard HTTP metadata only) |
 | Quota/usage APIs | Provider endpoints (MiniMax, Cursor, Factory, Z.ai) | When quota polling is enabled | Provider API keys (in auth headers) |
-| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content, conversation backup, session logs, and hosted Hermes relay traffic require explicit backup settings plus the server-written hosted entitlement |
-| iCloud | Apple iCloud | When iCloud mirroring is enabled | Session log file copies |
+| Firebase | Google Cloud | When cloud sync is enabled | Usage/quota/billing metadata plus sealed chat/session domains; full session logs and hosted Hermes relay traffic require explicit backup settings plus the server-written hosted entitlement |
+| iCloud | Apple iCloud | Legacy cleanup / future sealed archive support | Raw session mirroring is disabled; old user-owned mirror files may exist until removed |
 | Connector APIs | GitHub, Slack, Linear, PostHog, Sentry, Gmail | When individual connectors are configured and tested | Connector-specific auth tokens |
 | Telegram | `api.telegram.org` | When Telegram bot is configured | Bot token, notification payloads |
 | Cursor tunnel | Cloudflare | When Cursor connector tunnel is active | Routed model requests (provider keys stay in Keychain) |

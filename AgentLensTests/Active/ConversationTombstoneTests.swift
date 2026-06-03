@@ -112,7 +112,7 @@ final class ConversationTombstoneTests: XCTestCase {
         try dataStore.upsertConversation(makeRecord(id: id))
         try dataStore.softDeleteConversation(id: id)
 
-        let sync = ConversationSyncService(context: context)
+        let sync = ConversationSyncService(context: context, vaultKeyProvider: TestConversationVaultKeyProvider())
         await sync.sync()
 
         let docData = fakeGateway.documentData(at: "users/test-uid-1/conversations/test-device-1_\(id)")

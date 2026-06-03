@@ -7,7 +7,6 @@ import {
   providerLabel,
   shouldCreateNotificationEvent,
   shouldSuppressForDevice,
-  truncatePreview,
 } from "../lib/agentNotifications.js";
 
 const before = {
@@ -31,11 +30,10 @@ assert.equal(
   eventIdFor({ sourceKind: "cli_session", threadId: "thread/1", messageId: "a.1" }),
   "cli_session_thread_1_a_1"
 );
-assert.notEqual(
-  eventIdFor({ sourceKind: "cli_session", threadId: "thread/1", messageId: "a.1", messageText: "first" }),
-  eventIdFor({ sourceKind: "cli_session", threadId: "thread/1", messageId: "a.1", messageText: "edited" })
+assert.equal(
+  eventIdFor({ sourceKind: "mobile_assistant_chat", threadId: "thread/1", messageId: "a.1" }),
+  "mobile_assistant_chat_thread_1_a_1"
 );
-assert.ok(truncatePreview("x ".repeat(500)).length <= 180);
 
 const event = {
   id: "event-1",
@@ -47,7 +45,7 @@ const event = {
   runtime: "claude",
   providerLabel: "Claude",
   title: "Claude replied",
-  preview: "Done.",
+  preview: "OpenBurnBar has a new agent reply.",
   createdAt: {},
   createdAtMillis: Date.now(),
   updatedAt: {},

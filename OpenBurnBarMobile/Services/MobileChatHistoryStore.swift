@@ -351,8 +351,8 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
 // MARK: - Firestore mirror
 
 /// Mirrors threads to `users/{uid}/mobile_assistant_chats/{threadId}` with
-/// inline messages. Inline messages keep the read path one round-trip; chat
-/// docs almost never exceed Firestore's 1 MiB limit on mobile.
+/// private chat content sealed inside `sealedPayload`. Top-level fields are
+/// limited to routing/count/list metadata.
 @MainActor
 final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     private let firestoreProvider: () -> Firestore

@@ -2,6 +2,14 @@
 
 **Owner:** Lead engineer / autonomous agent crew · **Date:** 2026-06-02 · **Scope:** correctness, security honesty, transport proof, backend resilience, data integrity, AI/retrieval, multi-platform modernization. Derived from a verified architecture review; every claim below was re-checked against the live tree (e.g. Android `DataDomains.kt:43` still emits `END_TO_END` for `conversations_chat`; `OpenBurnBarDatabase.swift:16` hardcodes `v45` while the real last migration is `v46_drain_target_per_provider` at line 1565; `retryStuckVoIPPushes` exists only as a TODO comment at `apnsSender.ts:227`).
 
+> Status note (2026-06-03): the `conversations_chat` honesty item below is
+> historical. The follow-up hardening pass sealed `chat_threads`,
+> `mobile_assistant_chats`, `cli_sessions`, `cli_agent_mission_requests`,
+> `text_snippets`, and `conversations` private fields at rest, restored the
+> registry tier to `end_to_end`, and added static/scrub tooling. Treat the
+> remaining references to `SERVER_READABLE` as the pre-hardening plan state, not
+> the current implementation.
+
 ---
 
 ## 1. Executive summary

@@ -123,10 +123,10 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
     }
 
     /// Mirror a provider-owned CLI log as a first-class assistant session.
-    /// The full transcript remains in the encrypted `session_logs` cloud
-    /// vault; this plaintext row is only the non-secret index/resume surface
-    /// that lets iOS list, search, and route the session alongside live
-    /// OpenBurnBar chats.
+    /// The full transcript remains in the encrypted `session_logs` cloud vault.
+    /// This row also seals its private title/preview/transcript/resume fields
+    /// before Firestore receives them; only non-content routing/count metadata
+    /// stays top-level so iOS can list and route the session.
     func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String? = nil) async {
         let account = await MainActor.run {
             (
