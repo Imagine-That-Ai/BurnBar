@@ -130,7 +130,12 @@ enum MacCloudVaultKeyAccess {
     ) async throws {
         let keypair = try CloudVaultDeviceKeypair(account: "cloud-vault-device:\(deviceId)")
         let deviceRef = userRef.collection("escrow_devices").document(deviceId)
-        let existingDevice = try? await deviceRef.getDocument().data()
+        let existingDevice: [String: Any]?
+        do {
+            existingDevice = try await deviceRef.getDocument().data()
+        } catch {
+            existingDevice = nil
+        }
         let existingTrustState = existingDevice?["trustState"] as? String
         let trustState = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
             ? EscrowDeviceTrustState.trusted.rawValue

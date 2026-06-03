@@ -655,7 +655,12 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         guard gate.account.isFirebaseAvailable,
               gate.account.isSignedIn,
               let uid = gate.account.uid else { return [] }
-        let vaultKey = try? await readableVaultKey(uid: uid)?.keyData
+        let vaultKey: Data?
+        do {
+            vaultKey = try await readableVaultKey(uid: uid)?.keyData
+        } catch {
+            vaultKey = nil
+        }
 
         let snapshot = try await context.firestoreGateway
             .collection("users")
@@ -675,7 +680,11 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
             let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
             let decryptedTitle: String? = vaultKey.flatMap { key in
                 guard let envelope = Self.decodeSealedText(data["sealedTitle"]) else { return nil }
-                return try? CloudVaultCrypto.openText(envelope, keyData: key)
+                do {
+                    return try CloudVaultCrypto.openText(envelope, keyData: key)
+                } catch {
+                    return nil
+                }
             }
             let title = decryptedTitle ?? data["inferredTaskTitle"] as? String ?? ""
 
@@ -731,7 +740,12 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
         let keypair = try CloudVaultDeviceKeypair(account: "cloud-vault-device:\(context.deviceId)")
         let userRef = context.firestoreGateway.collection("users").document(uid)
         let deviceRef = userRef.collection("escrow_devices").document(context.deviceId)
-        let existingDevice = try? await deviceRef.getData()
+        let existingDevice: [String: Any]?
+        do {
+            existingDevice = try await deviceRef.getData()
+        } catch {
+            existingDevice = nil
+        }
         let existingTrustState = existingDevice?["trustState"] as? String
         let trustState = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
             ? EscrowDeviceTrustState.trusted.rawValue

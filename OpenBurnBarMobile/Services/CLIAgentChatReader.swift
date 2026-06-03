@@ -119,14 +119,20 @@ final class CLIAgentChatReader {
                         self?.logger.warning("CLI agent listener failed: \(String(describing: error), privacy: .public)")
                         return
                     }
-	                    guard let uid = uid else {
-	                        self?.sessions = []
-	                        return
-	                    }
-	                    let key = try? await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
-	                    self?.sessions = snapshot?.documents.compactMap { document in
-	                        CLIAgentChatFirestoreSource.decodeDocument(
-	                            documentID: document.documentID,
+                    guard let uid = uid else {
+                        self?.sessions = []
+                        return
+                    }
+                    let key: MobileCloudVaultResolvedKey?
+                    do {
+                        key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+                    } catch {
+                        self?.logger.warning("CLI agent vault key read failed: \(String(describing: error), privacy: .public)")
+                        key = nil
+                    }
+                    self?.sessions = snapshot?.documents.compactMap { document in
+                        CLIAgentChatFirestoreSource.decodeDocument(
+                            documentID: document.documentID,
 	                            data: document.data(),
 	                            vaultKey: key?.keyData
 	                        )

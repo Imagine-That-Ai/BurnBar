@@ -4,6 +4,63 @@ import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OSLog
 
+private struct CLIAgentMissionPrivatePayload: Codable {
+    var title: String?
+    var prompt: String?
+    var targetProject: String?
+    var liveSummary: String?
+    var resultPreview: String?
+    var errorMessage: String?
+    var approvalTitle: String?
+    var approvalMessage: String?
+    var personaScopeJSON: String?
+    var synthesisSummary: String?
+}
+
+private struct CLIAgentMissionEventPrivatePayload: Codable {
+    var title: String?
+    var message: String
+    var fullMessage: String?
+    var toolName: String?
+    var artifactPath: String?
+    var changedFilePath: String?
+}
+
+private enum CLIAgentMissionCloudSealer {
+    static let sealedSchemaVersion = 1
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    static func seal<T: Encodable>(_ payload: T, vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+        let data = try encoder.encode(payload)
+        let sealed = try CloudVaultCrypto.sealPayload(data, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        return CloudVaultCrypto.sealedPayloadDictionary(sealed)
+    }
+
+    static func openPrivatePayload(_ data: [String: Any], field: String = "sealedPayload", vaultKey: Data?) -> CLIAgentMissionPrivatePayload? {
+        guard let vaultKey,
+              let envelope = CloudVaultCrypto.sealedPayload(from: data[field])
+        else { return nil }
+        do {
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
+        } catch {
+            return nil
+        }
+    }
+}
+
 // MARK: - Mission Device Trust
 
 struct CLIAgentMissionDeviceTrustResult: Equatable, Sendable {
@@ -675,6 +732,78 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
+    private func missionVaultKey(uid: String) async throws -> CloudVaultResolvedKey {
+        try await MacCloudVaultKeyAccess.keyForWriting(
+            uid: uid,
+            deviceId: accountManager.deviceId,
+            firestore: Firestore.firestore()
+        )
+    }
+
+    private func openMissionPrivatePayload(data: [String: Any], uid: String) async throws -> CLIAgentMissionPrivatePayload? {
+        guard data["sealedPayload"] != nil else { return nil }
+        guard let key = try await MacCloudVaultKeyAccess.keyForReading(
+            uid: uid,
+            deviceId: accountManager.deviceId,
+            firestore: Firestore.firestore()
+        ) else {
+            throw CloudVaultAccessError.vaultKeyUnavailable
+        }
+        guard let privatePayload = CLIAgentMissionCloudSealer.openPrivatePayload(data, vaultKey: key.keyData) else {
+            throw CloudVaultAccessError.vaultKeyMismatch(expected: (data["vaultKeyID"] as? String) ?? "unknown", actual: key.vaultKeyID)
+        }
+        return privatePayload
+    }
+
+    private func mergePrivateMissionPayload(_ privatePayload: CLIAgentMissionPrivatePayload?, into data: [String: Any]) -> [String: Any] {
+        guard let privatePayload else { return data }
+        var merged = data
+        if let title = privatePayload.title { merged["title"] = title }
+        if let prompt = privatePayload.prompt { merged["prompt"] = prompt }
+        if let targetProject = privatePayload.targetProject { merged["targetProject"] = targetProject }
+        if let liveSummary = privatePayload.liveSummary { merged["liveSummary"] = liveSummary }
+        if let resultPreview = privatePayload.resultPreview { merged["resultPreview"] = resultPreview }
+        if let errorMessage = privatePayload.errorMessage { merged["errorMessage"] = errorMessage }
+        if let approvalTitle = privatePayload.approvalTitle { merged["approvalTitle"] = approvalTitle }
+        if let approvalMessage = privatePayload.approvalMessage { merged["approvalMessage"] = approvalMessage }
+        if let personaScopeJSON = privatePayload.personaScopeJSON { merged["personaScopeJSON"] = personaScopeJSON }
+        if let synthesisSummary = privatePayload.synthesisSummary { merged["synthesisSummary"] = synthesisSummary }
+        return merged
+    }
+
+    private func sealedStateUpdate(
+        uid: String,
+        payload: [String: Any],
+        liveSummary: String? = nil,
+        resultPreview: String? = nil,
+        errorMessage: String? = nil,
+        approvalTitle: String? = nil,
+        approvalMessage: String? = nil,
+        synthesisSummary: String? = nil
+    ) async throws -> [String: Any] {
+        var payload = payload
+        for key in ["liveSummary", "resultPreview", "errorMessage", "approvalTitle", "approvalMessage", "synthesisSummary"] {
+            payload[key] = FieldValue.delete()
+        }
+        let privatePayload = CLIAgentMissionPrivatePayload(
+            title: nil,
+            prompt: nil,
+            targetProject: nil,
+            liveSummary: liveSummary,
+            resultPreview: resultPreview,
+            errorMessage: errorMessage,
+            approvalTitle: approvalTitle,
+            approvalMessage: approvalMessage,
+            personaScopeJSON: nil,
+            synthesisSummary: synthesisSummary
+        )
+        let key = try await missionVaultKey(uid: uid)
+        payload["sealedStatePayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID)
+        payload["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        payload["sealedStateVaultKeyID"] = key.vaultKeyID
+        return payload
+    }
+
     private func handle(document: QueryDocumentSnapshot) async {
         let cancellationTracker = MissionCancellationTracker()
         let logger = self.logger
@@ -689,7 +818,28 @@ final class CLIAgentMissionRequestListener {
         }
         defer { cancellationListener.remove() }
 
-        let data = document.data()
+        let rawData = document.data()
+        guard let uid = accountManager.currentUID else {
+            logger.warning("mission id=\(document.documentID, privacy: .public) ignored because this Mac is not signed in")
+            return
+        }
+        let privatePayload: CLIAgentMissionPrivatePayload?
+        do {
+            privatePayload = try await openMissionPrivatePayload(data: rawData, uid: uid)
+        } catch {
+            logger.error("mission id=\(document.documentID, privacy: .public) cannot be opened with this Mac vault key: \(error.localizedDescription, privacy: .public)")
+            do {
+                try await document.reference.setData([
+                    "status": "vault_key_unavailable",
+                    "claimedBy": accountManager.deviceId,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], merge: true)
+            } catch {
+                logger.warning("mission id=\(document.documentID, privacy: .public) failed to mark vault key unavailable: \(error.localizedDescription, privacy: .public)")
+            }
+            return
+        }
+        let data = mergePrivateMissionPayload(privatePayload, into: rawData)
         let title = (data["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? "Insights mission"
         guard let prompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -706,10 +856,6 @@ final class CLIAgentMissionRequestListener {
             ((data["events"] as? [Any])?.count ?? 1)
         )
 
-        guard let uid = accountManager.currentUID else {
-            logger.warning("mission id=\(document.documentID, privacy: .public) ignored because this Mac is not signed in")
-            return
-        }
         let trustResult = await deviceTrustChecker.prepareAndValidateTrustedExecutor(
             uid: uid,
             deviceID: accountManager.deviceId
@@ -734,13 +880,13 @@ final class CLIAgentMissionRequestListener {
 
         logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
         do {
+            let claimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+                ?? "\(backend.displayName) claimed the mission on this Mac."
             var claimPayload: [String: Any] = [
                 "status": "accepted",
                 "claimedBy": accountManager.deviceId,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
-                "liveSummary": requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
-                    ?? "\(backend.displayName) claimed the mission on this Mac.",
                 "lastEventSequence": FieldValue.increment(Int64(1)),
                 "startedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
@@ -748,15 +894,17 @@ final class CLIAgentMissionRequestListener {
             if let requestedModelID {
                 claimPayload["selectedModelID"] = requestedModelID
             }
-            try await document.reference.setData(claimPayload, merge: true)
+            try await document.reference.setData(
+                try await sealedStateUpdate(uid: uid, payload: claimPayload, liveSummary: claimSummary),
+                merge: true
+            )
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
                 phase: "accepted",
                 kind: "status",
                 title: "Accepted",
-                message: requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
-                    ?? "\(backend.displayName) claimed the mission on this Mac.",
+                message: claimSummary,
                 backend: backend
             )
             logger.info("claimed mission id=\(document.documentID, privacy: .public)")
@@ -779,12 +927,19 @@ final class CLIAgentMissionRequestListener {
 
         logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
         do {
-            try await document.reference.setData([
-                "status": "starting",
-                "liveSummary": requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
-                    ?? "Starting \(backend.displayName) with the mission prompt.",
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            let summary = requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
+                ?? "Starting \(backend.displayName) with the mission prompt."
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "status": "starting",
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: summary
+                ),
+                merge: true
+            )
         } catch {
             logger.error("mission starting update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
@@ -807,12 +962,19 @@ final class CLIAgentMissionRequestListener {
         let missionWorkingDirectoryURL = workingDirectoryURL(from: data)
         let changedFilesBefore = await gitChangedFiles(in: missionWorkingDirectoryURL)
         do {
-            try await document.reference.setData([
-                "status": "running",
-                "liveSummary": requestedModelID.map { "\(backend.displayName) is running \($0) on this Mac." }
-                    ?? "\(backend.displayName) is running on this Mac.",
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            let summary = requestedModelID.map { "\(backend.displayName) is running \($0) on this Mac." }
+                ?? "\(backend.displayName) is running on this Mac."
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "status": "running",
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: summary
+                ),
+                merge: true
+            )
         } catch {
             logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
@@ -847,18 +1009,18 @@ final class CLIAgentMissionRequestListener {
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
                 "sessionId": directResult.sessionID,
-                "resultPreview": safeDirectOutput,
-                "liveSummary": directResult.status == "completed"
-                    ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeDirectOutput)
-                    : directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil),
                 "completedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ]
             if let requestedModelID {
                 payload["selectedModelID"] = requestedModelID
             }
+            let liveSummary = directResult.status == "completed"
+                ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeDirectOutput)
+                : directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil)
+            var sealedErrorMessage: String?
             if let errorMessage = directResult.errorMessage {
-                payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(
+                sealedErrorMessage = CLIAgentMissionEventFactory.mobileSafeText(
                     modelAwareFailureMessage(
                         backend: backend,
                         requestedModelID: requestedModelID,
@@ -867,7 +1029,16 @@ final class CLIAgentMissionRequestListener {
                 )
             }
             do {
-                try await document.reference.setData(payload, merge: true)
+                try await document.reference.setData(
+                    try await sealedStateUpdate(
+                        uid: uid,
+                        payload: payload,
+                        liveSummary: liveSummary,
+                        resultPreview: safeDirectOutput,
+                        errorMessage: sealedErrorMessage
+                    ),
+                    merge: true
+                )
                 logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
             } catch {
                 logger.error("direct CLI mission update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -975,15 +1146,16 @@ final class CLIAgentMissionRequestListener {
             "selectedRuntime": backend.rawValue,
             "selectedRuntimeName": backend.displayName,
             "sessionId": threadID,
-            "liveSummary": liveSummary,
             "completedAt": ISO8601DateFormatter().string(from: Date()),
             "updatedAt": FieldValue.serverTimestamp()
         ]
         if let requestedModelID {
             payload["selectedModelID"] = requestedModelID
         }
+        var sealedErrorMessage: String?
+        var sealedResultPreview: String?
         if let streamError = chatController.streamError {
-            payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(
+            sealedErrorMessage = CLIAgentMissionEventFactory.mobileSafeText(
                 modelAwareFailureMessage(
                     backend: backend,
                     requestedModelID: requestedModelID,
@@ -991,10 +1163,19 @@ final class CLIAgentMissionRequestListener {
                 )
             )
         } else {
-            payload["resultPreview"] = safeFinalSummary
+            sealedResultPreview = safeFinalSummary
         }
         do {
-            try await document.reference.setData(payload, merge: true)
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: payload,
+                    liveSummary: liveSummary,
+                    resultPreview: sealedResultPreview,
+                    errorMessage: sealedErrorMessage
+                ),
+                merge: true
+            )
             logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
         } catch {
             logger.error("mission final update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -1024,12 +1205,19 @@ final class CLIAgentMissionRequestListener {
     private func handleCancellation(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend) async {
         logger.warning("handling cancellation for mission id=\(document.documentID, privacy: .public)")
         do {
-            try await document.reference.setData([
-                "status": "cancelled",
-                "liveSummary": "Mission cancelled by user.",
-                "completedAt": ISO8601DateFormatter().string(from: Date()),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            guard let uid = accountManager.currentUID else { return }
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "status": "cancelled",
+                        "completedAt": ISO8601DateFormatter().string(from: Date()),
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: "Mission cancelled by user."
+                ),
+                merge: true
+            )
         } catch {
             logger.error("failed to update cancellation status in firestore: \(error.localizedDescription, privacy: .public)")
         }
@@ -1077,13 +1265,20 @@ final class CLIAgentMissionRequestListener {
     private func fail(document: QueryDocumentSnapshot, message: String) async {
         let safeMessage = CLIAgentMissionEventFactory.mobileSafeText(message, limit: 2048)
         do {
-            try await document.reference.setData([
-                "status": "failed",
-                "errorMessage": safeMessage,
-                "liveSummary": safeMessage,
-                "completedAt": ISO8601DateFormatter().string(from: Date()),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            guard let uid = accountManager.currentUID else { return }
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "status": "failed",
+                        "completedAt": ISO8601DateFormatter().string(from: Date()),
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: safeMessage,
+                    errorMessage: safeMessage
+                ),
+                merge: true
+            )
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
@@ -1146,19 +1341,26 @@ final class CLIAgentMissionRequestListener {
         let scope = riskyScope.nilIfEmpty ?? "mission execution"
         let message = "\(backend.displayName) is waiting for approval before \(scope). Approval mode: \(approvalMode)."
         do {
-            try await document.reference.setData([
-                "status": "waiting_for_approval",
-                "claimedBy": accountManager.deviceId,
-                "approvalRequestId": approvalID,
-                "approvalStatus": "pending",
-                "approvalRequestedAt": ISO8601DateFormatter().string(from: Date()),
-                "approvalTitle": "Approve \(title)",
-                "approvalMessage": message,
-                "selectedRuntime": backend.rawValue,
-                "selectedRuntimeName": backend.displayName,
-                "liveSummary": message,
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            guard let uid = accountManager.currentUID else { return }
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "status": "waiting_for_approval",
+                        "claimedBy": accountManager.deviceId,
+                        "approvalRequestId": approvalID,
+                        "approvalStatus": "pending",
+                        "approvalRequestedAt": ISO8601DateFormatter().string(from: Date()),
+                        "selectedRuntime": backend.rawValue,
+                        "selectedRuntimeName": backend.displayName,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: message,
+                    approvalTitle: "Approve \(title)",
+                    approvalMessage: message
+                ),
+                merge: true
+            )
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
@@ -1189,13 +1391,20 @@ final class CLIAgentMissionRequestListener {
             ? "Mission approval was rejected from mobile."
             : "Mission approval was canceled from mobile."
         do {
-            try await document.reference.setData([
-                "status": "canceled",
-                "liveSummary": message,
-                "errorMessage": message,
-                "completedAt": ISO8601DateFormatter().string(from: Date()),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            guard let uid = accountManager.currentUID else { return }
+            try await document.reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "status": "canceled",
+                        "completedAt": ISO8601DateFormatter().string(from: Date()),
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: message,
+                    errorMessage: message
+                ),
+                merge: true
+            )
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
@@ -1904,13 +2113,24 @@ final class CLIAgentMissionRequestListener {
             isError: isError
         )
         do {
-            try await reference.setData([
-                "liveSummary": trimmed.prefix(600).description,
-                "lastEventSequence": nextSequence,
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            guard let uid = accountManager.currentUID else { return }
+            try await reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    payload: [
+                        "lastEventSequence": nextSequence,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: trimmed.prefix(600).description
+                ),
+                merge: true
+            )
             let eventID = CLIAgentMissionEventFactory.eventID(for: nextSequence)
-            try await reference.collection("events").document(eventID).setData(event, merge: false)
+            let key = try await missionVaultKey(uid: uid)
+            try await reference.collection("events").document(eventID).setData(
+                try CLIAgentMissionEventFactory.sealedEvent(event, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID),
+                merge: false
+            )
         } catch {
             logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -2033,6 +2253,26 @@ struct CLIAgentMissionEventFactory {
         if let artifactPath { event["artifactPath"] = artifactPath.prefix(512).description }
         if let changedFilePath { event["changedFilePath"] = changedFilePath.prefix(512).description }
         return event
+    }
+
+    static func sealedEvent(_ event: [String: Any], vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+        var sealed = event
+        let privatePayload = CLIAgentMissionEventPrivatePayload(
+            title: event["title"] as? String,
+            message: (event["message"] as? String) ?? "",
+            fullMessage: event["fullMessage"] as? String,
+            toolName: event["toolName"] as? String,
+            artifactPath: event["artifactPath"] as? String,
+            changedFilePath: event["changedFilePath"] as? String
+        )
+        for key in ["title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath"] {
+            sealed.removeValue(forKey: key)
+        }
+        sealed["contentSealed"] = true
+        sealed["sealedSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        sealed["vaultKeyID"] = vaultKeyID
+        sealed["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        return sealed
     }
 
     static func redactSecrets(_ text: String) -> String {
@@ -2557,13 +2797,18 @@ final class AgentHarnessImportJobListener {
             }
             try await document.reference.setData(payload, merge: true)
         } catch {
-            try? await document.reference.setData([
-                "status": "failed",
-                "errorMessage": "Import failed after scanning: \(error.localizedDescription)".prefixString(2048),
-                "progressMessage": "Import failed after scanning.",
-                "completedAt": ISO8601DateFormatter().string(from: Date()),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            let failureMessage = error.localizedDescription
+            do {
+                try await document.reference.setData([
+                    "status": "failed",
+                    "errorMessage": "Import failed after scanning: \(failureMessage)".prefixString(2048),
+                    "progressMessage": "Import failed after scanning.",
+                    "completedAt": ISO8601DateFormatter().string(from: Date()),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], merge: true)
+            } catch {
+                logger.warning("failed to mark import mission as failed after scan error: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

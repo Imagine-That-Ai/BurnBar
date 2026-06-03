@@ -558,12 +558,15 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     static func decodeThread(documentID: String, data: [String: Any], vaultKey: Data? = nil) -> MobileChatThread? {
         if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
             guard let vaultKey,
-                  let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]),
-                  let payload = try? CloudVaultCrypto.openPayload(envelope, keyData: vaultKey),
-                  let thread = try? cloudPayloadDecoder.decode(MobileChatThread.self, from: payload) else {
+                  let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
                 return nil
             }
-            return thread
+            do {
+                let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+                return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
+            } catch {
+                return nil
+            }
         }
         let runtime = (data["runtime"] as? String) ?? ""
         guard !runtime.isEmpty else { return nil }

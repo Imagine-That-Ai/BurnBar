@@ -191,12 +191,15 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
     static func decodeThread(documentID: String, data: [String: Any], vaultKey: Data? = nil) -> MobileAssistantChatThread? {
         if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
             guard let vaultKey,
-                  let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]),
-                  let payload = try? CloudVaultCrypto.openPayload(envelope, keyData: vaultKey),
-                  let sealed = try? sealedDecoder.decode(SealedMobileAssistantChatThread.self, from: payload) else {
+                  let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
                 return nil
             }
-            return sealed.asThread
+            do {
+                let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+                return try sealedDecoder.decode(SealedMobileAssistantChatThread.self, from: payload).asThread
+            } catch {
+                return nil
+            }
         }
         guard let runtime = data["runtime"] as? String, !runtime.isEmpty else { return nil }
         let id = (data["id"] as? String) ?? documentID

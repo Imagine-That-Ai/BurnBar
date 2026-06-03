@@ -274,6 +274,86 @@
   background-size: 100% 1px;
 }
 
+/* ---- atmosphere: a whisper of paper fibre ------------------------------- */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 200px 200px;
+}
+
+/* ---- broadsheet utilities ---------------------------------------------- */
+.nameplate {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.smallcaps {
+  font-variant: all-small-caps;
+  letter-spacing: 0.1em;
+}
+.folio {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+.index-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim);
+  transition: color 180ms ease;
+}
+.dropcap::first-letter {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 3.1em;
+  line-height: 0.72;
+  float: left;
+  margin: 0.06em 0.09em 0 0;
+  color: var(--accent);
+}
+.rule-double {
+  border-bottom: 3px double var(--color-glass-line-bright);
+}
+
+/* ---- one orchestrated page-load ---------------------------------------- */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.reveal {
+  opacity: 0;
+  animation: reveal-up 0.72s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes spine-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.spine-seg {
+  transform-origin: left center;
+  animation: spine-grow 0.95s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -282,5 +362,10 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+  .reveal,
+  .spine-seg {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
