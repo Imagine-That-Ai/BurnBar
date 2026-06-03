@@ -562,6 +562,15 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// latest hydration attempt. Held in-memory only so the UI can show a truthful
     /// recovery state instead of an empty attachment strip.
     var failedAttachmentIds: [String]
+    /// True when this device has PINNED the agent's relay public key for this
+    /// client (set in `decodedText` from the device Keychain). Once an agent key is
+    /// pinned the pairing is relay-capable, so EVERY reply must arrive sealed — an
+    /// unsealed reply is a server downgrade/forgery and its server-supplied
+    /// plaintext is never rendered. The pin lives in this device's Keychain, so a
+    /// hostile server cannot clear it to re-open a plaintext channel. Defaults to
+    /// `false` (no pin → genuine legacy client; the plaintext read fallback stays
+    /// allowed for pre-cutoff migration). Held in-memory only; never persisted.
+    var requiresSealedReply: Bool
 
     init?(documentID: String, data: [String: Any]) {
         guard
@@ -593,6 +602,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         self.resolvedText = nil
         self.openedAttachments = []
         self.failedAttachmentIds = []
+        self.requiresSealedReply = false
     }
 
     /// True when the reply carries a sealed body that must be opened with the
@@ -608,7 +618,19 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// opened (or could not be opened on this device).
     var displayText: String? {
         if isSealed { return resolvedText }
+        // Downgrade protection: once this device pinned the agent's relay key the
+        // pairing is relay-capable, so a reply that is NOT sealed is a server
+        // downgrade/forgery. Never surface the server-supplied plaintext `text`.
+        if requiresSealedReply { return nil }
         return text
+    }
+
+    /// True when a reply that MUST be sealed (this device pinned the agent's relay
+    /// key) instead arrived unsealed — a server downgrade/forgery this device
+    /// refuses to render. Distinct from `isUndecryptableHere`'s sealed-for-another-
+    /// device case so the chat surface can show honest, case-specific copy.
+    var isRefusedUnsealedReply: Bool {
+        requiresSealedReply && !isSealed
     }
 
     /// True when this reply is sealed for a different paired device (or otherwise
@@ -616,7 +638,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// stayed `nil` after `decodedText`. The chat surface renders a calm,
     /// jargon-free re-pair state for this instead of an empty/"no text" bubble.
     var isUndecryptableHere: Bool {
-        isSealed && resolvedText == nil
+        (isSealed && resolvedText == nil) || isRefusedUnsealedReply
     }
 
     /// Calm, jargon-free copy shown when a reply was encrypted for another
@@ -625,6 +647,13 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// names the recoverable action — re-pair on this device.
     static let sealedForAnotherDeviceText =
         "This reply was sent privately to another of your devices. Reconnect Hermes on this device to read replies here."
+
+    /// Calm, jargon-free copy shown when a reply that should have been private
+    /// instead arrived unprotected (a server downgrade this device refuses to
+    /// trust). Avoids transport/crypto terms per the copy policy and names the
+    /// recoverable action — reconnect to restore a trusted connection.
+    static let unverifiedReplyText =
+        "This reply couldn't be verified as coming from your agent, so it's hidden. Reconnect Hermes on this device to restore a trusted connection."
 
     static func attachmentOpenFailureText(count: Int) -> String {
         if count == 1 {
@@ -641,6 +670,13 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     func chatRenderText(
         emptyFallback: String = "Hermes sent a reply through BurnBar Cloud."
     ) -> String {
+        // A reply that should have been sealed but arrived unsealed is a server
+        // downgrade/forgery: refuse the ENTIRE reply (body and attachments) and
+        // show the calm reconnect state — never render any server-supplied content
+        // for a client whose agent key this device has pinned.
+        if isRefusedUnsealedReply {
+            return Self.unverifiedReplyText
+        }
         let failedAttachmentText = failedAttachmentIds.isEmpty ? nil : Self.attachmentOpenFailureText(count: failedAttachmentIds.count)
         if let body = displayText?.trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty {
             if let failedAttachmentText {
@@ -681,13 +717,23 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// envelope sealed for another device) is returned with `resolvedText == nil`
     /// so the caller can show a graceful "sealed for another device" state rather
     /// than crash or render ciphertext.
-    func decodedText(using keypair: HermesGatewayRelayKeypair, uid: String) -> HermesGatewayMessageRecord {
+    func decodedText(
+        using keypair: HermesGatewayRelayKeypair,
+        uid: String,
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+    ) -> HermesGatewayMessageRecord {
+        var resolved = self
+        // Downgrade protection (evaluated for BOTH sealed and unsealed docs): if
+        // this device has pinned the agent's relay key for this client, every reply
+        // must arrive sealed. The render path then refuses an unsealed reply's
+        // server-supplied plaintext (see `requiresSealedReply`). The pin is read
+        // from the device Keychain, so a hostile server cannot suppress this gate.
+        resolved.requiresSealedReply = pinStore.pinnedKey(uid: uid, clientId: clientId) != nil
         guard isSealed,
               let payloadCiphertext,
               let wrappedKey else {
-            return self
+            return resolved
         }
-        var resolved = self
         do {
             let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
                 wrappedKey,
@@ -955,6 +1001,7 @@ enum HermesGatewayMessageResolver {
             // handler opens it and renders `displayText`. Legacy docs gate on the
             // plaintext `text`. Both directions still honor attachment-only replies.
             return message.isSealed
+                || message.isRefusedUnsealedReply
                 || message.displayText?.isEmpty == false
                 || !message.attachmentIds.isEmpty
         }
