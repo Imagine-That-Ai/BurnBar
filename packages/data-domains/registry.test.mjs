@@ -149,3 +149,102 @@ test("HONEST CLAIMS: the public trust copy never overstates the product", () => 
   assert.ok(!/server_readable/i.test(chatBlock), "chat block must not contain the server-readable tier");
   assert.ok(/sealed on-device/i.test(chatBlock), "chat must say mirrored content is sealed on-device");
 });
+
+// ── Honesty assertions for the privacy-leak remediation (2026-06-02) ─────────
+// usage/budget project text is sealed; project-identity strings never appear as
+// a server-readable facet, only an opaque per-project hash for group-by.
+
+test("HONEST CLAIMS: usage_spend hides project names behind an opaque hash", () => {
+  const usage = registry.domains.find((d) => d.id === "usage_spend");
+  assert.ok(usage, "expected the usage_spend domain");
+  const serverLower = usage.serverSees.map((v) => v.toLowerCase());
+  // The bare "project" facet (project name / identity) must be gone.
+  assert.ok(
+    !serverLower.includes("project"),
+    "usage_spend serverSees must not claim it reads the plaintext project",
+  );
+  // What the server may group by is an OPAQUE hash, said so out loud.
+  assert.ok(
+    serverLower.some((v) => v.includes("opaque") && v.includes("hash")),
+    "usage_spend serverSees must declare the opaque project hash it groups by",
+  );
+  // Project names and budget labels are device-only (sealed) plaintext.
+  const deviceLower = usage.deviceOnly.map((v) => v.toLowerCase());
+  assert.ok(
+    deviceLower.some((v) => v.includes("project name")),
+    "usage_spend deviceOnly must list project names as sealed/device-only",
+  );
+  assert.ok(
+    deviceLower.some((v) => v.includes("budget label")),
+    "usage_spend deviceOnly must list budget labels as sealed/device-only",
+  );
+});
+
+// pensieve: a connected repo stores only an opaque keyed match token + a sealed
+// repo name; the cleartext repo name is observed transiently for webhook routing
+// only (never stored). The registry must name that caveat and keep repo names
+// off the server-readable facet list.
+
+test("HONEST CLAIMS: pensieve repo names are device-only with a webhook caveat", () => {
+  const pensieve = registry.domains.find((d) => d.id === "pensieve");
+  assert.ok(pensieve, "expected the pensieve domain");
+  assert.equal(pensieve.encryptionTier, "end_to_end", "pensieve must stay end-to-end");
+  const serverLower = pensieve.serverSees.map((v) => v.toLowerCase());
+  // The server-readable facets must not name plaintext repo identity.
+  assert.ok(
+    !serverLower.some((v) => v.includes("repo name") || v.includes("repofullname") || v.includes("repo full name")),
+    "pensieve serverSees must not claim it reads the cleartext repo name",
+  );
+  // It DOES hold an opaque match token + keyed hashes, named honestly.
+  assert.ok(
+    serverLower.some((v) => v.includes("opaque") && v.includes("match token")),
+    "pensieve serverSees must declare the opaque repo match token",
+  );
+  // Repo names are sealed/device-only.
+  assert.ok(
+    pensieve.deviceOnly.map((v) => v.toLowerCase()).some((v) => v.includes("repo name")),
+    "pensieve deviceOnly must list repo names as sealed/device-only",
+  );
+  // The honest caveat: the cleartext repo name is only seen transiently for the
+  // GitHub webhook, never stored.
+  assert.ok(/NOTE:/.test(pensieve.summary), "pensieve summary must carry a NOTE caveat");
+  assert.match(
+    pensieve.summary,
+    /webhook/i,
+    "pensieve summary must explain the repo name is observed transiently only for webhook routing",
+  );
+});
+
+// connected_devices: the end-to-end relay path is sealed, but the hosted chat
+// gateway currently carries server-readable bridged message text. The label must
+// stop claiming ALL gateway payloads are sealed and name the gateway text as a
+// server-readable facet, with the committed E2E migration disclosed.
+
+test("HONEST CLAIMS: connected_devices distinguishes sealed relay from readable gateway chat", () => {
+  const devices = registry.domains.find((d) => d.id === "connected_devices");
+  assert.ok(devices, "expected the connected_devices domain");
+  const serverLower = devices.serverSees.map((v) => v.toLowerCase());
+  // The hosted chat gateway text the server can currently read must be named.
+  assert.ok(
+    serverLower.some((v) => v.includes("gateway") && v.includes("message text")),
+    "connected_devices serverSees must name the readable hosted chat gateway message text",
+  );
+  // The sealed claim must be scoped to the END-TO-END relay path only, not all
+  // "relayed payload contents".
+  for (const onlyDevice of devices.deviceOnly) {
+    assert.ok(
+      !/^relayed payload contents/i.test(onlyDevice.trim()),
+      "connected_devices must not claim every relayed payload is sealed (gateway chat is readable)",
+    );
+  }
+  assert.ok(
+    devices.deviceOnly.map((v) => v.toLowerCase()).some((v) => v.includes("relay frame") && v.includes("sealed")),
+    "connected_devices deviceOnly must scope the sealed claim to end-to-end relay frames",
+  );
+  // The committed gateway E2E migration is disclosed in the summary.
+  assert.match(
+    devices.summary,
+    /end-to-end migration of the gateway is committed/i,
+    "connected_devices summary must disclose the committed gateway E2E migration",
+  );
+});

@@ -229,9 +229,9 @@ final class CloudSyncCoordinator {
         try await sessionLogSync.fetchCloudSessionLogs(limit: limit)
     }
 
-    /// Reassembles chunk sub-documents into the full Markdown body for a session log.
+    /// Fetches a session-log body through the encrypted Cloud Vault storage path.
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
-        try await downloadSync.fetchCloudSessionLogBody(docId: docId)
+        try await sessionLogSync.fetchCloudSessionLogBody(docId: docId)
     }
 
     /// Update local device name in Firestore (called from Settings).

@@ -59,10 +59,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.ui.settings.BackgroundStyle
+import com.openburnbar.ui.settings.rememberBackgroundStyle
 import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
 import com.openburnbar.ui.settings.rememberProviderGlyphs
 import com.openburnbar.ui.settings.rememberThemePalette
-import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import com.openburnbar.ui.theme.AuroraMotion
@@ -119,8 +120,34 @@ enum class AuroraDensity { FULL, SUBTLE, MINIMAL }
 @Composable
 fun AuroraBackdrop(isDark: Boolean = isSystemInDarkTheme(), density: AuroraDensity = AuroraDensity.FULL, modifier: Modifier = Modifier) {
     val reduceMotion = LocalAuroraReduceMotion.current
-    val useWebsiteBackground by rememberWebsiteBackground()
+    val backgroundStyle by rememberBackgroundStyle()
 
+    Box(modifier = modifier.fillMaxSize()) {
+        when (backgroundStyle) {
+            BackgroundStyle.SWARM -> WebsiteBackground(accentColor = AuroraColors.ember)
+            BackgroundStyle.DOT_CONSTELLATION -> DotConstellationBackground()
+            // The aurora orb/ribbon animations only exist in the AURORA branch, so
+            // their infinite transitions live there too — SWARM and DOT_CONSTELLATION
+            // never spin an idle aurora clock behind their own renderers.
+            BackgroundStyle.AURORA ->
+                AuroraAnimatedBackdrop(
+                    isDark = isDark,
+                    density = density,
+                    reduceMotion = reduceMotion,
+                )
+        }
+        AuroraBackdropVignette(isDark = isDark)
+    }
+}
+
+/**
+ * The AURORA-style backdrop: gradient base + drifting orbs/ribbon driven by an
+ * infinite transition. Extracted so the `rememberInfiniteTransition` phase clocks
+ * are created (and animating) ONLY while AURORA is the active background — they do
+ * not run behind the SWARM or DOT_CONSTELLATION renderers.
+ */
+@Composable
+private fun AuroraAnimatedBackdrop(isDark: Boolean, density: AuroraDensity, reduceMotion: Boolean) {
     val infiniteTransition = rememberInfiniteTransition(label = "aurora")
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -143,30 +170,33 @@ fun AuroraBackdrop(isDark: Boolean = isSystemInDarkTheme(), density: AuroraDensi
         label = "ribbon-phase",
     )
 
-    Box(modifier = modifier.fillMaxSize()) {
-        if (useWebsiteBackground) {
-            WebsiteBackground(accentColor = AuroraColors.ember)
-        } else {
-            AuroraBackdropGradientLayer(isDark = isDark)
-            AuroraBackdropAnimatedLayers(
-                isDark = isDark,
-                density = density,
-                reduceMotion = reduceMotion,
-                phase = phase,
-                ribbonPhase = ribbonPhase,
-            )
-        }
-        AuroraBackdropVignette(isDark = isDark)
-    }
+    AuroraBackdropGradientLayer(isDark = isDark)
+    AuroraBackdropAnimatedLayers(
+        isDark = isDark,
+        density = density,
+        reduceMotion = reduceMotion,
+        phase = phase,
+        ribbonPhase = ribbonPhase,
+    )
 }
 
 /**
- * The active, reconverging token-ember swarm from burnbar.ai.
- * Hundreds of particles murmurate, periodically reconverging into "$",
- * "</>", concentric quota rings, and a router failover S-curve.
+ * The custom dark backdrop selected by the user. Dispatches on the active
+ * [BackgroundStyle]: DOT_CONSTELLATION renders the calm, one-logo-at-a-time
+ * constellation field; every other custom style renders the active, reconverging
+ * token-ember swarm from burnbar.ai (which murmurates and periodically reconverges
+ * into "$", "</>", provider logos, concentric quota rings, and a router-failover
+ * S-curve). Screens call this only when a custom backdrop is active, so this stays
+ * the single dispatch point keeping all surfaces coherent.
  */
 @Composable
 fun WebsiteBackground(accentColor: Color = AuroraColors.ember, modifier: Modifier = Modifier) {
+    val backgroundStyle by rememberBackgroundStyle()
+    if (backgroundStyle == BackgroundStyle.DOT_CONSTELLATION) {
+        DotConstellationBackground(modifier = modifier)
+        return
+    }
+
     val themePalette by rememberThemePalette()
     val providerGlyphs by rememberProviderGlyphs()
     val excludeBrandShapes by rememberExcludeBrandShapesFromSwarm()

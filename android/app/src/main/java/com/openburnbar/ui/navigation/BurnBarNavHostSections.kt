@@ -90,6 +90,8 @@ internal fun BurnBarContent(
     navigateToHermes: () -> Unit,
     navigateToStreams: () -> Unit,
     isCloudMember: Boolean = false,
+    currentTier: com.openburnbar.ui.pro.CloudTier = com.openburnbar.ui.pro.CloudTier.NONE,
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String? = { null },
 ) {
     NavHost(
         navController = navController,
@@ -102,9 +104,9 @@ internal fun BurnBarContent(
         burnBarHermesRoutes(navController)
         burnBarYouRoute()
         burnBarStoreRoute(navController)
-        burnBarControlCenterRoute(navController)
-        burnBarComputerUseRoute(navController, navigateToHermes)
-        burnBarPairedMacRoutes()
+        burnBarControlCenterRoute(navController, priceForTier)
+        burnBarComputerUseRoute(navController, navigateToHermes, currentTier, priceForTier)
+        burnBarPairedMacRoutes(navController, currentTier, priceForTier)
         burnBarDashboardRedirectRoute(navController)
     }
 }
@@ -329,6 +331,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarStoreRoute(navController:
 
 private fun androidx.navigation.NavGraphBuilder.burnBarControlCenterRoute(
     navController: NavHostController,
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String?,
 ) {
     composable(
         "control_center",
@@ -339,6 +342,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarControlCenterRoute(
             onBack = { navController.popBackStack() },
             onManagePlan = { navController.navigate("cloud_store") },
             onDomainDeepLink = { _, _ -> },
+            priceForTier = priceForTier,
         )
     }
 }
@@ -346,30 +350,48 @@ private fun androidx.navigation.NavGraphBuilder.burnBarControlCenterRoute(
 private fun androidx.navigation.NavGraphBuilder.burnBarComputerUseRoute(
     navController: NavHostController,
     navigateToHermes: () -> Unit,
+    currentTier: com.openburnbar.ui.pro.CloudTier,
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String?,
 ) {
     composable(
         "computer_use",
         deepLinks = listOf(navDeepLink { uriPattern = "burnbar://computer-use" }),
     ) {
-        ComputerUseAgentWatchScreen(
-            modifier = Modifier.fillMaxSize(),
-            onOpenHermes = navigateToHermes,
-            onOpenSettings = {
-                navController.navigate(BurnBarTab.YOU.route) {
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
-        )
+        val agentControl = com.openburnbar.ui.pro.GatedFeatureCatalog.feature(com.openburnbar.ui.pro.GatedFeatureID.AGENT_CONTROL)
+        if (currentTier.satisfies(agentControl.requiredTier)) {
+            ComputerUseAgentWatchScreen(
+                modifier = Modifier.fillMaxSize(),
+                onOpenHermes = navigateToHermes,
+                onOpenSettings = {
+                    navController.navigate(BurnBarTab.YOU.route) {
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+            )
+        } else {
+            com.openburnbar.ui.pro.LockedFeatureVeil(
+                feature = agentControl,
+                livePrice = priceForTier(agentControl.requiredTier),
+                onUnlock = { navController.navigate("cloud_store") },
+                onMaybeLater = { navController.popBackStack() },
+            ) {
+                ComputerUseAgentWatchScreen(modifier = Modifier.fillMaxSize())
+            }
+        }
     }
 }
 
-private fun androidx.navigation.NavGraphBuilder.burnBarPairedMacRoutes() {
+private fun androidx.navigation.NavGraphBuilder.burnBarPairedMacRoutes(
+    navController: NavHostController,
+    currentTier: com.openburnbar.ui.pro.CloudTier,
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String?,
+) {
     composable(
         "paired_mac",
         deepLinks = listOf(navDeepLink { uriPattern = "burnbar://paired-mac" }),
     ) {
-        PairedMacControlsScreen(modifier = Modifier.fillMaxSize())
+        FlooGatedPairedMac(navController, currentTier, priceForTier, connectionID = null)
     }
     composable(
         "paired_mac/{connectionId}",
@@ -380,10 +402,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarPairedMacRoutes() {
         val decoded =
             runCatching { java.net.URLDecoder.decode(raw, Charsets.UTF_8.name()) }
                 .getOrDefault(raw)
-        PairedMacControlsScreen(
-            connectionID = decoded.takeIf { it.isNotBlank() },
-            modifier = Modifier.fillMaxSize(),
-        )
+        FlooGatedPairedMac(navController, currentTier, priceForTier, connectionID = decoded.takeIf { it.isNotBlank() })
     }
     composable(
         "paired_mac_token/{connectionToken}",
@@ -400,10 +419,34 @@ private fun androidx.navigation.NavGraphBuilder.burnBarPairedMacRoutes() {
                     Charsets.UTF_8,
                 )
             }.getOrDefault(token)
-        PairedMacControlsScreen(
-            connectionID = decoded.takeIf { it.isNotBlank() },
-            modifier = Modifier.fillMaxSize(),
-        )
+        FlooGatedPairedMac(navController, currentTier, priceForTier, connectionID = decoded.takeIf { it.isNotBlank() })
+    }
+}
+
+/**
+ * Floo (phone ↔ Mac) is a Cloud Pro feature. When the member's tier doesn't
+ * satisfy it, the live screen rides behind the tier-aware unlock veil; otherwise
+ * the real paired-Mac controls render.
+ */
+@Composable
+private fun FlooGatedPairedMac(
+    navController: NavHostController,
+    currentTier: com.openburnbar.ui.pro.CloudTier,
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String?,
+    connectionID: String?,
+) {
+    val floo = com.openburnbar.ui.pro.GatedFeatureCatalog.feature(com.openburnbar.ui.pro.GatedFeatureID.FLOO)
+    if (currentTier.satisfies(floo.requiredTier)) {
+        PairedMacControlsScreen(connectionID = connectionID, modifier = Modifier.fillMaxSize())
+    } else {
+        com.openburnbar.ui.pro.LockedFeatureVeil(
+            feature = floo,
+            livePrice = priceForTier(floo.requiredTier),
+            onUnlock = { navController.navigate("cloud_store") },
+            onMaybeLater = { navController.popBackStack() },
+        ) {
+            PairedMacControlsScreen(connectionID = connectionID, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
@@ -456,6 +499,8 @@ internal data class BurnBarSignedInShellState(
     val isWideScreen: Boolean,
     val currentTab: BurnBarTab,
     val isCloudMember: Boolean,
+    val currentTier: com.openburnbar.ui.pro.CloudTier = com.openburnbar.ui.pro.CloudTier.NONE,
+    val priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String? = { null },
     val userDisplayName: String?,
     val userPhotoUrl: String?,
     val chatState: FloatingChatState,
@@ -499,6 +544,9 @@ private fun BurnBarWideScreenShell(
                 navigateToBurn = { navigateTo(BurnBarTab.BURN) },
                 navigateToHermes = { navigateTo(BurnBarTab.HERMES) },
                 navigateToStreams = { navigateTo(BurnBarTab.STREAMS) },
+                isCloudMember = state.isCloudMember,
+                currentTier = state.currentTier,
+                priceForTier = state.priceForTier,
             )
         }
     }
@@ -523,6 +571,8 @@ private fun BurnBarPhoneShell(
             navigateToHermes = { navigateTo(BurnBarTab.HERMES) },
             navigateToStreams = { navigateTo(BurnBarTab.STREAMS) },
             isCloudMember = state.isCloudMember,
+            currentTier = state.currentTier,
+            priceForTier = state.priceForTier,
         )
     }
     Box(

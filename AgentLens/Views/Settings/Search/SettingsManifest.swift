@@ -93,6 +93,15 @@ enum SettingsManifest {
             keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar", "logo"]
         ),
         SettingsItem(
+            id: "general.appearance.useConstellationBackground",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.useConstellationBackground,
+            title: "Constellation Style",
+            subtitle: "Calm, slow background where one crest or provider logo at a time resolves from coloured dots, shimmers, and dissolves",
+            keywords: ["constellation", "calm", "slow", "ambient", "dots", "logo", "crest", "provider", "shimmer", "dissolve", "background", "swarm", "style"]
+        ),
+        SettingsItem(
             id: "general.appearance.desktopWallpaperEnabled",
             tab: .general,
             pageRoute: .appearance,
@@ -680,6 +689,7 @@ enum SettingsManifest {
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,
+        SettingsAnchor.useConstellationBackground,
         SettingsAnchor.desktopWallpaperEnabled,
         SettingsAnchor.desktopWallpaperBackground,
         SettingsAnchor.desktopWallpaperSpeed,

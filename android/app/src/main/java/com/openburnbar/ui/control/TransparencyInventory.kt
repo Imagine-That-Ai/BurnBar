@@ -69,15 +69,19 @@ internal fun TransparencyInventoryItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    onUnlock: ((com.openburnbar.ui.pro.GatedFeature) -> Unit)? = null,
 ) {
     val domain = row.domain
     val locked = isDomainLocked(domain, tier)
     val accent = PensieveControlTokens.tierColor(domain.encryptionTier)
+    val gatedFeature = if (locked) gatedFeatureForDomain(domain.id) else null
 
     AuroraGlassCard(
         modifier = modifier,
         interactive = true,
-        onClick = onClick,
+        // A locked marquee feature taps straight into the evocative unlock sheet
+        // (spec §5) instead of opening a detail pane behind a raw lock string.
+        onClick = { if (gatedFeature != null && onUnlock != null) onUnlock(gatedFeature) else onClick() },
         cornerRadius = AuroraRadius.lg,
     ) {
         Row(
@@ -95,7 +99,7 @@ internal fun TransparencyInventoryItem(
                     )
                     if (locked) {
                         Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
-                        Text("· Locked", style = AuroraType.tiny, color = PensieveControlTokens.brassBright)
+                        com.openburnbar.ui.pro.TierLockBadge(tier = requiredCloudTierForDomain(domain.id))
                     }
                 }
                 Text(

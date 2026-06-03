@@ -24,6 +24,11 @@ export const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
 /** Re-bind after this many days so stale device attestations expire. */
 export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** Per-call replay-resistance nonce TTL (single-use, short-lived). */
+export const HIGH_RISK_NONCE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+/** Firestore subcollection holding outstanding single-use high-risk nonces. */
+export const HIGH_RISK_NONCE_COLLECTION = "high_risk_action_nonces" as const;
+
 export interface OpenBurnBarAppCheckAttestationClaim {
   v: typeof APP_CHECK_ATTESTATION_CLAIM_VERSION;
   appId: string;
@@ -136,4 +141,96 @@ export function enforceHighRiskComputerUseCallable(request: CallableRequest, exp
   assertAppCheck(request);
   assertOwnership(request, expectedUid);
   assertAppAttestBoundClaims(request);
+}
+
+/**
+ * Mint a single-use, short-lived high-risk action nonce scoped to a uid.
+ *
+ * The nonce is written under the server-only `high_risk_action_nonces`
+ * subcollection (Firestore rules deny client read/write). It must be echoed by
+ * the caller and atomically consumed by {@link consumeHighRiskNonceForUid} on
+ * the subsequent high-risk action, defeating replay of a captured App Check +
+ * ID-token pair within the 30-day attestation window.
+ */
+export async function issueHighRiskNonceForUid(
+  uid: string,
+  nowMillis: number = Date.now(),
+): Promise<{ nonce: string; expiresAtMillis: number }> {
+  const { randomBytes } = await import("node:crypto");
+  const { db } = await import("./adminRuntime.js");
+  const { Timestamp } = await import("firebase-admin/firestore");
+  const nonce = randomBytes(32).toString("base64url");
+  const expiresAtMillis = nowMillis + HIGH_RISK_NONCE_TTL_MS;
+  await db.doc(`users/${uid}/${HIGH_RISK_NONCE_COLLECTION}/${nonce}`).set({
+    nonce,
+    createdAtMillis: nowMillis,
+    expiresAtMillis,
+    consumedAt: null,
+    createdAt: Timestamp.fromMillis(nowMillis),
+    expireAt: Timestamp.fromMillis(expiresAtMillis),
+  });
+  return { nonce, expiresAtMillis };
+}
+
+/**
+ * Atomically consume a high-risk nonce for a uid. Fail-closed: a missing,
+ * expired, malformed, or already-consumed nonce throws.
+ */
+export async function consumeHighRiskNonceForUid(
+  uid: string,
+  nonce: string,
+  nowMillis: number = Date.now(),
+): Promise<void> {
+  if (typeof nonce !== "string" || nonce.length < 16 || nonce.length > 256) {
+    throw new functions.HttpsError("failed-precondition", "A valid high-risk action nonce is required.");
+  }
+  const { db } = await import("./adminRuntime.js");
+  const { Timestamp } = await import("firebase-admin/firestore");
+  const ref = db.doc(`users/${uid}/${HIGH_RISK_NONCE_COLLECTION}/${nonce}`);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data();
+    if (
+      !snap.exists ||
+      !data ||
+      data.consumedAt ||
+      typeof data.expiresAtMillis !== "number" ||
+      data.expiresAtMillis < nowMillis
+    ) {
+      throw new functions.HttpsError(
+        "failed-precondition",
+        "High-risk action nonce expired or was already used. Request a fresh nonce.",
+      );
+    }
+    tx.update(ref, { consumedAt: Timestamp.fromMillis(nowMillis) });
+  });
+}
+
+/**
+ * High-risk enforcement layered with single-use nonce replay defense.
+ *
+ * Runs the existing synchronous guard, then (when App Check is enforced)
+ * consumes a supplied nonce. Staged rollout: with `requireHighRiskNonce` off a
+ * missing nonce is tolerated for back-compat with in-flight clients; with the
+ * flag on a missing nonce is rejected. A supplied-but-invalid nonce is ALWAYS
+ * rejected (fail-closed) regardless of the flag.
+ */
+export async function enforceHighRiskComputerUseCallableWithNonce(
+  request: CallableRequest,
+  expectedUid: string,
+  nonce: unknown,
+): Promise<void> {
+  enforceHighRiskComputerUseCallable(request, expectedUid);
+  if (!getConfig().enforceAppCheck) return;
+  const supplied = typeof nonce === "string" && nonce.length > 0 ? nonce : undefined;
+  if (!supplied) {
+    if (getConfig().requireHighRiskNonce) {
+      throw new functions.HttpsError(
+        "failed-precondition",
+        "Call issueHighRiskActionNonce and supply the nonce before this high-risk action.",
+      );
+    }
+    return;
+  }
+  await consumeHighRiskNonceForUid(expectedUid, supplied);
 }

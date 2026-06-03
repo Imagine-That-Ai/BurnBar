@@ -516,7 +516,13 @@ export function serializeUsageForCallable(
     id: typeof data.id === "string" ? data.id : documentID,
     provider,
     sessionId: typeof data.sessionId === "string" ? data.sessionId : "",
-    projectName: typeof data.projectName === "string" ? data.projectName : "",
+    // Project name is private text (privacy-leak-remediation-2026-06-02 §1): the
+    // server NEVER echoes a plaintext `projectName`. Updated clients write a
+    // vault-sealed `sealedProjectName` envelope (opaque to the server) plus an
+    // opaque `projectKeyHash` for client-side group-by; both pass through here
+    // untouched so the owner can decrypt locally.
+    sealedProjectName: isRecord(data.sealedProjectName) ? data.sealedProjectName : undefined,
+    projectKeyHash: typeof data.projectKeyHash === "string" ? data.projectKeyHash : undefined,
     model: typeof data.model === "string" ? data.model : "unknown",
     inputTokens: typeof data.inputTokens === "number" ? data.inputTokens : 0,
     outputTokens: typeof data.outputTokens === "number" ? data.outputTokens : 0,

@@ -210,7 +210,8 @@ public final class RemoteClipboardController {
             killSwitch: context.configuration.killSwitch,
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
             originatedFromPhone: true,
-            phoneControlRespectsDenyRegions: context.configuration.phoneControlRespectsDenyRegions
+            phoneControlRespectsDenyRegions: context.configuration.phoneControlRespectsDenyRegions,
+            clipboardConsentGranted: context.configuration.clipboardConsentGranted
         )
 
         switch gate.check(

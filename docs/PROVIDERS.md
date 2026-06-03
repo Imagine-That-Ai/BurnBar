@@ -140,6 +140,24 @@ are off by default:
 | Cross-vendor degrade (B3) | Off | Settings → Agents → Advanced → Experimental routing (or `OPENBURNBAR_CROSS_VENDOR_DEGRADE=1` + optional `…_VENDORS`) | Substitutes an allow-listed OpenAI-compatible vendor on the user's own key when the requested model cannot be served. |
 | Meter-pool diagnostic (B0) | Manual | `openburnbar-cli claude-meter-experiment` | Reports whether an interactive turn drew from the subscription window or the metered credit. |
 
+### Relay vs. hosted chat gateway — plaintext posture (honest label)
+
+Two distinct transport paths share the "Hermes" name and must not be conflated:
+
+- **End-to-end relay** (`hermes_relay_requests`/`pi_agent_relay_requests` + chunks):
+  device-to-device frames are sealed with `HermesRelayCrypto`
+  (`p256-hkdf-sha256-aesgcm`) before they reach Firestore. The relay routes
+  ciphertext and **never sees plaintext** request/response bodies. This is the
+  claim the privacy page and registry `connected_devices` deviceOnly entry
+  scope to "end-to-end relay frame contents".
+- **Hosted chat gateway** (`hermes_gateway_messages`/`_events`/`_attachments`):
+  a bring-your-own-token bridge to outside chat apps. The gateway client holds
+  no vault key and no relay ECIES key, so today the gateway **carries readable
+  message text, sender names, and attachment file names in transit** — the
+  server can read them. The registry lists these as `serverSees`, not
+  `deviceOnly`. An end-to-end re-architecture of the gateway is committed (a
+  chained goal); until it lands, do not describe the gateway as sealed.
+
 ## Conversation transcript parsers (Streams cockpit)
 
 The quota adapters above answer *"how much is left?"*. A second, independent
@@ -159,9 +177,11 @@ to `LogParser` and are registered in `ParserRegistry.defaultParsers()`.
 
 All indexed transcripts (these plus the existing Codex/Claude/Grok/Hermes/… parsers)
 route through `SessionLogSyncService` into the zero-knowledge hosted backup with
-cockpit facets (tokens, cost, `workingDirectory`, model, provider, project, tags).
-Bodies are encrypted client-side with `CloudVaultCrypto`; the `session_logs`
-manifest carries only sealed metadata. See
+server-readable cockpit facets limited to aggregate metadata (tokens, cost, model,
+provider, message counts, timing, and generic tool tags). Project and path text are
+local-only inputs to keyed Cloud Vault search hashes; they are not stored as raw
+manifest fields. Bodies are encrypted client-side with `CloudVaultCrypto`; the
+`session_logs` manifest carries only sealed metadata. See
 [`docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md`](OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md)
 for the cockpit query surface.
 

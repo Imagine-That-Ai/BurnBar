@@ -237,6 +237,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
 
             let trimmedBatch = PensieveKnowledgeBatch(
                 sourceSlug: batch.sourceSlug,
+                slugHmac: batch.slugHmac,
                 embeddingModelVersion: batch.embeddingModelVersion,
                 vectors: novelVectors
             )
@@ -331,6 +332,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     private func encode(_ batch: PensieveKnowledgeBatch) -> [String: Any] {
         [
             "sourceSlug": batch.sourceSlug,
+            "slugHmac": batch.slugHmac,
             "embeddingModelVersion": batch.embeddingModelVersion,
             "vectors": batch.vectors.map(encode(_:)),
         ]
@@ -342,9 +344,8 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             "cloakedVector": vector.cloakedVector,
             "sealedCiphertext": encode(vector.sealedCiphertext),
             "sealedMetadata": encode(vector.sealedMetadata),
-            "contentHash": vector.contentHash,
+            "dedupHash": vector.dedupHash,
             "sourceKind": vector.sourceKind.rawValue,
-            "sourcePath": vector.sourcePath,
             "chunkIndex": vector.chunkIndex,
             "byteCount": vector.byteCount,
         ]

@@ -6,17 +6,13 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
-import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
+import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
   REMOTE_MCP_TOKEN_HMAC_SECRET,
   boundedTrimmedString,
-  normalizedSearchTerms,
-  searchScore,
-  sha256Hex,
-  serializeUsageForCallable,
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
@@ -40,11 +36,12 @@ export const issueRemoteMcpGrant = onCall(
         installFingerprint?: unknown;
         scopes?: unknown;
         grantMode?: unknown;
+        nonce?: unknown;
       }>,
     ) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before connecting OpenBurnBar MCP.");
-      enforceHighRiskComputerUseCallable(request, uid);
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
       await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
       await assertActiveBurnBarProEntitlement(uid);
       const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
@@ -124,79 +121,13 @@ export const searchStreams = onCall(
     const query = boundedTrimmedString(request.data.query, "query", 200, true) ?? "";
     const limitRaw = typeof request.data.limit === "number" ? request.data.limit : 25;
     const limit = Math.max(1, Math.min(Math.floor(limitRaw), 50));
-    const terms = normalizedSearchTerms(query);
-    if (terms.length === 0) {
+    if (!query) {
       return { hits: [] };
     }
-
-    const chunkSnap = await db
-      .collectionGroup("chunks")
-      .where("uid", "==", uid)
-      .where("terms", "array-contains", terms[0])
-      .select("docId", "sessionId", "deviceId", "bodyHash", "title", "snippet", "projectName", "model", "terms")
-      .limit(200)
-      .get();
-
-    const scored = chunkSnap.docs
-      .map((doc) => {
-        const data = doc.data();
-        const indexedTerms = Array.isArray(data.terms)
-          ? data.terms.filter((term): term is string => typeof term === "string")
-          : [];
-        const haystack = `${data.title ?? ""} ${data.snippet ?? ""} ${data.projectName ?? ""} ${data.model ?? ""} ${indexedTerms.join(" ")}`;
-        return { doc, data, score: searchScore(haystack, terms) };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || String(a.data.docId ?? "").localeCompare(String(b.data.docId ?? "")))
-      .slice(0, limit * 3);
-
-    const hits: Array<Record<string, unknown>> = [];
-    const seenSessions = new Set<string>();
-
-    for (const item of scored) {
-      const deviceId = typeof item.data.deviceId === "string" ? item.data.deviceId : "";
-      const sessionId = typeof item.data.sessionId === "string" ? item.data.sessionId : "";
-      const docId = typeof item.data.docId === "string" ? item.data.docId : "";
-      const bodyHash = typeof item.data.bodyHash === "string" ? item.data.bodyHash : "";
-      if (!deviceId || !sessionId || !docId || !bodyHash) {
-        continue;
-      }
-
-      const manifest = await db.doc(`users/${uid}/session_logs/${docId}`).get();
-      if (!manifest.exists || manifest.get("bodyHash") !== bodyHash) {
-        continue;
-      }
-
-      const dedupeKey = `${deviceId}:${sessionId}`;
-      if (seenSessions.has(dedupeKey)) {
-        continue;
-      }
-
-      const usageSnap = await db
-        .collection(`users/${uid}/usage`)
-        .where("deviceId", "==", deviceId)
-        .where("sessionId", "==", sessionId)
-        .limit(1)
-        .get();
-      const usageDoc = usageSnap.docs[0];
-      if (!usageDoc) {
-        continue;
-      }
-
-      const usage = serializeUsageForCallable(usageDoc.id, usageDoc.data());
-      seenSessions.add(dedupeKey);
-      hits.push({
-        id: `${sha256Hex(`${docId}:${item.doc.id}`).slice(0, 16)}_${item.doc.id}`,
-        title: item.data.title ?? usage.projectName ?? usage.model ?? "Stream",
-        snippet: item.data.snippet ?? "",
-        score: item.score / terms.length,
-        usage,
-      });
-      if (hits.length >= limit) {
-        break;
-      }
-    }
-
-    return { hits };
+    // Remote MCP cannot derive Cloud Vault search trapdoors without the user's
+    // local vault key. The previous implementation queried legacy plaintext
+    // `session_logs/{id}/chunks` fields; hardened cloud search must stay empty
+    // until the local decrypt shim supplies keyed hashes.
+    return { hits: [], encryptedSearchRequired: true, limit };
   }),
 );

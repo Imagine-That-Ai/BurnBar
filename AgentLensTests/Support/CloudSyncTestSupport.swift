@@ -30,6 +30,7 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
     private(set) var uploadRequests: [(documentID: String, bodyHash: String, byteCount: Int)] = []
     private(set) var uploadedBodies: [(data: Data, ticket: EncryptedSessionBlobUploadTicket)] = []
     private(set) var searchIndexCommits: [(deviceId: String, indexVersion: Int, document: [String: Any], chunks: [[String: Any]])] = []
+    var downloadableBodies: [String: Data] = [:]
     var onBeginUpload: (() async -> Void)?
 
     func beginEncryptedSessionBlobUpload(
@@ -49,6 +50,7 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
 
     func uploadEncryptedBody(data: Data, ticket: EncryptedSessionBlobUploadTicket) async throws {
         uploadedBodies.append((data, ticket))
+        downloadableBodies[ticket.storagePath] = data
     }
 
     func commitEncryptedSearchIndex(
@@ -64,6 +66,13 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
 
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
         [:]
+    }
+
+    func downloadEncryptedBody(storagePath: String) async throws -> Data {
+        guard let data = downloadableBodies[storagePath] else {
+            throw URLError(.fileDoesNotExist)
+        }
+        return data
     }
 
     private(set) var deletedBodies: [(documentID: String, storagePath: String)] = []

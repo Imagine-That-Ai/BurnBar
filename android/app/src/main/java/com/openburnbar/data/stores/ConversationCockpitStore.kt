@@ -79,7 +79,6 @@ data class CockpitConversationRow(
     val displayTitle: String
         get() =
             title?.takeIf { it.isNotBlank() }
-                ?: projectName?.takeIf { it.isNotBlank() }
                 ?: providerEnum?.displayName
                 ?: "Encrypted session"
 
@@ -90,10 +89,9 @@ data class CockpitConversationRow(
 
 /**
  * Drives the Streams "Cockpit" — a faceted, paginated database view over the user's encrypted
- * session-log manifests. Filtering and sorting run server-side on plaintext facets via the
- * `queryConversations` callable; titles, previews, and full transcripts are opened locally with the
- * vault key so conversation content never leaves the device in the clear. Aggregates feed the KPI
- * header and saved queries persist locally.
+ * session-log manifests. Filtering and sorting run server-side only on operational facets via the
+ * `queryConversations` callable; text/project/path search uses keyed encrypted search hashes and
+ * local decryption. Aggregates feed the KPI header and saved queries persist locally.
  */
 class ConversationCockpitStore(
     private val functions: FunctionsRepository = FunctionsRepository(),
@@ -181,7 +179,6 @@ class ConversationCockpitStore(
         get() =
             mutableSelectedProviders.value.isNotEmpty() ||
                 mutableSelectedModel.value != null ||
-                mutableProjectQuery.value.isNotEmpty() ||
                 mutableDateFromMs.value != null ||
                 mutableDateToMs.value != null
 
@@ -285,7 +282,7 @@ class ConversationCockpitStore(
         fun applySavedQueryValues(query: SavedConversationQuery) {
             mutableSelectedProviders.value = query.providers.toSet()
             mutableSelectedModel.value = query.model
-            mutableProjectQuery.value = query.projectQuery
+            mutableProjectQuery.value = ""
             mutableSortField.value = ConversationSortField.fromField(query.sortField)
             mutableSortDirection.value = ConversationSortDirection.fromToken(query.sortDirection)
             mutableDateFromMs.value = query.dateFromMs
@@ -309,7 +306,7 @@ class ConversationCockpitStore(
         val providers = mutableSelectedProviders.value.sorted().joinToString(",")
         val from = mutableDateFromMs.value?.toString() ?: "-"
         val to = mutableDateToMs.value?.toString() ?: "-"
-        return "$providers|${mutableSelectedModel.value ?: "-"}|${mutableProjectQuery.value}|" +
+        return "$providers|${mutableSelectedModel.value ?: "-"}|" +
             "${mutableSortField.value.field}|${mutableSortDirection.value.token}|$from|$to"
     }
 

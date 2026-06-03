@@ -361,6 +361,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     } else {
         exclude("**/SwarmTextCoordinates.kt")
         exclude("**/SwarmBackground.kt")
+        exclude("**/DotConstellationBackground.kt")
         exclude("**/AuroraTheme.kt")
         exclude("**/AuroraNavGlyphs.kt")
         exclude("**/renderers/**")

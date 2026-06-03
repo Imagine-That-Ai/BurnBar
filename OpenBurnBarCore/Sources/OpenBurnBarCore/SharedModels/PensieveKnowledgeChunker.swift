@@ -11,17 +11,22 @@ public enum PensieveSourceKind: String, Codable, Sendable {
 
 /// One cloaked + sealed knowledge chunk, shaped EXACTLY as one element of the
 /// `vectors` array `commitKnowledgeBatch` validates (vectorId, cloakedVector
-/// [384], sealedCiphertext, sealedMetadata, contentHash hex, sourceKind,
-/// sourcePath, chunkIndex, byteCount). Mirrors `PreparedVector` in
+/// [384], sealedCiphertext, sealedMetadata, dedupHash hex, sourceKind,
+/// chunkIndex, byteCount). Mirrors `PreparedVector` in
 /// `tools/openburnbar-mcp-remote/src/memoryHook.ts`.
+///
+/// B-SEC-2 privacy contract: the row carries NO cleartext side channels. The
+/// old `contentHash` (keyless SHA-256 of the plaintext — a dedup oracle) and
+/// `sourcePath` (real repo file path) are gone. Idempotency is keyed by
+/// `dedupHash`, a VAULT-KEYED HMAC of the chunk plaintext the device computes;
+/// the real path lives only inside `sealedMetadata`.
 public struct PensieveKnowledgeVector: Sendable {
     public let vectorId: String
     public let cloakedVector: [Double]
     public let sealedCiphertext: CloudVaultSealedText
     public let sealedMetadata: CloudVaultSealedText
-    public let contentHash: String
+    public let dedupHash: String
     public let sourceKind: PensieveSourceKind
-    public let sourcePath: String
     public let chunkIndex: Int
     public let byteCount: Int
 
@@ -30,9 +35,8 @@ public struct PensieveKnowledgeVector: Sendable {
         cloakedVector: [Double],
         sealedCiphertext: CloudVaultSealedText,
         sealedMetadata: CloudVaultSealedText,
-        contentHash: String,
+        dedupHash: String,
         sourceKind: PensieveSourceKind,
-        sourcePath: String,
         chunkIndex: Int,
         byteCount: Int
     ) {
@@ -40,22 +44,31 @@ public struct PensieveKnowledgeVector: Sendable {
         self.cloakedVector = cloakedVector
         self.sealedCiphertext = sealedCiphertext
         self.sealedMetadata = sealedMetadata
-        self.contentHash = contentHash
+        self.dedupHash = dedupHash
         self.sourceKind = sourceKind
-        self.sourcePath = sourcePath
         self.chunkIndex = chunkIndex
         self.byteCount = byteCount
     }
 }
 
 /// A fully-prepared batch ready for `commitKnowledgeBatch`.
+///
+/// `slugHmac` is the vault-keyed HMAC of `sourceSlug` — the opaque filter column
+/// that replaces the cleartext `sourceSlug` on the stored rows (B-SEC-2).
 public struct PensieveKnowledgeBatch: Sendable {
     public let sourceSlug: String
+    public let slugHmac: String
     public let embeddingModelVersion: String
     public let vectors: [PensieveKnowledgeVector]
 
-    public init(sourceSlug: String, embeddingModelVersion: String, vectors: [PensieveKnowledgeVector]) {
+    public init(
+        sourceSlug: String,
+        slugHmac: String,
+        embeddingModelVersion: String,
+        vectors: [PensieveKnowledgeVector]
+    ) {
         self.sourceSlug = sourceSlug
+        self.slugHmac = slugHmac
         self.embeddingModelVersion = embeddingModelVersion
         self.vectors = vectors
     }
@@ -66,8 +79,8 @@ public struct PensieveKnowledgeBatch: Sendable {
 /// the server stores only ciphertext + cloaked vectors (zero plaintext).
 ///
 /// Mirrors the TS device path: chunking sized for `requireSealedText`'s base64
-/// cap, the `redactSecrets` patterns from memoryHook.ts, the SHA-256 contentHash
-/// used as the idempotent `vectorId`, and `seal.ts` (AES-256-GCM via
+/// cap, the `redactSecrets` patterns from memoryHook.ts, the vault-keyed
+/// `dedupHash` used as the idempotent `vectorId`, and `seal.ts` (AES-256-GCM via
 /// `CloudVaultCrypto.sealText`).
 public enum PensieveKnowledgeChunker {
     /// Keep each sealed chunk well under `requireSealedText`'s base64 cap and the
@@ -143,9 +156,10 @@ public enum PensieveKnowledgeChunker {
     // MARK: - Prepare a batch
 
     /// Build a `commitKnowledgeBatch`-ready batch from a single source document.
-    /// Each chunk is redacted, content-hashed (the idempotent `vectorId`),
-    /// embedded + cloaked, and the text + metadata are sealed with the vault key.
-    /// Duplicate chunks (same contentHash) within the batch are dropped.
+    /// Each chunk is redacted, vault-keyed dedup-hashed (the idempotent
+    /// `vectorId`), embedded + cloaked, and the text + metadata are sealed with the
+    /// vault key. Duplicate chunks (same dedupHash) within the batch are dropped.
+    /// No cleartext `contentHash`/`sourcePath` leaves the device (B-SEC-2).
     ///
     /// - Parameters:
     ///   - text: full plaintext of the source document (stays on device).
@@ -167,6 +181,8 @@ public enum PensieveKnowledgeChunker {
     ) throws -> PensieveKnowledgeBatch {
         let cleaned = redactSecrets(text)
         let chunks = chunk(cleaned)
+        // The opaque filter column that replaces the cleartext `sourceSlug`.
+        let slugHmac = try CloudVaultCrypto.pensieveSlugHmac(sourceSlug, keyData: vaultKey)
         var seen = Set<String>()
         var vectors: [PensieveKnowledgeVector] = []
         vectors.reserveCapacity(chunks.count)
@@ -174,8 +190,11 @@ public enum PensieveKnowledgeChunker {
         for (index, chunkText) in chunks.enumerated() {
             let trimmed = chunkText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            let contentHash = sha256Hex(trimmed)
-            guard seen.insert(contentHash).inserted else { continue }
+            // Vault-keyed HMAC of the plaintext — the idempotency key and the
+            // opaque `vectorId`. Unlike the legacy keyless SHA-256 `contentHash`,
+            // this is unguessable without the vault key (no dedup oracle).
+            let dedupHash = try CloudVaultCrypto.pensieveDedupHash(trimmed, keyData: vaultKey)
+            guard seen.insert(dedupHash).inserted else { continue }
 
             let cloaked = PensieveVectorCloak.embedAndCloak(
                 trimmed,
@@ -186,6 +205,7 @@ public enum PensieveKnowledgeChunker {
 
             // Sealed metadata mirrors the shape the shim's decryptKnowledgeContent
             // + post-filters read (source_path / section / category / page_title).
+            // The real path lives ONLY here, inside the ciphertext.
             var metadata: [String: Any] = [
                 "source": "member-knowledge",
                 "source_path": sourcePath,
@@ -207,13 +227,12 @@ public enum PensieveKnowledgeChunker {
 
             vectors.append(
                 PensieveKnowledgeVector(
-                    vectorId: contentHash,
+                    vectorId: dedupHash,
                     cloakedVector: cloaked,
                     sealedCiphertext: sealedCiphertext,
                     sealedMetadata: sealedMetadata,
-                    contentHash: contentHash,
+                    dedupHash: dedupHash,
                     sourceKind: sourceKind,
-                    sourcePath: sourcePath,
                     chunkIndex: index,
                     byteCount: trimmed.utf8.count
                 )
@@ -222,6 +241,7 @@ public enum PensieveKnowledgeChunker {
 
         return PensieveKnowledgeBatch(
             sourceSlug: sourceSlug,
+            slugHmac: slugHmac,
             embeddingModelVersion: modelVersion,
             vectors: vectors
         )

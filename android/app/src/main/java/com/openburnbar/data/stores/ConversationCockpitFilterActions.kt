@@ -48,7 +48,7 @@ internal class ConversationCockpitFilterActions(
                 name = trimmed,
                 providers = store.selectedProviders.value.sorted(),
                 model = store.selectedModel.value,
-                projectQuery = store.projectQuery.value,
+                projectQuery = "",
                 sortField = store.sortField.value.field,
                 sortDirection = store.sortDirection.value.token,
                 dateFromMs = store.dateFromMs.value,

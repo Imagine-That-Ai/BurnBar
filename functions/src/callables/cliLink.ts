@@ -8,7 +8,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { randomBytes, createHash } from "node:crypto";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
-import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
+import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { assertActiveBurnBarProEntitlement, REMOTE_MCP_TOKEN_HMAC_SECRET } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
@@ -165,10 +165,10 @@ export const completeCliLink = onCall(
     maxInstances: 50,
     secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
   },
-  wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown }>) => {
+  wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before completing CLI link.");
-    enforceHighRiskComputerUseCallable(request, uid);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     await assertCallableApprovalNotLocked(uid, "cli_link_approve_fail");
     await assertActiveBurnBarProEntitlement(uid);
 

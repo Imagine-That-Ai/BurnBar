@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Timestamp } from "firebase-admin/firestore";
 
-import { DATA_DOMAIN_USAGE } from "../callables/dataDomainUsage.js";
+import { DATA_DOMAIN_USAGE, summarizeCloudProfile } from "../callables/dataDomainUsage.js";
 
 // vitest runs from the functions/ package root; the registry is a sibling package.
 const registry = JSON.parse(
@@ -32,5 +33,32 @@ describe("DATA_DOMAIN_USAGE ⇄ data-domain registry", () => {
         src.countCollection,
       );
     }
+  });
+});
+
+describe("summarizeCloudProfile", () => {
+  it("reports a missing profile when the Mac has not published one", () => {
+    expect(summarizeCloudProfile(undefined)).toEqual({ state: "missing" });
+    expect(summarizeCloudProfile(null)).toEqual({ state: "missing" });
+  });
+
+  it("returns only safe profile summary fields", () => {
+    const updatedAt = Timestamp.fromDate(new Date("2026-06-03T03:45:00.000Z"));
+
+    expect(
+      summarizeCloudProfile({
+        displayName: " Alberto ",
+        avatarURL: "https://example.com/avatar.png",
+        sourceDeviceId: " macbook-pro ",
+        updatedAt,
+        ignoredSecret: "never returned",
+      }),
+    ).toEqual({
+      state: "published",
+      displayName: "Alberto",
+      avatarURL: "https://example.com/avatar.png",
+      sourceDeviceId: "macbook-pro",
+      updatedAt: "2026-06-03T03:45:00.000Z",
+    });
   });
 });

@@ -66,19 +66,23 @@ const MAX_BATCH_VECTORS = 800;
 const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
 
 /**
- * Stamped onto every row so old rows are distinguishable from B-SEC-2 rows and a
- * future re-ingestion can target the laggards.
- *   - 0 — legacy: `dedupHash` holds the cleartext SHA-256 of the plaintext (a
- *         confirm-the-guess side channel). Written ONLY when a not-yet-updated
- *         client sends the old `contentHash` and no keyed `dedupHash`.
- *   - 1 — B-SEC-2: `dedupHash` is the device's vault-keyed HMAC(plaintext) and
- *         `slugHmac` is the vault-keyed HMAC(slug); no cleartext hash/path.
+ * Stamped onto every row so old (legacy v0) rows stay distinguishable from the
+ * vault-keyed v1 rows and a forced re-ingestion can target the laggards.
+ *   - 0 — legacy: `dedupHash` held the cleartext SHA-256 of the plaintext (a
+ *         confirm-the-guess side channel). The WRITE path no longer produces v0
+ *         rows — the version is retained only so existing legacy rows remain
+ *         readable until the device re-ingests them.
+ *   - 1 — vault-keyed: `dedupHash` is the device's vault-keyed HMAC(plaintext)
+ *         and `slugHmac` is the vault-keyed HMAC(slug); no cleartext hash/path.
  *
- * ACTIVATION (coordinate with the ingestion owner — do NOT fake a data
- * migration): legacy v0 rows keep their cleartext SHA-256 until the device ships
- * the HKDF/HMAC derivation (PensieveKnowledgeChunker) and RE-INGESTS each source,
- * which rewrites the rows at v1. There is no server-side backfill — the server
- * never holds the vault key, so only the device can recompute the keyed hashes.
+ * FLAG-DAY ENFORCEMENT (privacy-leak-remediation-2026-06-02 §3, Option A): the
+ * device derivation (PensieveKnowledgeChunker + the Node shim) ships in the same
+ * release that flips this write path to REQUIRE the vault-keyed `dedupHash` and
+ * `cloakedVector`; not-yet-updated clients sending a cleartext `contentHash`/raw
+ * `embedding` are now REJECTED. Existing legacy v0 rows stay readable until the
+ * device re-ingests each source (forced by bumping `embeddingModelVersion`/
+ * `dedupHashVersion`), which rewrites them at v1. There is no server-side
+ * backfill — the server never holds the vault key.
  */
 const DEDUP_HASH_VERSION_LEGACY_CLEARTEXT = 0;
 const DEDUP_HASH_VERSION_VAULT_HMAC = 1;
@@ -121,7 +125,13 @@ function requireSourceKind(raw: unknown, fieldName: string): string {
   return value;
 }
 
-/** Validate the on-device-cloaked embedding: exactly KNOWLEDGE_VECTOR_DIM finite numbers. */
+/**
+ * Validate the on-device-cloaked embedding: exactly KNOWLEDGE_VECTOR_DIM finite
+ * numbers. The caller passes ONLY `raw.cloakedVector` (privacy-leak-remediation-
+ * 2026-06-02 §3) — the legacy uncloaked `embedding` field is no longer accepted,
+ * so a not-yet-updated client that sends a raw embedding is rejected (the field
+ * is simply absent here, producing the "must be a 384-dimension array" error).
+ */
 function requireCloakedVector(raw: unknown, fieldName: string): number[] {
   if (!Array.isArray(raw) || raw.length !== KNOWLEDGE_VECTOR_DIM) {
     throw new HttpsError("invalid-argument", `${fieldName} must be a ${KNOWLEDGE_VECTOR_DIM}-dimension array.`);
@@ -163,29 +173,23 @@ function requireUid(request: CallableRequest): string {
 }
 
 /**
- * Resolve the vault-keyed dedup hash for one vector (B-SEC-2). The device sends
+ * Resolve the vault-keyed dedup hash for one vector. The device sends
  * `dedupHash` = HMAC(plaintext) under an HKDF-derived per-user dedup key, so the
  * server stores a hash it cannot recompute from a guessed plaintext, and two
- * members storing the same plaintext get different hashes. A not-yet-updated
- * client may still send the legacy cleartext `contentHash`; we accept it for
- * idempotency but stamp it v0 so a re-ingestion can replace it. One of the two
- * MUST be present (both are hex digests).
+ * members storing the same plaintext get different hashes.
+ *
+ * FLAG-DAY (privacy-leak-remediation-2026-06-02 §3): the vault-keyed `dedupHash`
+ * is now REQUIRED. The legacy cleartext `contentHash` (a confirm-the-guess
+ * SHA-256 oracle) is no longer accepted as a fallback — a not-yet-updated client
+ * that omits `dedupHash` is rejected. Always stamped v1.
  */
 function resolveDedupHash(
   raw: Record<string, unknown>,
   fieldPrefix: string,
 ): { dedupHash: string; dedupHashVersion: number } {
-  if (raw.dedupHash !== undefined) {
-    return {
-      dedupHash: requireHexDigest(raw.dedupHash, `${fieldPrefix}.dedupHash`),
-      dedupHashVersion: DEDUP_HASH_VERSION_VAULT_HMAC,
-    };
-  }
-  // Legacy path: cleartext SHA-256. Confirm-the-guess side channel; stamped v0
-  // so it is distinguishable and a device re-ingestion can rewrite it as v1.
   return {
-    dedupHash: requireHexDigest(raw.contentHash, `${fieldPrefix}.dedupHash`),
-    dedupHashVersion: DEDUP_HASH_VERSION_LEGACY_CLEARTEXT,
+    dedupHash: requireHexDigest(raw.dedupHash, `${fieldPrefix}.dedupHash`),
+    dedupHashVersion: DEDUP_HASH_VERSION_VAULT_HMAC,
   };
 }
 
@@ -215,10 +219,10 @@ export const commitKnowledgeBatch = onCall(
       // slug stays out of the per-vector rows (B-SEC-2).
       const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
       // Vault-keyed HMAC(slug) the device computes; the only slug-derived value
-      // stored on each vector. Falls back to the cleartext slug for not-yet-
-      // updated clients so existing rows stay filterable until re-ingestion.
-      const slugHmac =
-        request.data.slugHmac !== undefined ? requireHexDigest(request.data.slugHmac, "slugHmac") : sourceSlug;
+      // stored on each vector. REQUIRED on the write path (privacy-leak-
+      // remediation-2026-06-02 §3) — a cleartext slug is no longer stored on the
+      // per-vector rows, so a not-yet-updated client that omits it is rejected.
+      const slugHmac = requireHexDigest(request.data.slugHmac, "slugHmac");
       const embeddingModelVersion = boundedTrimmedString(
         request.data.embeddingModelVersion,
         "embeddingModelVersion",
@@ -244,7 +248,10 @@ export const commitKnowledgeBatch = onCall(
           // keyed value, not a plaintext SHA-256). `vectorId` is only an opaque
           // idempotency doc id; with v1 hashes it no longer confirms a guess.
           vectorId: safeCloudDocumentID(raw.vectorId ?? dedupHash, `vectors[${i}].vectorId`),
-          embedding: requireCloakedVector(raw.cloakedVector ?? raw.embedding, `vectors[${i}].cloakedVector`),
+          // ONLY the cloaked vector is accepted — a raw `embedding` is rejected
+          // (privacy-leak-remediation-2026-06-02 §3): the server must never store
+          // an uncloaked embedding it could invert.
+          embedding: requireCloakedVector(raw.cloakedVector, `vectors[${i}].cloakedVector`),
           sealedCiphertext: requireSealedText(raw.sealedCiphertext ?? raw.ciphertext, `vectors[${i}].sealedCiphertext`),
           sealedMetadata: requireSealedText(raw.sealedMetadata, `vectors[${i}].sealedMetadata`),
           dedupHash,
@@ -274,10 +281,11 @@ export const commitKnowledgeBatch = onCall(
       for (const v of validated) {
         const prior = existingByID.get(v.vectorId);
         const priorExists = Boolean(prior?.exists);
-        // Idempotent skip: compare the stored dedup hash, reading the legacy
-        // `contentHash` field for rows written before B-SEC-2 so unchanged old
-        // chunks still no-op instead of churning.
-        const priorDedupHash = priorExists ? (prior?.get("dedupHash") ?? prior?.get("contentHash")) : undefined;
+        // Idempotent skip: compare the stored `dedupHash`. Both legacy v0 rows
+        // and vault-keyed v1 rows store it under `dedupHash`, so the cleartext
+        // `contentHash` oracle is no longer read here (privacy-leak-remediation-
+        // 2026-06-02 §3). A pre-`dedupHash` ancient row simply re-writes once.
+        const priorDedupHash = priorExists ? prior?.get("dedupHash") : undefined;
         if (priorExists && priorDedupHash === v.dedupHash) {
           skipped += 1; // unchanged chunk — idempotent no-op
           continue;
@@ -448,8 +456,13 @@ export const __testing__ = {
   PENSIEVE_LIMITS,
   KNOWLEDGE_VECTOR_DIM,
   MAX_CHUNK_BYTES,
+  // Retained so existing legacy rows stay classifiable; the write path no longer
+  // produces v0 rows (privacy-leak-remediation-2026-06-02 §3).
+  DEDUP_HASH_VERSION_LEGACY_CLEARTEXT,
+  DEDUP_HASH_VERSION_VAULT_HMAC,
   requireSourceKind,
   requireCloakedVector,
+  resolveDedupHash,
   slugify,
 };
 

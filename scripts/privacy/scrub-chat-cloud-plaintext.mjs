@@ -66,9 +66,37 @@ const COLLECTIONS = [
     name: "agent_notification_replies",
     fields: ["replyText"],
   },
+  {
+    name: "session_logs",
+    fields: ["projectName", "workingDirectory", "body", "payloadCiphertext", "ciphertext", "data", "text", "title", "snippet", "terms"],
+  },
+  {
+    name: "cloud_search_documents",
+    fields: ["projectName", "workingDirectory", "title", "snippet", "body", "text"],
+  },
+  {
+    name: "cloud_search_chunks",
+    fields: ["projectName", "workingDirectory", "title", "snippet", "body", "text"],
+  },
+  {
+    name: "cloud_search_postings",
+    fields: ["projectName", "workingDirectory", "title", "snippet", "body", "text"],
+  },
 ];
 
 const MISSION_EVENT_FIELDS = ["title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath"];
+const SESSION_LOG_CHUNK_FIELDS = [
+  "projectName",
+  "workingDirectory",
+  "body",
+  "payloadCiphertext",
+  "ciphertext",
+  "data",
+  "text",
+  "title",
+  "snippet",
+  "terms",
+];
 
 const options = parseArgs(process.argv.slice(2));
 if (options.help) {
@@ -115,6 +143,10 @@ async function scrubUser(uid) {
   const missionDocs = await userRef.collection("cli_agent_mission_requests").listDocuments();
   for (const missionRef of missionDocs) {
     await scrubCollection(missionRef.collection("events"), MISSION_EVENT_FIELDS);
+  }
+  const sessionLogDocs = await userRef.collection("session_logs").listDocuments();
+  for (const sessionLogRef of sessionLogDocs) {
+    await scrubCollection(sessionLogRef.collection("chunks"), SESSION_LOG_CHUNK_FIELDS);
   }
 }
 

@@ -36,17 +36,20 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Usage & Spend",
     "icon": "chart.bar.fill",
     "encryptionTier": "server_readable",
-    "summary": "Per-session token counts, cost estimates, and provider/model/project telemetry.",
+    "summary": "Per-session token counts, cost estimates, and provider/model/device telemetry. Project names and budget labels are sealed on-device; the server groups spend only by opaque per-project hashes.",
     "serverSees": [
       "provider",
       "model",
-      "project",
       "device",
       "token counts",
       "cost estimates",
-      "timestamps"
+      "timestamps",
+      "opaque project hashes"
     ],
-    "deviceOnly": [],
+    "deviceOnly": [
+      "project names",
+      "budget labels"
+    ],
     "firestorePaths": [
       "usage",
       "usage_rollups",
@@ -124,11 +127,10 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Searchable Session Logs",
     "icon": "text.magnifyingglass",
     "encryptionTier": "end_to_end",
-    "summary": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext + plaintext cockpit facets.",
+    "summary": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes.",
     "serverSees": [
       "provider",
       "model",
-      "project",
       "cost",
       "token counts",
       "timing",
@@ -136,6 +138,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "opaque token/semantic hashes"
     ],
     "deviceOnly": [
+      "project/path text",
       "title",
       "snippet",
       "body preview",
@@ -174,17 +177,19 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Pensieve Knowledge",
     "icon": "brain.head.profile",
     "encryptionTier": "end_to_end",
-    "summary": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either.",
+    "summary": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
     "serverSees": [
       "cloaked 384-dim vectors",
       "sourceKind",
-      "sourceSlug",
+      "opaque keyed slug/dedup hashes",
+      "opaque repo match token",
       "chunk/byte counts",
       "timestamps"
     ],
     "deviceOnly": [
       "chunk text",
       "source paths",
+      "repo names",
       "section/category metadata"
     ],
     "firestorePaths": [
@@ -256,15 +261,18 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Connected Devices & Pairings",
     "icon": "laptopcomputer.and.iphone",
     "encryptionTier": "server_readable",
-    "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account.",
+    "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
     "serverSees": [
       "device ids",
       "pairing metadata",
       "last seen",
-      "relay routing"
+      "relay routing",
+      "hosted chat gateway message text",
+      "hosted chat gateway sender names",
+      "hosted chat gateway attachment file names"
     ],
     "deviceOnly": [
-      "relayed payload contents (sealed per their own domains)"
+      "end-to-end relay frame contents (sealed per their own domains)"
     ],
     "firestorePaths": [
       "devices",

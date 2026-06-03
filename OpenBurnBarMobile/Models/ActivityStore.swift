@@ -212,7 +212,6 @@ final class ActivityStore {
                 title: title,
                 snippet: snippet,
                 provider: hit.provider,
-                projectName: hit.projectName,
                 storagePath: hit.storagePath,
                 bodyHash: hit.bodyHash,
                 score: hit.score,
@@ -415,7 +414,6 @@ struct CloudConversationSearchRow: Identifiable, Hashable, Sendable {
     let title: String
     let snippet: String
     let provider: String?
-    let projectName: String?
     let storagePath: String
     let bodyHash: String
     let score: Double
@@ -449,9 +447,8 @@ private struct CloudConversationSearchReranker: Sendable {
     func score(_ row: CloudConversationSearchRow) -> Double {
         let title = Self.normalizedPhrase(row.title)
         let snippet = Self.normalizedPhrase(row.snippet)
-        let project = Self.normalizedPhrase(row.projectName ?? "")
         let provider = Self.normalizedPhrase(row.providerEnum?.displayName ?? row.provider ?? "")
-        let haystack = [title, snippet, project, provider]
+        let haystack = [title, snippet, provider]
             .filter { !$0.isEmpty }
             .joined(separator: " ")
 
@@ -462,7 +459,6 @@ private struct CloudConversationSearchReranker: Sendable {
         if phrase.count >= 3 {
             if title.contains(phrase) { score += 90 }
             if snippet.contains(phrase) { score += 70 }
-            if project.contains(phrase) { score += 35 }
         }
 
         if !tokens.isEmpty {
@@ -1080,7 +1076,6 @@ struct CockpitConversationRow: Identifiable, Hashable, Sendable {
 
     var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        if let projectName, !projectName.isEmpty { return projectName }
         return providerEnum?.displayName ?? "Encrypted session"
     }
 
@@ -1101,7 +1096,6 @@ protocol ConversationQueryClient {
     func queryConversations(
         providers: [String],
         models: [String],
-        projectName: String?,
         deviceId: String?,
         sourceType: String?,
         dateFrom: Date?,
@@ -1145,10 +1139,9 @@ struct CloudConversationAuthGate {
 }
 
 /// Drives the Streams "Cockpit" — a faceted, paginated database view over the user's encrypted
-/// session-log manifests. Filtering and sorting run server-side on plaintext facets via the
-/// `queryConversations` callable; titles, previews, and full transcripts are opened locally with
-/// the vault key so conversation content never leaves the device in the clear. Aggregates feed the
-/// KPI header and saved queries persist locally.
+/// session-log manifests. Filtering and sorting run server-side only on operational facets via the
+/// `queryConversations` callable; text/project/path search uses keyed encrypted search hashes and
+/// local decryption. Aggregates feed the KPI header and saved queries persist locally.
 @Observable
 @MainActor
 final class ConversationCockpitStore {
@@ -1203,13 +1196,12 @@ final class ConversationCockpitStore {
         let providers = selectedProviders.sorted().joined(separator: ",")
         let from = dateFrom.map { String(Int($0.timeIntervalSince1970)) } ?? "-"
         let to = dateTo.map { String(Int($0.timeIntervalSince1970)) } ?? "-"
-        return "\(providers)|\(selectedModel ?? "-")|\(projectQuery)|\(sortField.rawValue)|\(sortDirection.rawValue)|\(from)|\(to)"
+        return "\(providers)|\(selectedModel ?? "-")|\(sortField.rawValue)|\(sortDirection.rawValue)|\(from)|\(to)"
     }
 
     var hasActiveFilters: Bool {
         !selectedProviders.isEmpty
             || selectedModel != nil
-            || !projectQuery.isEmpty
             || dateFrom != nil
             || dateTo != nil
     }
@@ -1284,7 +1276,6 @@ final class ConversationCockpitStore {
         try await queryClient.queryConversations(
             providers: Array(selectedProviders),
             models: selectedModel.map { [$0] } ?? [],
-            projectName: projectQuery.isEmpty ? nil : projectQuery,
             deviceId: nil,
             sourceType: nil,
             dateFrom: dateFrom,
@@ -1433,7 +1424,7 @@ final class ConversationCockpitStore {
             name: trimmed,
             providers: selectedProviders.sorted(),
             model: selectedModel,
-            projectQuery: projectQuery,
+            projectQuery: "",
             sortField: sortField.rawValue,
             sortDirection: sortDirection.rawValue,
             dateFrom: dateFrom,
@@ -1447,7 +1438,7 @@ final class ConversationCockpitStore {
     func applySavedQuery(_ query: SavedConversationQuery) {
         selectedProviders = Set(query.providers)
         selectedModel = query.model
-        projectQuery = query.projectQuery
+        projectQuery = ""
         sortField = ConversationSortField(rawValue: query.sortField) ?? .updatedAt
         sortDirection = ConversationSortDirection(rawValue: query.sortDirection) ?? .desc
         dateFrom = query.dateFrom
@@ -1475,7 +1466,7 @@ final class ConversationCockpitStore {
         return CockpitConversationRow(
             id: row.id,
             provider: row.provider,
-            projectName: row.projectName,
+            projectName: nil,
             model: row.model,
             sourceType: row.sourceType,
             messageCount: row.messageCount ?? 0,
@@ -1483,7 +1474,7 @@ final class ConversationCockpitStore {
             outputTokens: row.outputTokens ?? 0,
             totalTokens: row.totalTokens ?? 0,
             costUSD: row.costUSD ?? 0,
-            workingDirectory: row.workingDirectory,
+            workingDirectory: nil,
             toolTags: row.toolTags ?? [],
             durationSeconds: row.durationSeconds,
             startTime: row.startTime,

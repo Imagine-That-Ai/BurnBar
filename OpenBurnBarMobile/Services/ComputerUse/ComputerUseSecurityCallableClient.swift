@@ -30,6 +30,19 @@ enum ComputerUseSecurityCallableClient {
         try await refreshAuthClaimsAfterBind()
     }
 
+    /// Fetch a single-use, short-lived nonce to attach to a high-risk action,
+    /// providing replay resistance on top of the 30-day attestation binding.
+    static func issueHighRiskActionNonce() async throws -> String {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        let result = try await functions.httpsCallable("issueHighRiskActionNonce").call([:])
+        guard let dict = result.data as? [String: Any], let nonce = dict["nonce"] as? String, !nonce.isEmpty else {
+            throw ClientError.invalidResponse("Could not obtain a high-risk action nonce.")
+        }
+        return nonce
+    }
+
     static func registerEscrowDevice(
         deviceId: String,
         deviceName: String,
@@ -41,10 +54,12 @@ enum ComputerUseSecurityCallableClient {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        let nonce = try await issueHighRiskActionNonce()
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": platform,
+            "nonce": nonce,
         ]
         if let appVersion, !appVersion.isEmpty { payload["appVersion"] = appVersion }
         if let publicKeyFingerprint, !publicKeyFingerprint.isEmpty {
@@ -61,8 +76,10 @@ enum ComputerUseSecurityCallableClient {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        let nonce = try await issueHighRiskActionNonce()
         var payload: [String: Any] = [
-            "deviceId": deviceId
+            "deviceId": deviceId,
+            "nonce": nonce,
         ]
         if let approverDeviceId, !approverDeviceId.isEmpty {
             payload["approverDeviceId"] = approverDeviceId
@@ -77,11 +94,29 @@ enum ComputerUseSecurityCallableClient {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
-            "deviceId": deviceId
+            "deviceId": deviceId,
+            "nonce": nonce,
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
+        }
+    }
+
+    /// Bind a CLI-agent mission approve/reject decision to this trusted native
+    /// escrow device via the App-Check-enforced `respondMissionApproval` callable.
+    static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        let result = try await functions.httpsCallable("respondMissionApproval").call([
+            "requestId": requestId,
+            "approve": approve,
+            "deviceId": deviceId,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Mission approval response failed.")
         }
     }
 

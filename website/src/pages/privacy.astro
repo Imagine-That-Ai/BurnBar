@@ -1,7 +1,26 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import ArchitectureDiagram from "@components/ArchitectureDiagram.astro";
+import TrustTierBadge from "@components/TrustTierBadge.astro";
+import DomainIcon from "@components/DomainIcon.astro";
 import { SITE } from "@data/site";
+import { TRUST_TIER_BY_ID, TRUST_DOMAINS } from "@data/trust.generated";
+
+// Data-domain inventory: three plain buckets by who-can-read, strongest first.
+// Every claim is generated from packages/data-domains/registry.json and a CI
+// drift gate fails if this and the registry disagree — so it can't overstate.
+const HEADINGS = {
+  end_to_end: "Only you can read these",
+  zero_access: "Locked — we keep only the sealed copy",
+  server_readable: "We can read these"
+} as const;
+const TIER_ORDER = ["end_to_end", "zero_access", "server_readable"] as const;
+const domainGroups = TIER_ORDER.map((id) => ({
+  tier: TRUST_TIER_BY_ID[id],
+  heading: HEADINGS[id],
+  domains: TRUST_DOMAINS.filter((d) => d.tier === id)
+}));
+const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
 ---
 
 <BaseLayout
@@ -110,8 +129,10 @@ import { SITE } from "@data/site";
               entitlements against the App Store Server API
             </li>
             <li>
-              <strong>Cloud Run · Hermes relay</strong> routes encrypted frames; never sees plaintext
-              request or response bodies
+              <strong>Cloud Run · end-to-end relay</strong> routes sealed frames between your own
+              devices; never sees plaintext request or response bodies. (The separate hosted chat
+              gateway — a bring-your-own-token bridge to outside chat apps — currently carries
+              readable message text in transit; an end-to-end migration of it is committed.)
             </li>
             <li>
               <strong>Owner-scoped, secret-field-name-denied</strong> — Firestore rules reject documents
@@ -122,6 +143,108 @@ import { SITE } from "@data/site";
           </ul>
         </article>
       </div>
+    </div>
+  </section>
+
+  <!-- ── What we can & can't see: the per-domain inventory ─────────────────── -->
+  <section class="domains" id="data-domains">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">What we can &amp; can't see</span>
+        <h2>Every kind of data, sorted by who can read it.</h2>
+        <p class="lead">
+          A plain map of everything BurnBar keeps for you. It's built from the same rules our apps
+          run on, so it can't quietly drift from the truth.
+        </p>
+      </header>
+
+      {
+        domainGroups.map((g) => (
+          <div class="bucket" style={`--tier-c: ${g.tier.colorHex}`}>
+            <div class="bucket__inner">
+              <header class="bucket__head">
+                <TrustTierBadge tier={g.tier} size="lg" />
+                <h3 class="bucket__h">{g.heading}</h3>
+                <p class="bucket__line">{g.tier.serverLine}</p>
+              </header>
+
+              <ul class="bucket__list">
+                {g.domains.map((d) => (
+                  <li class="dom">
+                    <div class="dom__top">
+                      <span class="dom__icon">
+                        <DomainIcon id={d.id} />
+                      </span>
+                      <h4 class="dom__t">{d.title}</h4>
+                    </div>
+                    <p class="dom__b">{d.blurb}</p>
+                    {d.caveat && <p class="dom__note">{d.caveat}</p>}
+                    {d.id === "pensieve" && (
+                      <a class="dom__more" href="#cloak">
+                        How the cloak works <span aria-hidden="true">↓</span>
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <!-- ── The one genuinely hard thing, told straight ──────────────────────── -->
+  <section class="cloak" id="cloak">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--plain">The hard part, in plain words</span>
+        <h2>How the Pensieve cloak works.</h2>
+        <p class="lead">
+          Your notes are sealed on your own devices. To find the right one for your agent, our
+          server works with a scrambled version of each note's “shape” — never the words.
+        </p>
+      </header>
+
+      <div class="cloak__cols">
+        <div class="cloak__col cloak__col--does">
+          <h3 class="cloak__colh">What it hides</h3>
+          <ul class="cloak__list">
+            <li>
+              <strong>The words.</strong> Your notes stay sealed. The server only ever touches scrambled
+              math, not text.
+            </li>
+            <li>
+              <strong>The exact copy.</strong> The same note looks different on every account, so we can't
+              match it across people by an exact copy.
+            </li>
+          </ul>
+        </div>
+
+        <div class="cloak__col cloak__col--doesnt">
+          <h3 class="cloak__colh">What it can still tell</h3>
+          <ul class="cloak__list">
+            <li>
+              <strong>The shape.</strong> It can see which of <em>your</em> notes are alike — clusters
+              and near-duplicates — but never what any of them say.
+            </li>
+            <li>
+              <strong>A rough match.</strong> Across accounts, a near-identical note still scores about
+              <span class="mono">0.77</span> similar — so we could guess two people saved something alike,
+              never what it was.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="cloak__close">
+        We treat that as a known, written-down trade-off. Your content stays private; only the
+        <em>shape</em> can leak — and we say so out loud.
+      </p>
+
+      <a class="btn btn--ghost" href={leakageUrl} target="_blank" rel="noopener noreferrer">
+        Read the full analysis
+      </a>
     </div>
   </section>
 
@@ -192,8 +315,11 @@ import { SITE } from "@data/site";
         <li class="glass-pane">
           <h3>Hermes Remote Relay (paid)</h3>
           <p>
-            Off by default; paid entitlement required to activate. Frames are end-to-end encrypted
-            from OpenBurnBar's perspective — the relay never receives plaintext.
+            Off by default; paid entitlement required to activate. This device-to-device relay
+            seals every frame end-to-end from OpenBurnBar's perspective — the relay never receives
+            plaintext. The separate hosted chat gateway (a bridge to outside chat apps) is a
+            different path: it currently carries readable message text in transit, and its
+            end-to-end migration is committed.
           </p>
         </li>
         <li class="glass-pane">
@@ -255,7 +381,7 @@ import { SITE } from "@data/site";
         </p>
       </div>
       <div class="endcta__ctas">
-        <a class="btn btn--ember" href="/trust">See every data domain</a>
+        <a class="btn btn--ember" href="#data-domains">See every data domain</a>
         <a
           class="btn btn--ghost"
           href={`${SITE.github}/blob/main/docs/PRIVACY.md`}
@@ -483,5 +609,202 @@ import { SITE } from "@data/site";
     gap: var(--s-5);
     justify-items: center;
     padding: var(--s-4) 0;
+  }
+
+  /* ── data-domain inventory (folded in from the trust surface) ──────────── */
+  .domains {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .domains .sec-head {
+    margin-bottom: var(--s-7);
+  }
+  .bucket {
+    --tier-c: var(--text-mute);
+    padding-block: var(--s-6);
+  }
+  .bucket + .bucket {
+    border-top: 1px solid var(--ink-line);
+  }
+  .bucket__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    gap: var(--s-6);
+    align-items: start;
+  }
+  .bucket__head {
+    display: grid;
+    gap: var(--s-3);
+    position: sticky;
+    top: var(--s-6);
+    align-content: start;
+    justify-items: start;
+  }
+  .bucket__h {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    line-height: 1.12;
+    color: var(--text-bright);
+    letter-spacing: -0.02em;
+    max-width: 15ch;
+  }
+  .bucket__line {
+    color: color-mix(in oklab, var(--tier-c) 62%, var(--text-base));
+    font-size: 0.95rem;
+    line-height: 1.55;
+    max-width: 34ch;
+  }
+  .bucket__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-4);
+  }
+  .dom {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    padding: var(--s-5);
+    min-width: 0;
+    border-radius: var(--r-4);
+    background: rgba(12, 12, 18, 0.5);
+    border: 1px solid var(--ink-line);
+    border-left: 2px solid color-mix(in oklab, var(--tier-c) 55%, transparent);
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease);
+  }
+  .dom:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--tier-c) 32%, var(--ink-line));
+  }
+  .dom__top {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .dom__icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--r-3);
+    color: var(--tier-c);
+    background: color-mix(in oklab, var(--tier-c) 12%, rgba(8, 8, 12, 0.6));
+    border: 1px solid color-mix(in oklab, var(--tier-c) 30%, var(--ink-line));
+  }
+  .dom__icon :global(svg) {
+    width: 1.45rem;
+    height: 1.45rem;
+    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--tier-c) 45%, transparent));
+  }
+  .dom__t {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 560;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    min-width: 0;
+  }
+  .dom__b {
+    color: var(--text-base);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .dom__note {
+    margin-top: var(--s-1);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    color: var(--text-mute);
+    padding: var(--s-3);
+    border-radius: var(--r-3);
+    background: color-mix(in oklab, var(--tier-c) 7%, transparent);
+    border: 1px solid color-mix(in oklab, var(--tier-c) 18%, var(--ink-line));
+  }
+  .dom__more {
+    justify-self: start;
+    margin-top: var(--s-1);
+    font-size: 0.85rem;
+    color: var(--tier-c);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--tier-c) 40%, transparent);
+    padding-bottom: 1px;
+  }
+  .dom__more:hover {
+    border-bottom-color: var(--tier-c);
+  }
+
+  /* ── cloak ─────────────────────────────────────────────────────────────── */
+  .cloak {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background: radial-gradient(80% 60% at 50% 0%, rgba(60, 214, 192, 0.05), transparent 70%);
+  }
+  .cloak__cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-4);
+  }
+  .cloak__col {
+    padding: var(--s-5);
+    border-radius: var(--r-4);
+    background: rgba(12, 12, 18, 0.5);
+    border: 1px solid var(--ink-line);
+  }
+  .cloak__col--does {
+    border-top: 2px solid color-mix(in oklab, #3cd6c0 60%, transparent);
+  }
+  .cloak__col--doesnt {
+    border-top: 2px solid color-mix(in oklab, #8b94a8 60%, transparent);
+  }
+  .cloak__colh {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--text-bright);
+    margin-bottom: var(--s-4);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 560;
+  }
+  .cloak__list {
+    display: grid;
+    gap: var(--s-4);
+  }
+  .cloak__list li {
+    color: var(--text-base);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .cloak__list strong {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 560;
+  }
+  .cloak__close {
+    margin-block: var(--s-5);
+    color: var(--text-base);
+    font-size: 1rem;
+    line-height: 1.65;
+    max-width: 58ch;
+  }
+
+  @media (max-width: 920px) {
+    .bucket__inner {
+      grid-template-columns: 1fr;
+      gap: var(--s-5);
+    }
+    .bucket__head {
+      position: static;
+    }
+    .cloak__cols {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 600px) {
+    .bucket__list {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

@@ -122,7 +122,8 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(inputs.last?.displayY, 200)
         XCTAssertEqual(response.result?.succeeded, true)
         XCTAssertNotNil(response.approvalId)
-        XCTAssertEqual(response.auditEntryIndex, 0)
+        // Audit-before-action: reservation (0) + completion (1).
+        XCTAssertEqual(response.auditEntryIndex, 1)
 
         let maybeState = await coordinator.session(sessionId)
         let state = try XCTUnwrap(maybeState)
@@ -241,7 +242,9 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(response.status, .executed)
         XCTAssertNotNil(response.approvalId)
-        XCTAssertEqual(response.auditEntryIndex, 0)
+        // Audit-before-action: a reservation row is written before dispatch,
+        // so the completion entry the response references is index 1.
+        XCTAssertEqual(response.auditEntryIndex, 1)
         XCTAssertNotNil(response.auditHeadHashHex)
         XCTAssertEqual(approvals.requests.count, 1)
         XCTAssertEqual(approvals.requests.first?.toolKind, BurnBarToolKind.browserGoto.rawValue)
@@ -252,8 +255,18 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertNotNil(approvals.requests.first?.beforeScreenshotBlake3)
         XCTAssertEqual(response.result?.succeeded, true)
 
-        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        // Two rows per executed action: the pre-dispatch reservation (index 0,
+        // sentinel denyReason) and the post-dispatch completion (index 1).
+        let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entries.count, 2)
+        let reservation = try XCTUnwrap(entries.first)
+        XCTAssertEqual(reservation.actionKind, "browser.goto")
+        XCTAssertEqual(reservation.entryIndex, 0)
+        XCTAssertEqual(reservation.denyReason, ComputerUseRunCoordinator.auditReservationSentinel)
+        let entry = try lastAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
         XCTAssertEqual(entry.actionKind, "browser.goto")
+        XCTAssertEqual(entry.entryIndex, 1)
+        XCTAssertGreaterThan(entry.entryIndex, reservation.entryIndex)
         XCTAssertEqual(entry.approvedBy, .mac)
         XCTAssertEqual(entry.approvalId, response.approvalId)
         XCTAssertNil(entry.denyReason)
@@ -384,10 +397,16 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(response.denyReason, "rpcTimeout")
         XCTAssertLessThan(elapsed, 10, "ChaosBrowserActionTimeout must fail the action before the 10s plan gate.")
         XCTAssertTrue(approvals.requests.isEmpty)
-        XCTAssertEqual(response.auditEntryIndex, 0)
+        // Audit-before-action: the reservation (index 0) is written before
+        // dispatch; the dispatch failure then appends a completion (index 1).
+        XCTAssertEqual(response.auditEntryIndex, 1)
         XCTAssertNotNil(response.auditHeadHashHex)
 
-        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entries.count, 2)
+        let reservation = try XCTUnwrap(entries.first)
+        XCTAssertEqual(reservation.denyReason, ComputerUseRunCoordinator.auditReservationSentinel)
+        let entry = try lastAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
         XCTAssertEqual(entry.actionKind, "browser.click")
         XCTAssertEqual(entry.approvedBy, .trustedScope)
         XCTAssertEqual(entry.scopeRuleId, allowRule.rawValue)
@@ -429,10 +448,15 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(response.status, .executed)
         XCTAssertNil(response.approvalId)
         XCTAssertTrue(approvals.requests.isEmpty)
-        XCTAssertEqual(response.auditEntryIndex, 0)
+        // Audit-before-action: reservation (0) + completion (1).
+        XCTAssertEqual(response.auditEntryIndex, 1)
         XCTAssertNotNil(response.auditHeadHashHex)
 
-        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entries.count, 2)
+        let reservation = try XCTUnwrap(entries.first)
+        XCTAssertEqual(reservation.denyReason, ComputerUseRunCoordinator.auditReservationSentinel)
+        let entry = try lastAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
         XCTAssertEqual(entry.actionKind, "browser.click")
         XCTAssertEqual(entry.approvedBy, .trustedScope)
         XCTAssertEqual(entry.scopeRuleId, allowRule.rawValue)
@@ -488,13 +512,20 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(approvals.requests.first?.beforeScreenshotMimeType, "image/png")
         XCTAssertNotNil(approvals.requests.first?.beforeScreenshotPNGBase64)
 
+        // Audit-before-action writes a reservation + completion per action,
+        // interleaved (reservation, completion, reservation, completion, ...).
         let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
-        XCTAssertEqual(entries.count, 10)
-        XCTAssertEqual(entries.map(\.entryIndex), Array(0..<10))
+        XCTAssertEqual(entries.count, 20)
+        XCTAssertEqual(entries.map(\.entryIndex), Array(0..<20))
         XCTAssertTrue(entries.allSatisfy { $0.actionKind == "browser.click" })
         XCTAssertTrue(entries.allSatisfy { $0.approvedBy == .mac })
         XCTAssertTrue(entries.allSatisfy { $0.approvalId == approvalId })
-        XCTAssertTrue(entries.allSatisfy { $0.denyReason == nil })
+        let reservations = entries.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
+        let completions = entries.enumerated().filter { !$0.offset.isMultiple(of: 2) }.map(\.element)
+        XCTAssertEqual(reservations.count, 10)
+        XCTAssertEqual(completions.count, 10)
+        XCTAssertTrue(reservations.allSatisfy { $0.denyReason == ComputerUseRunCoordinator.auditReservationSentinel })
+        XCTAssertTrue(completions.allSatisfy { $0.denyReason == nil })
 
         let maybeState = await coordinator.session(sessionId)
         let state = try XCTUnwrap(maybeState)
@@ -708,6 +739,98 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         }
     }
 
+    // MARK: - Audit-before-action (fail-closed reservation)
+
+    func testAuditReservationFailureDoesNotDispatch() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let inputs = MacInputRecorder()
+        let coordinator = makeCoordinator(
+            macInputDispatcher: { _, action in
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .system, trustMode: .trusted)
+        _ = try await coordinator.startSession(manifest: manifest)
+
+        // Make the session's audit directory read-only so the pre-dispatch
+        // reservation append throws. The action must NOT execute.
+        let sessionDirectory = auditBaseDirectory
+            .appendingPathComponent(sessionId.rawValue, isDirectory: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o500))],
+            ofItemAtPath: sessionDirectory.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: NSNumber(value: Int16(0o700))],
+                ofItemAtPath: sessionDirectory.path
+            )
+        }
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
+            scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+            scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("allow-reservation-test")),
+            accessibilityDeny: nil,
+            capability: capability(
+                for: makeState(sessionId: sessionId, manifest: manifest),
+                accessibilityTrusted: true
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.auditFailure.rawValue)
+        XCTAssertEqual(inputs.count, 0, "Dispatch must NOT run when the audit reservation fails.")
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 0)
+        XCTAssertEqual(state.actionsRejected, 1)
+    }
+
+    func testReservationPrecedesDispatchOnChain() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let inputs = MacInputRecorder()
+        let coordinator = makeCoordinator(
+            macInputDispatcher: { _, action in
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .system, trustMode: .trusted)
+        _ = try await coordinator.startSession(manifest: manifest)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
+            scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+            scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("allow-order-test")),
+            accessibilityDeny: nil,
+            capability: capability(
+                for: makeState(sessionId: sessionId, manifest: manifest),
+                accessibilityTrusted: true
+            )
+        )
+
+        XCTAssertEqual(response.status, .executed)
+        XCTAssertEqual(inputs.count, 1)
+
+        // Exactly two chain rows: the pre-dispatch reservation (sentinel
+        // denyReason) at index 0 and the post-dispatch completion at index 1.
+        let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries[0].denyReason, ComputerUseRunCoordinator.auditReservationSentinel)
+        XCTAssertNil(entries[1].denyReason)
+        XCTAssertLessThan(entries[0].entryIndex, entries[1].entryIndex)
+        XCTAssertEqual(response.auditEntryIndex, entries[1].entryIndex)
+    }
+
     // MARK: - Helpers
 
     private func waitForCondition(
@@ -832,6 +955,16 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
     ) throws -> ComputerUseAuditEntry {
         let entries = try auditEntries(baseDirectory: baseDirectory, sessionId: sessionId)
         return try XCTUnwrap(entries.first)
+    }
+
+    /// The completion entry for an executed action — the LAST chain entry,
+    /// written AFTER the fail-closed pre-dispatch reservation row.
+    private func lastAuditEntry(
+        baseDirectory: URL,
+        sessionId: ComputerUseSessionID
+    ) throws -> ComputerUseAuditEntry {
+        let entries = try auditEntries(baseDirectory: baseDirectory, sessionId: sessionId)
+        return try XCTUnwrap(entries.last)
     }
 
     private func auditEntries(

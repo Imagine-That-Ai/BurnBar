@@ -1440,7 +1440,6 @@ private struct HermesSquareLeftColumn: View {
                 title: row.title,
                 preview: [
                     row.provider,
-                    row.projectName,
                     row.snippet
                 ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
@@ -1677,10 +1676,20 @@ struct MercuryLiveDetailView: View {
     let ensureMercuryLive: (String) async -> Void
 
     @State private var coordinator: MediaControlStreamCoordinator?
+    @State private var showCloudStore = false
+
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
+
+    /// Floo (live phone-to-Mac) is a Cloud Pro feature. Until the user is on
+    /// Cloud Pro we present the full-screen unlock veil instead of booting the
+    /// media control stream — no relay session opens, no work is paid for.
+    private var isUnlocked: Bool { (cloudStore?.cloudTier ?? .none).satisfies(.pro) }
 
     var body: some View {
         Group {
-            if let coordinator {
+            if !isUnlocked {
+                lockedVeil
+            } else if let coordinator {
                 MercuryLiveSheet(
                     connectionID: coordinator.connectionID ?? connectionID,
                     peer: peer ?? fallbackPeer(for: coordinator),
@@ -1693,14 +1702,36 @@ struct MercuryLiveDetailView: View {
             }
         }
         .task(id: connectionID) {
+            guard isUnlocked else { return }
             await bootMercuryIfNeeded()
         }
         .onChange(of: isBooting) { _, booting in
-            guard !booting else { return }
+            guard isUnlocked, !booting else { return }
             refreshCoordinator()
         }
         .onChange(of: bootError) { _, _ in
+            guard isUnlocked else { return }
             refreshCoordinator()
+        }
+        .sheet(isPresented: $showCloudStore) {
+            NavigationStack {
+                CloudStoreView(onClose: { showCloudStore = false })
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var lockedVeil: some View {
+        LockedFeatureVeil(
+            feature: GatedFeature.gatedFeature(.floo),
+            priceLine: cloudStore.map { TierPricing.priceLine(for: .pro, store: $0) } ?? nil,
+            action: {
+                Haptics.medium()
+                showCloudStore = true
+            }
+        ) {
+            FlooLiveTeaserBackground()
         }
     }
 
@@ -1770,6 +1801,50 @@ struct MercuryLiveDetailView: View {
             lastSeenAt: Date(),
             capabilities: MercuryPeer.macFallbackCapabilities
         )
+    }
+}
+
+// MARK: - Floo locked teaser
+//
+// A static suggestion of the live Mac mirror behind the feature veil — a
+// glassy "screen" with a soft device frame. Drives no relay session.
+
+private struct FlooLiveTeaserBackground: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            UnifiedDesignSystem.Colors.hermesMercury.opacity(0.18),
+                            UnifiedDesignSystem.Colors.ember.opacity(0.10),
+                            UnifiedDesignSystem.Colors.whimsy.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .aspectRatio(16.0 / 10.0, contentMode: .fit)
+                .overlay(
+                    Image(systemName: "display")
+                        .font(.system(size: 54, weight: .light))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.hermesMercury.opacity(0.35))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.25), lineWidth: 1)
+                )
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(UnifiedDesignSystem.Colors.hermesMercury.opacity(0.12))
+                        .frame(height: 56)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -2051,9 +2126,6 @@ private struct HermesSquareDetailColumn: View {
                         HStack(spacing: 8) {
                             if let provider = row.provider {
                                 Label(provider, systemImage: "cpu")
-                            }
-                            if let project = row.projectName {
-                                Label(project, systemImage: "folder")
                             }
                         }
                         .font(.caption)

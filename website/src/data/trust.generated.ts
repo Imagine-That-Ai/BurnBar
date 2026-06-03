@@ -112,18 +112,21 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "usage_spend",
     "title": "Usage & Spend",
     "tier": "server_readable",
-    "blurb": "Per-session token counts, cost estimates, and provider/model/project telemetry.",
+    "blurb": "Per-session token counts, cost estimates, and provider/model/device telemetry. Project names and budget labels are sealed on-device; the server groups spend only by opaque per-project hashes.",
     "caveat": null,
     "serverSees": [
       "provider",
       "model",
-      "project",
       "device",
       "token counts",
       "cost estimates",
-      "timestamps"
+      "timestamps",
+      "opaque project hashes"
     ],
-    "deviceOnly": []
+    "deviceOnly": [
+      "project names",
+      "budget labels"
+    ]
   },
   {
     "id": "conversations_chat",
@@ -152,12 +155,11 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "session_logs",
     "title": "Searchable Session Logs",
     "tier": "end_to_end",
-    "blurb": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext + plaintext cockpit facets.",
+    "blurb": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes.",
     "caveat": null,
     "serverSees": [
       "provider",
       "model",
-      "project",
       "cost",
       "token counts",
       "timing",
@@ -165,6 +167,7 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
       "opaque token/semantic hashes"
     ],
     "deviceOnly": [
+      "project/path text",
       "title",
       "snippet",
       "body preview",
@@ -176,17 +179,19 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "title": "Pensieve Knowledge",
     "tier": "end_to_end",
     "blurb": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either.",
-    "caveat": null,
+    "caveat": "A connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
     "serverSees": [
       "cloaked 384-dim vectors",
       "sourceKind",
-      "sourceSlug",
+      "opaque keyed slug/dedup hashes",
+      "opaque repo match token",
       "chunk/byte counts",
       "timestamps"
     ],
     "deviceOnly": [
       "chunk text",
       "source paths",
+      "repo names",
       "section/category metadata"
     ]
   },
@@ -211,15 +216,18 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "title": "Connected Devices & Pairings",
     "tier": "server_readable",
     "blurb": "Your paired Macs, phones, and relays and which can talk to your account.",
-    "caveat": null,
+    "caveat": "End-to-end relay frames are sealed and never readable by the server, but the hosted chat gateway currently carries bridged message text the server can read in transit; an end-to-end migration of the gateway is committed.",
     "serverSees": [
       "device ids",
       "pairing metadata",
       "last seen",
-      "relay routing"
+      "relay routing",
+      "hosted chat gateway message text",
+      "hosted chat gateway sender names",
+      "hosted chat gateway attachment file names"
     ],
     "deviceOnly": [
-      "relayed payload contents (sealed per their own domains)"
+      "end-to-end relay frame contents (sealed per their own domains)"
     ]
   },
   {

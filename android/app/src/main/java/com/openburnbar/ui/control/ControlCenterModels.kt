@@ -2,6 +2,10 @@ package com.openburnbar.ui.control
 
 import com.openburnbar.data.domains.DataDomain
 import com.openburnbar.data.domains.DataDomains
+import com.openburnbar.ui.pro.CloudTier
+import com.openburnbar.ui.pro.GatedFeature
+import com.openburnbar.ui.pro.GatedFeatureCatalog
+import com.openburnbar.ui.pro.GatedFeatureID
 import java.util.Locale
 
 /** Member data tier resolved by `getDataDomainUsage` (entitlement-derived). */
@@ -130,3 +134,42 @@ internal fun formatCount(count: Long): String =
         count < MILLION -> String.format(Locale.US, "%.1fk", count / THOUSAND_D)
         else -> String.format(Locale.US, "%.1fM", count / MILLION_D)
     }
+
+// ── Feature-gating bridge (spec §5) ──
+//
+// The control center's data tier (`DataTier`) maps onto the unified gating
+// `CloudTier` ladder so each gated domain row can wear the right `TierLockBadge`
+// and route its tap through the shared `FeatureUnlockSheet`. The gated domains:
+//   pensieve      → Data Vault  (Cloud Pro)
+//   computer_use  → Agent Control (Cloud Pro)
+//   media         → Floo        (Cloud Pro)
+//   external_mcp  → Hosted MCP  (Cloud Pro)
+//   session_logs / conversations_chat → Cloud search / backup (Cloud)
+
+/** Bridge the control surface's [DataTier] onto the unified [CloudTier] ladder. */
+internal fun DataTier.toCloudTier(): CloudTier =
+    when (this) {
+        DataTier.ULTRA -> CloudTier.ULTRA
+        DataTier.PRO -> CloudTier.PRO
+        DataTier.FREE -> CloudTier.NONE
+    }
+
+/**
+ * The [GatedFeature] that fronts a data domain's upsell, or null when the domain
+ * isn't a marquee gated feature (no evocative unlock surface). Drives the
+ * resting [com.openburnbar.ui.pro.TierLockBadge] + the unlock sheet copy.
+ */
+internal fun gatedFeatureForDomain(domainId: String): GatedFeature? =
+    when (domainId) {
+        "pensieve" -> GatedFeatureCatalog.feature(GatedFeatureID.DATA_VAULT)
+        "computer_use" -> GatedFeatureCatalog.feature(GatedFeatureID.AGENT_CONTROL)
+        "media" -> GatedFeatureCatalog.feature(GatedFeatureID.FLOO)
+        "external_mcp" -> GatedFeatureCatalog.feature(GatedFeatureID.HOSTED_MCP)
+        "session_logs" -> GatedFeatureCatalog.feature(GatedFeatureID.CLOUD_SEARCH)
+        "conversations_chat" -> GatedFeatureCatalog.feature(GatedFeatureID.CLOUD_BACKUP)
+        else -> null
+    }
+
+/** The required tier for a gated domain row, derived from its [GatedFeature]. */
+internal fun requiredCloudTierForDomain(domainId: String): CloudTier =
+    gatedFeatureForDomain(domainId)?.requiredTier ?: CloudTier.NONE

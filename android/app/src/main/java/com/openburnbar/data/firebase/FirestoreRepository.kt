@@ -11,6 +11,9 @@ import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.cloud.CloudVaultSealedText
 import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.models.BudgetEvent
 import com.openburnbar.data.models.BudgetRule
@@ -162,12 +165,27 @@ class FirestoreRepository {
         after?.let { query = query.startAfter(it) }
 
         val snapshot = query.limit(pageSize.toLong()).get().await()
-        val list = snapshot.documents.mapNotNull { it.toTokenUsage() }
+        val vaultKey = usageVaultKey()
+        val list = snapshot.documents.mapNotNull { it.toTokenUsage(vaultKey) }
         val lastDoc = if (snapshot.size() < pageSize) null else snapshot.documents.lastOrNull()
         return list to lastDoc
     }
 
+    /**
+     * Resolves the Cloud Vault read key for opening sealed usage/budget project
+     * text. `usage.projectName` and `budgetRules.projectName`/`label` are sealed
+     * (`sealedProjectName`/`sealedLabel`); decoders open them with this key and
+     * fall back to legacy plaintext when the sealed field is absent. A null key
+     * (vault not active on this device) leaves sealed project names unrendered
+     * while legacy plaintext docs still decode.
+     */
+    private suspend fun usageVaultKey(): ByteArray? {
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return null
+        return runCatching { AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = db)?.keyData }.getOrNull()
+    }
+
     fun listenToUsagePage(pageSize: Int = 25): Flow<List<TokenUsage>> = callbackFlow {
+        val vaultKey = usageVaultKey()
         val listener =
             usageCollection
                 .orderBy("startTime", Query.Direction.DESCENDING)
@@ -177,7 +195,7 @@ class FirestoreRepository {
                         close(error)
                         return@addSnapshotListener
                     }
-                    trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage() } ?: emptyList())
+                    trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage(vaultKey) } ?: emptyList())
                 }
         awaitClose { listener.remove() }
     }
@@ -189,6 +207,7 @@ class FirestoreRepository {
         // documents, surfacing as empty Pulse live data for 1M / 1H / 1D.
         // End time is the live attribution field: some gateway/session rows
         // keep their start time fixed while token totals continue advancing.
+        val vaultKey = usageVaultKey()
         val listener =
             usageCollection
                 .whereGreaterThanOrEqualTo("endTime", Timestamp(Date(startDate)))
@@ -198,7 +217,7 @@ class FirestoreRepository {
                         close(error)
                         return@addSnapshotListener
                     }
-                    trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage() } ?: emptyList())
+                    trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage(vaultKey) } ?: emptyList())
                 }
         awaitClose { listener.remove() }
     }
@@ -367,7 +386,7 @@ private fun DocumentSnapshot.toModelBenchmarkSummary(): InsightDigest.ModelBench
 
 // ── Document parsers ──
 
-private fun DocumentSnapshot.toTokenUsage(): TokenUsage? {
+private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null): TokenUsage? {
     val data = data ?: return null
     val startMillis = FirestoreValueParsers.millis(data["startTime"])
     val endMillis = FirestoreValueParsers.millis(data["endTime"])
@@ -399,7 +418,11 @@ private fun DocumentSnapshot.toTokenUsage(): TokenUsage? {
         provenanceConfidence = data["provenanceConfidence"] as? String,
         provenanceMethod = data["provenanceMethod"] as? String,
         userDisplayId = data["user_display_id"] as? String,
-        projectName = FirestoreValueParsers.string(data, "projectName", "project_name"),
+        // Sealed-first: open `sealedProjectName` (CloudVaultSealedText), then fall
+        // back to legacy plaintext `projectName`/`project_name` for in-flight docs.
+        projectName =
+            CloudVaultSealedTextCodec.open(data["sealedProjectName"], vaultKey)
+                ?: FirestoreValueParsers.string(data, "projectName", "project_name"),
         timestamp = timestampMillis,
         startTime = startMillis,
         endTime = endMillis,
@@ -502,28 +525,68 @@ private fun DocumentSnapshot.toProjectSummary(): ProjectSummary? {
     )
 }
 
-fun BudgetRule.toMap(): Map<String, Any?> {
-    return mapOf(
-        "id" to id,
-        "scope" to scope,
-        "identifier" to identifier,
-        "providerID" to providerID,
-        "accountID" to accountID,
-        "projectName" to projectName,
-        "label" to label,
-        "amountUSD" to amountUSD,
-        "period" to period,
-        "behavior" to behavior,
-        "fallbackCredentialIDsJSON" to fallbackCredentialIDsJSON,
-        "pausedUntil" to pausedUntil?.let { com.google.firebase.Timestamp(it) },
-        "createdAt" to (createdAt?.let { com.google.firebase.Timestamp(it) } ?: com.google.firebase.firestore.FieldValue.serverTimestamp()),
-        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-        "sourceDeviceID" to sourceDeviceID,
-        "isEnabled" to isEnabled,
-    )
+/**
+ * Serializes a [BudgetRule] for `users/{uid}/budgetRules/{id}`. The private
+ * project name + label are SEALED, never written plaintext: `projectName` →
+ * `sealedProjectName`, `label` → `sealedLabel` (both `CloudVaultSealedText`
+ * envelopes), plus an opaque `projectKeyHash` (keyed HMAC trapdoor) so rules can
+ * be grouped by project across peers without decrypt. Reuses the existing
+ * `CloudVaultCrypto` primitives — same shape as Mac/iOS writers.
+ *
+ * Suspends to resolve the Cloud Vault write key. The existing zero-arg call
+ * sites (`FirestoreBudgetRepository.uploadBudgetRule`/`uploadBudgetRules`) run in
+ * a suspend context, so they pick up the seal with no change. If the vault key
+ * is unavailable (device not yet approved), this throws — the same posture as
+ * every other Android sealed writer (`keyForWriting`).
+ */
+suspend fun BudgetRule.toMap(
+    firestore: FirebaseFirestore = Firebase.firestore,
+    uid: String? = null,
+): Map<String, Any?> {
+    val resolvedUid = uid ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+    val resolvedKey =
+        resolvedUid?.let { AndroidCloudVaultKeyAccess.keyForWriting(uid = it, firestore = firestore) }
+
+    val map =
+        mutableMapOf<String, Any?>(
+            "id" to id,
+            "scope" to scope,
+            "identifier" to identifier,
+            "providerID" to providerID,
+            "accountID" to accountID,
+            "amountUSD" to amountUSD,
+            "period" to period,
+            "behavior" to behavior,
+            "fallbackCredentialIDsJSON" to fallbackCredentialIDsJSON,
+            "pausedUntil" to pausedUntil?.let { com.google.firebase.Timestamp(it) },
+            "createdAt" to (createdAt?.let { com.google.firebase.Timestamp(it) } ?: com.google.firebase.firestore.FieldValue.serverTimestamp()),
+            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+            "sourceDeviceID" to sourceDeviceID,
+            "isEnabled" to isEnabled,
+        )
+
+    val key = resolvedKey?.keyData
+    if (key != null) {
+        projectName?.takeIf { it.isNotEmpty() }?.let { name ->
+            map["sealedProjectName"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(name, key))
+            CloudVaultSealedTextCodec.projectKeyHash(name, key)?.let { map["projectKeyHash"] = it }
+        }
+        label?.takeIf { it.isNotEmpty() }?.let { value ->
+            map["sealedLabel"] = CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(value, key))
+        }
+        // Defensively strip any legacy plaintext that a prior client wrote.
+        map["projectName"] = com.google.firebase.firestore.FieldValue.delete()
+        map["label"] = com.google.firebase.firestore.FieldValue.delete()
+    } else {
+        // No vault key on this device — keep legacy plaintext so the rule still
+        // syncs; a key-holding peer re-seals it on its next write.
+        map["projectName"] = projectName
+        map["label"] = label
+    }
+    return map
 }
 
-fun DocumentSnapshot.toBudgetRule(): BudgetRule? {
+fun DocumentSnapshot.toBudgetRule(vaultKey: ByteArray? = null): BudgetRule? {
     val data = data ?: return null
     val pausedUntilTimestamp = data["pausedUntil"] as? com.google.firebase.Timestamp
     val createdAtTimestamp = data["createdAt"] as? com.google.firebase.Timestamp
@@ -536,8 +599,13 @@ fun DocumentSnapshot.toBudgetRule(): BudgetRule? {
         identifier = data["identifier"] as? String,
         providerID = data["providerID"] as? String,
         accountID = data["accountID"] as? String,
-        projectName = data["projectName"] as? String,
-        label = data["label"] as? String,
+        // Sealed-first with legacy plaintext fallback for in-flight docs.
+        projectName =
+            CloudVaultSealedTextCodec.open(data["sealedProjectName"], vaultKey)
+                ?: data["projectName"] as? String,
+        label =
+            CloudVaultSealedTextCodec.open(data["sealedLabel"], vaultKey)
+                ?: data["label"] as? String,
         amountUSD = (data["amountUSD"] as? Number)?.toDouble() ?: 0.0,
         period = data["period"] as? String ?: "",
         behavior = data["behavior"] as? String ?: "",
@@ -549,6 +617,57 @@ fun DocumentSnapshot.toBudgetRule(): BudgetRule? {
         sourceDeviceID = data["sourceDeviceID"] as? String,
         isEnabled = data["isEnabled"] as? Boolean ?: true,
     )
+}
+
+/**
+ * Wire codec for `CloudVaultSealedText` envelopes used by sealed usage/budget
+ * project text. Mirrors the canonical shape produced everywhere else
+ * (`{algorithm,keyVersion,nonce,ciphertext,tag}`) and validated server-side by
+ * `requireSealedText`. `open` returns null on any malformed/absent/undecodable
+ * envelope so callers cleanly fall back to legacy plaintext.
+ */
+internal object CloudVaultSealedTextCodec {
+    fun toMap(envelope: CloudVaultSealedText): Map<String, Any> =
+        mapOf(
+            "algorithm" to envelope.algorithm,
+            "keyVersion" to envelope.keyVersion,
+            "nonce" to envelope.nonce,
+            "ciphertext" to envelope.ciphertext,
+            "tag" to envelope.tag,
+        )
+
+    fun fromMap(raw: Map<*, *>?): CloudVaultSealedText? {
+        if (raw == null) return null
+        val nonce = raw["nonce"] as? String ?: return null
+        val ciphertext = raw["ciphertext"] as? String ?: return null
+        val tag = raw["tag"] as? String ?: return null
+        return CloudVaultSealedText(
+            algorithm = raw["algorithm"] as? String ?: "AES-256-GCM",
+            keyVersion = (raw["keyVersion"] as? Number)?.toInt() ?: 1,
+            nonce = nonce,
+            ciphertext = ciphertext,
+            tag = tag,
+        )
+    }
+
+    fun open(raw: Any?, vaultKey: ByteArray?): String? {
+        val key = vaultKey ?: return null
+        val envelope = fromMap(raw as? Map<*, *>) ?: return null
+        return runCatching { CloudVaultCrypto.openText(envelope, key) }.getOrNull()
+    }
+
+    /**
+     * Opaque, deterministic group-by token for a project name: keyed HMAC-SHA256
+     * trapdoor (16-byte/32-hex) under the Cloud Vault search key. Normalizes the
+     * name to a single alphanumeric token first so the result is one stable hash
+     * cross-platform (Swift/Kotlin/web feed the same normalized string to
+     * `tokenHashes`). Returns null for an empty normalization.
+     */
+    fun projectKeyHash(projectName: String, vaultKey: ByteArray): String? {
+        val normalized = projectName.lowercase().filter { it.isLetterOrDigit() }
+        if (normalized.isEmpty()) return null
+        return CloudVaultCrypto.tokenHashes(normalized, vaultKey, limit = 1).firstOrNull()
+    }
 }
 
 fun BudgetEvent.toMap(): Map<String, Any?> {

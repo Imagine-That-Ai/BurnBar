@@ -30,9 +30,23 @@ export interface DomainUsage {
   count: number;
   bytes: number;
 }
+export interface CloudProfileSummary {
+  state: "published" | "missing";
+  displayName?: string;
+  avatarURL?: string;
+  sourceDeviceId?: string;
+  updatedAt?: string;
+}
+export interface ConsoleAccountSummary {
+  profile: CloudProfileSummary;
+  hasPublishedData: boolean;
+  totalCount: number;
+  totalBytes: number;
+}
 export interface DataDomainUsageResponse {
   ok: boolean;
   tier: "ultra" | "pro" | "free";
+  account?: ConsoleAccountSummary;
   limits: { pensieve: PensieveLimits };
   domains: DomainUsage[];
   schemaVersion: 1;

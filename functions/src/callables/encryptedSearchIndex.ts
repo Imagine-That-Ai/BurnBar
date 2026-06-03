@@ -7,7 +7,6 @@ export interface CloudSearchPostingSource {
   sourceKind: string;
   sourceID: string;
   provider?: string;
-  projectName?: string;
   ordinal: number;
   bodyHash: string;
   storagePath: string;
@@ -54,7 +53,6 @@ export function buildCloudSearchPostingEdges(params: {
           sourceKind: params.source.sourceKind,
           sourceID: params.source.sourceID,
           provider: params.source.provider,
-          projectName: params.source.projectName,
           ordinal: params.source.ordinal,
           bodyHash: params.source.bodyHash,
           storagePath: params.source.storagePath,

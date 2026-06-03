@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { DATA_DOMAINS, type DataDomain } from "@/lib/domains";
 import { usageById } from "@/lib/useDomainUsage";
 import type { DataDomainUsageResponse } from "@/lib/api";
+import { TierGlyph } from "./TierGlyph";
 
 /**
  * Privacy posture — the member's data footprint as an editorial hairline bar,
@@ -15,24 +16,33 @@ type Tier = DataDomain["encryptionTier"];
 
 const TIER_ORDER: Tier[] = ["end_to_end", "zero_access", "server_readable"];
 
-const TIER_META: Record<Tier, { label: string; note: string; ink: string; dot: string }> = {
+const TIER_META: Record<
+  Tier,
+  { label: string; note: string; ink: string; dot: string; glyph: "shield" | "lock" | "eye"; colorVar: string }
+> = {
   end_to_end: {
     label: "End-to-end",
     note: "Sealed on your devices. We never see the contents or the key.",
     ink: "var(--color-tier-end-to-end)",
     dot: "var(--tier-e2e-dot)",
+    glyph: "shield",
+    colorVar: "--tier-e2e-dot",
   },
   zero_access: {
     label: "Zero-access",
     note: "Encrypted at rest under a key only your trusted devices hold.",
     ink: "var(--color-tier-zero-access)",
     dot: "var(--tier-zero-dot)",
+    glyph: "lock",
+    colorVar: "--tier-zero-dot",
   },
   server_readable: {
     label: "Server-readable",
     note: "Operational metadata we can read — telemetry, billing, the device mirror.",
     ink: "var(--color-tier-server-readable)",
     dot: "var(--tier-srv-dot)",
+    glyph: "eye",
+    colorVar: "--tier-srv-dot",
   },
 };
 
@@ -61,7 +71,7 @@ export function PrivacyPosture({ usage }: { usage: DataDomainUsageResponse | nul
       </div>
 
       <div
-        className="mt-token-4 flex h-3 w-full"
+        className="spine-wrap mt-token-4 flex h-3 w-full"
         role="img"
         aria-label="Share of your data domains at each encryption tier."
       >
@@ -86,17 +96,19 @@ export function PrivacyPosture({ usage }: { usage: DataDomainUsageResponse | nul
         {TIER_ORDER.map((t) => {
           const m = TIER_META[t];
           return (
-            <div key={t}>
-              <div className="flex items-center gap-token-2">
-                <span className="tier-dot" style={{ background: m.dot }} aria-hidden />
-                <span className="font-display text-sm font-semibold text-content-bright">
-                  {m.label}
-                </span>
-                <span className="font-mono text-xs tabular-nums text-content-dim">
-                  {domainCount[t]}
-                </span>
+            <div key={t} className="flex items-start gap-token-3">
+              <TierGlyph glyph={m.glyph} colorVar={m.colorVar} size={36} label={`${m.label} tier`} />
+              <div>
+                <div className="flex items-center gap-token-2">
+                  <span className="font-display text-sm font-semibold text-content-bright">
+                    {m.label}
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-content-dim">
+                    {domainCount[t]}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm leading-snug text-content-mute">{m.note}</p>
               </div>
-              <p className="mt-1.5 text-sm leading-snug text-content-mute">{m.note}</p>
             </div>
           );
         })}

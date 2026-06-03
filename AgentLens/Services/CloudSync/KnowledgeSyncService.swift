@@ -276,9 +276,13 @@ public final class KnowledgeSyncService: @unchecked Sendable {
     // MARK: - Encoding
 
     /// Encode a prepared batch into the `commitKnowledgeBatch` callable payload.
+    /// Sends the vault-keyed `slugHmac` (opaque filter column) instead of any
+    /// cleartext slug side channel; each vector carries `dedupHash` and NO
+    /// cleartext `contentHash`/`sourcePath` (B-SEC-2).
     public static func encode(_ batch: PensieveKnowledgeBatch) -> [String: Any] {
         [
             "sourceSlug": batch.sourceSlug,
+            "slugHmac": batch.slugHmac,
             "embeddingModelVersion": batch.embeddingModelVersion,
             "vectors": batch.vectors.map(encode(_:)),
         ]
@@ -290,9 +294,8 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             "cloakedVector": vector.cloakedVector,
             "sealedCiphertext": encode(vector.sealedCiphertext),
             "sealedMetadata": encode(vector.sealedMetadata),
-            "contentHash": vector.contentHash,
+            "dedupHash": vector.dedupHash,
             "sourceKind": vector.sourceKind.rawValue,
-            "sourcePath": vector.sourcePath,
             "chunkIndex": vector.chunkIndex,
             "byteCount": vector.byteCount,
         ]

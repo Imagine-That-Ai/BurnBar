@@ -196,7 +196,6 @@ export const commitEncryptedSearchIndexBatch = onCall(
           sourceID: boundedTrimmedString(raw.sourceID, "document.sourceID", 512, true),
           sourceVersionID: boundedTrimmedString(raw.sourceVersionID, "document.sourceVersionID", 512, false),
           provider: boundedTrimmedString(raw.provider, "document.provider", 80, false),
-          projectName: boundedTrimmedString(raw.projectName, "document.projectName", 512, false),
           bodyHash: requireHexDigest(raw.bodyHash, "document.bodyHash"),
           storagePath,
           sealedTitle: requireSealedText(raw.sealedTitle, "document.sealedTitle"),
@@ -249,7 +248,6 @@ export const commitEncryptedSearchIndexBatch = onCall(
           sourceKind: boundedTrimmedString(raw.sourceKind, "chunk.sourceKind", 64, true),
           sourceID: boundedTrimmedString(raw.sourceID, "chunk.sourceID", 512, true),
           provider: boundedTrimmedString(raw.provider, "chunk.provider", 80, false),
-          projectName: boundedTrimmedString(raw.projectName, "chunk.projectName", 512, false),
           ordinal: requireBoundedNumber(raw.ordinal, "chunk.ordinal", 0, 100_000),
           startOffset: requireBoundedNumber(raw.startOffset, "chunk.startOffset", 0, 50_000_000),
           endOffset: requireBoundedNumber(raw.endOffset, "chunk.endOffset", 0, 50_000_000),
@@ -277,7 +275,6 @@ export const commitEncryptedSearchIndexBatch = onCall(
             sourceKind: chunk.sourceKind,
             sourceID: chunk.sourceID,
             provider: chunk.provider,
-            projectName: chunk.projectName,
             ordinal: chunk.ordinal,
             bodyHash: chunk.bodyHash,
             storagePath: chunk.storagePath,
@@ -331,8 +328,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
     "commitEncryptedProjectMemorySnapshot",
     async (
       request: CallableRequest<{
-        projectSlug?: unknown;
-        projectDisplayName?: unknown;
+        docID?: unknown;
         contentHash?: unknown;
         sourceSessionCount?: unknown;
         sourceConversationCount?: unknown;
@@ -347,8 +343,12 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       enforceAuthAndAppCheck(request, uid);
       await assertActiveBurnBarProEntitlement(uid);
 
-      const projectSlug = requiredIdentifier(request.data.projectSlug, "projectSlug");
-      const projectDisplayName = boundedTrimmedString(request.data.projectDisplayName, "projectDisplayName", 240, true);
+      // SEAL + OPAQUE DOC ID (privacy-leak-remediation-2026-06-02 §2). The device
+      // derives an opaque, deterministic `docID` from the project slug under the
+      // vault key (projectMemoryDocID) and keys the doc by it; the plaintext slug
+      // and display name are NO LONGER accepted or persisted — both already live
+      // inside the sealed `sealedSnapshot` blob.
+      const docID = requiredIdentifier(request.data.docID, "docID");
       const contentHash = requireHexDigest(request.data.contentHash, "contentHash");
       const sourceSessionCount = requireBoundedNumber(
         request.data.sourceSessionCount ?? 0,
@@ -372,8 +372,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       const updatedAt = nowISO();
 
       const doc: ProjectMemorySnapshotDoc = {
-        projectSlug,
-        projectDisplayName,
+        docID,
         contentHash,
         sourceSessionCount,
         sourceConversationCount,
@@ -386,16 +385,18 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
           keyVersion: sealedSnapshot.keyVersion,
           envelopeSchemaVersion: sealedSnapshot.schemaVersion,
         },
-        schemaVersion: 1,
+        // schemaVersion 2 fences the new sealed-only rows from legacy
+        // plaintext-slug-keyed rows (privacy-leak-remediation-2026-06-02 §2).
+        schemaVersion: 2,
         updatedAt,
       };
 
       await db
-        .doc(`users/${uid}/project_memory_snapshots/${projectSlug}`)
+        .doc(`users/${uid}/project_memory_snapshots/${docID}`)
         .set(stripUndefinedObject(doc), { merge: true });
       return {
         ok: true,
-        projectSlug,
+        docID,
         contentHash,
         generatedAt,
         updatedAt,
@@ -414,7 +415,7 @@ export const getEncryptedProjectMemorySnapshot = onCall(
     "getEncryptedProjectMemorySnapshot",
     async (
       request: CallableRequest<{
-        projectSlug?: unknown;
+        docID?: unknown;
       }>,
     ) => {
       const uid = request.auth?.uid;
@@ -422,16 +423,18 @@ export const getEncryptedProjectMemorySnapshot = onCall(
       enforceAuthAndAppCheck(request, uid);
       await assertActiveBurnBarProEntitlement(uid);
 
-      const projectSlug = requiredIdentifier(request.data.projectSlug, "projectSlug");
-      const snap = await db.doc(`users/${uid}/project_memory_snapshots/${projectSlug}`).get();
+      // Keyed by the opaque vault-key-derived docID the device sends; the server
+      // never sees the project slug/name (§2). The returned projection carries
+      // only the sealed snapshot + content-free facets — no plaintext name/slug.
+      const docID = requiredIdentifier(request.data.docID, "docID");
+      const snap = await db.doc(`users/${uid}/project_memory_snapshots/${docID}`).get();
       if (!snap.exists) {
         return { snapshot: null };
       }
       const data = snap.data() ?? {};
       return {
         snapshot: stripUndefinedObject({
-          projectSlug: data.projectSlug ?? projectSlug,
-          projectDisplayName: data.projectDisplayName,
+          docID: data.docID ?? docID,
           contentHash: data.contentHash,
           sourceSessionCount: data.sourceSessionCount,
           sourceConversationCount: data.sourceConversationCount,
@@ -475,9 +478,10 @@ export const listEncryptedProjectMemorySnapshots = onCall(
 
       const snapshots = snapshot.docs.map((doc) => {
         const data = doc.data();
+        // Opaque docID only — no plaintext name/slug projection (§2). A client
+        // that needs the display name opens the sealed snapshot on-device.
         return stripUndefinedObject({
-          projectSlug: data.projectSlug ?? doc.id,
-          projectDisplayName: data.projectDisplayName,
+          docID: data.docID ?? doc.id,
           contentHash: data.contentHash,
           sourceSessionCount: data.sourceSessionCount,
           sourceConversationCount: data.sourceConversationCount,
@@ -663,7 +667,6 @@ export const searchEncryptedConversationIndex = onCall(
           sourceKind: item.data.sourceKind,
           sourceID: item.data.sourceID,
           provider: item.data.provider,
-          projectName: docData.projectName ?? item.data.projectName,
           sealedTitle: docData.sealedTitle,
           sealedSnippet: item.data.sealedSnippet,
           sealedBodyPreview: docData.sealedBodyPreview,
@@ -699,11 +702,11 @@ export const searchEncryptedConversationIndex = onCall(
 
 /**
  * Faceted, paginated query over a paid user's encrypted session-log manifests. Filters and sorts
- * run entirely on plaintext cockpit facets (provider, project, model, device, token/cost totals,
- * timing); conversation bodies and titles remain sealed and are returned only as encrypted
- * envelopes the client decrypts with its on-device vault key. Aggregates (count + cost + token
- * sums) are computed with Firestore aggregation when an index is available, and degrade to `null`
- * rather than failing the page when one is missing.
+ * run only on operational cockpit facets (provider, model, device, source, token/cost totals,
+ * timing); project/path/title/body search uses `searchEncryptedConversationIndex` so the client
+ * sends keyed hashes and decrypts result labels locally. Aggregates (count + cost + token sums)
+ * are computed with Firestore aggregation when an index is available, and degrade to `null` rather
+ * than failing the page when one is missing.
  */
 export const queryConversations = onCall(
   {
@@ -717,7 +720,6 @@ export const queryConversations = onCall(
       request: CallableRequest<{
         providers?: unknown;
         models?: unknown;
-        projectName?: unknown;
         deviceId?: unknown;
         sourceType?: unknown;
         dateFrom?: unknown;
@@ -740,7 +742,6 @@ export const queryConversations = onCall(
       // only one `in` clause is allowed per query, so reject the both-multi case with guidance.
       const providers = data.providers == null ? [] : requireBoundedStringArray(data.providers, "providers", 20, 80);
       const models = data.models == null ? [] : requireBoundedStringArray(data.models, "models", 20, 120);
-      const projectName = boundedTrimmedString(data.projectName, "projectName", 512, false);
       const deviceId = boundedTrimmedString(data.deviceId, "deviceId", 200, false);
       const sourceType = boundedTrimmedString(data.sourceType, "sourceType", 80, false);
 
@@ -763,7 +764,6 @@ export const queryConversations = onCall(
         models,
         providerInClause,
         modelInClause,
-        projectName,
         deviceId,
         sourceType,
         dateFrom,

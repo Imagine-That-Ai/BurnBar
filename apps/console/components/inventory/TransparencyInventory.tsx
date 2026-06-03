@@ -2,6 +2,7 @@
 
 import { DomainRow } from "./DomainRow";
 import { DATA_DOMAINS } from "@/lib/domains";
+import { isFirstRunAccount } from "@/lib/accountStatus";
 import { useDomainUsage, usageById } from "@/lib/useDomainUsage";
 
 /**
@@ -34,6 +35,13 @@ export function TransparencyInventory() {
           </button>
         )}
       </header>
+
+      {!loading && isFirstRunAccount(data) && (
+        <div className="border-y border-glass-line bg-mercury-wash px-token-4 py-token-3 text-sm leading-6 text-content-mute">
+          Account ready. No Mac-published BurnBar data exists for this sign-in yet, so every
+          inventory domain is currently empty.
+        </div>
+      )}
 
       <div className="space-y-token-3">
         {DATA_DOMAINS.map((domain) => {

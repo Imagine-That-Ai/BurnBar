@@ -64,12 +64,30 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     /// Register the verified Ed25519 public key for a paired peer.
     /// Source: `users/{uid}/iroh_pairing/{connId}.peerPubKey` after
     /// fingerprint verification in the existing pairing flow.
-    public func registerPeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) {
-        queue.sync { peerPublicKeys[nodeId] = publicKey }
+    ///
+    /// FAIL-CLOSED: a peer in the revocation set is refused — a revoked
+    /// device that reconnects (fresh `controlClassify`) cannot re-admit its
+    /// pubkey and therefore cannot pass `publicKeyForActivePeer`. Returns
+    /// `false` when the registration was refused due to revocation.
+    @discardableResult
+    public func registerPeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
+        queue.sync {
+            if revokedPeerNodeIds.contains(nodeId) { return false }
+            peerPublicKeys[nodeId] = publicKey
+            return true
+        }
     }
 
     public func hasPeer(nodeId: String) -> Bool {
         queue.sync { peerPublicKeys[nodeId] != nil }
+    }
+
+    public func isPeerRevoked(nodeId: String) -> Bool {
+        queue.sync { revokedPeerNodeIds.contains(nodeId) }
+    }
+
+    public func isEscrowDeviceRevoked(deviceId: String) -> Bool {
+        queue.sync { revokedEscrowDeviceIds.contains(deviceId) }
     }
 
     public func deregisterPeer(nodeId: String) {

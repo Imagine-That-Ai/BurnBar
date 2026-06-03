@@ -101,6 +101,89 @@ class HostedQuotaSubscriptionStoreTest {
     }
 
     @Test
+    fun `currentTier resolves Cloud Pro from the Play Cloud Pro SKU`() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        every { mockResult.debugMessage } returns ""
+
+        val proPurchase = mockk<Purchase>()
+        every { proPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { proPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        every { proPurchase.purchaseToken } returns "pro-token"
+        every { proPurchase.purchaseTime } returns VAL_123456789_L
+        every { proPurchase.isAcknowledged } returns true
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(proPurchase))
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "pro-token",
+                productID = HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+            )
+        } returns mapOf("active" to true, "expiresAt" to "2026-06-30T12:00:00Z")
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        store.restorePurchases()
+        advanceUntilIdle()
+
+        assertTrue(store.isActive.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.PRO, store.currentTier.value)
+        assertTrue(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.CLOUD))
+        assertTrue(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.PRO))
+        assertFalse(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.ULTRA))
+    }
+
+    @Test
+    fun `tierForActiveProduct maps every Play SKU and Apple substring`() {
+        // Inactive ⇒ NONE regardless of product.
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.NONE,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(false, HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID),
+        )
+        // Known Android Play SKUs map via role.
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.ULTRA,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID),
+        )
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.PRO,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID),
+        )
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.CLOUD,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, HostedQuotaSubscriptionStore.PRODUCT_ID),
+        )
+        // Cross-platform Apple product IDs classify by substring.
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.ULTRA,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, "com.openburnbar.ultra.monthly"),
+        )
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.PRO,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, "com.openburnbar.promax.cloud.monthly"),
+        )
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.PRO,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, "com.openburnbar.computer-use.monthly"),
+        )
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.CLOUD,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, "com.openburnbar.hostedQuotaSync.cloud.monthly"),
+        )
+        // Active but unlabeled ⇒ at least Cloud (never falsely NONE).
+        assertEquals(
+            com.openburnbar.ui.pro.CloudTier.CLOUD,
+            HostedQuotaSubscriptionStore.tierForActiveProduct(true, null),
+        )
+    }
+
+    @Test
     fun `loadProducts successfully populates details`() = runTest {
         // Arrange
         every { mockBillingClient.isReady } returns true

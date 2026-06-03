@@ -120,6 +120,12 @@ final class SettingsManager {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceSubStoreDidChange),
+            name: .useConstellationBackgroundDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
             name: .enableDesktopWallpaperDidChange,
             object: nil
         )
@@ -302,6 +308,11 @@ final class SettingsManager {
     var useWebsiteBackground: Bool {
         get { _ = appearanceMutationVersion; return appearance.useWebsiteBackground }
         set { appearance.useWebsiteBackground = newValue }
+    }
+
+    var useConstellationBackground: Bool {
+        get { _ = appearanceMutationVersion; return appearance.useConstellationBackground }
+        set { appearance.useConstellationBackground = newValue }
     }
 
     var enableDesktopWallpaper: Bool {

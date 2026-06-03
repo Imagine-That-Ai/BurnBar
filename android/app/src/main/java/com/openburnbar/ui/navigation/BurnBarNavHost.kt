@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.auth.LoginScreen
@@ -117,6 +118,8 @@ fun BurnBarNavHost(
         subscriptionStore.load()
     }
     val isCloudMember by subscriptionStore.isActive.collectAsState()
+    val currentTier by subscriptionStore.currentTier.collectAsState()
+    val proPrice by subscriptionStore.productDetailsByID.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val currentTab =
@@ -143,6 +146,8 @@ fun BurnBarNavHost(
                     isWideScreen = isWideScreen,
                     currentTab = currentTab,
                     isCloudMember = isCloudMember,
+                    currentTier = currentTier,
+                    priceForTier = { tier -> monthlyPriceForTier(proPrice, tier) },
                     userDisplayName = currentUser.displayName,
                     userPhotoUrl = currentUser.photoUrl,
                     chatState = chatState,
@@ -161,4 +166,23 @@ fun BurnBarNavHost(
             )
         }
     }
+}
+
+/**
+ * The live monthly Play price for a tier's unlock CTA, or null when Play prices
+ * haven't loaded (the unlock UI then shows no amount — never a hardcoded dollar
+ * figure). Maps the gating tier to its monthly subscription SKU.
+ */
+private fun monthlyPriceForTier(
+    prices: Map<String, HostedQuotaProductDetails>,
+    tier: com.openburnbar.ui.pro.CloudTier,
+): String? {
+    val productID =
+        when (tier) {
+            com.openburnbar.ui.pro.CloudTier.ULTRA -> HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID
+            com.openburnbar.ui.pro.CloudTier.PRO -> HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID
+            com.openburnbar.ui.pro.CloudTier.CLOUD -> HostedQuotaSubscriptionStore.PRODUCT_ID
+            com.openburnbar.ui.pro.CloudTier.NONE -> return null
+        }
+    return prices[productID]?.formattedPrice
 }

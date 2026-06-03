@@ -20,6 +20,7 @@ object GlobalVisualSettings {
     private const val PREFS_NAME = "global_visual_settings"
     private const val KEY_PREMIUM_SOTA_UX = "usePremiumSOTAUX"
     private const val KEY_WEBSITE_BACKGROUND = "useWebsiteBackground"
+    private const val KEY_BACKGROUND_STYLE = "backgroundStyle"
     private const val KEY_SWARM_SPARKLES = "enableSwarmSparkles"
     private const val KEY_PROVIDER_GLYPHS = "providerGlyphs"
     private const val KEY_EXCLUDE_BRAND_SHAPES = "excludeBrandShapesFromSwarm"
@@ -32,6 +33,10 @@ object GlobalVisualSettings {
 
     // Underlying Compose mutable states to trigger reactive updates globally.
     private val _usePremiumSOTAUX = mutableStateOf(false)
+    private val _backgroundStyle = mutableStateOf(BackgroundStyle.AURORA)
+    // Derived flag kept for back-compat: callers across the app read this to know a
+    // custom dark backdrop is active (so they flip text to white / drop solid fills).
+    // Both swarm and constellation styles paint a dark, content-behind backdrop.
     private val _useWebsiteBackground = mutableStateOf(false)
     private val _enableSwarmSparkles = mutableStateOf(true)
     private val _providerGlyphs = mutableStateOf(AgentProvider.swarmGlyphProviders.toSet())
@@ -42,7 +47,18 @@ object GlobalVisualSettings {
             try {
                 // Safely load initial persisted values if appContext is ready.
                 _usePremiumSOTAUX.value = prefs.getBoolean(KEY_PREMIUM_SOTA_UX, false)
-                _useWebsiteBackground.value = prefs.getBoolean(KEY_WEBSITE_BACKGROUND, false)
+                // Migrate the legacy boolean toggle into the richer style enum: an
+                // explicit style key wins, otherwise fall back to the old boolean.
+                val storedStyle = prefs.getString(KEY_BACKGROUND_STYLE, null)
+                val migratedStyle =
+                    BackgroundStyle.fromKey(storedStyle)
+                        ?: if (prefs.getBoolean(KEY_WEBSITE_BACKGROUND, false)) {
+                            BackgroundStyle.SWARM
+                        } else {
+                            BackgroundStyle.AURORA
+                        }
+                _backgroundStyle.value = migratedStyle
+                _useWebsiteBackground.value = migratedStyle.usesCustomBackdrop
                 _enableSwarmSparkles.value = prefs.getBoolean(KEY_SWARM_SPARKLES, true)
                 _excludeBrandShapesFromSwarm.value = prefs.getBoolean(KEY_EXCLUDE_BRAND_SHAPES, false)
                 GlobalVisualSettingsPalette.loadFromPrefs(prefs)
@@ -62,7 +78,21 @@ object GlobalVisualSettings {
         return _usePremiumSOTAUX
     }
 
-    /** Exposes read-only access to Website Background setting. */
+    /**
+     * Exposes read-only access to the selected background style. AURORA is the
+     * classic gradient/orb backdrop; SWARM is the reconverging token-ember swarm;
+     * DOT_CONSTELLATION is the calm ambient field that resolves one logo at a time.
+     */
+    val backgroundStyle: State<BackgroundStyle> get() {
+        ensureLoaded()
+        return _backgroundStyle
+    }
+
+    /**
+     * Exposes read-only access to the legacy Website Background flag. Derived from
+     * [backgroundStyle]: true whenever a custom dark backdrop (swarm or
+     * constellation) is active, which the app's screens read to switch text/fills.
+     */
     val useWebsiteBackground: State<Boolean> get() {
         ensureLoaded()
         return _useWebsiteBackground
@@ -106,14 +136,34 @@ object GlobalVisualSettings {
         }
     }
 
-    /** Sets the Website Background value and persists it. */
-    fun setWebsiteBackground(value: Boolean) {
+    /** Selects a background style and persists it (keeps the legacy flag in sync). */
+    fun setBackgroundStyle(value: BackgroundStyle) {
         ensureLoaded()
-        _useWebsiteBackground.value = value
+        _backgroundStyle.value = value
+        _useWebsiteBackground.value = value.usesCustomBackdrop
         try {
-            prefs.edit().putBoolean(KEY_WEBSITE_BACKGROUND, value).apply()
+            prefs.edit()
+                .putString(KEY_BACKGROUND_STYLE, value.key)
+                // Mirror into the legacy boolean so older reads/migrations stay coherent.
+                .putBoolean(KEY_WEBSITE_BACKGROUND, value.usesCustomBackdrop)
+                .apply()
         } catch (_: Throwable) {
         }
+    }
+
+    /**
+     * Sets the legacy Website Background value and persists it. Retained for
+     * back-compat: maps the boolean onto the style enum (SWARM ↔ AURORA) while
+     * preserving the constellation choice when toggling off from it.
+     */
+    fun setWebsiteBackground(value: Boolean) {
+        ensureLoaded()
+        val next =
+            when {
+                value -> if (_backgroundStyle.value.usesCustomBackdrop) _backgroundStyle.value else BackgroundStyle.SWARM
+                else -> BackgroundStyle.AURORA
+            }
+        setBackgroundStyle(next)
     }
 
     /** Sets the Swarm Sparkles value and persists it. */
@@ -167,6 +217,10 @@ object GlobalVisualSettings {
 @Composable
 fun rememberPremiumSOTAUX(): State<Boolean> = remember { GlobalVisualSettings.usePremiumSOTAUX }
 
+/** Composable shorthand helper to observe the selected background style. */
+@Composable
+fun rememberBackgroundStyle(): State<BackgroundStyle> = remember { GlobalVisualSettings.backgroundStyle }
+
 /** Composable shorthand helper to observe global Website Background setting. */
 @Composable
 fun rememberWebsiteBackground(): State<Boolean> = remember { GlobalVisualSettings.useWebsiteBackground }
@@ -187,6 +241,25 @@ fun rememberUIMode(): State<UIMode> = remember { GlobalVisualSettingsUIMode.uiMo
 
 @Composable
 fun rememberProviderGlyphs(): State<Set<AgentProvider>> = remember { GlobalVisualSettings.providerGlyphs }
+
+/**
+ * The selectable ambient background styles. [usesCustomBackdrop] marks the styles
+ * that paint a custom dark, content-behind backdrop — the app reads this (via the
+ * legacy `useWebsiteBackground` flag) to switch text/fills to high-contrast.
+ */
+enum class BackgroundStyle(val key: String, val displayName: String, val usesCustomBackdrop: Boolean) {
+    AURORA("aurora", "Aurora", false),
+    SWARM("swarm", "Swarm", true),
+    DOT_CONSTELLATION("constellation", "Constellation", true),
+    ;
+
+    companion object {
+        fun fromKey(key: String?): BackgroundStyle? {
+            if (key.isNullOrBlank()) return null
+            return entries.find { it.key == key }
+        }
+    }
+}
 
 enum class AppThemePalette(val displayName: String) {
     System("System"),
