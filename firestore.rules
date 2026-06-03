@@ -892,8 +892,63 @@ service cloud.firestore {
     }
 
     match /users/{userId}/conversations/{conversationId} {
+      function validConversationMirror() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "deviceId",
+          "provider",
+          "sessionId",
+          "messageCount",
+          "userWordCount",
+          "assistantWordCount",
+          "startTime",
+          "endTime",
+          "updatedAt",
+          "sourceType",
+          "version",
+          "deletedAt",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload"
+        ])
+        && !request.resource.data.keys().hasAny([
+          "projectName",
+          "keyFiles",
+          "keyCommands",
+          "keyTools",
+          "inferredTaskTitle",
+          "lastAssistantMessage",
+          "workingDirectory",
+          "summary",
+          "summaryTitle",
+          "summaryProvider",
+          "summaryModel"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id.size() <= 512
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() <= 160
+        && request.resource.data.provider is string
+        && request.resource.data.provider.size() <= 80
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() <= 512
+        && request.resource.data.messageCount is int
+        && request.resource.data.messageCount >= 0
+        && request.resource.data.messageCount <= 200000
+        && request.resource.data.userWordCount is int
+        && request.resource.data.userWordCount >= 0
+        && request.resource.data.assistantWordCount is int
+        && request.resource.data.assistantWordCount >= 0
+        && (!("sourceType" in request.resource.data) || request.resource.data.sourceType is string)
+        && (!("version" in request.resource.data) || request.resource.data.version is int)
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 1
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload);
+      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && validConversationMirror();
       allow delete: if false;
     }
 

@@ -39,8 +39,8 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "conversations_chat", title: "Conversations & Chat", icon: "bubble.left.and.bubble.right.fill",
-            encryptionTier: .serverReadable, summary: "Assistant chats, CLI agent transcripts, and saved text snippets mirrored across your devices. NOTE: the cross-device mirror (mobile_assistant_chats, cli_sessions) stores text the server can read; only chat_threads bodies are sealed when encrypted cloud backup is on. Labeled server-readable for honesty — sealing these at rest is a tracked hardening.",
-            serverSees: ["assistant + CLI conversation text (mirror)", "thread metadata", "timestamps", "device"], deviceOnly: ["chat_threads bodies when encrypted cloud backup is enabled"],
+            encryptionTier: .endToEnd, summary: "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, and conversation recall metadata are sealed on-device before Firestore receives them.",
+            serverSees: ["provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids"], deviceOnly: ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "saved text snippets", "project/file/command labels"],
             firestorePaths: ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets"], storagePaths: [],
             countSource: "chat_threads", byteSource: nil,
             retention: "until_deleted", actions: ["view", "export", "delete"],

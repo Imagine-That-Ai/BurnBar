@@ -117,6 +117,93 @@ async function seedHostedComputerUseEntitlement(
   });
 }
 
+const TEST_VAULT_KEY_ID = `v1_${"a".repeat(32)}`;
+
+function sealedPayload(vaultKeyID = TEST_VAULT_KEY_ID, sealedBoxBase64 = "c2VhbGVk") {
+  return {
+    schemaVersion: 1,
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    vaultKeyID,
+    sealedBoxBase64,
+  };
+}
+
+async function seedCloudVaultState(uid, vaultKeyID = TEST_VAULT_KEY_ID) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/cloud_vault_state/current`), {
+      uid,
+      vaultKeyID,
+      keyVersion: 1,
+      algorithm: "AES-256-GCM",
+      status: "active",
+      createdByDeviceId: "test-device",
+      createdAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
+      updatedAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
+      schemaVersion: 1,
+    });
+  });
+}
+
+function sealedChatThreadPatch(overrides = {}) {
+  return {
+    contentIncluded: true,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    ...overrides,
+  };
+}
+
+function sealedMissionBase(id, overrides = {}) {
+  return {
+    id,
+    missionKind: "debt",
+    requestedRuntime: "auto",
+    depth: "standard",
+    approvalMode: "existing_policy",
+    commandsAllowed: false,
+    fileEditsAllowed: false,
+    source: "ios-insights",
+    status: "pending",
+    createdAt: "2026-05-13T00:00:00.000Z",
+    updatedAt: serverTimestamp(),
+    schemaVersion: 2,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    ...overrides,
+  };
+}
+
+function sealedMissionEvent(overrides = {}) {
+  return {
+    sequence: 1,
+    timestamp: "2026-05-13T00:00:00.000Z",
+    kind: "status",
+    phase: "queued",
+    source: "ios",
+    isError: false,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    ...overrides,
+  };
+}
+
+function sealedMissionStatePatch(overrides = {}) {
+  return {
+    contentSealed: true,
+    sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl"),
+    sealedStateSchemaVersion: 1,
+    sealedStateVaultKeyID: TEST_VAULT_KEY_ID,
+    ...overrides,
+  };
+}
+
 function authedDb(uid) {
   return testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
 }
@@ -650,15 +737,24 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
   );
 
   await seedHostedCloudEntitlement("alice");
+  await seedCloudVaultState("alice");
 
   await assertSucceeds(
     setDoc(
       doc(freeDb, threadPath),
+      sealedChatThreadPatch({
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+
+  await assertFails(
+    setDoc(
+      doc(freeDb, threadPath),
       {
-        contentIncluded: true,
+        ...sealedChatThreadPatch(),
         title: "private plan",
-        preview: "private preview",
-        messages: [{ id: "m1", role: "user", content: "secret prompt" }],
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -758,107 +854,44 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   const phoneDb = authedDb("ivy");
   const otherDb = authedDb("mallory");
   const requestPath = "users/ivy/cli_agent_mission_requests/mission-1";
+  await seedCloudVaultState("ivy");
 
   await assertSucceeds(
-    setDoc(doc(phoneDb, requestPath), {
-      id: "mission-1",
-      title: "Debt Mission",
-      prompt: "Find the highest-leverage technical debt mission from the current Insights brief.",
-      missionKind: "debt",
-      requestedRuntime: "auto",
-      targetProject: "",
-      depth: "standard",
-      approvalMode: "existing_policy",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
-      source: "ios-insights",
-      status: "pending",
-      liveSummary: "Mission queued from this device.",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1"))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Mission queued from this device.",
-      source: "ios",
-      isError: false,
-    })
+    setDoc(doc(phoneDb, `${requestPath}/events/000001`), sealedMissionEvent())
   );
   const androidRequestPath = "users/ivy/cli_agent_mission_requests/mission-android";
   await assertSucceeds(
-    setDoc(doc(phoneDb, androidRequestPath), {
-      id: "mission-android",
-      title: "Android Mission",
-      prompt: "Launch a mobile mission from Android.",
+    setDoc(doc(phoneDb, androidRequestPath), sealedMissionBase("mission-android", {
       missionKind: "custom",
       requestedRuntime: "opencode",
-      targetProject: "",
       depth: "light",
       approvalMode: "read_only",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
       source: "android-insights",
-      status: "pending",
-      liveSummary: "Mission queued from this Android device.",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Mission queued from this Android device.",
+    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), sealedMissionEvent({
       source: "android",
-      isError: false,
-    })
+    }))
   );
   const chatRequestPath = "users/ivy/cli_agent_mission_requests/chat-ios";
   await assertSucceeds(
-    setDoc(doc(phoneDb, chatRequestPath), {
-      id: "chat-ios",
-      title: "New Codex chat",
-      prompt: "Start a normal mobile chat.",
+    setDoc(doc(phoneDb, chatRequestPath), sealedMissionBase("chat-ios", {
       missionKind: "chat",
       requestedRuntime: "codex",
       requestedModelID: "gpt-5.5",
-      targetProject: "",
-      depth: "standard",
-      approvalMode: "existing_policy",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
       source: "ios-chat",
-      status: "pending",
-      liveSummary: "Chat queued from this device.",
       clientThreadID: "mobile-thread-1",
       resumeAction: "new",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Chat queued from this device.",
+    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), sealedMissionEvent({
       source: "ios-chat",
-      isError: false,
-    })
+    }))
   );
   await assertFails(
     setDoc(doc(phoneDb, `${androidRequestPath}/events/000002`), {
@@ -1079,119 +1112,82 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   );
   const lifecyclePath = "users/ivy/cli_agent_mission_requests/mission-lifecycle";
   await assertSucceeds(
-    setDoc(doc(phoneDb, lifecyclePath), {
-      id: "mission-lifecycle",
-      title: "Lifecycle Mission",
-      prompt: "Exercise accepted, starting, and running lifecycle states.",
+    setDoc(doc(phoneDb, lifecyclePath), sealedMissionBase("mission-lifecycle", {
       missionKind: "custom",
       requestedRuntime: "codex",
-      targetProject: "",
-      depth: "standard",
       approvalMode: "read_only",
-      commandsAllowed: false,
-      fileEditsAllowed: false,
-      source: "ios-insights",
-      status: "pending",
-      liveSummary: "Mission queued from this device.",
-      createdAt: "2026-05-13T00:00:00.000Z",
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), {
-      sequence: 1,
-      timestamp: "2026-05-13T00:00:00.000Z",
-      kind: "status",
-      phase: "queued",
-      title: "Queued",
-      message: "Mission queued from this device.",
-      source: "ios",
-      isError: false,
-    })
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), sealedMissionEvent())
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      {
+      sealedMissionStatePatch({
         status: "accepted",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
         selectedModelID: "gpt-5.5",
-        liveSummary: "Codex claimed the mission on this Mac.",
         startedAt: "2026-05-13T00:00:01.000Z",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), {
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), sealedMissionEvent({
       sequence: 2,
       timestamp: "2026-05-13T00:00:01.000Z",
-      kind: "status",
       phase: "accepted",
-      title: "Accepted",
-      message: "Codex claimed the mission on this Mac.",
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      {
+      sealedMissionStatePatch({
         status: "starting",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
-        liveSummary: "Starting Codex with the mission prompt.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), {
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), sealedMissionEvent({
       sequence: 3,
       timestamp: "2026-05-13T00:00:02.000Z",
-      kind: "status",
       phase: "starting",
-      title: "Starting",
-      message: "Starting Codex with the mission prompt.",
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      {
+      sealedMissionStatePatch({
         status: "running",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
-        liveSummary: "Codex is running on this Mac.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), {
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), sealedMissionEvent({
       sequence: 4,
       timestamp: "2026-05-13T00:00:03.000Z",
-      kind: "status",
       phase: "running",
-      title: "Running",
-      message: "Codex is running on this Mac.",
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
   await assertSucceeds(
     setDoc(doc(phoneDb, "users/ivy/escrow_devices/mac-pending"), {
@@ -1329,38 +1325,30 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      {
+      sealedMissionStatePatch({
         status: "waiting_for_approval",
         claimedBy: "mac-1",
         approvalRequestId: "approval-1",
         approvalStatus: "pending",
         approvalRequestedAt: "2026-05-13T00:00:03.500Z",
-        approvalTitle: "Approve Debt Mission",
-        approvalMessage: "Codex is waiting for approval before commands.",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
-        liveSummary: "Codex is waiting for approval before commands.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000002`), {
+    setDoc(doc(phoneDb, `${requestPath}/events/000002`), sealedMissionEvent({
       sequence: 2,
       timestamp: "2026-05-13T00:00:03.000Z",
       kind: "tool_call",
       phase: "tool_use",
-      title: "Read",
-      message: "Read: AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
-      fullMessage: "Read: AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift\n\n{\"offset\":1,\"limit\":120}",
       messageLength: 96,
       messageTruncated: false,
       runtime: "codex",
       source: "mac",
-      toolName: "Read",
-      isError: false,
-    })
+    }))
   );
   await assertFails(
     setDoc(
@@ -1376,12 +1364,11 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      {
+      sealedMissionStatePatch({
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
-        liveSummary: "Approval granted from mobile. Waiting for the Mac to resume.",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
@@ -1402,35 +1389,29 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      {
+      sealedMissionStatePatch({
         status: "completed",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
         sessionId: "thread-1",
-        liveSummary: "Codex returned a result.",
-        resultPreview: "Prioritized debt mission with validation commands.",
         completedAt: "2026-05-13T00:00:05.000Z",
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000003`), {
+    setDoc(doc(phoneDb, `${requestPath}/events/000003`), sealedMissionEvent({
       sequence: 3,
       timestamp: "2026-05-13T00:00:05.000Z",
       kind: "final_answer",
       phase: "completed",
-      title: "Completed",
-      message: "Prioritized debt mission with validation commands.",
-      fullMessage: "Prioritized debt mission with validation commands.\n\nValidation:\n- xcodebuild test\n- ./gradlew test",
       messageLength: 95,
       messageTruncated: false,
       runtime: "codex",
       source: "mac",
-      isError: false,
-    })
+    }))
   );
 
   await assertFails(getDoc(doc(otherDb, requestPath)));
@@ -1454,28 +1435,22 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
   const macDb = authedDb("jules");
   const otherDb = authedDb("mallory");
   const sessionPath = "users/jules/cli_sessions/thread-1";
+  await seedCloudVaultState("jules");
 
   await assertSucceeds(
     setDoc(doc(macDb, sessionPath), {
       id: "thread-1",
       agent: "claude",
-      title: "Diligence Mission",
-      preview: "Security and launch-readiness findings",
-      modelName: "claude-code",
-      workspaceLabel: "BurnBar",
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: "2026-05-13T00:00:03.000Z",
       schemaVersion: 1,
-      messages: [
-        {
-          id: "m1",
-          role: "assistant",
-          text: "Found one launch-readiness issue.",
-          timestamp: "2026-05-13T00:00:03.000Z",
-          isError: false,
-          toolUses: [],
-        },
-      ],
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedPayload: sealedPayload(),
+      messageCount: 1,
+      lastMessageRole: "assistant",
+      lastAssistantMessageID: "m1",
     })
   );
 
@@ -1485,26 +1460,40 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
     setDoc(doc(macDb, "users/jules/cli_sessions/thread-2"), {
       id: "thread-2",
       agent: "unknown",
-      title: "Unsupported",
-      preview: "Unsupported agent",
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: "2026-05-13T00:00:03.000Z",
       schemaVersion: 1,
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedPayload: sealedPayload(),
     })
   );
 });
 
 test("conversation and session-log backup require hosted cloud entitlement", async () => {
   const db = authedDb("carol");
+  await seedCloudVaultState("carol");
+
+  const sealedConversationDoc = {
+    id: "conv",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    messageCount: 1,
+    userWordCount: 10,
+    assistantWordCount: 20,
+    updatedAt: serverTimestamp(),
+    sourceType: "provider_log",
+    version: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
 
   await assertFails(
-    setDoc(doc(db, "users/carol/conversations/device_conv"), {
-      id: "conv",
-      deviceId: "device",
-      provider: "codex",
-      sessionId: "session",
-      updatedAt: serverTimestamp(),
-    })
+    setDoc(doc(db, "users/carol/conversations/device_conv"), sealedConversationDoc)
   );
 
   await assertFails(
@@ -1521,12 +1510,14 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
   await seedHostedCloudEntitlement("carol");
 
   await assertSucceeds(
-    setDoc(doc(db, "users/carol/conversations/device_conv"), {
-      id: "conv",
-      deviceId: "device",
-      provider: "codex",
-      sessionId: "session",
-      updatedAt: serverTimestamp(),
+    setDoc(doc(db, "users/carol/conversations/device_conv"), sealedConversationDoc)
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/carol/conversations/device_plaintext"), {
+      ...sealedConversationDoc,
+      id: "device_plaintext",
+      projectName: "BurnBar",
     })
   );
 
@@ -1690,6 +1681,7 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   );
 
   await seedBurnBarProEntitlement("pro-user");
+  await seedCloudVaultState("pro-user");
 
   await assertFails(
     setDoc(doc(db, documentPath), {
@@ -1903,11 +1895,12 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       publicKeyFingerprint: "fingerprint",
       keyVersion: 1,
       wrappedVaultKey: "sealed-vault-key",
+      vaultKeyID: TEST_VAULT_KEY_ID,
       algorithm: "P256_X963_HKDF_SHA256_AESGCM",
       status: "active",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      schemaVersion: 1,
+      schemaVersion: 2,
     })
   );
 });
@@ -2277,6 +2270,7 @@ test("agent notification events are server-written and replies are queued by own
   const otherDb = authedDb("mallory");
   const eventPath = "users/nina/agent_notification_events/event-1";
   const replyPath = "users/nina/agent_notification_replies/reply-1";
+  await seedCloudVaultState("nina");
 
   await assertFails(
     setDoc(doc(db, eventPath), {
@@ -2323,7 +2317,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "thread-1",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "Ship it.",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       deviceId: "iphone",
       status: "queued",
       createdAt: serverTimestamp(),
@@ -2361,7 +2358,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "thread-1",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "Hijack",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2378,6 +2378,10 @@ test("agent notification events are server-written and replies are queued by own
       runtime: "codex",
       sourceKind: "cli_session",
       replyText: "",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2393,7 +2397,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "different-thread",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "Send somewhere else",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -2409,7 +2416,10 @@ test("agent notification events are server-written and replies are queued by own
       threadId: "thread-1",
       runtime: "codex",
       sourceKind: "cli_session",
-      replyText: "No backing event",
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedReplyPayload: sealedPayload(),
       status: "queued",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
