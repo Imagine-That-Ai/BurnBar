@@ -2,6 +2,7 @@ package com.openburnbar.data.square
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -63,6 +65,12 @@ data class AgentSubscriptionTopic(
     val createdAtEpoch: Long,
 )
 
+enum class AgentSubscriptionUnsubscribeResult {
+    REMOVED,
+    LOCAL_ONLY_REMOVED,
+    MISSING_CLOUD_KEY,
+}
+
 class AgentSubscriptionTopicStore private constructor(context: Context) {
     private val prefs: SharedPreferences =
         context.applicationContext
@@ -76,9 +84,11 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreListener: ListenerRegistration? = null
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var listenerGeneration: Long = 0
+    @Volatile private var activeListenerUID: String? = auth.currentUser?.uid
 
     init {
-        _topics.value = load()
+        _topics.value = load(activeListenerUID)
         start()
     }
 
@@ -118,11 +128,18 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         return updated
     }
 
-    fun unsubscribe(agentURI: String) {
+    suspend fun unsubscribe(agentURI: String): AgentSubscriptionUnsubscribeResult {
         val existing = topic(agentURI)
-        _topics.value = _topics.value.filterNot { it.agentURI == agentURI }
-        save()
-        deleteFirestore(agentURI, existing?.topicID ?: DEFAULT_TOPIC_ID)
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            removeLocal(agentURI)
+            return AgentSubscriptionUnsubscribeResult.LOCAL_ONLY_REMOVED
+        }
+        val result = deleteFirestore(uid, agentURI, existing?.topicID ?: DEFAULT_TOPIC_ID)
+        if (result == AgentSubscriptionUnsubscribeResult.REMOVED) {
+            removeLocal(agentURI)
+        }
+        return result
     }
 
     fun setMuted(agentURI: String, muted: Boolean): AgentSubscriptionTopic? {
@@ -167,8 +184,12 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     }
 
     private fun restartFirestoreListener(uid: String?) {
+        val generation = listenerGeneration + 1
+        listenerGeneration = generation
+        activeListenerUID = uid
         firestoreListener?.remove()
         firestoreListener = null
+        _topics.value = load(uid)
         if (uid == null) return
         // Topic display text seals `sealedDisplayName`/`sealedDescription`. Resolve
         // the read key once so the decoder can open them; legacy plaintext docs fall
@@ -179,14 +200,16 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 runCatching {
                     AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
                 }.getOrNull()
-            // A newer auth change may have replaced the listener while we resolved;
-            // only install if nothing else claimed the slot.
-            if (firestoreListener != null) return@launch
-            firestoreListener =
+            // A newer auth change may have happened while the vault key resolved.
+            // Re-check both our generation token and FirebaseAuth before attaching;
+            // stale listeners must never publish user A topics into user B's store.
+            if (!isActiveListenerGeneration(generation, uid)) return@launch
+            val registration =
                 firestore.collection("users").document(uid)
                     .collection("subscription_topics")
                     .orderBy("consentGivenAt")
                     .addSnapshotListener { snapshot, error ->
+                        if (!isActiveListenerGeneration(generation, uid)) return@addSnapshotListener
                         if (error != null || snapshot == null) return@addSnapshotListener
                         val decoded =
                             snapshot.documents.mapNotNull { doc ->
@@ -196,8 +219,16 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                         _topics.value = decoded.sortedByDescending { it.createdAtEpoch }
                         save()
                     }
+            if (isActiveListenerGeneration(generation, uid)) {
+                firestoreListener = registration
+            } else {
+                registration.remove()
+            }
         }
     }
+
+    private fun isActiveListenerGeneration(generation: Long, uid: String): Boolean =
+        listenerGeneration == generation && activeListenerUID == uid && auth.currentUser?.uid == uid
 
     private fun writeFirestore(topic: AgentSubscriptionTopic) {
         val uid = auth.currentUser?.uid ?: return
@@ -223,22 +254,29 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         }
     }
 
-    private fun deleteFirestore(agentURI: String, topicID: String) {
-        val uid = auth.currentUser?.uid ?: return
+    private suspend fun deleteFirestore(uid: String, agentURI: String, topicID: String): AgentSubscriptionUnsubscribeResult {
         // The opaque doc id needs the vault key. Resolve the read key (the doc-id
         // key is deterministic for the active vault key) before recomputing the id.
-        ioScope.launch {
-            val vaultKey =
-                runCatching {
-                    AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
-                }.getOrNull()
-            val collection = firestore.collection("users").document(uid)
-                .collection("subscription_topics")
-            if (vaultKey != null) {
-                collection.document(documentID(agentURI, topicID, vaultKey)).delete()
-            }
-            legacyCleartextDocumentIDs(agentURI, topicID).forEach { collection.document(it).delete() }
+        val vaultKey =
+            runCatching {
+                AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
+            }.getOrNull()
+        val opaqueDocID =
+            resolveSubscriptionTopicDeleteDocumentID(agentURI = agentURI, topicID = topicID, vaultKey = vaultKey)
+                ?: return AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY
+        val collection = firestore.collection("users").document(uid)
+            .collection("subscription_topics")
+        val batch = firestore.batch()
+        subscriptionTopicDeleteDocumentIDs(agentURI, topicID, opaqueDocID).forEach {
+            batch.delete(collection.document(it))
         }
+        batch.commit().await()
+        return AgentSubscriptionUnsubscribeResult.REMOVED
+    }
+
+    private fun removeLocal(agentURI: String) {
+        _topics.value = _topics.value.filterNot { it.agentURI == agentURI }
+        save()
     }
 
     private fun decodeFirestoreTopic(data: Map<String, Any>, vaultKey: ByteArray? = null): AgentSubscriptionTopic? {
@@ -260,12 +298,12 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             muted = data["isMuted"] as? Boolean ?: (mode == SkillRunDeliveryMode.MUTED),
             deliveryMode = mode,
             minimumEventImportance = SkillRunEventImportance.fromWire(data["minimumEventImportance"] as? String),
-            createdAtEpoch = decodeEpoch(data["consentGivenAt"]) ?: System.currentTimeMillis(),
+            createdAtEpoch = decodeSubscriptionTopicConsentEpoch(data["consentGivenAt"]) ?: System.currentTimeMillis(),
         )
     }
 
-    private fun load(): List<AgentSubscriptionTopic> {
-        val raw = prefs.getString(KEY_TOPICS, null) ?: return emptyList()
+    private fun load(uid: String?): List<AgentSubscriptionTopic> {
+        val raw = prefs.getString(topicsKey(uid), null) ?: return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
             (0 until arr.length()).mapNotNull { i ->
@@ -300,11 +338,12 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             obj.put("createdAt", t.createdAtEpoch)
             arr.put(obj)
         }
-        prefs.edit().putString(KEY_TOPICS, arr.toString()).apply()
+        prefs.edit().putString(topicsKey(activeListenerUID), arr.toString()).apply()
     }
 
     companion object {
         private const val KEY_TOPICS = "topics.v1"
+        private const val KEY_TOPICS_UID_PREFIX = "topics.v1.uid."
         const val DEFAULT_TOPIC_ID = "agent-updates"
 
         @Volatile private var instance: AgentSubscriptionTopicStore? = null
@@ -358,20 +397,41 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 .toSet()
         }
 
+        fun subscriptionTopicDeleteDocumentIDs(agentURI: String, topicID: String, opaqueDocID: String): Set<String> =
+            (legacyCleartextDocumentIDs(agentURI, topicID) + opaqueDocID)
+                .filter { it.isNotBlank() && !it.contains("/") }
+                .toSet()
+
+        private fun topicsKey(uid: String?): String =
+            uid?.takeIf { it.isNotBlank() }?.let { "$KEY_TOPICS_UID_PREFIX$it" } ?: KEY_TOPICS
+
         private fun minimumImportance(forMode: SkillRunDeliveryMode): SkillRunEventImportance = if (forMode == SkillRunDeliveryMode.FULL_STREAM) {
             SkillRunEventImportance.NORMAL
         } else {
             SkillRunEventImportance.ACTION_REQUIRED
         }
-
-        private fun decodeEpoch(raw: Any?): Long? = when (raw) {
-            is Number -> raw.toLong()
-            is com.google.firebase.Timestamp -> raw.toDate().time
-            is java.util.Date -> raw.time
-            is String -> raw.toLongOrNull()
-            else -> null
-        }
     }
+}
+
+/**
+ * Normalizes a stored `consentGivenAt` value to epoch millis. FULLY TYPE-TOLERANT
+ * by design: the canonical write type is now a Firestore `Timestamp` (see
+ * `sealedSubscriptionTopicPayload`), but legacy Android docs carry a `Number`
+ * (epoch millis) and any stray `Date`/`String` still resolves — so no production
+ * doc becomes unreadable as the corpus lazily converges on Timestamp. Lifted to a
+ * top-level `internal` seam (mirroring `decodeSubscriptionTopicDisplay` /
+ * `decodeSubscriptionTopicGraph`) so the cross-type round-trip is unit-testable
+ * without the Firestore listener; the production `decodeFirestoreTopic` delegates
+ * here so there is zero drift between the test and the real read path. Returns
+ * `null` only when the value is absent/unparseable, leaving the caller to fall
+ * back to "now".
+ */
+internal fun decodeSubscriptionTopicConsentEpoch(raw: Any?): Long? = when (raw) {
+    is Number -> raw.toLong()
+    is Timestamp -> raw.toDate().time
+    is java.util.Date -> raw.time
+    is String -> raw.toLongOrNull()
+    else -> null
 }
 
 /**
@@ -423,10 +483,21 @@ internal fun sealedSubscriptionTopicPayload(
         // (`agentURI`/`topicID`) and the display text are sealed, and merge
         // writes actively delete any legacy plaintext copies. `cadence`/
         // `consentGivenAt` stay cleartext — server order/filter inputs only.
+        // CANONICAL TYPE: `consentGivenAt` is a Firestore Timestamp (matches what
+        // iOS writes from its Swift `Date?` and what `.orderBy("consentGivenAt")`
+        // is designed for). Firestore sorts mixed-type fields by type-group first
+        // (Number < Timestamp), so a Long here would land ALL Android docs before
+        // ALL iOS docs under server orderBy. Writing a Timestamp keeps the two
+        // platforms in one sort group. Old Android docs are Numbers but self-heal:
+        // the doc is fully rewritten on every topic update (see `writeFirestore`),
+        // so the next update normalizes the type — no eager backfill is needed
+        // (the per-user corpus is tiny and both clients re-sort in memory). A
+        // future maintainer who adds `.limit()`/pagination to the ordered query
+        // can rely on the corpus converging on Timestamp.
         "sealedAgentURI" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.agentURI, vaultKey)),
         "sealedTopicID" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.topicID, vaultKey)),
         "cadence" to topic.cadence.token,
-        "consentGivenAt" to topic.createdAtEpoch,
+        "consentGivenAt" to Timestamp(java.util.Date(topic.createdAtEpoch)),
         "isMuted" to topic.muted,
         "deliveryMode" to topic.deliveryMode.wire,
         "minimumEventImportance" to topic.minimumEventImportance.wire,
@@ -439,3 +510,6 @@ internal fun sealedSubscriptionTopicPayload(
         "displayName" to FieldValue.delete(),
         "description" to FieldValue.delete(),
     )
+
+internal fun resolveSubscriptionTopicDeleteDocumentID(agentURI: String, topicID: String, vaultKey: ByteArray?): String? =
+    vaultKey?.let { AgentSubscriptionTopicStore.documentID(agentURI, topicID, it) }

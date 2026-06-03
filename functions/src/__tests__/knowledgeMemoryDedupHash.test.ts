@@ -97,6 +97,16 @@ function makeQuery(base: string, preds: WherePred[] = [], limitN = Infinity) {
     where: (field: string, op: string, value: unknown) => makeQuery(base, [...preds, { field, op, value }], limitN),
     limit: (n: number) => makeQuery(base, preds, n),
     findNearest: (_opts: unknown) => self, // distance ignored; filter set is what matters
+    // Honour the where predicates so the cap aggregate's `dedupHashVersion == 1`
+    // floor is actually exercised (count + sum(byteCount) over the matching set).
+    aggregate: (_spec: unknown) => ({
+      get: async () => {
+        const paths = matchingPaths();
+        const n = paths.length;
+        const bytes = paths.reduce((acc, path) => acc + Number(stored.get(path)?.byteCount ?? 0), 0);
+        return { data: () => ({ n, bytes }) };
+      },
+    }),
     get: async () => {
       const paths = matchingPaths().slice(0, limitN);
       const docs = paths.map((path) => docSnap(path));
@@ -120,7 +130,10 @@ function makeDb() {
   });
   const collectionRef = (base: string) => ({
     doc: (id: string) => docRef(`${base}/${id}`),
-    aggregate: () => ({ get: async () => ({ data: () => ({ n: 0, bytes: 0 }) }) }),
+    // Unfiltered aggregate (no `.where`) counts the whole collection — the
+    // commit path no longer uses this (it floors `dedupHashVersion == 1`), but
+    // keep it consistent with the filtered makeQuery aggregate.
+    aggregate: (spec: unknown) => makeQuery(base).aggregate(spec),
     where: (field: string, op: string, value: unknown) => makeQuery(base, [{ field, op, value }]),
   });
   return {
@@ -447,5 +460,67 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
     expect(counts.deletedByVersion).toBe(1);
     expect(counts.deletedByRetiredTag).toBe(1);
     expect(counts.deleted).toBe(2);
+  });
+});
+
+// --- FLAG-DAY: re-ingest near the tier cap is not blocked by orphaned v0 rows --
+
+/** Seed `count` stored rows at the given dedupHashVersion (cap-pressure fixture). */
+function seedRows(uid: string, count: number, dedupHashVersion: number, idPrefix: string) {
+  for (let i = 0; i < count; i += 1) {
+    seedVector(uid, `${idPrefix}${i}`, {
+      dedupHashVersion,
+      embeddingModelVersion: dedupHashVersion === 1 ? NEW_MODEL_TAG : RETIRED_MODEL_TAG,
+      dedupHash: `${idPrefix}-${i}`,
+    });
+  }
+}
+
+function okFromResult(result: unknown): { ok: unknown; written: unknown; chunkCount: unknown } {
+  return {
+    ok: Reflect.get(Object(result), "ok"),
+    written: Reflect.get(Object(result), "written"),
+    chunkCount: Reflect.get(Object(result), "chunkCount"),
+  };
+}
+
+describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ingest unblocked)", () => {
+  beforeEach(() => stored.clear());
+  afterEach(() => vi.clearAllMocks());
+
+  it("a near-cap user whose usage is ALL orphaned v0 rows can still re-ingest a v1 chunk", async () => {
+    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+    const uid = "userReingest";
+
+    // Fill the entire Pro chunk cap with stranded legacy v0 rows (the rows the
+    // daily purge will delete). Before the fix the cap aggregate counted these,
+    // so the very first re-ingest tripped the failed-precondition cap check.
+    seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 0, "v0-");
+
+    // The first v1 re-ingest must SUCCEED: the cap aggregate floors v1, so the
+    // orphaned v0 rows do not count as live usage.
+    const res = okFromResult(await run(commitRequestForUser(uid, Buffer.alloc(32, 0xe5))));
+    expect(res.ok).toBe(true);
+    expect(res.written).toBe(1);
+    // Effective live count = v1 rows only (1), NOT v1 + the 5000 orphaned v0.
+    expect(res.chunkCount).toBe(1);
+    // The v1 row landed alongside the still-present (to-be-purged) v0 rows.
+    expect([...stored.keys()].some((k) => k.startsWith(`users/${uid}/cloud_search_knowledge/v0-0`))).toBe(true);
+  });
+
+  it("real v1 usage at the cap STILL blocks a new chunk (no undercount of live data)", async () => {
+    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+    const uid = "userAtCapV1";
+
+    // Live v1 rows fill the cap — these DO count, so a new chunk must be rejected.
+    seedRows(uid, PENSIEVE_LIMITS.pro.chunks, 1, "v1-");
+
+    await expect(run(commitRequestForUser(uid, Buffer.alloc(32, 0xf6)))).rejects.toThrow(/chunk limit/i);
+    // Nothing new persisted beyond the seeded v1 rows.
+    expect([...stored.keys()].filter((k) => k.startsWith(`users/${uid}/cloud_search_knowledge/`)).length).toBe(
+      PENSIEVE_LIMITS.pro.chunks,
+    );
   });
 });

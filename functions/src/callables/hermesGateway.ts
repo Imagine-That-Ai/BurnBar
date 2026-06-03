@@ -62,6 +62,7 @@ import {
   sanitizedAttachmentIds,
   sanitizedGatewayDisplayName,
   serializeHermesGatewayEvent,
+  serializeHermesGatewayTypingDoc,
   tokenPreview,
   type GatewayRelayEnvelopeDoc,
   type HermesGatewayApprovalDoc,
@@ -687,15 +688,11 @@ async function handleTyping(req: HttpRequest, res: HttpResponse): Promise<void> 
   }
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const now = nowISO();
-  const doc = stripUndefinedObject({
-    id: grant.client.id,
+  const doc = serializeHermesGatewayTypingDoc({
     clientId: grant.client.id,
-    kind: "typing",
     destinationId,
-    threadId: boundedTrimmedString(body.threadId, "threadId", 160, false),
     createdAt: now,
     expiresAt: new Date(Date.now() + 15_000).toISOString(),
-    schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
   });
   await db.doc(`users/${grant.uid}/hermes_gateway_typing/${grant.client.id}`).set(doc, { merge: true });
   sendJSON(res, 200, { success: true });

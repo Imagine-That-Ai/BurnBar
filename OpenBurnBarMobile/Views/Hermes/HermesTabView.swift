@@ -1290,6 +1290,7 @@ struct HermesChatView: View {
     @State private var gatewayStore = HermesGatewaySettingsStore()
     @State private var pendingGatewayPlaceholderID: String?
     @State private var pendingGatewayEventID: String?
+    @State private var showGatewayPrivacySheet = false
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
     @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
     @AppStorage("chatViewMode") private var chatViewMode: ChatViewMode = .agent
@@ -1400,6 +1401,7 @@ struct HermesChatView: View {
             || showModelPicker
             || permissionGrantThreadID != nil
             || showSetupWizard
+            || showGatewayPrivacySheet
             || showPretextPlayground
             || showFileImporter
             || showCameraSheet
@@ -1515,6 +1517,9 @@ struct HermesChatView: View {
                     showConnectionSheet = true
                 }
             )
+        }
+        .sheet(isPresented: $showGatewayPrivacySheet) {
+            gatewayPrivacySheet
         }
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()
@@ -1866,6 +1871,72 @@ struct HermesChatView: View {
         authStore?.currentIdentity?.displayName?.nilIfBlank ?? "OpenBurnBar iPhone"
     }
 
+    // MARK: - Gateway Privacy (E2E lock)
+
+    /// The gateway client this chat seals to / opens replies from, when the
+    /// BurnBar Cloud path is the active route. `nil` when this turn goes over a
+    /// direct/relay host (which carries its own transport security and doesn't
+    /// surface the gateway lock).
+    private var gatewayPrivacyClient: HermesGatewayClientRecord? {
+        // Only when the BurnBar Cloud path is the active route for this chat. CLI
+        // mode and the direct/relay host path carry their own transport security
+        // and don't surface the gateway lock, keeping the rail uncluttered.
+        guard chatViewMode != .cli,
+              shouldSendViaBurnBarGateway || !gatewayStore.onlineClients.isEmpty else {
+            return nil
+        }
+        return gatewayStore.selectedClient
+    }
+
+    /// The live E2E privacy state for the active gateway client, derived from the
+    /// store's real key/pin comparison. `nil` hides the lock entirely (no gateway
+    /// client in play), keeping the rail uncluttered on the direct-host path.
+    private var gatewayPrivacyState: HermesGatewayPrivacyState? {
+        guard let client = gatewayPrivacyClient else { return nil }
+        // A reply sealed for a device this one can no longer open (reinstall / new
+        // phone) is the same recoverable situation as a changed connection, so the
+        // chip and sheet both surface "Reconnect" — keeping the affordance honest
+        // and consistent even before the send-path key-change guard trips.
+        if hasUndecryptableGatewayReply {
+            return .reconnectNeeded
+        }
+        return HermesGatewayPrivacyState.resolve(
+            client: client,
+            keyChanged: gatewayStore.agentRelayKeyChanged(for: client)
+        )
+    }
+
+    /// True when a reply in this thread was sealed for a device that no longer
+    /// holds the key (reinstall / new phone), so the conversation can offer the
+    /// same reconnect recovery the lock sheet does even when the key-change guard
+    /// hasn't tripped on the send path yet.
+    private var hasUndecryptableGatewayReply: Bool {
+        gatewayStore.latestReply?.isUndecryptableHere == true
+    }
+
+    @ViewBuilder
+    private var gatewayPrivacySheet: some View {
+        if let client = gatewayPrivacyClient, let state = gatewayPrivacyState {
+            // Offer the explicit, consented reconnect whenever the connection
+            // can't be trusted as-is (changed connection — the seal guard is
+            // fail-closed) or a reply arrived sealed for a device this one can no
+            // longer open. A verified, openable connection shows no reconnect
+            // button — just the explainer and the safety code.
+            let needsReconnect = (state == .reconnectNeeded)
+            HermesGatewayPrivacySheet(
+                state: state,
+                clientDisplayName: client.displayName,
+                safetyCode: gatewayStore.agentSafetyCode(for: client),
+                onReconnect: needsReconnect
+                    ? {
+                        HapticBus.primaryAction()
+                        gatewayStore.repinAgentKeyAfterUserConfirmation(for: client)
+                    }
+                    : nil
+            )
+        }
+    }
+
     @ViewBuilder
     private var relaySuggestionBanner: some View {
         if let relay = service.suggestedRelayConnection,
@@ -1906,6 +1977,12 @@ struct HermesChatView: View {
     private var runtimeRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if let gatewayPrivacyState {
+                    HermesGatewayLockChip(state: gatewayPrivacyState) {
+                        HapticBus.sheetOpen()
+                        showGatewayPrivacySheet = true
+                    }
+                }
                 Button {
                     presentModelPicker()
                 } label: {
@@ -3683,6 +3760,13 @@ struct HermesMessageBubble: View {
 
             if !message.toolCalls.isEmpty {
                 UnifiedToolCallAccordion(calls: unifiedToolCalls, accent: .hermes)
+            }
+
+            if !message.attachments.isEmpty {
+                ChatBubbleAttachmentStrip(attachments: message.attachments)
+                    .frame(maxWidth: 270, alignment: .leading)
+                    .padding(.leading, 6)
+                    .padding(.top, 2)
             }
 
             systemPermissionPillIfNeeded

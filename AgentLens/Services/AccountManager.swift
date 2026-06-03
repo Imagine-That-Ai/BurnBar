@@ -990,29 +990,6 @@ private final class WebAuthPresentationContext: NSObject, ASWebAuthenticationPre
     }
 }
 
-// MARK: - URL helpers for OAuth callback parsing
-
-private extension URL {
-    func queryItems() -> [String: String] {
-        var items = parseQueryItems(from: query)
-        items.merge(parseQueryItems(from: fragment)) { _, new in new }
-        return items
-    }
-
-    private func parseQueryItems(from raw: String?) -> [String: String] {
-        guard let raw, !raw.isEmpty else { return [:] }
-        return raw
-            .components(separatedBy: "&")
-            .reduce(into: [String: String]()) { result, pair in
-                let parts = pair.components(separatedBy: "=")
-                guard parts.count == 2 else { return }
-                let key = parts[0].removingPercentEncoding ?? parts[0]
-                let value = parts[1].removingPercentEncoding ?? parts[1]
-                result[key] = value
-            }
-    }
-}
-
 // MARK: - Sign in with Apple (presentation)
 
 private final class AppleSignInPresentationCoordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {

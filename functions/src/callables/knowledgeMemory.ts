@@ -296,8 +296,22 @@ export const commitKnowledgeBatch = onCall(
       const existingSnaps = refs.length ? await db.getAll(...refs) : [];
       const existingByID = new Map(existingSnaps.map((snap) => [snap.id, snap]));
 
-      // Current user-level usage for the hard caps.
-      const agg = await coll.aggregate({ n: AggregateField.count(), bytes: AggregateField.sum("byteCount") }).get();
+      // Current user-level usage for the hard caps — counted over CURRENT-GENERATION
+      // (v1) rows ONLY. FLAG-DAY (dedup-v0 retirement): after the embeddingModelVersion
+      // bump, a re-ingest writes a NEW vault-keyed doc id and cannot reach the old
+      // SHA-256-keyed v0 doc, so the orphaned v0 row COEXISTS with its v1 replacement
+      // until `purgeLegacyKnowledgeVectors` runs. Counting the whole collection would
+      // double-bill those v0 rows against the tier cap and trip the failed-precondition
+      // check below for a near-cap user — blocking the migration with the very rows it
+      // is replacing. Filtering the aggregate to `dedupHashVersion == 1` excludes the
+      // to-be-purged v0 rows (they are unreachable by recall and slated for deletion,
+      // so they are not live usage) while still fully counting every live v1 row. The
+      // equality predicate + count/sum aggregate is served by the dedupHashVersion
+      // composite index — see firestore.indexes.json.
+      const agg = await coll
+        .where("dedupHashVersion", "==", DEDUP_HASH_VERSION_VAULT_HMAC)
+        .aggregate({ n: AggregateField.count(), bytes: AggregateField.sum("byteCount") })
+        .get();
       const existingCount = Number(agg.data().n ?? 0);
       const existingBytes = Number(agg.data().bytes ?? 0);
 
