@@ -488,8 +488,10 @@ private struct SeededGenerator {
         let unit = Double(next() >> 11) * (1.0 / 9007199254740992.0) // 53-bit
         return range.lowerBound + unit * (range.upperBound - range.lowerBound)
     }
-}
 
-private extension CGFloat {
-    init(_ d: Double) { self = CGFloat(d) }
+    /// A uniform `CGFloat` in `range`, for the screen-relative layout fields
+    /// that are typed `CGFloat`.
+    mutating func cgFloat(in range: ClosedRange<Double>) -> CGFloat {
+        CGFloat(double(in: range))
+    }
 }

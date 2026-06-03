@@ -89,7 +89,8 @@ export interface KnowledgeSearchHit {
   ciphertext: unknown;
   sealedMetadata: unknown;
   sourceKind: unknown;
-  sourceSlug: unknown;
+  /** Vault-keyed HMAC of the slug — opaque to the server; the shim correlates on it. */
+  slugHmac: unknown;
   score: number;
   decryptMode: "local_decrypt_shim";
 }
@@ -162,15 +163,17 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
     ? verifyCursor(String(args.cursor), uid, "burnbar_search_knowledge").offset
     : 0;
 
-  // Plaintext-only server filters. Accept both top-level and nested `filters`.
+  // Content-free server filters. Accept both top-level and nested `filters`. The
+  // source filter is the vault-keyed `slugHmac` (no cleartext `sourceSlug`); the
+  // shim computes it on-device (privacy-leak-remediation-2026-06-02 §3).
   const filters = args.filters ?? {};
   const sourceKind = boundedString(args.sourceKind ?? filters.sourceKind, 64);
-  const sourceSlug = boundedString(args.sourceSlug ?? filters.sourceSlug, 256);
+  const slugHmac = boundedString(args.slugHmac ?? filters.slugHmac, 64);
   const embeddingModelVersion = boundedString(args.embeddingModelVersion ?? filters.embeddingModelVersion, 120);
 
   let query: KnowledgeVectorQuery = db.collection(`users/${uid}/cloud_search_knowledge`);
   if (sourceKind) query = query.where("sourceKind", "==", sourceKind);
-  if (sourceSlug) query = query.where("sourceSlug", "==", sourceSlug);
+  if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
   if (embeddingModelVersion) query = query.where("embeddingModelVersion", "==", embeddingModelVersion);
 
   // Fetch one extra beyond the page so we can tell whether a nextCursor is warranted
