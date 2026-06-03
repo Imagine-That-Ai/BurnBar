@@ -393,7 +393,7 @@ tasks.register("syncGeneratedSources") {
         repoRoot.resolve("packages/data-domains/gen/DataDomains.kt")
             to projectDir.resolve("src/main/java/com/openburnbar/data/domains/DataDomains.kt"),
         repoRoot.resolve("packages/design-tokens/dist/compose/PensieveTokens.kt")
-            to projectDir.resolve("src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt"),
+            to projectDir.resolve("src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt")
     )
 
     // Only the existing sources participate in up-to-date checks; a missing
