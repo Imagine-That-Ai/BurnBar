@@ -114,6 +114,7 @@ export const NAV_FOOTER = {
   ],
   trust: [
     { href: "/privacy", label: "Privacy model" },
+    { href: "/trust", label: "What we can see" },
     { href: "/security", label: "Security model" },
     { href: "/mcp", label: "MCP integration" },
     { href: "/legal/privacy-policy", label: "Privacy policy" },

@@ -3,7 +3,6 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.Timestamp
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
@@ -231,12 +230,6 @@ class CredentialTransferStore : ViewModel() {
                 _status.value = TransferStatus.ERROR
             }
         }
-    }
-
-    private fun transferExpiryMillis(value: Any?): Long? = when (value) {
-        is Date -> value.time
-        is Timestamp -> value.toDate().time
-        else -> null
     }
 
     fun reset() {

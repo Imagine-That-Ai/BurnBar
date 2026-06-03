@@ -781,24 +781,17 @@ service cloud.firestore {
           && request.resource.data.payload.matches("^v1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
           && request.resource.data.createdAt is timestamp
           && request.resource.data.expiresAt is timestamp
+          && request.resource.data.createdAt <= request.time
+          && request.resource.data.createdAt > request.time - duration.value(5, "m")
           && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(24, "h")
           && request.resource.data.consumed == false;
       }
 
       allow create: if validCredentialTransferCreate();
-      allow get: if request.auth != null
-                 && validCredentialTransferCode()
-                 && resource.data.ownerUid == request.auth.uid
-                 && resource.data.consumed == false
-                 && resource.data.expiresAt > request.time;
-      allow update: if request.auth != null
-                    && validCredentialTransferCode()
-                    && resource.data.ownerUid == request.auth.uid
-                    && resource.data.consumed == false
-                    && resource.data.expiresAt > request.time
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["consumed", "consumedAt"])
-                    && request.resource.data.consumed == true
-                    && request.resource.data.consumedAt is timestamp;
+      // Consumption is server-transaction-only via consumeCredentialTransfer.
+      allow get: if false;
+      allow update: if false;
       allow delete: if false;
       allow list: if false;
     }
@@ -1675,8 +1668,79 @@ service cloud.firestore {
     }
 
     match /users/{userId}/provider_accounts/{accountId} {
+      function validProviderAccountDocument() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "providerID",
+          "label",
+          "identityHint",
+          "status",
+          "credentialKind",
+          "storageScope",
+          "redactedLabel",
+          "sourceDeviceID",
+          "linkedSwitcherProfileID",
+          "isDefault",
+          "sortKey",
+          "lastValidatedAt",
+          "lastRefreshAt",
+          "lastErrorCode",
+          "endpointProfileID",
+          "region",
+          "tokenPlanTier",
+          "tokenPlanBillingCycle",
+          "authMethodID",
+          "schemaVersion",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.keys().hasAll([
+          "id",
+          "providerID",
+          "label",
+          "status",
+          "credentialKind",
+          "storageScope",
+          "redactedLabel",
+          "isDefault",
+          "sortKey",
+          "schemaVersion",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.id == accountId
+        && request.resource.data.providerID is string
+        && request.resource.data.providerID.size() <= 80
+        && request.resource.data.label is string
+        && request.resource.data.label.size() <= 160
+        && (!("identityHint" in request.resource.data) || (request.resource.data.identityHint is string && request.resource.data.identityHint.size() <= 256))
+        && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
+        && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
+        && request.resource.data.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
+        && request.resource.data.redactedLabel is string
+        && request.resource.data.redactedLabel.size() <= 160
+        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
+        && (!("linkedSwitcherProfileID" in request.resource.data) || (request.resource.data.linkedSwitcherProfileID is string && request.resource.data.linkedSwitcherProfileID.size() <= 160))
+        && request.resource.data.isDefault is bool
+        && request.resource.data.sortKey is number
+        && (!("lastValidatedAt" in request.resource.data) || (request.resource.data.lastValidatedAt is string && request.resource.data.lastValidatedAt.size() <= 80))
+        && (!("lastRefreshAt" in request.resource.data) || (request.resource.data.lastRefreshAt is string && request.resource.data.lastRefreshAt.size() <= 80))
+        && (!("lastErrorCode" in request.resource.data) || (request.resource.data.lastErrorCode is string && request.resource.data.lastErrorCode.size() <= 160))
+        && (!("endpointProfileID" in request.resource.data) || (request.resource.data.endpointProfileID is string && request.resource.data.endpointProfileID.size() <= 160))
+        && (!("region" in request.resource.data) || request.resource.data.region in ["cn", "sgp", "ams", "global"])
+        && (!("tokenPlanTier" in request.resource.data) || request.resource.data.tokenPlanTier in ["lite", "standard", "pro", "max"])
+        && (!("tokenPlanBillingCycle" in request.resource.data) || request.resource.data.tokenPlanBillingCycle in ["monthly", "annual"])
+        && (!("authMethodID" in request.resource.data) || (request.resource.data.authMethodID is string && request.resource.data.authMethodID.size() <= 160))
+        && request.resource.data.schemaVersion is number
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdAt.size() <= 80
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() <= 80;
+      }
+
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validProviderAccountDocument();
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2628,10 +2692,50 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_public_keys/{keyId} {
+      function validEscrowPublicKeyDocument() {
+        return request.resource.data.keys().hasOnly([
+          "deviceId",
+          "platform",
+          "fingerprint",
+          "publicKeyFingerprint",
+          "publicKeyData",
+          "publicKeyJwk",
+          "keyVersion",
+          "algorithm",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() <= 160
+        && request.resource.data.keyVersion is int
+        && request.resource.data.keyVersion >= 1
+        && request.resource.data.keyVersion <= 1000
+        && request.resource.data.publicKeyData is string
+        && request.resource.data.publicKeyData.matches("^[A-Za-z0-9+/=]{80,128}$")
+        && (!("publicKeyFingerprint" in request.resource.data)
+          || (request.resource.data.publicKeyFingerprint is string
+            && request.resource.data.publicKeyFingerprint.size() <= 128))
+        && (!("fingerprint" in request.resource.data)
+          || (request.resource.data.fingerprint is string
+            && request.resource.data.fingerprint.size() <= 128))
+        && request.resource.data.algorithm == "ECIES-P256-AESGCM"
+        && (!("platform" in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80))
+        && (!("publicKeyJwk" in request.resource.data)
+          || (request.resource.data.publicKeyJwk is map
+            && request.resource.data.publicKeyJwk.keys().hasOnly(["kty", "crv", "x", "y", "ext", "key_ops"])
+            && request.resource.data.publicKeyJwk.kty == "EC"
+            && request.resource.data.publicKeyJwk.crv == "P-256"
+            && request.resource.data.publicKeyJwk.x is string
+            && request.resource.data.publicKeyJwk.x.size() <= 80
+            && request.resource.data.publicKeyJwk.y is string
+            && request.resource.data.publicKeyJwk.y.size() <= 80));
+      }
+
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFields()
+        && validEscrowPublicKeyDocument();
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2644,10 +2748,43 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_envelopes/{envelopeId} {
+      function validEscrowEnvelopeDocument() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "grantId",
+          "sourceDeviceId",
+          "targetDeviceId",
+          "providerId",
+          "credentialKind",
+          "accountLabel",
+          "ciphertext",
+          "keyVersion",
+          "envelopeVersion",
+          "createdAt"
+        ])
+        && request.resource.data.id == envelopeId
+        && request.resource.data.grantId is string
+        && request.resource.data.grantId.size() <= 160
+        && request.resource.data.sourceDeviceId is string
+        && request.resource.data.sourceDeviceId.size() <= 160
+        && request.resource.data.targetDeviceId is string
+        && request.resource.data.targetDeviceId.size() <= 160
+        && request.resource.data.providerId is string
+        && request.resource.data.providerId.size() <= 80
+        && request.resource.data.credentialKind in ["api_key", "oauth_token", "bearer_token", "unknown"]
+        && (!("accountLabel" in request.resource.data) || (request.resource.data.accountLabel is string && request.resource.data.accountLabel.size() <= 160))
+        && request.resource.data.ciphertext is string
+        && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]{16,20000}$")
+        && request.resource.data.keyVersion is int
+        && request.resource.data.envelopeVersion is int
+        && request.resource.data.createdAt is timestamp;
+      }
+
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFields()
+        && validEscrowEnvelopeDocument();
       allow delete: if ownsUserNamespace(userId);
     }
 

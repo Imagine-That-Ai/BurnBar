@@ -255,6 +255,29 @@ final class PhoneControlReceiverTests: XCTestCase {
             HermesRealtimeRelayFrame(
                 type: .controlApprovalResponse,
                 uid: "uid-approval",
+                connectionId: "conn-attacker",
+                control: HermesRealtimeRelayControlPayload(
+                    streamClass: MediaStreamClass.controlApproval.rawValue,
+                    sessionId: started.sessionId,
+                    approvalResponse: HermesRealtimeRelayApprovalResponse(
+                        approvalId: approvalRequest.approvalId,
+                        decision: .approve,
+                        respondedBy: "phone",
+                        respondedAt: Date()
+                    )
+                )
+            ),
+            { frame in await replyCapture.record(frame) }
+        )
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(coordinator.pendingApproval?.approvalId, approvalRequest.approvalId)
+        let actionsBeforeMatchedApproval = await browserCapture.actions()
+        XCTAssertEqual(actionsBeforeMatchedApproval.count, 0)
+
+        await dispatcher(
+            HermesRealtimeRelayFrame(
+                type: .controlApprovalResponse,
+                uid: "uid-approval",
                 connectionId: "conn-approval",
                 control: HermesRealtimeRelayControlPayload(
                     streamClass: MediaStreamClass.controlApproval.rawValue,

@@ -8,18 +8,20 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         trust: ComputerUseTrustMode = .manual,
         executed: Int = 0,
         actionCap: Int = 50,
+        startedAt: Date = Date(),
+        sessionTimeoutSeconds: Int = 1800,
         phoneViewerNodeId: String? = nil
     ) -> ComputerUseSessionState {
         let manifest = ComputerUseSessionManifest(
             sessionId: ComputerUseSessionID("s1"),
             mode: phoneViewerNodeId == nil ? .browser : .system,
             trustMode: trust,
-            startedAt: Date(),
+            startedAt: startedAt,
             userId: "user",
             phoneViewerNodeId: phoneViewerNodeId,
             entitlementProductId: "com.openburnbar.hostedComputerUseSync.monthly",
             actionCap: actionCap,
-            sessionTimeoutSeconds: 1800
+            sessionTimeoutSeconds: sessionTimeoutSeconds
         )
         return ComputerUseSessionState(
             sessionId: manifest.sessionId,
@@ -230,7 +232,7 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             monthToDateUSD: 2_700,
             updatedAt: Date()
         )
-        let session = makeSession(executed: 50, actionCap: 50)
+        let session = makeSession(executed: 49, actionCap: 50, phoneViewerNodeId: "phone-peer")
         let usage = ComputerUseQuotaUsage(
             dayKey: "2026-05-17",
             browserActionsExecuted: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerDay,
@@ -250,6 +252,38 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
                 )
             ),
             .allowed(approvedBy: .phone)
+        )
+    }
+
+    func testPhoneOriginatedMacInputHonorsSessionActionCap() {
+        let session = makeSession(executed: 50, actionCap: 50, phoneViewerNodeId: "phone-peer")
+
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                context: makeContext(session: session, originatedFromPhone: true)
+            ),
+            .denied(.sessionLimit)
+        )
+    }
+
+    func testPhoneOriginatedMacInputHonorsSessionTimeout() {
+        let session = makeSession(
+            startedAt: Date(timeIntervalSinceNow: -1810),
+            sessionTimeoutSeconds: 1800,
+            phoneViewerNodeId: "phone-peer"
+        )
+
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                context: makeContext(session: session, originatedFromPhone: true)
+            ),
+            .denied(.sessionLimit)
         )
     }
 

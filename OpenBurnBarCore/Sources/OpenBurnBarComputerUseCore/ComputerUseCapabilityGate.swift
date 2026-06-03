@@ -233,6 +233,18 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             context: context
         )
 
+        // Safety caps are never metering. Direct phone control may be local and
+        // unbilled, but it is still a remote-control session and must obey the
+        // declared action cap and wall-clock timeout.
+        if context.session.actionsExecuted >= context.session.manifest.actionCap {
+            return .denied(.sessionLimit)
+        }
+        if context.session.manifest.sessionTimeoutSeconds > 0,
+           Date().timeIntervalSince(context.session.manifest.startedAt) >=
+           Double(context.session.manifest.sessionTimeoutSeconds) {
+            return .denied(.sessionLimit)
+        }
+
         if !skipsMeteredComputerUseCaps {
             // 3. Budget caps (hard > soft).
             if context.envelope.level == .hardCap { return .denied(.hardCap) }
@@ -246,11 +258,6 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
             if context.usage.visionModelSpendUSD >= context.envelope.perUserDailySpendCeilingUSD {
                 return .denied(.dailySpendCeiling)
-            }
-
-            // 5. Per-session caps.
-            if context.session.actionsExecuted >= context.session.manifest.actionCap {
-                return .denied(.sessionLimit)
             }
         }
 

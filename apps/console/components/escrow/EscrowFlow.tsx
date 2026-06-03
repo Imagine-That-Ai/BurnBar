@@ -20,7 +20,7 @@ type Step = "idle" | "registering" | "pending" | "unwrapping" | "ready" | "error
 /**
  * Browser escrow trust flow:
  *  1. Generate / load the non-extractable device key pair (IndexedDB).
- *  2. registerBrowserEscrowDevice(publicKeyJwk, recaptchaToken) -> status:"pending".
+ *  2. registerBrowserEscrowDevice(publicKeyJwk) -> status:"pending".
  *  3. The user approves on a trusted NATIVE device (approveEscrowDeviceTrust),
  *     which mints a cloud_vault_key_wrapper for this browser device.
  *  4. We poll, fetch the wrapper, unwrap the vault key in-memory, and hold the

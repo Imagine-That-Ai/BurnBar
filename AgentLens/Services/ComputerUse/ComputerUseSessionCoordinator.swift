@@ -124,6 +124,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var activeSessionId: ComputerUseSessionID?
     private var auditLogger: ComputerUseAuditLogger?
     private var approvalContinuations: [String: CheckedContinuation<HermesRealtimeRelayApprovalResponse, Never>] = [:]
+    private var approvalContexts: [String: ApprovalContext] = [:]
     private var screenshotEvidenceDataByHash: [String: Data] = [:]
     private var latestControlUID: String?
     private var latestControlConnectionID: String?
@@ -131,6 +132,18 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var didStartE2EApprovalProbe = false
     #endif
     private nonisolated(unsafe) var remoteConfigObserver: NSObjectProtocol?
+
+    private struct ApprovalContext: Sendable {
+        let uid: String?
+        let connectionID: String?
+        let sessionID: String
+        let requestedAt: Date
+    }
+
+    private enum ApprovalResponseSource: Sendable {
+        case localPresenter
+        case remote(uid: String, connectionID: String, sessionID: String?)
+    }
 
     private func recordE2EProofEvent(_ fields: [String: String]) {
         #if DEBUG
@@ -484,6 +497,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         screenshotEvidenceDataByHash.removeAll()
         pendingApproval = nil
         pendingApprovalScreenshotPNG = nil
+        approvalContexts.removeAll()
         lastDeniedReason = .hardCap
         state?.endReason = .budgetHardCap
         state?.endedAt = Date()
@@ -507,9 +521,34 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     }
 
     public func submitApprovalResponse(_ response: HermesRealtimeRelayApprovalResponse) {
-        guard let continuation = approvalContinuations.removeValue(forKey: response.approvalId) else {
+        submitApprovalResponse(response, source: .localPresenter)
+    }
+
+    private func submitApprovalResponse(
+        _ response: HermesRealtimeRelayApprovalResponse,
+        source: ApprovalResponseSource
+    ) {
+        guard let context = approvalContexts[response.approvalId] else {
             return
         }
+        switch source {
+        case .localPresenter:
+            break
+        case .remote(let uid, let connectionID, let sessionID):
+            guard response.respondedBy == "phone",
+                  context.uid == uid,
+                  context.connectionID == connectionID,
+                  sessionID == nil || sessionID == context.sessionID
+            else {
+                Self.log.warning("Rejected remote approval response that did not match the pending requester.")
+                return
+            }
+        }
+        guard let continuation = approvalContinuations.removeValue(forKey: response.approvalId) else {
+            approvalContexts.removeValue(forKey: response.approvalId)
+            return
+        }
+        approvalContexts.removeValue(forKey: response.approvalId)
         if pendingApproval?.approvalId == response.approvalId {
             pendingApproval = nil
             pendingApprovalScreenshotPNG = nil
@@ -731,17 +770,23 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             summary: request.actionSummary,
             status: .awaitingApproval
         )
-        emitControlFrame(
-            type: .controlApprovalRequest,
-            payload: HermesRealtimeRelayControlPayload(
-                streamClass: "control.approval",
-                sessionId: request.sessionId,
-                approvalRequest: request
-            )
-        )
 
         let response = await withCheckedContinuation { continuation in
             approvalContinuations[request.approvalId] = continuation
+            approvalContexts[request.approvalId] = ApprovalContext(
+                uid: latestControlUID,
+                connectionID: latestControlConnectionID,
+                sessionID: request.sessionId,
+                requestedAt: request.requestedAt
+            )
+            emitControlFrame(
+                type: .controlApprovalRequest,
+                payload: HermesRealtimeRelayControlPayload(
+                    streamClass: "control.approval",
+                    sessionId: request.sessionId,
+                    approvalRequest: request
+                )
+            )
             Task { @MainActor in
                 let presenterResponse = await approvalPresenter(request, pendingApprovalScreenshotPNG)
                 submitApprovalResponse(presenterResponse)
@@ -927,7 +972,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             await receiver.ingest(frame)
         case .controlApprovalResponse:
             if let response = frame.control?.approvalResponse {
-                submitApprovalResponse(response)
+                submitApprovalResponse(
+                    response,
+                    source: .remote(
+                        uid: frame.uid,
+                        connectionID: frame.connectionId,
+                        sessionID: frame.control?.sessionId
+                    )
+                )
             }
         case .controlAgentGrantRequest:
             guard let wireRequest = frame.control?.agentGrantRequest else { return }
@@ -1743,6 +1795,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             ))
         }
         approvalContinuations.removeAll()
+        approvalContexts.removeAll()
     }
 }
 

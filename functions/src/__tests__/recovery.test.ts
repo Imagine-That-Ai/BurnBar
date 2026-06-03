@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { __testing__ } from "../callables/recovery.js";
 
-const { requireSealedBlob, parseRecoveryKeyPayload, parseRecoveryContactPayload, MAX_RECOVERY_CONTACTS } = __testing__;
+const {
+  requireSealedBlob,
+  parseRecoveryKeyPayload,
+  parseRecoveryContactPayload,
+  MAX_RECOVERY_CONTACTS,
+  requireRecoveryId,
+} = __testing__;
 
 const VALID_HASH = "a".repeat(64);
 
@@ -115,5 +121,17 @@ describe("verifyRecoveryConfirmation (delayed re-verification)", () => {
   });
   it("recovery_contact methods confirm out-of-band (no hash required)", () => {
     expect(() => verifyRecoveryConfirmation({ kind: "recovery_contact" }, undefined)).not.toThrow();
+  });
+});
+
+describe("requireRecoveryId", () => {
+  it("accepts setup-generated recovery ids", () => {
+    expect(requireRecoveryId("rec_recovery_key_abcd1234")).toBe("rec_recovery_key_abcd1234");
+  });
+
+  it("rejects path-unsafe ids", () => {
+    for (const value of ["../x", "a/b", " rec_bad ", "rec_x", "rec_bad/path", "rec_bad..path"]) {
+      expect(() => requireRecoveryId(value)).toThrow();
+    }
   });
 });

@@ -1,0 +1,97 @@
+/**
+ * Pensieve design tokens.
+ *
+ * The :root block below is mirrored BYTE-FOR-BYTE from the canonical source of
+ * truth so this experience matches the native app and the production console
+ * exactly:  packages/design-tokens/dist/css/pensieve.css
+ * (generated from packages/data-domains registry → never hand-divergent).
+ *
+ * Do not "improve" a hex here. If a tier color looks wrong, the registry is the
+ * place to change it; this file follows.
+ */
+
+:root {
+  --color-ink-void: #050508; /** absolute canvas base */
+  --color-ink-base: #0a0a0e;
+  --color-ink-elevated: #12121a;
+  --color-ink-furnace: #180805; /** deep molten red-black, brand furnace core */
+  --color-mercury-bright: #f4f6fb; /** the basin substance — cool silver, the only true bright */
+  --color-mercury-core: #c7cfdd;
+  --color-mercury-deep: #8b94a8;
+  --color-mercury-wash: rgba(199, 207, 221, 0.06);
+  --color-brass-core: #fa6b06; /** brand ember/fire — owned/keys/CTA warmth */
+  --color-brass-bright: #fdc42c; /** brand gold highlight */
+  --color-brass-deep: #ee1803; /** brand deep red */
+  --color-brass-glow: rgba(250, 107, 6, 0.4);
+  --color-frost-veil: rgba(199, 207, 221, 0.1); /** sealed/etched-glass overlay — what the server sees */
+  --color-frost-line: rgba(255, 255, 255, 0.1);
+  --color-seal-crimson: #c5221f; /** DESTRUCTIVE ONLY — breaking a wax seal (delete/siphon) */
+  --color-glass-bg: rgba(10, 10, 15, 0.5);
+  --color-glass-bg-elevated: rgba(18, 18, 26, 0.62);
+  --color-glass-line: rgba(255, 255, 255, 0.08);
+  --color-glass-line-bright: rgba(255, 255, 255, 0.15);
+  --color-text-bright: #ffffff;
+  --color-text-base: rgba(255, 255, 255, 0.85);
+  --color-text-mute: rgba(255, 255, 255, 0.55);
+  --color-text-dim: rgba(255, 255, 255, 0.35);
+  --color-tier-server-readable: #fdc42c; /** amber — server can read (operational telemetry) */
+  --color-tier-zero-access: #8b94a8; /** steel — encrypted at rest, key under your device trust */
+  --color-tier-end-to-end: #3cd6c0; /** teal-silver — only your devices can read; the hero tier */
+  --font-display: Outfit, 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-arcane: 'Fraunces Variable', Georgia, serif; /** optional arcane accent for the basin hero label only */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --motion-swirl-seconds: 18; /** basin swirl loop period (still render under reduced-motion) */
+  --motion-frost-flip-ms: 520; /** yours <-> server view-flip frost sweep */
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/**
+ * Experience-local derived tokens.
+ *
+ * These are NOT in the shared registry — they exist only to compose this
+ * standalone surface (web fonts loaded by name, layout rails, longer motion
+ * scale). They reference the canonical tokens above; they never redefine a
+ * registry value.
+ */
+:root {
+  /* The real product self-hosts variable fonts; here we load them by Google
+     Fonts family name, so we name the loaded faces first and keep the canonical
+     stack as the fallback. */
+  --font-display-web: 'Outfit', var(--font-display);
+  --font-body-web: 'Geist', var(--font-body);
+  --font-mono-web: 'JetBrains Mono', var(--font-mono);
+  --font-arcane-web: 'Fraunces', var(--font-arcane);
+
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  --rail-w: 264px;
+  --container-narrow: 760px; /* verified: prose/transparency column width */
+  --container-wide: 1180px; /* basin + library working width */
+
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-ease-rise: cubic-bezier(0.16, 1, 0.3, 1); /* strands surfacing */
+  --motion-frost-flip: calc(var(--motion-frost-flip-ms) * 1ms);
+  --dur-1: 140ms;
+  --dur-2: 240ms;
+  --dur-3: 420ms;
+  --dur-swirl: calc(var(--motion-swirl-seconds) * 1s);
+
+  --shadow-pool: 0 40px 120px -40px rgba(0, 0, 0, 0.9);
+  --shadow-lift: 0 1px 0 0 var(--color-glass-line-bright) inset, 0 30px 70px -50px rgba(0, 0, 0, 0.85);
+
+  --ease: var(--motion-ease-standard);
+}
