@@ -1,4 +1,31 @@
 #!/usr/bin/env node
+//
+// scrub-chat-cloud-plaintext.mjs — operator incident-response scrub.
+//
+// Deletes legacy server-readable PLAINTEXT FIELDS (never whole docs, never sealed
+// payloads) from cloud collections. Defaults to dry-run; --apply commits.
+//
+// Two deletion regimes coexist in COLLECTIONS below:
+//
+//  1. Sealed surfaces (chat mirrors, project memory, snippets, Hermes Square,
+//     relay requests): the sealed payload is the new write path. A listed
+//     plaintext field is the legacy duplicate of data that now lives inside the
+//     sealed copy, so deleting it loses nothing recoverable.
+//
+//  2. Hermes Gateway content (hermes_gateway_messages/events/attachments): these
+//     docs are SERVER-WRITTEN and RELAYED, not vault-sealed on the server. The
+//     readable content lives END-TO-END between the phone and the agent, sealed
+//     inside `relayEnvelope`; the server is NEVER the entitled holder of a
+//     readable copy. So the listed plaintext fields (text / senderDisplayName /
+//     threadId / fileName) are pure leak and are deleted UNCONDITIONALLY —
+//     whether the doc already carries the sealed `relayEnvelope` (schema>=2) or
+//     is a legacy schema<2 doc that predates E2E. There is no sealed server copy
+//     to wait for, so unlike regime (1) there is no "preserve until sealed" gate.
+//     This is the incident-response counterpart to the gateway-relayed gate in
+//     functions/src/callables/privacyBackfill.ts, which fixes the same BLOCKER on
+//     the scheduled/in-product path (the old `requires:"relayEnvelope"` gate was
+//     a no-op for legacy docs that never gain a relayEnvelope).
+//
 import { createRequire } from "node:module";
 
 const requireFromFunctions = createRequire(new URL("../../functions/package.json", import.meta.url));
@@ -95,9 +122,12 @@ const COLLECTIONS = [
     name: "text_snippets",
     fields: ["text", "body", "content", "title", "preview"],
   },
-  // Hosted chat gateway (server-written; E2E migration is a chained goal). The
-  // gateway carries readable message text / sender names / file names in
-  // transit; the scrubber removes the stored plaintext copies of those fields.
+  // Hosted chat gateway (server-written, RELAYED not server-sealed). The readable
+  // content lives end-to-end inside `relayEnvelope`; the server holds no entitled
+  // sealed copy, so these plaintext fields are pure leak and are deleted
+  // UNCONDITIONALLY for both sealed (schema>=2, relayEnvelope present) and legacy
+  // (schema<2) docs — there is no sealed server replacement to preserve. Closes
+  // the audit BLOCKER "legacy gateway plaintext never auto-scrubbed."
   {
     name: "hermes_gateway_messages",
     fields: ["text", "threadId", "replyToEventId"],

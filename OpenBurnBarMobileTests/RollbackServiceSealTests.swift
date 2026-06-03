@@ -102,6 +102,22 @@ final class RollbackServiceSealTests: XCTestCase {
         XCTAssertEqual(decoded.status, .inFlight)
     }
 
+    /// Guards the legacy-alias contract the Firestore query depends on. The
+    /// `startObservingRequests` listener queries
+    /// `whereField("status", in: ["pending", "in_flight", "inFlight"])` so a doc
+    /// still carrying the legacy camelCase `"inFlight"` isn't excluded by
+    /// Firestore's exact-match `in` (mirroring Android's
+    /// `whereIn("status", listOf("pending", "in_flight", "inFlight"))`). This
+    /// asserts the `wireValue` resolver the request-decode path runs still maps
+    /// that exact wire value to `.inFlight`, so a regression that drops the alias
+    /// from either the query or the decoder is caught.
+    func test_statusWireValue_legacyInFlightAlias_mapsToInFlight() {
+        XCTAssertEqual(RollbackRequest.Status(wireValue: "inFlight"), .inFlight)
+        XCTAssertEqual(RollbackRequest.Status(wireValue: "in_flight"), .inFlight)
+        XCTAssertEqual(RollbackRequest.Status(wireValue: "pending"), .pending)
+        XCTAssertNil(RollbackRequest.Status(wireValue: "bogus"))
+    }
+
     /// A `cancelled` doc (Android- or Mac-written) now decodes; before the
     /// snake_case migration the missing case made `decodeRequest` nil-bail and
     /// the row silently disappeared from the iOS list.

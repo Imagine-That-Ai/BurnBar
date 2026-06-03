@@ -38,6 +38,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,9 +61,11 @@ import com.openburnbar.data.square.AgentAvailability
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.AgentSubscriptionTopicStore
+import com.openburnbar.data.square.AgentSubscriptionUnsubscribeResult
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun AgentBrandZoneScreenLayout(
@@ -83,6 +86,7 @@ internal fun AgentBrandZoneScreenLayout(
     var showForward by remember { mutableStateOf(false) }
     var showSubscribe by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     AgentBrandZoneMainColumn(
         state =
@@ -110,6 +114,7 @@ internal fun AgentBrandZoneScreenLayout(
             missionHost = missionHost,
             subscriptionStore = subscriptionStore,
             activeTopic = activeTopic,
+            coroutineScope = coroutineScope,
         ),
         overlayState = AgentBrandZoneOverlayState(showDispatch, showForward, showSubscribe),
         overlayCallbacks =
@@ -498,8 +503,23 @@ internal fun AgentBrandZoneOverlays(
                             "Subscribed to ${context.identity.displayName} (${action.cadence.displayLabel.lowercase()}, ${action.deliveryMode.displayLabel.lowercase()})."
                         }
                         SubscribeAction.Unsubscribe -> {
-                            context.subscriptionStore.unsubscribe(context.identity.id)
-                            "Unsubscribed from ${context.identity.displayName}."
+                            context.coroutineScope.launch {
+                                val message =
+                                    runCatching {
+                                        when (context.subscriptionStore.unsubscribe(context.identity.id)) {
+                                            AgentSubscriptionUnsubscribeResult.REMOVED ->
+                                                "Unsubscribed from ${context.identity.displayName}."
+                                            AgentSubscriptionUnsubscribeResult.LOCAL_ONLY_REMOVED ->
+                                                "Removed local subscription for ${context.identity.displayName}."
+                                            AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY ->
+                                                "Connect this device to private cloud backup, then try again."
+                                        }
+                                    }.getOrElse {
+                                        "Could not unsubscribe from ${context.identity.displayName}. Try again."
+                                    }
+                                overlayCallbacks.onSubscribeResult(message)
+                            }
+                            "Removing ${context.identity.displayName} subscription..."
                         }
                         is SubscribeAction.SetMuted -> {
                             context.subscriptionStore.setMuted(context.identity.id, action.muted)

@@ -1130,17 +1130,46 @@ final class AgentSubscriptionTopicStore {
     ) async throws {
         let uid = try currentUserID()
         let id = "\(agentURI):\(topicID)"
-        // Resolve the vault key so the opaque doc id can be recomputed for the
-        // delete. Fall back to the read key (the doc-id key is deterministic for
-        // either accessor — both return the same active vault key).
-        let vaultKey = try? await MobileCloudVaultKeyAccess
-            .keyForReading(uid: uid, firestore: firestoreProvider())?.keyData
         let topicCollection = collection(uid: uid)
-        if let vaultKey {
-            try await topicCollection
-                .document(Self.documentID(agentURI: agentURI, topicID: topicID, vaultKey: vaultKey))
-                .delete()
+
+        // The authoritative subscription is the sealed doc, whose Firestore id is
+        // an opaque HMAC keyed by the vault key. Deleting it REQUIRES the vault
+        // key. If the key is transiently unavailable (cross-device write before
+        // the wrapper synced, or a vault-key mismatch), we must NOT pretend the
+        // unsubscribe succeeded: silently no-oping the delete here while still
+        // removing the local row leaves a ghost cloud subscription that the next
+        // snapshot resurrects — the user keeps getting opted-out digests behind a
+        // success UI. Resolve the key first and fail loudly with a recoverable,
+        // jargon-free message so the local row and cloud doc stay consistent.
+        let vaultKey: Data
+        do {
+            guard let resolved = try await MobileCloudVaultKeyAccess
+                .keyForReading(uid: uid, firestore: firestoreProvider())?.keyData else {
+                lastError = StoreError.vaultKeyUnavailable.errorDescription
+                throw StoreError.vaultKeyUnavailable
+            }
+            vaultKey = resolved
+        } catch let error as StoreError {
+            throw error
+        } catch {
+            // A thrown key-access error (locked / not yet synced) is the same
+            // recoverable state as a nil key: surface it, do not orphan the doc.
+            lastError = StoreError.vaultKeyUnavailable.errorDescription
+            throw StoreError.vaultKeyUnavailable
         }
+
+        // Delete the authoritative sealed doc first. Only after it succeeds do we
+        // drop the local row, so a delete failure can't leave the UI claiming the
+        // user is unsubscribed while the cloud subscription survives. Route
+        // through the pure `resolveUnsubscribeDocID` so the live delete and the
+        // orphan-prevention test exercise the same decision.
+        let opaqueID = try Self.resolveUnsubscribeDocID(
+            agentURI: agentURI,
+            topicID: topicID,
+            vaultKey: vaultKey
+        )
+        try await topicCollection.document(opaqueID).delete()
+        // Best-effort cleanup of any legacy cleartext doc ids (key-independent).
         for legacyID in Self.legacyCleartextDocumentIDs(agentURI: agentURI, topicID: topicID) {
             try? await topicCollection.document(legacyID).delete()
         }
@@ -1243,6 +1272,14 @@ final class AgentSubscriptionTopicStore {
         // sealing them keeps the server from enumerating who the user follows.
         // `cadence`/`consentGivenAt` (+ delivery fields) stay cleartext: they are
         // the server-side order/filter inputs and carry no graph identity.
+        // CANONICAL TYPE: `consentGivenAt` is a Firestore Timestamp — the Firebase
+        // SDK serializes this Swift `Date?` to a Timestamp, which is the canonical
+        // type both platforms converge on and the type `.order(by:)` is designed
+        // for. (Firestore sorts mixed-type fields by type-group first, so a Number
+        // and a Timestamp would land in separate sort groups; Android now also
+        // writes a Timestamp and its old Number docs self-heal on next update.)
+        // The reader (`decodeDate`) stays fully type-tolerant so legacy
+        // Number/String docs still decode while the corpus converges.
         [
             "sealedAgentURI": try dictionary(CloudVaultCrypto.sealText(topic.agentURI, keyData: vaultKey)),
             "sealedTopicID": try dictionary(CloudVaultCrypto.sealText(topic.topicID, keyData: vaultKey)),
@@ -1265,6 +1302,23 @@ final class AgentSubscriptionTopicStore {
     /// are preserved. Crypto lives in `CloudVaultCrypto.subscriptionDocID`.
     static func documentID(agentURI: String, topicID: String, vaultKey: Data) throws -> String {
         try CloudVaultCrypto.subscriptionDocID(agentURI: agentURI, topicID: topicID, keyData: vaultKey)
+    }
+
+    /// Pure decision for `unsubscribe`: resolve the authoritative sealed doc id
+    /// to delete, or throw `vaultKeyUnavailable` when the vault key is missing.
+    /// Extracted so the orphan-prevention is unit-testable without Firestore:
+    /// a nil key MUST throw (never silently return a no-op) so the caller cannot
+    /// drop the local row while the cloud subscription survives. Returns the
+    /// opaque doc id when the key is present.
+    static func resolveUnsubscribeDocID(
+        agentURI: String,
+        topicID: String,
+        vaultKey: Data?
+    ) throws -> String {
+        guard let vaultKey else {
+            throw StoreError.vaultKeyUnavailable
+        }
+        return try documentID(agentURI: agentURI, topicID: topicID, vaultKey: vaultKey)
     }
 
     static func legacyCleartextDocumentIDs(agentURI: String, topicID: String) -> [String] {
@@ -1394,6 +1448,7 @@ final class AgentSubscriptionTopicStore {
     enum StoreError: LocalizedError {
         case firebaseUnavailable
         case notAuthenticated
+        case vaultKeyUnavailable
 
         var errorDescription: String? {
             switch self {
@@ -1401,6 +1456,9 @@ final class AgentSubscriptionTopicStore {
                 return "Firebase is not configured on this device."
             case .notAuthenticated:
                 return "Sign in to manage subscription topics."
+            case .vaultKeyUnavailable:
+                // Recoverable, jargon-free: unlocking lets us finish the change.
+                return "Unlock BurnBar on this device to update your subscriptions, then try again."
             }
         }
     }

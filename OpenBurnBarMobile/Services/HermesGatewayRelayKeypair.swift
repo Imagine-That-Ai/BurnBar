@@ -185,6 +185,37 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         return nil
     }
 
+    /// A short, human-comparable "safety code" derived deterministically from a
+    /// paired agent's public key. Two devices that trust the **same** agent key
+    /// render the **same** code, so a user can read it aloud / glance across their
+    /// phone and Mac to confirm no one is sitting in the middle of the connection.
+    ///
+    /// Derivation is a SHA-256 of the raw (base64-decoded, or UTF-8 if decode
+    /// fails) public key bytes, with the first 8 bytes rendered as four
+    /// space-separated uppercase hex groups (e.g. `A1B2 C3D4 E5F6 0789`). This is
+    /// purely a *display* transform of the real pinned key — it never fabricates a
+    /// match and changes the instant the underlying key changes.
+    static func safetyCode(forPublicKeyBase64 publicKey: String) -> String? {
+        let trimmed = publicKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let keyBytes = Data(base64Encoded: trimmed) ?? Data(trimmed.utf8)
+        let digest = SHA256.hash(data: keyBytes)
+        let groups = stride(from: 0, to: 8, by: 2).map { offset -> String in
+            let bytes = Array(digest)[offset..<min(offset + 2, digest.byteCount)]
+            return bytes.map { String(format: "%02X", $0) }.joined()
+        }
+        return groups.joined(separator: " ")
+    }
+
+    /// The safety code for the currently pinned key of a client, or `nil` when no
+    /// key is pinned yet. Reads the real Keychain pin so the code always reflects
+    /// the trust this device actually holds — never the doc-advertised key on its
+    /// own.
+    func pinnedSafetyCode(uid: String, clientId: String) -> String? {
+        guard let pinned = pinnedKey(uid: uid, clientId: clientId) else { return nil }
+        return Self.safetyCode(forPublicKeyBase64: pinned)
+    }
+
     /// Clear the pin for a client so the next observed key is trusted afresh.
     /// Call this on re-pair / revoke so a deliberate re-pairing re-establishes
     /// trust on first use rather than tripping the mismatch guard forever.

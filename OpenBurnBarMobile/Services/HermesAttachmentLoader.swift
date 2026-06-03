@@ -173,6 +173,45 @@ enum HermesAttachmentLoader {
         )
     }
 
+    /// Imports an agent→phone gateway attachment after `HermesGatewaySettingsStore`
+    /// has opened the sealed manifest/body on this device. The decrypted bytes
+    /// land in the same workspace and model as local chat attachments, so the
+    /// existing transcript persistence and bubble UI work without a parallel
+    /// gateway-only attachment surface.
+    static func importGatewayOpenedAttachment(
+        _ opened: HermesGatewayOpenedAttachment,
+        threadID: String = HermesAttachmentWorkspace.defaultThreadID
+    ) throws -> HermesAttachment {
+        guard let workspace = HermesAttachmentWorkspace.attachmentsRoot(threadID: threadID) else {
+            throw LoaderError.workspaceUnavailable
+        }
+        let displayName = opened.fileName
+        let mime = opened.contentType ?? mimeType(forFileName: displayName)
+        let kind = HermesAttachmentKind.infer(mimeType: mime, fileName: displayName)
+        try enforceSizeLimit(name: displayName, kind: kind, byteSize: opened.data.count)
+
+        let safeName = safeFilename(displayName)
+        let storedRelative = "attachments/\(opened.attachmentId)-\(safeName)"
+        let storedURL = workspace.appendingPathComponent(storedRelative)
+        if FileManager.default.fileExists(atPath: storedURL.path) {
+            try? FileManager.default.removeItem(at: storedURL)
+        }
+        try opened.data.write(to: storedURL, options: [.atomic])
+
+        let preview = makeTextPreview(forKind: kind, fileURL: storedURL)
+        let thumbnail = makeThumbnail(forKind: kind, fileURL: storedURL)
+        return HermesAttachment(
+            id: opened.attachmentId,
+            kind: kind,
+            displayName: displayName,
+            mimeType: mime,
+            byteSize: opened.data.count,
+            workspaceRelativePath: storedRelative,
+            thumbnailPNG: thumbnail,
+            extractedTextPreview: preview
+        )
+    }
+
     // MARK: - Helpers
 
     private static func enforceSizeLimit(

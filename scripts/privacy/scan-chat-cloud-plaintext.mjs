@@ -867,19 +867,31 @@ assertIncludes(
   "return false;",
   "gateway plaintext write gate must be permanently closed",
 );
+// Gateway relayed content is scrubbed UNCONDITIONALLY (sealed AND legacy docs),
+// via the `gatewayRelayed` gate — NOT `requires:"relayEnvelope"`, which was a
+// structural no-op for legacy schema<2 server docs and is the audit BLOCKER
+// "legacy gateway plaintext never auto-scrubbed." These assertions pin the fix
+// and forbid a regression back to the no-op gate.
 assertSectionIncludes(
   "functions/src/callables/privacyBackfill.ts",
   'collection: "hermes_gateway_messages"',
   'collection: "hermes_gateway_attachments"',
-  '{ field: "threadId", requires: "relayEnvelope" }',
-  "privacy backfill must scrub sealed gateway message threadId",
+  '{ field: "threadId", gatewayRelayed: true }',
+  "privacy backfill must scrub gateway message threadId unconditionally (sealed + legacy)",
 );
 assertSectionIncludes(
   "functions/src/callables/privacyBackfill.ts",
   'collection: "hermes_gateway_messages"',
   'collection: "hermes_gateway_attachments"',
-  '{ field: "replyToEventId", requires: "relayEnvelope" }',
-  "privacy backfill must scrub sealed gateway message replyToEventId",
+  '{ field: "replyToEventId", gatewayRelayed: true }',
+  "privacy backfill must scrub gateway message replyToEventId unconditionally (sealed + legacy)",
+);
+assertSectionNotIncludes(
+  "functions/src/callables/privacyBackfill.ts",
+  'collection: "hermes_gateway_messages"',
+  'collection: "hermes_gateway_attachments"',
+  'requires: "relayEnvelope"',
+  "gateway plaintext must NOT be gated on relayEnvelope (no-op for legacy docs — the BLOCKER)",
 );
 // 3. The sealed envelope keys for media filename + subscription graph are
 //    recognized opaque columns (so they pass) and the bare plaintext keys are not.

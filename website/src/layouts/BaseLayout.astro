@@ -675,26 +675,42 @@ const fullTitle =
         var reduced =
           window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+        // Full provider roster — mirrors the native AgentProvider.swarmGlyphProviders
+        // order, interleaved with the three BurnBar Cloud crests. (Cursor Agent
+        // shares Cursor's mark; Anthropic + Qwen ride along as brand moments.)
         var LOGOS = [
           { src: "/brand/vector/cloud_crest.svg", scale: 0.4 },
           { src: "/brand/providers/openai.png", scale: 0.26 },
-          { src: "/brand/vector/cloud_pro_crest.svg", scale: 0.4 },
           { src: "/brand/providers/claude-code.png", scale: 0.26 },
           { src: "/brand/providers/codex.png", scale: 0.26 },
-          { src: "/brand/providers/antigravity.png", scale: 0.27 },
-          { src: "/brand/providers/hermes.png", scale: 0.26 },
-          { src: "/brand/providers/openclaw.png", scale: 0.27 },
-          { src: "/brand/providers/anthropic.png", scale: 0.25 },
-          { src: "/brand/providers/cursor.png", scale: 0.26 },
           { src: "/brand/providers/gemini-cli.png", scale: 0.26 },
-          { src: "/brand/providers/xai.png", scale: 0.24 },
-          { src: "/brand/providers/windsurf.png", scale: 0.26 },
+          { src: "/brand/providers/cursor.png", scale: 0.26 },
           { src: "/brand/providers/copilot.png", scale: 0.25 },
-          { src: "/brand/providers/factory.png", scale: 0.26 },
-          { src: "/brand/providers/warp.png", scale: 0.26 },
-          { src: "/brand/providers/kimi.svg", scale: 0.26 },
+          { src: "/brand/vector/cloud_pro_crest.svg", scale: 0.4 },
           { src: "/brand/providers/deepseek.svg", scale: 0.27 },
-          { src: "/brand/providers/qwen.svg", scale: 0.26 }
+          { src: "/brand/providers/kimi.svg", scale: 0.26 },
+          { src: "/brand/providers/minimax.png", scale: 0.26 },
+          { src: "/brand/providers/zai.png", scale: 0.26 },
+          { src: "/brand/providers/xai.png", scale: 0.24 },
+          { src: "/brand/providers/mimo.svg", scale: 0.26 },
+          { src: "/brand/providers/qwen.svg", scale: 0.26 },
+          { src: "/brand/providers/ollama.png", scale: 0.26 },
+          { src: "/brand/providers/windsurf.png", scale: 0.26 },
+          { src: "/brand/providers/warp.png", scale: 0.26 },
+          { src: "/brand/providers/factory.png", scale: 0.26 },
+          { src: "/brand/providers/antigravity.png", scale: 0.27 },
+          { src: "/brand/providers/aider.png", scale: 0.26 },
+          { src: "/brand/providers/cline.png", scale: 0.26 },
+          { src: "/brand/providers/kilo-code.png", scale: 0.26 },
+          { src: "/brand/providers/roo-code.png", scale: 0.26 },
+          { src: "/brand/providers/forge.png", scale: 0.26 },
+          { src: "/brand/providers/augment.png", scale: 0.26 },
+          { src: "/brand/providers/opencode.png", scale: 0.26 },
+          { src: "/brand/providers/goose.png", scale: 0.26 },
+          { src: "/brand/providers/openclaw.png", scale: 0.27 },
+          { src: "/brand/providers/pi-agent.svg", scale: 0.26 },
+          { src: "/brand/providers/anthropic.png", scale: 0.25 },
+          { src: "/brand/providers/hermes.png", scale: 0.26 }
         ];
         var PERIOD = 9.5,
           S = 200,
@@ -914,7 +930,15 @@ const fullTitle =
           "/brand/providers/anthropic.png", "/brand/providers/cursor.png",
           "/brand/providers/gemini-cli.png", "/brand/providers/xai.png",
           "/brand/providers/windsurf.png", "/brand/providers/copilot.png",
-          "/brand/providers/factory.png", "/brand/providers/warp.png"
+          "/brand/providers/factory.png", "/brand/providers/warp.png",
+          "/brand/providers/deepseek.svg", "/brand/providers/kimi.svg",
+          "/brand/providers/minimax.png", "/brand/providers/zai.png",
+          "/brand/providers/mimo.svg", "/brand/providers/qwen.svg",
+          "/brand/providers/ollama.png", "/brand/providers/aider.png",
+          "/brand/providers/cline.png", "/brand/providers/kilo-code.png",
+          "/brand/providers/roo-code.png", "/brand/providers/forge.png",
+          "/brand/providers/augment.png", "/brand/providers/opencode.png",
+          "/brand/providers/goose.png", "/brand/providers/pi-agent.svg"
         ];
         var CREST_SRCS = ["/brand/vector/cloud_crest.svg", "/brand/vector/cloud_pro_crest.svg"];
 

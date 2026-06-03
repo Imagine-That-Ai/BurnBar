@@ -258,6 +258,101 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(opened?.displayText)
     }
 
+    func testHermesGatewayEmptyOpenedReplyWithAttachmentShowsAttachmentSummary() throws {
+        let record = HermesGatewayMessageRecord(
+            documentID: "msg_attachment_only",
+            data: [
+                "id": "msg_attachment_only",
+                "clientId": "hgw_abc",
+                "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "attachmentIds": ["att_1"],
+                "relayEnvelope": [
+                    "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
+                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2
+            ]
+        )
+
+        var opened = try XCTUnwrap(record)
+        opened.resolvedText = ""
+
+        XCTAssertFalse(opened.isUndecryptableHere)
+        XCTAssertEqual(opened.chatRenderText(), "Hermes sent 1 attachment.")
+    }
+
+    func testHermesGatewaySealedAttachmentRoundTripsAndImportsIntoChatWorkspace() throws {
+        let uid = "uid_test"
+        let clientId = "hgw_abc"
+        let attachmentId = "att_round_trip_\(UUID().uuidString)"
+        let plaintext = Data("private file bytes".utf8)
+        let fileName = "notes.txt"
+        let contentType = "text/plain"
+        let threadID = "gateway-attachment-test-\(UUID().uuidString)"
+        defer {
+            if let root = HermesAttachmentWorkspace.threadRoot(threadID: threadID) {
+                try? FileManager.default.removeItem(at: root)
+            }
+        }
+
+        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let sealedBody = try HermesRelayCrypto.sealToBase64(
+            plaintext: plaintext,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let manifestData = try JSONSerialization.data(withJSONObject: [
+            "fileName": fileName,
+            "byteCount": plaintext.count,
+            "contentType": contentType
+        ])
+        let sealedManifest = try HermesRelayCrypto.sealToBase64(
+            plaintext: manifestData,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            bodyKey,
+            recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+
+        let record = HermesGatewayAttachmentRecord(
+            documentID: attachmentId,
+            data: [
+                "id": attachmentId,
+                "clientId": clientId,
+                "bodyStoragePath": "users/\(uid)/hermes_gateway_attachments/\(attachmentId)",
+                "relayEnvelope": [
+                    "payloadCiphertext": sealedManifest,
+                    "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.keyVersion
+                ]
+            ]
+        )
+        let opened = try XCTUnwrap(record?.opened(downloadedBody: Data(sealedBody.utf8), using: phoneKeypair, uid: uid))
+        XCTAssertEqual(opened.fileName, fileName)
+        XCTAssertEqual(opened.contentType, contentType)
+        XCTAssertEqual(opened.data, plaintext)
+
+        let imported = try HermesAttachmentLoader.importGatewayOpenedAttachment(opened, threadID: threadID)
+        XCTAssertEqual(imported.id, attachmentId)
+        XCTAssertEqual(imported.displayName, fileName)
+        XCTAssertEqual(imported.mimeType, contentType)
+        XCTAssertEqual(imported.byteSize, plaintext.count)
+        XCTAssertEqual(imported.extractedTextPreview, "private file bytes")
+
+        let workspace = try XCTUnwrap(HermesAttachmentWorkspace.threadRoot(threadID: threadID))
+        let stored = try Data(contentsOf: workspace.appendingPathComponent(imported.workspaceRelativePath))
+        XCTAssertEqual(stored, plaintext)
+    }
+
     func testHermesGatewayClientRecordReadsAgentRelayPubkeyAndCanSeal() {
         let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
         let record = HermesGatewayClientRecord(
@@ -486,6 +581,236 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(opened["senderDisplayName"] as? String, "iPhone")
     }
 
+    // MARK: Gateway reply chat-render (BLOCKER + HIGH undecryptable UX)
+
+    /// The chat thread must render the OPENED reply body, not the legacy
+    /// (always-nil) `text` field. Closes the BLOCKER where every sealed reply
+    /// rendered "Hermes replied without text." in the conversation.
+    func testGatewaySealedReplyChatRenderShowsOpenedText() throws {
+        let uid = "uid_render"
+        let clientId = "hgw_render"
+        let messageId = "msg_render"
+        let plaintext = "Done — your build is green."
+
+        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data(plaintext.utf8),
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let record = HermesGatewayMessageRecord(
+            documentID: messageId,
+            data: [
+                "id": messageId, "clientId": clientId, "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": payloadCiphertext, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-02T08:08:04.968Z", "schemaVersion": 2
+            ]
+        )
+        let opened = try XCTUnwrap(record?.decodedText(using: phoneKeypair, uid: uid))
+        XCTAssertEqual(opened.chatRenderText(), plaintext)
+        XCTAssertFalse(opened.isUndecryptableHere)
+    }
+
+    /// A reply sealed for a DIFFERENT paired device must render the calm,
+    /// jargon-free re-pair state — never a blank/"no text" bubble and never any
+    /// crypto jargon. Closes the HIGH "undecryptable masked as empty reply".
+    func testGatewayUndecryptableReplyChatRenderShowsRePairState() throws {
+        let uid = "uid_other"
+        let clientId = "hgw_other"
+        let messageId = "msg_other"
+        let otherDevice = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data("secret".utf8),
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: otherDevice,
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let record = HermesGatewayMessageRecord(
+            documentID: messageId,
+            data: [
+                "id": messageId, "clientId": clientId, "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": payloadCiphertext, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-02T08:08:04.968Z", "schemaVersion": 2
+            ]
+        )
+        let opened = try XCTUnwrap(record?.decodedText(using: HermesGatewayRelayKeypair.loadOrCreate(), uid: uid))
+        XCTAssertTrue(opened.isUndecryptableHere)
+        let rendered = opened.chatRenderText()
+        XCTAssertEqual(rendered, HermesGatewayMessageRecord.sealedForAnotherDeviceText)
+        XCTAssertFalse(rendered.isEmpty)
+        // Copy policy: no transport/crypto jargon in the recourse text.
+        for jargon in ["relay key", "E2EE", "end-to-end", "man-in-the-middle", "AES", "ciphertext", "envelope"] {
+            XCTAssertFalse(
+                rendered.localizedCaseInsensitiveContains(jargon),
+                "Re-pair copy leaks jargon: \(jargon)"
+            )
+        }
+    }
+
+    // MARK: Gateway sealed attachment open (HIGH — write-only-dead opener)
+
+    /// Seals an attachment EXACTLY as the Python adapter's `seal_attachment`
+    /// does (distinct manifest/body/key AAD labels, body blob = base64 of the
+    /// sealed body), then proves the new iOS opener unwraps the body key, opens
+    /// the manifest for the filename, and opens the file bytes. Closes the HIGH
+    /// "agent→phone sealed attachments have no iOS opener".
+    func testGatewaySealedAttachmentOpensRoundTrip() throws {
+        let uid = "uid_att"
+        let clientId = "hgw_att"
+        let attachmentId = "att_round_trip"
+        let fileName = "report.pdf"
+        let fileBytes = Data((0..<256).map { UInt8($0 % 251) })
+        let contentType = "application/pdf"
+
+        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+
+        // --- Agent (Python adapter) side: one body key seals body + manifest
+        //     under DISTINCT AAD labels, wrapped under the key AAD. ---
+        let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
+            plaintext: fileBytes,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        // The adapter uploads the ASCII base64 of the sealed body as the blob.
+        let downloadedBody = Data(sealedBodyBase64.utf8)
+        let manifestJSON = try JSONSerialization.data(withJSONObject: [
+            "fileName": fileName, "byteCount": fileBytes.count, "contentType": contentType
+        ])
+        let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: manifestJSON,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            bodyKey,
+            recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+
+        let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
+            documentID: attachmentId,
+            data: [
+                "id": attachmentId, "clientId": clientId, "destinationId": "burnbar:home",
+                "bodyStoragePath": "hermes_gateway_attachments/\(uid)/\(attachmentId)",
+                "relayEnvelope": [
+                    "payloadCiphertext": manifestCiphertext, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-02T08:08:04.968Z"
+            ]
+        ))
+        XCTAssertTrue(record.isSealed)
+
+        // --- Phone side: the new opener round-trips the Python-sealed wire. ---
+        let opened = try XCTUnwrap(
+            record.opened(downloadedBody: downloadedBody, using: phoneKeypair, uid: uid),
+            "iOS must open a Python-sealed gateway attachment"
+        )
+        XCTAssertEqual(opened.fileName, fileName)
+        XCTAssertEqual(opened.byteCount, fileBytes.count)
+        XCTAssertEqual(opened.contentType, contentType)
+        XCTAssertEqual(opened.data, fileBytes)
+    }
+
+    /// A relay that swaps the body ciphertext into the manifest slot (or vice
+    /// versa) must fail the AES-GCM tag — the distinct AAD labels bind each slot.
+    func testGatewaySealedAttachmentCrossSlotSwapFailsTag() throws {
+        let uid = "uid_swap"
+        let clientId = "hgw_swap"
+        let attachmentId = "att_swap"
+        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+
+        let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        // Seal the body, then try to open it AS IF it were the manifest (wrong AAD).
+        let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data("file".utf8),
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            bodyKey,
+            recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        // Put the BODY ciphertext into the manifest (payloadCiphertext) slot.
+        let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
+            documentID: attachmentId,
+            data: [
+                "id": attachmentId, "clientId": clientId, "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": sealedBodyBase64, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-02T08:08:04.968Z"
+            ]
+        ))
+        let bodyKeyUnwrapped = try XCTUnwrap(record.unwrapBodyKey(using: phoneKeypair, uid: uid))
+        XCTAssertThrowsError(try record.openManifest(bodyKey: bodyKeyUnwrapped, uid: uid)) { _ in }
+    }
+
+    /// An attachment sealed to another paired device cannot be opened here and
+    /// returns nil (so the caller shows the same calm re-pair state as a reply).
+    func testGatewaySealedAttachmentForAnotherDeviceDoesNotOpen() throws {
+        let uid = "uid_att_other"
+        let clientId = "hgw_att_other"
+        let attachmentId = "att_other"
+        let otherDevice = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+
+        let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data("file".utf8),
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: try JSONSerialization.data(withJSONObject: ["fileName": "x.txt", "byteCount": 4]),
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            bodyKey,
+            recipientPublicKeyBase64: otherDevice,
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
+            documentID: attachmentId,
+            data: [
+                "id": attachmentId, "clientId": clientId, "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": manifestCiphertext, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                ],
+                "createdAt": "2026-06-02T08:08:04.968Z"
+            ]
+        ))
+        XCTAssertNil(record.unwrapBodyKey(using: HermesGatewayRelayKeypair.loadOrCreate(), uid: uid))
+        XCTAssertNil(record.opened(
+            downloadedBody: Data(sealedBodyBase64.utf8),
+            using: HermesGatewayRelayKeypair.loadOrCreate(),
+            uid: uid
+        ))
+    }
+
     func testHermesGatewayRelayKeypairPublishesX963PubkeyAtPairing() async {
         let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -667,7 +992,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
         XCTAssertNil(sent)
         XCTAssertTrue(repository.enqueuedEvents.isEmpty)
-        XCTAssertTrue(store.noticeText?.contains("end-to-end encrypted") ?? false)
+        XCTAssertTrue(store.noticeText?.contains("private cloud messages") ?? false)
     }
 
     func testHermesGatewaySettingsStoreRepairsMissingSelectedClientToOnlineFallback() async {

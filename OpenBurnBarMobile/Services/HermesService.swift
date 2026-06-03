@@ -1495,10 +1495,16 @@ final class HermesService {
     }
 
     func finishBurnBarGatewayTurn(placeholderID: String, reply: HermesGatewayMessageRecord) {
-        let text = reply.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalText = text.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes replied without text."
+        // Render the OPENED reply body, not the legacy plaintext `text` field
+        // (which is always nil on sealed schema≥2 docs). `chatRenderText` is the
+        // single source of truth: it returns the decrypted body, the legacy
+        // plaintext, an attachment summary, or — when this device cannot open a
+        // reply sealed for another paired device — a calm, jargon-free re-pair
+        // state instead of a blank/"no text" bubble.
+        let finalText = reply.chatRenderText(emptyFallback: "Hermes replied without text.")
         if let index = messages.firstIndex(where: { $0.id == placeholderID }) {
             messages[index].text = finalText
+            messages[index].attachments = reply.openedAttachments
             messages[index].isStreaming = false
             messages[index].isError = false
             messages[index].responseModelID = activeRequestedModelID
@@ -1509,6 +1515,7 @@ final class HermesService {
             messages.append(HermesChatMessage(
                 role: .assistant,
                 text: finalText,
+                attachments: reply.openedAttachments,
                 requestedModelID: activeRequestedModelID,
                 responseModelID: activeRequestedModelID,
                 modelName: activeModelName,

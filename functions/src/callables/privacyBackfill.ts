@@ -11,8 +11,16 @@
  *     sealed field that supersedes it (the `requires` gate). We never strip a
  *     plaintext value that has no sealed replacement, so no data is lost in the
  *     window before a device has re-sealed — the legacy doc still renders.
- *     The only exception is an explicitly documented retire-only field whose
- *     current writers omit it and whose rules now reject it.
+ *     Two explicit, reviewed exceptions exist:
+ *       (a) a documented retire-only field whose current writers omit it and
+ *           whose rules now reject it (`ungatedReason`), and
+ *       (b) Hermes Gateway RELAYED content (`gatewayRelayed`). Gateway docs are
+ *           server-written and relayed end-to-end; the server never holds an
+ *           entitled sealed copy, so its plaintext sibling is pure leak and is
+ *           stripped for both sealed and legacy docs. The previous
+ *           `requires:"relayEnvelope"` gate was a structural no-op for legacy
+ *           schema<2 server docs (they never gain a relayEnvelope), leaving the
+ *           plaintext stored AND served forever — the audit BLOCKER this closes.
  *  2. Re-running is a no-op once a doc is clean (the gated fields are absent),
  *     so the scheduled sweep and any manual run converge to the same fixed point.
  *  3. The reseal watermark (`privacy_reseal_state/current.resealEpoch`) is bumped
@@ -39,6 +47,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { db } from "../adminRuntime.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
+import { HERMES_GATEWAY_SCHEMA_VERSION } from "../hermesGateway.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -62,6 +71,31 @@ interface GatedField {
    * remove live cross-device functionality. Keep this list tiny and reviewed.
    */
   readonly ungatedReason?: string;
+  /**
+   * Hermes Gateway relayed content (text / senderDisplayName / threadId /
+   * fileName). Gateway docs are SERVER-WRITTEN and RELAYED, not vault-sealed on
+   * the server: the readable content lives end-to-end between the phone and the
+   * agent, sealed inside `relayEnvelope`. The server is never the entitled holder
+   * of a readable copy, so its plaintext sibling is pure leak with no sealed
+   * server replacement to wait for.
+   *
+   * The original `requires: "relayEnvelope"` gate was a STRUCTURAL NO-OP for the
+   * exact leak: legacy schema<2 gateway docs were written server-side and never
+   * gain a `relayEnvelope`, so the gate never fired and the plaintext was stored
+   * AND served (serializeHermesGatewayEvent schema-1 fallback) forever until an
+   * operator hand-ran the scrubber (audit BLOCKER, privacyBackfill.ts:169 / 234).
+   *
+   * `gatewayRelayed` deletes the plaintext whenever the doc is either:
+   *   • sealed   — carries a `relayEnvelope` OR advertises schemaVersion >= 2
+   *                (matches the read-path "isSealedDoc" predicate in
+   *                hermesGateway.ts), or
+   *   • legacy   — has no/old schemaVersion (< HERMES_GATEWAY_SCHEMA_VERSION).
+   * Those two cases partition every gateway doc, so the effect is "always strip
+   * the relayed plaintext," which is correct precisely because the server holds
+   * no entitled sealed copy of relayed content. Encoded as an explicit gate (not
+   * a bare ungated delete) so the safety argument is reviewed and test-asserted.
+   */
+  readonly gatewayRelayed?: boolean;
 }
 
 /** One top-level collection's legacy plaintext fields, each with its sealed gate. */
@@ -163,25 +197,29 @@ const COLLECTION_PLANS: readonly CollectionPlan[] = [
       { field: "description", requires: "sealedDescription" },
     ],
   },
+  // §gateway Hermes Gateway relayed content. Deletion is NOT gated on a sealed
+  // server copy (the server never holds one) — see GatedField.gatewayRelayed.
+  // This closes the audit BLOCKER where `requires:"relayEnvelope"` never fired
+  // for legacy schema<2 server-written docs, leaving plaintext stored + served.
   {
     collection: "hermes_gateway_events",
     fields: [
-      { field: "text", requires: "relayEnvelope" },
-      { field: "senderDisplayName", requires: "relayEnvelope" },
-      { field: "threadId", requires: "relayEnvelope" },
+      { field: "text", gatewayRelayed: true },
+      { field: "senderDisplayName", gatewayRelayed: true },
+      { field: "threadId", gatewayRelayed: true },
     ],
   },
   {
     collection: "hermes_gateway_messages",
     fields: [
-      { field: "text", requires: "relayEnvelope" },
-      { field: "threadId", requires: "relayEnvelope" },
-      { field: "replyToEventId", requires: "relayEnvelope" },
+      { field: "text", gatewayRelayed: true },
+      { field: "threadId", gatewayRelayed: true },
+      { field: "replyToEventId", gatewayRelayed: true },
     ],
   },
   {
     collection: "hermes_gateway_attachments",
-    fields: [{ field: "fileName", requires: "relayEnvelope" }],
+    fields: [{ field: "fileName", gatewayRelayed: true }],
   },
   {
     collection: "media_attachment_manifests",
@@ -199,14 +237,40 @@ const ROLLBACK_SNAPSHOT_FIELDS: readonly GatedField[] = [
 ];
 
 /**
+ * True for a Hermes Gateway doc whose relayed plaintext may be stripped: either
+ * it is SEALED (carries a `relayEnvelope` OR advertises schemaVersion >= the
+ * current gateway schema) or it is LEGACY (no/old schemaVersion). These two
+ * cases partition every gateway doc, so this returns true for all of them —
+ * which is correct because the server is never the entitled holder of a readable
+ * copy of relayed content (see GatedField.gatewayRelayed). Kept explicit rather
+ * than a constant `true` so the sealed and legacy branches are both test-visible
+ * and a future schema change can re-tighten one branch without touching callers.
+ */
+export function gatewayRelayedPlaintextStrippable(data: Record<string, unknown>): boolean {
+  const hasRelayEnvelope = Object.prototype.hasOwnProperty.call(data, "relayEnvelope");
+  const schemaVersion = typeof data.schemaVersion === "number" ? data.schemaVersion : NaN;
+  const isSealed = hasRelayEnvelope || schemaVersion >= HERMES_GATEWAY_SCHEMA_VERSION;
+  const isLegacy = !(schemaVersion >= HERMES_GATEWAY_SCHEMA_VERSION);
+  return isSealed || isLegacy;
+}
+
+/**
  * Pure gating decision: which gated plaintext fields on a doc may be deleted
  * (the sealed gate is satisfied and the field is present). Exported for tests so
  * the safe-by-construction property is asserted without a live Firestore.
  */
 export function gatedDeletions(data: Record<string, unknown>, fields: readonly GatedField[]): string[] {
   const deletions: string[] = [];
-  for (const { field, requires } of fields) {
+  for (const { field, requires, gatewayRelayed } of fields) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
+    if (gatewayRelayed) {
+      // Relayed gateway content: strip the plaintext for sealed AND legacy docs;
+      // the server holds no sealed copy to preserve. Never blocks on a `requires`
+      // gate (legacy docs would never satisfy one — the original NO-OP bug).
+      if (!gatewayRelayedPlaintextStrippable(data)) continue;
+      deletions.push(field);
+      continue;
+    }
     if (requires && !Object.prototype.hasOwnProperty.call(data, requires)) continue;
     deletions.push(field);
   }
@@ -383,9 +447,11 @@ export const backfillPrivacyPlaintextScheduled = onSchedule(
 /** Test-only surface: the gating decision + the surface plans. */
 export const __testing__ = {
   gatedDeletions,
+  gatewayRelayedPlaintextStrippable,
   COLLECTION_PLANS,
   KNOWLEDGE_REPO_FIELDS,
   ROLLBACK_SNAPSHOT_FIELDS,
   PRIVACY_RESEAL_EPOCH,
+  HERMES_GATEWAY_SCHEMA_VERSION,
   backfillUserPrivacy,
 };
