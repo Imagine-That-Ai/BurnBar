@@ -437,7 +437,6 @@ private class CloudTokenRainScene(
     private var seeded = false
     private val clouds = ArrayList<Cloud>()
     private val coins = ArrayList<Coin>()
-    private var spawnAccumulator = 0.0
 
     private class Cloud(
         var x: Double,
