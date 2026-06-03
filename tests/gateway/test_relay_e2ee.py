@@ -299,3 +299,27 @@ def test_agent_relay_identity_mints_fresh_on_corrupt_env():
         environ={relay_e2ee.RELAY_PRIVATE_KEY_ENV: "not-base64-!!"}
     )
     assert isinstance(identity.private_key, relay_e2ee.RelayPrivateKey)
+
+
+def test_minted_key_is_written_back_into_environ_for_stable_reload():
+    """A minted key lands in the provided environ so an in-process reload is stable."""
+    environ: dict[str, str] = {}
+    first = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ)
+    # The minted key was written back into the live environ map.
+    assert environ.get(relay_e2ee.RELAY_PRIVATE_KEY_ENV) == first.private_key.raw_base64()
+    # A second load from the SAME environ returns the SAME identity (no rotation).
+    second = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ)
+    assert second.private_key == first.private_key
+
+
+def test_persist_failure_is_non_fatal_and_key_kept_in_process():
+    """A throwing persist callback never loses the minted key (fail-stable)."""
+
+    def boom(env_var: str, value: str) -> None:
+        raise RuntimeError("disk is read-only")
+
+    environ: dict[str, str] = {}
+    identity = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ, persist=boom)
+    assert isinstance(identity.private_key, relay_e2ee.RelayPrivateKey)
+    # Despite the persist failure the key is still available for this run.
+    assert environ.get(relay_e2ee.RELAY_PRIVATE_KEY_ENV) == identity.private_key.raw_base64()

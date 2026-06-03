@@ -299,6 +299,14 @@ class AgentRelayIdentity:
         ``persist`` is supplied it is called with ``(env_var, raw_base64)`` so
         the caller can write it back to ``~/.hermes/.env`` (mirroring how the
         BurnBar adapter persists ``BURNBAR_ACCESS_TOKEN``).
+
+        Stability matters: without persistence the agent's relay key would rotate
+        on every restart, silently breaking every previously-sealed inbound
+        event. So a freshly minted key is (a) written back into the live
+        ``environ`` map so an in-process reload sees the SAME key even if disk
+        persistence is unavailable, and (b) handed to ``persist`` for durable
+        storage. A ``persist`` failure is logged-and-swallowed (never fatal) — the
+        in-memory + environ copy keeps the process consistent for this run.
         """
         source = environ if environ is not None else os.environ
         raw_base64 = source.get(env_var)
@@ -309,8 +317,23 @@ class AgentRelayIdentity:
                 # Corrupt stored key — fall through and mint a fresh one.
                 pass
         private_key = generate_private_key()
+        minted_base64 = private_key.raw_base64()
+        # Keep the minted key visible to in-process reloads regardless of disk
+        # persistence so the identity does not rotate within a single run.
+        try:
+            source[env_var] = minted_base64
+        except Exception:
+            pass
         if persist is not None:
-            persist(env_var, private_key.raw_base64())
+            try:
+                persist(env_var, minted_base64)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug(
+                    "relay identity persist callback failed; key kept in-process only",
+                    exc_info=True,
+                )
         return cls(private_key)
 
 
