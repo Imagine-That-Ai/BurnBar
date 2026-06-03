@@ -563,6 +563,7 @@ async function handleDevicePoll(req: HttpRequest, res: HttpResponse): Promise<vo
         clientId: typeof data.clientId === "string" ? data.clientId : undefined,
         homeDestinationId:
           typeof data.homeDestinationId === "string" ? data.homeDestinationId : HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
+        relayCapable: data.relayCapable === true,
         // The phone's relay public key (copied onto the session by the approve
         // callable) so the agent can wrap its first reply body to the phone.
         phoneRelayPublicKey: typeof data.phoneRelayPublicKey === "string" ? data.phoneRelayPublicKey : undefined,
@@ -1284,6 +1285,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
             phoneRelayPublicKey: phoneRelay?.publicKey,
             phoneRelayKeyVersion: phoneRelay?.keyVersion,
             phoneRelayEncryption: phoneRelay?.encryption,
+            relayCapable: relayCapable ? true : undefined,
             approvedAt: now,
             updatedAt: Timestamp.now(),
           }),

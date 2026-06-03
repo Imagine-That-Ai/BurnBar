@@ -104,7 +104,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
             operations: ops
         )
         model.updateAudibleCue(true)
-        await waitUntil(ops.lastConfig?.audibleCue == true)
+        try? await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertEqual(ops.lastConfig?.audibleCue, true)
     }
 

@@ -17,13 +17,18 @@ import OpenBurnBarCore
 ///   - `fetchChatMessages(threadID:)` → `[ChatMessageRecord]`
 final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
+    private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
     private(set) var lastSyncDate: Date?
 
-    init(context: CloudSyncContext) {
+    init(
+        context: CloudSyncContext,
+        vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+    ) {
         self.context = context
+        self.vaultKeyProvider = vaultKeyProvider
     }
 
     func sync() async {
@@ -60,15 +65,11 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                 .document(uid)
                 .collection("chat_threads")
 
-	            let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
-	            let resolvedKey = includeContent
-	                ? try await MacCloudVaultKeyAccess.keyForWriting(
-	                    uid: uid,
-	                    deviceId: deviceId,
-	                    firestore: Firestore.firestore()
-	                )
-	                : nil
-	            for thread in threads {
+            let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
+            let resolvedKey = includeContent
+                ? try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
+                : nil
+            for thread in threads {
                 let label = thread.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? "Thread \(thread.id.prefix(8))"
                     : thread.title
@@ -93,34 +94,34 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     "contentIncluded": includeContent,
                 ]
 
-	                if includeContent, let resolvedKey {
-	                    let payload = ChatThreadSealedPayload(
-	                        threadId: thread.id,
-	                        title: thread.title,
-	                        preview: String(thread.preview.prefix(500)),
-	                        messages: messages.map(ChatThreadSealedPayload.Message.init)
-	                    )
-	                    let payloadData = try Self.sealedPayloadEncoder.encode(payload)
-	                    let sealedPayload = try CloudVaultCrypto.sealPayload(
-	                        payloadData,
-	                        keyData: resolvedKey.keyData,
-	                        vaultKeyID: resolvedKey.vaultKeyID
-	                    )
-	                    data["contentSealed"] = true
-	                    data["sealedSchemaVersion"] = 1
-	                    data["vaultKeyID"] = resolvedKey.vaultKeyID
-	                    data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
-	                    data["title"] = FieldValue.delete()
-	                    data["preview"] = FieldValue.delete()
-	                    data["messages"] = FieldValue.delete()
-	                } else {
-	                    data["messages"] = FieldValue.delete()
-	                    data["title"] = FieldValue.delete()
-	                    data["preview"] = FieldValue.delete()
-	                    data["sealedPayload"] = FieldValue.delete()
-	                    data["vaultKeyID"] = FieldValue.delete()
-	                    data["contentSealed"] = false
-	                }
+                if includeContent, let resolvedKey {
+                    let payload = ChatThreadSealedPayload(
+                        threadId: thread.id,
+                        title: thread.title,
+                        preview: String(thread.preview.prefix(500)),
+                        messages: messages.map(ChatThreadSealedPayload.Message.init)
+                    )
+                    let payloadData = try Self.sealedPayloadEncoder.encode(payload)
+                    let sealedPayload = try CloudVaultCrypto.sealPayload(
+                        payloadData,
+                        keyData: resolvedKey.keyData,
+                        vaultKeyID: resolvedKey.vaultKeyID
+                    )
+                    data["contentSealed"] = true
+                    data["sealedSchemaVersion"] = 1
+                    data["vaultKeyID"] = resolvedKey.vaultKeyID
+                    data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
+                    data["title"] = FieldValue.delete()
+                    data["preview"] = FieldValue.delete()
+                    data["messages"] = FieldValue.delete()
+                } else {
+                    data["messages"] = FieldValue.delete()
+                    data["title"] = FieldValue.delete()
+                    data["preview"] = FieldValue.delete()
+                    data["sealedPayload"] = FieldValue.delete()
+                    data["vaultKeyID"] = FieldValue.delete()
+                    data["contentSealed"] = false
+                }
                 batch.setData(data, forDocument: docRef, merge: true)
                 progress?.recordChatThreadProcessed(label: label)
             }

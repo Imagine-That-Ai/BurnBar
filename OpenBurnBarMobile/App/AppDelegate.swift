@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        seedDefaultAppearanceIfNeeded()
         configureFirebase()
         Task { @MainActor in
             MobileMediaBudgetStatusStore.shared.start()
@@ -24,6 +25,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         configureMercuryFileTransfer()
         AgentReplyNotificationService.shared.configure(application: application)
         return true
+    }
+
+    /// On first launch, opt new users into the live provider-glyph swarm
+    /// backdrop so the app greets them with the same beautiful dot swarm the
+    /// website shows. Only seeds when the key is absent, so anyone who toggles
+    /// it off keeps their choice across launches.
+    private func seedDefaultAppearanceIfNeeded() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "useWebsiteBackground") == nil {
+            defaults.set(true, forKey: "useWebsiteBackground")
+        }
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

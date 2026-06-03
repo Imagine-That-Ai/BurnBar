@@ -3,6 +3,66 @@ import FirebaseCore
 import GoogleSignIn
 import OpenBurnBarCore
 
+@MainActor
+enum HermesGatewayPairingDeepLink {
+    static let notificationName = Notification.Name("OpenHermesGatewayPairing")
+    static let codeUserInfoKey = "code"
+
+    private static var pendingCode: String?
+
+    static func open(code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        pendingCode = trimmed
+        NotificationCenter.default.post(
+            name: notificationName,
+            object: nil,
+            userInfo: [codeUserInfoKey: trimmed]
+        )
+    }
+
+    static func code(from notification: Notification) -> String? {
+        (notification.userInfo?[codeUserInfoKey] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty()
+    }
+
+    static func consumePendingCode() -> String? {
+        let code = pendingCode
+        pendingCode = nil
+        return code
+    }
+
+    static func pairingCode(from url: URL) -> String? {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let code = components?.queryItems?
+            .first { ["code", "userCode", "user_code"].contains($0.name) }?
+            .value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty()
+        guard let code else { return nil }
+
+        let scheme = url.scheme?.lowercased()
+        let host = url.host?.lowercased()
+        let path = url.path.lowercased()
+
+        if scheme == "https",
+           ["burnbar.ai", "www.burnbar.ai"].contains(host ?? ""),
+           path == "/hermes/connect" {
+            return code
+        }
+
+        guard scheme == "burnbar" else { return nil }
+        if ["hermes-gateway", "gateway", "hermes-connect"].contains(host ?? "") {
+            return code
+        }
+        if host == "hermes", ["/gateway", "/connect"].contains(path) {
+            return code
+        }
+        return nil
+    }
+}
+
 @main
 struct OpenBurnBarMobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -65,6 +125,10 @@ struct OpenBurnBarMobileApp: App {
 
     private func handleDeepLink(_ url: URL) {
         if GIDSignIn.sharedInstance.handle(url) {
+            return
+        }
+        if let pairingCode = HermesGatewayPairingDeepLink.pairingCode(from: url) {
+            HermesGatewayPairingDeepLink.open(code: pairingCode)
             return
         }
         guard url.scheme == "burnbar" else { return }

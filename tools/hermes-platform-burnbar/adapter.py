@@ -17,6 +17,7 @@ server reports the link is relay-capable.
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import hashlib
 import json
@@ -104,6 +105,26 @@ def _agent_version() -> str:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _relay_safety_code(public_key_b64: str) -> str:
+    """Human-comparable safety code matching BurnBar's mobile display.
+
+    BurnBar Mobile derives the code from the raw paired agent public-key bytes:
+    SHA-256, first eight digest bytes, rendered as four uppercase hex groups.
+    Keeping the transform byte-identical lets the CLI print the Mac-side code
+    immediately after setup so users can verify first pairing rather than
+    silently relying on TOFU.
+    """
+    public_key = (public_key_b64 or "").strip()
+    if not public_key:
+        return ""
+    try:
+        key_bytes = base64.b64decode(public_key, validate=True)
+    except Exception:
+        key_bytes = public_key.encode("utf-8")
+    digest = hashlib.sha256(key_bytes).digest()
+    return " ".join(digest[offset : offset + 2].hex().upper() for offset in range(0, 8, 2))
 
 
 def _api_base(config: PlatformConfig | None = None) -> str:
@@ -291,12 +312,34 @@ async def _upload_attachment(
     file_path: Path,
     content_type: str,
     body_bytes: Optional[bytes] = None,
-) -> None:
+) -> bytes:
     data = body_bytes if body_bytes is not None else file_path.read_bytes()
     # Sealed bodies are opaque ciphertext; advertise octet-stream so no proxy
     # tries to sniff/transcode them. Plaintext uploads keep their real type.
     upload_type = "application/octet-stream" if body_bytes is not None else content_type
     response = await client.put(upload_url, content=data, headers={"Content-Type": upload_type})
+    response.raise_for_status()
+    return data
+
+
+async def _finalize_attachment(
+    client: "httpx.AsyncClient",
+    *,
+    api_base: str,
+    token: str,
+    attachment_id: str,
+    destination_id: str,
+    uploaded_bytes: bytes,
+) -> None:
+    response = await client.post(
+        f"{api_base}/attachments/finalize",
+        headers=_headers(token),
+        json={
+            "attachmentId": attachment_id,
+            "destinationId": destination_id,
+            "sha256": hashlib.sha256(uploaded_bytes).hexdigest(),
+        },
+    )
     response.raise_for_status()
 
 
@@ -340,12 +383,20 @@ async def _create_attachments(
             relay_envelope=relay_envelope,
             byte_count_override=byte_count_override,
         )
-        await _upload_attachment(
+        uploaded_bytes = await _upload_attachment(
             client,
             upload_url=upload_url,
             file_path=file_path,
             content_type=content_type,
             body_bytes=body_bytes,
+        )
+        await _finalize_attachment(
+            client,
+            api_base=api_base,
+            token=token,
+            attachment_id=attachment_id,
+            destination_id=destination_id,
+            uploaded_bytes=uploaded_bytes,
         )
         attachment_ids.append(attachment_id)
     return attachment_ids
@@ -1591,9 +1642,12 @@ def interactive_setup() -> None:
         approved.get("relayPublicKey")
         or approved.get("phoneRelayPublicKey")
         or (approved.get("client") or {}).get("relayPublicKey")
+        or (approved.get("client") or {}).get("phoneRelayPublicKey")
         or ""
     )
-    if agent_relay_public_key and (approved.get("relayCapable") is True or peer_relay_public_key):
+    client_payload = approved.get("client") or {}
+    relay_capable = approved.get("relayCapable") is True or client_payload.get("relayCapable") is True
+    if agent_relay_public_key and (relay_capable or peer_relay_public_key):
         save_env_value(RELAY_E2E_ENV, "1")
         if peer_relay_public_key:
             save_env_value("BURNBAR_RELAY_PEER_PUBLIC_KEY", str(peer_relay_public_key))
@@ -1604,6 +1658,10 @@ def interactive_setup() -> None:
         if uid:
             save_env_value("BURNBAR_RELAY_UID", str(uid))
         print_info("End-to-end encryption is enabled for this BurnBar link.")
+        safety_code = _relay_safety_code(agent_relay_public_key)
+        if safety_code:
+            print_info(f"Safety code: {safety_code}")
+            print_info("Compare this with BurnBar's Private messages screen before sending sensitive prompts.")
     elif agent_relay_public_key:
         print_info(
             "Paired without end-to-end encryption (legacy BurnBar). Messages use "

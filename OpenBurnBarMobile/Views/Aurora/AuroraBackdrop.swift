@@ -46,10 +46,15 @@ struct AuroraBackdrop: View {
     var body: some View {
         ZStack {
             if appSkin == .editorial {
-                // Editorial / Paper skin: a flat paper field, no swarm, mesh,
-                // ribbon, particles, or vignette. The "no glass/glow" rule.
-                MobileTheme.background
-                    .ignoresSafeArea()
+                // Editorial / Paper skin: the light dot-crest — provider logos
+                // drifting from coloured dots on paper, like app.burnbar.ai.
+                // `WebsiteBackgroundView` renders the paper + transparent swarm
+                // itself when the editorial skin is active.
+                WebsiteBackgroundView(
+                    accent: MobileTheme.ember,
+                    colorDriver: colorDriver,
+                    visibility: effectiveVisibility
+                )
             } else if uiMode == .cooking {
                 VisibilityAwareEmberSurfaceBackground()
             } else if allowsWebsiteBackground && useWebsiteBackground {

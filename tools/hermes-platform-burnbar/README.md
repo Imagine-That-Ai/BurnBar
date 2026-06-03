@@ -17,6 +17,9 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
   and opens phone-sealed inbound events with its own key; on an E2E-paired link it
   refuses to send plaintext. The BurnBar Cloud gateway is a blind relay — it never
   sees message/event/attachment bodies, sender names, or file names.
+- **Safety-code comparison** after setup: when E2E is enabled, the CLI prints the
+  same short code BurnBar shows in the Private messages sheet. Matching codes
+  prove the phone pinned this agent key at first pairing.
 - **Runtime status** to `/runtime` (on connect and every 30s): the agent's model
   catalog, current model/provider, and agent version. The gateway exposes this on
   `/state`, which is how BurnBar clients show whether the gateway is online and
@@ -56,6 +59,10 @@ hermes gateway setup        # choose "BurnBar Cloud", approve the code in the ap
 hermes gateway restart
 hermes gateway status
 ```
+
+After approval, compare the printed safety code with BurnBar's **Private
+messages** screen before sending sensitive prompts. If the codes do not match,
+revoke the gateway in BurnBar and pair again from a trusted network.
 
 ## Tests
 

@@ -60,10 +60,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.settings.BackgroundStyle
+import com.openburnbar.ui.settings.rememberAppearance
 import com.openburnbar.ui.settings.rememberBackgroundStyle
 import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
 import com.openburnbar.ui.settings.rememberProviderGlyphs
 import com.openburnbar.ui.settings.rememberThemePalette
+import com.openburnbar.ui.theme.AppAppearance
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import com.openburnbar.ui.theme.AuroraMotion
@@ -122,21 +124,30 @@ fun AuroraBackdrop(isDark: Boolean = isSystemInDarkTheme(), density: AuroraDensi
     val reduceMotion = LocalAuroraReduceMotion.current
     val backgroundStyle by rememberBackgroundStyle()
 
+    val appearance by rememberAppearance()
+    val editorial = appearance == AppAppearance.EDITORIAL
+
     Box(modifier = modifier.fillMaxSize()) {
-        when (backgroundStyle) {
-            BackgroundStyle.SWARM -> WebsiteBackground(accentColor = AuroraColors.ember)
-            BackgroundStyle.DOT_CONSTELLATION -> DotConstellationBackground()
-            // The aurora orb/ribbon animations only exist in the AURORA branch, so
-            // their infinite transitions live there too — SWARM and DOT_CONSTELLATION
-            // never spin an idle aurora clock behind their own renderers.
-            BackgroundStyle.AURORA ->
-                AuroraAnimatedBackdrop(
-                    isDark = isDark,
-                    density = density,
-                    reduceMotion = reduceMotion,
-                )
+        if (editorial) {
+            // Editorial / Paper skin: the light dot-crest — provider logos drifting
+            // from coloured dots on paper, like app.burnbar.ai. Light-locked.
+            WebsiteBackground(accentColor = AuroraColors.ember, forceLight = true)
+        } else {
+            when (backgroundStyle) {
+                BackgroundStyle.SWARM -> WebsiteBackground(accentColor = AuroraColors.ember)
+                BackgroundStyle.DOT_CONSTELLATION -> DotConstellationBackground()
+                // The aurora orb/ribbon animations only exist in the AURORA branch, so
+                // their infinite transitions live there too — SWARM and DOT_CONSTELLATION
+                // never spin an idle aurora clock behind their own renderers.
+                BackgroundStyle.AURORA ->
+                    AuroraAnimatedBackdrop(
+                        isDark = isDark,
+                        density = density,
+                        reduceMotion = reduceMotion,
+                    )
+            }
         }
-        AuroraBackdropVignette(isDark = isDark)
+        AuroraBackdropVignette(isDark = isDark && !editorial)
     }
 }
 
@@ -190,9 +201,15 @@ private fun AuroraAnimatedBackdrop(isDark: Boolean, density: AuroraDensity, redu
  * the single dispatch point keeping all surfaces coherent.
  */
 @Composable
-fun WebsiteBackground(accentColor: Color = AuroraColors.ember, modifier: Modifier = Modifier) {
+fun WebsiteBackground(
+    accentColor: Color = AuroraColors.ember,
+    modifier: Modifier = Modifier,
+    forceLight: Boolean = false,
+) {
     val backgroundStyle by rememberBackgroundStyle()
-    if (backgroundStyle == BackgroundStyle.DOT_CONSTELLATION) {
+    // Editorial forces the light dot-crest, so it bypasses the constellation
+    // style and always renders the swarm in light mode.
+    if (!forceLight && backgroundStyle == BackgroundStyle.DOT_CONSTELLATION) {
         DotConstellationBackground(modifier = modifier)
         return
     }
@@ -204,10 +221,11 @@ fun WebsiteBackground(accentColor: Color = AuroraColors.ember, modifier: Modifie
     SwarmBackground(
         accentColor = accentColor,
         modifier = modifier,
-        pace = SwarmPace.ENERGETIC,
+        pace = if (forceLight) SwarmPace.CINEMATIC else SwarmPace.ENERGETIC,
         enabledProviderGlyphs = providerGlyphs,
         paletteName = themePalette,
         excludeBrandShapes = excludeBrandShapes,
+        forceLight = forceLight,
     )
 }
 
