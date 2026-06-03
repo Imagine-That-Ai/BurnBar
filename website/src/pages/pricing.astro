@@ -276,9 +276,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
               </span>
               <span class="plan__per">
                 <span class="plan__save mono" data-billing="annual"
-                  >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {
-                    ultraSave
-                  }%</span
+                  >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {ultraSave}%</span
                 >
                 <span class="plan__per-dim" data-billing="monthly"
                   >${ultra.priceAnnualUSD}/yr available</span
@@ -734,14 +732,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
        silhouette — each tier gets its own harmonious palette (--holo-grad). */
     background: var(
       --holo-grad,
-      linear-gradient(
-        125deg,
-        #ffd166 6%,
-        #7dd3fc 30%,
-        #c084fc 52%,
-        #5eead4 74%,
-        #ffd166 92%
-      )
+      linear-gradient(125deg, #ffd166 6%, #7dd3fc 30%, #c084fc 52%, #5eead4 74%, #ffd166 92%)
     );
     background-size: 320% 320%;
     background-position: 0% 50%;
