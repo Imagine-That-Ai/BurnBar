@@ -33,7 +33,7 @@ private const val VAL_65 = 65
  *
  * Regenerate the fixture when the contract revision bumps:
  *
- *     swift test --package-path OpenBurnBarCore \
+ *     OPENBURNBAR_REGENERATE_HERMES_VECTORS=1 swift test --package-path OpenBurnBarCore \
  *       --filter HermesRelayCrossPlatformVectorTests
  *     cp OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector.json \
  *        android/app/src/test/resources/hermes-relay/HermesRelayWireVector.json
