@@ -54,9 +54,9 @@ interface GatedField {
   /** The legacy plaintext field to delete. */
   readonly field: string;
   /**
- * Delete `field` only when this sealed field is present on the same doc.
- */
-readonly requires?: string;
+   * Delete `field` only when this sealed field is present on the same doc.
+   */
+  readonly requires?: string;
   /**
    * Required when `requires` is omitted: explains why deleting this field cannot
    * remove live cross-device functionality. Keep this list tiny and reviewed.
@@ -181,22 +181,16 @@ const COLLECTION_PLANS: readonly CollectionPlan[] = [
   },
   {
     collection: "hermes_gateway_attachments",
-    fields: [
-      { field: "fileName", requires: "relayEnvelope" },
-    ],
+    fields: [{ field: "fileName", requires: "relayEnvelope" }],
   },
   {
     collection: "media_attachment_manifests",
-    fields: [
-      { field: "filename", requires: "sealedFilename" },
-    ],
+    fields: [{ field: "filename", requires: "sealedFilename" }],
   },
 ];
 
 /** §4 knowledge_repos: cleartext repoFullName is dropped once the sealed name exists. */
-const KNOWLEDGE_REPO_FIELDS: readonly GatedField[] = [
-  { field: "repoFullName", requires: "sealedRepoFullName" },
-];
+const KNOWLEDGE_REPO_FIELDS: readonly GatedField[] = [{ field: "repoFullName", requires: "sealedRepoFullName" }];
 
 const ROLLBACK_SNAPSHOT_FIELDS: readonly GatedField[] = [
   { field: "actionLabel", requires: "sealedActionLabel" },
@@ -209,10 +203,7 @@ const ROLLBACK_SNAPSHOT_FIELDS: readonly GatedField[] = [
  * (the sealed gate is satisfied and the field is present). Exported for tests so
  * the safe-by-construction property is asserted without a live Firestore.
  */
-export function gatedDeletions(
-  data: Record<string, unknown>,
-  fields: readonly GatedField[],
-): string[] {
+export function gatedDeletions(data: Record<string, unknown>, fields: readonly GatedField[]): string[] {
   const deletions: string[] = [];
   for (const { field, requires } of fields) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
@@ -283,10 +274,7 @@ async function bumpResealWatermark(firestore: Firestore, uid: string, stats: Bac
   const snap = await ref.get();
   const stored = snap.exists ? Number(snap.get("resealEpoch") ?? 0) : 0;
   if (Number.isFinite(stored) && stored >= PRIVACY_RESEAL_EPOCH) return;
-  await ref.set(
-    { resealEpoch: PRIVACY_RESEAL_EPOCH, updatedAt: Timestamp.now(), schemaVersion: 1 },
-    { merge: true },
-  );
+  await ref.set({ resealEpoch: PRIVACY_RESEAL_EPOCH, updatedAt: Timestamp.now(), schemaVersion: 1 }, { merge: true });
   stats.resealBumped = true;
 }
 
@@ -394,10 +382,10 @@ export const backfillPrivacyPlaintextScheduled = onSchedule(
 
 /** Test-only surface: the gating decision + the surface plans. */
 export const __testing__ = {
-	  gatedDeletions,
-	  COLLECTION_PLANS,
-	  KNOWLEDGE_REPO_FIELDS,
-	  ROLLBACK_SNAPSHOT_FIELDS,
-	  PRIVACY_RESEAL_EPOCH,
-	  backfillUserPrivacy,
-	};
+  gatedDeletions,
+  COLLECTION_PLANS,
+  KNOWLEDGE_REPO_FIELDS,
+  ROLLBACK_SNAPSHOT_FIELDS,
+  PRIVACY_RESEAL_EPOCH,
+  backfillUserPrivacy,
+};

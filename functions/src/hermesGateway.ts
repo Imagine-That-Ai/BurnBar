@@ -470,7 +470,10 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
   }
   const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
   if (relayEncryption !== HERMES_GATEWAY_RELAY_ENCRYPTION) {
-    throw new HttpsError("invalid-argument", `${fieldName}.relayEncryption must be ${HERMES_GATEWAY_RELAY_ENCRYPTION}.`);
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName}.relayEncryption must be ${HERMES_GATEWAY_RELAY_ENCRYPTION}.`,
+    );
   }
   const relayKeyVersion =
     typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);

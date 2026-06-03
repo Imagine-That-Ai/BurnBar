@@ -413,7 +413,10 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
     throw httpError(401, "revoked_bearer_token");
   }
   if (client.tokenHash !== tokenHash) {
-    await db.doc(`hermes_gateway_token_index/${tokenHash}`).delete().catch(() => undefined);
+    await db
+      .doc(`hermes_gateway_token_index/${tokenHash}`)
+      .delete()
+      .catch(() => undefined);
     throw httpError(401, "stale_bearer_token");
   }
   if (isHermesGatewayTokenExpired(client.expiresAt)) {
@@ -660,7 +663,9 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
     // sealed messages they must live inside relayEnvelope, not as top-level
     // Firestore fields.
     threadId: sealed.legacyText ? boundedTrimmedString(body.threadId, "threadId", 160, false) : undefined,
-    replyToEventId: sealed.legacyText ? boundedTrimmedString(body.replyToEventId, "replyToEventId", 160, false) : undefined,
+    replyToEventId: sealed.legacyText
+      ? boundedTrimmedString(body.replyToEventId, "replyToEventId", 160, false)
+      : undefined,
     // Sealed body for schema 2+; plaintext text is never accepted for new writes.
     relayEnvelope: sealed.relayEnvelope,
     text: sealed.legacyText,
@@ -1206,9 +1211,17 @@ export const approveHermesGatewayDeviceGrant = onCall(
       // relay-capable only when BOTH keys are present.
       const agentRelayPublicKey = isGatewayRelayPublicKeyB64(session.agentRelayPublicKey);
       const agentRelayKeyVersion =
-        typeof session.agentRelayKeyVersion === "number" ? session.agentRelayKeyVersion : agentRelayPublicKey ? 1 : undefined;
+        typeof session.agentRelayKeyVersion === "number"
+          ? session.agentRelayKeyVersion
+          : agentRelayPublicKey
+            ? 1
+            : undefined;
       const agentRelayEncryption =
-        typeof session.agentRelayEncryption === "string" ? session.agentRelayEncryption : agentRelayPublicKey ? HERMES_GATEWAY_RELAY_ENCRYPTION : undefined;
+        typeof session.agentRelayEncryption === "string"
+          ? session.agentRelayEncryption
+          : agentRelayPublicKey
+            ? HERMES_GATEWAY_RELAY_ENCRYPTION
+            : undefined;
       const relayCapable = !!agentRelayPublicKey && !!phoneRelay;
       // A pairing that cannot seal in BOTH directions is refused so no plaintext-
       // only client is ever minted.
@@ -1311,7 +1324,7 @@ export const listHermesGatewayClients = onCall(
       .map(publicClientView);
     return { clients };
   }),
-	);
+);
 
 const GATEWAY_REVOKE_BATCH_LIMIT = 400;
 
@@ -1337,26 +1350,19 @@ async function deleteGatewayAttachmentStorage(uid: string, clientId: string): Pr
   return files.length;
 }
 
-async function deleteHermesGatewayClientContent(uid: string, clientId: string): Promise<{
+async function deleteHermesGatewayClientContent(
+  uid: string,
+  clientId: string,
+): Promise<{
   firestoreDocs: number;
   storageObjects: number;
 }> {
   const [messages, attachments, approvals, typing, targetedEvents, storageObjects] = await Promise.all([
-    deleteGatewayQueryDocs(
-      db.collection(`users/${uid}/hermes_gateway_messages`).where("clientId", "==", clientId),
-    ),
-    deleteGatewayQueryDocs(
-      db.collection(`users/${uid}/hermes_gateway_attachments`).where("clientId", "==", clientId),
-    ),
-    deleteGatewayQueryDocs(
-      db.collection(`users/${uid}/hermes_gateway_approvals`).where("clientId", "==", clientId),
-    ),
-    deleteGatewayQueryDocs(
-      db.collection(`users/${uid}/hermes_gateway_typing`).where("clientId", "==", clientId),
-    ),
-    deleteGatewayQueryDocs(
-      db.collection(`users/${uid}/hermes_gateway_events`).where("targetClientId", "==", clientId),
-    ),
+    deleteGatewayQueryDocs(db.collection(`users/${uid}/hermes_gateway_messages`).where("clientId", "==", clientId)),
+    deleteGatewayQueryDocs(db.collection(`users/${uid}/hermes_gateway_attachments`).where("clientId", "==", clientId)),
+    deleteGatewayQueryDocs(db.collection(`users/${uid}/hermes_gateway_approvals`).where("clientId", "==", clientId)),
+    deleteGatewayQueryDocs(db.collection(`users/${uid}/hermes_gateway_typing`).where("clientId", "==", clientId)),
+    deleteGatewayQueryDocs(db.collection(`users/${uid}/hermes_gateway_events`).where("targetClientId", "==", clientId)),
     deleteGatewayAttachmentStorage(uid, clientId),
   ]);
   return {
@@ -1383,15 +1389,15 @@ export const revokeHermesGatewayClient = onCall(
     if (!snap.exists || !isHermesGatewayClientDoc(client)) {
       throw new HttpsError("not-found", "Hermes Gateway client not found.");
     }
-	    const now = nowISO();
-	    await Promise.all([
-	      ref.set({ status: "revoked", revokedAt: now, updatedAt: now }, { merge: true }),
-	      db.doc(`hermes_gateway_token_index/${client.tokenHash}`).delete(),
-	    ]);
-	    const deleted = await deleteHermesGatewayClientContent(uid, clientId);
-	    return { success: true, clientId, deleted };
-	  }),
-	);
+    const now = nowISO();
+    await Promise.all([
+      ref.set({ status: "revoked", revokedAt: now, updatedAt: now }, { merge: true }),
+      db.doc(`hermes_gateway_token_index/${client.tokenHash}`).delete(),
+    ]);
+    const deleted = await deleteHermesGatewayClientContent(uid, clientId);
+    return { success: true, clientId, deleted };
+  }),
+);
 
 export const rotateHermesGatewayClientToken = onCall(
   {
@@ -1560,7 +1566,9 @@ export const enqueueHermesGatewayEvent = onCall(
       const attachmentIds = sanitizedAttachmentIds(request.data.attachmentIds);
       await requireUploadedGatewayAttachments({ uid, clientId: targetClientId, destinationId, attachmentIds });
       const eventId =
-        sealedBody.relayEnvelope != null ? requireSafeGatewayEventId(request.data.eventId) : `evt_${randomBytes(12).toString("hex")}`;
+        sealedBody.relayEnvelope != null
+          ? requireSafeGatewayEventId(request.data.eventId)
+          : `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
       let sequence = 0;
       await db.runTransaction(async (tx) => {
@@ -1585,13 +1593,15 @@ export const enqueueHermesGatewayEvent = onCall(
             // private fields (text/senderDisplayName/threadId) live ONLY inside
             // relayEnvelope for sealed message events. Model switches do not carry
             // a text body or thread id.
-            threadId: sealedBody.relayEnvelope || eventKind === "model_switch"
-              ? undefined
-              : boundedTrimmedString(request.data.threadId, "threadId", 160, false),
+            threadId:
+              sealedBody.relayEnvelope || eventKind === "model_switch"
+                ? undefined
+                : boundedTrimmedString(request.data.threadId, "threadId", 160, false),
             senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
-            senderDisplayName: sealedBody.relayEnvelope || eventKind === "model_switch"
-              ? undefined
-              : boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
+            senderDisplayName:
+              sealedBody.relayEnvelope || eventKind === "model_switch"
+                ? undefined
+                : boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
             text: sealedBody.legacyText,
             relayEnvelope: sealedBody.relayEnvelope,
             modelId: requestedModelId,
