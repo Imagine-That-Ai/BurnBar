@@ -23,9 +23,28 @@ export interface HermesGatewayClientDoc {
   runtimeProviderId?: string;
   runtimeModelOptions?: HermesGatewayModelOptionDoc[];
   runtimeUpdatedAt?: string;
+  agentVersion?: string;
+  pendingModelId?: string;
+  pendingModelRequestedAt?: string;
+  oversightMode?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesGatewayApprovalDoc {
+  id: string;
+  clientId: string;
+  destinationId: string;
+  actionId: string;
+  toolName?: string;
+  summary: string;
+  status: string;
+  requestedAt: string;
+  expiresAt: string;
+  respondedAt?: string;
+  approvedByDeviceId?: string;
   schemaVersion: number;
 }
 

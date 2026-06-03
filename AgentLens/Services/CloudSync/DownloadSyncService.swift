@@ -323,6 +323,10 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
+            // Peer usage rows seal the project name (`sealedProjectName`); resolve the
+            // read vault key once so we can open it. Legacy plaintext rows fall back
+            // inside `openSealedProjectName`; an un-approved device returns "".
+            let usageVaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
 
             for doc in snapshot.documents {
                 let data = doc.data()
@@ -341,7 +345,7 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
 
                 let usage = TokenUsage(
                     id: id, provider: provider, sessionId: sessionId,
-                    projectName: data["projectName"] as? String ?? "",
+                    projectName: CloudVaultCrypto.openSealedProjectName(from: data, keyData: usageVaultKey?.keyData) ?? "",
                     model: data["model"] as? String ?? "unknown",
                     inputTokens: data["inputTokens"] as? Int ?? 0,
                     outputTokens: data["outputTokens"] as? Int ?? 0,
