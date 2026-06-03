@@ -20,7 +20,7 @@ on:
 permissions:
   contents: read
   security-events: write
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   secret-detection:
@@ -40,7 +40,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          "$HOME/go/bin/gitleaks" detect --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
+          "$HOME/go/bin/gitleaks" detect --config .gitleaks.toml --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
 
   dependency-review:
     name: Dependency Review (CVE check)
@@ -55,7 +55,7 @@ jobs:
         with:
           fail-on-severity: high
           # Allow known-safe license exceptions
-          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0
           # Deny packages that have been deprecated or yanked
           deny-packages: ''
           comment-summary-in-pr: always

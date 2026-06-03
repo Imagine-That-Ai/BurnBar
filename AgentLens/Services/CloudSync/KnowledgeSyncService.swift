@@ -176,7 +176,10 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         lastSyncError = nil
         defer { isSyncing = false }
 
-        guard let vaultKey = try? vaultKeyStore.getOrCreateKey(uid: uid) else {
+        let vaultKey: Data
+        do {
+            vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
+        } catch {
             let error = KnowledgeSyncError.vaultKeyUnavailable
             lastSyncError = error.localizedDescription
             throw error
