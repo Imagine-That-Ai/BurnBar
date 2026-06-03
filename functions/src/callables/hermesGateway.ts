@@ -428,10 +428,9 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   // pre-expiry tokens eventually age out without mass-invalidation.
   const expiresAtBackfill = client.expiresAt ? undefined : gatewayTokenExpiryISO();
   await Promise.all([
-    clientRef.set(
-      stripUndefinedObject({ lastSeenAt: now, updatedAt: now, expiresAt: expiresAtBackfill }),
-      { merge: true },
-    ),
+    clientRef.set(stripUndefinedObject({ lastSeenAt: now, updatedAt: now, expiresAt: expiresAtBackfill }), {
+      merge: true,
+    }),
     expiresAtBackfill
       ? db.doc(`hermes_gateway_token_index/${tokenHash}`).set({ expiresAt: expiresAtBackfill }, { merge: true })
       : Promise.resolve(),
@@ -1067,7 +1066,9 @@ async function handleListApprovals(req: HttpRequest, res: HttpResponse): Promise
   const now = Date.now();
   const actionId = typeof req.query.actionId === "string" ? req.query.actionId.trim() : "";
   if (actionId) {
-    const ref = db.doc(`users/${grant.uid}/hermes_gateway_approvals/${gatewayApprovalDocId(grant.client.id, actionId)}`);
+    const ref = db.doc(
+      `users/${grant.uid}/hermes_gateway_approvals/${gatewayApprovalDocId(grant.client.id, actionId)}`,
+    );
     const snap = await ref.get();
     const doc = snap.data();
     setNoStore(res);
@@ -1398,77 +1399,74 @@ export const rotateHermesGatewayClientToken = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
   },
-  wrapCallableHandler(
-    "rotateHermesGatewayClientToken",
-    async (request: CallableRequest<{ clientId?: unknown }>) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before rotating Hermes Gateway tokens.");
-      enforceAuthAndAppCheck(request, uid);
-      await assertCallableApprovalNotLocked(uid, "hermes_gateway_approve_fail");
-      await assertActiveHermesGatewayEntitlement(uid);
-      const clientId = requiredIdentifier(request.data.clientId, "clientId");
-      const ref = db.doc(`users/${uid}/hermes_gateway_clients/${clientId}`);
-      const snap = await ref.get();
-      const client = snap.data();
-      if (!snap.exists || !isHermesGatewayClientDoc(client)) {
-        await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
-        throw new HttpsError("not-found", "Hermes Gateway client not found.");
-      }
-      if (client.status !== "active") {
-        throw new HttpsError("failed-precondition", "Revoked Hermes Gateway clients cannot be rotated.");
-      }
-      const previousTokenHash = client.tokenHash;
-      const token = generateHermesGatewayBearerToken();
-      const tokenHash = hashHermesGatewayBearerToken(token);
-      if (tokenHash === previousTokenHash) {
-        throw new HttpsError("aborted", "Token rotation collision; please retry.");
-      }
-      const now = nowISO();
-      const tokenExpiresAt = gatewayTokenExpiryISO();
-      // Atomic-enough swap: write the NEW index first (so a crash mid-rotation
-      // leaves the new token usable rather than locking the client out), then
-      // repoint the client doc, then delete the OLD index hash. The old token is
-      // invalidated the moment the client doc's tokenHash changes because
-      // resolveGatewayGrant re-derives and compares against the client doc.
-      const batch = db.batch();
-      batch.set(db.doc(`hermes_gateway_token_index/${tokenHash}`), {
-        uid,
-        clientId,
-        status: "active",
-        createdAt: now,
-        expiresAt: tokenExpiresAt,
-      });
-      batch.set(
-        ref,
-        {
-          tokenHash,
-          tokenPreview: tokenPreview(token),
-          expiresAt: tokenExpiresAt,
-          rotatedAt: now,
-          updatedAt: now,
-        },
-        { merge: true },
-      );
-      if (previousTokenHash && previousTokenHash !== tokenHash) {
-        batch.delete(db.doc(`hermes_gateway_token_index/${previousTokenHash}`));
-      }
-      await batch.commit();
-      logInfo({
-        event: "hermes_gateway.token_rotated",
-        user_id_hash: uid.slice(0, 8),
-        client_id: clientId,
-      });
-      const rotated: HermesGatewayClientDoc = {
-        ...client,
+  wrapCallableHandler("rotateHermesGatewayClientToken", async (request: CallableRequest<{ clientId?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before rotating Hermes Gateway tokens.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertCallableApprovalNotLocked(uid, "hermes_gateway_approve_fail");
+    await assertActiveHermesGatewayEntitlement(uid);
+    const clientId = requiredIdentifier(request.data.clientId, "clientId");
+    const ref = db.doc(`users/${uid}/hermes_gateway_clients/${clientId}`);
+    const snap = await ref.get();
+    const client = snap.data();
+    if (!snap.exists || !isHermesGatewayClientDoc(client)) {
+      await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
+      throw new HttpsError("not-found", "Hermes Gateway client not found.");
+    }
+    if (client.status !== "active") {
+      throw new HttpsError("failed-precondition", "Revoked Hermes Gateway clients cannot be rotated.");
+    }
+    const previousTokenHash = client.tokenHash;
+    const token = generateHermesGatewayBearerToken();
+    const tokenHash = hashHermesGatewayBearerToken(token);
+    if (tokenHash === previousTokenHash) {
+      throw new HttpsError("aborted", "Token rotation collision; please retry.");
+    }
+    const now = nowISO();
+    const tokenExpiresAt = gatewayTokenExpiryISO();
+    // Atomic-enough swap: write the NEW index first (so a crash mid-rotation
+    // leaves the new token usable rather than locking the client out), then
+    // repoint the client doc, then delete the OLD index hash. The old token is
+    // invalidated the moment the client doc's tokenHash changes because
+    // resolveGatewayGrant re-derives and compares against the client doc.
+    const batch = db.batch();
+    batch.set(db.doc(`hermes_gateway_token_index/${tokenHash}`), {
+      uid,
+      clientId,
+      status: "active",
+      createdAt: now,
+      expiresAt: tokenExpiresAt,
+    });
+    batch.set(
+      ref,
+      {
         tokenHash,
         tokenPreview: tokenPreview(token),
         expiresAt: tokenExpiresAt,
         rotatedAt: now,
         updatedAt: now,
-      };
-      return { client: publicClientView(rotated), accessToken: token, tokenType: "Bearer", expiresAt: tokenExpiresAt };
-    },
-  ),
+      },
+      { merge: true },
+    );
+    if (previousTokenHash && previousTokenHash !== tokenHash) {
+      batch.delete(db.doc(`hermes_gateway_token_index/${previousTokenHash}`));
+    }
+    await batch.commit();
+    logInfo({
+      event: "hermes_gateway.token_rotated",
+      user_id_hash: uid.slice(0, 8),
+      client_id: clientId,
+    });
+    const rotated: HermesGatewayClientDoc = {
+      ...client,
+      tokenHash,
+      tokenPreview: tokenPreview(token),
+      expiresAt: tokenExpiresAt,
+      rotatedAt: now,
+      updatedAt: now,
+    };
+    return { client: publicClientView(rotated), accessToken: token, tokenType: "Bearer", expiresAt: tokenExpiresAt };
+  }),
 );
 
 export const enqueueHermesGatewayEvent = onCall(
@@ -1612,7 +1610,12 @@ export const enqueueHermesGatewayEvent = onCall(
           );
         }
       });
-      return stripUndefinedObject({ id: eventId, sequence, targetClientId, pendingModelId: eventKind === "model_switch" ? requestedModelId : undefined });
+      return stripUndefinedObject({
+        id: eventId,
+        sequence,
+        targetClientId,
+        pendingModelId: eventKind === "model_switch" ? requestedModelId : undefined,
+      });
     },
   ),
 );

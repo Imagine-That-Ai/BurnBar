@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-03T00:24:42.533Z",
+  "generatedAt": "2026-06-03T07:44:01.873Z",
   "scanner": {
     "tsMode": "typescript-eslint-parser",
     "excluded": {
@@ -38,15 +38,15 @@
       ]
     }
   },
-  "total": 93,
+  "total": 140,
   "byLanguage": {
     "kotlin": 5,
-    "typescript": 88
+    "typescript": 135
   },
   "byKind": {
     "kotlin_force_unwrap": 5,
-    "ts_non_null_assertion": 6,
-    "ts_type_assertion": 82
+    "ts_non_null_assertion": 12,
+    "ts_type_assertion": 123
   },
   "violations": [
     {
@@ -69,7 +69,7 @@
     },
     {
       "path": "android/app/src/main/java/com/openburnbar/ui/streams/ConversationCockpitScreenDetailSections.kt",
-      "line": 314,
+      "line": 292,
       "column": 31,
       "language": "kotlin",
       "kind": "kotlin_force_unwrap",
@@ -78,7 +78,7 @@
     },
     {
       "path": "android/app/src/main/java/com/openburnbar/ui/streams/ConversationCockpitScreenSections.kt",
-      "line": 448,
+      "line": 440,
       "column": 39,
       "language": "kotlin",
       "kind": "kotlin_force_unwrap",
@@ -87,7 +87,7 @@
     },
     {
       "path": "android/app/src/main/java/com/openburnbar/ui/streams/ConversationCockpitScreenSections.kt",
-      "line": 847,
+      "line": 839,
       "column": 28,
       "language": "kotlin",
       "kind": "kotlin_force_unwrap",
@@ -159,7 +159,16 @@
     },
     {
       "path": "functions/src/__tests__/appCheckAttestation.test.ts",
-      "line": 15,
+      "line": 86,
+      "column": 21,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const fakeRequest = {",
+      "detail": "never"
+    },
+    {
+      "path": "functions/src/__tests__/appCheckAttestation.test.ts",
+      "line": 98,
       "column": 41,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -168,7 +177,7 @@
     },
     {
       "path": "functions/src/__tests__/appCheckAttestation.test.ts",
-      "line": 16,
+      "line": 99,
       "column": 41,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -177,7 +186,7 @@
     },
     {
       "path": "functions/src/__tests__/appCheckAttestation.test.ts",
-      "line": 28,
+      "line": 111,
       "column": 44,
       "language": "typescript",
       "kind": "ts_non_null_assertion",
@@ -195,11 +204,11 @@
     },
     {
       "path": "functions/src/__tests__/auditLog.test.ts",
-      "line": 40,
-      "column": 21,
+      "line": 39,
+      "column": 54,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "auditActorLabel({ rawRequest: { headers: { \"x-burnbar-platform\": v } } } as never);",
+      "snippet": "const withHeader = (v: unknown) => auditActorLabel({ rawRequest: { headers: { \"x-burnbar-platform\": v } } } as never);",
       "detail": "never"
     },
     {
@@ -235,7 +244,7 @@
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(",
+      "snippet": "await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(/audit append failed/);",
       "detail": "Runnable"
     },
     {
@@ -244,7 +253,7 @@
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(",
+      "snippet": "await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(/audit append failed/);",
       "detail": "unknown"
     },
     {
@@ -339,7 +348,7 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 212,
+      "line": 216,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -348,7 +357,7 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 212,
+      "line": 216,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -357,7 +366,7 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 217,
+      "line": 221,
       "column": 13,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -366,7 +375,7 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 218,
+      "line": 222,
       "column": 6,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -375,7 +384,7 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 219,
+      "line": 223,
       "column": 13,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -384,12 +393,111 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 222,
-      "column": 24,
+      "line": 232,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 232,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitKnowledgeBatch as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
+      "line": 235,
+      "column": 17,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const vec = req.data.vectors[0] as Record<string, unknown>;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 74,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (connectKnowledgeRepo as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 74,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (connectKnowledgeRepo as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 76,
+      "column": 17,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const res = (await run({",
+      "detail": "{ ok: boolean; repoId: string }"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 89,
+      "column": 12,
       "language": "typescript",
       "kind": "ts_non_null_assertion",
-      "snippet": "const [, record] = [...stored.entries()].find(([k]) => k.startsWith(\"users/userLegacy/cloud_search_knowledge/\"))!;",
+      "snippet": "expect(record!.repoMatchToken).toBe(token);",
       "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 90,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "expect(record!.sealedRepoFullName).toEqual(sealedName);",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 106,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (connectKnowledgeRepo as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 106,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (connectKnowledgeRepo as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 108,
+      "column": 15,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const a = (await run({",
+      "detail": "{ repoId: string }"
+    },
+    {
+      "path": "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+      "line": 114,
+      "column": 15,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const b = (await run({",
+      "detail": "{ repoId: string }"
     },
     {
       "path": "functions/src/__tests__/logging.test.ts",
@@ -545,8 +653,224 @@
       "detail": "unknown"
     },
     {
+      "path": "functions/src/__tests__/privacyBackfill.test.ts",
+      "line": 12,
+      "column": 69,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return value instanceof FieldValue && FieldValue.delete().isEqual(value as FieldValue);",
+      "detail": "FieldValue"
+    },
+    {
+      "path": "functions/src/__tests__/privacyBackfill.test.ts",
+      "line": 86,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return this as unknown as Firestore;",
+      "detail": "Firestore"
+    },
+    {
+      "path": "functions/src/__tests__/privacyBackfill.test.ts",
+      "line": 86,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return this as unknown as Firestore;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 120,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitEncryptedProjectMemorySnapshot as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 120,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitEncryptedProjectMemorySnapshot as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 122,
+      "column": 17,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const res = (await run(commitRequest())) as { ok: boolean; docID: string };",
+      "detail": "{ ok: boolean; docID: string }"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 129,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "expect(record!.schemaVersion).toBe(2);",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 130,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "expect(record!.docID).toBe(DOC_ID);",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 131,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "expect(record!.sealedSnapshot).toBeDefined();",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 148,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitEncryptedProjectMemorySnapshot as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 148,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const run = (commitEncryptedProjectMemorySnapshot as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 150,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "delete (req.data as Record<string, unknown>).docID;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 156,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "await (mod.commitEncryptedProjectMemorySnapshot as unknown as Runnable).run(commitRequest());",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 156,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "await (mod.commitEncryptedProjectMemorySnapshot as unknown as Runnable).run(commitRequest());",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 158,
+      "column": 21,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const getRun = (mod.getEncryptedProjectMemorySnapshot as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 158,
+      "column": 21,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const getRun = (mod.getEncryptedProjectMemorySnapshot as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 159,
+      "column": 17,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const res = (await getRun({",
+      "detail": "{ snapshot: Record<string, unknown> | null }"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 167,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "expect(res.snapshot!.docID).toBe(DOC_ID);",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 168,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_non_null_assertion",
+      "snippet": "expect(res.snapshot!.sealedSnapshot).toBeDefined();",
+      "detail": "non-null assertion"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 175,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "await (mod.commitEncryptedProjectMemorySnapshot as unknown as Runnable).run(commitRequest());",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 175,
+      "column": 12,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "await (mod.commitEncryptedProjectMemorySnapshot as unknown as Runnable).run(commitRequest());",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 177,
+      "column": 22,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const listRun = (mod.listEncryptedProjectMemorySnapshots as unknown as Runnable).run;",
+      "detail": "Runnable"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 177,
+      "column": 22,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const listRun = (mod.listEncryptedProjectMemorySnapshots as unknown as Runnable).run;",
+      "detail": "unknown"
+    },
+    {
+      "path": "functions/src/__tests__/projectMemoryDocId.test.ts",
+      "line": 178,
+      "column": 17,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const res = (await listRun({",
+      "detail": "{ snapshots: Array<Record<string, unknown>> }"
+    },
+    {
       "path": "functions/src/appCheckAttestation.ts",
-      "line": 85,
+      "line": 90,
       "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -555,7 +879,7 @@
     },
     {
       "path": "functions/src/appCheckAttestation.ts",
-      "line": 109,
+      "line": 114,
       "column": 17,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -590,6 +914,15 @@
       "detail": "Timestamp"
     },
     {
+      "path": "functions/src/callables/computerUseSecurity.ts",
+      "line": 179,
+      "column": 62,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return { alreadyTrusted: true, approvedByDeviceId: snapshot.get(\"approvedByDeviceId\") as string | undefined };",
+      "detail": "string | undefined"
+    },
+    {
       "path": "functions/src/callables/conversationQuery.ts",
       "line": 48,
       "column": 5,
@@ -608,17 +941,80 @@
       "detail": "QueryConversationSortField"
     },
     {
-      "path": "functions/src/callables/dataExport.ts",
-      "line": 226,
-      "column": 74,
+      "path": "functions/src/callables/credentialTransfer.ts",
+      "line": 31,
+      "column": 49,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "if (value && typeof value === \"object\" && \"toDate\" in value && typeof (value as { toDate: unknown }).toDate === \"function\") {",
+      "snippet": "if (raw && typeof raw === \"object\" && typeof (raw as { toMillis?: unknown }).toMillis === \"function\") {",
+      "detail": "{ toMillis?: unknown }"
+    },
+    {
+      "path": "functions/src/callables/credentialTransfer.ts",
+      "line": 32,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return (raw as { toMillis: () => number }).toMillis();",
+      "detail": "{ toMillis: () => number }"
+    },
+    {
+      "path": "functions/src/callables/dataDomainUsage.ts",
+      "line": 87,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "typeof (value as { toDate?: unknown }).toDate === \"function\"",
+      "detail": "{ toDate?: unknown }"
+    },
+    {
+      "path": "functions/src/callables/dataDomainUsage.ts",
+      "line": 89,
+      "column": 19,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const date = (value as { toDate: () => Date }).toDate();",
+      "detail": "{ toDate: () => Date }"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 255,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const v = value as Record<string, unknown>;",
+      "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 280,
+      "column": 18,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "\"toDate\" in (value as object) &&",
+      "detail": "object"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 281,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "typeof (value as { toDate: unknown }).toDate === \"function\"",
       "detail": "{ toDate: unknown }"
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 228,
+      "line": 360,
+      "column": 13,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "typeof (value as { toDate: unknown }).toDate === \"function\"",
+      "detail": "{ toDate: unknown }"
+    },
+    {
+      "path": "functions/src/callables/dataExport.ts",
+      "line": 363,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -627,7 +1023,7 @@
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 236,
+      "line": 371,
       "column": 41,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -636,7 +1032,7 @@
     },
     {
       "path": "functions/src/callables/dataExport.ts",
-      "line": 311,
+      "line": 446,
       "column": 9,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -644,8 +1040,17 @@
       "detail": "DomainExport"
     },
     {
+      "path": "functions/src/callables/hermesGateway.ts",
+      "line": 1305,
+      "column": 50,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "return { status: approve ? \"approved\" : (\"rejected\" as HermesGatewayApprovalDoc[\"status\"]) };",
+      "detail": "HermesGatewayApprovalDoc[\"status\"]"
+    },
+    {
       "path": "functions/src/callables/knowledgeMemory.ts",
-      "line": 433,
+      "line": 448,
       "column": 14,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -654,7 +1059,7 @@
     },
     {
       "path": "functions/src/callables/panic.ts",
-      "line": 158,
+      "line": 164,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -726,7 +1131,7 @@
     },
     {
       "path": "functions/src/callables/passkey.ts",
-      "line": 222,
+      "line": 227,
       "column": 54,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -735,7 +1140,7 @@
     },
     {
       "path": "functions/src/callables/passkey.ts",
-      "line": 223,
+      "line": 228,
       "column": 38,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -744,7 +1149,7 @@
     },
     {
       "path": "functions/src/callables/passkey.ts",
-      "line": 238,
+      "line": 243,
       "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -752,8 +1157,17 @@
       "detail": "StoredPasskeyCredential"
     },
     {
+      "path": "functions/src/callables/privacyBackfill.ts",
+      "line": 174,
+      "column": 16,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "const data = (snap.data() ?? {}) as Record<string, unknown>;",
+      "detail": "Record<string, unknown>"
+    },
+    {
       "path": "functions/src/callables/recovery.ts",
-      "line": 79,
+      "line": 74,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -762,7 +1176,7 @@
     },
     {
       "path": "functions/src/callables/recovery.ts",
-      "line": 96,
+      "line": 91,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -771,8 +1185,8 @@
     },
     {
       "path": "functions/src/callables/recovery.ts",
-      "line": 102,
-      "column": 5,
+      "line": 98,
+      "column": 7,
       "language": "typescript",
       "kind": "ts_type_assertion",
       "snippet": "stripUndefinedObject({",
@@ -780,7 +1194,7 @@
     },
     {
       "path": "functions/src/callables/recovery.ts",
-      "line": 122,
+      "line": 118,
       "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -789,8 +1203,8 @@
     },
     {
       "path": "functions/src/callables/recovery.ts",
-      "line": 145,
-      "column": 22,
+      "line": 147,
+      "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
       "snippet": "const method = boundedTrimmedString(request.data?.method, \"method\", 40, true) as RecoveryMethodKind;",
@@ -798,7 +1212,7 @@
     },
     {
       "path": "functions/src/callables/shared.ts",
-      "line": 1042,
+      "line": 1048,
       "column": 37,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -825,12 +1239,21 @@
     },
     {
       "path": "functions/src/callables/webAppCheck.ts",
-      "line": 55,
+      "line": 64,
       "column": 15,
       "language": "typescript",
       "kind": "ts_type_assertion",
       "snippet": "const jwk = raw as Record<string, unknown>;",
       "detail": "Record<string, unknown>"
+    },
+    {
+      "path": "functions/src/computerUseOpenTimestamps.ts",
+      "line": 461,
+      "column": 10,
+      "language": "typescript",
+      "kind": "ts_type_assertion",
+      "snippet": "(request.data as { nonce?: unknown })?.nonce,",
+      "detail": "{ nonce?: unknown }"
     },
     {
       "path": "functions/src/tierCogs.ts",

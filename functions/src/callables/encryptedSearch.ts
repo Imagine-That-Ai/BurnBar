@@ -392,9 +392,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
         updatedAt,
       };
 
-      await db
-        .doc(`users/${uid}/project_memory_snapshots/${docID}`)
-        .set(stripUndefinedObject(doc), { merge: true });
+      await db.doc(`users/${uid}/project_memory_snapshots/${docID}`).set(stripUndefinedObject(doc), { merge: true });
 
       // Migration: the device sends `legacyDocID` (the old project-name-derived
       // slug) when it differs from the opaque `docID`. Delete the stranded legacy

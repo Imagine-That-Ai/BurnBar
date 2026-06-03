@@ -10,11 +10,7 @@ import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestat
 import { db } from "../adminRuntime.js";
 import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
-import {
-  REMOTE_MCP_TOKEN_HMAC_SECRET,
-  boundedTrimmedString,
-  assertActiveBurnBarProEntitlement,
-} from "./shared.js";
+import { REMOTE_MCP_TOKEN_HMAC_SECRET, boundedTrimmedString, assertActiveBurnBarProEntitlement } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";

@@ -330,12 +330,17 @@ export function isHermesGatewayClientOnline(lastSeenAt: unknown, now = Date.now(
  * empty/unknown catalog (the gateway allows a switch when no catalog is published
  * yet, so custom model ids are not blocked before the runtime reports inventory).
  */
-export function clientAdvertisesModel(client: Pick<HermesGatewayClientDoc, "runtimeModelOptions">, modelId: string): boolean {
+export function clientAdvertisesModel(
+  client: Pick<HermesGatewayClientDoc, "runtimeModelOptions">,
+  modelId: string,
+): boolean {
   const options = client.runtimeModelOptions;
   if (!Array.isArray(options) || options.length === 0) return false;
   const target = modelId.trim().toLowerCase();
   if (!target) return false;
-  return options.some((option) => typeof option?.modelId === "string" && option.modelId.trim().toLowerCase() === target);
+  return options.some(
+    (option) => typeof option?.modelId === "string" && option.modelId.trim().toLowerCase() === target,
+  );
 }
 
 /**
@@ -364,7 +369,8 @@ export function pendingModelSwitchInFlight(
   if (!pending) return false;
   const applied = typeof client.runtimeModelId === "string" ? client.runtimeModelId.trim() : "";
   if (applied && applied.toLowerCase() === pending.toLowerCase()) return false;
-  const requestedAt = typeof client.pendingModelRequestedAt === "string" ? Date.parse(client.pendingModelRequestedAt) : NaN;
+  const requestedAt =
+    typeof client.pendingModelRequestedAt === "string" ? Date.parse(client.pendingModelRequestedAt) : NaN;
   if (!Number.isFinite(requestedAt)) return false;
   return now - requestedAt <= HERMES_GATEWAY_PENDING_MODEL_TTL_MS;
 }

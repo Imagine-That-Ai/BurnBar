@@ -115,10 +115,7 @@ export const onKnowledgeRepoPush = onRequest(
     // identity (privacy-leak-remediation-2026-06-02 §4).
     const now = Timestamp.now();
     const repoMatchToken = repoMatchTokenFor(repoFullName);
-    const repos = await db
-      .collectionGroup("knowledge_repos")
-      .where("repoMatchToken", "==", repoMatchToken)
-      .get();
+    const repos = await db.collectionGroup("knowledge_repos").where("repoMatchToken", "==", repoMatchToken).get();
     let flagged = 0;
     for (const repoDoc of repos.docs) {
       const uid = repoDoc.ref.parent.parent?.id;
@@ -171,21 +168,19 @@ export const connectKnowledgeRepo = onCall(
       // Doc id derived from the opaque token (never the repo name).
       const repoId = safeCloudDocumentID(repoMatchToken, "repoId");
 
-      await db
-        .doc(`users/${uid}/knowledge_repos/${repoId}`)
-        .set(
-          stripUndefinedObject({
-            uid,
-            repoId,
-            repoMatchToken,
-            sealedRepoFullName,
-            sourceSlug,
-            installId,
-            connectedAt: Timestamp.now(),
-            schemaVersion: 1,
-          }),
-          { merge: true },
-        );
+      await db.doc(`users/${uid}/knowledge_repos/${repoId}`).set(
+        stripUndefinedObject({
+          uid,
+          repoId,
+          repoMatchToken,
+          sealedRepoFullName,
+          sourceSlug,
+          installId,
+          connectedAt: Timestamp.now(),
+          schemaVersion: 1,
+        }),
+        { merge: true },
+      );
       return { ok: true, repoId };
     },
   ),
