@@ -242,6 +242,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_abc"
         let messageId = "msg_round_trip"
         let plaintext = "Hermes received the encrypted test."
+        // MP-27: the agent seals the reply as JSON {text,...}; the phone JSON-decodes it.
+        let payloadJSON = try JSONSerialization.data(withJSONObject: ["text": plaintext])
 
         // The agent's role: v2-authenticated seal of the reply body to the phone's
         // relay pubkey, signed with the AGENT's own static relay key.
@@ -251,7 +253,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let agentPubB64 = agentRelayPriv.publicKeyBase64
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
-            plaintext: Data(plaintext.utf8),
+            plaintext: payloadJSON,
             keyData: key,
             aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
@@ -289,6 +291,58 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let opened = sealedRecord?.decodedText(using: phoneKeypair, uid: uid, pinStore: pinStore)
         XCTAssertEqual(opened?.resolvedText, plaintext)
         XCTAssertEqual(opened?.displayText, plaintext)
+    }
+
+    func testGatewaySealedApprovalDetailDecodesActionIdAndKind() throws {
+        // MP-6/MP-27: an approval-detail reply carries {text, actionId, kind:"approval"};
+        // the phone must decode all three so the approval card binds the detail to the
+        // gate by actionId (the prior P1 was a key mismatch that disabled Approve).
+        let uid = "uid_appr"
+        let clientId = "hgw_appr"
+        let messageId = "msg_appr"
+        let detail = "Approve running: rm -rf /tmp/build"
+        let actionId = "act_42"
+        let payloadJSON = try JSONSerialization.data(
+            withJSONObject: ["text": detail, "actionId": actionId, "kind": "approval"]
+        )
+        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: payloadJSON,
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            senderPrivateKey: agentRelayPriv
+        )
+        let record = HermesGatewayMessageRecord(
+            documentID: messageId,
+            data: [
+                "id": messageId, "clientId": clientId, "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": payloadCiphertext, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
+                ],
+                "createdAt": "2026-06-03T08:08:04.968Z", "schemaVersion": 2
+            ]
+        )
+        let pinStore = freshPinStore()
+        XCTAssertEqual(
+            pinStore.verifyOrPin(agentPublicKeyBase64: agentPubB64, uid: uid, clientId: clientId),
+            .pinnedFirstUse
+        )
+        let opened = try XCTUnwrap(record?.decodedText(using: phoneKeypair, uid: uid, pinStore: pinStore))
+        XCTAssertEqual(opened.resolvedText, detail)
+        XCTAssertEqual(opened.resolvedActionId, actionId)
+        XCTAssertEqual(opened.resolvedKind, "approval")
     }
 
     func testHermesGatewaySealedReplyForAnotherDeviceStaysSealed() throws {
@@ -958,13 +1012,15 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_render"
         let messageId = "msg_render"
         let plaintext = "Done — your build is green."
+        // MP-27: seal the reply as JSON {text}; the phone JSON-decodes to readable text.
+        let payloadJSON = try JSONSerialization.data(withJSONObject: ["text": plaintext])
 
         let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
         let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
         let agentPubB64 = agentRelayPriv.publicKeyBase64
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
-            plaintext: Data(plaintext.utf8),
+            plaintext: payloadJSON,
             keyData: key,
             aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
