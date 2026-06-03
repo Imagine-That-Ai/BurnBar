@@ -504,7 +504,9 @@ targets:
               - com.googleusercontent.apps.246956661961-h48alif674cr67ojj4li9og8gbcjinbv
     dependencies:
       - target: OpenBurnBarWidget
+        codeSign: true
       - target: OpenBurnBarKeyboard
+        codeSign: true
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
