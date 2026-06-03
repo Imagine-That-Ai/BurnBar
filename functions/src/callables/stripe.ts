@@ -12,6 +12,7 @@ import { externalApiWithResilience, stripeWithResilience } from "../resilienceHe
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+  BURNBAR_ULTRA_ENTITLEMENT_ID,
   STRIPE_API_SECRETS,
   STRIPE_WEBHOOK_SECRETS,
   GOOGLE_PLAY_ACTIVE_STATES,
@@ -121,11 +122,20 @@ function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: 
     cfg.burnBarProMaxProductID,
     cfg.burnBarProMaxAnnualProductID,
   ]);
+  const ultraProductIDs = new Set([
+    cfg.googlePlayUltraMonthlyProductID,
+    cfg.googlePlayUltraAnnualProductID,
+    cfg.burnBarUltraProductID,
+    cfg.burnBarUltraAnnualProductID,
+  ]);
   if (cloudProductIDs.has(productID)) {
     return { entitlementID: BURNBAR_PRO_ENTITLEMENT_ID, canonicalProductID: productID };
   }
   if (cloudProProductIDs.has(productID)) {
     return { entitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID, canonicalProductID: productID };
+  }
+  if (ultraProductIDs.has(productID)) {
+    return { entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID, canonicalProductID: productID };
   }
   throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
 }

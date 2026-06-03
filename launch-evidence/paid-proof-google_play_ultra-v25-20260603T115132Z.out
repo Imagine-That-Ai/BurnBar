@@ -1,0 +1,23 @@
+
+> openburnbar-functions@1.0.0 prove:paid-tier
+> node scripts/prove-paid-tier-live.mjs --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --tier ultra --channel google_play --product-id com.openburnbar.ultra.monthly --allow-sandbox
+
+# proof-subject uid_sha256_16=e82314a10622bcee
+{
+  "ok": true,
+  "project": "burnbar",
+  "uidHash": "e82314a10622bceea0ff04085f27b2862259a295dd8c3633ac11b2cb13ec1a5b",
+  "uidHash16": "e82314a10622bcee",
+  "tier": "ultra",
+  "channel": "google_play",
+  "entitlementPath": "users/<uid>/entitlements/burnbar_ultra",
+  "entitlement": {
+    "productID": "com.openburnbar.ultra.monthly",
+    "source": "google_play_verified",
+    "expiresAt": "2026-06-03T11:56:07.387Z",
+    "externalSubscriptionIDHash": null,
+    "externalCustomerIDHash": null,
+    "purchaseTokenHash": "b90dc50762e76433c3dcae2434558dd4b3e7b89393b9230bfa91a6d5880b8cd8"
+  },
+  "allowanceLedgerPath": null
+}
