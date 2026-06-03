@@ -151,12 +151,6 @@ fun BurnBarNavHost(
         }
     }
 
-    // Hidden delight: a hit-test-disabled overlay that idles at zero cost and plays a
-    // theme-appropriate celebration when the user rapidly scrolls up-and-down, or a
-    // cute token bounce at the top/bottom boundary. The connection installed on the
-    // root receives nested-scroll reports from every scrollable child below it.
-    val easterEggController = rememberEasterEggController()
-
     Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
         AuroraBackdrop()
 
