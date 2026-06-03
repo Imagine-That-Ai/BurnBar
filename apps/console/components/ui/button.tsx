@@ -6,20 +6,18 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors duration-150 ease-standard focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  "btn-quiet inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        // Brass/amber keys + CTA warmth.
-        primary:
-          "bg-brass-core text-ink-void font-semibold hover:bg-brass-bright shadow-[0_0_24px_var(--color-brass-glow)]",
-        secondary:
-          "glass-pane text-content-bright hover:bg-glass-bg-elevated border border-glass-line-bright",
-        ghost: "text-content-base hover:bg-mercury-wash hover:text-content-bright",
+        // The single restrained accent — oxblood.
+        primary: "btn-accent",
+        secondary: "btn-outline",
+        ghost: "btn-bare",
         // Wax-crimson is DESTRUCTIVE ONLY.
         destructive:
-          "bg-transparent text-[color:var(--color-seal-crimson)] border border-[color:var(--color-seal-crimson)] hover:bg-[color:var(--color-seal-crimson)] hover:text-content-bright",
-        link: "text-brass-core underline-offset-4 hover:underline",
+          "bg-transparent text-[color:var(--color-seal-crimson)] border border-[color:var(--color-seal-crimson)] hover:bg-[color:var(--color-seal-crimson)] hover:text-white",
+        link: "text-[color:var(--accent)] underline-offset-4 hover:underline",
       },
       size: {
         sm: "h-8 px-3 text-xs",

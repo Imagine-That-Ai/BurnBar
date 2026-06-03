@@ -89,7 +89,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
     public func revokeEscrowDevice(deviceId: String) {
         queue.sync {
-            revokedEscrowDeviceIds.insert(deviceId)
+            _ = revokedEscrowDeviceIds.insert(deviceId)
         }
     }
 
@@ -350,11 +350,12 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public func validate(
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         clipboardRequest: HermesRealtimeRelayClipboardRequest,
+        attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
         let pubKey = try publicKeyForActivePeer(envelope)
 
-        try validateAuthorityEnvelope(envelope, now: now)
+        try validateAuthorityEnvelope(envelope, now: now, attestation: attestation ?? .none)
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
@@ -393,11 +394,12 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public func validate(
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
+        attestation: PhoneControlAttestationRequirement? = nil,
         now: Date = Date()
     ) throws -> ValidationResult {
         let pubKey = try publicKeyForActivePeer(envelope)
 
-        try validateAuthorityEnvelope(envelope, now: now)
+        try validateAuthorityEnvelope(envelope, now: now, attestation: attestation ?? .none)
 
         let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {

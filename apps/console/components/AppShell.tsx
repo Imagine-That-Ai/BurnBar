@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Flame } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { PanicButton } from "@/components/PanicButton";
@@ -21,30 +20,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-40 border-b border-glass-line bg-ink-base/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-token-4 px-token-4 py-token-3">
-          <Link href="/" className="flex items-center gap-token-2">
-            <Flame className="size-5 text-brass-core" />
-            <span className="font-display text-content-bright">
-              BurnBar <span className="text-content-mute">Console</span>
+      <header className="sticky top-0 z-40 border-b border-glass-line bg-[color:var(--color-ink-void)]/85 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-token-4 px-token-6 py-token-4">
+          <Link href="/" className="group flex items-center gap-token-2">
+            <span
+              className="size-2 rounded-[2px]"
+              style={{ background: "var(--accent)" }}
+              aria-hidden
+            />
+            <span className="font-display text-[0.95rem] font-semibold tracking-[-0.02em] text-content-bright">
+              BurnBar <span className="font-normal text-content-mute">Console</span>
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "rounded-md px-token-3 py-token-2 text-sm transition-colors duration-150 ease-standard",
-                  pathname === item.href
-                    ? "bg-mercury-wash text-content-bright"
-                    : "text-content-mute hover:text-content-base",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <nav className="hidden items-center gap-token-6 md:flex">
+            {NAV.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "relative py-1 text-sm transition-colors duration-150",
+                    active
+                      ? "text-content-bright"
+                      : "text-content-mute hover:text-content-bright",
+                  )}
+                >
+                  {item.label}
+                  {active && (
+                    <span
+                      className="absolute inset-x-0 -bottom-px h-px"
+                      style={{ background: "var(--accent)" }}
+                      aria-hidden
+                    />
+                  )}
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="flex items-center gap-token-2">
@@ -58,10 +71,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-token-4 py-token-8">{children}</main>
+      <main className="mx-auto max-w-5xl px-token-6 py-token-12">{children}</main>
 
-      <footer className="border-t border-glass-line px-token-4 py-token-6 text-center text-xs text-content-dim">
-        Your data, your keys. The server never sees your sealed content.
+      <footer className="mx-auto max-w-5xl px-token-6 pb-token-8">
+        <hr className="rule mb-token-4" />
+        <p className="font-mono text-xs tracking-[0.04em] text-content-dim">
+          Your data, your keys. The server never sees your sealed content.
+        </p>
       </footer>
     </div>
   );

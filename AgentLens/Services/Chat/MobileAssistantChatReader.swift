@@ -2,6 +2,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
+import OpenBurnBarCore
 import OSLog
 
 // MARK: - Mobile Assistant Chat Reader
@@ -177,12 +178,26 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
             .order(by: "updatedAt", descending: true)
             .limit(to: 200)
             .getDocuments()
+        let key = try await MacCloudVaultKeyAccess.keyForReading(
+            uid: uid,
+            deviceId: AccountManager.shared.deviceId,
+            firestore: firestoreProvider()
+        )
         return snapshot.documents.compactMap { document in
-            Self.decodeThread(documentID: document.documentID, data: document.data())
+            Self.decodeThread(documentID: document.documentID, data: document.data(), vaultKey: key?.keyData)
         }
     }
 
-    static func decodeThread(documentID: String, data: [String: Any]) -> MobileAssistantChatThread? {
+    static func decodeThread(documentID: String, data: [String: Any], vaultKey: Data? = nil) -> MobileAssistantChatThread? {
+        if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
+            guard let vaultKey,
+                  let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]),
+                  let payload = try? CloudVaultCrypto.openPayload(envelope, keyData: vaultKey),
+                  let sealed = try? sealedDecoder.decode(SealedMobileAssistantChatThread.self, from: payload) else {
+                return nil
+            }
+            return sealed.asThread
+        }
         guard let runtime = data["runtime"] as? String, !runtime.isEmpty else { return nil }
         let id = (data["id"] as? String) ?? documentID
         let title = (data["title"] as? String) ?? "Chat"
@@ -269,6 +284,125 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
             return nil
         }
         return MobileAssistantChatTokenUsage(
+            outputTokens: outputTokens,
+            totalTokens: totalTokens,
+            source: source,
+            providerGenerationDurationSeconds: providerGenerationDurationSeconds,
+            providerTotalDurationSeconds: providerTotalDurationSeconds,
+            responseStartedAt: responseStartedAt,
+            firstResponseChunkAt: firstResponseChunkAt,
+            responseCompletedAt: responseCompletedAt
+        )
+    }
+
+    private static var sealedDecoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
+private struct SealedMobileAssistantChatThread: Decodable {
+    let id: String
+    let runtime: String
+    let title: String
+    let preview: String
+    let modelName: String?
+    let createdAt: Date
+    let updatedAt: Date
+    let messages: [SealedMobileAssistantChatMessage]
+
+    var asThread: MobileAssistantChatThread {
+        MobileAssistantChatThread(
+            id: id,
+            runtime: runtime,
+            title: title,
+            preview: preview,
+            modelName: modelName,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            messageCount: messages.count,
+            messages: messages.map(\.asMessage)
+        )
+    }
+}
+
+private struct SealedMobileAssistantChatMessage: Decodable {
+    let id: String
+    let role: String
+    let text: String
+    let timestamp: Date
+    let modelName: String?
+    let isError: Bool?
+    let attachments: [SealedMobileAssistantChatAttachment]?
+    let toolCalls: [SealedMobileAssistantChatToolCall]?
+    let hermes: SealedMobileAssistantHermesMetadata?
+
+    var asMessage: MobileAssistantChatMessage {
+        let mergedToolCalls = (toolCalls?.isEmpty == false ? toolCalls : hermes?.toolCalls) ?? []
+        return MobileAssistantChatMessage(
+            id: id,
+            role: role,
+            text: text,
+            timestamp: timestamp,
+            modelName: modelName,
+            isError: isError ?? false,
+            attachments: (attachments ?? []).map(\.asAttachment),
+            toolCalls: mergedToolCalls.map(\.asToolCall),
+            usage: hermes?.usage?.asUsage
+        )
+    }
+}
+
+private struct SealedMobileAssistantChatAttachment: Decodable {
+    let id: String
+    let kind: String
+    let displayName: String
+    let mimeType: String
+    let byteSize: Int
+    let workspaceRelativePath: String
+    let extractedTextPreview: String?
+
+    var asAttachment: MobileAssistantChatAttachment {
+        MobileAssistantChatAttachment(
+            id: id,
+            kind: kind,
+            displayName: displayName,
+            mimeType: mimeType,
+            byteSize: byteSize,
+            workspaceRelativePath: workspaceRelativePath,
+            extractedTextPreview: extractedTextPreview
+        )
+    }
+}
+
+private struct SealedMobileAssistantChatToolCall: Decodable {
+    let id: String
+    let name: String
+    let status: String
+
+    var asToolCall: MobileAssistantChatToolCall {
+        MobileAssistantChatToolCall(id: id, name: name, status: status)
+    }
+}
+
+private struct SealedMobileAssistantHermesMetadata: Decodable {
+    let toolCalls: [SealedMobileAssistantChatToolCall]
+    let usage: SealedMobileAssistantUsage?
+}
+
+private struct SealedMobileAssistantUsage: Decodable {
+    let outputTokens: Int?
+    let totalTokens: Int?
+    let source: String?
+    let providerGenerationDurationSeconds: TimeInterval?
+    let providerTotalDurationSeconds: TimeInterval?
+    let responseStartedAt: Date?
+    let firstResponseChunkAt: Date?
+    let responseCompletedAt: Date?
+
+    var asUsage: MobileAssistantChatTokenUsage {
+        MobileAssistantChatTokenUsage(
             outputTokens: outputTokens,
             totalTokens: totalTokens,
             source: source,

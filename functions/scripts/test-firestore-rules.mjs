@@ -224,6 +224,28 @@ test("provider accounts reject plaintext or unknown credential containers", asyn
 
 test("escrow public keys and envelopes are schema-constrained encrypted docs", async () => {
   const ownerDb = authedDb("escrow-owner");
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), {
+      deviceId: "device-1",
+      publicKeyData: "A".repeat(88),
+      publicKeyFingerprint: "F".repeat(44),
+      keyVersion: 1,
+      algorithm: "ECIES-P256-AESGCM",
+      createdAt: Timestamp.fromMillis(Date.now()),
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_devices/device-1"), {
+      deviceId: "device-1",
+      deviceName: "iPhone",
+      platform: "iOS",
+      trustState: "pending",
+      publicKeyFingerprint: "F".repeat(44),
+      keyVersion: 1,
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    })
+  );
   const publicKey = {
     deviceId: "device-1",
     publicKeyData: "A".repeat(88),
@@ -233,6 +255,14 @@ test("escrow public keys and envelopes are schema-constrained encrypted docs", a
     createdAt: Timestamp.fromMillis(Date.now()),
   };
   await assertSucceeds(setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), publicKey));
+  await assertFails(updateDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), { publicKeyData: "B".repeat(88) }));
+  await assertFails(setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_duplicate"), publicKey));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1_alt"), {
+      ...publicKey,
+      publicKeyFingerprint: "G".repeat(44),
+    })
+  );
   await assertFails(
     setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-2_1"), {
       ...publicKey,

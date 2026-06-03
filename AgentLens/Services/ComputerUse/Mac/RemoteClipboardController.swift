@@ -68,6 +68,7 @@ public final class RemoteClipboardController {
         public var scopeRules: [ComputerUseScopeRule]
         public var validator: PhoneControlAuthorityValidator
         public var isDirectPhoneControl: Bool
+        public var attestation: PhoneControlAttestationRequirement
 
         public init(
             activeSessionId: ComputerUseSessionID?,
@@ -76,7 +77,8 @@ public final class RemoteClipboardController {
             auditLogger: ComputerUseAuditLogger?,
             scopeRules: [ComputerUseScopeRule],
             validator: PhoneControlAuthorityValidator,
-            isDirectPhoneControl: Bool
+            isDirectPhoneControl: Bool,
+            attestation: PhoneControlAttestationRequirement = .none
         ) {
             self.activeSessionId = activeSessionId
             self.state = state
@@ -85,6 +87,7 @@ public final class RemoteClipboardController {
             self.scopeRules = scopeRules
             self.validator = validator
             self.isDirectPhoneControl = isDirectPhoneControl
+            self.attestation = attestation
         }
     }
 
@@ -127,6 +130,7 @@ public final class RemoteClipboardController {
             _ = try context.validator.validate(
                 envelope: request.authority,
                 clipboardRequest: request,
+                attestation: context.attestation,
                 now: Date()
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
@@ -469,6 +473,7 @@ final class RemoteUnlockCredentialController {
         var state: ComputerUseSessionState?
         var isDirectPhoneControl: Bool
         var authorizedPeerNodeId: String?
+        var attestation: PhoneControlAttestationRequirement
         var readiness: MacRemoteUnlockReadinessService
 
         @MainActor init(
@@ -477,6 +482,7 @@ final class RemoteUnlockCredentialController {
             state: ComputerUseSessionState?,
             isDirectPhoneControl: Bool,
             authorizedPeerNodeId: String?,
+            attestation: PhoneControlAttestationRequirement = .none,
             readiness: MacRemoteUnlockReadinessService = .shared
         ) {
             self.validator = validator
@@ -484,6 +490,7 @@ final class RemoteUnlockCredentialController {
             self.state = state
             self.isDirectPhoneControl = isDirectPhoneControl
             self.authorizedPeerNodeId = authorizedPeerNodeId
+            self.attestation = attestation
             self.readiness = readiness
         }
     }
@@ -545,6 +552,7 @@ final class RemoteUnlockCredentialController {
             _ = try context.validator.validate(
                 envelope: credential.authority,
                 remoteUnlockCredential: credential,
+                attestation: context.attestation,
                 now: validationNow
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {

@@ -1,17 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { Basin } from "@/components/basin/Basin";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { PrivacyPosture } from "@/components/basin/Basin";
 import { useAuth } from "@/lib/useAuth";
-import { useDomainUsage } from "@/lib/useDomainUsage";
-import { DATA_DOMAINS } from "@/lib/domains";
+import { useDomainUsage, usageById } from "@/lib/useDomainUsage";
+import { DATA_DOMAINS, type DataDomain } from "@/lib/domains";
 import { formatBytes, formatCount } from "@/lib/utils";
+
+type Tier = DataDomain["encryptionTier"];
+
+const TIER_DOT: Record<Tier, string> = {
+  end_to_end: "var(--tier-e2e-dot)",
+  zero_access: "var(--tier-zero-dot)",
+  server_readable: "var(--tier-srv-dot)",
+};
+const TIER_LABEL: Record<Tier, string> = {
+  end_to_end: "End-to-end",
+  zero_access: "Zero-access",
+  server_readable: "Server-readable",
+};
 
 export default function HomePage() {
   const { user } = useAuth();
   const { data } = useDomainUsage();
+  const byId = usageById(data);
 
   const totals = (data?.domains ?? []).reduce(
     (acc, d) => ({ count: acc.count + d.count, bytes: acc.bytes + d.bytes }),
@@ -19,47 +31,108 @@ export default function HomePage() {
   );
 
   return (
-    <div className="space-y-token-8">
-      <section className="space-y-token-4 text-center">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-content-dim">
-          {user?.email ?? "Your account"}
-        </p>
-        <h1 className="font-display text-4xl text-content-bright">The Basin</h1>
-        <p className="mx-auto max-w-xl text-content-mute">
-          Everything BurnBar holds for you, rendered as swirling mercury — one eddy per kind of
-          data, sized by how much there is, tinted by who can read it.
-        </p>
+    <div className="space-y-token-12">
+      <section className="max-w-3xl space-y-token-6 pt-token-4">
+        <p className="eyebrow eyebrow--accent">{user?.email ?? "Your private console"}</p>
+        <h1 className="text-[clamp(2.5rem,6.5vw,4.5rem)] font-semibold leading-[1.01] tracking-[-0.03em] text-content-bright">
+          Everything we keep for you —{" "}
+          <span className="text-content-mute">and exactly who can read it.</span>
+        </h1>
+        <p className="epigraph text-xl">“A basin that remembers, and never reads.”</p>
+
+        <div className="flex flex-wrap items-center gap-x-token-6 gap-y-token-3 pt-token-2">
+          <Figure value={formatCount(totals.count)} label="memories" />
+          <Sep />
+          <Figure value={String(DATA_DOMAINS.length)} label="domains" />
+          <Sep />
+          <Figure value={formatBytes(totals.bytes)} label="sealed" />
+        </div>
+
+        <div className="flex flex-wrap gap-token-3 pt-token-2">
+          <Link
+            href="/inventory"
+            className="btn-quiet btn-accent inline-flex h-11 items-center px-token-6 text-sm"
+          >
+            Open the Transparency Inventory →
+          </Link>
+          <Link
+            href="/escrow"
+            className="btn-quiet btn-outline inline-flex h-11 items-center px-token-6 text-sm"
+          >
+            Trust this browser
+          </Link>
+        </div>
       </section>
 
-      <Card className="overflow-hidden p-0">
-        <Basin usage={data} />
-      </Card>
+      <hr className="rule" />
 
-      <div className="grid gap-token-3 sm:grid-cols-3">
-        <Stat label="Domains" value={String(DATA_DOMAINS.length)} />
-        <Stat label="Total items" value={formatCount(totals.count)} />
-        <Stat label="Tracked size" value={formatBytes(totals.bytes)} />
-      </div>
+      <section>
+        <PrivacyPosture usage={data} />
+      </section>
 
-      <div className="flex flex-wrap justify-center gap-token-3">
-        <Button asChild>
-          <Link href="/inventory">Open the Transparency Inventory</Link>
-        </Button>
-        <Button asChild variant="secondary">
-          <Link href="/escrow">Trust this browser</Link>
-        </Button>
-      </div>
+      <hr className="rule" />
+
+      <section className="space-y-token-2">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-2xl font-semibold tracking-[-0.02em] text-content-bright">
+            The whole footprint
+          </h2>
+          <Link
+            href="/inventory"
+            className="link-underline font-mono text-xs uppercase tracking-[0.18em]"
+          >
+            Manage →
+          </Link>
+        </div>
+
+        <div className="border-t border-glass-line">
+          {DATA_DOMAINS.map((d) => {
+            const u = byId[d.id] ?? { count: 0, bytes: 0 };
+            return (
+              <Link
+                key={d.id}
+                href="/inventory"
+                className="ledger-row grid-cols-[1fr_auto] sm:grid-cols-[minmax(0,17rem)_1fr_auto]"
+              >
+                <div className="flex min-w-0 items-center gap-token-3">
+                  <span
+                    className="tier-dot"
+                    style={{ background: TIER_DOT[d.encryptionTier] }}
+                    aria-hidden
+                  />
+                  <span className="truncate font-display text-base font-medium text-content-bright">
+                    {d.title}
+                  </span>
+                </div>
+                <p className="hidden truncate text-sm text-content-mute sm:block">{d.summary}</p>
+                <div className="flex items-center gap-token-6 font-mono text-xs">
+                  <span className="hidden tabular-nums text-content-dim sm:inline">
+                    {TIER_LABEL[d.encryptionTier]}
+                  </span>
+                  <span className="tabular-nums text-content-base">
+                    {u.count ? formatCount(u.count) : "—"}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Figure({ value, label }: { value: string; label: string }) {
   return (
-    <Card className="text-center">
-      <CardContent className="pt-0">
-        <p className="font-mono text-2xl text-content-bright">{value}</p>
-        <p className="text-xs uppercase tracking-wide text-content-dim">{label}</p>
-      </CardContent>
-    </Card>
+    <span className="inline-flex items-baseline gap-2">
+      <span className="font-mono text-2xl font-medium tabular-nums text-content-bright">
+        {value}
+      </span>
+      <span className="text-sm text-content-mute">{label}</span>
+    </span>
   );
+}
+
+function Sep() {
+  return <span className="hidden h-5 w-px bg-glass-line sm:inline-block" aria-hidden />;
 }

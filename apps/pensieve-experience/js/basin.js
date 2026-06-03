@@ -26,8 +26,10 @@
 
   function resize() {
     DPR = Math.min(2, window.devicePixelRatio || 1);
-    W = canvas.clientWidth = window.innerWidth;
-    H = canvas.clientHeight = window.innerHeight;
+    // The canvas fills the viewport via CSS (position:fixed; inset:0). Read the
+    // layout size; never assign to the read-only clientWidth/clientHeight.
+    W = window.innerWidth;
+    H = window.innerHeight;
     canvas.width = Math.floor(W * DPR);
     canvas.height = Math.floor(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -62,21 +64,26 @@
     }
   }
 
-  function drawBase() {
+  function drawBase(time) {
     // deep vertical gradient — ink void at the rim, a touch of life mid-depth
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#08080c");
-    g.addColorStop(0.55, "#070709");
-    g.addColorStop(1, "#050507");
+    g.addColorStop(0.5, "#070709");
+    g.addColorStop(1, "#060406");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    // a single brand-warm furnace ember far in the lower depths
-    const fg = ctx.createRadialGradient(W * 0.5, H * 1.15, 0, W * 0.5, H * 1.15, H * 0.9);
-    fg.addColorStop(0, "rgba(24,8,5,0.5)");
+    // furnace core — the brand: a warm orange glow rising and pulsing from the
+    // deep bottom, exactly like the marketing site's body::before.
+    const pulse = 0.5 + Math.sin(time * 0.00012) * 0.14;
+    ctx.globalCompositeOperation = "lighter";
+    const fg = ctx.createRadialGradient(W * 0.5, H * 1.06, 0, W * 0.5, H * 1.06, H * 0.98);
+    fg.addColorStop(0, "rgba(250,107,6," + 0.2 * pulse + ")");
+    fg.addColorStop(0.42, "rgba(238,24,3," + 0.07 * pulse + ")");
     fg.addColorStop(1, "rgba(24,8,5,0)");
     ctx.fillStyle = fg;
     ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "source-over";
   }
 
   function drawCaustics(time) {
@@ -175,7 +182,7 @@
     if (!t0) t0 = now;
     const time = now - t0;
 
-    drawBase();
+    drawBase(time);
     drawCaustics(time);
     for (const s of strands) {
       drawStrand(s, time);
@@ -195,8 +202,8 @@
 
   function renderStill() {
     // one calm frame for reduced-motion
-    drawBase();
     const time = 4000;
+    drawBase(time);
     for (const c of caustics) c.a *= 0.7;
     drawCaustics(time);
     for (const s of strands) { s.sway = 0; drawStrand(s, time); }

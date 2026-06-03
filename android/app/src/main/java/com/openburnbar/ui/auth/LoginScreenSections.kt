@@ -239,24 +239,20 @@ private fun EmberOrb(
     offsetY: androidx.compose.ui.unit.Dp,
 ) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        // iOS uses RadialGradient with [color, .clear] — replicate with Canvas
-        Canvas(
+        Box(
             modifier = Modifier
                 .size(size)
                 .graphicsLayer {
                     translationX = offsetX.toPx()
                     translationY = offsetY.toPx()
                 }
-                .blur(blurRadius),
-        ) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(color, Color.Transparent),
-                    center = Offset(this.size.width / 2f, this.size.height / 2f),
-                    radius = this.size.width * 0.48f,
+                .blur(blurRadius, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(color, color.copy(alpha = color.alpha * 0.5f), Color.Transparent),
+                    ),
                 ),
-            )
-        }
+        )
     }
 }
 
@@ -359,24 +355,6 @@ internal fun EmberLogo(modifier: Modifier = Modifier) {
                 painter = painterResource(id = R.drawable.logo_app),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-            )
-            // Tip glow — brightens upper portion, tracks flicker intensity
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.05f to Color.White.copy(alpha = (0.10f + 0.45f * intensity)),
-                                    0.30f to Color.White.copy(alpha = (0.20f * intensity)),
-                                    0.65f to Color.Transparent,
-                                ),
-                            ),
-                            blendMode = BlendMode.Plus,
-                        )
-                    },
             )
         }
     }

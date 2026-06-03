@@ -119,13 +119,18 @@ final class CLIAgentChatReader {
                         self?.logger.warning("CLI agent listener failed: \(String(describing: error), privacy: .public)")
                         return
                     }
-                    self?.sessions = snapshot?.documents.compactMap { document in
-                        CLIAgentSessionCodec.decode(
-                            documentID: document.documentID,
-                            data: document.data(),
-                            timestampDecoder: CLIAgentChatFirestoreSource.firestoreTimestampDecoder
-                        )
-                    } ?? []
+	                    guard let uid = uid else {
+	                        self?.sessions = []
+	                        return
+	                    }
+	                    let key = try? await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+	                    self?.sessions = snapshot?.documents.compactMap { document in
+	                        CLIAgentChatFirestoreSource.decodeDocument(
+	                            documentID: document.documentID,
+	                            data: document.data(),
+	                            vaultKey: key?.keyData
+	                        )
+	                    } ?? []
                     self?.lastRefreshedAt = Date()
                     self?.lastError = nil
                 }
@@ -201,15 +206,28 @@ final class CLIAgentChatFirestoreSource: CLIAgentChatRemoteSource {
         if let filter {
             query = query.whereField("agent", isEqualTo: filter.rawValue)
         }
-        let snapshot = try await query.getDocuments()
-        return snapshot.documents.compactMap { document in
-            CLIAgentSessionCodec.decode(
-                documentID: document.documentID,
-                data: document.data(),
-                timestampDecoder: Self.firestoreTimestampDecoder
-            )
-        }
-    }
+	        let snapshot = try await query.getDocuments()
+	        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+	        return snapshot.documents.compactMap { document in
+	            Self.decodeDocument(
+	                documentID: document.documentID,
+	                data: document.data(),
+	                vaultKey: key?.keyData
+	            )
+	        }
+	    }
+
+	    static func decodeDocument(documentID: String, data: [String: Any], vaultKey: Data?) -> CLIAgentSessionRecord? {
+	        if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
+	            guard let vaultKey else { return nil }
+	            return CLIAgentSessionCodec.decodeSealed(documentID: documentID, data: data, vaultKey: vaultKey)
+	        }
+	        return CLIAgentSessionCodec.decode(
+	            documentID: documentID,
+	            data: data,
+	            timestampDecoder: Self.firestoreTimestampDecoder
+	        )
+	    }
 
     /// Firestore returns `Timestamp` (not Foundation `Date`). The codec
     /// stays SDK-free; we plug an SDK-aware decoder here.
