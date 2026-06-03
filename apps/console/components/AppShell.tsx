@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 className={cn(
                   "folio whitespace-nowrap",
-                  active && "text-[color:var(--accent)]",
+                  active && "text-[color:var(--accent-deep)]",
                 )}
               >
                 {item.label}
