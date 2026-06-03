@@ -171,7 +171,21 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
   const slugHmac = boundedString(args.slugHmac ?? filters.slugHmac, 64);
   const embeddingModelVersion = boundedString(args.embeddingModelVersion ?? filters.embeddingModelVersion, 120);
 
-  let query: KnowledgeVectorQuery = db.collection(`users/${uid}/cloud_search_knowledge`);
+  // FLAG-DAY (dedup-v0 retirement): hard-floor `dedupHashVersion == 1` so a
+  // non-shim OAuth caller can NEVER query a stranded legacy v0 row (a row whose
+  // `dedupHash` is the cleartext SHA-256 confirm-the-guess oracle). v0 rows
+  // carry `dedupHashVersion: 0` (or, for pre-versioned ancients, no field at
+  // all) and so drop out of recall immediately; they are then deleted by
+  // `purgeLegacyKnowledgeVectors` (knowledgeMemory.ts). This mirrors the
+  // in-product callable search (functions knowledgeSearch.ts), which floors the
+  // same field. The `embeddingModelVersion` filter stays OPTIONAL — the shim
+  // pins it, but an OAuth caller that omits it must still never reach v0. Both
+  // are equality predicates, so the composite cloud_search_knowledge index
+  // (embeddingModelVersion ==, dedupHashVersion ==, [sourceKind|slugHmac] ==,
+  // embedding vector) serves this + findNearest — see firestore.indexes.json.
+  let query: KnowledgeVectorQuery = db
+    .collection(`users/${uid}/cloud_search_knowledge`)
+    .where("dedupHashVersion", "==", 1);
   if (sourceKind) query = query.where("sourceKind", "==", sourceKind);
   if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
   if (embeddingModelVersion) query = query.where("embeddingModelVersion", "==", embeddingModelVersion);

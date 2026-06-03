@@ -84,7 +84,12 @@ final class RollbackService {
         let ref = firestoreProvider()
             .collection("users").document(uid)
             .collection("rollback_requests")
-            .whereField("status", in: ["pending", "in_flight"])
+            // `inFlight` is the legacy pre-snake_case wire value; include it so a
+            // doc still carrying it isn't excluded by Firestore's exact-match `in`
+            // before the tolerant `Status(wireValue:)` decoder can run. Mirrors the
+            // tolerance in RollbackContracts.Status and Android RollbackService.kt
+            // (`whereIn("status", listOf("pending", "in_flight", "inFlight"))`).
+            .whereField("status", in: ["pending", "in_flight", "inFlight"])
         requestObservation = ref.addSnapshotListener { [weak self] snapshot, _ in
             Task { @MainActor in
                 guard let self else { return }

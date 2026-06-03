@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 #endif
 @preconcurrency import FirebaseFirestore
+@preconcurrency import FirebaseStorage
 import OpenBurnBarCore
 
 // MARK: - Hermes Settings View
@@ -522,6 +523,12 @@ struct HermesSettingsView: View {
                     RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
                         .fill(MobileTheme.Colors.surfaceElevated.opacity(0.82))
                 )
+
+            if !reply.openedAttachments.isEmpty {
+                ChatBubbleAttachmentStrip(attachments: reply.openedAttachments)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
         }
         .padding(12)
         .background(
@@ -543,13 +550,11 @@ struct HermesSettingsView: View {
         _ reply: HermesGatewayMessageRecord,
         fallback: String = "Hermes sent a reply through BurnBar Cloud."
     ) -> String {
-        if let body = reply.displayText, !body.isEmpty {
-            return body
-        }
-        if reply.isSealed {
-            return "This reply is sealed for another device. Open BurnBar on the device that approved this gateway to read it."
-        }
-        return fallback
+        // Delegate to the single source of truth shared with the chat thread so
+        // the hero and the conversation never diverge: opened body, legacy
+        // plaintext, attachment summary, or the calm jargon-free re-pair state
+        // for a reply this device cannot open.
+        reply.chatRenderText(emptyFallback: fallback)
     }
 
     private func gatewayPendingHero(_ pending: HermesGatewayQueuedEvent) -> some View {
@@ -1064,21 +1069,21 @@ struct HermesSettingsView: View {
         if let selected = gatewayStore.selectedClient,
            gatewayStore.agentRelayKeyChanged(for: selected) {
             gatewayNotice(
-                "\(selected.displayName)'s relay key changed since you paired — a possible man-in-the-middle. Messages are blocked. Re-pair Hermes Gateway on \(selected.displayName) to trust the new key.",
+                "\(selected.displayName)'s private pairing changed since you connected it. Messages are blocked until you connect Hermes again on that device.",
                 icon: "exclamationmark.shield.fill",
                 color: MobileTheme.error
             )
         } else if let selected = gatewayStore.selectedClient,
            !selected.canSealToAgent {
             gatewayNotice(
-                "Update OpenBurnBar on \(selected.displayName), then re-pair Hermes Gateway. Cloud gateway messages are E2EE and require relay keys.",
+                "Update OpenBurnBar on \(selected.displayName), then connect Hermes again so private cloud messages can be read on both sides.",
                 icon: "exclamationmark.triangle.fill",
                 color: MobileTheme.warning
             )
         } else if let selected = gatewayStore.selectedClient,
            gatewayStore.isOnline(selected) {
             gatewayNotice(
-                "\(selected.displayName) is selected, online, and E2EE ready. Test messages should get picked up immediately.",
+                "\(selected.displayName) is selected, online, and ready for private cloud messages. Test messages should get picked up immediately.",
                 icon: "checkmark.seal.fill",
                 color: MobileTheme.success
             )
@@ -1883,7 +1888,7 @@ struct HermesSettingsView: View {
         let keyChanged = gatewayStore.agentRelayKeyChanged(for: client)
         var parts = [
             gatewayStore.selectedClient?.id == client.id ? "Selected" : nil,
-            keyChanged ? "Relay key changed — re-pair" : (client.canSealToAgent ? "E2EE ready" : "Update/re-pair for E2EE"),
+            keyChanged ? "Connection changed — reconnect" : (client.canSealToAgent ? "Private replies ready" : "Update and reconnect"),
             gatewayStore.isOnline(client) ? "Online now" : "Not online",
             client.homeDestinationId,
             client.tokenPreview
@@ -2103,6 +2108,10 @@ final class HermesGatewaySettingsStore {
     @ObservationIgnored private var pendingEventSentAt: Date?
     @ObservationIgnored private var messageListenerStartedAt: Date?
     @ObservationIgnored private let gatewayThreadID = HermesGatewayMessageResolver.defaultThreadID
+    @ObservationIgnored private var openedGatewayAttachments: [String: HermesAttachment] = [:]
+    @ObservationIgnored private var failedGatewayAttachmentIDs = Set<String>()
+    private static let maxGatewayAttachmentDownloadBytes: Int64 =
+        Int64(HermesAttachmentLimits.maxGenericBytes * 2 + 4096)
 
     init(repository: any HermesGatewayRepository = FunctionsRepository.shared, defaults: UserDefaults = .standard) {
         self.repository = repository
@@ -2189,11 +2198,11 @@ final class HermesGatewaySettingsStore {
     }
 
     private static func gatewayE2EERequiredMessage(for client: HermesGatewayClientRecord) -> String {
-        "Update OpenBurnBar on \(client.displayName), then re-pair Hermes Gateway. Cloud gateway messages are end-to-end encrypted and require relay keys."
+        "Update OpenBurnBar on \(client.displayName), then reconnect Hermes so private messages can be read on both sides."
     }
 
     private static func gatewayRelayKeyChangedMessage(for client: HermesGatewayClientRecord) -> String {
-        "\(client.displayName)'s relay key changed since you paired — a possible man-in-the-middle. For your safety nothing was sent. Re-pair Hermes Gateway on \(client.displayName) to trust the new key."
+        "\(client.displayName)'s connection looks different from when you set it up. Nothing was sent, to keep things safe. Reconnect Hermes on \(client.displayName) to restore private replies."
     }
 
     /// True when the agent pubkey this client now advertises differs from the one
@@ -2219,6 +2228,42 @@ final class HermesGatewaySettingsStore {
     private func clearAgentKeyPin(clientId: String) {
         guard let uid = listenedUID, !uid.isEmpty else { return }
         agentKeyPinStore.clearPin(uid: uid, clientId: clientId)
+    }
+
+    /// A short, human-comparable "safety code" for a paired client's private
+    /// connection, so a user can compare it across their phone and Mac to confirm
+    /// no one is intercepting the channel. Prefers the key this device has already
+    /// trusted (the Keychain pin); before the first send pins a key it falls back
+    /// to the key the connection currently advertises so the code is never blank
+    /// on a freshly paired Mac. Returns `nil` only when there is genuinely no key
+    /// to show.
+    func agentSafetyCode(for client: HermesGatewayClientRecord) -> String? {
+        if let uid = listenedUID, !uid.isEmpty,
+           let pinned = agentKeyPinStore.pinnedSafetyCode(uid: uid, clientId: client.id) {
+            return pinned
+        }
+        guard let advertised = client.relayPublicKey else { return nil }
+        return HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: advertised)
+    }
+
+    /// Explicit, user-confirmed re-pair for a client whose private connection now
+    /// looks different from when it was first set up (a changed key — possible
+    /// interception — or a reply this device can no longer open after a reinstall
+    /// or new phone).
+    ///
+    /// This deliberately requires the caller to have obtained explicit user
+    /// consent first: it forgets the previously trusted key so the **next** time
+    /// this device sends, it re-establishes trust on the key the connection now
+    /// advertises (trust-on-first-use), and pins that. It never silently accepts a
+    /// new key mid-flight — the fail-closed seal guard still refuses to send until
+    /// this is called — so the interception protection is preserved while giving
+    /// the user a clean, honest way to recover a real reinstall / new device.
+    func repinAgentKeyAfterUserConfirmation(for client: HermesGatewayClientRecord) {
+        clearAgentKeyPin(clientId: client.id)
+        setNotice(
+            "Trust reset for \(client.displayName). Send a message to finish reconnecting privately.",
+            style: .success
+        )
     }
 
     var testButtonTitle: String {
@@ -2293,6 +2338,8 @@ final class HermesGatewaySettingsStore {
         statusClockTask = nil
         listenedUID = nil
         messageListenerStartedAt = nil
+        openedGatewayAttachments = [:]
+        failedGatewayAttachmentIDs = []
     }
 
     func refresh(isSignedIn: Bool) async {
@@ -2307,6 +2354,7 @@ final class HermesGatewaySettingsStore {
         }
         guard !isLoading else { return }
         syncSelectedClientIDFromDefaults()
+        failedGatewayAttachmentIDs = []
         isLoading = true
         defer { isLoading = false }
 
@@ -2606,12 +2654,15 @@ final class HermesGatewaySettingsStore {
                 targetClientId: pendingTestEvent.targetClientId ?? selectedTargetClientId,
                 pendingEventSentAt: pendingEventSentAt
             ) else { return }
-            latestReply = reply
-            self.pendingTestEvent = nil
-            pendingEventSentAt = nil
-            setNotice("Hermes replied. The gateway is working end to end.", style: .success)
-            HapticBus.milestone()
-            presentReplyNotification(reply)
+            Task { @MainActor in
+                let hydrated = await hydrateGatewayAttachments(for: reply)
+                latestReply = hydrated
+                self.pendingTestEvent = nil
+                pendingEventSentAt = nil
+                setNotice("Hermes replied. The gateway is working end to end.", style: .success)
+                HapticBus.milestone()
+                presentReplyNotification(hydrated)
+            }
             return
         }
 
@@ -2620,16 +2671,101 @@ final class HermesGatewaySettingsStore {
             threadID: gatewayThreadID,
             targetClientId: selectedTargetClientId
         ) else { return }
-        let isNewReply = latestReply?.id != reply.id
-        latestReply = reply
-        if isNewReply,
-           HermesGatewayMessageResolver.wasCreatedWhileListening(
-                reply,
-                listenerStartedAt: messageListenerStartedAt
-           ) {
-            setNotice("Hermes replied. The gateway is working end to end.", style: .success)
-            HapticBus.milestone()
-            presentReplyNotification(reply)
+        Task { @MainActor in
+            let hydrated = await hydrateGatewayAttachments(for: reply)
+            let isNewReply = latestReply?.id != hydrated.id
+            latestReply = hydrated
+            if isNewReply,
+               HermesGatewayMessageResolver.wasCreatedWhileListening(
+                    hydrated,
+                    listenerStartedAt: messageListenerStartedAt
+               ) {
+                setNotice("Hermes replied. The gateway is working end to end.", style: .success)
+                HapticBus.milestone()
+                presentReplyNotification(hydrated)
+            }
+        }
+    }
+
+    private func hydrateGatewayAttachments(for reply: HermesGatewayMessageRecord) async -> HermesGatewayMessageRecord {
+        guard !reply.attachmentIds.isEmpty,
+              let uid = listenedUID, !uid.isEmpty
+        else { return reply }
+
+        var opened: [HermesAttachment] = []
+        var failed: [String] = []
+        for attachmentId in reply.attachmentIds {
+            if let cached = openedGatewayAttachments[attachmentId] {
+                opened.append(cached)
+                continue
+            }
+            if failedGatewayAttachmentIDs.contains(attachmentId) {
+                failed.append(attachmentId)
+                continue
+            }
+            guard let attachment = await openGatewayAttachment(
+                attachmentId: attachmentId,
+                uid: uid,
+                clientId: reply.clientId
+            ) else {
+                failedGatewayAttachmentIDs.insert(attachmentId)
+                failed.append(attachmentId)
+                continue
+            }
+            openedGatewayAttachments[attachmentId] = attachment
+            opened.append(attachment)
+        }
+        return reply.withAttachmentHydration(opened: opened, failedAttachmentIds: failed)
+    }
+
+    private func openGatewayAttachment(attachmentId: String, uid: String, clientId: String) async -> HermesAttachment? {
+        do {
+            guard let data = try await fetchGatewayAttachmentDocument(uid: uid, attachmentId: attachmentId),
+                  let record = HermesGatewayAttachmentRecord(documentID: attachmentId, data: data),
+                  record.clientId == clientId,
+                  let storagePath = record.bodyStoragePath,
+                  !storagePath.isEmpty
+            else { return nil }
+
+            let sealedBody = try await downloadGatewayAttachmentBody(storagePath: storagePath)
+            let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+            guard let opened = record.opened(downloadedBody: sealedBody, using: keypair, uid: uid) else {
+                return nil
+            }
+            return try HermesAttachmentLoader.importGatewayOpenedAttachment(opened, threadID: gatewayThreadID)
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchGatewayAttachmentDocument(uid: String, attachmentId: String) async throws -> [String: Any]? {
+        try await withCheckedThrowingContinuation { continuation in
+            Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("hermes_gateway_attachments").document(attachmentId)
+                .getDocument { snapshot, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    continuation.resume(returning: snapshot?.data())
+                }
+        }
+    }
+
+    private func downloadGatewayAttachmentBody(storagePath: String) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            Storage.storage().reference(withPath: storagePath).getData(maxSize: Self.maxGatewayAttachmentDownloadBytes) { data, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let data else {
+                    continuation.resume(throwing: FunctionsError.gatewayAttachmentUnreadable)
+                    return
+                }
+                continuation.resume(returning: data)
+            }
         }
     }
 
@@ -2650,7 +2786,9 @@ final class HermesGatewaySettingsStore {
         AgentReplyNotificationService.shared.presentLocalReply(
             id: reply.id,
             title: "Hermes replied",
-            preview: reply.displayText ?? "Hermes sent a reply through BurnBar Cloud.",
+            // Same source of truth as the chat thread: a reply this device can't
+            // open surfaces the calm re-pair line, never an empty preview.
+            preview: reply.chatRenderText(emptyFallback: "Hermes sent a reply through BurnBar Cloud."),
             runtime: AssistantRuntimeID.hermes.rawValue,
             threadID: reply.threadId ?? gatewayThreadID
         )

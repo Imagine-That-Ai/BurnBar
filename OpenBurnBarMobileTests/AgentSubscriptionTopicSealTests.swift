@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
@@ -170,6 +171,55 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
         XCTAssertEqual(decoded.description, "Legacy description")
     }
 
+    // MARK: consentGivenAt type-tolerance (cross-platform orderBy parity)
+
+    /// `consentGivenAt` is written as a Firestore Timestamp by both platforms now
+    /// (iOS from its Swift `Date?`, Android from `Timestamp(Date(createdAtEpoch))`),
+    /// but legacy docs may carry a Number (epoch millis — what Android used to
+    /// write) or an ISO String. `decodeTopic`'s `decodeDate` must map all three to
+    /// the SAME instant so the in-memory re-sort stays correct and no legacy doc
+    /// becomes unreadable while the corpus lazily converges on Timestamp. Driven
+    /// through the public `decodeTopic` seam so the real read path is locked.
+    func test_decodeTopic_consentGivenAt_toleratesTimestampNumberAndStringEquivalently() throws {
+        // 2023-11-14T22:13:20Z — whole seconds so Timestamp/Number/ISO agree
+        // exactly (Firestore Timestamp has sub-second precision; ISO-8601 here is
+        // second-granular).
+        let epochMillis = 1_700_000_000_000.0
+        let expected = Date(timeIntervalSince1970: epochMillis / 1000.0)
+
+        func decodeConsent(_ rawValue: Any) throws -> Date {
+            // Legacy plaintext doc (no sealed fields) so it decodes without a key;
+            // only `consentGivenAt`'s wire type varies across the three cases.
+            let doc: [String: Any] = [
+                "agentURI": "agent://burnbar/research-scout",
+                "topicID": "agent-updates",
+                "displayName": "Scout",
+                "description": "",
+                "cadence": "weekly",
+                "consentGivenAt": rawValue
+            ]
+            let topic = try XCTUnwrap(
+                AgentSubscriptionTopicStore.decodeTopic(
+                    documentID: "agent_burnbar_research-scout_agent-updates",
+                    data: doc,
+                    vaultKey: nil
+                )
+            )
+            return try XCTUnwrap(topic.consentGivenAt)
+        }
+
+        // Canonical Firestore Timestamp (what both platforms now write).
+        let fromTimestamp = try decodeConsent(Timestamp(date: expected))
+        // Legacy Number (epoch millis — Android's old write type).
+        let fromNumber = try decodeConsent(NSNumber(value: epochMillis))
+        // Legacy ISO-8601 String.
+        let fromString = try decodeConsent("2023-11-14T22:13:20Z")
+
+        XCTAssertEqual(fromTimestamp.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(fromNumber.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(fromString.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
+    }
+
     func test_decodeTopic_sealedGraphUnreadableWithoutKey_returnsNil() throws {
         let key = CloudVaultCrypto.generateVaultKey()
         var encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
@@ -183,5 +233,53 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
             documentID: "sub_deadbeefdeadbeef", data: encoded, vaultKey: nil
         )
         XCTAssertNil(decoded)
+    }
+
+    // MARK: Ghost-unsubscribe prevention (HIGH)
+
+    /// Unsubscribe must NOT silently no-op the authoritative sealed-doc delete
+    /// when the vault key is unavailable. The decision now lives in the pure
+    /// `resolveUnsubscribeDocID`: a nil key MUST throw `vaultKeyUnavailable`
+    /// (which the live path surfaces and on which it bails BEFORE dropping the
+    /// local row), so the cloud subscription can never be orphaned behind a
+    /// success UI. With a key present it resolves the same opaque doc id used by
+    /// `documentID`, so the delete targets the real sealed doc.
+    func test_resolveUnsubscribeDocID_withoutKey_throwsRecoverableError() throws {
+        XCTAssertThrowsError(
+            try AgentSubscriptionTopicStore.resolveUnsubscribeDocID(
+                agentURI: "agent://burnbar/research-scout",
+                topicID: "agent-updates",
+                vaultKey: nil
+            )
+        ) { error in
+            guard case AgentSubscriptionTopicStore.StoreError.vaultKeyUnavailable = error else {
+                return XCTFail("Expected vaultKeyUnavailable, got \(error)")
+            }
+            let message = (error as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertFalse(message.isEmpty, "The recoverable error must surface copy to the user")
+            // Recoverable + jargon-free per the copy policy.
+            for jargon in ["vault key", "HMAC", "opaque", "ciphertext", "E2EE"] {
+                XCTAssertFalse(
+                    message.localizedCaseInsensitiveContains(jargon),
+                    "Unsubscribe-needs-unlock copy leaks jargon: \(jargon)"
+                )
+            }
+        }
+    }
+
+    func test_resolveUnsubscribeDocID_withKey_targetsTheOpaqueSealedDoc() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let resolved = try AgentSubscriptionTopicStore.resolveUnsubscribeDocID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            vaultKey: key
+        )
+        let expected = try AgentSubscriptionTopicStore.documentID(
+            agentURI: "agent://burnbar/research-scout",
+            topicID: "agent-updates",
+            vaultKey: key
+        )
+        XCTAssertEqual(resolved, expected)
+        XCTAssertFalse(resolved.contains("/"), "Doc id must be an opaque Firestore-safe id")
     }
 }

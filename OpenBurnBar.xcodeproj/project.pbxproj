@@ -8580,11 +8580,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_075611B3-1AD3-4D56-A5E0-16B6178A3F69" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_779F0C5F-F24D-4777-98C3-B8B06E608202" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_FE898587-2A38-4660-B77C-5648252A0BE0" /* OpenBurnBarCore */;
+			productRef = "TEMP_AD3B0B7C-3FB0-4647-A99C-211598A25557" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -8632,7 +8632,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_A52046BE-6FA4-4410-BA0F-E1D4C5145F0D" /* OpenBurnBarCore */;
+			productRef = "TEMP_264F9A58-E06B-4683-8C05-620EE7AC45D6" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -8646,15 +8646,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_71814F43-BF86-4BCE-A8A1-F52EDDC95F82" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_1675EF2F-E6A5-48F3-A5E6-EF0C23D97A36" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_330F7AC4-864E-4CE0-9550-AC1B2D9B2D87" /* OpenBurnBarMedia */;
+			productRef = "TEMP_AF80ED86-AD5D-4068-A826-A76B172616D9" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_37124E82-1C8A-445F-98C6-4421B92128FE" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_EFFE4F4A-109B-455C-9D7C-33DEFDE8956B" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -8680,7 +8680,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Keyboard";
@@ -8726,7 +8726,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Keyboard";
@@ -8769,7 +8769,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -8796,7 +8796,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
@@ -8851,7 +8851,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -9154,7 +9154,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -9252,7 +9252,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
@@ -9319,7 +9319,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_PREVIEWS = YES;
@@ -9726,29 +9726,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_075611B3-1AD3-4D56-A5E0-16B6178A3F69" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_1675EF2F-E6A5-48F3-A5E6-EF0C23D97A36" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_330F7AC4-864E-4CE0-9550-AC1B2D9B2D87" /* OpenBurnBarMedia */ = {
+		"TEMP_264F9A58-E06B-4683-8C05-620EE7AC45D6" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_779F0C5F-F24D-4777-98C3-B8B06E608202" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_AD3B0B7C-3FB0-4647-A99C-211598A25557" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_AF80ED86-AD5D-4068-A826-A76B172616D9" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_37124E82-1C8A-445F-98C6-4421B92128FE" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_EFFE4F4A-109B-455C-9D7C-33DEFDE8956B" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_71814F43-BF86-4BCE-A8A1-F52EDDC95F82" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_A52046BE-6FA4-4410-BA0F-E1D4C5145F0D" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_FE898587-2A38-4660-B77C-5648252A0BE0" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

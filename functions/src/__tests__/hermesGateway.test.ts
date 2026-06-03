@@ -14,6 +14,7 @@ import {
   requireGatewayRelayEnvelope,
   sanitizeGatewayRelayEnvelope,
   sanitizeHermesGatewayScopes,
+  serializeHermesGatewayTypingDoc,
   serializeHermesGatewayEvent,
   HERMES_GATEWAY_PRESENCE_WINDOW_MS,
   HERMES_GATEWAY_PROTOCOL_VERSION,
@@ -119,6 +120,26 @@ describe("Hermes Gateway E2EE — schema/protocol bump (gateway-wire)", () => {
     expect(HERMES_GATEWAY_SCHEMA_VERSION).toBe(2);
     expect(HERMES_GATEWAY_PROTOCOL_VERSION).toBe(2);
     expect(HERMES_GATEWAY_RELAY_ENCRYPTION).toBe("p256-hkdf-sha256-aesgcm");
+  });
+});
+
+describe("serializeHermesGatewayTypingDoc", () => {
+  it("stores typing presence without private thread routing metadata", () => {
+    const doc = serializeHermesGatewayTypingDoc({
+      clientId: "hgw_abc",
+      destinationId: "burnbar:home",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      expiresAt: "2026-06-01T00:00:15.000Z",
+    });
+
+    expect(doc).toMatchObject({
+      id: "hgw_abc",
+      clientId: "hgw_abc",
+      kind: "typing",
+      destinationId: "burnbar:home",
+      schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+    });
+    expect(doc).not.toHaveProperty("threadId");
   });
 });
 

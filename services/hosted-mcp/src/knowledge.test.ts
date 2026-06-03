@@ -94,6 +94,8 @@ function row(ns: string, id: string, embedding: number[], over: Record<string, u
       slugHmac: "a".repeat(64),
       embeddingModelVersion: "bge-small-en-v1.5",
       dedupHash: `d-${id}`,
+      // Default rows are current-generation (v1); the search floor requires it.
+      dedupHashVersion: 1,
       ...over,
     },
   };
@@ -124,6 +126,35 @@ test("searchKnowledge is isolated per namespace", async () => {
   assert.deepEqual((await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]) })).hits.map((h) => h.vectorId), ["a1"]);
   assert.deepEqual((await searchKnowledge(db, "uidB", { queryVector: Q384([1, 0, 0]) })).hits.map((h) => h.vectorId), ["b1"]);
   assert.deepEqual((await searchKnowledge(db, "uidC", { queryVector: Q384([1, 0, 0]) })).hits, []);
+});
+
+test("searchKnowledge floors dedupHashVersion==1: a non-shim OAuth caller never reaches a v0 row", async () => {
+  // FLAG-DAY (dedup-v0 retirement): a stranded legacy v0 row carries
+  // `dedupHashVersion: 0` (or, for pre-versioned ancients, no field at all) and
+  // its doc id is the cleartext SHA-256 confirm-the-guess oracle. The hosted-MCP
+  // search must hard-floor v1 so a non-shim OAuth caller cannot query it.
+  const db = makeStubDb([
+    row("uidA", "v1doc", Q384([1, 0, 0]), { dedupHashVersion: 1 }),
+    row("uidA", "v0doc", Q384([1, 0, 0]), { dedupHashVersion: 0 }),
+    // A pre-versioned ancient: the field is absent entirely.
+    row("uidA", "ancientDoc", Q384([1, 0, 0]), { dedupHashVersion: undefined }),
+  ]);
+  const ids = (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), limit: 10 })).hits.map((h) => h.vectorId);
+  // Only the v1 row surfaces; the v0 oracle row and the ancient are unreachable.
+  assert.deepEqual(ids, ["v1doc"]);
+  assert.ok(!ids.includes("v0doc"));
+  assert.ok(!ids.includes("ancientDoc"));
+});
+
+test("searchKnowledge applies the v0 floor even when embeddingModelVersion is omitted (OAuth caller)", async () => {
+  // The shim pins embeddingModelVersion, but an OAuth caller may omit it. The v0
+  // floor must still hold so v0 rows are never served regardless of the tag.
+  const db = makeStubDb([
+    row("uidA", "v1doc", Q384([1, 0, 0]), { dedupHashVersion: 1, embeddingModelVersion: "bge-small-en-v1.5-vault-dedup-v1" }),
+    row("uidA", "v0doc", Q384([1, 0, 0]), { dedupHashVersion: 0, embeddingModelVersion: "bge-small-en-v1.5" }),
+  ]);
+  const ids = (await searchKnowledge(db, "uidA", { queryVector: Q384([1, 0, 0]), limit: 10 })).hits.map((h) => h.vectorId);
+  assert.deepEqual(ids, ["v1doc"]);
 });
 
 test("searchKnowledge honours content-free server filters (sourceKind + slugHmac)", async () => {
