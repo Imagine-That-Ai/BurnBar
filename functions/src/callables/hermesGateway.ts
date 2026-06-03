@@ -52,7 +52,6 @@ import {
   publicApprovalView,
   publicClientView,
   randomHermesGatewayUserCode,
-  requireGatewayRelayEnvelope,
   requireV2GatewayRelayEnvelope,
   safeEqualHex,
   sha256Hex,

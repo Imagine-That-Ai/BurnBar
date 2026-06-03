@@ -959,8 +959,11 @@ struct HermesSettingsView: View {
 
     private func gatewayApprovalCard(_ approval: HermesGatewayApprovalRecord) -> some View {
         let isResponding = gatewayStore.isRespondingToApproval(approval)
-        // MP-6: the end-to-end-encrypted action detail, bound to this gate by actionId.
-        let sealedDetail = gatewayStore.sealedApprovalDetails[approval.id]
+        // MP-6: the end-to-end-encrypted action detail, bound to this gate by actionId
+        // (the sealed payload's actionId == the agent confirm id), NOT the approval
+        // document id (hga_<hash>) — those differ, so keying by approval.id would never
+        // match and would permanently disable Approve.
+        let sealedDetail = gatewayStore.sealedApprovalDetails[approval.actionId]
         return VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: "hand.raised.fill")
@@ -2735,11 +2738,9 @@ final class HermesGatewaySettingsStore {
                 acc[actionId] = detail
             }
         }
-        if !approvalDetails.isEmpty {
-            Task { @MainActor in
-                for (actionId, detail) in approvalDetails { sealedApprovalDetails[actionId] = detail }
-            }
-        }
+        // handleMessagesSnapshot already runs on the MainActor, so write the keyed
+        // map inline (no redundant Task hop); keyed by the sealed payload's actionId.
+        for (actionId, detail) in approvalDetails { sealedApprovalDetails[actionId] = detail }
 
         if let pendingTestEvent {
             guard let reply = HermesGatewayMessageResolver.newestReply(

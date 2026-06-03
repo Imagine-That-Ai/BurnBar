@@ -243,8 +243,9 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
     from gateway.config import Platform, PlatformConfig
     from tools.send_message_tool import _send_to_platform
 
-    assert module._relay_safety_code("AQIDBAUGBwg=") == "6684 0DDA 154E 8A11"
-    assert module._relay_safety_code("not-base64") == "E718 D628 1D61 48C1"
+    # MP-1: two-key (agent + phone) >=128-bit safety code; MP-22: "" on bad input.
+    assert module._relay_safety_code("AQIDBAUGBwg=", "BQYHCAkKCww=") == "87A1 72BA 2694 7DB0 47AB ADB7 E7EE FD69"
+    assert module._relay_safety_code("not-base64", "AQIDBAUGBwg=") == ""
 
     server, thread, state = start_fake_server()
     base_url = f"http://127.0.0.1:{server.server_port}/v1/hermes-gateway"
