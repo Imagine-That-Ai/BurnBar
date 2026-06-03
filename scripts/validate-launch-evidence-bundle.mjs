@@ -17,10 +17,12 @@ const STAGES = new Set(["paid-proof", "public-release", "done"]);
 const REQUIRED_PAID_PROOFS = {
   apple_cloud: ["apple", "cloud"],
   apple_cloud_pro: ["apple", "cloud-pro"],
+  apple_ultra: ["apple", "ultra"],
   stripe_cloud: ["stripe", "cloud"],
   stripe_cloud_pro: ["stripe", "cloud-pro"],
   google_play_cloud: ["google_play", "cloud"],
   google_play_cloud_pro: ["google_play", "cloud-pro"],
+  google_play_ultra: ["google_play", "ultra"],
 };
 
 const REQUIRED_MATRIX_ROWS = [
@@ -28,8 +30,10 @@ const REQUIRED_MATRIX_ROWS = [
   "stripe_cloud_pro_annual",
   "apple_cloud_restore_cancel_refund",
   "apple_cloud_pro_topup",
+  "apple_ultra_restore_cancel_refund",
   "google_play_cloud_restore_cancel_refund",
   "google_play_cloud_pro_topup",
+  "google_play_ultra_restore_cancel_refund",
   "legacy_hosted_quota_group_a_only",
   "expired_canceled_fail_closed",
 ];

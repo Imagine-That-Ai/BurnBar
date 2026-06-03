@@ -571,6 +571,152 @@ assertIncludes(
   "iCloud raw mirror disabled error",
 );
 
+// ── Semantic hasOnly([ presence per sensitive rules helper ──────────────────
+// Every sensitive write helper must positively allowlist its keys, not just
+// deny known plaintext fields. (assertRulesRejectFields above only checks the
+// hasAny denylist; this asserts the fail-closed allowlist is present too.)
+for (const [section, note] of [
+  ["function validConversationMirror()", "validConversationMirror lacks keys().hasOnly allowlist"],
+  ["function validMobileAssistantChatMirror()", "validMobileAssistantChatMirror lacks keys().hasOnly allowlist"],
+  ["function validCliSessionMirror()", "validCliSessionMirror lacks keys().hasOnly allowlist"],
+  ["function validCliAgentMissionRequest()", "validCliAgentMissionRequest lacks keys().hasOnly allowlist"],
+  ["function relayRequestWrite(", "relayRequestWrite lacks keys().hasOnly allowlist"],
+  ["function relayChunkWrite(", "relayChunkWrite lacks keys().hasOnly allowlist"],
+  ["function ownerWritableSessionLogManifest(", "session-log manifest lacks keys().hasOnly allowlist"],
+  ["function ownerWritableSessionLogChunk(", "session-log chunk lacks keys().hasOnly allowlist"],
+  ["function validProjectMemorySnapshotKeys()", "project_memory_snapshots lacks keys().hasOnly allowlist"],
+  ["function validMediaSessionEventKeys()", "media_session_events lacks keys().hasOnly allowlist"],
+  ["function validMediaAttachmentManifestKeys()", "media_attachment_manifests lacks keys().hasOnly allowlist"],
+]) {
+  assertRulesSectionHasOnly(section, note);
+}
+
+// ── project_memory_snapshots: opaque doc id, no project-identity plaintext ───
+// The project name lives only inside the sealed snapshot; the doc id is an
+// opaque vault-keyed HMAC. The rules must reject the old plaintext duplicates
+// and the name-derived slug, and require the sealed body + schemaVersion >= 2.
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/project_memory_snapshots/{docID}",
+  "match /users/{userId}/cloud_search_documents",
+  '!("projectDisplayName" in request.resource.data)',
+  "project_memory_snapshots must reject plaintext projectDisplayName",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/project_memory_snapshots/{docID}",
+  "match /users/{userId}/cloud_search_documents",
+  '!("projectSlug" in request.resource.data)',
+  "project_memory_snapshots must reject name-derived projectSlug",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/project_memory_snapshots/{docID}",
+  "match /users/{userId}/cloud_search_documents",
+  "request.resource.data.schemaVersion >= 2",
+  "project_memory_snapshots must require the hardened schemaVersion >= 2",
+);
+
+// ── knowledge_repos: opaque keyed match token + sealed name, no cleartext ────
+// A connected repo stores only repoMatchToken + sealedRepoFullName; the rules
+// must reject a client-supplied cleartext repoFullName (the cleartext name is
+// observed server-side only transiently for webhook routing, never stored).
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/knowledge_repos/{repoId}",
+  "match /users/{userId}/unified_audit_log",
+  '!("repoFullName" in request.resource.data)',
+  "knowledge_repos must reject client-supplied cleartext repoFullName",
+);
+
+// ── Hosted chat gateway: server-only writer (honest label this pass) ─────────
+// The gateway is server-written; its end-to-end migration is a chained goal.
+// The honest invariant we CAN enforce now is that no client may write plaintext
+// gateway bodies directly — every gateway message/event/attachment is
+// allow write: if false.
+assertRulesBlockDeniesClientWrite(
+  "match /users/{userId}/hermes_gateway_messages/{messageId}",
+  "hermes_gateway_messages must deny client writes (server-only writer)",
+);
+assertRulesBlockDeniesClientWrite(
+  "match /users/{userId}/hermes_gateway_events/{eventId}",
+  "hermes_gateway_events must deny client writes (server-only writer)",
+);
+assertRulesBlockDeniesClientWrite(
+  "match /users/{userId}/hermes_gateway_attachments/{attachmentId}",
+  "hermes_gateway_attachments must deny client writes (server-only writer)",
+);
+
+// ── media_attachment_manifests: sealed filename, never plaintext alongside ───
+// The hardened shape is sealedFilename (validCloudSealedText); when present, no
+// plaintext filename may ride along, and payload bytes are always rejected.
+assertSectionIncludes(
+  "firestore.rules",
+  "function validMediaAttachmentManifestKeys()",
+  "match /users/{userId}/pi_agent_connections",
+  "validCloudSealedText(request.resource.data.sealedFilename)",
+  "media_attachment_manifests must validate sealedFilename as a sealed envelope",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "function validMediaAttachmentManifestKeys()",
+  "match /users/{userId}/pi_agent_connections",
+  '!("body" in request.resource.data)',
+  "media_attachment_manifests must reject raw payload body",
+);
+
+// ── Registry honesty: usage project text + gateway label + pensieve repo ─────
+// Mirrors the registry.test.mjs honesty assertions so the privacy scan also
+// fails red if the public-facing labels regress to overclaiming.
+function assertRegistryPrivacyHonesty() {
+  const registry = JSON.parse(readRel("packages/data-domains/registry.json"));
+  const domain = (id) => registry.domains.find((entry) => entry.id === id);
+
+  const usage = domain("usage_spend");
+  if (!usage) {
+    fail("packages/data-domains/registry.json: missing usage_spend domain");
+  } else {
+    if (usage.serverSees.map((v) => v.toLowerCase()).includes("project")) {
+      fail("packages/data-domains/registry.json: usage_spend serverSees still claims plaintext project");
+    }
+    if (!usage.serverSees.some((v) => /opaque/i.test(v) && /hash/i.test(v))) {
+      fail("packages/data-domains/registry.json: usage_spend must declare the opaque project hash");
+    }
+    if (!usage.deviceOnly.some((v) => v.toLowerCase().includes("project name"))) {
+      fail("packages/data-domains/registry.json: usage_spend deviceOnly must list project names");
+    }
+  }
+
+  const pensieve = domain("pensieve");
+  if (!pensieve) {
+    fail("packages/data-domains/registry.json: missing pensieve domain");
+  } else {
+    if (pensieve.serverSees.some((v) => /repo\s*name|repofullname|repo full name/i.test(v))) {
+      fail("packages/data-domains/registry.json: pensieve serverSees must not claim it reads the cleartext repo name");
+    }
+    if (!pensieve.serverSees.some((v) => /opaque/i.test(v) && /match token/i.test(v))) {
+      fail("packages/data-domains/registry.json: pensieve must declare the opaque repo match token");
+    }
+    if (!/NOTE:/.test(pensieve.summary) || !/webhook/i.test(pensieve.summary)) {
+      fail("packages/data-domains/registry.json: pensieve summary must carry the webhook-routing caveat");
+    }
+  }
+
+  const devices = domain("connected_devices");
+  if (!devices) {
+    fail("packages/data-domains/registry.json: missing connected_devices domain");
+  } else {
+    if (!devices.serverSees.some((v) => /gateway/i.test(v) && /message text/i.test(v))) {
+      fail("packages/data-domains/registry.json: connected_devices serverSees must name the readable gateway message text");
+    }
+    if (devices.deviceOnly.some((v) => /^relayed payload contents/i.test(v.trim()))) {
+      fail("packages/data-domains/registry.json: connected_devices must not claim every relayed payload is sealed");
+    }
+  }
+}
+
+assertRegistryPrivacyHonesty();
+
 if (failures.length) {
   console.error("Cloud plaintext hardening scan failed:");
   for (const failure of failures) {

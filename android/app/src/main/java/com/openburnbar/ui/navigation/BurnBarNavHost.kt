@@ -26,6 +26,7 @@ import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.auth.LoginScreen
 import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.components.AuroraNavDestination
+import com.openburnbar.ui.components.EasterEggController
 import com.openburnbar.ui.components.EasterEggOverlay
 import com.openburnbar.ui.components.FloatingChatMode
 import com.openburnbar.ui.components.rememberEasterEggController
@@ -113,6 +114,11 @@ fun BurnBarNavHost(
     userStore: UserStore = viewModel(),
     chatState: FloatingChatState = rememberFloatingChatState(),
     subscriptionStore: HostedQuotaSubscriptionStore = viewModel(),
+    // Hidden delight: a hit-test-disabled overlay that idles at zero cost and plays a
+    // theme-appropriate celebration when the user rapidly scrolls up-and-down (or a
+    // cute token bounce at the top/bottom boundary). Its nested-scroll connection,
+    // installed on the root below, receives reports from every scrollable child.
+    easterEggController: EasterEggController = rememberEasterEggController(),
 ) {
     val currentUser by userStore.user.collectAsState()
     val context = LocalContext.current
@@ -127,7 +133,13 @@ fun BurnBarNavHost(
     val currentRoute = navBackStackEntry?.destination?.route
     val currentTab =
         remember(currentRoute) {
-            BurnBarTab.fromRoute(currentRoute) ?: BurnBarTab.PULSE
+            when (currentRoute) {
+                "cloud_store",
+                "computer_use_agent",
+                -> BurnBarTab.YOU
+
+                else -> BurnBarTab.fromRoute(currentRoute) ?: BurnBarTab.PULSE
+            }
         }
 
     val isWideScreen = LocalConfiguration.current.screenWidthDp > 600

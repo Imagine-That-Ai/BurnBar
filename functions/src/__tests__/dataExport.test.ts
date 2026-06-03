@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { DATA_DOMAIN_PATHS } from "../callables/dataExport.js";
+import { DATA_DOMAIN_PATHS, isSealedEnvelope, sealAwareSerializeDoc } from "../callables/dataExport.js";
 import { UNDELETABLE_DOMAINS } from "../callables/dataDeletion.js";
 
 // vitest runs from the functions/ package root; the registry is a sibling package.
@@ -75,5 +75,90 @@ describe("deleteDomainData deletability gate", () => {
         expect(UNDELETABLE_DOMAINS.has(domain.id), `${domain.id} should be undeletable`).toBe(true);
       }
     }
+  });
+});
+
+// privacy-leak-remediation-2026-06-02 §5: the inline-export of end_to_end /
+// zero_access domains must never carry a plaintext private field.
+const sealedText = {
+  algorithm: "AES-256-GCM",
+  keyVersion: 1,
+  nonce: "bm9uY2U=",
+  ciphertext: "Y2lwaGVy",
+  tag: "dGFn",
+};
+const sealedBlob = {
+  schemaVersion: 1,
+  algorithm: "AES-256-GCM",
+  keyVersion: 1,
+  plaintextSHA256: "abc123",
+  sealedBoxBase64: "Ym94",
+  createdAt: "2026-06-02T00:00:00.000Z",
+};
+
+describe("isSealedEnvelope structural detection", () => {
+  it("detects AES-256-GCM text + blob envelopes regardless of key name", () => {
+    expect(isSealedEnvelope(sealedText)).toBe(true);
+    expect(isSealedEnvelope(sealedBlob)).toBe(true);
+  });
+
+  it("rejects plaintext, partial envelopes, arrays, and scalars", () => {
+    expect(isSealedEnvelope("a project name")).toBe(false);
+    expect(isSealedEnvelope({ algorithm: "AES-256-GCM", nonce: "x" })).toBe(false);
+    expect(isSealedEnvelope({ ciphertext: "x", tag: "y", nonce: "z" })).toBe(false);
+    expect(isSealedEnvelope([sealedText])).toBe(false);
+    expect(isSealedEnvelope(42)).toBe(false);
+    expect(isSealedEnvelope(null)).toBe(false);
+  });
+});
+
+describe("sealAwareSerializeDoc default-deny allowlist", () => {
+  it("drops cleartext title/path/name/slug, keeps sealed envelopes + opaque columns", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      // cleartext private fields that MUST be redacted
+      repoFullName: "openburnbar/secret-repo",
+      projectDisplayName: "Project Atlas",
+      sourcePath: "/Users/alberto/secret/runbook.md",
+      title: "merge the gateway rewrite",
+      inferredTaskTitle: "fix the leak",
+      // sealed envelopes (keyed by arbitrary names) — emitted verbatim
+      sealedSnapshot: sealedBlob,
+      sealedProjectName: sealedText,
+      // opaque crypto columns — emitted
+      slugHmac: "f".repeat(64),
+      dedupHash: "a".repeat(64),
+      repoMatchToken: "b".repeat(64),
+      docID: "pm_0123456789abcdef0123456789abcdef",
+      projectKeyHash: "c".repeat(32),
+      embeddingModelVersion: "bge-small-en-v1.5",
+      // content-free scalars — emitted
+      byteCount: 128,
+      chunkIndex: 0,
+      schemaVersion: 2,
+      isEnabled: true,
+    });
+
+    // No cleartext private field survives.
+    for (const leaked of ["repoFullName", "projectDisplayName", "sourcePath", "title", "inferredTaskTitle"]) {
+      expect(out, `${leaked} must be dropped`).not.toHaveProperty(leaked);
+      expect(dropped, `${leaked} must be reported`).toContain(leaked);
+    }
+    // Sealed envelopes + opaque columns + scalars are preserved.
+    expect(out.sealedSnapshot).toEqual(sealedBlob);
+    expect(out.sealedProjectName).toEqual(sealedText);
+    expect(out.slugHmac).toBe("f".repeat(64));
+    expect(out.repoMatchToken).toBe("b".repeat(64));
+    expect(out.docID).toBe("pm_0123456789abcdef0123456789abcdef");
+    expect(out.byteCount).toBe(128);
+    expect(out.schemaVersion).toBe(2);
+    expect(out.isEnabled).toBe(true);
+  });
+
+  it("serializes Firestore Timestamps to ISO and keeps them", () => {
+    const ts = { toDate: () => new Date("2026-06-02T12:00:00.000Z") };
+    const { out, dropped } = sealAwareSerializeDoc({ updatedAt: ts, label: "Personal budget" });
+    expect(out.updatedAt).toBe("2026-06-02T12:00:00.000Z");
+    expect(out).not.toHaveProperty("label");
+    expect(dropped).toContain("label");
   });
 });

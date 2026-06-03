@@ -108,7 +108,7 @@ extension EasterEggScene {
         let perBurst = 9
         var particles: [LogoParticle] = []
         particles.reserveCapacity(burstTimes.count * perBurst)
-        var nameIndex = Int(abs(rng.next()) % UInt64(names.count))
+        var nameIndex = Int(rng.next() % UInt64(names.count))
 
         for (burstIndex, birth) in burstTimes.enumerated() {
             // Each burst radiates from a different, gently off-centre origin.
@@ -211,6 +211,7 @@ extension EasterEggScene {
 
     private struct CoinParticle {
         let symbolID: EasterEggSymbolID
+        let cloudIndex: Int           // parent cloud in `clouds`
         let spawnX: CGFloat
         let spawnY: CGFloat
         let releaseAt: TimeInterval   // when the coin leaves its cloud
@@ -246,7 +247,7 @@ extension EasterEggScene {
         let perCloud = 7
         var coins: [CoinParticle] = []
         coins.reserveCapacity(clouds.count * perCloud)
-        for cloud in clouds {
+        for (cloudIndex, cloud) in clouds.enumerated() {
             for slot in 0..<perCloud {
                 let release = TimeInterval(rng.nextDouble(in: 0.4...3.4))
                 // Coin spawns under the cloud at the moment of release; the
@@ -255,6 +256,7 @@ extension EasterEggScene {
                 coins.append(
                     CoinParticle(
                         symbolID: .coin(metal: metal),
+                        cloudIndex: cloudIndex,
                         spawnX: CGFloat(slot) * 14 - 42 + CGFloat(rng.nextDouble(in: -8...8)),
                         spawnY: cloud.y + 34 * cloud.scale,
                         releaseAt: release,
@@ -311,7 +313,7 @@ extension EasterEggScene {
         // Coins rain from their parent cloud, fall under gravity, bounce off the
         // canvas edges, then settle on the floor and fade with the scene.
         for (coinIndex, coin) in coins.enumerated() {
-            let parentCloud = clouds[coinIndex / max(1, coins.count / max(1, clouds.count)) % clouds.count]
+            let parentCloud = clouds[min(coin.cloudIndex, clouds.count - 1)]
             let cloudCurrentX = reduceMotion
                 ? size.width * 0.3
                 : cloudX(parentCloud, elapsed: coin.releaseAt)
@@ -467,7 +469,7 @@ extension EasterEggScene {
 
     private static func buildBoundaryCoins(
         size: CGSize,
-        edge: VerticalEdge,
+        edge: EasterEggEdge,
         rng: inout SeededGenerator
     ) -> [BoundaryCoin] {
         let count = 5
@@ -487,7 +489,7 @@ extension EasterEggScene {
         _ context: GraphicsContext,
         size: CGSize,
         elapsed: TimeInterval,
-        edge: VerticalEdge
+        edge: EasterEggEdge
     ) {
         // A cute ~0.8s pop: each coin springs up from the edge, bounces once
         // with a soft squash, then settles and fades.

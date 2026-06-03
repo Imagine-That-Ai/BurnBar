@@ -205,22 +205,13 @@ extension CloudVaultCrypto {
         return data[legacyField] as? String
     }
 
-    /// Decodes a `CloudVaultSealedText` envelope from a Firestore-native dictionary.
+    /// Decodes a `CloudVaultSealedText` envelope from a Firestore-native dictionary,
+    /// matching the JSON round-trip pattern used by the adjacent sync services.
     static func decodeSealedText(from raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
-              let algorithm = dict["algorithm"] as? String,
-              let keyVersion = (dict["keyVersion"] as? Int) ?? (dict["keyVersion"] as? NSNumber)?.intValue,
-              let nonce = dict["nonce"] as? String,
-              let ciphertext = dict["ciphertext"] as? String,
-              let tag = dict["tag"] as? String else {
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
             return nil
         }
-        return CloudVaultSealedText(
-            algorithm: algorithm,
-            keyVersion: keyVersion,
-            nonce: nonce,
-            ciphertext: ciphertext,
-            tag: tag
-        )
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
     }
 }

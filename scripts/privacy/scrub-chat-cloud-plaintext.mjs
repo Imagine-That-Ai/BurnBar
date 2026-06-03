@@ -82,7 +82,43 @@ const COLLECTIONS = [
     name: "cloud_search_postings",
     fields: ["projectName", "workingDirectory", "title", "snippet", "body", "text"],
   },
+  // Project memory snapshots: the project name now lives only inside the sealed
+  // snapshot; the legacy top-level project-identity duplicates are deleted. Doc
+  // ids are opaque vault-keyed HMACs (the device rewrites them on next sync).
+  {
+    name: "project_memory_snapshots",
+    fields: ["projectDisplayName", "projectSlug"],
+  },
+  // Saved text snippets: legacy plaintext snippet body fields, superseded by the
+  // sealed payload (kept here so a stranded legacy snippet body is scrubbed).
+  {
+    name: "text_snippets",
+    fields: ["text", "body", "content", "title", "preview"],
+  },
+  // Hosted chat gateway (server-written; E2E migration is a chained goal). The
+  // gateway carries readable message text / sender names / file names in
+  // transit; the scrubber removes the stored plaintext copies of those fields.
+  {
+    name: "hermes_gateway_messages",
+    fields: ["text", "threadId", "replyToEventId"],
+  },
+  {
+    name: "hermes_gateway_events",
+    fields: ["text", "senderDisplayName", "threadId"],
+  },
+  {
+    name: "hermes_gateway_attachments",
+    fields: ["fileName"],
+  },
 ];
+
+// Relay requests + their /chunks subcollections: legacy schema-v1 plaintext
+// fields that predate the sealed relay envelope (schemaVersion >= 2). The
+// hardened path stores only payloadCiphertext + wrappedKey; any of these
+// fields lingering on a legacy row is scrubbed.
+const RELAY_REQUEST_COLLECTIONS = ["hermes_relay_requests", "pi_agent_relay_requests"];
+const RELAY_REQUEST_FIELDS = ["path", "sessionId", "body", "error", "data", "text"];
+const RELAY_CHUNK_FIELDS = ["body", "error", "data", "text"];
 
 const MISSION_EVENT_FIELDS = ["title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath"];
 const SESSION_LOG_CHUNK_FIELDS = [
@@ -147,6 +183,16 @@ async function scrubUser(uid) {
   const sessionLogDocs = await userRef.collection("session_logs").listDocuments();
   for (const sessionLogRef of sessionLogDocs) {
     await scrubCollection(sessionLogRef.collection("chunks"), SESSION_LOG_CHUNK_FIELDS);
+  }
+
+  // Relay requests + their /chunks subcollections (Hermes + Pi agent). Scrub the
+  // legacy schema-v1 plaintext fields on both the request docs and each chunk.
+  for (const relayCollection of RELAY_REQUEST_COLLECTIONS) {
+    const relayRequestDocs = await userRef.collection(relayCollection).listDocuments();
+    for (const relayRequestRef of relayRequestDocs) {
+      await scrubDocument(relayRequestRef, RELAY_REQUEST_FIELDS);
+      await scrubCollection(relayRequestRef.collection("chunks"), RELAY_CHUNK_FIELDS);
+    }
   }
 }
 
@@ -227,5 +273,8 @@ function printHelp() {
 
 Defaults to dry-run. Uses firebase-admin Application Default Credentials or
 GOOGLE_APPLICATION_CREDENTIALS. Deletes only legacy plaintext fields; it does
-not delete documents or sealed payloads.`);
+not delete documents or sealed payloads. Covers chat/session-log collections,
+project_memory_snapshots (projectDisplayName/projectSlug), text_snippets,
+hermes/pi_agent relay requests + chunks, and the hosted chat gateway
+(hermes_gateway_messages/events/attachments).`);
 }

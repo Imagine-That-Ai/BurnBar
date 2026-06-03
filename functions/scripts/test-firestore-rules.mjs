@@ -1388,8 +1388,11 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   );
   await assertFails(deleteDoc(doc(phoneDb, `${requestPath}/events/000002`)));
   await assertFails(deleteDoc(doc(phoneDb, requestPath)));
-  // Blocker 2 — approval binding: a bare owner-auth approval flip WITHOUT a
-  // trusted-device binding is now DENIED (a client can no longer self-approve).
+  // Blocker 2 — approval RESOLUTION is server-only. A direct client write cannot
+  // approve a mission (with or without naming a trusted device); approve/reject
+  // must flow through the App-Check + attestation enforced respondMissionApproval
+  // callable (Admin SDK). Both the mobile and trusted-host rule branches refuse
+  // to resolve approvalStatus to approved/rejected.
   await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
@@ -1401,25 +1404,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  // An approvedByDeviceId that does not resolve to a TRUSTED native escrow
-  // device is also DENIED (here: a device id that was never created).
   await assertFails(
-    setDoc(
-      doc(phoneDb, requestPath),
-      sealedMissionStatePatch({
-        approvalStatus: "approved",
-        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
-        approvedByDeviceId: "ghost-device-never-trusted",
-        updatedAt: serverTimestamp(),
-      }),
-      { merge: true }
-    )
-  );
-  // Bound to the trusted macOS escrow device (mac-1), the approval is allowed.
-  // (The canonical path is the App-Check-enforced respondMissionApproval
-  // callable, which writes approvedByDeviceId via the Admin SDK; this rule is
-  // the defense-in-depth that blocks a forged direct client write.)
-  await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
       sealedMissionStatePatch({
@@ -1431,6 +1416,21 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
+  // The real resolution is performed server-side by the callable (Admin SDK,
+  // which bypasses these rules), simulated here with security rules disabled —
+  // it stamps a server-verified approvedByDeviceId.
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), requestPath),
+      sealedMissionStatePatch({
+        approvalStatus: "approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        approvedByDeviceId: "mac-1",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    );
+  });
   await assertFails(
     setDoc(doc(otherDb, `${requestPath}/events/000003`), {
       sequence: 3,
@@ -2633,6 +2633,501 @@ test("Hermes Gateway state is server-owned and destinations are Cloud-gated", as
       ...destination,
       id: "burnbar:leaky",
       secret: "must-not-pass",
+    })
+  );
+});
+
+// ---------------------------------------------------------------------------
+// privacy-leak-remediation-2026-06-02 — denylist -> hasOnly allowlist hardening.
+// T1-T9: prove the sealed shapes are accepted, that arbitrary unlisted keys are
+// rejected on BOTH the create and the merge-update paths, and that the gateway
+// relay collection is already-sealed (ciphertext, never plaintext text/body).
+// ---------------------------------------------------------------------------
+
+// T1 — hermes_relay_requests (gateway) is already sealed on create AND update.
+test("T1 hermes_relay_requests stays sealed across create and merge update", async () => {
+  const db = authedDb("relay-owner");
+  const requestPath = "users/relay-owner/hermes_relay_requests/req-1";
+  const chunkPath = `${requestPath}/chunks/00000000`;
+  await seedHostedCloudEntitlement("relay-owner");
+
+  const sealedRequest = {
+    id: "req-1",
+    connectionId: "relay-mac",
+    operation: "chatCompletions",
+    status: "pending",
+    method: "POST",
+    payloadCiphertext: "ciphertext",
+    wrappedKey: "wrapped",
+    relayEncryption: "p256-hkdf-sha256-aesgcm",
+    relayKeyVersion: 1,
+    chunkCount: 0,
+    createdAt: "2026-06-02T00:00:01.000Z",
+    updatedAt: "2026-06-02T00:00:01.000Z",
+    schemaVersion: 2,
+  };
+
+  // Plaintext body / sessionId / path are denied outright.
+  await assertFails(
+    setDoc(doc(db, requestPath), { ...sealedRequest, body: "{\"messages\":[]}" })
+  );
+  await assertFails(
+    setDoc(doc(db, requestPath), { ...sealedRequest, sessionId: "leak-session" })
+  );
+  // The sealed v2 request succeeds.
+  await assertSucceeds(setDoc(doc(db, requestPath), sealedRequest));
+
+  // A merge update advancing the status stays sealed and is allowed.
+  await assertSucceeds(
+    setDoc(
+      doc(db, requestPath),
+      { ...sealedRequest, status: "streaming", updatedAt: "2026-06-02T00:00:02.000Z" },
+      { merge: true }
+    )
+  );
+
+  // A merge update smuggling a plaintext body is denied (catches the
+  // merge-semantics regression where a later partial write re-introduces a
+  // cleartext field past a create-only check).
+  await assertFails(
+    setDoc(doc(db, requestPath), { body: "leak" }, { merge: true })
+  );
+
+  // Chunk: plaintext text/data denied, sealed ciphertext chunk allowed.
+  await assertFails(
+    setDoc(doc(db, chunkPath), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "sse",
+      text: "leaked token stream",
+      createdAt: "2026-06-02T00:00:03.000Z",
+      schemaVersion: 2,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(db, chunkPath), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "sse",
+      ciphertext: "encrypted-chunk",
+      createdAt: "2026-06-02T00:00:03.000Z",
+      schemaVersion: 2,
+    })
+  );
+});
+
+// T2 — mobile_assistant_chats rejects plaintext content and unlisted keys.
+test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", async () => {
+  const db = authedDb("ma-owner");
+  const threadPath = "users/ma-owner/mobile_assistant_chats/thread-1";
+  await seedCloudVaultState("ma-owner");
+
+  const sealedThread = {
+    id: "thread-1",
+    runtime: "hermes",
+    createdAt: "2026-06-02T00:00:00.000Z",
+    updatedAt: "2026-06-02T00:00:00.000Z",
+    messageCount: 3,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+
+  await assertSucceeds(setDoc(doc(db, threadPath), sealedThread));
+
+  // Plaintext messages / title are denied.
+  await assertFails(
+    setDoc(doc(db, "users/ma-owner/mobile_assistant_chats/thread-2"), {
+      ...sealedThread,
+      id: "thread-2",
+      messages: [{ role: "user", content: "secret prompt" }],
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/ma-owner/mobile_assistant_chats/thread-3"), {
+      ...sealedThread,
+      id: "thread-3",
+      title: "private title",
+    })
+  );
+  // An arbitrary unlisted key is denied by hasOnly.
+  await assertFails(
+    setDoc(doc(db, "users/ma-owner/mobile_assistant_chats/thread-4"), {
+      ...sealedThread,
+      id: "thread-4",
+      summary: "smuggled plaintext summary",
+    })
+  );
+});
+
+// T3 — session_logs manifest rejects an arbitrary unlisted key (hasOnly).
+test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
+  const db = authedDb("slm-owner");
+  await seedHostedCloudEntitlement("slm-owner");
+  const base = {
+    id: "log",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    chunkCount: 1,
+    updatedAt: serverTimestamp(),
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/slm-owner/session_logs/ok"), base)
+  );
+  // Arbitrary unlisted key.
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/smuggled"), {
+      ...base,
+      smuggled: "x",
+    })
+  );
+  // Classic plaintext-content vectors stay denied.
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/body"), { ...base, body: "leak" })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/title"), { ...base, title: "leak" })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/proj"), { ...base, projectName: "BurnBar" })
+  );
+});
+
+// T4 — session_logs chunk rejects unlisted + plaintext keys (hasOnly).
+test("T4 session_logs chunk denies unlisted and plaintext keys", async () => {
+  const db = authedDb("slc-owner");
+  await seedHostedCloudEntitlement("slc-owner");
+  const chunkBase = {
+    index: 0,
+    hash: "hash",
+    sealedSnippet: sealedText(),
+    tokenHashes: ["a".repeat(32)],
+    semanticHashes: ["b".repeat(32)],
+    bodyStorage: "local_or_icloud",
+    schemaVersion: 3,
+    updatedAt: serverTimestamp(),
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/0"), chunkBase)
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/1"), {
+      ...chunkBase,
+      smuggled: "x",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slc-owner/session_logs/log/chunks/2"), {
+      ...chunkBase,
+      text: "leak",
+    })
+  );
+});
+
+// T5 — conversations: create sealed, then a merge update adding plaintext is denied.
+test("T5 conversations deny plaintext smuggled on the merge-update path", async () => {
+  const db = authedDb("conv-owner");
+  await seedCloudVaultState("conv-owner");
+  await seedHostedCloudEntitlement("conv-owner");
+  const convPath = "users/conv-owner/conversations/conv-1";
+  const sealedConversation = {
+    id: "conv-1",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    messageCount: 1,
+    userWordCount: 10,
+    assistantWordCount: 20,
+    updatedAt: serverTimestamp(),
+    sourceType: "provider_log",
+    version: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 1,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+
+  await assertSucceeds(setDoc(doc(db, convPath), sealedConversation));
+  // Re-introducing a plaintext projectName via merge is denied.
+  await assertFails(
+    setDoc(doc(db, convPath), { projectName: "BurnBar" }, { merge: true })
+  );
+});
+
+// T6 — cli_sessions: create sealed, then a merge update adding plaintext is denied.
+test("T6 cli_sessions deny plaintext smuggled on the merge-update path", async () => {
+  const db = authedDb("cli-owner");
+  await seedCloudVaultState("cli-owner");
+  const sessionPath = "users/cli-owner/cli_sessions/thread-1";
+  await assertSucceeds(
+    setDoc(doc(db, sessionPath), {
+      id: "thread-1",
+      agent: "claude",
+      createdAt: "2026-06-02T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:03.000Z",
+      schemaVersion: 1,
+      contentSealed: true,
+      sealedSchemaVersion: 1,
+      vaultKeyID: TEST_VAULT_KEY_ID,
+      sealedPayload: sealedPayload(),
+      messageCount: 1,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, sessionPath), { summary: "leak" }, { merge: true })
+  );
+  await assertFails(
+    setDoc(doc(db, sessionPath), { title: "leak" }, { merge: true })
+  );
+});
+
+// T7 — session_logs manifest: create sealed, then a merge update adding plaintext
+// / an arbitrary key is denied (the merge-semantics regression guard).
+test("T7 session_logs manifest denies plaintext on the merge-update path", async () => {
+  const db = authedDb("slu-owner");
+  await seedHostedCloudEntitlement("slu-owner");
+  const logPath = "users/slu-owner/session_logs/log";
+  await assertSucceeds(
+    setDoc(doc(db, logPath), {
+      id: "log",
+      deviceId: "device",
+      provider: "codex",
+      sessionId: "session",
+      chunkCount: 1,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, logPath), { workingDirectory: "/Users/dev/BurnBar" }, { merge: true })
+  );
+  await assertFails(
+    setDoc(doc(db, logPath), { smuggled: "x" }, { merge: true })
+  );
+});
+
+// T8 — media_session_events rejects an arbitrary unlisted key (hasOnly).
+test("T8 media_session_events denies unlisted keys", async () => {
+  const db = authedDb("mse-owner");
+  await seedBurnBarProMaxEntitlement("mse-owner");
+  const base = {
+    id: "evt-1",
+    sessionId: "sess-1",
+    feature: "screenShare",
+    streamClass: "interactive",
+    startedAt: "2026-06-02T00:00:00.000Z",
+    endedAt: "2026-06-02T00:05:00.000Z",
+    endReason: "completed",
+    peerDeviceIdHash: "c".repeat(64),
+    byteCountInbound: 1024,
+    byteCountOutbound: 2048,
+    freezeCount: 0,
+    p95RoundTripMillisBucket: "50_150ms",
+    p95BitsPerSecondBucket: "600kbps_1mbps",
+    durationBucket: "2m_10m",
+    schemaVersion: 1,
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-1"), base)
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-2"), {
+      ...base,
+      id: "evt-2",
+      filename: "screen.png",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mse-owner/media_session_events/evt-3"), {
+      ...base,
+      id: "evt-3",
+      smuggled: "x",
+    })
+  );
+});
+
+// T9 — media_attachment_manifests seal-aware filename (Fork F = SEAL).
+test("T9 media_attachment_manifests accept sealedFilename and reject co-emitted plaintext", async () => {
+  const db = authedDb("mam-owner");
+  await seedBurnBarProMaxEntitlement("mam-owner");
+  const base = {
+    blobHash: "b".repeat(64),
+    mime: "image/png",
+    size: 1234,
+    peerDeviceIdHash: "peer-hash",
+    direction: "macToIos",
+    schemaVersion: 1,
+  };
+
+  // Sealed filename is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/sealed-1"), {
+      ...base,
+      id: "sealed-1",
+      sealedFilename: sealedText(),
+    })
+  );
+  // Legacy plaintext filename still syncs (migration fallback).
+  await assertSucceeds(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/legacy-1"), {
+      ...base,
+      id: "legacy-1",
+      filename: "screen.png",
+    })
+  );
+  // A doc carrying BOTH the sealed and the cleartext name is rejected.
+  await assertFails(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/both-1"), {
+      ...base,
+      id: "both-1",
+      sealedFilename: sealedText(),
+      filename: "screen.png",
+    })
+  );
+  // An arbitrary unlisted key is rejected by hasOnly.
+  await assertFails(
+    setDoc(doc(db, "users/mam-owner/media_attachment_manifests/extra-1"), {
+      ...base,
+      id: "extra-1",
+      sealedFilename: sealedText(),
+      smuggled: "x",
+    })
+  );
+});
+
+// T10 — mobile mission cancel: the owner phone can cancel its own mission with
+// only sealed state fields; a cancel smuggling a plaintext liveSummary is denied.
+test("T10 cli_agent_mission_requests accept sealed mobile cancel, deny plaintext", async () => {
+  const ownerUid = "cancel-owner";
+  const phoneDb = authedDb(ownerUid);
+  const requestPath = `users/${ownerUid}/cli_agent_mission_requests/mission-1`;
+  await seedCloudVaultState(ownerUid);
+
+  await assertSucceeds(
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1"))
+  );
+
+  // Cancel with only sealed state fields is allowed.
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, requestPath),
+      sealedMissionStatePatch({
+        status: "cancelled",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+
+  // A cancel that smuggles a plaintext liveSummary is denied (the field is in
+  // the request-level denylist; the cancel predicate also bounds affectedKeys).
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "cancelled",
+        liveSummary: "Mission cancelled by user.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+});
+
+// T11 — project_memory_snapshots: opaque docID + sealed snapshot accepted,
+// plaintext projectDisplayName / projectSlug rejected.
+test("T11 project_memory_snapshots seal the name and reject plaintext slug", async () => {
+  const ownerUid = "pms-owner";
+  const db = authedDb(ownerUid);
+  await seedHostedCloudEntitlement(ownerUid);
+  const docID = `pm_${"a".repeat(16)}`;
+  const snapshotPath = `users/${ownerUid}/project_memory_snapshots/${docID}`;
+  const base = {
+    docID,
+    contentHash: "d".repeat(64),
+    sourceSessionCount: 3,
+    sourceConversationCount: 5,
+    generatedAt: "2026-06-02T00:00:00.000Z",
+    freshness: "fresh",
+    visualKinds: ["chart"],
+    sealedSnapshot: sealedBlob(),
+    encryption: { algorithm: "AES-256-GCM", keyVersion: 1, envelopeSchemaVersion: 1 },
+    schemaVersion: 2,
+    updatedAt: "2026-06-02T00:00:00.000Z",
+  };
+
+  await assertSucceeds(setDoc(doc(db, snapshotPath), base));
+  // Plaintext project name fields are denied.
+  await assertFails(
+    setDoc(doc(db, snapshotPath), { ...base, projectDisplayName: "BurnBar" })
+  );
+  await assertFails(
+    setDoc(doc(db, snapshotPath), { ...base, projectSlug: "burnbar" })
+  );
+  // Legacy v1 plaintext-keyed rows are fenced out (schemaVersion must be >= 2).
+  await assertFails(
+    setDoc(doc(db, snapshotPath), { ...base, schemaVersion: 1 })
+  );
+});
+
+// T12 — usage / budgetRules reject the plaintext project text once sealed.
+test("T12 usage and budgetRules reject plaintext project text when sealed copy present", async () => {
+  const db = authedDb("usage-owner");
+
+  // Legacy usage row with only the plaintext name still syncs (migration).
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/usage/legacy"), {
+      id: "legacy",
+      projectName: "BurnBar",
+      totalCostUSD: 1.5,
+    })
+  );
+  // Sealed usage row is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/usage/sealed"), {
+      id: "sealed",
+      sealedProjectName: sealedText(),
+      projectKeyHash: "e".repeat(64),
+      totalCostUSD: 1.5,
+    })
+  );
+  // A row carrying BOTH sealed + plaintext name is denied.
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/usage/both"), {
+      id: "both",
+      sealedProjectName: sealedText(),
+      projectName: "BurnBar",
+    })
+  );
+
+  // budgetRules: sealed name + label accepted; plaintext alongside is denied.
+  await assertSucceeds(
+    setDoc(doc(db, "users/usage-owner/budgetRules/sealed"), {
+      id: "sealed",
+      sealedProjectName: sealedText(),
+      sealedLabel: sealedText(),
+      projectKeyHash: "f".repeat(64),
+      limitUSD: 100,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetRules/leak-name"), {
+      id: "leak-name",
+      sealedProjectName: sealedText(),
+      projectName: "BurnBar",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/usage-owner/budgetRules/leak-label"), {
+      id: "leak-label",
+      sealedLabel: sealedText(),
+      label: "Monthly cap",
     })
   );
 });

@@ -15,8 +15,15 @@ import {
 } from "./memoryHook.js";
 import { createDeterministicHashingEmbedder } from "./embed.js";
 import { decryptSealedText } from "./decrypt.js";
+import { createHmac, hkdfSync } from "node:crypto";
 
 const KEY = Buffer.alloc(32, 5);
+
+/** The exact vault-keyed HMAC the shim must emit (mirrors the server fixture). */
+function expectedVaultKeyedHmac(label: "content" | "slug", value: string): string {
+  const dedupKey = Buffer.from(hkdfSync("sha256", KEY, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
+  return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
+}
 process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = KEY.toString("base64");
 
 test("redactSecrets strips common secret shapes", () => {
@@ -71,6 +78,16 @@ test("prepareMemoriesForCommit redacts, filters confidence, dedups, embeds+cloak
   const meta = JSON.parse(decryptSealedText(rotate.sealedMetadata) ?? "{}");
   assert.equal(meta.sourceKind, "chat_memory");
   assert.equal(meta.category, "gotcha");
+
+  // §3: every vector carries the VAULT-KEYED dedupHash + slugHmac (not a cleartext
+  // SHA-256/path). dedupHash == HKDF/HMAC of the cleaned plaintext, and is reused
+  // as the vectorId; slugHmac == HKDF/HMAC of the sourceSlug.
+  assert.equal(rotate.dedupHash, expectedVaultKeyedHmac("content", "rotate the vault key monthly"));
+  assert.equal(rotate.vectorId, rotate.dedupHash);
+  assert.equal(rotate.slugHmac, expectedVaultKeyedHmac("slug", "chat-memory"));
+  // The cleartext side channels are GONE.
+  assert.ok(!Object.prototype.hasOwnProperty.call(rotate, "contentHash"));
+  assert.ok(!Object.prototype.hasOwnProperty.call(rotate, "sourcePath"));
 
   // The secret memory's ciphertext must not contain the raw key.
   const secretPlain = decryptSealedText(prepared[1].sealedCiphertext) ?? "";

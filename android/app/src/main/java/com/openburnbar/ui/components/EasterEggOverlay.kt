@@ -72,13 +72,17 @@ import kotlinx.coroutines.withContext
  */
 
 /** The kind of celebration a summon resolves to, chosen by the colour scheme. */
-private enum class EggKind { LOGO_STORM, CLOUD_TOKEN_RAIN }
+internal enum class EggKind { LOGO_STORM, CLOUD_TOKEN_RAIN }
 
 /** Which screen edge a boundary nudge fired at. */
-private enum class EdgeSide { TOP, BOTTOM }
+internal enum class EdgeSide { TOP, BOTTOM }
 
-/** A queued event the overlay's frame loop consumes exactly once. */
-private sealed interface EggEvent {
+/**
+ * A queued event the overlay's frame loop consumes exactly once. `internal` (not
+ * `private`) so [EasterEggController.pending] — read reactively by the overlay in the
+ * same module — does not leak a private-in-file type.
+ */
+internal sealed interface EggEvent {
     data class Summon(val kind: EggKind, val reduceMotion: Boolean) : EggEvent
     data class Boundary(val side: EdgeSide) : EggEvent
 }

@@ -35,6 +35,8 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
   cloudProMonthly: "com.openburnbar.proMax.v2.monthly",
   legacyAppleCloudProBundleMonthly: "com.openburnbar.proMax.bundle.monthly",
   cloudProAnnual: "com.openburnbar.proMax.annual",
+  ultraMonthly: "com.openburnbar.ultra.monthly",
+  ultraAnnual: "com.openburnbar.ultra.annual.v2",
   agentControlActions100: "com.openburnbar.agentControl.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
 });
@@ -43,6 +45,8 @@ export const GOOGLE_PLAY_PRODUCTS = Object.freeze({
   cloudAnnual: "com.openburnbar.pro.annual",
   cloudProMonthly: "com.openburnbar.promax.v2.monthly",
   cloudProAnnual: "com.openburnbar.promax.annual",
+  ultraMonthly: "com.openburnbar.ultra.monthly",
+  ultraAnnual: "com.openburnbar.ultra.annual",
   agentControlActions100: "com.openburnbar.agentcontrol.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
 });
@@ -51,6 +55,8 @@ const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.cloudAnnual,
   COMMERCIAL_PRODUCTS.cloudProMonthly,
   COMMERCIAL_PRODUCTS.cloudProAnnual,
+  COMMERCIAL_PRODUCTS.ultraMonthly,
+  COMMERCIAL_PRODUCTS.ultraAnnual,
 ];
 const REQUIRED_TOP_UP_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.agentControlActions100,
@@ -163,6 +169,8 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   BURNBAR_PRO_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudAnnual,
   BURNBAR_PRO_MAX_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProMonthly,
   BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.cloudProAnnual,
+  BURNBAR_ULTRA_PRODUCT_ID: COMMERCIAL_PRODUCTS.ultraMonthly,
+  BURNBAR_ULTRA_ANNUAL_PRODUCT_ID: COMMERCIAL_PRODUCTS.ultraAnnual,
   AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
     COMMERCIAL_PRODUCTS.agentControlActions100,
   FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
@@ -171,6 +179,8 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID:
     GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
   GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudProAnnual,
+  GOOGLE_PLAY_ULTRA_MONTHLY_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.ultraMonthly,
+  GOOGLE_PLAY_ULTRA_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.ultraAnnual,
   GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
     GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.flooRelay50GB,
@@ -804,16 +814,45 @@ function checkCloudRun() {
   const retiredRelay = describeCloudRunService(
     RETIRED_HERMES_REALTIME_RELAY_SERVICE,
   );
-  const retiredRelayState = evaluateRetiredCloudRunServiceAbsence(
+  const retiredRelayCheck = evaluateRetiredCloudRunServiceAbsence(
     RETIRED_HERMES_REALTIME_RELAY_SERVICE,
     retiredRelay,
   );
   return {
     ok:
       serviceStates.every((service) => service.exists && service.ready) &&
-      retiredRelayState.absent,
+      retiredRelayCheck.absent,
     services: serviceStates,
-    retiredServices: [retiredRelayState],
+    retiredServices: [retiredRelayCheck],
+  };
+}
+
+export function evaluateCloudRunServiceReadiness(name, service) {
+  const ready = (service?.status?.conditions || []).some(
+    (condition) => condition.type === "Ready" && condition.status === "True",
+  );
+  return {
+    name,
+    exists: true,
+    ready,
+    url: service?.status?.url || null,
+    serviceAccount: service?.spec?.template?.spec?.serviceAccountName || null,
+    ingress: service?.metadata?.annotations?.["run.googleapis.com/ingress"] ||
+      null,
+  };
+}
+
+export function evaluateRetiredCloudRunServiceAbsence(name, state) {
+  const exists =
+    state.exists === true ||
+    state.missing === false ||
+    Boolean(state.service);
+  return {
+    name,
+    absent: !exists && !state.error,
+    ready: exists ? (state.ready ?? null) : null,
+    url: state.url || state.service?.status?.url || null,
+    error: state.error,
   };
 }
 
@@ -850,35 +889,10 @@ function describeCloudRunService(name) {
       error: `invalid Cloud Run service JSON: ${error.message}`,
     };
   }
-  return evaluateCloudRunServiceReadiness(name, service);
-}
-
-export function evaluateCloudRunServiceReadiness(name, service) {
-  const ready = (service?.status?.conditions || []).some(
-    (condition) => condition.type === "Ready" && condition.status === "True",
-  );
   return {
+    ...evaluateCloudRunServiceReadiness(name, service),
     name,
     exists: true,
-    ready,
-    url: service?.status?.url || null,
-    serviceAccount: service?.spec?.template?.spec?.serviceAccountName || null,
-    ingress: service?.metadata?.annotations?.["run.googleapis.com/ingress"] ||
-      null,
-  };
-}
-
-export function evaluateRetiredCloudRunServiceAbsence(name, state) {
-  const exists =
-    state.exists === true ||
-    state.missing === false ||
-    Boolean(state.service);
-  return {
-    name,
-    absent: !exists && !state.error,
-    ready: exists ? (state.ready ?? null) : null,
-    url: state.url || state.service?.status?.url || null,
-    error: state.error,
   };
 }
 
@@ -1304,7 +1318,7 @@ export function verdict(checks) {
     return {
       status: "READY_FOR_LIVE_PAID_PROOF",
       reason:
-        "Run prove:paid-tier for Apple, Stripe, and Google Play Cloud/Cloud Pro users before canary.",
+        "Run prove:paid-tier for Apple, Stripe, and Google Play Cloud/Cloud Pro users, plus Apple/Google Play Ultra users, before canary.",
     };
   }
   return {

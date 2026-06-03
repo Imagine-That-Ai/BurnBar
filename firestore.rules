@@ -196,7 +196,8 @@ service cloud.firestore {
           "com.openburnbar.proMax.v2.monthly",
           "com.openburnbar.proMax.annual",
           "com.openburnbar.ultra.monthly",
-          "com.openburnbar.ultra.annual"
+          "com.openburnbar.ultra.annual",
+          "com.openburnbar.ultra.annual.v2"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -235,7 +236,8 @@ service cloud.firestore {
           "com.openburnbar.proMax.v2.monthly",
           "com.openburnbar.proMax.annual",
           "com.openburnbar.ultra.monthly",
-          "com.openburnbar.ultra.annual"
+          "com.openburnbar.ultra.annual",
+          "com.openburnbar.ultra.annual.v2"
         ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
@@ -269,7 +271,8 @@ service cloud.firestore {
 	          "com.openburnbar.proMax.v2.monthly",
 	          "com.openburnbar.proMax.annual",
 	          "com.openburnbar.ultra.monthly",
-	          "com.openburnbar.ultra.annual"
+	          "com.openburnbar.ultra.annual",
+	          "com.openburnbar.ultra.annual.v2"
 	        ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;

@@ -66,6 +66,7 @@ struct StreamsView: View {
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .trackEasterEggScroll(tag: "streams")
             }
         }
         .navigationTitle("Streams")
