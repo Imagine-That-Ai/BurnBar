@@ -91,7 +91,7 @@ function makeQuery(base: string, preds: WherePred[] = [], limitN = Infinity) {
     [...stored.keys()].filter((path) => {
       if (!path.startsWith(`${base}/`)) return false;
       const data = stored.get(path) ?? {};
-      return preds.every((p) => p.op === "==" && (data as Record<string, unknown>)[p.field] === p.value);
+      return preds.every((p) => p.op === "==" && data[p.field] === p.value);
     });
   const self = {
     where: (field: string, op: string, value: unknown) => makeQuery(base, [...preds, { field, op, value }], limitN),
@@ -139,8 +139,6 @@ function makeDb() {
 vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
-
-type Runnable = { run: (request: unknown) => Promise<unknown> };
 
 // --- Device-side derivation (mirrors what PensieveKnowledgeChunker must ship) ---
 const PLAINTEXT = "deploy the daemon before midnight";
@@ -196,19 +194,62 @@ function commitRequestForUser(uid: string, vaultKey: Buffer) {
   };
 }
 
+function callableRun(callable: unknown): (request: unknown) => Promise<unknown> {
+  const run = Reflect.get(Object(callable), "run");
+  if (typeof run !== "function") {
+    throw new Error("Expected callable to expose run()");
+  }
+  return run;
+}
+
+function firstKnowledgeRecord(uid: string): Record<string, unknown> {
+  const found = [...stored.entries()].find(([k]) => k.startsWith(`users/${uid}/cloud_search_knowledge/`));
+  if (!found) {
+    throw new Error(`Expected stored knowledge record for ${uid}`);
+  }
+  return found[1];
+}
+
+function vectorForMutation(req: ReturnType<typeof commitRequestForUser>): Record<string, unknown> {
+  const [vector] = req.data.vectors;
+  if (!vector) {
+    throw new Error("Expected request vector");
+  }
+  return vector;
+}
+
+function hitsFromResult(result: unknown): Array<{ vectorId: string }> {
+  const hits = Reflect.get(Object(result), "hits");
+  if (!Array.isArray(hits)) {
+    throw new Error("Expected search result hits");
+  }
+  return hits.flatMap((hit) => {
+    const vectorId = Reflect.get(Object(hit), "vectorId");
+    return typeof vectorId === "string" ? [{ vectorId }] : [];
+  });
+}
+
+function purgeCounts(result: unknown): { deletedByVersion: unknown; deletedByRetiredTag: unknown; deleted: unknown } {
+  return {
+    deletedByVersion: Reflect.get(Object(result), "deletedByVersion"),
+    deletedByRetiredTag: Reflect.get(Object(result), "deletedByRetiredTag"),
+    deleted: Reflect.get(Object(result), "deleted"),
+  };
+}
+
 describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side channels", () => {
   beforeEach(() => stored.clear());
   afterEach(() => vi.clearAllMocks());
 
   it("two users + same plaintext -> different stored dedupHash (vault-keyed)", async () => {
     const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
-    const run = (commitKnowledgeBatch as unknown as Runnable).run;
+    const run = callableRun(commitKnowledgeBatch);
 
     await run(commitRequestForUser("userA", Buffer.alloc(32, 0xa1)));
-    const recA = [...stored.entries()].find(([k]) => k.startsWith("users/userA/cloud_search_knowledge/"))![1];
+    const recA = firstKnowledgeRecord("userA");
 
     await run(commitRequestForUser("userB", Buffer.alloc(32, 0xb2)));
-    const recB = [...stored.entries()].find(([k]) => k.startsWith("users/userB/cloud_search_knowledge/"))![1];
+    const recB = firstKnowledgeRecord("userB");
 
     // Same plaintext, but per-user HKDF/HMAC keys -> different stored hashes.
     expect(typeof recA.dedupHash).toBe("string");
@@ -222,10 +263,10 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
 
   it("a dump of a stored record contains NO field equal to the plaintext SHA-256 and NO cleartext repo path", async () => {
     const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
-    const run = (commitKnowledgeBatch as unknown as Runnable).run;
+    const run = callableRun(commitKnowledgeBatch);
 
     await run(commitRequestForUser("userA", Buffer.alloc(32, 0xa1)));
-    const [, record] = [...stored.entries()].find(([k]) => k.startsWith("users/userA/cloud_search_knowledge/"))!;
+    const record = firstKnowledgeRecord("userA");
 
     // Dump every leaf string (incl. the doc-id vectorId) and assert none is the
     // plaintext SHA-256 and none contains the real repo path.
@@ -257,14 +298,15 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     // cleartext SHA-256 contentHash oracle, so a not-yet-updated client fails
     // instead of writing a v0 row.
     const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
-    const run = (commitKnowledgeBatch as unknown as Runnable).run;
+    const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userLegacy", Buffer.alloc(32, 0xc3));
     // Simulate a not-yet-updated client: drop the keyed fields, send the old
     // cleartext SHA-256 contentHash instead.
-    delete (req.data.vectors[0] as Record<string, unknown>).dedupHash;
-    (req.data.vectors[0] as Record<string, unknown>).contentHash = KNOWN_PLAINTEXT_SHA256;
-    delete (req.data as Record<string, unknown>).slugHmac;
+    const vector = vectorForMutation(req);
+    delete vector.dedupHash;
+    vector.contentHash = KNOWN_PLAINTEXT_SHA256;
+    Reflect.deleteProperty(req.data, "slugHmac");
 
     await expect(run(req)).rejects.toThrow();
     // Nothing was persisted for this legacy caller.
@@ -273,10 +315,10 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
 
   it("a v1 client that omits cloakedVector (sends a raw embedding) is REJECTED", async () => {
     const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
-    const run = (commitKnowledgeBatch as unknown as Runnable).run;
+    const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userRawEmbed", Buffer.alloc(32, 0xd4));
-    const vec = req.data.vectors[0] as Record<string, unknown>;
+    const vec = vectorForMutation(req);
     vec.embedding = vec.cloakedVector; // legacy field name
     delete vec.cloakedVector;
 
@@ -331,7 +373,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
 
   it("searchKnowledge floors dedupHashVersion==1: a seeded v0 row is NOT served", async () => {
     const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = (searchKnowledge as unknown as Runnable).run;
+    const run = callableRun(searchKnowledge);
 
     // A legacy v0 row whose doc id is the cleartext SHA-256 oracle, on the old tag.
     seedVector("userSearch", KNOWN_PLAINTEXT_SHA256, {
@@ -346,10 +388,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
       dedupHash: "aa".repeat(32),
     });
 
-    const res = (await run(searchRequest("userSearch", NEW_MODEL_TAG))) as {
-      hits: Array<{ vectorId: string }>;
-    };
-    const ids = res.hits.map((h) => h.vectorId);
+    const ids = hitsFromResult(await run(searchRequest("userSearch", NEW_MODEL_TAG))).map((h) => h.vectorId);
     // The v0 oracle row is unreachable; only the v1 row surfaces.
     expect(ids).toContain("v1doc");
     expect(ids).not.toContain(KNOWN_PLAINTEXT_SHA256);
@@ -357,7 +396,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
 
   it("searchKnowledge at the new tag never returns a v0 row even on the retired tag", async () => {
     const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
-    const run = (searchKnowledge as unknown as Runnable).run;
+    const run = callableRun(searchKnowledge);
 
     // Only a v0 row exists, on the retired tag. Searching the new tag returns nothing.
     seedVector("userSearch2", KNOWN_PLAINTEXT_SHA256, {
@@ -365,15 +404,12 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
       embeddingModelVersion: RETIRED_MODEL_TAG,
       dedupHash: KNOWN_PLAINTEXT_SHA256,
     });
-    const res = (await run(searchRequest("userSearch2", NEW_MODEL_TAG))) as {
-      hits: Array<{ vectorId: string }>;
-    };
-    expect(res.hits).toHaveLength(0);
+    expect(hitsFromResult(await run(searchRequest("userSearch2", NEW_MODEL_TAG)))).toHaveLength(0);
   });
 
   it("purgeLegacyKnowledgeVectors deletes v0 + retired-tag rows, keeps v1", async () => {
     const { purgeLegacyKnowledgeVectors } = await import("../callables/knowledgeMemory.js");
-    const run = (purgeLegacyKnowledgeVectors as unknown as Runnable).run;
+    const run = callableRun(purgeLegacyKnowledgeVectors);
     const uid = "userPurge";
 
     // (a) explicit v0 row, (b) pre-versioned ancient on the retired tag (no
@@ -396,19 +432,20 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
       dedupHash: "dd".repeat(32),
     });
 
-    const res = (await run({
+    const res = await run({
       auth: { uid, token: {} },
       app: { appId: "test-app" },
       rawRequest: { headers: {} },
       data: {},
-    })) as { deletedByVersion: number; deletedByRetiredTag: number; deleted: number };
+    });
+    const counts = purgeCounts(res);
 
     // v0 (by version) + ancient (by retired tag) deleted; v1 survives.
     expect(stored.has(`users/${uid}/cloud_search_knowledge/v0doc`)).toBe(false);
     expect(stored.has(`users/${uid}/cloud_search_knowledge/ancientDoc`)).toBe(false);
     expect(stored.has(`users/${uid}/cloud_search_knowledge/v1doc`)).toBe(true);
-    expect(res.deletedByVersion).toBe(1);
-    expect(res.deletedByRetiredTag).toBe(1);
-    expect(res.deleted).toBe(2);
+    expect(counts.deletedByVersion).toBe(1);
+    expect(counts.deletedByRetiredTag).toBe(1);
+    expect(counts.deleted).toBe(2);
   });
 });
