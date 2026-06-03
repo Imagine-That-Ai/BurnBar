@@ -212,8 +212,33 @@ jobs:
           ANDROID_SENTRY_DSN: ${{ secrets.ANDROID_SENTRY_DSN }}
         run: bash ./scripts/ci/inject-sentry-config-android.sh
 
+      - name: Inject Android keystore for release signing
+        env:
+          OPENBURNBAR_ANDROID_KEYSTORE_BASE64: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_BASE64 }}
+          OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD }}
+          OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
+          OPENBURNBAR_ANDROID_KEY_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEY_PASSWORD }}
+        run: bash ./scripts/ci/inject-android-keystore.sh
+
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
+
+      - name: Build signed Android release bundle
+        env:
+          OPENBURNBAR_ANDROID_KEYSTORE_PATH: .secrets/android/upload-keystore.jks
+          OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD }}
+          OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
+          OPENBURNBAR_ANDROID_KEY_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew :app:bundleRelease --no-daemon
+          echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android release bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
