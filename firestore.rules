@@ -1889,9 +1889,18 @@ service cloud.firestore {
     // Pensieve repo connections (the dirty-signal source registration). The
     // client may configure a repo source; secrets are never stored here
     // (ownerWritableNonSecret forbids apiKey/token/secret fields).
+    // Connected GitHub repo registry. The repo identity is project-class private
+    // text: it is written exclusively by the connectKnowledgeRepo callable (Admin
+    // SDK) which stores only an opaque server-keyed `repoMatchToken` (for webhook
+    // routing) plus a vault-`sealedRepoFullName` (for owner-only display). Direct
+    // client writes must never carry a cleartext `repoFullName`/`sourcePath`; the
+    // cleartext name is observed server-side only transiently for webhook routing,
+    // never stored in Firestore.
     match /users/{userId}/knowledge_repos/{repoId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && !("repoFullName" in request.resource.data)
+        && !("sourcePath" in request.resource.data);
       allow delete: if ownsUserNamespace(userId);
     }
 

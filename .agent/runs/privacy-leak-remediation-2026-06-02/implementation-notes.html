@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seal all confirmed server-readable private-text leaks - Implementation Notes</title>
+  <style>
+    body {
+      color: #202124;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      margin: 0 auto;
+      max-width: 920px;
+      padding: 40px 24px;
+    }
+    h1, h2 { line-height: 1.2; }
+    code {
+      background: #f1f3f4;
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+    .meta {
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .timeline {
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      max-height: 360px;
+      overflow: auto;
+      padding: 8px;
+    }
+    .timeline-note {
+      color: #5f6368;
+      margin-bottom: 10px;
+    }
+    .event {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      margin: 8px 0;
+      padding: 12px 14px;
+    }
+    .event-head {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .event-summary {
+      margin: 0;
+    }
+    .event time {
+      color: #5f6368;
+      font-size: 13px;
+    }
+    .badge, .phase, .actor {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 5px 8px;
+      text-transform: uppercase;
+    }
+    .badge { background: #e8f0fe; color: #174ea6; }
+    .status-done, .status-validated { background: #e6f4ea; color: #137333; }
+    .status-blocked, .status-failed { background: #fce8e6; color: #c5221f; }
+    .status-decision { background: #fef7e0; color: #b06000; }
+    .phase, .actor {
+      background: #f1f3f4;
+      color: #3c4043;
+      font-weight: 600;
+    }
+    li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <h1>Seal all confirmed server-readable private-text leaks</h1>
+  <div class="meta">
+    <p><strong>Goal ID:</strong> <code>privacy-leak-remediation-2026-06-02</code></p>
+    <p><strong>Started:</strong> 2026-06-03T04:48:00Z</p>
+    <p><strong>Parent goal:</strong> none</p>
+    <p><strong>Mode:</strong> full</p>
+    <p><strong>Objective:</strong> Close every confirmed cloud-plaintext leak (Hermes Gateway, project_memory, dataExport, knowledge_repos, usage/budget project text, Pensieve), convert denylist rules to hasOnly, fix client regressions, make trust copy honest, expand scanner+tests+scrubber, and verify across all platforms</p>
+  </div>
+
+  <h2>Resume Here</h2>
+  <ul>
+    <li><strong>Status:</strong> [doing] Recon phase — 8 read-only agents mapping data flow + exact change points to lock the sealing design before parallel implementation.</li>
+    <li><strong>Current phase:</strong> RECON (architecture lock). Next: PHASE 1 design decision (esp. whether Hermes Gateway is sealable E2E vs intentionally server-readable), then PHASE 2 parallel implementation streams (TS / Swift-Mac / Swift-iOS / Kotlin / rules+tests / honesty+tooling).</li>
+    <li><strong>Source of truth for the bugs:</strong> the 2026-06-02 adversarial review (see memory <code>project_privacy_hardening_open_leaks</code>). Confirmed leaks: Hermes Gateway plaintext (P0), project_memory_snapshots name (P1), dataExport verbatim dump (P1), knowledge_repos + Pensieve (P1), usage/budget project text (P2). Plus denylist-only rules, client regressions, blind scanner/tests, manual-only migration.</li>
+    <li><strong>Blockers:</strong> None yet. Possible product fork pending recon: if the gateway needs server-side plaintext (hosted inference), sealing is impossible and the fix becomes honest-labeling — will resolve from code or ask Alberto.</li>
+    <li><strong>Next action:</strong> When recon returns, synthesize the locked design into this file's "Decisions" section, then launch the implementation workflow. Do NOT start edits before the gateway seal-vs-label decision is made.</li>
+    <li><strong>Protected paths / non-goals:</strong> Do not touch the unrelated dirty churn in the worktree (branding/assets/console/website pricing). Reuse EXISTING CloudVaultCrypto primitives — never invent new crypto. Cross-platform sealed envelopes must stay byte-compatible (Swift/Kotlin/TS).</li>
+  </ul>
+
+  <h2>Progress Timeline</h2>
+  <p class="timeline-note">Progress is rendered directly in this file from the inline <code>progressEvents</code> array below. Append a new event to that array whenever execution reality changes meaningfully.</p>
+  <div id="progress-timeline" class="timeline"></div>
+
+  <h2>Decisions Outside The Spec</h2>
+  <ul>
+    <li><strong>Gateway = TRUE E2E re-architecture (Alberto ratified 2026-06-03).</strong> Recon proved Hermes Gateway is a store-and-forward bridge to a <em>keyless third-party agent</em> (<code>tools/hermes-platform-burnbar/adapter.py</code>); the server never reads bodies for logic, but the far end holds no vault key. Sealing with the vault key was rejected (would hand the master key to arbitrary external processes). Alberto chose to make it genuinely E2E by retiring the open bearer-token adapter and routing gateway traffic through the already-E2E first-party relay (<code>HermesRelayCrypto</code>/<code>HermesRelayKeyStore</code>, <code>hermes_relay_requests</code>). This is a product re-architecture — being scoped/designed separately (see Next Goal Candidates) so it is done right, not rushed alongside the bounded leak fixes. This <strong>corrects</strong> my earlier adversarial report which called the gateway a "critical leak to seal."</li>
+    <li><strong>usage/budget project text = SEAL E2E (Alberto ratified).</strong> Server never reads <code>projectName</code>/<code>label</code> (budget enforcement is 100% client-side; rollups key on provider/account/model/device). Add <code>sealedProjectName</code>/<code>sealedLabel</code> via <code>CloudVaultCrypto.sealText</code> on Mac/iOS/Android + optional <code>projectKeyHash</code> (HMAC trapdoor) for grouping; legacy plaintext fallback during migration; flip <code>usage_spend</code> registry tier away from server-readable for project text. Makes session_logs' "project text device-only" claim true app-wide.</li>
+    <li><strong>project_memory = seal + opaque deterministic doc id.</strong> The name is already inside the sealed blob; plaintext <code>projectDisplayName</code> + name-derived doc-id slug are redundant leaks. New Swift primitive <code>CloudVaultCrypto.projectMemoryDocID(forSlug:keyData:) = "pm_"+HMAC(slug).prefix16.hex</code> (deterministic ⇒ upsert idempotent; opaque ⇒ server learns nothing; passes <code>requiredIdentifier</code> unchanged). No product fork.</li>
+    <li><strong>Crypto contract is locked:</strong> reuse existing platform <code>CloudVaultCrypto</code> only (byte-identical AES-256-GCM envelopes across Swift/Kotlin/TS/web/Node). Android has no <code>sealBlob</code> — but our Android work is read + short-text only, so no gap. Full contract in <code>evidence/recon-crypto-primitives.md</code>.</li>
+    <li><strong>Execution model:</strong> 5 parallel implementation streams with DISJOINT file ownership (TS / Swift / Kotlin / rules+tests / honesty+tooling), each following locked field contracts + its <code>evidence/recon-*.md</code> brief. Agents EDIT only; all builds/tests/verification run centrally in the integration phase (avoids build races, keeps verification coherent).</li>
+  </ul>
+
+  <h2>Changes And Tradeoffs</h2>
+  <ul>
+    <li>Empty at start.</li>
+  </ul>
+
+  <h2>Validation</h2>
+  <ul>
+    <li>Validation is pending.</li>
+  </ul>
+
+  <h2>Evidence</h2>
+  <ul>
+    <li>Evidence links are pending. Put large logs, screenshots, or command output in <code>evidence/</code> and link them here.</li>
+  </ul>
+
+  <h2>Next Goal Candidates</h2>
+  <ul>
+    <li><strong><code>hermes-gateway-e2e-rearchitecture</code></strong> — Make the Hermes Gateway genuinely end-to-end: retire/deprecate the open bearer-token external adapter and route phone↔agent messaging through the first-party encrypted relay (<code>HermesRelayCrypto</code>). Product re-architecture (removes the "connect any external agent over open HTTP" capability in its current keyless form). Needs its own design + QA. Recon basis: <code>evidence/recon-gateway-architecture.md</code>.</li>
+  </ul>
+  <script>
+    const progressEvents = [
+      {
+        ts: "2026-06-03T04:48:00Z",
+        status: "created",
+        phase: "start",
+        actor: "agent",
+        summary: "Goal ledger created from the 2026-06-02 adversarial review findings."
+      },
+      {
+        ts: "2026-06-03T04:50:00Z",
+        status: "doing",
+        phase: "recon",
+        actor: "agent",
+        summary: "Launched 8 read-only recon agents to lock the design before parallel edits. Key unknown: is Hermes Gateway sealable E2E or intentionally server-readable?"
+      },
+      {
+        ts: "2026-06-03T05:05:00Z",
+        status: "done",
+        phase: "recon",
+        actor: "agent",
+        summary: "Recon complete; 8 briefs persisted to evidence/recon-*.md. Findings: gateway is a keyless-third-party bridge (E2E impossible without re-arch); project_memory/usage/budget/dataExport/knowledge/Pensieve are unambiguous seal-it fixes; crypto envelopes are byte-identical cross-platform."
+      },
+      {
+        ts: "2026-06-03T05:10:00Z",
+        status: "decision",
+        phase: "design-lock",
+        actor: "user",
+        summary: "Alberto ratified: Gateway -> TRUE E2E re-architecture (chained goal); usage/budget project text -> SEAL E2E. Design locked for all surfaces."
+      },
+      {
+        ts: "2026-06-03T05:20:00Z",
+        status: "done",
+        phase: "design-lock",
+        actor: "agent",
+        summary: "Wrote evidence/CONTRACT.md (authoritative field+crypto contract, 8 sections, stream ownership). Created chained goal hermes-gateway-e2e-rearchitecture. Captured baseline-dirty-files.txt (199 pre-existing churn files to leave untouched). Diff base = db042b987."
+      },
+      {
+        ts: "2026-06-03T05:25:00Z",
+        status: "doing",
+        phase: "implement",
+        actor: "agent",
+        summary: "Wave 2 launched: 7 parallel implementation streams (S1 swift-vault, S2 swift-usage/budget, S3 swift-regressions, SA node-functions, SC kotlin, SD rules+tests, SE honesty+tooling), disjoint file ownership, each citing CONTRACT.md + recon briefs. Agents edit only; central build/test verification follows in integration."
+      },
+      {
+        ts: "2026-06-03T05:55:00Z",
+        status: "done",
+        phase: "implement",
+        actor: "agent",
+        summary: "Wave 2 complete; 7 changelogs persisted to evidence/wave2-*.md. S1 also fixed OpenBurnBarDaemon/PensieveKnowledgeWatcher.swift (no-stream-owner consumer of the changed struct) - flagged + correct."
+      },
+      {
+        ts: "2026-06-03T06:05:00Z",
+        status: "validated",
+        phase: "integrate",
+        actor: "agent",
+        summary: "Functions/Node/rules GREEN: data-domains 14/14 (incl new honesty assertions); privacy scan PASS (after I added knowledge_repos repoFullName/sourcePath rejection to firestore.rules - a cross-stream gap SE's scanner caught); functions tsc build clean; firestore rules emulator 40/40 (SD added T1-T12, incl sealed-cancel/project-memory/usage denial); vitest 195 pass; agent-notifications pass; encrypted-search-index 4/4; encrypted-session-blob 13/13; conversation-query 13/13 (fixed 1 stale pre-existing test asserting a removed server-side projectName facet). Next: Swift core build + Android compile + DataDomains sync."
+      }
+    ];
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function renderEvent(event) {
+      const status = escapeHtml(event.status || "event");
+      const phase = escapeHtml(event.phase || "general");
+      const actor = escapeHtml(event.actor || "agent");
+      const timestamp = escapeHtml(event.ts || "");
+      const summary = escapeHtml(event.summary || "");
+      return `
+        <article class="event">
+          <div class="event-head">
+            <span class="badge status-${status}">${status}</span>
+            <span class="phase">${phase}</span>
+            <span class="actor">${actor}</span>
+            <time datetime="${timestamp}">${timestamp}</time>
+          </div>
+          <p class="event-summary">${summary}</p>
+        </article>
+      `;
+    }
+
+    function renderProgressTimeline() {
+      const target = document.getElementById("progress-timeline");
+      const events = Array.isArray(progressEvents) ? progressEvents : [];
+      if (events.length === 0) {
+        target.innerHTML = "<p>No progress events recorded yet.</p>";
+        return;
+      }
+      target.innerHTML = events.map(renderEvent).join("");
+    }
+    renderProgressTimeline();
+  </script>
+</body>
+</html>
