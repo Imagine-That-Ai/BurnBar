@@ -91,11 +91,13 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> Goal created. Implementation work starts after validation is defined.</li>
-    <li><strong>Current phase:</strong> Define validation, then begin the first concrete task.</li>
-    <li><strong>Blockers:</strong> None recorded.</li>
-    <li><strong>Next action:</strong> Write the first working checkpoint here before or after implementation starts.</li>
-    <li><strong>Protected paths:</strong> None recorded.</li>
+    <li><strong>Status:</strong> Phase 1 + most of Phase 2/3 implemented and green across Python, functions, Swift Core, Android. iOS xcodebuild verifying.</li>
+    <li><strong>Current phase:</strong> Phase 1/2/3 — Python (adapter+relay_e2ee) 109 pytest; functions 57 vitest; Swift Core 4; Android vector tests pass; wire vector regenerated + 3 fixtures sha256-identical (<code>50d620…</code>); iOS build/test in flight. Remaining: finish Python P3 (MP-19/21/23), MP-24 README, iOS green, Phase 4 commit + adversarial re-review.</li>
+    <li><strong>Branch:</strong> <code>fix/hermes-gateway-e2ee-remediation-20260603</code> (BurnBar), based on <code>e73e4ca38</code> = artifact branch <code>feat/hermes-gateway-e2ee-v2-artifact-20260603</code> = PR #273.</li>
+    <li><strong>Baseline:</strong> hermes-agent gateway pytest = <code>99 passed</code> (green). Toolchain available: node 20, JDK 21, Swift 6.3/Xcode 26.5, gradle wrapper, hermes <code>.venv</code>.</li>
+    <li><strong>Blockers:</strong> PR #273 cannot merge to <code>main</code> — branch protection (<code>enforce_admins=true</code>, 1 required review) blocks <code>--admin</code>; gh user <code>Ajnunezg</code> == PR author so cannot self-approve. Per user: land later, proceed with remediation now. NOT a blocker for remediation work.</li>
+    <li><strong>Next action:</strong> Consume the discovery map (workflow <code>wf_93c2099a-743</code>), then implement Phase 1 starting with the Python core (MP-2 id round-trip, MP-3 record-after-auth) in <code>~/.hermes/hermes-agent</code>, sync to the BurnBar adapter copy, then Swift/Kotlin/functions, converge on the wire vector.</li>
+    <li><strong>Protected paths / user-owned:</strong> Commit/push <strong>BurnBar repo only</strong> (user choice). <code>~/.hermes/hermes-agent</code> (Nous-bound fork): EDIT for correctness + parity, but do NOT commit/push — stage + flag for the plan's Phase-4 landing on <code>ajnunezg/burnbar-gateway-e2ee</code>. Other worktree <code>BurnBar-release-hardening</code> holds <code>main</code> checked out.</li>
   </ul>
 
   <h2>Progress Timeline</h2>
@@ -104,17 +106,25 @@
 
   <h2>Decisions Outside The Spec</h2>
   <ul>
-    <li>Empty at start.</li>
+    <li><strong>Clean-baseline first (user-directed):</strong> committed the uncommitted v2 artifact + plan + ledger to a new branch <code>feat/hermes-gateway-e2ee-v2-artifact-20260603</code>, rebased onto <code>origin/main</code>, opened PR #273. Commit message + PR body flag it as the PRE-remediation artifact with known P1s.</li>
+    <li><strong>Merge gate:</strong> user chose admin PR merge, but <code>main</code> branch protection forbids admin bypass and requires a review the author can't give. User then chose "start remediation now; land later". Remediation proceeds on a stacked branch; the artifact + fixes land via review when CI is green.</li>
+    <li><strong>Two-repo scope:</strong> implement Python fixes canonically in <code>~/.hermes/hermes-agent</code> (where <code>relay_e2ee.py</code> + tests live), mirror to <code>tools/hermes-platform-burnbar/adapter.py</code>, but only COMMIT the BurnBar repo (user scope choice).</li>
+    <li><strong>.agent ledger tracked:</strong> repo already tracks <code>.agent/</code> by convention (GOALS.md + run dirs), so the ledger is committed rather than gitignored.</li>
   </ul>
 
   <h2>Changes And Tradeoffs</h2>
   <ul>
-    <li>Empty at start.</li>
+    <li><strong>Batched per-file, not strictly per-phase:</strong> did all adapter.py changes (P1+P2+P3) in one coherent pass because NONE of them move the wire vector (only the Swift emitter's <code>name</code>→<code>fileName</code> does), and re-reading/re-syncing a 1744-line file per phase is wasteful. Verified against the full pytest suite.</li>
+    <li><strong>MP-12 scoped to the real leak:</strong> omit plaintext <code>contentType</code> on the sealed <code>/attachments/init</code> path (the server already neutralizes it to octet-stream). Kept top-level <code>byteCount</code> (it is already the ciphertext length, documented) rather than a risky multi-file wire rename to <code>ciphertextByteCount</code>.</li>
+    <li><strong>MP-1 Android:</strong> delivered the testable, security-critical part — the two-key ≥128-bit role-independent derivation + cross-language-locked unit test (matches Swift/Python <code>595F…</code>). A full Compose pairing SCREEN is net-new UX gated on the (currently absent) Android gateway pairing/receive flow; flagged as follow-up, not remediation.</li>
+    <li><strong>MP-21:</strong> chose accept-but-warn + document (the wire <code>senderPublicKey</code> is advisory; the crypto already authenticated via the pinned key) rather than hard-drop, which would wrongly reject already-authenticated frames.</li>
+    <li><strong>hermes-agent external reset (escape-hatch surfaced):</strong> the fork's working tree was switched <code>ajnunezg/burnbar-platform</code>→<code>main</code> by an external process mid-run (reflog HEAD@{2}), discarding the uncommitted relay_e2ee.py + Python-test remediation (already verified 109 pytest passed). The adapter remediation survives in the in-project BurnBar copy. relay_e2ee.py (MP-13/14/16/20) + the test suite + MP-19/23/24 are preserved for Phase-4 re-application in <code>evidence/hermes-agent-phase4-reapply.md</code>. Did NOT touch the fork's branch state (externally managed).</li>
   </ul>
 
   <h2>Validation</h2>
   <ul>
-    <li>Validation is pending.</li>
+    <li><strong>2026-06-03:</strong> hermes-agent gateway pytest baseline = <code>99 passed</code> (test_relay_e2ee.py + test_relay_e2ee_v2.py + test_burnbar_plugin.py).</li>
+    <li>Adapter parity at baseline: <code>diff -q</code> clean (both 1743 lines).</li>
   </ul>
 
   <h2>Evidence</h2>
@@ -134,6 +144,27 @@
         phase: "start",
         actor: "agent",
         summary: "Goal ledger created."
+      },
+      {
+        ts: "2026-06-03T22:05:00Z",
+        status: "done",
+        phase: "baseline",
+        actor: "agent",
+        summary: "Baseline established: hermes-agent gateway pytest 99 passed; adapter parity clean; toolchain (node20/JDK21/Swift6.3/gradle/venv) confirmed. Read + cross-checked the remediation plan against source: working tree = pre-remediation v2 artifact (sound crypto core), MP-1/2/3/6 still present."
+      },
+      {
+        ts: "2026-06-03T22:20:00Z",
+        status: "done",
+        phase: "branch-hygiene",
+        actor: "agent",
+        summary: "User-directed clean baseline: committed v2 artifact to feat/hermes-gateway-e2ee-v2-artifact-20260603, rebased onto origin/main, opened PR #273. Admin merge blocked by branch protection (enforce_admins + required review, author can't self-approve). User chose: start remediation now, land later."
+      },
+      {
+        ts: "2026-06-03T22:35:00Z",
+        status: "doing",
+        phase: "discovery",
+        actor: "agent",
+        summary: "Created remediation branch fix/hermes-gateway-e2ee-remediation-20260603. Launched read-only discovery workflow (wf_93c2099a-743): 7 parallel mappers building a per-finding current-state map + wire-vector regen mechanism + test commands across both repos."
       }
     ];
 

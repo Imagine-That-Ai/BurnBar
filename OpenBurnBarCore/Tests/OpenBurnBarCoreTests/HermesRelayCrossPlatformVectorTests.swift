@@ -252,7 +252,7 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         // the body key is v2-wrapped under the attachment-key AAD.
         let attachmentBodyKey = makeDeterministicSymmetricKey(tweak: 0x44)
         let attachmentManifestPlaintext = Data(
-            #"{"name":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20}"#.utf8
+            #"{"fileName":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20}"#.utf8
         )
         let attachmentBodyPlaintext = Data("PDF-BYTES-1234567890".utf8)
         let attachmentManifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(
@@ -725,6 +725,15 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
             ciphertext: vector.manifestCiphertext, keyData: bodyKey, aad: expectedManifestAAD
         )
         XCTAssertEqual(String(data: manifest, encoding: .utf8), vector.manifestPlaintext)
+        // MP-18: decode the opened manifest through the PRODUCTION schema field names
+        // (fileName/contentType/byteCount) so a future drift back to `name` — which the
+        // iOS/Android decoders never read — fails this test instead of silently passing
+        // a byte-compare. Mirrors HermesGatewayAttachmentManifest on the app side.
+        struct DecodedManifest: Decodable { let fileName: String; let contentType: String; let byteCount: Int }
+        let decodedManifest = try JSONDecoder().decode(DecodedManifest.self, from: manifest)
+        XCTAssertEqual(decodedManifest.fileName, "quarterly-report.pdf")
+        XCTAssertEqual(decodedManifest.contentType, "application/pdf")
+        XCTAssertEqual(decodedManifest.byteCount, 20)
         let body = try HermesRelayCrypto.openBase64(
             ciphertext: vector.bodyCiphertext, keyData: bodyKey, aad: expectedBodyAAD
         )

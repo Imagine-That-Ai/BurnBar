@@ -96,12 +96,19 @@ const PLAINTEXT_TEXT = "the private message body";
 const PLAINTEXT_NAME = "Alberto";
 const PLAINTEXT_THREAD = "thread-secret-id";
 
+// A base64 X9.63 uncompressed P-256 public key (65 bytes, 0x04-prefixed) for the
+// v2 authenticated-wrap senderPublicKey hint.
+const SENDER_PUBKEY_B64 = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 9)]).toString("base64");
+
 function sealedEnvelope() {
+  // MP-28: new gateway writes must be v2 (the authenticated 2-DH wrap); the server
+  // rejects a v1 envelope on a new write. v1 stays readable only as a legacy doc.
   return {
     payloadCiphertext: Buffer.from("sealed-event-payload-bytes").toString("base64"),
     wrappedKey: Buffer.from("ephpub65bytes-plus-nonce-ct-tag").toString("base64"),
     relayEncryption: "p256-hkdf-sha256-aesgcm",
-    relayKeyVersion: 1,
+    relayKeyVersion: 2,
+    senderPublicKey: SENDER_PUBKEY_B64,
   };
 }
 
