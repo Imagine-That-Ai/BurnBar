@@ -19,9 +19,7 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 const TRANSFER_CODE_PATTERN = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{12}$/u;
 
 function normalizeCredentialTransferCode(raw: unknown): string {
-  const value = boundedTrimmedString(raw, "code", 64, true)
-    .toUpperCase()
-    .replace(/[-\s]/gu, "");
+  const value = boundedTrimmedString(raw, "code", 64, true).toUpperCase().replace(/[-\s]/gu, "");
   if (!TRANSFER_CODE_PATTERN.test(value)) {
     throw new HttpsError("invalid-argument", "Invalid transfer code.");
   }
