@@ -727,8 +727,16 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         // this device has pinned the agent's relay key for this client, every reply
         // must arrive sealed. The render path then refuses an unsealed reply's
         // server-supplied plaintext (see `requiresSealedReply`). The pin is read
-        // from the device Keychain, so a hostile server cannot suppress this gate.
-        resolved.requiresSealedReply = pinStore.pinnedKey(uid: uid, clientId: clientId) != nil
+        // from the device Keychain, so a hostile server cannot suppress this gate;
+        // `requiresSealedReplies` is fail-CLOSED on a Keychain read error (it treats
+        // an unreadable pin as "must seal") so a transient Keychain failure can never
+        // re-open the plaintext path. NOTE: this defeats the cheap UNSEALED forgery
+        // (the server dropping the envelope). It does NOT by itself prove sender
+        // identity for a SEALED reply — the relay wrap is anonymous-sender ECIES, so
+        // a fully-compromised server that seals to this phone's public key is a
+        // separate residual, mitigated by the supervised-oversight gate for risky
+        // actions (see evidence/E2EE-AUDIT-all-platforms-2026-06-03.md).
+        resolved.requiresSealedReply = pinStore.requiresSealedReplies(uid: uid, clientId: clientId)
         guard isSealed,
               let payloadCiphertext,
               let wrappedKey else {
@@ -1080,9 +1088,9 @@ protocol HermesGatewayRepository: AnyObject {
         displayName: String?,
         destinationId: String,
         scopes: [String],
-        relayPublicKey: String?,
-        relayKeyVersion: Int?,
-        relayEncryption: String?
+        phoneRelayPublicKey: String?,
+        phoneRelayKeyVersion: Int?,
+        phoneRelayEncryption: String?
     ) async throws -> HermesGatewayClientRecord
 
     func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord]
@@ -1128,9 +1136,9 @@ extension HermesGatewayRepository {
                 "hermes.gateway.write",
                 "hermes.gateway.manage"
             ],
-            relayPublicKey: keypair.relayPublicKeyBase64,
-            relayKeyVersion: keypair.keyVersion,
-            relayEncryption: keypair.relayEncryption
+            phoneRelayPublicKey: keypair.relayPublicKeyBase64,
+            phoneRelayKeyVersion: keypair.keyVersion,
+            phoneRelayEncryption: keypair.relayEncryption
         )
     }
 
@@ -1593,9 +1601,9 @@ final class FunctionsRepository: HermesGatewayRepository {
             "hermes.gateway.write",
             "hermes.gateway.manage"
         ],
-        relayPublicKey: String? = nil,
-        relayKeyVersion: Int? = nil,
-        relayEncryption: String? = nil
+        phoneRelayPublicKey: String? = nil,
+        phoneRelayKeyVersion: Int? = nil,
+        phoneRelayEncryption: String? = nil
     ) async throws -> HermesGatewayClientRecord {
         let callable = functions.httpsCallable("approveHermesGatewayDeviceGrant")
         var payload: [String: Any] = [
@@ -1607,9 +1615,15 @@ final class FunctionsRepository: HermesGatewayRepository {
             payload["displayName"] = displayName
         }
         // Publish the phone's relay pubkey so the agent can seal replies to it.
-        if let relayPublicKey, !relayPublicKey.isEmpty { payload["relayPublicKey"] = relayPublicKey }
-        if let relayKeyVersion { payload["relayKeyVersion"] = relayKeyVersion }
-        if let relayEncryption, !relayEncryption.isEmpty { payload["relayEncryption"] = relayEncryption }
+        if let phoneRelayPublicKey, !phoneRelayPublicKey.isEmpty {
+            payload["phoneRelayPublicKey"] = phoneRelayPublicKey
+        }
+        if let phoneRelayKeyVersion {
+            payload["phoneRelayKeyVersion"] = phoneRelayKeyVersion
+        }
+        if let phoneRelayEncryption, !phoneRelayEncryption.isEmpty {
+            payload["phoneRelayEncryption"] = phoneRelayEncryption
+        }
 
         let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         return try Self.decodeHermesGatewayValue(HermesGatewayApprovalResponse.self, from: result.data).client
