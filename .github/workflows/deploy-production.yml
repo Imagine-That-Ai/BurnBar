@@ -31,6 +31,8 @@ jobs:
     environment: production
     env:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
+      HAS_GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
+      HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -65,6 +67,18 @@ jobs:
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
 
+      - name: Authenticate to Google Cloud (service account)
+        if: steps.tag.outputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true'
+        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Authenticate to Google Cloud (legacy Play service account)
+        if: steps.tag.outputs.dry_run != 'true' && env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true'
+        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        with:
+          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+
       - name: Sentry release (Functions)
         if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
         env:
@@ -92,17 +106,25 @@ jobs:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
         run: |
-          if [[ -z "${FIREBASE_TOKEN:-}" ]]; then
-            echo "::error::FIREBASE_TOKEN secret required"
-            exit 1
-          fi
           TAG="${{ steps.tag.outputs.tag }}"
           ENV_FILE="functions/.env.burnbar"
           touch "$ENV_FILE"
           { grep -v '^FUNCTION_VERSION=' "$ENV_FILE" || true; echo "FUNCTION_VERSION=${TAG}"; } > "${ENV_FILE}.tmp"
           mv "${ENV_FILE}.tmp" "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
-          npx firebase-tools deploy --only functions --project burnbar --non-interactive --token "$FIREBASE_TOKEN"
+
+          firebase_args=(--only functions --project burnbar --non-interactive)
+          if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
+            echo "Using legacy FIREBASE_TOKEN authentication. Prefer GCP_SA_KEY or workload credentials."
+            firebase_args+=(--token "$FIREBASE_TOKEN")
+          elif [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "Using Google application credentials from google-github-actions/auth."
+          else
+            echo "::error::No Firebase deploy auth configured. Set GCP_SA_KEY (preferred), GOOGLE_PLAY_SERVICE_ACCOUNT_JSON, or legacy FIREBASE_TOKEN."
+            exit 1
+          fi
+
+          npx firebase-tools deploy "${firebase_args[@]}"
 
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'
