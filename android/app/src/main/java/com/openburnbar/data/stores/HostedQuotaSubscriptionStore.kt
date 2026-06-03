@@ -349,6 +349,8 @@ class HostedQuotaSubscriptionStore(
                 handlePurchases(purchases.orEmpty())
             } catch (e: FirebaseFunctionsException) {
                 _error.value = e.localizedMessage ?: "Could not verify purchase."
+            } catch (e: IllegalStateException) {
+                _error.value = e.localizedMessage ?: "Could not verify purchase."
             } finally {
                 _isLoading.value = false
             }
@@ -469,10 +471,13 @@ class HostedQuotaSubscriptionStore(
                         purchase = candidate.purchase,
                         productID = candidate.productID,
                         response = response,
-                    )
+                )
                 if (isVerifiedSubscriptionActive(response)) {
                     if (!candidate.purchase.isAcknowledged) {
-                        acknowledge(candidate.purchase)
+                        val acknowledged = acknowledge(candidate.purchase)
+                        if (!acknowledged) {
+                            _error.value = "Your subscription is active, but Google Play acknowledgement is still pending."
+                        }
                     }
                     applyVerifiedSubscription(verified)
                     return
@@ -574,19 +579,22 @@ class HostedQuotaSubscriptionStore(
         _expirationDate.value = expiresAtMs
     }
 
-    private suspend fun acknowledge(purchase: Purchase) {
+    private suspend fun acknowledge(purchase: Purchase): Boolean {
         val params =
             AcknowledgePurchaseParams.newBuilder()
                 .setPurchaseToken(purchase.purchaseToken)
                 .build()
-        suspendCancellableCoroutine<Unit> { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             requireBillingClient().acknowledgePurchase(params) { result ->
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                    continuation.resume(Unit)
+                    continuation.resume(true)
                 } else {
-                    continuation.resumeWithException(
-                        IllegalStateException(result.debugMessage.ifBlank { "Could not acknowledge purchase." }),
+                    val message = result.debugMessage.ifBlank { "Could not acknowledge purchase." }
+                    Log.w(
+                        LOG_TAG,
+                        "acknowledgePurchase failed code=${result.responseCode}: $message",
                     )
+                    continuation.resume(false)
                 }
             }
         }
