@@ -20,10 +20,19 @@ final class BudgetRulesStore {
     private var mockRules: [String: BudgetRule] = [:]
     private var mockEvents: [BudgetEvent] = []
     private var mockListenerCallback: (([BudgetRule]) -> Void)?
+    private let forceTestingMode: Bool
 
     private var isTestingMode: Bool {
-        return Auth.auth().currentUser == nil
+        forceTestingMode || Auth.auth().currentUser == nil
     }
+    #endif
+
+    #if DEBUG
+    init(forceTestingMode: Bool = false) {
+        self.forceTestingMode = forceTestingMode
+    }
+    #else
+    init() {}
     #endif
 
     // MARK: - Firestore references

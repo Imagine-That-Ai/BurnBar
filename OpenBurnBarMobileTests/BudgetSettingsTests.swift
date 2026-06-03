@@ -5,8 +5,7 @@ import OpenBurnBarCore
 final class BudgetSettingsTests: XCTestCase {
     @MainActor
     func testAddAndRemoveRules() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         XCTAssertEqual(settings.rules.count, 0)
 
@@ -32,8 +31,7 @@ final class BudgetSettingsTests: XCTestCase {
 
     @MainActor
     func testPauseAndResumeRules() async throws {
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = makeSettings()
 
         let rule = BudgetRule(
             scope: .credential,
@@ -62,13 +60,16 @@ final class BudgetSettingsTests: XCTestCase {
     @MainActor
     func testLegacyMigration() async throws {
         let key = "dailyBudget"
+        let defaults = makeDefaults()
 
         // Setup legacy AppStorage value in UserDefaults
-        UserDefaults.standard.set(75.50, forKey: key)
-        XCTAssertEqual(UserDefaults.standard.double(forKey: key), 75.50)
+        defaults.set(75.50, forKey: key)
+        XCTAssertEqual(defaults.double(forKey: key), 75.50)
 
-        let store = BudgetRulesStore()
-        let settings = BudgetSettings(store: store)
+        let settings = BudgetSettings(
+            store: BudgetRulesStore(forceTestingMode: true),
+            legacyBudgetDefaults: defaults
+        )
 
         // Trigger initialization & migration task.
         // We yield execution to let the back-ground migration Task run.
@@ -83,6 +84,22 @@ final class BudgetSettingsTests: XCTestCase {
         XCTAssertEqual(migratedRule?.behavior, .warnOnly)
 
         // Verify legacy key was cleared
-        XCTAssertEqual(UserDefaults.standard.double(forKey: key), 0.0)
+        XCTAssertEqual(defaults.double(forKey: key), 0.0)
+    }
+
+    @MainActor
+    private func makeSettings() -> BudgetSettings {
+        BudgetSettings(
+            store: BudgetRulesStore(forceTestingMode: true),
+            legacyBudgetDefaults: makeDefaults(),
+            migrateLegacyBudget: false
+        )
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "BudgetSettingsTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 }

@@ -15,6 +15,8 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudAnnualProductID, "com.openburnbar.pro.annual")
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudProMonthlyProductID, "com.openburnbar.proMax.v2.monthly")
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudProAnnualProductID, "com.openburnbar.proMax.annual")
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudUltraMonthlyProductID, "com.openburnbar.ultra.monthly")
+        XCTAssertEqual(OpenBurnBarProductCatalog.cloudUltraAnnualProductID, "com.openburnbar.ultra.annual.v2")
         XCTAssertEqual(OpenBurnBarProductCatalog.agentControl100ActionsProductID, "com.openburnbar.agentControl.actions100")
         XCTAssertEqual(OpenBurnBarProductCatalog.flooRelay50GBProductID, "com.openburnbar.floo.relay50gb")
         XCTAssertEqual(OpenBurnBarProductCatalog.legacyHostedQuotaProductID, "com.openburnbar.hostedQuotaSync.cloud.monthly")
@@ -25,18 +27,24 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             "com.openburnbar.pro.annual",
             "com.openburnbar.proMax.v2.monthly",
             "com.openburnbar.proMax.annual",
+            "com.openburnbar.ultra.monthly",
+            "com.openburnbar.ultra.annual.v2",
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.fallbackDisplayPrice), [
             "$7.99",
             "$79",
             "$24.99",
             "$249",
+            "$59.99",
+            "$599",
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.entitlementID), [
             "burnbar_pro",
             "burnbar_pro",
             "burnbar_pro_max",
             "burnbar_pro_max",
+            "burnbar_ultra",
+            "burnbar_ultra",
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.id), [
             "com.openburnbar.agentControl.actions100",

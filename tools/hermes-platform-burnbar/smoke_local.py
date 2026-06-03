@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import importlib
 import json
 import shutil
@@ -37,8 +38,10 @@ class FakeBurnBarState:
         self.messages: list[dict[str, Any]] = []
         self.typing: list[dict[str, Any]] = []
         self.attachment_inits: list[dict[str, Any]] = []
+        self.attachment_finalizes: list[dict[str, Any]] = []
         self.runtime: list[dict[str, Any]] = []
         self.uploads: dict[str, bytes] = {}
+        self.uploaded_attachment_ids: set[str] = set()
         self.next_sequence = 1
 
     def enqueue(
@@ -147,6 +150,14 @@ def make_handler(state: FakeBurnBarState):
                 return
             body = self._read_json()
             if self.path == "/v1/hermes-gateway/messages":
+                missing = [
+                    attachment_id
+                    for attachment_id in body.get("attachmentIds", [])
+                    if attachment_id not in state.uploaded_attachment_ids
+                ]
+                if missing:
+                    self._json(400, {"error": "attachment_not_uploaded", "missing": missing})
+                    return
                 state.messages.append(body)
                 self._json(200, {"message": {"id": f"msg_{len(state.messages)}", **body}})
                 return
@@ -169,6 +180,19 @@ def make_handler(state: FakeBurnBarState):
                         "maxBytes": 25 * 1024 * 1024,
                     },
                 )
+                return
+            if self.path == "/v1/hermes-gateway/attachments/finalize":
+                attachment_id = body.get("attachmentId")
+                if not attachment_id or f"/upload/{attachment_id}" not in state.uploads:
+                    self._json(404, {"error": "attachment_object_missing"})
+                    return
+                expected = hashlib.sha256(state.uploads[f"/upload/{attachment_id}"]).hexdigest()
+                if body.get("sha256") != expected:
+                    self._json(409, {"error": "attachment_hash_mismatch"})
+                    return
+                state.attachment_finalizes.append(body)
+                state.uploaded_attachment_ids.add(str(attachment_id))
+                self._json(200, {"attachment": {"id": attachment_id, "status": "uploaded", "sha256": expected}})
                 return
             self._json(404, {"error": "not_found"})
 
@@ -218,6 +242,9 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
     module = load_hermes_plugin(hermes_repo)
     from gateway.config import Platform, PlatformConfig
     from tools.send_message_tool import _send_to_platform
+
+    assert module._relay_safety_code("AQIDBAUGBwg=") == "6684 0DDA 154E 8A11"
+    assert module._relay_safety_code("not-base64") == "E718 D628 1D61 48C1"
 
     server, thread, state = start_fake_server()
     base_url = f"http://127.0.0.1:{server.server_port}/v1/hermes-gateway"
@@ -289,6 +316,9 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
         assert state.uploads["/upload/att_1"] == b"artifact body"
         assert state.uploads["/upload/att_2"] == b"artifact body"
         assert state.uploads["/upload/att_3"] == b"artifact body"
+        assert [item["attachmentId"] for item in state.attachment_finalizes] == ["att_1", "att_2", "att_3"]
+        for item in state.attachment_finalizes:
+            assert item["sha256"] == hashlib.sha256(state.uploads[f"/upload/{item['attachmentId']}"]).hexdigest()
         assert state.typing == [{"destinationId": DEFAULT_HOME, "threadId": "thread_1"}]
         assert state.runtime, "adapter did not publish runtime model status"
 
@@ -298,6 +328,7 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
             "eventsReceived": len(received),
             "messagesSent": len(state.messages),
             "attachmentUploads": len(state.uploads),
+            "attachmentFinalizes": len(state.attachment_finalizes),
             "typingEvents": len(state.typing),
         }
     finally:

@@ -26,14 +26,84 @@ struct WebsiteBackgroundView: View {
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     var body: some View {
-        // Editorial / Paper skin replaces the energetic swarm with a flat paper
-        // field so every surface that drops this view in as its backdrop reads
-        // as clean editorial paper instead of the dark murmuration.
+        // Editorial / Paper skin renders the light "dot-crest" — provider logos
+        // drifting and reconverging from coloured dots on paper, exactly like the
+        // app.burnbar.ai console — instead of the dark ember murmuration.
         if appSkin == .editorial {
-            MobileTheme.background
-                .ignoresSafeArea()
+            editorialDotCrest
         } else {
             swarmBody
+        }
+    }
+
+    /// Light dot-crest: paper field with a transparent, subtle, slow swarm on top
+    /// that resolves the full provider roster (logos render in their real brand
+    /// colours, so they read crisply on paper). Falls back to calm paper when
+    /// motion/power/visibility says so.
+    @ViewBuilder
+    private var editorialDotCrest: some View {
+        let prefs = SwarmBackgroundPreferences.from(jsonString: prefsJSON)
+        let effectiveVisibility = visibility.constrained(by: inheritedVisibility)
+        let calm = reduceMotion
+            || isLowPowerModeEnabled
+            || scenePhase != .active
+            || effectiveVisibility == .hidden
+            || effectiveVisibility == .obscured
+
+        ZStack {
+            MobileTheme.background
+                .ignoresSafeArea()
+
+            if !calm {
+                SwarmCanvasView(
+                    accent: MobileTheme.ember,
+                    pace: .cinematic,
+                    particleCount: editorialParticleCount(for: effectiveVisibility),
+                    // No live color driver: an *active* driver pins the swarm to
+                    // the drifting data-coloured state (see SwarmSimulation.advance
+                    // — cycling is gated on `colorDriver?.mode != .active`), so the
+                    // logos never reconverge. The editorial dot-crest is all about
+                    // logos forming and dissolving, like app.burnbar.ai, so it
+                    // always auto-cycles. Logo dots still use their real brand
+                    // colours (sampled `logoColor`), independent of the driver.
+                    colorDriver: nil,
+                    isTransparent: true,
+                    colorPalette: themePalette.swarmPalette,
+                    motionSpeedMultiplier: 0.7,
+                    isAutoCyclingEnabled: true,
+                    // Empty selection (the "None" glyph choice) would yield a cycle
+                    // with no provider logos — fall back to the full roster so the
+                    // dot-crest always has logos to form.
+                    enabledProviderGlyphs: prefs.selectedGlyphs.isEmpty ? nil : prefs.selectedGlyphs,
+                    isAvatarEnabled: prefs.isAvatarEnabled,
+                    isBrandTextEnabled: prefs.isBrandTextEnabled,
+                    enableSwarmSparkles: false,
+                    excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    rendersAsynchronously: true
+                )
+                .ignoresSafeArea()
+                .opacity(editorialOpacity(for: effectiveVisibility))
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+                    isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+                }
+            }
+        }
+    }
+
+    private func editorialParticleCount(for visibility: MobileBackgroundVisibility) -> Int {
+        let base = Double(SwarmCanvasView.adaptiveParticleCount)
+        switch visibility {
+        case .prominent: return max(96, Int(base * 0.7))
+        case .subtle:    return max(64, Int(base * 0.42))
+        default:         return 48
+        }
+    }
+
+    private func editorialOpacity(for visibility: MobileBackgroundVisibility) -> Double {
+        switch visibility {
+        case .prominent: return 0.9
+        case .subtle:    return 0.6
+        default:         return 0.4
         }
     }
 

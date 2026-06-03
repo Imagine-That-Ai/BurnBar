@@ -193,6 +193,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
+            openHermesGatewayPairingRoute(notification)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
         }
@@ -347,6 +350,14 @@ struct RootTabView: View {
         selection = .you
         youPath = NavigationPath()
         youPath.append(YouRoute.settings)
+    }
+
+    private func openHermesGatewayPairingRoute(_: Notification) {
+        settingsRouter.prepareDeepLink(anchor: SettingsAnchor.hermesCloudGateway)
+        selection = .you
+        youPath = NavigationPath()
+        youPath.append(YouRoute.settings)
+        youPath.append(SettingsPageRoute.hermes)
     }
 
     private func applyScreenshotRouteIfNeeded() {

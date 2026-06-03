@@ -67,6 +67,33 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(HermesGatewayPairingCodeFormatter.canonicalCode(from: "short"))
     }
 
+    func testHermesGatewayPairingDeepLinkParsesWebsiteAndNativeRoutes() {
+        XCTAssertEqual(
+            HermesGatewayPairingDeepLink.pairingCode(from: URL(string: "https://burnbar.ai/hermes/connect?code=sqkv-ap5r")!),
+            "sqkv-ap5r"
+        )
+        XCTAssertEqual(
+            HermesGatewayPairingDeepLink.pairingCode(from: URL(string: "burnbar://hermes-gateway?code=AB12-CD34")!),
+            "AB12-CD34"
+        )
+        XCTAssertEqual(
+            HermesGatewayPairingDeepLink.pairingCode(from: URL(string: "burnbar://hermes/gateway?userCode=AB12CD34")!),
+            "AB12CD34"
+        )
+        XCTAssertNil(
+            HermesGatewayPairingDeepLink.pairingCode(from: URL(string: "https://example.com/hermes/connect?code=AB12-CD34")!)
+        )
+        XCTAssertNil(
+            HermesGatewayPairingDeepLink.pairingCode(from: URL(string: "burnbar://hermes?prompt=hello&code=AB12-CD34")!)
+        )
+    }
+
+    func testHermesGatewayPairingDeepLinkStoresPendingCodeForSettingsScreen() {
+        HermesGatewayPairingDeepLink.open(code: "  SQKV-AP5R  ")
+        XCTAssertEqual(HermesGatewayPairingDeepLink.consumePendingCode(), "SQKV-AP5R")
+        XCTAssertNil(HermesGatewayPairingDeepLink.consumePendingCode())
+    }
+
     func testHermesGatewayApprovalDecoderPreservesServerTimestampStrings() throws {
         let createdAt = "2026-06-01T07:54:03.234Z"
         let updatedAt = "2026-06-01T07:54:03.833Z"
@@ -194,7 +221,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "threadId": HermesGatewayMessageResolver.defaultThreadID,
                 "relayEnvelope": [
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
-                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
                     "relayKeyVersion": 1
                 ],
@@ -305,7 +332,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "attachmentIds": ["att_1"],
                 "relayEnvelope": [
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
-                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
                     "relayKeyVersion": 1
                 ],
@@ -332,7 +359,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "attachmentIds": ["att_missing"],
                 "relayEnvelope": [
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
-                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
                     "relayKeyVersion": 1
                 ],
@@ -363,7 +390,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "attachmentIds": ["att_missing"],
                 "relayEnvelope": [
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
-                    "wrappedKey": "QkFTRTY0X1dSQVBQRUQ=",
+                    "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
                     "relayKeyVersion": 1
                 ],
@@ -493,6 +520,31 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
         XCTAssertEqual(record?.relayPublicKey, agentKey)
         XCTAssertEqual(record?.relayKeyVersion, 1)
+        XCTAssertEqual(record?.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertTrue(record?.canSealToAgent ?? false)
+    }
+
+    func testHermesGatewayClientRecordReadsExplicitAgentRelayPubkeyAndCanSeal() {
+        let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let record = HermesGatewayClientRecord(
+            documentID: "hgw_doc",
+            data: [
+                "id": "hgw_live",
+                "displayName": "OpenBurnBar Gateway",
+                "status": "active",
+                "tokenPreview": "obb_hgw_...live",
+                "homeDestinationId": "burnbar:home",
+                "createdAt": "2026-06-01T08:00:00Z",
+                "updatedAt": "2026-06-01T08:08:04.968Z",
+                "schemaVersion": 2,
+                "agentRelayPublicKey": agentKey,
+                "agentRelayKeyVersion": HermesRelayCrypto.keyVersion,
+                "agentRelayEncryption": HermesRelayCrypto.algorithm
+            ]
+        )
+
+        XCTAssertEqual(record?.relayPublicKey, agentKey)
+        XCTAssertEqual(record?.relayKeyVersion, HermesRelayCrypto.keyVersion)
         XCTAssertEqual(record?.relayEncryption, HermesRelayCrypto.algorithm)
         XCTAssertTrue(record?.canSealToAgent ?? false)
     }
