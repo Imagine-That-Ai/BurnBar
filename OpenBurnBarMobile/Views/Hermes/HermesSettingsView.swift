@@ -2643,7 +2643,10 @@ final class HermesGatewaySettingsStore {
             HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
         } ?? []).map { record -> HermesGatewayMessageRecord in
             guard let uid = listenedUID, !uid.isEmpty else { return record }
-            return record.decodedText(using: keypair, uid: uid)
+            // Pass the shared pin store so an unsealed reply on a client whose agent
+            // key this device pinned is treated as a downgrade (never rendered as a
+            // genuine reply) — closes the server-injected-plaintext impersonation gap.
+            return record.decodedText(using: keypair, uid: uid, pinStore: agentKeyPinStore)
         }
 
         if let pendingTestEvent {
