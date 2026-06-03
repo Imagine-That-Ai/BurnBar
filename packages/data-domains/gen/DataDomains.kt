@@ -132,7 +132,7 @@ object DataDomains {
             id = "audit_timeline", title = "Access Audit Timeline", icon = "list.bullet.rectangle.portrait.fill",
             encryptionTier = EncryptionTier.SERVER_READABLE, summary = "A unified, tamper-evident log of who/what accessed your data, when — across every device, agent, and grant.",
             serverSees = listOf("actor", "action", "domain", "timestamp", "hash-chain links"), deviceOnly = listOf(),
-            firestorePaths = listOf("remote_mcp_audit_events", "hermes_audit_events", "pi_agent_audit_events", "iroh_audit_events", "escrow_audit_events", "entitlement_events", "budgetEvents", "unified_audit_log"), storagePaths = listOf(),
+            firestorePaths = listOf("remote_mcp_audit_events", "hermes_audit_events", "pi_agent_audit_events", "iroh_audit_events", "escrow_audit_events", "entitlement_events", "budgetEvents", "unified_audit_log", "audit_meta"), storagePaths = listOf(),
             countSource = "unified_audit_log", byteSource = null,
             retention = "append_only", actions = listOf("view", "verify", "export"),
             entitlementGate = null, suspensionSurface = null,
