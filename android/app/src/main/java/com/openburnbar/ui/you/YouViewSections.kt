@@ -160,6 +160,7 @@ private fun YouRootStartupEffects(
 ) {
     LaunchedEffect(Unit) {
         subscriptionStore.initialize(context)
+        devicesStore.initialize(context)
         subscriptionStore.load()
         syncStore.refresh()
         devicesStore.load()

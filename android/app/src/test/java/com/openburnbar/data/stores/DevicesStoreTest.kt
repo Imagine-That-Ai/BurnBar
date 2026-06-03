@@ -41,4 +41,9 @@ class DevicesStoreTest {
 
         assertNull(DevicesStore.currentAndroidDeviceID(context))
     }
+
+    @Test
+    fun `currentAndroidDeviceID accepts missing context`() {
+        assertNull(DevicesStore.currentAndroidDeviceID(null))
+    }
 }

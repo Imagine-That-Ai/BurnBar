@@ -31,11 +31,12 @@ data class DeviceRecord(
 )
 
 class DevicesStore(
-    private val appContext: Context = BurnBarApplication.appContext,
+    context: Context? = null,
 ) : ViewModel() {
     private val db: FirebaseFirestore = Firebase.firestore
     private val securityClient = ComputerUseSecurityCallableClient()
     private val escrowRegistry = AndroidEscrowDeviceRegistry()
+    private var appContext: Context? = context?.applicationContext
 
     private val _devices = MutableStateFlow<List<DeviceRecord>>(emptyList())
     val devices: StateFlow<List<DeviceRecord>> = _devices.asStateFlow()
@@ -69,6 +70,10 @@ class DevicesStore(
             return !hasTrusted && thisDeviceTrustState != DeviceTrustState.TRUSTED
         }
 
+    fun initialize(context: Context) {
+        appContext = context.applicationContext
+    }
+
     fun load() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -84,8 +89,7 @@ class DevicesStore(
                         .collection("devices")
                         .get().await()
 
-                val currentDeviceId =
-                    currentAndroidDeviceID(appContext)
+                val currentDeviceId = appContext?.let { currentAndroidDeviceID(it) }
 
                 _devices.value =
                     snapshot.documents.mapNotNull { doc ->
@@ -182,10 +186,10 @@ class DevicesStore(
     }
 
     companion object {
-        internal fun currentAndroidDeviceID(context: Context): String? =
+        internal fun currentAndroidDeviceID(context: Context?): String? =
             runCatching {
                 Settings.Secure.getString(
-                    context.contentResolver,
+                    context?.contentResolver ?: return@runCatching null,
                     Settings.Secure.ANDROID_ID,
                 )
             }.getOrNull()
