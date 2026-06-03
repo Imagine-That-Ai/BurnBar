@@ -9,6 +9,9 @@ struct DashboardView: View {
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     @Bindable var settingsManager: SettingsManager
     @Environment(NavigationCoordinator.self) var navigationCoordinator
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var easterEggController = EasterEggController()
     var aggregator: UsageAggregator?
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?

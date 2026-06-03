@@ -77,6 +77,43 @@ function assertRulesRejectFields(sectionName, fields) {
   }
 }
 
+// SEMANTIC allowlist check: a sensitive rules helper/block must positively
+// constrain the WHOLE key set with `keys().hasOnly([...])`, not merely deny a
+// handful of known plaintext fields with `!hasAny`. A pure denylist drifts open
+// the moment a new plaintext field is added; an allowlist fails closed. This
+// closes the "allowlist drift" gap the recon flagged.
+function assertRulesSectionHasOnly(sectionName, note, span = 7000) {
+  const rules = readRel("firestore.rules");
+  const start = rules.indexOf(sectionName);
+  if (start < 0) {
+    fail(`firestore.rules: missing ${sectionName}`);
+    return;
+  }
+  const section = rules.slice(start, Math.min(rules.length, start + span));
+  if (!section.includes("request.resource.data.keys().hasOnly([")) {
+    fail(`firestore.rules: ${note ?? `${sectionName} lacks a keys().hasOnly([ allowlist`}`);
+  }
+}
+
+// Assert a match block bounded by its own `match /…` start and the next `match `
+// denies a client write entirely (`allow write: if false`). Used for
+// server-only-writer collections whose honest posture this pass is "no client
+// plaintext write path" (e.g. the hosted chat gateway, server-written today; its
+// end-to-end migration is a separately chained goal).
+function assertRulesBlockDeniesClientWrite(matchNeedle, note) {
+  const rules = readRel("firestore.rules");
+  const start = rules.indexOf(matchNeedle);
+  if (start < 0) {
+    fail(`firestore.rules: missing ${matchNeedle}`);
+    return;
+  }
+  const next = rules.indexOf("    match /", start + matchNeedle.length);
+  const block = rules.slice(start, next < 0 ? rules.length : next);
+  if (!block.includes("allow write: if false")) {
+    fail(`firestore.rules: ${note ?? `${matchNeedle} must deny client writes (allow write: if false)`}`);
+  }
+}
+
 function assertRulesAllowlistExcludes(sectionName, fields, endNeedle = "allow read:") {
   const rules = readRel("firestore.rules");
   const start = rules.indexOf(sectionName);
