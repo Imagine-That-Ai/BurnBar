@@ -39,9 +39,9 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "conversations_chat", title: "Conversations & Chat", icon: "bubble.left.and.bubble.right.fill",
-            encryptionTier: .endToEnd, summary: "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, and conversation recall metadata are sealed on-device before Firestore receives them.",
-            serverSees: ["provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids"], deviceOnly: ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "saved text snippets", "project/file/command labels"],
-            firestorePaths: ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets"], storagePaths: [],
+            encryptionTier: .endToEnd, summary: "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, and conversation recall metadata are sealed on-device before Firestore receives them.",
+            serverSees: ["provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids"], deviceOnly: ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "saved text snippets", "project/file/command labels", "rollback scope paths", "rollback error diagnostics"],
+            firestorePaths: ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets", "rollback_requests"], storagePaths: [],
             countSource: "chat_threads", byteSource: nil,
             retention: "until_deleted", actions: ["view", "export", "delete"],
             entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud"

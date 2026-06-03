@@ -1048,7 +1048,11 @@ final class AgentSubscriptionTopicStore {
             let snapshot = try await collection(uid: uid)
                 .order(by: "consentGivenAt", descending: true)
                 .getDocuments()
-            topics = snapshot.documents.compactMap { Self.decodeTopic(documentID: $0.documentID, data: $0.data()) }
+            let vaultKey = try? await MobileCloudVaultKeyAccess
+                .keyForReading(uid: uid, firestore: firestoreProvider())?.keyData
+            topics = snapshot.documents.compactMap {
+                Self.decodeTopic(documentID: $0.documentID, data: $0.data(), vaultKey: vaultKey)
+            }
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -1108,7 +1112,10 @@ final class AgentSubscriptionTopicStore {
 
     func upsert(_ topic: SubscriptionTopic) async throws {
         let uid = try currentUserID()
-        var payload = Self.encodeTopic(topic)
+        let vaultKey = try await MobileCloudVaultKeyAccess
+            .keyForWriting(uid: uid, firestore: firestoreProvider())
+            .keyData
+        var payload = try Self.encodeTopic(topic, vaultKey: vaultKey)
         payload["updatedAt"] = FieldValue.serverTimestamp()
         try await collection(uid: uid)
             .document(Self.documentID(agentURI: topic.agentURI, topicID: topic.topicID))
@@ -1186,15 +1193,20 @@ final class AgentSubscriptionTopicStore {
             .order(by: "consentGivenAt", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
+                    guard let self else { return }
                     if let error {
-                        self?.lastError = error.localizedDescription
+                        self.lastError = error.localizedDescription
                         return
                     }
                     guard let snapshot else { return }
-                    self?.topics = snapshot.documents.compactMap {
-                        Self.decodeTopic(documentID: $0.documentID, data: $0.data())
+                    // Resolve the vault key once per fire so sealed display
+                    // text can be opened; legacy plaintext still decodes when nil.
+                    let vaultKey = try? await MobileCloudVaultKeyAccess
+                        .keyForReading(uid: uid, firestore: self.firestoreProvider())?.keyData
+                    self.topics = snapshot.documents.compactMap {
+                        Self.decodeTopic(documentID: $0.documentID, data: $0.data(), vaultKey: vaultKey)
                     }
-                    self?.lastError = nil
+                    self.lastError = nil
                 }
             }
     }
@@ -1226,12 +1238,16 @@ final class AgentSubscriptionTopicStore {
             .collection("subscription_topics")
     }
 
-    private static func encodeTopic(_ topic: SubscriptionTopic) -> [String: Any] {
+    static func encodeTopic(_ topic: SubscriptionTopic, vaultKey: Data) throws -> [String: Any] {
+        // Seal the subscription display text — `displayName`/`description` echo
+        // which agent the user follows (a behavioral fingerprint). `agentURI`/
+        // `topicID` stay plaintext: they are the routing/dedup key and the doc
+        // ID is derived from them.
         [
             "agentURI": topic.agentURI,
             "topicID": topic.topicID,
-            "displayName": topic.displayName,
-            "description": topic.description,
+            "sealedDisplayName": try dictionary(CloudVaultCrypto.sealText(topic.displayName, keyData: vaultKey)),
+            "sealedDescription": try dictionary(CloudVaultCrypto.sealText(topic.description, keyData: vaultKey)),
             "cadence": topic.cadence.rawValue,
             "consentGivenAt": topic.consentGivenAt ?? NSNull(),
             "isMuted": topic.isMuted,
@@ -1248,11 +1264,23 @@ final class AgentSubscriptionTopicStore {
             .replacingOccurrences(of: ":", with: "_")
     }
 
-    private static func decodeTopic(documentID: String, data: [String: Any]) -> SubscriptionTopic? {
+    static func decodeTopic(documentID: String, data: [String: Any], vaultKey: Data?) -> SubscriptionTopic? {
         let agentURI = (data["agentURI"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let topicID = (data["topicID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let displayName = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let description = (data["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Open the sealed display text, falling back to legacy plaintext for
+        // pre-migration / in-flight documents.
+        let displayName = (openSealedString(
+            data: data,
+            sealedField: "sealedDisplayName",
+            legacyField: "displayName",
+            vaultKey: vaultKey
+        ))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let description = (openSealedString(
+            data: data,
+            sealedField: "sealedDescription",
+            legacyField: "description",
+            vaultKey: vaultKey
+        ))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !agentURI.isEmpty, !topicID.isEmpty else { return nil }
 
         let cadenceRaw = (data["cadence"] as? String) ?? AgentManifest.PushTopic.Cadence.weekly.rawValue
@@ -1283,6 +1311,41 @@ final class AgentSubscriptionTopicStore {
             lastDeliveredAt: lastDeliveredAt
         )
         return topic
+    }
+
+    // MARK: - Seal helpers
+
+    /// Opens a sealed-text field, falling back to a legacy plaintext field when
+    /// the sealed field is absent (or the key is unavailable).
+    private static func openSealedString(
+        data: [String: Any],
+        sealedField: String,
+        legacyField: String,
+        vaultKey: Data?
+    ) -> String? {
+        if let vaultKey, let envelope = sealedText(from: data[sealedField]),
+           let opened = try? CloudVaultCrypto.openText(envelope, keyData: vaultKey) {
+            return opened
+        }
+        return data[legacyField] as? String
+    }
+
+    /// Encodes a `CloudVaultSealedText` envelope into a Firestore-compatible
+    /// dictionary. Mirrors the adjacent sealed-text sync services.
+    private static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dictionary = object as? [String: Any] else { return [:] }
+        return dictionary
+    }
+
+    /// Decodes a stored sealed-text dictionary back into a `CloudVaultSealedText`.
+    private static func sealedText(from value: Any?) -> CloudVaultSealedText? {
+        guard let dictionary = value as? [String: Any],
+              let data = try? JSONSerialization.data(withJSONObject: dictionary) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
     }
 
     private static func decodeDate(_ raw: Any?) -> Date? {

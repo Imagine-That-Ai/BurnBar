@@ -97,12 +97,28 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     let runtimeProviderId: String?
     let runtimeModelOptions: [HermesGatewayModelOptionRecord]
     let runtimeUpdatedAt: String?
+    let agentVersion: String?
+    let pendingModelId: String?
+    let pendingModelRequestedAt: String?
+    let oversightMode: String?
     let revokedAt: String?
     let createdAt: String
     let updatedAt: String
     let schemaVersion: Int
 
     var isActive: Bool { status == "active" }
+
+    /// Treat an unset `oversightMode` as the safe `supervised` default so the
+    /// phone never implies a gateway is running autonomously when the server
+    /// hasn't explicitly opted into it.
+    var isOversightSupervised: Bool { oversightMode != "autonomous" }
+
+    /// True while the gateway has accepted a model-switch request but is not yet
+    /// reporting that model as its live runtime model.
+    var isSwitchingModel: Bool {
+        guard let pendingModelId, !pendingModelId.isEmpty else { return false }
+        return pendingModelId != runtimeModelId
+    }
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -116,6 +132,10 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         case runtimeProviderId
         case runtimeModelOptions
         case runtimeUpdatedAt
+        case agentVersion
+        case pendingModelId
+        case pendingModelRequestedAt
+        case oversightMode
         case revokedAt
         case createdAt
         case updatedAt
@@ -139,7 +159,11 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
             runtimeModelId: try container.decodeIfPresent(String.self, forKey: .runtimeModelId),
             runtimeProviderId: try container.decodeIfPresent(String.self, forKey: .runtimeProviderId),
             runtimeModelOptions: try container.decodeIfPresent([HermesGatewayModelOptionRecord].self, forKey: .runtimeModelOptions) ?? [],
-            runtimeUpdatedAt: try container.decodeIfPresent(String.self, forKey: .runtimeUpdatedAt)
+            runtimeUpdatedAt: try container.decodeIfPresent(String.self, forKey: .runtimeUpdatedAt),
+            agentVersion: try container.decodeIfPresent(String.self, forKey: .agentVersion),
+            pendingModelId: try container.decodeIfPresent(String.self, forKey: .pendingModelId),
+            pendingModelRequestedAt: try container.decodeIfPresent(String.self, forKey: .pendingModelRequestedAt),
+            oversightMode: try container.decodeIfPresent(String.self, forKey: .oversightMode)
         )
     }
 
@@ -158,7 +182,11 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         runtimeModelId: String? = nil,
         runtimeProviderId: String? = nil,
         runtimeModelOptions: [HermesGatewayModelOptionRecord] = [],
-        runtimeUpdatedAt: String? = nil
+        runtimeUpdatedAt: String? = nil,
+        agentVersion: String? = nil,
+        pendingModelId: String? = nil,
+        pendingModelRequestedAt: String? = nil,
+        oversightMode: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -171,6 +199,10 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         self.runtimeProviderId = runtimeProviderId
         self.runtimeModelOptions = runtimeModelOptions
         self.runtimeUpdatedAt = runtimeUpdatedAt
+        self.agentVersion = agentVersion
+        self.pendingModelId = pendingModelId
+        self.pendingModelRequestedAt = pendingModelRequestedAt
+        self.oversightMode = oversightMode
         self.revokedAt = revokedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -204,7 +236,11 @@ extension HermesGatewayClientRecord {
             runtimeModelId: Self.string(data["runtimeModelId"]),
             runtimeProviderId: Self.string(data["runtimeProviderId"]),
             runtimeModelOptions: Self.modelOptions(data["runtimeModelOptions"]),
-            runtimeUpdatedAt: Self.string(data["runtimeUpdatedAt"])
+            runtimeUpdatedAt: Self.string(data["runtimeUpdatedAt"]),
+            agentVersion: Self.string(data["agentVersion"]),
+            pendingModelId: Self.string(data["pendingModelId"]),
+            pendingModelRequestedAt: Self.string(data["pendingModelRequestedAt"]),
+            oversightMode: Self.string(data["oversightMode"])
         )
     }
 
@@ -323,6 +359,146 @@ struct HermesGatewayQueuedEvent: Decodable, Hashable, Sendable {
     let id: String
     let sequence: Int
     let targetClientId: String?
+}
+
+/// Owner-read view of a server-armed oversight gate at
+/// `users/{uid}/hermes_gateway_approvals/{approvalId}`. The agent blocks on this
+/// gate until a trusted native device approves or rejects via
+/// `respondHermesGatewayApproval`.
+struct HermesGatewayApprovalRecord: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let clientId: String
+    let destinationId: String
+    let actionId: String
+    let toolName: String?
+    let summary: String
+    let status: String
+    let requestedAt: String
+    let expiresAt: String
+    let respondedAt: String?
+    let approvedByDeviceId: String?
+    let schemaVersion: Int
+
+    var isWaiting: Bool { status == "waiting_for_approval" }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case clientId
+        case destinationId
+        case actionId
+        case toolName
+        case summary
+        case status
+        case requestedAt
+        case expiresAt
+        case respondedAt
+        case approvedByDeviceId
+        case schemaVersion
+    }
+
+    init(
+        id: String,
+        clientId: String,
+        destinationId: String,
+        actionId: String,
+        toolName: String?,
+        summary: String,
+        status: String,
+        requestedAt: String,
+        expiresAt: String,
+        respondedAt: String? = nil,
+        approvedByDeviceId: String? = nil,
+        schemaVersion: Int
+    ) {
+        self.id = id
+        self.clientId = clientId
+        self.destinationId = destinationId
+        self.actionId = actionId
+        self.toolName = toolName
+        self.summary = summary
+        self.status = status
+        self.requestedAt = requestedAt
+        self.expiresAt = expiresAt
+        self.respondedAt = respondedAt
+        self.approvedByDeviceId = approvedByDeviceId
+        self.schemaVersion = schemaVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            clientId: try container.decode(String.self, forKey: .clientId),
+            destinationId: try container.decode(String.self, forKey: .destinationId),
+            actionId: try container.decode(String.self, forKey: .actionId),
+            toolName: try container.decodeIfPresent(String.self, forKey: .toolName),
+            summary: try container.decodeIfPresent(String.self, forKey: .summary) ?? "",
+            status: try container.decode(String.self, forKey: .status),
+            requestedAt: try container.decode(String.self, forKey: .requestedAt),
+            expiresAt: try container.decode(String.self, forKey: .expiresAt),
+            respondedAt: try container.decodeIfPresent(String.self, forKey: .respondedAt),
+            approvedByDeviceId: try container.decodeIfPresent(String.self, forKey: .approvedByDeviceId),
+            schemaVersion: try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        )
+    }
+}
+
+extension HermesGatewayApprovalRecord {
+    init?(documentID: String, data: [String: Any]) {
+        guard
+            let id = Self.string(data["id"]) ?? documentID.nilIfEmpty,
+            let clientId = Self.string(data["clientId"]),
+            let destinationId = Self.string(data["destinationId"]),
+            let actionId = Self.string(data["actionId"]),
+            let status = Self.string(data["status"]),
+            let requestedAt = Self.string(data["requestedAt"]),
+            let expiresAt = Self.string(data["expiresAt"])
+        else { return nil }
+        self.init(
+            id: id,
+            clientId: clientId,
+            destinationId: destinationId,
+            actionId: actionId,
+            toolName: Self.string(data["toolName"]),
+            summary: Self.string(data["summary"]) ?? "",
+            status: status,
+            requestedAt: requestedAt,
+            expiresAt: expiresAt,
+            respondedAt: Self.string(data["respondedAt"]),
+            approvedByDeviceId: Self.string(data["approvedByDeviceId"]),
+            schemaVersion: (data["schemaVersion"] as? NSNumber)?.intValue ?? (data["schemaVersion"] as? Int) ?? 1
+        )
+    }
+
+    var expiresAtDate: Date? { Self.gatewayDate(from: expiresAt) }
+
+    /// A gate is actionable only while it is still waiting and has not passed its
+    /// server-stamped expiry.
+    func isActionable(relativeTo now: Date = Date()) -> Bool {
+        guard isWaiting else { return false }
+        guard let expiresAtDate else { return true }
+        return now < expiresAtDate
+    }
+
+    private static func gatewayDate(from raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+
+    private static func string(_ raw: Any?) -> String? {
+        switch raw {
+        case let value as String where !value.isEmpty:
+            return value
+        case let value as NSString where value.length > 0:
+            return value as String
+        case let value as NSNumber:
+            return value.stringValue
+        default:
+            return nil
+        }
+    }
 }
 
 struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
@@ -502,6 +678,10 @@ protocol HermesGatewayRepository: AnyObject {
         targetClientId: String?,
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent
+
+    func setHermesGatewayOversightMode(clientId: String, mode: String) async throws
+
+    func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws
 }
 
 extension HermesGatewayRepository {
@@ -1048,6 +1228,25 @@ final class FunctionsRepository: HermesGatewayRepository {
         }
         let result = try await callable.call(payload)
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
+    }
+
+    func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
+        let callable = functions.httpsCallable("setHermesGatewayOversightMode")
+        _ = try await callable.call([
+            "clientId": clientId,
+            "mode": mode
+        ])
+    }
+
+    /// Bind a gateway oversight approve/reject decision to this trusted native
+    /// escrow device, reusing the same App-Check-enforced device-trust path as
+    /// the CLI-mission `respondMissionApproval` flow.
+    func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws {
+        try await ComputerUseSecurityCallableClient.respondHermesGatewayApproval(
+            approvalId: approvalId,
+            approve: approve,
+            deviceId: deviceId
+        )
     }
 
     // MARK: Pi Agent host pairing

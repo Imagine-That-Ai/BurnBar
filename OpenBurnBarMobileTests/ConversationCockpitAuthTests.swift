@@ -99,7 +99,6 @@ private final class FakeConversationQueryClient: ConversationQueryClient {
     func queryConversations(
         providers: [String],
         models: [String],
-        projectName: String?,
         deviceId: String?,
         sourceType: String?,
         dateFrom: Date?,
@@ -110,6 +109,8 @@ private final class FakeConversationQueryClient: ConversationQueryClient {
         cursorDocId: String?,
         includeAggregates: Bool
     ) async throws -> ConversationQueryResponse {
+        // projectName was removed from ConversationQueryClient when project text
+        // became device-only (server can no longer filter conversations by it).
         requests.append(Request(limit: limit, cursorDocId: cursorDocId, includeAggregates: includeAggregates))
         guard !results.isEmpty else { return .empty }
         return try results.removeFirst().get()

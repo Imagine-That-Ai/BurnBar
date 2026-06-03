@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -84,7 +83,6 @@ internal enum class EdgeSide { TOP, BOTTOM }
  */
 internal sealed interface EggEvent {
     data class Summon(val kind: EggKind, val reduceMotion: Boolean) : EggEvent
-    data class Boundary(val side: EdgeSide) : EggEvent
 }
 
 /**
@@ -94,9 +92,21 @@ internal sealed interface EggEvent {
  */
 @Stable
 class EasterEggController internal constructor() {
-    // The pending event the overlay should play next; the loop clears it on read.
-    internal var pending by mutableStateOf<EggEvent?>(null)
+    // The pending SUMMON the overlay should play next; the engine clears it on read.
+    // Boundary pops ride a separate epoch counter (below) so they coexist with a
+    // running takeover instead of fighting it for this single slot.
+    internal var pending by mutableStateOf<EggEvent.Summon?>(null)
         private set
+
+    // Boundary channel: every pop bumps [boundaryEpoch] (observed reactively by the
+    // engine) and stashes the side. The engine compares the epoch it last drained and
+    // injects one row of coins per new epoch — independent of, and concurrent with, any
+    // storm/rain takeover. This replaces the old "pending is Summon → drop" guard the
+    // review flagged as ineffective (pending was cleared the instant a scene began, so
+    // the guard let boundaries clobber an in-flight summon a frame later).
+    internal var boundaryEpoch by mutableStateOf(0)
+        private set
+    @Volatile internal var queuedBoundarySide: EdgeSide = EdgeSide.TOP
 
     // Direction-reversal ring: timestamps (ms) of recent scroll-direction flips.
     private val reversalTimes = ArrayDeque<Long>(REVERSAL_TARGET + 2)
@@ -112,13 +122,15 @@ class EasterEggController internal constructor() {
     internal val nestedScrollConnection: NestedScrollConnection =
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                registerScroll(available.y)
+                if (source == NestedScrollSource.UserInput) registerScroll(available.y)
                 return Offset.Zero
             }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                // `available.y` left unconsumed after the child scrolled = overscroll
-                // at an extreme. Positive = pulled past the TOP, negative = past BOTTOM.
+                // `available.y` left unconsumed after the child scrolled = the list could
+                // not move = we're pinned at an extreme and the user is still pushing.
+                // Positive leftover = pulled past the TOP, negative = past the BOTTOM —
+                // the Android analog of the web's atTop()/atBottom() + push-further test.
                 if (source == NestedScrollSource.UserInput && available.y != 0f) {
                     if (available.y > BOUNDARY_THRESHOLD) requestBoundary(EdgeSide.TOP)
                     else if (available.y < -BOUNDARY_THRESHOLD) requestBoundary(EdgeSide.BOTTOM)
@@ -132,10 +144,11 @@ class EasterEggController internal constructor() {
     private fun registerScroll(deltaY: Float) {
         if (kotlin.math.abs(deltaY) < MIN_SCROLL_DELTA) return
         val dir = if (deltaY > 0) 1 else -1
+        // Count direction CHANGES only (spec §2): a flip pushes one reversal timestamp.
         if (lastDir != 0 && dir != lastDir) {
             val now = System.currentTimeMillis()
             reversalTimes.addLast(now)
-            // Drop reversals older than the detection window.
+            // Evict reversals outside the 1.5 s sliding window.
             while (reversalTimes.isNotEmpty() && now - reversalTimes.first() > REVERSAL_WINDOW_MS) {
                 reversalTimes.removeFirst()
             }
@@ -148,7 +161,9 @@ class EasterEggController internal constructor() {
     }
 
     private fun requestSummon(now: Long) {
+        // Only when idle (no takeover queued or playing) and past the cooldown.
         if (now - lastSummonAtMs < SUMMON_COOLDOWN_MS) return
+        if (pending != null) return
         lastSummonAtMs = now
         val kind = if (isDark) EggKind.LOGO_STORM else EggKind.CLOUD_TOKEN_RAIN
         pending = EggEvent.Summon(kind, reduceMotion)
@@ -157,23 +172,22 @@ class EasterEggController internal constructor() {
     private fun requestBoundary(side: EdgeSide) {
         val now = System.currentTimeMillis()
         if (now - lastBoundaryAtMs < BOUNDARY_COOLDOWN_MS) return
-        // Don't let a boundary nudge talk over an active summon celebration.
-        if (pending is EggEvent.Summon) return
         lastBoundaryAtMs = now
-        pending = EggEvent.Boundary(side)
+        queuedBoundarySide = side
+        boundaryEpoch++ // engine reacts and injects a pop, coexisting with any takeover
     }
 
-    /** The overlay's frame loop calls this once it has begun playing [pending]. */
-    internal fun consume() {
+    /** The engine calls this once it has begun playing [pending]. */
+    internal fun consumeSummon() {
         pending = null
     }
 
     internal companion object {
         const val REVERSAL_TARGET = 5 // direction flips needed to summon
-        const val REVERSAL_WINDOW_MS = 1500L // …within this window
-        const val MIN_SCROLL_DELTA = 1.5f // ignore sub-pixel jitter as a "direction"
-        const val SUMMON_COOLDOWN_MS = 8000L
-        const val BOUNDARY_COOLDOWN_MS = 1400L
+        const val REVERSAL_WINDOW_MS = 1500L // …within this 1.5 s window
+        const val MIN_SCROLL_DELTA = 2f // ignore sub-pixel jitter as a "direction" (spec |d|>2)
+        const val SUMMON_COOLDOWN_MS = 9000L // spec cooldown after a takeover
+        const val BOUNDARY_COOLDOWN_MS = 1200L // spec boundary debounce
         const val BOUNDARY_THRESHOLD = 6f
     }
 }
@@ -198,88 +212,112 @@ fun EasterEggOverlay(controller: EasterEggController, modifier: Modifier = Modif
     controller.isDark = isDark
     controller.reduceMotion = reduceMotion
 
-    val assets =
-        remember(context) { EggAssets(context.applicationContext) }
+    val assets = remember(context) { EggAssets(context.applicationContext) }
 
-    // The live scene; null while idle so the Canvas draws nothing and no frames pump.
-    var scene by remember { mutableStateOf<EggScene?>(null) }
+    // ONE long-lived FX engine (spec §1 state machine). It owns mode {idle,storm,rain}
+    // plus a boundary-pop pool that coexists with any takeover. `version` bumps each
+    // frame to repaint the Canvas; `running` flips the single frame loop on/off.
+    val engine = remember { FxEngine() }
     var version by remember { mutableStateOf(0) }
+    var running by remember { mutableStateOf(false) }
 
+    // Feed SUMMON events into the engine; it self-schedules its frame loop.
     val pending = controller.pending
     LaunchedEffect(pending) {
         val event = pending ?: return@LaunchedEffect
-        controller.consume()
-        // Load (once, off the main thread) the logos this event needs.
-        val logos = withContext(Dispatchers.Default) { assets.logos(providerGlyphs) }
-        scene =
-            when (event) {
-                is EggEvent.Summon ->
-                    when (event.kind) {
-                        EggKind.LOGO_STORM -> LogoStormScene(logos, event.reduceMotion)
-                        EggKind.CLOUD_TOKEN_RAIN -> CloudTokenRainScene(logos, event.reduceMotion)
-                    }
-                is EggEvent.Boundary -> BoundaryScene(event.side, reduceMotion)
-            }
-        // Pump frames until the scene reports it has fully faded out, then tear down.
-        val started = System.nanoTime()
-        while (true) {
-            awaitFrame()
-            val tSec = (System.nanoTime() - started) / 1_000_000_000.0
-            version++ // recompose the Canvas
-            if (scene?.isFinished(tSec) != false) break
-        }
-        scene = null
+        controller.consumeSummon()
+        val bundle = withContext(Dispatchers.Default) { assets.bundle(providerGlyphs) }
+        engine.startSummon(event.kind, event.reduceMotion, bundle)
+        running = true
     }
 
-    val active = scene
-    if (active != null) {
+    // Feed BOUNDARY pops (epoch-driven) — they fire independently and coexist.
+    val boundaryEpoch = controller.boundaryEpoch
+    LaunchedEffect(boundaryEpoch) {
+        if (boundaryEpoch == 0) return@LaunchedEffect
+        if (reduceMotion) return@LaunchedEffect // spec §6: no boundary pop under reduce-motion
+        val bundle = withContext(Dispatchers.Default) { assets.bundle(providerGlyphs) }
+        engine.startBoundary(controller.queuedBoundarySide, bundle)
+        running = true
+    }
+
+    // Single frame loop. Runs only while the engine has work; otherwise it parks and the
+    // Canvas draws nothing (zero idle cost). Re-armed whenever `running` flips true.
+    LaunchedEffect(running) {
+        if (!running) return@LaunchedEffect
+        while (true) {
+            awaitFrame()
+            val now = System.nanoTime()
+            val alive = engine.tick(now)
+            version++ // repaint
+            if (!alive) {
+                running = false
+                version++ // one last clear frame
+                break
+            }
+        }
+    }
+
+    // Only mount the Canvas while the engine has work — idle costs nothing (no Canvas in
+    // the layout/draw tree, no frames pumping).
+    if (running) {
         Canvas(modifier = modifier.fillMaxSize()) {
             @Suppress("UNUSED_VARIABLE")
             val tick = version // read so the Canvas repaints each frame
-            active.draw(this)
+            engine.draw(this)
         }
     }
 }
 
-// ───────────────────────────── Scenes ─────────────────────────────
-
-/** A self-contained celebration: advances itself from `nowNanos` and paints. */
-private interface EggScene {
-    /** Paint this frame. Implementations read [System.nanoTime] for their own clock. */
-    fun draw(scope: DrawScope)
-
-    /** True once the scene has fully played out (overlay then tears down). */
-    fun isFinished(elapsedSeconds: Double): Boolean
-}
+// ───────────────────────────── Assets ─────────────────────────────
 
 /** A logo loaded once and cached as an [ImageBitmap] for fast repeated draws. */
 private class EggLogo(val image: ImageBitmap)
 
+/**
+ * The decoded asset bundle a takeover needs: a storm logo array (spec: 2 cloud crests +
+ * up to 14 provider glyphs ≈ 16) and the cloud-crest list the rain perches on clouds.
+ */
+private class EggBundle(val logos: List<EggLogo>, val crests: List<EggLogo>)
+
 /** Loads + caches the bundled crest/provider logos as [ImageBitmap]s, off-main. */
 private class EggAssets(private val context: Context) {
-    @Volatile private var cached: List<EggLogo>? = null
+    @Volatile private var cached: EggBundle? = null
 
     /**
-     * The crest plus the user's enabled provider glyphs, decoded once. Always call
-     * from a background dispatcher (decode + RGBA copy is not free).
+     * Decode once: two cloud-tier crests + the BurnBar crest + the user's enabled
+     * provider glyphs (capped near the web's 14) → the storm logo array; the two cloud
+     * crests alone → the rain's cloud-cap images. Always call off the main thread.
      */
-    fun logos(enabledProviders: Set<AgentProvider>): List<EggLogo> {
+    fun bundle(enabledProviders: Set<AgentProvider>): EggBundle {
         cached?.let { return it }
-        val ids = ArrayList<Int>()
-        ids.add(R.drawable.app_logo) // the BurnBar crest anchors every burst
+        // Cloud crests (spec's "two cloud crests"): the Pro + Ultra tier crests.
+        val crestIds = listOf(R.drawable.cloud_tier_crest_pro, R.drawable.cloud_tier_crest_ultra)
+        val crests = crestIds.mapNotNull { id -> decode(id)?.let { EggLogo(it) } }
+
+        val logoIds = ArrayList<Int>()
+        crestIds.forEach { logoIds.add(it) } // crests ride along in the storm swarm too
+        logoIds.add(R.drawable.app_logo) // the BurnBar crest anchors every burst
         AgentProvider.swarmGlyphProviders
+            .asSequence()
             .filter { enabledProviders.contains(it) }
-            .forEach { ids.add(it.logoRes) }
-        if (ids.size == 1) {
-            // No providers enabled — still give the storm a little variety.
-            ids.add(R.drawable.logo_anthropic)
-            ids.add(R.drawable.logo_open_ai)
+            .map { it.logoRes }
+            .filter { it != 0 }
+            .take(PROVIDER_CAP)
+            .forEach { logoIds.add(it) }
+        if (logoIds.size <= crestIds.size + 1) {
+            // No providers enabled — still give the storm brand variety.
+            listOf(
+                R.drawable.logo_anthropic, R.drawable.logo_open_ai, R.drawable.logo_gemini_cli,
+                R.drawable.logo_claude_code, R.drawable.logo_codex, R.drawable.logo_deep_seek,
+            ).forEach { logoIds.add(it) }
         }
-        val result =
-            ids.mapNotNull { id -> decode(id)?.let { EggLogo(it) } }
+        val logos =
+            logoIds.distinct().mapNotNull { id -> decode(id)?.let { EggLogo(it) } }
                 .ifEmpty { decode(R.drawable.app_logo)?.let { listOf(EggLogo(it)) } ?: emptyList() }
-        cached = result
-        return result
+        val bundle = EggBundle(logos, crests.ifEmpty { logos.take(2) })
+        cached = bundle
+        return bundle
     }
 
     private fun decode(@DrawableRes id: Int): ImageBitmap? =
@@ -289,329 +327,451 @@ private class EggAssets(private val context: Context) {
         } catch (_: Throwable) {
             null
         }
-}
-
-private fun hash(n: Int): Double {
-    val v = sin(n * 127.1 + 311.7) * 43758.5453
-    return v - kotlin.math.floor(v)
-}
-
-/**
- * DARK "Logo Storm": logos POP in (scale 0→1 with overshoot), drift outward,
- * twinkle, and fade — across a few staggered bursts over ~4.5s. Elegant, not chaotic.
- */
-private class LogoStormScene(
-    private val logos: List<EggLogo>,
-    private val reduceMotion: Boolean,
-) : EggScene {
-    private val startNanos = System.nanoTime()
-    private var seeded = false
-    private val sprites = ArrayList<LogoSprite>()
-
-    private class LogoSprite(
-        val logo: EggLogo,
-        val birth: Double, // seconds after scene start
-        val life: Double,
-        val originX: Double, // 0..1 of width
-        val originY: Double, // 0..1 of height
-        val driftX: Double, // px over its life
-        val driftY: Double,
-        val sizeFrac: Double, // of min(w,h)
-        val spin: Double,
-        val twinklePhase: Double,
-    )
-
-    private fun seed(size: Size) {
-        if (seeded || logos.isEmpty()) return
-        seeded = true
-        if (reduceMotion) {
-            // A single calm frame: a gentle ring of crests, no motion.
-            val count = min(6, max(3, logos.size))
-            for (i in 0 until count) {
-                val a = i.toDouble() / count * PI * 2
-                sprites.add(
-                    LogoSprite(
-                        logo = logos[i % logos.size],
-                        birth = 0.0,
-                        life = CALM_LIFE,
-                        originX = 0.5 + cos(a) * 0.26,
-                        originY = 0.42 + sin(a) * 0.20,
-                        driftX = 0.0,
-                        driftY = 0.0,
-                        sizeFrac = 0.13,
-                        spin = 0.0,
-                        twinklePhase = 0.0,
-                    ),
-                )
-            }
-            return
-        }
-        var idx = 0
-        for (burst in 0 until BURSTS) {
-            val burstAt = burst * BURST_GAP
-            val perBurst = 7 + (burst % 2) * 3
-            for (k in 0 until perBurst) {
-                val h0 = hash(idx * 3 + 1)
-                val h1 = hash(idx * 5 + 9)
-                val h2 = hash(idx * 7 + 17)
-                val h3 = hash(idx * 11 + 23)
-                val angle = h2 * PI * 2
-                val reach = 90.0 + h3 * 220.0
-                sprites.add(
-                    LogoSprite(
-                        logo = logos[idx % logos.size],
-                        birth = burstAt + h0 * 0.5,
-                        life = 1.5 + h1 * 1.3,
-                        originX = 0.14 + h0 * 0.72,
-                        originY = 0.16 + h1 * 0.6,
-                        driftX = cos(angle) * reach,
-                        driftY = sin(angle) * reach - 40.0, // a gentle upward bias
-                        sizeFrac = 0.07 + h3 * 0.07,
-                        spin = (h2 - 0.5) * 0.9,
-                        twinklePhase = h1 * PI * 2,
-                    ),
-                )
-                idx++
-            }
-        }
-    }
-
-    override fun draw(scope: DrawScope) {
-        val size = scope.size
-        if (size.width <= 0f || size.height <= 0f) return
-        seed(size)
-        val t = (System.nanoTime() - startNanos) / 1_000_000_000.0
-        val minDim = min(size.width, size.height).toDouble()
-
-        for (s in sprites) {
-            val local = t - s.birth
-            if (local < 0.0) continue
-            if (!reduceMotion && local > s.life) continue
-            val p = if (reduceMotion) 0.55 else (local / s.life).coerceIn(0.0, 1.0)
-
-            // Pop-in with overshoot, then ease out; fade in fast, fade out late.
-            val popIn = popOvershoot((local / 0.32).coerceIn(0.0, 1.0))
-            val fade =
-                if (reduceMotion) {
-                    0.9
-                } else {
-                    val rise = (local / 0.25).coerceIn(0.0, 1.0)
-                    val fall = 1.0 - smooth(0.62, 1.0, p)
-                    rise * fall
-                }
-            val twinkle = if (reduceMotion) 1.0 else 0.78 + 0.22 * sin(t * 7.0 + s.twinklePhase)
-            val alpha = (fade * twinkle).coerceIn(0.0, 1.0)
-            if (alpha <= 0.01) continue
-
-            val drift = ease(p)
-            val cx = s.originX * size.width + s.driftX * drift
-            val cy = s.originY * size.height + s.driftY * drift
-            val dim = (minDim * s.sizeFrac * popIn).toFloat()
-            if (dim <= 0.5f) continue
-            drawLogo(scope, s.logo.image, cx.toFloat(), cy.toFloat(), dim, (s.spin * drift), alpha.toFloat())
-        }
-    }
-
-    override fun isFinished(elapsedSeconds: Double): Boolean =
-        if (reduceMotion) elapsedSeconds > CALM_HOLD else elapsedSeconds > TOTAL
 
     private companion object {
-        const val BURSTS = 3
-        const val BURST_GAP = 1.1
-        const val TOTAL = 4.8
-        const val CALM_LIFE = 99.0
-        const val CALM_HOLD = 2.0
+        const val PROVIDER_CAP = 14 // spec: ~14 provider glyphs alongside the 2 crests → ≈16
     }
 }
 
+// ───────────────────────────── FX engine (spec §1 state machine) ─────────────────────────────
+
+/** `mode ∈ {idle, storm, rain}` — what takeover, if any, is currently playing. */
+private enum class FxMode { IDLE, STORM, RAIN }
+
+/** Takeover length for BOTH storm and rain (spec FXDUR). */
+private const val FX_DURATION_MS = 5000.0
+
+/** The 4 typographic shapes the storm converges into (spec SHAPES). */
+private val FX_SHAPES = listOf("$", ":)", "</>", "{ }")
+
+private fun rand(rng: kotlin.random.Random, a: Double, b: Double): Double = a + rng.nextDouble() * (b - a)
+private fun clamp01(x: Double): Double = if (x < 0.0) 0.0 else if (x > 1.0) 1.0 else x
+
 /**
- * LIGHT "Cloud Token Rain": soft grey clouds wearing cloud-tier crests drift across
- * the TOP and rain gold/silver token coins that fall under gravity and BOUNCE off the
- * screen boundaries as they tumble down, then settle and fade. ~5.5s.
+ * The single, long-lived easter-egg FX engine — the Android port of the website's
+ * `#bgFx` overlay. It owns the `{idle,storm,rain}` state machine PLUS an independent
+ * boundary-pop coin pool that COEXISTS with any takeover. One frame loop in the
+ * composable drives it; when nothing is alive, [tick] returns false and the loop parks.
+ *
+ * All simulation runs in [draw] (the only place the live canvas size is known); [tick]
+ * just stamps the wall-clock for `dt` and reports the last-known liveness so the loop
+ * can stop. Particle objects are pooled / reused — no per-frame allocations on the hot
+ * path beyond the occasional spawn, and the shape point-clouds are cached per glyph.
  */
-private class CloudTokenRainScene(
-    private val logos: List<EggLogo>,
-    private val reduceMotion: Boolean,
-) : EggScene {
-    private var lastNanos = System.nanoTime()
-    private var seeded = false
+private class FxEngine {
+    private var mode = FxMode.IDLE
+    private var reduceMotion = false
+
+    // Clock. `nowMs`/`lastMs` are wall-clock ms; `dt` is the clamped per-frame step.
+    private var nowMs = 0.0
+    private var lastMs = -1.0
+    private var dt = 0.016
+    private var fxStartMs = 0.0
+
+    // Live canvas size (CSS-px equivalent), refreshed every draw.
+    private var w = 0.0
+    private var h = 0.0
+
+    // Storm state.
+    private var logos: List<EggLogo> = emptyList()
+    private val sparks = ArrayList<Spark>()
+    private var phaseI = 0
+    private val shapeCache = HashMap<String, List<DoubleArray>>() // text → normalized {x,y} points
+    private var shapePick = 0
+    private val stormRng = kotlin.random.Random(System.nanoTime())
+
+    // Rain state.
+    private var crests: List<EggLogo> = emptyList()
     private val clouds = ArrayList<Cloud>()
-    private val coins = ArrayList<Coin>()
+    private val tokens = ArrayList<Token>()
+    private val ledges = ArrayList<DoubleArray>() // {l, r, t}
+    private var nextEmitMs = 0.0
+    private val rainRng = kotlin.random.Random(System.nanoTime() xor 0x5DEECE66DL)
+
+    // Boundary-pop pool (coexists with any mode).
+    private val popCoins = ArrayList<Token>()
+    private val popRng = kotlin.random.Random(System.nanoTime() xor 0x12345L)
+
+    private var aliveCache = false
+
+    // ── particles ────────────────────────────────────────────────────────────
+    private class Spark(
+        var li: Int = 0,
+        var x: Double = 0.0, var y: Double = 0.0,
+        var vx: Double = 0.0, var vy: Double = 0.0,
+        var size: Double = 0.0,
+        var rot: Double = 0.0, var vr: Double = 0.0,
+        var tw: Double = 0.0,
+        var hasTarget: Boolean = false, var tx: Double = 0.0, var ty: Double = 0.0,
+    )
 
     private class Cloud(
-        var x: Double,
-        val y: Double,
-        val vx: Double,
-        val scale: Double,
-        val crest: EggLogo?,
-        var rainTimer: Double,
+        var x: Double = 0.0, var y: Double = 0.0,
+        var wid: Double = 0.0, var vx: Double = 0.0,
+        var crest: Int = 0, var seed: Double = 0.0,
     )
 
-    private class Coin(
-        var x: Double,
-        var y: Double,
-        var vx: Double,
-        var vy: Double,
-        val radius: Double,
-        val gold: Boolean,
-        var spin: Double,
-        val spinRate: Double,
-        var ttl: Double,
+    /** A coin used by BOTH the rain and the boundary pop (shared edge-flip rendering). */
+    private class Token(
+        var x: Double = 0.0, var y: Double = 0.0,
+        var vx: Double = 0.0, var vy: Double = 0.0,
+        var r: Double = 0.0,
+        var gold: Boolean = true,
+        var flip: Double = 0.0, var vflip: Double = 0.0,
+        var tilt: Double = 0.0, var vtilt: Double = 0.0,
+        var rest: Int = 0,
+        // Boundary-pop only:
+        var g: Double = 0.0, var t: Double = 0.0, var ballistic: Boolean = false,
     )
 
-    private fun seed(size: Size) {
-        if (seeded) return
-        seeded = true
-        val crest = logos.firstOrNull()
-        val cloudCount = if (reduceMotion) 2 else 3
-        for (i in 0 until cloudCount) {
-            val h = hash(i * 9 + 3)
-            clouds.add(
-                Cloud(
-                    x = (-0.2 + i * 0.4) * size.width,
-                    y = (0.06 + h * 0.10) * size.height.toDouble(),
-                    vx = if (reduceMotion) 0.0 else (24.0 + h * 26.0),
-                    scale = 0.9 + h * 0.5,
-                    crest = crest,
-                    rainTimer = h * 0.3,
+    // ── lifecycle entry points (called from composition) ─────────────────────
+    fun startSummon(kind: EggKind, reduce: Boolean, bundle: EggBundle) {
+        reduceMotion = reduce
+        if (reduce) return // spec §6: reduce-motion disables takeovers entirely
+        logos = bundle.logos
+        crests = bundle.crests
+        // Stamp the clock NOW so fxStart is on the same timeline as later frames.
+        nowMs = System.nanoTime() / 1_000_000.0
+        if (kind == EggKind.LOGO_STORM) startStorm() else startRain()
+        // Re-arm dt so the first frame uses dt = 0.016 (spec).
+        lastMs = -1.0
+        aliveCache = true
+    }
+
+    fun startBoundary(side: EdgeSide, bundle: EggBundle) {
+        if (reduceMotion) return
+        // Defer the actual spawn to the first tick where we know w/h; stash intent.
+        pendingPop = side
+        aliveCache = true
+    }
+
+    private var pendingPop: EdgeSide? = null
+
+    // ── frame loop hooks ──────────────────────────────────────────────────────
+    /** Stamp the clock; return whether anything is still alive (loop keeps running). */
+    fun tick(nowNanos: Long): Boolean {
+        nowMs = nowNanos / 1_000_000.0
+        dt = if (lastMs < 0.0) 0.016 else ((nowMs - lastMs) / 1000.0).coerceIn(0.0, 0.05)
+        lastMs = nowMs
+        return aliveCache
+    }
+
+    fun draw(scope: DrawScope) {
+        val size = scope.size
+        w = size.width.toDouble()
+        h = size.height.toDouble()
+        if (w <= 0.0 || h <= 0.0) return
+        if (nowMs == 0.0) nowMs = System.nanoTime() / 1_000_000.0
+
+        // Drain a queued boundary pop now that w/h are known.
+        pendingPop?.let { side -> spawnBoundary(side); pendingPop = null }
+
+        when (mode) {
+            FxMode.STORM -> updateStorm(scope)
+            FxMode.RAIN -> updateRain(scope)
+            FxMode.IDLE -> {}
+        }
+        updatePop(scope)
+
+        aliveCache = mode != FxMode.IDLE || popCoins.isNotEmpty()
+    }
+
+    // ── DARK LOGO STORM (spec §3) ─────────────────────────────────────────────
+    private fun startStorm() {
+        mode = FxMode.STORM
+        fxStartMs = nowMs
+        phaseI = 0
+        sparks.clear()
+        val n = if (logos.isEmpty()) 0 else SPARK_COUNT
+        repeat(n) {
+            sparks.add(
+                Spark(
+                    li = (stormRng.nextDouble() * logos.size).toInt().coerceIn(0, logos.size - 1),
+                    x = rand(stormRng, 0.0, w), y = rand(stormRng, 0.0, h),
+                    size = rand(stormRng, 22.0, 48.0),
+                    rot = rand(stormRng, -0.5, 0.5), vr = rand(stormRng, -2.0, 2.0),
+                    tw = rand(stormRng, 0.0, 6.28),
                 ),
             )
         }
     }
 
-    override fun draw(scope: DrawScope) {
-        val size = scope.size
-        if (size.width <= 0f || size.height <= 0f) return
-        seed(size)
-        val now = System.nanoTime()
-        val dt = ((now - lastNanos) / 1_000_000_000.0).coerceIn(0.0, 0.05)
-        lastNanos = now
-        val w = size.width.toDouble()
-        val h = size.height.toDouble()
+    private fun pickShape(): String {
+        val s = FX_SHAPES[shapePick % FX_SHAPES.size]
+        shapePick++
+        return s
+    }
 
-        // Advance + draw clouds; each periodically drops a coin.
-        for (c in clouds) {
-            c.x += c.vx * dt
-            if (c.x - 120.0 * c.scale > w) c.x = -160.0 * c.scale
-            drawCloud(scope, c.x.toFloat(), c.y.toFloat(), c.scale.toFloat())
-            c.crest?.let { drawLogo(scope, it.image, c.x.toFloat(), c.y.toFloat(), (44.0 * c.scale).toFloat(), 0.0, 0.95f) }
-
-            if (!reduceMotion) {
-                c.rainTimer -= dt
-                if (c.rainTimer <= 0.0 && coins.size < MAX_COINS) {
-                    c.rainTimer = 0.22 + hash((c.x.toInt())) * 0.25
-                    spawnCoin(c.x + (hash(coins.size * 13) - 0.5) * 90.0 * c.scale, c.y + 18.0 * c.scale)
-                }
-            }
-        }
-
-        if (reduceMotion && coins.isEmpty()) {
-            // One calm frame: a few settled coins under each cloud, no physics.
-            for (c in clouds) {
-                for (k in 0 until 3) {
-                    spawnCoin(c.x + (k - 1) * 26.0, h - 30.0 - k * 4.0).apply { vy = 0.0; vx = 0.0 }
-                }
-            }
-        }
-
-        // Advance + draw coins with gravity + boundary bounces.
-        val it = coins.iterator()
-        while (it.hasNext()) {
-            val coin = it.next()
-            if (!reduceMotion) {
-                coin.vy += GRAVITY * dt
-                coin.x += coin.vx * dt
-                coin.y += coin.vy * dt
-                coin.spin += coin.spinRate * dt
-                // Bounce off the side walls.
-                if (coin.x < coin.radius) { coin.x = coin.radius; coin.vx = -coin.vx * RESTITUTION }
-                if (coin.x > w - coin.radius) { coin.x = w - coin.radius; coin.vx = -coin.vx * RESTITUTION }
-                // Bounce off the floor, losing energy until it settles.
-                if (coin.y > h - coin.radius) {
-                    coin.y = h - coin.radius
-                    coin.vy = -coin.vy * RESTITUTION
-                    coin.vx *= 0.82
-                    if (kotlin.math.abs(coin.vy) < 26.0) { coin.vy = 0.0; coin.ttl -= dt * 1.5 }
-                }
-                if (coin.y >= h - coin.radius - 0.5 && kotlin.math.abs(coin.vy) < 1.0) coin.ttl -= dt
-            }
-            coin.ttl -= dt * 0.25
-            if (coin.ttl <= 0.0) { it.remove(); continue }
-            val alpha = coin.ttl.coerceIn(0.0, 1.0).toFloat()
-            drawCoin(scope, coin.x.toFloat(), coin.y.toFloat(), coin.radius.toFloat(), coin.gold, coin.spin, alpha)
+    private fun burstAll() {
+        val cx = rand(stormRng, 0.2 * w, 0.8 * w)
+        val cy = rand(stormRng, 0.2 * h, 0.62 * h)
+        for (p in sparks) {
+            p.hasTarget = false
+            val ang = kotlin.math.atan2(p.y - cy, p.x - cx) + rand(stormRng, -0.5, 0.5)
+            val sp = rand(stormRng, 140.0, 460.0)
+            p.vx = cos(ang) * sp
+            p.vy = sin(ang) * sp - rand(stormRng, 20.0, 140.0) // slight upward bias
+            p.vr = rand(stormRng, -3.0, 3.0)
         }
     }
 
-    private fun spawnCoin(x: Double, y: Double): Coin {
-        val seed = coins.size * 31 + 7
-        val coin =
-            Coin(
-                x = x,
-                y = y,
-                vx = (hash(seed) - 0.5) * 120.0,
-                vy = 20.0 + hash(seed + 1) * 40.0,
-                radius = 9.0 + hash(seed + 2) * 5.0,
-                gold = hash(seed + 3) > 0.42,
-                spin = hash(seed + 4) * PI * 2,
-                spinRate = (hash(seed + 5) - 0.5) * 6.0,
-                ttl = 2.4 + hash(seed + 6) * 0.8,
+    private fun toShape(text: String) {
+        val pts = samplePoints(text)
+        if (pts.isEmpty()) { burstAll(); return }
+        val n = sparks.size
+        val use: List<DoubleArray> =
+            if (pts.size > n) {
+                val stride = pts.size.toDouble() / n
+                List(n) { i -> pts[(i * stride).toInt().coerceIn(0, pts.size - 1)] }
+            } else {
+                pts
+            }
+        val cx = 0.5 * w
+        val cy = 0.42 * h
+        val sc = min(w, h) * 0.62
+        for (j in sparks.indices) {
+            val s = sparks[j]
+            if (j < use.size) {
+                val pt = use[j % use.size]
+                s.hasTarget = true
+                s.tx = cx + pt[0] * sc
+                s.ty = cy + pt[1] * sc
+            } else {
+                s.hasTarget = false // leftover sparks drift free
+            }
+        }
+    }
+
+    /** Rasterize a glyph to a normalized origin-centred point cloud, cached per string. */
+    private fun samplePoints(text: String): List<DoubleArray> {
+        shapeCache[text]?.let { return it }
+        val dim = 300
+        val bmp = android.graphics.Bitmap.createBitmap(dim, dim, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bmp)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 170f
+            isFakeBoldText = true
+        }
+        // Baseline-middle: shift by font metrics so the glyph centres on (150,150).
+        val fm = paint.fontMetrics
+        val baseline = 150f - (fm.ascent + fm.descent) / 2f
+        c.drawText(text, 150f, baseline, paint)
+        val pixels = IntArray(dim * dim)
+        bmp.getPixels(pixels, 0, dim, 0, 0, dim, dim)
+        bmp.recycle()
+        val out = ArrayList<DoubleArray>()
+        var y = 0
+        while (y < dim) {
+            var x = 0
+            while (x < dim) {
+                val alpha = (pixels[y * dim + x] ushr 24) and 0xFF
+                if (alpha > 128) out.add(doubleArrayOf((x - 150) / 300.0, (y - 150) / 300.0))
+                x += 7
+            }
+            y += 7
+        }
+        shapeCache[text] = out
+        return out
+    }
+
+    private fun runDuePhases() {
+        // Offsets from fxStart: +0 burst, +1050 shape, +2250 burst, +3050 shape, +4200 burst.
+        val rel = nowMs - fxStartMs
+        while (phaseI < PHASE_AT.size && rel >= PHASE_AT[phaseI]) {
+            if (PHASE_IS_BURST[phaseI]) burstAll() else toShape(pickShape())
+            phaseI++
+        }
+    }
+
+    private fun updateStorm(scope: DrawScope) {
+        runDuePhases()
+        val env = clamp01((nowMs - fxStartMs) / 350.0) * clamp01((fxStartMs + FX_DURATION_MS - nowMs) / 650.0)
+        val dragHalf = Math.pow(0.5, dt)
+        for (p in sparks) {
+            if (p.hasTarget) {
+                val dx = p.tx - p.x
+                val dy = p.ty - p.y
+                p.vx += (dx * 150.0 - p.vx * 24.0) * dt
+                p.vy += (dy * 150.0 - p.vy * 24.0) * dt
+            } else {
+                p.vx = p.vx * dragHalf + sin(nowMs * 0.001 + p.tw) * 7.0 * dt
+                p.vy = p.vy * dragHalf + 14.0 * dt
+            }
+            p.x += p.vx * dt
+            p.y += p.vy * dt
+            p.rot += p.vr * dt
+            val a = env * (0.85 + 0.15 * sin(nowMs * 0.012 + p.tw))
+            if (a <= 0.0 || logos.isEmpty()) continue
+            drawLogo(scope, logos[p.li % logos.size].image, p.x.toFloat(), p.y.toFloat(), p.size.toFloat(), p.rot, a.toFloat())
+        }
+        if (nowMs > fxStartMs + FX_DURATION_MS) {
+            mode = FxMode.IDLE
+            sparks.clear()
+        }
+    }
+
+    // ── LIGHT CLOUD TOKEN RAIN (spec §4) ──────────────────────────────────────
+    private fun startRain() {
+        mode = FxMode.RAIN
+        fxStartMs = nowMs
+        tokens.clear()
+        clouds.clear()
+        nextEmitMs = nowMs + 150.0
+        // Ledges: equivalent of the web's DOM rect query. Android has no DOM here, so
+        // we synthesize a couple of plausible mid-screen ledges for coins to clatter off
+        // (keeps the bounce physics visible without a live view tree).
+        ledges.clear()
+        ledges.add(doubleArrayOf(w * 0.10, w * 0.50, h * 0.46))
+        ledges.add(doubleArrayOf(w * 0.55, w * 0.92, h * 0.62))
+        val nc = CLOUD_COUNT
+        for (i in 0 until nc) {
+            clouds.add(
+                Cloud(
+                    x = ((i + 0.5) / nc) * w + rand(rainRng, -30.0, 30.0),
+                    y = rand(rainRng, 26.0, 120.0),
+                    wid = rand(rainRng, 210.0, 360.0),
+                    vx = rand(rainRng, -10.0, 10.0),
+                    crest = if (crests.isEmpty()) 0 else i % crests.size,
+                    seed = rand(rainRng, 0.0, 99.0),
+                ),
             )
-        coins.add(coin)
-        return coin
-    }
-
-    override fun isFinished(elapsedSeconds: Double): Boolean =
-        if (reduceMotion) elapsedSeconds > 2.2 else elapsedSeconds > TOTAL && coins.isEmpty()
-
-    private companion object {
-        const val GRAVITY = 1500.0
-        const val RESTITUTION = 0.62
-        const val MAX_COINS = 60
-        const val TOTAL = 5.6
-    }
-}
-
-/**
- * Boundary "you've reached the end": a small row of gold/silver tokens pops up at the
- * struck edge and bounces once with a soft squash, then fades. ~0.8s.
- */
-private class BoundaryScene(
-    private val side: EdgeSide,
-    private val reduceMotion: Boolean,
-) : EggScene {
-    private val startNanos = System.nanoTime()
-    private val count = 5
-
-    override fun draw(scope: DrawScope) {
-        val size = scope.size
-        if (size.width <= 0f || size.height <= 0f) return
-        val t = (System.nanoTime() - startNanos) / 1_000_000_000.0
-        val p = (t / DURATION).coerceIn(0.0, 1.0)
-        // One up-and-down hop with a soft squash at the apex; quick fade at the end.
-        val hop = sin(p * PI) // 0→1→0
-        val squash = 1.0 + 0.18 * sin(p * PI * 2)
-        val fade = (1.0 - smooth(0.7, 1.0, p)).toFloat()
-        if (fade <= 0.01f) return
-
-        val baseY = if (side == EdgeSide.TOP) size.height * 0.085f else size.height * 0.915f
-        val dir = if (side == EdgeSide.TOP) 1.0 else -1.0
-        val rise = (if (reduceMotion) 6.0 else 26.0) * hop * dir
-        val spacing = min(size.width / (count + 1), 64f)
-        val startX = size.width / 2f - spacing * (count - 1) / 2f
-
-        for (i in 0 until count) {
-            val cx = startX + spacing * i
-            val cy = baseY - rise.toFloat()
-            val gold = (i % 2 == 0)
-            val r = spacing * 0.16f
-            drawCoinSquashed(scope, cx, cy, r, squash.toFloat(), gold, fade)
         }
     }
 
-    override fun isFinished(elapsedSeconds: Double): Boolean = elapsedSeconds > DURATION
+    private fun emit() {
+        for (cl in clouds) {
+            val n = 2 + (rainRng.nextDouble() * 3).toInt() // 2..4
+            repeat(n) {
+                tokens.add(
+                    Token(
+                        x = cl.x + rand(rainRng, -0.42 * cl.wid, 0.42 * cl.wid),
+                        y = cl.y + cl.wid * 0.18,
+                        vx = rand(rainRng, -40.0, 40.0),
+                        vy = rand(rainRng, 20.0, 90.0),
+                        r = rand(rainRng, 5.0, 11.0),
+                        gold = rainRng.nextDouble() < 0.5,
+                        flip = rand(rainRng, 0.0, 6.28),
+                        vflip = rand(rainRng, 5.0, 11.0) * (if (rainRng.nextDouble() < 0.5) 1.0 else -1.0),
+                        tilt = rand(rainRng, 0.0, 6.28),
+                        vtilt = rand(rainRng, -3.0, 3.0),
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun updateRain(scope: DrawScope) {
+        // Advance + draw clouds first.
+        for (cl in clouds) {
+            cl.x += cl.vx * dt
+            if (cl.x < -cl.wid) cl.x = w + cl.wid
+            if (cl.x > w + cl.wid) cl.x = -cl.wid
+            val crest = if (crests.isEmpty()) null else crests[cl.crest % crests.size]
+            drawCloud(scope, cl.x, cl.y + sin(nowMs * 0.0008 + cl.seed) * 4.0, cl.wid, crest)
+        }
+        if (nowMs >= nextEmitMs && nowMs < fxStartMs + 4000.0) {
+            emit()
+            nextEmitMs = nowMs + rand(rainRng, 85.0, 165.0)
+        }
+        val fade = if (nowMs > fxStartMs + 4300.0) clamp01((fxStartMs + FX_DURATION_MS + 700.0 - nowMs) / 1000.0) else 1.0
+        val drag = Math.pow(0.55, dt)
+        var i = tokens.size - 1
+        while (i >= 0) {
+            val t = tokens[i]
+            t.vy += 980.0 * dt
+            t.vx *= drag
+            t.x += t.vx * dt
+            t.y += t.vy * dt
+            t.flip += t.vflip * dt
+            t.tilt += t.vtilt * dt
+            // Side walls.
+            if (t.x < t.r) { t.x = t.r; t.vx = kotlin.math.abs(t.vx) * 0.5; t.vflip *= 0.85 }
+            if (t.x > w - t.r) { t.x = w - t.r; t.vx = -kotlin.math.abs(t.vx) * 0.5; t.vflip *= 0.85 }
+            // Ledges (top band only, while falling).
+            if (t.vy > 0.0) {
+                for (R in ledges) {
+                    if (t.x > R[0] - t.r && t.x < R[1] + t.r && t.y > R[2] - t.r && t.y < R[2] + 12.0) {
+                        t.y = R[2] - t.r
+                        t.vy = -t.vy * 0.5
+                        t.vx += rand(rainRng, -30.0, 30.0)
+                        t.vflip *= 0.85
+                    }
+                }
+            }
+            // Floor.
+            if (t.y > h - t.r) {
+                t.y = h - t.r
+                if (kotlin.math.abs(t.vy) > 55.0) {
+                    t.vy = -kotlin.math.abs(t.vy) * 0.48
+                    t.vx *= 0.7
+                    t.vflip *= 0.7
+                } else {
+                    t.vy = 0.0
+                    t.vx *= 0.82
+                    t.vflip *= 0.86
+                    t.rest++
+                }
+            }
+            drawToken(scope, t.x, t.y, t.r, t.gold, t.flip, t.tilt, fade.toFloat())
+            if (nowMs > fxStartMs + FX_DURATION_MS + 800.0 || t.rest > 26) tokens.removeAt(i)
+            i--
+        }
+        if (nowMs > fxStartMs + FX_DURATION_MS && tokens.isEmpty()) {
+            mode = FxMode.IDLE
+            clouds.clear()
+        }
+    }
+
+    // ── BOUNDARY POP (spec §5) ────────────────────────────────────────────────
+    private fun spawnBoundary(side: EdgeSide) {
+        val top = side == EdgeSide.TOP
+        val y0 = if (top) 8.0 else h - 8.0
+        val dir = if (top) 1.0 else -1.0
+        for (k in 0 until 10) {
+            popCoins.add(
+                Token(
+                    x = ((k + 0.5) / 10.0) * w + rand(popRng, -14.0, 14.0),
+                    y = y0,
+                    vy = dir * rand(popRng, 280.0, 460.0),
+                    g = -dir * 1150.0, // reverse gravity: arcs out, returns to its edge
+                    r = rand(popRng, 5.0, 9.0),
+                    gold = popRng.nextDouble() < 0.5,
+                    flip = rand(popRng, 0.0, 6.28),
+                    vflip = rand(popRng, 6.0, 12.0),
+                    tilt = rand(popRng, 0.0, 6.28),
+                    vtilt = rand(popRng, -2.0, 2.0),
+                    ballistic = true,
+                ),
+            )
+        }
+    }
+
+    private fun updatePop(scope: DrawScope) {
+        if (popCoins.isEmpty()) return
+        var i = popCoins.size - 1
+        while (i >= 0) {
+            val c = popCoins[i]
+            c.t += dt
+            c.vy += c.g * dt
+            c.y += c.vy * dt
+            c.flip += c.vflip * dt
+            c.tilt += c.vtilt * dt
+            val fa = if (c.t > 0.55) clamp01((0.95 - c.t) / 0.4) else 1.0
+            drawToken(scope, c.x, c.y, c.r, c.gold, c.flip, c.tilt, fa.toFloat())
+            if (c.t > 0.95) popCoins.removeAt(i)
+            i--
+        }
+    }
 
     private companion object {
-        const val DURATION = 0.8
+        const val SPARK_COUNT = 96
+        const val CLOUD_COUNT = 7
+        // Phase timeline offsets (ms) from fxStart and whether each is a burst.
+        val PHASE_AT = doubleArrayOf(0.0, 1050.0, 2250.0, 3050.0, 4200.0)
+        val PHASE_IS_BURST = booleanArrayOf(true, false, true, false, true)
     }
 }
 
@@ -637,67 +797,136 @@ private fun drawLogo(scope: DrawScope, image: ImageBitmap, cx: Float, cy: Float,
     }
 }
 
-/** A soft, layered grey cloud built from overlapping translucent lobes. */
-private fun drawCloud(scope: DrawScope, cx: Float, cy: Float, scale: Float) {
-    val base = 30f * scale
-    val lobes = listOf(
-        Triple(-1.1f, 0.15f, 0.9f),
-        Triple(0f, -0.25f, 1.25f),
-        Triple(1.1f, 0.15f, 0.95f),
-        Triple(0.1f, 0.35f, 1.1f),
+/**
+ * A large, fluffy, well-defined cloud (spec §4 `puffPath`): four overlapping lobes over
+ * a rectangular base, with a soft drop shadow, a vertical body gradient, a bright top
+ * highlight, and an optional cloud-tier crest perched on its crest. `cx,cy` is the cloud
+ * centre and `width` its full width in px; height = width × 0.46.
+ */
+private fun drawCloud(scope: DrawScope, cx: Double, cy: Double, width: Double, crest: EggLogo?) {
+    val x = cx
+    val y = cy
+    val w = width
+    val hgt = w * 0.46
+
+    // 1) Shadow under the cloud.
+    scope.drawPath(puffPath(x, y + 0.30 * hgt, 0.90 * w, 0.70 * hgt), color = Color(0x1A2C3038))
+
+    // 2) Body — vertical light→dark grey gradient.
+    val top = (y - 0.7 * hgt).toFloat()
+    val bot = (y + 0.7 * hgt).toFloat()
+    val body = androidx.compose.ui.graphics.Brush.verticalGradient(
+        colorStops = arrayOf(
+            0f to Color(0xF0D8DCE2),
+            0.55f to Color(0xEBB2B8C0),
+            1f to Color(0xE6969CA5),
+        ),
+        startY = top,
+        endY = bot,
     )
-    for ((dx, dy, s) in lobes) {
-        scope.drawCircle(
-            color = Color(0xFFB8C0CC).copy(alpha = 0.28f),
-            radius = base * s,
-            center = Offset(cx + dx * base, cy + dy * base),
-        )
-    }
-    for ((dx, dy, s) in lobes) {
-        scope.drawCircle(
-            color = Color.White.copy(alpha = 0.55f),
-            radius = base * s * 0.86f,
-            center = Offset(cx + dx * base, cy + dy * base - base * 0.12f),
-        )
+    scope.drawPath(puffPath(x, y, w, hgt), brush = body)
+
+    // 3) Highlight crest (bright top).
+    scope.drawPath(puffPath(x, y - 0.20 * hgt, 0.66 * w, 0.50 * hgt), color = Color(0x57FFFFFF))
+
+    // 4) Crest image perched above the cloud.
+    crest?.let {
+        val s = (hgt * 1.05)
+        drawLogo(scope, it.image, (x).toFloat(), (y - s * 0.46).toFloat(), s.toFloat(), 0.0, 0.92f)
     }
 }
 
-/** A spinning coin: side-on width shrinks with spin to fake a flat disc tumbling. */
-private fun drawCoin(scope: DrawScope, cx: Float, cy: Float, radius: Float, gold: Boolean, spin: Double, alpha: Float) {
-    val widthScale = (0.35f + 0.65f * kotlin.math.abs(cos(spin)).toFloat())
-    drawCoinFace(scope, cx, cy, radius, widthScale, 1f, gold, alpha)
+/** Build the spec's closed puff path: 4 arcs + a base rectangle. */
+private fun puffPath(x: Double, y: Double, w: Double, h: Double): androidx.compose.ui.graphics.Path {
+    val path = androidx.compose.ui.graphics.Path()
+    fun lobe(ox: Double, oy: Double, r: Double) {
+        path.addOval(
+            androidx.compose.ui.geometry.Rect(
+                (x + ox - r).toFloat(), (y + oy - r).toFloat(),
+                (x + ox + r).toFloat(), (y + oy + r).toFloat(),
+            ),
+        )
+    }
+    lobe(-0.34 * w, 0.05 * h, 0.50 * h)
+    lobe(-0.12 * w, -0.12 * h, 0.64 * h)
+    lobe(0.12 * w, -0.16 * h, 0.68 * h)
+    lobe(0.34 * w, 0.02 * h, 0.54 * h)
+    path.addRect(
+        androidx.compose.ui.geometry.Rect(
+            (x - 0.46 * w).toFloat(), (y - 2.0).toFloat(),
+            (x - 0.46 * w + 0.92 * w).toFloat(), (y - 2.0 + 0.56 * h).toFloat(),
+        ),
+    )
+    return path
 }
 
-/** A coin with a vertical squash factor (boundary hop). */
-private fun drawCoinSquashed(scope: DrawScope, cx: Float, cy: Float, radius: Float, squash: Float, gold: Boolean, alpha: Float) {
-    drawCoinFace(scope, cx, cy, radius, 1f, squash, gold, alpha)
-}
-
-private fun drawCoinFace(scope: DrawScope, cx: Float, cy: Float, radius: Float, widthScale: Float, heightScale: Float, gold: Boolean, alpha: Float) {
-    val rim = if (gold) Color(0xFFB8860B) else Color(0xFF8A8D91)
-    val face = if (gold) Color(0xFFFFD24A) else Color(0xFFD9DDE3)
-    val shine = if (gold) Color(0xFFFFF1B8) else Color(0xFFF7F9FC)
-    scope.withTransform({ scale(scaleX = max(0.05f, widthScale), scaleY = max(0.05f, heightScale), pivot = Offset(cx, cy)) }) {
-        drawCircle(color = rim.copy(alpha = alpha), radius = radius, center = Offset(cx, cy), style = Fill)
-        drawCircle(color = face.copy(alpha = alpha), radius = radius * 0.82f, center = Offset(cx, cy))
-        drawCircle(color = shine.copy(alpha = alpha * 0.85f), radius = radius * 0.28f, center = Offset(cx - radius * 0.22f, cy - radius * 0.22f))
+/**
+ * Gold/silver coin with the spec's EDGE-ON FLIP illusion (§4 `drawToken`): a horizontal
+ * `scaleX = |cos(flip)|` squashes the disc toward an edge view, with an in-plane `tilt`
+ * rotation. At the extreme it draws a thin rim bar; otherwise a radial-gradient face with
+ * an inner rim ring and a specular highlight. Shared by the rain AND the boundary pop.
+ */
+private fun drawToken(scope: DrawScope, x: Double, y: Double, r: Double, gold: Boolean, flip: Double, tilt: Double, a: Float) {
+    if (a <= 0f) return
+    val rr = r.toFloat()
+    val cx = x.toFloat()
+    val cy = y.toFloat()
+    val flipS = max(0.12f, kotlin.math.abs(cos(flip)).toFloat())
+    scope.withTransform({
+        rotate(degrees = (tilt * 180.0 / PI).toFloat(), pivot = Offset(cx, cy))
+        scale(scaleX = flipS, scaleY = 1f, pivot = Offset(cx, cy))
+    }) {
+        if (flipS < 0.16f) {
+            // Edge-on: a thin rim bar.
+            val edge = if (gold) Color(0xFFB8860B) else Color(0xFF9AA3AD)
+            drawRect(
+                color = edge.copy(alpha = a),
+                topLeft = Offset(cx - 0.22f * rr, cy - rr),
+                size = Size(0.44f * rr, 2f * rr),
+            )
+        } else {
+            // Face: radial gradient up-left.
+            val faceStops: Array<Pair<Float, Color>> =
+                if (gold) {
+                    arrayOf(0f to Color(0xFFFFF6D8), 0.45f to Color(0xFFFDC42C), 1f to Color(0xFF9A6B0A))
+                } else {
+                    arrayOf(0f to Color(0xFFFFFFFF), 0.45f to Color(0xFFE3E9EE), 1f to Color(0xFF929AA6))
+                }
+            val face = androidx.compose.ui.graphics.Brush.radialGradient(
+                colorStops = faceStops,
+                center = Offset(cx - 0.35f * rr, cy - 0.40f * rr),
+                radius = rr,
+            )
+            drawCircle(brush = face, radius = rr, center = Offset(cx, cy), alpha = a)
+            // Inner rim ring.
+            val ring = if (gold) Color(0xFF7C5208) else Color(0xFF7D858F)
+            drawCircle(
+                color = ring.copy(alpha = a * 0.6f),
+                radius = 0.82f * rr,
+                center = Offset(cx, cy),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = max(1f, 0.13f * rr)),
+            )
+            // Specular highlight.
+            drawCircle(
+                color = Color.White.copy(alpha = a * 0.85f * 0.75f),
+                radius = 0.22f * rr,
+                center = Offset(cx - 0.32f * rr, cy - 0.34f * rr),
+            )
+        }
     }
 }
 
 // ───────────────────────────── Easing ─────────────────────────────
 
-private fun smooth(edge0: Double, edge1: Double, x: Double): Double {
-    val span = (edge1 - edge0).let { if (it == 0.0) 1.0 else it }
-    val t = ((x - edge0) / span).coerceIn(0.0, 1.0)
-    return t * t * (3 - 2 * t)
-}
-
-private fun ease(x: Double): Double = 1.0 - (1.0 - x) * (1.0 - x) // easeOutQuad
-
-/** Pop-in with a gentle overshoot then settle (back-out style). */
-private fun popOvershoot(x: Double): Double {
+/**
+ * Overshoot ease (spec §7): defined for parity with the web engine. The storm/rain/
+ * boundary paths use spring + ballistic integration directly and don't call it, so it is
+ * kept `@Suppress("unused")` rather than deleted to mirror the reference implementation.
+ */
+@Suppress("unused")
+private fun easeOutBack(x: Double): Double {
     val c1 = 1.70158
     val c3 = c1 + 1.0
     val t = x - 1.0
-    return (1.0 + c3 * t * t * t + c1 * t * t).coerceIn(0.0, 1.25)
+    return 1.0 + c3 * t * t * t + c1 * t * t
 }

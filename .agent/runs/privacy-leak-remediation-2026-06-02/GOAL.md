@@ -20,18 +20,19 @@ When creating or updating the matching `/goal`, include this ledger pointer in t
 
 Each confirmed leak from the 2026-06-02 adversarial review is closed with the real fix (seal or honest-label by design), plus rules, tests, docs, and verification:
 
-- [todo] **P0 Hermes Gateway**: message/event `text`, `senderDisplayName`, attachment bytes + `fileName` are sealed E2E (or, if recon proves the server must read them, the feature is honestly labeled server_readable AND the `deviceOnly` registry/trust claim is corrected). No plaintext private text persists server-readable.
-- [todo] **P1 project_memory_snapshots**: `projectDisplayName` sealed; doc id is opaque (no name-derived slug); list/get/upsert still work.
-- [todo] **P1 dataExport**: field-allowlist / seal-aware export; never emits a plaintext private field.
-- [todo] **P1 knowledge_repos**: repo identity sealed or keyed-hashed; **Pensieve** cloaking enforced (raw embeddings rejected) and legacy keyless dedup oracle removed/keyed.
-- [todo] **P2 usage/budget project text**: sealed, or session_logs trust copy made honest that project names are server-visible via usage_spend (resolve coherence).
-- [todo] **Rules**: `session_logs` manifest/chunk, `chat_threads`, `media_*` converted from denylist to strict `hasOnly()` allowlists; gateway sealed-field rule added.
-- [todo] **Client regressions fixed**: iOS approve/cancel (`liveSummary`), merge (`synthesisSummary`), rename (`customTitle`) write sealed; Android `ThreadInboxStore` reads sealed `cli_sessions`.
-- [todo] **Scanner**: covers project_memory/gateway/knowledge/media and adds a semantic `hasOnly()` check (not string-presence only).
-- [todo] **Scrubber + migration**: covers gateway/relay/text_snippets/project_memory legacy plaintext; an idempotent backfill story (not a manual dry-run) is documented.
-- [todo] **Honesty**: registry.json + regenerated gen/* + website trust + docs match enforced reality; byte-lock tests pass.
-- [todo] **Validation** (must pass): `node scripts/privacy/scan-chat-cloud-plaintext.mjs`; `npm --prefix functions run build`; `npm --prefix functions run test:firestore-rules`; `npm --prefix functions run test:agent-notifications`; `npm --prefix packages/data-domains test`; `cd android && ./gradlew :app:compileDebugKotlin --no-daemon`; targeted Swift cloud-sync tests via `./scripts/test-openburnbar-app.sh`. Plus a fresh adversarial re-scan confirming the named leaks are closed.
-- [todo] Keep `implementation-notes.html` current; link bulky proof from `evidence/`.
+- [done] **P0 Hermes Gateway**: recon proved it's a store-and-forward bridge to a KEYLESS third-party adapter → true E2E = re-architecture (chained goal `hermes-gateway-e2e-rearchitecture`). THIS pass corrected the dishonest `deviceOnly` "sealed" claim (registry/website/docs now honest; tier was already server_readable). E2E itself deferred per Alberto's ratified plan.
+- [done] **P1 project_memory_snapshots**: sealed name + opaque deterministic doc id `pm_+HMAC(slug)`; encryptedSearch.ts drops name/slug, honors `legacyDocID` delete; rules reject plaintext. Verified (rules T11, encrypted-search tests).
+- [done] **P1 dataExport**: `sealAwareSerializeDoc` default-deny on end_to_end/zero_access (sealed envelopes + opaque columns + `redactedFields`). Verified (dataExport.test.ts).
+- [done] **P1 knowledge_repos + Pensieve**: server-keyed `repoMatchToken` + `sealedRepoFullName`; cloaking enforced (raw embeddings rejected); keyless dedup oracle removed → vault-keyed dedupHash/slugHmac. Verified (vitest).
+- [done] **P2 usage/budget project text**: `sealedProjectName`/`sealedLabel` + `projectKeyHash` across Mac/iOS/Android (incl. peer-download readers); rules reject plaintext when sealed; registry honest. Verified (rules T12, Mac app UsageSync+BudgetRule round-trips).
+- [done] **Rules**: `session_logs` manifest/chunk, `chat_threads`, `media_*` → strict `hasOnly()`; `sealedFilename`; `validMobileMissionCancel`. Verified (rules 40→45/45).
+- [done] **Client regressions fixed**: iOS cancel/merge/rename sealed; Android `ThreadInboxStore` sealed read; Android rename fallback no longer attempts a rejected plaintext write. Verified (rules + Android compile).
+- [done] **Scanner**: covers project_memory/gateway/knowledge/media (+ Wave-3 surfaces) + semantic `hasOnly()` check. Verified (scan PASS).
+- [done] **Scrubber + migration**: extended; idempotent `privacyBackfill` callable (gated deletes + reseal watermark). Verified (vitest).
+- [done] **Honesty**: registry.json + regenerated gen/* + website trust + docs match enforced reality. Verified (data-domains 16/16 incl. honesty asserts).
+- [done] **WAVE 3 (Alberto: seal them all)**: approval_policies (sealed + opaque doc id), cli_sessions/{id}/snapshots, rollback_requests, agent_identities, subscription_topics all sealed/hardened. Verified (rules T13-T17, Android compile, scan). iOS compile pending build confirmation.
+- [doing] **Validation**: scan PASS; functions build clean; rules 45/45; agent-notifications PASS; data-domains 16/16; Android compile 0 errors; Mac app UsageSync+BudgetRule round-trips PASS; adversarial closure re-scan confirmed all named leaks CLOSED. REMAINING: iOS OpenBurnBarMobile build-for-testing (in progress).
+- [done] Keep `implementation-notes.html` current; evidence/ holds recon + changelogs + closure proof.
 
 ## Escape Hatch
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Local BurnBar/Hermes platform smoke harness.
 
-Usage:
-  python tools/hermes-platform-burnbar/smoke_local.py smoke --hermes-repo /path/to/hermes-agent
-  python tools/hermes-platform-burnbar/smoke_local.py serve --port 8765
+Usage (paths shown relative to the Hermes repo, where this ships as
+plugins/platforms/burnbar/smoke_local.py):
+  python plugins/platforms/burnbar/smoke_local.py smoke --hermes-repo .
+  python plugins/platforms/burnbar/smoke_local.py serve --port 8765
 
 The smoke command copies this plugin into a local Hermes checkout and exercises
 the real Hermes adapter, registry, send_message routing, HTTP client, event

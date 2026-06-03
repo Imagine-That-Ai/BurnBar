@@ -248,3 +248,68 @@ test("HONEST CLAIMS: connected_devices distinguishes sealed relay from readable 
     "connected_devices summary must disclose the committed gateway E2E migration",
   );
 });
+
+// rollback_requests: previously buried in excludedCollections as "Ephemeral job
+// state." — dishonest, because it carries device-private rollback scope (which
+// embeds absolute file paths for singleFile scope) and Mac-written error
+// diagnostics. It is now folded into conversations_chat (sealed end-to-end) so
+// the registry tells the truth about the file paths / diagnostics it holds.
+
+test("HONEST CLAIMS: rollback_requests is folded into the sealed conversations_chat domain, not hidden as ephemeral state", () => {
+  const chat = registry.domains.find((d) => d.id === "conversations_chat");
+  assert.ok(chat, "expected the conversations_chat domain");
+  assert.equal(chat.encryptionTier, "end_to_end", "conversations_chat must stay end-to-end");
+  // rollback_requests is now an owned, sealed path — not excluded.
+  assert.ok(
+    chat.firestorePaths.includes("rollback_requests"),
+    "conversations_chat must own the rollback_requests path so it is no longer hidden in excludedCollections",
+  );
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(registry.excludedCollections ?? {}, "rollback_requests"),
+    "rollback_requests must be removed from excludedCollections once folded into a sealed domain",
+  );
+  // The device-only facets must name the genuinely private rollback text.
+  const deviceLower = chat.deviceOnly.map((v) => v.toLowerCase());
+  assert.ok(
+    deviceLower.some((v) => v.includes("rollback scope")),
+    "conversations_chat deviceOnly must list rollback scope paths as sealed/device-only",
+  );
+  assert.ok(
+    deviceLower.some((v) => v.includes("rollback error")),
+    "conversations_chat deviceOnly must list rollback error diagnostics as sealed/device-only",
+  );
+});
+
+// The remaining device-private collections that stay in excludedCollections
+// (approval_policies, agent_identities, subscription_topics) carry private text
+// that is now sealed device-only. Their one-line exclusion reasons must stop
+// understating the contract ("Local … config." / "Push-notification topic
+// subscriptions.") and instead state that the private free-text is vault-sealed
+// and the server never reads it.
+
+test("HONEST CLAIMS: sealed device-only excluded collections state the sealed-text contract", () => {
+  const excluded = registry.excludedCollections ?? {};
+  for (const [name, mustMention] of [
+    ["approval_policies", ["sealed", "vault key", "never"]],
+    ["agent_identities", ["seal", "vault key", "never"]],
+    ["subscription_topics", ["sealed", "vault key", "never"]],
+  ]) {
+    const reason = excluded[name];
+    assert.ok(reason, `${name} must remain listed in excludedCollections with an honest reason`);
+    const lower = reason.toLowerCase();
+    for (const needle of mustMention) {
+      assert.ok(
+        lower.includes(needle.toLowerCase()),
+        `${name} exclusion reason must mention "${needle}" so it stops understating the sealed-text contract`,
+      );
+    }
+    // It must not regress to the old understated one-liners.
+    assert.notEqual(reason, "Local policy config.", `${name} must not keep the understated reason`);
+    assert.notEqual(reason, "Local agent identity config.", `${name} must not keep the understated reason`);
+    assert.notEqual(
+      reason,
+      "Push-notification topic subscriptions.",
+      `${name} must not keep the understated reason`,
+    );
+  }
+});
