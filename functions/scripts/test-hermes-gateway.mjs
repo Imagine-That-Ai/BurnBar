@@ -226,8 +226,14 @@ assert.match(rules, /match \/hermes_gateway_device_sessions\/\{sessionId\}/);
 assert.match(rules, /match \/hermes_gateway_token_index\/\{tokenHash\}/);
 
 const firebaseConfig = JSON.parse(readFileSync(new URL("../../firebase.json", import.meta.url), "utf8"));
+const hostingEntries = Array.isArray(firebaseConfig.hosting)
+  ? firebaseConfig.hosting
+  : [firebaseConfig.hosting].filter(Boolean);
+const hostingRewrites = hostingEntries.flatMap((hosting) =>
+  Array.isArray(hosting.rewrites) ? hosting.rewrites : [],
+);
 assert.ok(
-  firebaseConfig.hosting.rewrites.some(
+  hostingRewrites.some(
     (rewrite) =>
       rewrite.source === "/v1/hermes-gateway/**" &&
       rewrite.function?.functionId === "burnBarHermesGateway" &&
