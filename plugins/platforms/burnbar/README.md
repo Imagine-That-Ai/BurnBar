@@ -11,43 +11,42 @@ plugins/platforms/burnbar/
 The plugin implements BurnBar Cloud as a Hermes messaging platform:
 
 - device-code setup against BurnBar's Hermes Gateway API
+- human-in-the-loop oversight (supervised / autonomous gating of slash-confirms)
+- runtime status / model-catalog publication for the BurnBar model picker
 - event polling with durable cursor persistence
 - Hermes replies through `/messages`
 - typing state through `/typing`
 - native attachment delivery through `/attachments/init`
 - standalone cron delivery with `deliver=burnbar`
 
-## Deterministic Local Smoke
+## Tests
+
+The plugin ships a deterministic, dependency-light test suite that loads the
+adapter via `tests/gateway/_plugin_adapter_loader.load_plugin_adapter("burnbar")`
+(no `sys.path` tricks — the `tests/gateway/conftest.py` guard enforces this):
 
 ```bash
-python tools/hermes-platform-burnbar/smoke_local.py smoke \
-  --hermes-repo /path/to/local/hermes-agent
+python -m pytest tests/gateway/test_burnbar_plugin.py -q
 ```
 
-This copies the plugin into the local Hermes checkout and exercises:
+It exercises:
 
-- plugin registration
-- `/destinations` connection check
-- `/events` mapping to `MessageEvent`
-- `/messages` send
-- `/typing`
-- `/attachments/init` plus signed upload
-- standalone cron-style send
-- Hermes `send_message` MEDIA routing for BurnBar
+- plugin registration + `Platform("burnbar")` dynamic resolution
+- config / env-enablement / yaml-precedence
+- `/events` mapping to `MessageEvent` and `model_switch`
+- `/messages` send happy path + error → `SendResult(success=False)`
+- `/attachments/init` + signed upload
+- cursor round-trip
+- oversight (`/state`) refresh + autonomous auto-approve, runtime-status payload
 
 ## Manual Full-Gateway Local Test
 
-Terminal 1:
-
-```bash
-python tools/hermes-platform-burnbar/smoke_local.py serve --port 8765
-```
-
-Terminal 2:
+Run a fake gateway and point a local Hermes checkout at it. (The fake-gateway
+harness `smoke_local.py` lives in the BurnBar repo under
+`tools/hermes-platform-burnbar/`.)
 
 ```bash
 cd /path/to/local/hermes-agent
-cp -R /path/to/BurnBar/tools/hermes-platform-burnbar plugins/platforms/burnbar
 
 export BURNBAR_API_BASE_URL="http://127.0.0.1:8765/v1/hermes-gateway"
 export BURNBAR_ACCESS_TOKEN="test-token"

@@ -38,6 +38,29 @@ DEFAULT_HOME_CHANNEL = "burnbar:home"
 MAX_MESSAGE_LENGTH = 64000
 CURSOR_FILE = Path(os.getenv("HERMES_BURNBAR_CURSOR_FILE", "~/.hermes/cache/burnbar_cursor.json")).expanduser()
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+MAX_RUNTIME_MODELS = 100
+RUNTIME_STATUS_INTERVAL_SECONDS = 30.0
+# How often to refresh the human-in-the-loop oversight toggle from /state.
+OVERSIGHT_REFRESH_SECONDS = 15.0
+
+
+def _agent_version() -> str:
+    """Best-effort Hermes Agent build string for truthful gateway-version display.
+
+    Reads the installed hermes_agent/hermes_cli version when available; falls back
+    to an env override or empty (the server simply omits the version then).
+    """
+    override = os.getenv("HERMES_BURNBAR_AGENT_VERSION")
+    if override:
+        return override[:120]
+    for module_name in ("hermes_agent", "hermes_cli", "hermes"):
+        try:
+            from importlib import metadata as _metadata
+
+            return f"{module_name}/{_metadata.version(module_name)}"[:120]
+        except Exception:
+            continue
+    return ""
 
 
 def _sha256(value: str) -> str:
@@ -215,6 +238,63 @@ async def _post_message(
     return response.json().get("message", {})
 
 
+def _runtime_status_payload() -> dict:
+    """Build a compact current-model/catalog status payload for BurnBar.
+
+    The gateway adapter sits inside Hermes Agent, so it can reuse Hermes'
+    own curated model inventory instead of inventing a second catalog. If the
+    local checkout is older or inventory probing fails, the adapter still
+    works as a messaging platform; it just skips catalog publication.
+    """
+    try:
+        from hermes_cli.inventory import build_models_payload, load_picker_context
+
+        payload = build_models_payload(load_picker_context(), max_models=MAX_RUNTIME_MODELS)
+    except Exception:
+        logger.debug("[%s] Could not build Hermes model inventory", "burnbar", exc_info=True)
+        return {}
+
+    options: list[dict[str, str]] = []
+    for provider in payload.get("providers") or []:
+        if not isinstance(provider, dict):
+            continue
+        provider_id = str(provider.get("slug") or provider.get("provider") or "hermes").strip() or "hermes"
+        provider_name = str(provider.get("label") or provider.get("name") or provider_id).strip() or provider_id
+        for model in provider.get("models") or []:
+            if isinstance(model, dict):
+                model_id = str(model.get("id") or model.get("model") or model.get("name") or "").strip()
+                display_name = str(model.get("display_name") or model.get("displayName") or model_id).strip()
+            else:
+                model_id = str(model or "").strip()
+                display_name = model_id
+            if not model_id:
+                continue
+            options.append(
+                {
+                    "providerId": provider_id[:80],
+                    "providerName": provider_name[:120],
+                    "modelId": model_id[:180],
+                    "displayName": (display_name or model_id)[:180],
+                }
+            )
+            if len(options) >= MAX_RUNTIME_MODELS:
+                break
+        if len(options) >= MAX_RUNTIME_MODELS:
+            break
+
+    current_model = str(payload.get("model") or "").strip()
+    current_provider = str(payload.get("provider") or "").strip()
+    body: dict[str, object] = {"modelOptions": options}
+    if current_model:
+        body["currentModelId"] = current_model[:180]
+    if current_provider:
+        body["currentProviderId"] = current_provider[:80]
+    agent_version = _agent_version()
+    if agent_version:
+        body["agentVersion"] = agent_version
+    return body
+
+
 class BurnBarAdapter(BasePlatformAdapter):
     """BurnBar Cloud adapter backed by the BurnBar Hermes Gateway API."""
 
@@ -228,6 +308,14 @@ class BurnBarAdapter(BasePlatformAdapter):
         self._client: Optional["httpx.AsyncClient"] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._cursor = _read_cursor()
+        self._last_runtime_publish = 0.0
+        # Human-in-the-loop oversight. The toggle lives on the server (the phone
+        # sets it); the adapter mirrors it here and obeys it. Default is the safe
+        # option (supervised) until /state says otherwise.
+        self._oversight_mode = "supervised"
+        self._oversight_checked_at = 0.0
+        # Armed approval gates awaiting a phone decision: actionId -> context.
+        self._pending_confirms: Dict[str, Dict[str, Any]] = {}
 
     async def connect(self) -> bool:
         if not HTTPX_AVAILABLE:
@@ -244,6 +332,7 @@ class BurnBarAdapter(BasePlatformAdapter):
             logger.warning("[%s] BurnBar connection check failed: %s", self.name, exc)
             await self.disconnect()
             return False
+        await self._publish_runtime_status(force=True)
         self._poll_task = asyncio.create_task(self._poll_loop())
         self._mark_connected()
         logger.info("[%s] Connected to BurnBar Cloud", self.name)
@@ -278,6 +367,11 @@ class BurnBarAdapter(BasePlatformAdapter):
 
     async def _poll_once(self) -> None:
         assert self._client is not None
+        await self._publish_runtime_status()
+        await self._refresh_oversight_mode()
+        # Resolve any oversight gates the phone has decided since the last poll.
+        if self._pending_confirms:
+            await self._resolve_pending_confirms()
         response = await self._client.get(
             f"{self._api_base}/events",
             headers=_headers(self._token),
@@ -293,7 +387,12 @@ class BurnBarAdapter(BasePlatformAdapter):
             _write_cursor(self._cursor)
 
     async def _handle_burnbar_event(self, raw: dict) -> None:
-        text = str(raw.get("text") or "").strip()
+        is_model_switch = raw.get("kind") == "model_switch"
+        if is_model_switch:
+            model_id = str(raw.get("modelId") or "").strip()
+            text = f"/model {model_id}".strip()
+        else:
+            text = str(raw.get("text") or "").strip()
         if not text:
             return
         destination_id = str(raw.get("destinationId") or self._home_channel)
@@ -315,6 +414,180 @@ class BurnBarAdapter(BasePlatformAdapter):
             message_id=raw.get("id"),
         )
         await self.handle_message(event)
+        if is_model_switch:
+            # Republish immediately so the server reflects the newly applied model
+            # in ~1s instead of waiting out the 30s heartbeat. Also reset the
+            # throttle so the next poll re-confirms once Hermes has fully applied.
+            self._last_runtime_publish = 0.0
+            await self._publish_runtime_status(force=True)
+
+    async def _publish_runtime_status(self, *, force: bool = False) -> None:
+        if self._client is None:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_runtime_publish < RUNTIME_STATUS_INTERVAL_SECONDS:
+            return
+        body = _runtime_status_payload()
+        if not body:
+            self._last_runtime_publish = now
+            return
+        try:
+            response = await self._client.post(
+                f"{self._api_base}/runtime",
+                headers=_headers(self._token),
+                json=body,
+            )
+            response.raise_for_status()
+            self._last_runtime_publish = now
+        except Exception:
+            logger.debug("[%s] BurnBar runtime status publish failed", self.name, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Human-in-the-loop oversight
+    # ------------------------------------------------------------------
+    async def _refresh_oversight_mode(self) -> None:
+        """Mirror the server-owned oversight toggle (the phone sets it)."""
+        if self._client is None:
+            return
+        now = time.monotonic()
+        if now - self._oversight_checked_at < OVERSIGHT_REFRESH_SECONDS:
+            return
+        self._oversight_checked_at = now
+        try:
+            response = await self._client.get(f"{self._api_base}/state", headers=_headers(self._token))
+            response.raise_for_status()
+            mode = str(response.json().get("oversightMode") or "").strip()
+            if mode in ("supervised", "autonomous"):
+                self._oversight_mode = mode
+        except Exception:
+            logger.debug("[%s] BurnBar oversight refresh failed", self.name, exc_info=True)
+
+    async def send_slash_confirm(
+        self,
+        chat_id: str,
+        title: str,
+        message: str,
+        session_key: str,
+        confirm_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        """Gate Hermes slash-confirm prompts through BurnBar oversight.
+
+        Autonomous mode auto-approves so the agent runs unattended. Supervised
+        mode arms an approval gate on the BurnBar gateway and surfaces it to the
+        phone; the decision is applied from the poll loop via
+        ``tools.slash_confirm.resolve``. If the gateway is unreachable while
+        supervised, we fall back to Hermes' built-in text confirm (which still
+        requires an explicit ``/approve``) rather than silently proceeding.
+        """
+        if self._client is None:
+            return SendResult(success=False, error="Not connected")
+        if self._oversight_mode == "autonomous":
+            await self._resolve_slash_confirm(session_key, confirm_id, "once", chat_id, metadata)
+            return SendResult(success=True)
+        armed = await self._arm_approval(
+            action_id=confirm_id, summary=message, tool_name=title, destination_id=chat_id
+        )
+        if not armed:
+            return await super().send_slash_confirm(
+                chat_id, title, message, session_key, confirm_id, metadata
+            )
+        self._pending_confirms[confirm_id] = {
+            "session_key": session_key,
+            "chat_id": chat_id,
+            "metadata": metadata,
+        }
+        card = f"{title}\n\n{message}\n\nApprove this action on your BurnBar device to continue."
+        await self._post_confirm_followup(chat_id, card, metadata)
+        return SendResult(success=True)
+
+    async def _arm_approval(
+        self, *, action_id: str, summary: str, tool_name: str, destination_id: str
+    ) -> bool:
+        if self._client is None:
+            return False
+        body: Dict[str, Any] = {"actionId": action_id, "summary": summary}
+        if tool_name:
+            body["toolName"] = tool_name
+        if destination_id:
+            body["destinationId"] = destination_id
+        try:
+            response = await self._client.post(
+                f"{self._api_base}/approvals", headers=_headers(self._token), json=body
+            )
+            response.raise_for_status()
+            return True
+        except Exception:
+            logger.debug("[%s] BurnBar approval arm failed", self.name, exc_info=True)
+            return False
+
+    async def _resolve_pending_confirms(self) -> None:
+        if self._client is None:
+            return
+        for action_id, ctx in list(self._pending_confirms.items()):
+            try:
+                response = await self._client.get(
+                    f"{self._api_base}/approvals",
+                    headers=_headers(self._token),
+                    params={"actionId": action_id},
+                )
+                if response.status_code == 404:
+                    self._pending_confirms.pop(action_id, None)
+                    continue
+                response.raise_for_status()
+                status = str((response.json().get("approval") or {}).get("status") or "").strip()
+            except Exception:
+                logger.debug("[%s] BurnBar approval poll failed", self.name, exc_info=True)
+                continue
+            if status == "waiting_for_approval":
+                continue
+            self._pending_confirms.pop(action_id, None)
+            choice = "once" if status == "approved" else "cancel"
+            fallback = None
+            if status == "rejected":
+                fallback = "Action denied from your BurnBar device."
+            elif status == "expired":
+                fallback = "Approval request expired without a decision."
+            await self._resolve_slash_confirm(
+                ctx["session_key"], action_id, choice, ctx.get("chat_id"), ctx.get("metadata"), fallback
+            )
+
+    async def _resolve_slash_confirm(
+        self,
+        session_key: str,
+        confirm_id: str,
+        choice: str,
+        chat_id: Optional[str],
+        metadata: Optional[Dict[str, Any]],
+        fallback: Optional[str] = None,
+    ) -> None:
+        output: Optional[str] = None
+        try:
+            from tools import slash_confirm as _slash_confirm
+
+            output = await _slash_confirm.resolve(session_key, confirm_id, choice)
+        except Exception:
+            logger.debug("[%s] slash-confirm resolve failed", self.name, exc_info=True)
+        message = output or fallback
+        if message and chat_id:
+            await self._post_confirm_followup(chat_id, message, metadata)
+
+    async def _post_confirm_followup(
+        self, chat_id: Optional[str], text: str, metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        if self._client is None or not text:
+            return
+        try:
+            await self._client.post(
+                f"{self._api_base}/messages",
+                headers=_headers(self._token),
+                json={
+                    "destinationId": chat_id or self._home_channel,
+                    "text": str(text)[:MAX_MESSAGE_LENGTH],
+                },
+            )
+        except Exception:
+            logger.debug("[%s] BurnBar confirm follow-up post failed", self.name, exc_info=True)
 
     async def send(
         self,
