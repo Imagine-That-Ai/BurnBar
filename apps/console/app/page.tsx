@@ -48,7 +48,7 @@ export default function HomePage() {
     <div className="space-y-token-8">
       {/* ── masthead folio ─────────────────────────────────────────────── */}
       <div className="reveal flex items-baseline justify-between" style={delay(0)}>
-        <span className="folio" style={{ color: "var(--accent)" }}>
+        <span className="folio" style={{ color: "var(--accent-deep)" }}>
           The Private Ledger
         </span>
         <span className="folio">{user?.email ?? "Not indexed"}</span>
@@ -144,7 +144,7 @@ export default function HomePage() {
                 className={`ledger-row group reveal items-start ${LEDGER_COLS}`}
                 style={delay(120 + i * 35)}
               >
-                <span className="index-num pt-0.5 text-sm group-hover:text-[color:var(--accent)]">
+                <span className="index-num pt-0.5 text-sm group-hover:text-[color:var(--accent-deep)]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <div className="flex min-w-0 items-start gap-token-2">
@@ -187,7 +187,7 @@ function AccountReadyPanel({
       aria-labelledby="account-ready-heading"
     >
       <div className="max-w-2xl">
-        <div className="mb-token-2 inline-flex items-center gap-token-2 text-sm text-[color:var(--accent)]">
+        <div className="mb-token-2 inline-flex items-center gap-token-2 text-sm text-[color:var(--accent-deep)]">
           <CheckCircle2 className="size-4" aria-hidden />
           <span className="smallcaps text-xs">Account ready</span>
         </div>

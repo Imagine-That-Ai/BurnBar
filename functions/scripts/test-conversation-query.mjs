@@ -167,18 +167,18 @@ test("applyConversationFacetFilters defends against an over-limit in clause by c
 });
 
 test("applyConversationFacetFilters maps every equality facet to a == clause", () => {
+  // projectName is intentionally NOT a server-side facet: project/path text is
+  // device-only (sealed), so the server can never filter conversations by it.
   const query = applyConversationFacetFilters(new FakeQuery(), {
     providers: [],
     models: ["gpt-5-codex"],
     providerInClause: false,
     modelInClause: false,
-    projectName: "BurnBar",
     deviceId: "mac-1",
     sourceType: "cli_session",
   });
   assert.deepEqual(whereClauses(query), [
     { method: "where", field: "model", op: "==", value: "gpt-5-codex" },
-    { method: "where", field: "projectName", op: "==", value: "BurnBar" },
     { method: "where", field: "deviceId", op: "==", value: "mac-1" },
     { method: "where", field: "sourceType", op: "==", value: "cli_session" },
   ]);

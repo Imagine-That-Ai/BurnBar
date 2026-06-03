@@ -369,6 +369,10 @@ data class FirestoreHermesGatewayModelOptionDoc(
   runtimeProviderId?: string;
   runtimeModelOptions?: HermesGatewayModelOptionDoc[];
   runtimeUpdatedAt?: string;
+  agentVersion?: string;
+  pendingModelId?: string;
+  pendingModelRequestedAt?: string;
+  oversightMode?: string;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -388,6 +392,10 @@ data class FirestoreHermesGatewayModelOptionDoc(
     public var runtimeProviderId: String?
     public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
     public var runtimeUpdatedAt: String?
+    public var agentVersion: String?
+    public var pendingModelId: String?
+    public var pendingModelRequestedAt: String?
+    public var oversightMode: String?
     public var revokedAt: String?
     public var createdAt: String
     public var updatedAt: String
@@ -409,9 +417,59 @@ data class FirestoreHermesGatewayClientDoc(
     val runtimeProviderId: String? = null,
     val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
     val runtimeUpdatedAt: String? = null,
+    val agentVersion: String? = null,
+    val pendingModelId: String? = null,
+    val pendingModelRequestedAt: String? = null,
+    val oversightMode: String? = null,
     val revokedAt: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      HermesGatewayApprovalDoc: {
+        ts: `export interface HermesGatewayApprovalDoc {
+  id: string;
+  clientId: string;
+  destinationId: string;
+  actionId: string;
+  toolName?: string;
+  summary: string;
+  status: string;
+  requestedAt: string;
+  expiresAt: string;
+  respondedAt?: string;
+  approvedByDeviceId?: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreHermesGatewayApprovalDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var clientId: String
+    public var destinationId: String
+    public var actionId: String
+    public var toolName: String?
+    public var summary: String
+    public var status: String
+    public var requestedAt: String
+    public var expiresAt: String
+    public var respondedAt: String?
+    public var approvedByDeviceId: String?
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewayApprovalDoc(
+    val id: String = "",
+    val clientId: String = "",
+    val destinationId: String = "",
+    val actionId: String = "",
+    val toolName: String? = null,
+    val summary: String = "",
+    val status: String = "",
+    val requestedAt: String = "",
+    val expiresAt: String = "",
+    val respondedAt: String? = null,
+    val approvedByDeviceId: String? = null,
     val schemaVersion: Long = 0,
 )`,
       },

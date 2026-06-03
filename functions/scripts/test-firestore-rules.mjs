@@ -2572,6 +2572,24 @@ test("Hermes Gateway state is server-owned and destinations are Cloud-gated", as
         schemaVersion: 1,
       },
     ],
+    [
+      // Oversight gate: the owner may READ it (the approval UI lights up) but can
+      // never WRITE/self-approve — resolution is Admin-SDK-only via
+      // respondHermesGatewayApproval (trusted native device + approvedByDeviceId).
+      "users/hgw-owner/hermes_gateway_approvals/approval-1",
+      {
+        id: "approval-1",
+        clientId: "client-1",
+        destinationId: "burnbar:home",
+        actionId: "run-shell-1",
+        toolName: "shell",
+        summary: "rm -rf /tmp/build-cache",
+        status: "waiting_for_approval",
+        requestedAt: "2026-06-01T00:00:00.000Z",
+        expiresAt: "2026-06-01T00:05:00.000Z",
+        schemaVersion: 1,
+      },
+    ],
   ];
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -2779,6 +2797,12 @@ test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
   await assertSucceeds(
     setDoc(doc(db, "users/slm-owner/session_logs/ok"), base)
   );
+  await assertSucceeds(
+    setDoc(doc(db, "users/slm-owner/session_logs/generic-title"), {
+      ...base,
+      inferredTaskTitle: "Encrypted session",
+    })
+  );
   // Arbitrary unlisted key.
   await assertFails(
     setDoc(doc(db, "users/slm-owner/session_logs/smuggled"), {
@@ -2792,6 +2816,12 @@ test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
   );
   await assertFails(
     setDoc(doc(db, "users/slm-owner/session_logs/title"), { ...base, title: "leak" })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/slm-owner/session_logs/inferred-title"), {
+      ...base,
+      inferredTaskTitle: "Build BurnBar privacy hardening",
+    })
   );
   await assertFails(
     setDoc(doc(db, "users/slm-owner/session_logs/proj"), { ...base, projectName: "BurnBar" })

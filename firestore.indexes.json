@@ -766,6 +766,16 @@
       ]
     },
     {
+      "collectionGroup": "passkey_credentials",
+      "fieldPath": "credentialId",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "session_logs",
       "fieldPath": "body",
       "indexes": []

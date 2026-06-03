@@ -360,7 +360,7 @@ service cloud.firestore {
         && !("terms" in request.resource.data)
         && !("projectName" in request.resource.data)
         && !("workingDirectory" in request.resource.data)
-        && (!("inferredTaskTitle" in request.resource.data) || (request.resource.data.inferredTaskTitle is string && request.resource.data.inferredTaskTitle.size() <= 64))
+        && (!("inferredTaskTitle" in request.resource.data) || request.resource.data.inferredTaskTitle == "Encrypted session")
         && (!("sealedTitle" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTitle))
         && (!("sealedBodyPreview" in request.resource.data) || validCloudSealedText(request.resource.data.sealedBodyPreview))
         && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
@@ -1889,9 +1889,18 @@ service cloud.firestore {
     // Pensieve repo connections (the dirty-signal source registration). The
     // client may configure a repo source; secrets are never stored here
     // (ownerWritableNonSecret forbids apiKey/token/secret fields).
+    // Connected GitHub repo registry. The repo identity is project-class private
+    // text: it is written exclusively by the connectKnowledgeRepo callable (Admin
+    // SDK) which stores only an opaque server-keyed `repoMatchToken` (for webhook
+    // routing) plus a vault-`sealedRepoFullName` (for owner-only display). Direct
+    // client writes must never carry a cleartext `repoFullName`/`sourcePath`; the
+    // cleartext name is observed server-side only transiently for webhook routing,
+    // never stored in Firestore.
     match /users/{userId}/knowledge_repos/{repoId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && !("repoFullName" in request.resource.data)
+        && !("sourcePath" in request.resource.data);
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2225,6 +2234,16 @@ service cloud.firestore {
     }
 
     match /users/{userId}/hermes_gateway_state/{stateId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Human-in-the-loop oversight gates. The owner reads pending/decided gates
+    // (the native approval UI lights up from here); all writes are Admin-SDK
+    // only, so neither the bearer-token agent nor any client can self-approve.
+    // Resolution flows exclusively through respondHermesGatewayApproval, which
+    // requires a trusted native escrow device and stamps approvedByDeviceId.
+    match /users/{userId}/hermes_gateway_approvals/{approvalId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
     }

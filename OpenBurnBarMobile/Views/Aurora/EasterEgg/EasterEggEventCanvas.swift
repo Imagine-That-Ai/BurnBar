@@ -1,15 +1,21 @@
 import OpenBurnBarCore
 import SwiftUI
-
 #if canImport(UIKit)
 import UIKit
 #endif
 
 // MARK: - Event canvas
+//
+// Mounted by ``EasterEggOverlay`` only while an event is in flight. Owns a
+// `TimelineView(.animation)` + `Canvas` that simulates and draws the particles,
+// then calls `onFinished` once the event's duration has elapsed so the overlay
+// can tear the whole tree down and return to zero cost.
+//
+// All marks are resolved as Canvas *symbols* (the same `context.resolveSymbol`
+// idiom ``SwarmCanvasView`` uses), so the bundled logo/crest imagesets draw at
+// full fidelity without per-frame image decoding. This mirrors the macOS
+// (`AgentLens`) easter egg canvas verbatim so every surface feels identical.
 
-/// Mounted only while an easter egg event is active. The particle field is
-/// deterministic per event, so each timeline tick is a pure draw of elapsed
-/// time rather than mutable per-frame simulation.
 struct EasterEggEventCanvas: View {
     let event: EasterEggEvent
     let size: CGSize
@@ -17,32 +23,24 @@ struct EasterEggEventCanvas: View {
     let reduceMotion: Bool
     let onFinished: () -> Void
 
-    @State private var particleSystem: EasterEggParticleSystem?
-    @State private var didScheduleFinish = false
+    /// Particle field, built once when the canvas appears (deterministic per
+    /// event id) so the Canvas closure stays a pure function of elapsed time.
+    @State private var scene: EasterEggScene?
+    @State private var didFinish = false
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { timeline in
             Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, canvasSize in
-                guard let particleSystem else { return }
-                particleSystem.draw(
-                    into: context,
-                    size: canvasSize,
-                    elapsed: elapsedTime(now: timeline.date),
-                    reduceMotion: reduceMotion
-                )
+                guard let scene else { return }
+                let elapsed = elapsedTime(now: timeline.date)
+                scene.draw(into: context, size: canvasSize, elapsed: elapsed, reduceMotion: reduceMotion)
             } symbols: {
                 symbolDeck
             }
         }
         .onAppear {
-            if particleSystem == nil {
-                particleSystem = EasterEggParticleSystem(
-                    performance: EasterEggPerformance(
-                        event: event,
-                        colorScheme: colorScheme,
-                        reduceMotion: reduceMotion
-                    )
-                )
+            if scene == nil {
+                scene = EasterEggScene.make(for: event, size: size, colorScheme: colorScheme)
             }
             scheduleFinish()
         }
@@ -52,57 +50,75 @@ struct EasterEggEventCanvas: View {
         max(0, now.timeIntervalSince(event.startedAt))
     }
 
+    /// Tear-down is time-based so it survives Reduce Motion (where the timeline
+    /// is paused and the Canvas would otherwise never advance).
     private func scheduleFinish() {
-        guard !didScheduleFinish else { return }
-        didScheduleFinish = true
+        guard !didFinish else { return }
+        didFinish = true
         DispatchQueue.main.asyncAfter(deadline: .now() + event.duration) {
             onFinished()
         }
     }
 
+    // MARK: Symbol deck
+
+    /// Every mark the event might draw, tagged by a stable key. Resolving these
+    /// once per frame (instead of re-rasterising images) keeps the Canvas cheap.
     @ViewBuilder
     private var symbolDeck: some View {
-        if let particleSystem {
-            ForEach(particleSystem.imageTokens) { token in
-                EasterEggLogoSymbol(assetName: token.assetName)
-                    .tag(token.id)
-            }
+        ForEach(EasterEggSymbolID.allCases(for: event), id: \.self) { symbolID in
+            symbolView(for: symbolID)
+                .tag(symbolID)
+        }
+    }
+
+    @ViewBuilder
+    private func symbolView(for id: EasterEggSymbolID) -> some View {
+        switch id {
+        case .logo(let assetName):
+            EasterEggLogoSymbol(assetName: assetName)
+        case .coin(let metal):
+            TokenCoinSymbol(metal: metal)
+        case .cloud:
+            CloudPuffSymbol()
         }
     }
 }
 
-// MARK: - Performance model
+// MARK: - Symbol identifiers
 
-struct EasterEggPerformance {
-    enum Kind {
-        case logoStorm
-        case cloudTokenRain
-        case boundaryBounce(atTop: Bool)
-    }
+/// Stable, hashable key for a Canvas symbol. Built from the bundled asset
+/// catalog names already used by the constellation background.
+enum EasterEggSymbolID: Hashable {
+    case logo(assetName: String)
+    case coin(metal: TokenMetal)
+    case cloud
 
-    let id: UUID
-    let kind: Kind
-    let duration: TimeInterval
-    let reduceMotion: Bool
-
-    init(event: EasterEggEvent, colorScheme: ColorScheme, reduceMotion: Bool) {
-        self.id = event.id
-        self.reduceMotion = reduceMotion
-        self.duration = event.duration
-
+    /// The marks this event will ever draw, so the symbol deck stays small.
+    static func allCases(for event: EasterEggEvent) -> [EasterEggSymbolID] {
         switch event.kind {
         case .logoStorm:
-            self.kind = .logoStorm
+            return EasterEggAssets.stormLogoNames.map { .logo(assetName: $0) }
         case .cloudTokenRain:
-            self.kind = .cloudTokenRain
-        case .boundary(let edge):
-            self.kind = .boundaryBounce(atTop: edge == .top)
+            return [.cloud]
+                + EasterEggAssets.cloudCrestNames.map { .logo(assetName: $0) }
+                + [.coin(metal: .gold), .coin(metal: .silver)]
+        case .boundary:
+            return [.coin(metal: .gold), .coin(metal: .silver)]
         }
     }
 }
 
-// MARK: - Symbols
+enum TokenMetal: Hashable {
+    case gold
+    case silver
+}
 
+// MARK: - Symbol views
+
+/// A single bundled logo/crest, loaded the same way ``ProviderAvatar`` loads it.
+/// Falls back to the BurnBar app crest if a name ever fails to resolve, so the
+/// Canvas never draws an empty slot.
 private struct EasterEggLogoSymbol: View {
     let assetName: String
 
@@ -120,16 +136,126 @@ private struct EasterEggLogoSymbol: View {
                 Image(systemName: "flame.fill")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(Color(red: 0.94, green: 0.32, blue: 0.18))
+                    .foregroundStyle(MobileTheme.ember)
             }
         }
         .frame(width: 64, height: 64)
     }
 }
 
-private enum EasterEggAssets {
+/// A small minted token coin. Gold + silver variants rain in the cloud event
+/// and pop at the scroll boundaries. Drawn procedurally so it stays crisp at
+/// any size; the RGB stops match the macOS coin hex palette for parity.
+private struct TokenCoinSymbol: View {
+    let metal: TokenMetal
+
+    private var faceGradient: RadialGradient {
+        switch metal {
+        case .gold:
+            return RadialGradient(
+                colors: [
+                    Color(red: 1.00, green: 0.91, blue: 0.66),  // FFE9A8
+                    Color(red: 0.96, green: 0.72, blue: 0.25),  // F4B740
+                    Color(red: 0.78, green: 0.53, blue: 0.11)   // C8881C
+                ],
+                center: .init(x: 0.38, y: 0.34),
+                startRadius: 1,
+                endRadius: 22
+            )
+        case .silver:
+            return RadialGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.98, blue: 0.99),  // FAFBFC
+                    Color(red: 0.79, green: 0.82, blue: 0.85),  // C9D0D8
+                    Color(red: 0.54, green: 0.58, blue: 0.63)   // 8A95A1
+                ],
+                center: .init(x: 0.38, y: 0.34),
+                startRadius: 1,
+                endRadius: 22
+            )
+        }
+    }
+
+    private var rimColor: Color {
+        switch metal {
+        case .gold: return Color(red: 0.61, green: 0.42, blue: 0.07)   // 9C6A12
+        case .silver: return Color(red: 0.42, green: 0.45, blue: 0.50) // 6B747F
+        }
+    }
+
+    private var glyphColor: Color {
+        switch metal {
+        case .gold: return Color(red: 0.61, green: 0.42, blue: 0.07).opacity(0.85)
+        case .silver: return Color(red: 0.36, green: 0.40, blue: 0.44).opacity(0.85)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Circle().fill(faceGradient)
+            Circle().strokeBorder(rimColor.opacity(0.8), lineWidth: 2)
+            Circle()
+                .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+                .padding(3)
+            // A token "$" mark so the coins read as spend, matching the brand's
+            // dollar-formation swarm vocabulary.
+            Text("$")
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .foregroundStyle(glyphColor)
+        }
+        .frame(width: 30, height: 30)
+        .shadow(color: rimColor.opacity(0.35), radius: 1.5, y: 0.5)
+    }
+}
+
+/// A soft grey cloud puff that drifts across the top and rains coins.
+private struct CloudPuffSymbol: View {
+    var body: some View {
+        ZStack {
+            // Layered ellipses give a billowed silhouette without an asset.
+            Capsule()
+                .fill(.white.opacity(0.92))
+                .frame(width: 120, height: 46)
+                .offset(y: 10)
+            Circle().fill(.white.opacity(0.95)).frame(width: 56, height: 56).offset(x: -28, y: -2)
+            Circle().fill(.white.opacity(0.97)).frame(width: 72, height: 72).offset(x: 4, y: -10)
+            Circle().fill(.white.opacity(0.94)).frame(width: 50, height: 50).offset(x: 38, y: 0)
+        }
+        .frame(width: 140, height: 84)
+        .compositingGroup()
+        .shadow(color: Color(red: 0.49, green: 0.53, blue: 0.58).opacity(0.35), radius: 6, y: 4)
+    }
+}
+
+// MARK: - Asset registry
+//
+// All names here are existing imagesets in
+// OpenBurnBarMobile/Resources/Assets.xcassets, resolved the same way the
+// constellation/swarm engine resolves them. Nothing is invented.
+
+enum EasterEggAssets {
+    /// BurnBar app crest — the universal fallback + a storm headliner.
     static let appCrestName = "AppLogo"
 
+    /// Cloud-tier crests worn by the rain clouds (base / Pro / Ultra).
+    static let cloudCrestNames = ["CloudTierCrest", "CloudTierCrestPro", "CloudTierCrestUltra"]
+
+    /// The marks that burst in the dark-appearance logo storm: the BurnBar
+    /// crests plus the provider logos already in the swarm-glyph showcase set
+    /// (so the storm reuses precisely the constellation background's logo pool).
+    static let stormLogoNames: [String] = {
+        var names: [String] = [appCrestName] + cloudCrestNames
+        for provider in AgentProvider.swarmGlyphProviders {
+            let name = provider.bundledLogoName
+            if imageExists(name), !names.contains(name) {
+                names.append(name)
+            }
+        }
+        return names
+    }()
+
+    /// Whether a named imageset resolves on this platform — mirrors
+    /// ``ProviderAvatar``'s `UIImage(named:)` availability probe.
     static func imageExists(_ name: String) -> Bool {
         #if canImport(UIKit)
         return UIImage(named: name) != nil

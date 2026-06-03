@@ -79,9 +79,14 @@ final class PensieveKnowledgeChunkerTests: XCTestCase {
         XCTAssertEqual(vector.vectorId, vector.dedupHash)
         XCTAssertEqual(batch.sourceSlug, "burnbar-docs-secret-runbook")
         XCTAssertFalse(vector.dedupHash.contains(secretPath))
-        // The path survives only inside the sealed metadata blob.
+        // The path survives only inside the sealed metadata blob. Parse the JSON
+        // (rather than substring-matching the raw string) so the assertion is immune
+        // to JSON forward-slash escaping (`/` -> `\/`), which is a wire-encoding
+        // detail any JSON parser — including the Node shim's decryptKnowledgeContent
+        // — round-trips back to the literal path.
         let metadataJSON = try CloudVaultCrypto.openText(vector.sealedMetadata, keyData: key)
-        XCTAssertTrue(metadataJSON.contains(secretPath))
+        let parsedMetadata = try JSONSerialization.jsonObject(with: Data(metadataJSON.utf8)) as? [String: Any]
+        XCTAssertEqual(parsedMetadata?["source_path"] as? String, secretPath)
     }
 
     func test_redactSecrets_stripsKnownShapes() {

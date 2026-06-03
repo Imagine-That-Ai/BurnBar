@@ -24,9 +24,28 @@ public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var runtimeProviderId: String?
     public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
     public var runtimeUpdatedAt: String?
+    public var agentVersion: String?
+    public var pendingModelId: String?
+    public var pendingModelRequestedAt: String?
+    public var oversightMode: String?
     public var revokedAt: String?
     public var createdAt: String
     public var updatedAt: String
+    public var schemaVersion: Int
+}
+
+public struct FirestoreHermesGatewayApprovalDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var clientId: String
+    public var destinationId: String
+    public var actionId: String
+    public var toolName: String?
+    public var summary: String
+    public var status: String
+    public var requestedAt: String
+    public var expiresAt: String
+    public var respondedAt: String?
+    public var approvedByDeviceId: String?
     public var schemaVersion: Int
 }
 
