@@ -72,7 +72,7 @@ function SignInCard() {
               onClick={wrap("google", signInGoogle)}
               disabled={!!busy}
             >
-              <img src="/brand/logos/google.svg" alt="" aria-hidden className="size-4 shrink-0" />
+              <img src="/brand/logos/google-g.svg" alt="" aria-hidden className="size-4 shrink-0" />
               {busy === "google" ? "…" : "Continue with Google"}
             </Button>
             {appleAuthEnabled && (
