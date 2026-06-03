@@ -6,6 +6,7 @@ import { SITE } from "@data/site";
 const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
+const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "cloud_ultra")!;
 const allowance = cloudPro.allowance!;
 const actionTopUp = SITE.pricing.topUps[0]!;
 const relayTopUp = SITE.pricing.topUps[1]!;
@@ -14,12 +15,13 @@ const savePct = (monthly: string, annual: string) =>
   Math.round((1 - Number(annual) / (Number(monthly) * 12)) * 100);
 const cloudSave = savePct(cloud.priceMonthlyUSD, cloud.priceAnnualUSD!);
 const proSave = savePct(cloudPro.priceMonthlyUSD, cloudPro.priceAnnualUSD!);
-const headlineSave = Math.max(cloudSave, proSave);
+const ultraSave = savePct(cloudUltra.priceMonthlyUSD, cloudUltra.priceAnnualUSD!);
+const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 ---
 
 <BaseLayout
   title="Pricing"
-  description="OpenBurnBar pricing — OpenBurnBar Local at $0, BurnBar Cloud at $7.99/month or $79/year, and BurnBar Cloud Pro at $24.99/month or $249/year."
+  description="OpenBurnBar pricing — OpenBurnBar Local at $0, BurnBar Cloud at $7.99/month or $79/year, BurnBar Cloud Pro at $24.99/month or $249/year, and BurnBar Cloud Ultra at $59.99/month or $599/year."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -29,7 +31,8 @@ const headlineSave = Math.max(cloudSave, proSave);
         <p class="lead">
           The local product is free, forever. Cloud syncs your quota and encrypted history. Cloud
           Pro adds live phone-to-Mac workflows and supervised agent work — with prepaid allowances
-          for the hosted resources that cost real money.
+          for the hosted resources that cost real money. Cloud Ultra keeps all of that and gives
+          your agents 10× private memory to recall.
         </p>
       </div>
 
@@ -126,7 +129,7 @@ const headlineSave = Math.max(cloudSave, proSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/burnbar_cloud_crest.jpg"
+              src="/brand/vector/2_burnbar_cloud_crest.svg"
               alt=""
               aria-hidden="true"
             />
@@ -192,7 +195,7 @@ const headlineSave = Math.max(cloudSave, proSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/burnbar_cloud_pro_crest.jpg"
+              src="/brand/vector/3_burnbar_cloud_pro_crest.svg"
               alt=""
               aria-hidden="true"
             />
@@ -241,11 +244,75 @@ const headlineSave = Math.max(cloudSave, proSave);
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
         </article>
+
+        <!-- CLOUD ULTRA -->
+        <article class="plan plan--ultra" data-animate-onview>
+          <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <path
+              d="M60 22c11 0 20 9 20 20 0 8-5 15-12 18v18M60 22c-11 0-20 9-20 20 0 8 5 15 12 18v18"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"></path>
+            <circle cx="60" cy="42" r="7" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M44 96h32" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            ></path>
+          </svg>
+          <header class="plan__head">
+            <span class="plan__badge mono">For your whole second brain</span>
+            <div class="plan__title">
+              <h2 class="plan__name">{cloudUltra.shortName}</h2>
+            </div>
+            <div class="plan__price">
+              <span class="plan__amount mono" data-billing="monthly">
+                ${cloudUltra.priceMonthlyUSD}<span class="plan__unit">/mo</span>
+              </span>
+              <span class="plan__amount mono" data-billing="annual">
+                ${cloudUltra.priceAnnualUSD}<span class="plan__unit">/yr</span>
+              </span>
+              <span class="plan__per">
+                <span class="plan__save mono" data-billing="annual"
+                  >${(Number(cloudUltra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {
+                    ultraSave
+                  }%</span
+                >
+                <span class="plan__per-dim" data-billing="monthly"
+                  >${cloudUltra.priceAnnualUSD}/yr available</span
+                >
+              </span>
+            </div>
+            <p class="plan__sub">{cloudUltra.summary}</p>
+          </header>
+
+          <ul class="plan__list plan__list--ultra">
+            <li>Everything in BurnBar Cloud Pro</li>
+            <li>10× agent memory: 15 sources · 50,000 chunks · 250 MB</li>
+            <li>Repo docs, notes &amp; chat memories your agents recall</li>
+            <li>Sealed on-device · the server searches without reading it</li>
+            <li>Same hosted Agent Control &amp; relay allowance as Pro</li>
+          </ul>
+
+          <div class="plan__included">
+            <span class="plan__inc-label mono">Private semantic memory</span>
+            <ul class="plan__specs">
+              <li>Cloaked vectors + sealed text — nearest-neighbor search, never your content</li>
+              <li>
+                {allowance.hostedAgentActionsMonthly} hosted actions · {allowance.relayGBMonthly} relay-accounting
+                GB each month
+              </li>
+              <li>Prepaid overage only · BYOK never spends credits</li>
+            </ul>
+          </div>
+
+          <a class="btn btn--ember plan__cta" href="/download">
+            {cloudUltra.cta}
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+        </article>
       </div>
 
       <!-- Top-ups -->
       <div class="topups" data-animate-onview>
-        <span class="topups__label mono">Cloud Pro top-ups · prepaid, before use</span>
+        <span class="topups__label mono">Cloud Pro &amp; Ultra top-ups · prepaid, before use</span>
         <div class="topups__chips">
           <div class="topup">
             <span class="topup__amt mono">+{actionTopUp.unit}</span>
@@ -287,7 +354,8 @@ const headlineSave = Math.max(cloudSave, proSave);
           <dt>Is there a free trial?</dt>
           <dd>
             BurnBar Cloud monthly and annual include a 14-day introductory free trial for new
-            subscribers. BurnBar Cloud Pro and top-ups do not have an introductory trial.
+            subscribers. BurnBar Cloud Pro, Cloud Ultra, and top-ups do not have an introductory
+            trial.
           </dd>
         </div>
         <div>
@@ -306,7 +374,19 @@ const headlineSave = Math.max(cloudSave, proSave);
             {allowance.relayGBMonthly} relay-accounting GB each month. Extra hosted actions are ${
               actionTopUp.priceUSD
             } for {actionTopUp.unit}; extra relay is ${relayTopUp.priceUSD} for {relayTopUp.unit}.
-            Monthly caps still apply.
+            Monthly caps still apply. Cloud Ultra carries the same hosted allowance, caps, and
+            top-up prices as Cloud Pro.
+          </dd>
+        </div>
+        <div>
+          <dt>What does Cloud Ultra add over Cloud Pro?</dt>
+          <dd>
+            Everything in Cloud Pro, plus 10× private agent memory. Cloud Pro gives your agents 3
+            knowledge sources, 5,000 memory chunks, and 25 MB. Cloud Ultra raises that to 15
+            sources, 50,000 chunks, and 250 MB of repo docs, notes, and chat-derived memories your
+            agents can recall. The text is sealed on your device and the vectors are cloaked, so the
+            server runs nearest-neighbor search without reading your content. Cloud Ultra is
+            $59.99/month or $599/year.
           </dd>
         </div>
         <div>
@@ -484,9 +564,16 @@ const headlineSave = Math.max(cloudSave, proSave);
   }
   .plans__grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Four tiers: 4-up on the widest screens, 2×2 on roomy laptops,
+       single column on phones (handled in the media query below). */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--s-5);
     align-items: stretch;
+  }
+  @media (max-width: 1240px) {
+    .plans__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .plan {
@@ -551,6 +638,19 @@ const headlineSave = Math.max(cloudSave, proSave);
     background:
       radial-gradient(120% 80% at 50% -10%, rgba(60, 214, 192, 0.1), transparent 60%),
       rgba(8, 18, 18, 0.82);
+  }
+  /* Ultra — the top tier wears a regal gold accent (distinct from Pro's teal). */
+  .plan--ultra {
+    --bb-accent: var(--core-amber);
+    --bb-glow: rgba(253, 196, 44, 0.42);
+    border-color: color-mix(in oklab, var(--core-amber) 30%, rgba(255, 255, 255, 0.08));
+    border-top-color: color-mix(in oklab, var(--core-amber) 46%, rgba(255, 255, 255, 0.16));
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(253, 196, 44, 0.12), transparent 60%),
+      rgba(20, 16, 8, 0.82);
+    box-shadow:
+      0 0 70px -24px rgba(253, 196, 44, 0.32),
+      0 32px 70px -18px rgba(0, 0, 0, 0.78);
   }
 
   /* animated conic ring on the popular card */
@@ -643,11 +743,6 @@ const headlineSave = Math.max(cloudSave, proSave);
     right: 0;
     width: 80px;
     height: 80px;
-    border-radius: 18px;
-    object-fit: cover;
-    box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.4),
-      0 2px 6px rgba(0, 0, 0, 0.25);
     pointer-events: none;
     z-index: 2;
   }
@@ -987,6 +1082,9 @@ const headlineSave = Math.max(cloudSave, proSave);
   }
   .plans__grid .plan:nth-child(3) {
     transition-delay: 180ms;
+  }
+  .plans__grid .plan:nth-child(4) {
+    transition-delay: 270ms;
   }
   .plans__grid .plan:hover {
     transition-delay: 0s;
