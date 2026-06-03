@@ -382,9 +382,18 @@ extension MissionGroupDocument {
     public init?(documentID: String, data: [String: Any], vaultKey: Data?) {
         let privatePayload = MissionGroupPrivatePayloadCodec.open(data, vaultKey: vaultKey)
         let statePayload = MissionGroupPrivatePayloadCodec.open(data, field: "sealedStatePayload", vaultKey: vaultKey)
+        let hasSealedRequestPayload = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) != nil
+        let acceptsRedactedPrivateFields = (data["contentSealed"] as? Bool) == true && hasSealedRequestPayload
+        let title = privatePayload?.title
+            ?? data["title"] as? String
+            ?? (acceptsRedactedPrivateFields ? "Encrypted mission group" : nil)
+        let prompt = privatePayload?.prompt
+            ?? data["prompt"] as? String
+            ?? (acceptsRedactedPrivateFields ? "" : nil)
+
         guard
-            let title = privatePayload?.title ?? data["title"] as? String,
-            let prompt = privatePayload?.prompt ?? data["prompt"] as? String,
+            let title,
+            let prompt,
             let missionKind = data["missionKind"] as? String,
             let childIDs = data["childMissionIDs"] as? [String],
             let runtimes = data["runtimeTokens"] as? [String],
