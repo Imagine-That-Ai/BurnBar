@@ -60,7 +60,14 @@ public enum HermesRelayCryptoError: LocalizedError, Sendable, Equatable {
 
 public enum HermesRelayCrypto {
     public static let algorithm = "p256-hkdf-sha256-aesgcm"
+    /// Wrap-protocol version for the **realtime** relay (ephemeral-static, v1).
+    /// Shared with the realtime iroh path — must stay 1.
     public static let keyVersion = 1
+    /// Wrap-protocol version for the **gateway** (authenticated 2-DH, v2). This
+    /// is the envelope `relayKeyVersion` the phone stamps on gateway seals and
+    /// hard-requires on gateway opens. Distinct from `keyVersion` (realtime) and
+    /// from the keypair's key-format version (the keypair is unchanged P-256).
+    public static let gatewayRelayKeyVersion = 2
     public static let symmetricKeyByteCount = 32
 
     public static func generatePrivateKey() -> HermesRelayPrivateKey {
@@ -182,10 +189,19 @@ public enum HermesRelayCrypto {
         return try AES.GCM.open(sealedBox, using: SymmetricKey(data: keyData), authenticating: aad)
     }
 
+    /// Wrap a symmetric key to a recipient.
+    ///
+    /// When `senderPrivateKey` is `nil` this is the v1 ephemeral-static ECIES
+    /// wrap (byte-identical to the realtime relay path — do not change this leg).
+    /// When `senderPrivateKey` is provided this is the **v2 authenticated** wrap:
+    /// an HPKE-AuthEncap-shaped 2-DH KEM that binds the sender's static key so a
+    /// party without the sender's private key cannot forge a valid envelope.
+    /// `senderPrivateKey` is the *seal-side* sender's own static relay key.
     public static func wrapSymmetricKey(
         _ keyData: Data,
         recipientPublicKeyBase64: String,
-        aad: Data
+        aad: Data,
+        senderPrivateKey: HermesRelayPrivateKey? = nil
     ) throws -> String {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey
@@ -195,24 +211,48 @@ public enum HermesRelayCrypto {
             throw HermesRelayCryptoError.invalidPublicKey
         }
         let ephemeralKey = P256.KeyAgreement.PrivateKey()
-        let sharedSecret = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
-        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: keyWrapSharedInfo(aad: aad),
-            outputByteCount: symmetricKeyByteCount
-        )
+        let dh1 = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
+        let enc = ephemeralKey.publicKey.x963Representation
+
+        let wrappingKey: SymmetricKey
+        if let senderPrivateKey {
+            // v2 authenticated: ikm = ECDH(eph, R) ‖ ECDH(skS, R)
+            let dh2 = try senderPrivateKey.key.sharedSecretFromKeyAgreement(with: recipientKey)
+            wrappingKey = authenticatedWrappingKey(
+                dh1: dh1,
+                dh2: dh2,
+                enc: enc,
+                recipientPublicKey: publicKeyData,
+                senderPublicKey: senderPrivateKey.key.publicKey.x963Representation,
+                aad: aad
+            )
+        } else {
+            // v1 ephemeral-static (realtime relay) — unchanged byte layout.
+            wrappingKey = dh1.hkdfDerivedSymmetricKey(
+                using: SHA256.self,
+                salt: Data(),
+                sharedInfo: keyWrapSharedInfo(aad: aad),
+                outputByteCount: symmetricKeyByteCount
+            )
+        }
         let sealed = try AES.GCM.seal(keyData, using: wrappingKey, authenticating: aad)
         guard let combined = sealed.combined else {
             throw HermesRelayCryptoError.invalidCiphertext
         }
-        return (ephemeralKey.publicKey.x963Representation + combined).base64EncodedString()
+        return (enc + combined).base64EncodedString()
     }
 
+    /// Unwrap a symmetric key.
+    ///
+    /// When `senderPublicKeyBase64` is `nil` this is the v1 path. When provided
+    /// it is the **v2 authenticated** unwrap: the recipient binds the *pinned*
+    /// sender static key (NOT the envelope's self-asserted field) into the second
+    /// DH, so a swapped/forged sender key fails AES-GCM tag verification.
     public static func unwrapSymmetricKey(
         _ wrappedKeyBase64: String,
         privateKey: HermesRelayPrivateKey,
-        aad: Data
+        aad: Data,
+        senderPublicKeyBase64: String? = nil
     ) throws -> Data {
         guard let envelope = Data(base64Encoded: wrappedKeyBase64),
               envelope.count > 65 else {
@@ -223,15 +263,61 @@ public enum HermesRelayCrypto {
         guard let ephemeralPublicKey = try? P256.KeyAgreement.PublicKey(x963Representation: ephemeralPublicKeyData) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
-        let sharedSecret = try privateKey.key.sharedSecretFromKeyAgreement(with: ephemeralPublicKey)
-        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: keyWrapSharedInfo(aad: aad),
-            outputByteCount: symmetricKeyByteCount
-        )
+        let dh1 = try privateKey.key.sharedSecretFromKeyAgreement(with: ephemeralPublicKey)
+
+        let wrappingKey: SymmetricKey
+        if let senderPublicKeyBase64 {
+            // v2 authenticated: recompute ikm = ECDH(r, eph) ‖ ECDH(r, S_pinned).
+            guard let senderPublicKeyData = Data(base64Encoded: senderPublicKeyBase64),
+                  let senderKey = try? P256.KeyAgreement.PublicKey(x963Representation: senderPublicKeyData) else {
+                throw HermesRelayCryptoError.invalidPublicKey
+            }
+            let dh2 = try privateKey.key.sharedSecretFromKeyAgreement(with: senderKey)
+            wrappingKey = authenticatedWrappingKey(
+                dh1: dh1,
+                dh2: dh2,
+                enc: Data(ephemeralPublicKeyData),
+                recipientPublicKey: privateKey.key.publicKey.x963Representation,
+                senderPublicKey: senderPublicKeyData,
+                aad: aad
+            )
+        } else {
+            wrappingKey = dh1.hkdfDerivedSymmetricKey(
+                using: SHA256.self,
+                salt: Data(),
+                sharedInfo: keyWrapSharedInfo(aad: aad),
+                outputByteCount: symmetricKeyByteCount
+            )
+        }
         let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
         return try AES.GCM.open(sealedBox, using: wrappingKey, authenticating: aad)
+    }
+
+    /// v2 authenticated wrapping-key derivation (HPKE-AuthEncap-shaped):
+    /// `ikm = dh1 ‖ dh2`, `info = "…KeyWrap-v2|" ‖ aad ‖ enc ‖ pkR ‖ pkS`
+    /// (kem_context binds the ephemeral pub + both party identities → UKS-resistant).
+    private static func authenticatedWrappingKey(
+        dh1: SharedSecret,
+        dh2: SharedSecret,
+        enc: Data,
+        recipientPublicKey: Data,
+        senderPublicKey: Data,
+        aad: Data
+    ) -> SymmetricKey {
+        var ikm = Data()
+        dh1.withUnsafeBytes { ikm.append(contentsOf: $0) }
+        dh2.withUnsafeBytes { ikm.append(contentsOf: $0) }
+        var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v2|".utf8)
+        info.append(aad)
+        info.append(enc)
+        info.append(recipientPublicKey)
+        info.append(senderPublicKey)
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: ikm),
+            salt: Data(),
+            info: info,
+            outputByteCount: symmetricKeyByteCount
+        )
     }
 
     private static func aad(_ parts: [String]) -> Data {

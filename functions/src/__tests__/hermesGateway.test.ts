@@ -20,6 +20,7 @@ import {
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
   HERMES_GATEWAY_RELAY_KEY_VERSION,
+  HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS,
   HERMES_GATEWAY_SCHEMA_VERSION,
   type GatewayRelayEnvelopeDoc,
   type HermesGatewayClientDoc,
@@ -27,8 +28,26 @@ import {
 
 // A base64 X9.63 uncompressed P-256 public key: 65 bytes, first byte 0x04.
 const RELAY_PUBKEY_B64 = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 7)]).toString("base64");
+// A second, distinct X9.63 uncompressed P-256 public key for the v2 senderPublicKey
+// wire hint (so a round-trip asserts the exact value flows through, not just any key).
+const SENDER_PUBKEY_B64 = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 9)]).toString("base64");
 
+// The canonical v2 relay envelope: the DEFAULT key version is now 2, which adds
+// the optional senderPublicKey wire HINT (a base64 X9.63 P-256 key) that BOTH
+// validators must round-trip verbatim.
 function relayEnvelope(): GatewayRelayEnvelopeDoc {
+  return {
+    payloadCiphertext: Buffer.from("ciphertext").toString("base64"),
+    wrappedKey: Buffer.from("wrappedkey").toString("base64"),
+    relayEncryption: HERMES_GATEWAY_RELAY_ENCRYPTION,
+    relayKeyVersion: 2,
+    senderPublicKey: SENDER_PUBKEY_B64,
+  };
+}
+
+// A legacy v1 relay envelope: no senderPublicKey hint (the field did not exist
+// before v2); both validators must keep accepting it unchanged (no v1 brick).
+function relayEnvelopeV1(): GatewayRelayEnvelopeDoc {
   return {
     payloadCiphertext: Buffer.from("ciphertext").toString("base64"),
     wrappedKey: Buffer.from("wrappedkey").toString("base64"),
@@ -161,30 +180,48 @@ describe("isGatewayRelayPublicKeyB64", () => {
 });
 
 describe("requireGatewayRelayEnvelope", () => {
-  it("accepts a well-formed envelope and echoes the canonical fields", () => {
-    expect(requireGatewayRelayEnvelope(relayEnvelope(), "relayEnvelope")).toEqual(relayEnvelope());
+  it("accepts a well-formed v2 envelope and round-trips senderPublicKey verbatim", () => {
+    const out = requireGatewayRelayEnvelope(relayEnvelope(), "relayEnvelope");
+    expect(out).toEqual(relayEnvelope());
+    // The v2 wire HINT must flow through byte-exact (not dropped, not mutated).
+    expect(out.senderPublicKey).toBe(SENDER_PUBKEY_B64);
+    expect(out.relayKeyVersion).toBe(2);
+  });
+  it("keeps accepting a legacy v1 envelope (no senderPublicKey) — v1 is not bricked", () => {
+    const out = requireGatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope");
+    expect(out).toEqual(relayEnvelopeV1());
+    expect(out.senderPublicKey).toBeUndefined();
   });
   it("rejects a wrong algorithm constant", () => {
     expect(() =>
       requireGatewayRelayEnvelope({ ...relayEnvelope(), relayEncryption: "AES-256-GCM" }, "relayEnvelope"),
     ).toThrow(/relayEncryption/);
   });
-  it("accepts ONLY the supported key version (1) and rejects every other", () => {
-    // Codex KEY-VERSION CLAMP: only v1 crypto exists, so a permissive 1..100
-    // range is closed to exactly 1 until a v2 wrapper ships.
-    expect(HERMES_GATEWAY_RELAY_KEY_VERSION).toBe(1);
-    expect(requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 1 }, "x").relayKeyVersion).toBe(1);
-    expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 0 }, "relayEnvelope")).toThrow(
+  it("accepts the supported key-version set (1 AND 2) and rejects every other (0, 101)", () => {
+    // KEY-VERSION ACCEPT-SET: v1 and v2 are both live wire shapes; the clamp is an
+    // accept-set membership test, so a forged/future version (0, 101) is rejected.
+    expect(HERMES_GATEWAY_RELAY_KEY_VERSION).toBe(2);
+    expect([...HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS].sort()).toEqual([1, 2]);
+    expect(requireGatewayRelayEnvelope(relayEnvelopeV1(), "x").relayKeyVersion).toBe(1);
+    expect(requireGatewayRelayEnvelope(relayEnvelope(), "x").relayKeyVersion).toBe(2);
+    expect(() => requireGatewayRelayEnvelope({ ...relayEnvelopeV1(), relayKeyVersion: 0 }, "relayEnvelope")).toThrow(
       /relayKeyVersion/,
     );
-    // v2 (and any other version) must be rejected — not silently accepted by an
+    // Any version outside the accept-set is rejected — not silently accepted by an
     // upper bound of 100.
-    expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 2 }, "relayEnvelope")).toThrow(
-      /relayKeyVersion/,
-    );
     expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 101 }, "relayEnvelope")).toThrow(
       /relayKeyVersion/,
     );
+  });
+  it("REQUIRES senderPublicKey for a v2 envelope and rejects when it is absent or malformed", () => {
+    // v2 without the hint → rejected by require (the field is mandatory at v2).
+    const { senderPublicKey: _omit, ...v2NoSender } = relayEnvelope();
+    void _omit;
+    expect(() => requireGatewayRelayEnvelope(v2NoSender, "relayEnvelope")).toThrow(/senderPublicKey/);
+    // v2 with a malformed hint (wrong point format) → rejected.
+    expect(() =>
+      requireGatewayRelayEnvelope({ ...relayEnvelope(), senderPublicKey: "not base64 !!" }, "relayEnvelope"),
+    ).toThrow(/senderPublicKey/);
   });
   it("rejects a non-base64 / empty payload ciphertext or wrapped key", () => {
     expect(() => requireGatewayRelayEnvelope({ ...relayEnvelope(), payloadCiphertext: "" }, "x")).toThrow(
@@ -264,14 +301,20 @@ describe("serializeHermesGatewayEvent — sealed pass-through + legacy fallback"
 });
 
 describe("sanitizeGatewayRelayEnvelope — strict read-side validation (Codex SANITIZE STRICT)", () => {
-  it("accepts a well-formed stored envelope", () => {
-    expect(sanitizeGatewayRelayEnvelope(relayEnvelope())).toEqual(relayEnvelope());
+  it("accepts a well-formed stored v2 envelope and round-trips senderPublicKey verbatim", () => {
+    const out = sanitizeGatewayRelayEnvelope(relayEnvelope());
+    expect(out).toEqual(relayEnvelope());
+    expect(out?.senderPublicKey).toBe(SENDER_PUBKEY_B64);
+  });
+  it("accepts a well-formed stored v1 envelope (no senderPublicKey) — symmetric with require", () => {
+    expect(sanitizeGatewayRelayEnvelope(relayEnvelopeV1())).toEqual(relayEnvelopeV1());
   });
   it("rejects a malformed stored envelope the write side would never have accepted", () => {
     // Wrong algorithm constant.
     expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayEncryption: "AES-256-GCM" })).toBeUndefined();
-    // Unsupported key version (only v1 crypto exists).
-    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 2 })).toBeUndefined();
+    // Unsupported key version (outside the v1/v2 accept-set).
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 0 })).toBeUndefined();
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 101 })).toBeUndefined();
     // Non-base64 ciphertext / wrapped key.
     expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), payloadCiphertext: "not base64 !!" })).toBeUndefined();
     expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), wrappedKey: "not base64 !!" })).toBeUndefined();
@@ -280,6 +323,20 @@ describe("sanitizeGatewayRelayEnvelope — strict read-side validation (Codex SA
     // Non-record.
     expect(sanitizeGatewayRelayEnvelope("nope")).toBeUndefined();
     expect(sanitizeGatewayRelayEnvelope(undefined)).toBeUndefined();
+  });
+  it("fails closed (returns undefined) when senderPublicKey is malformed or absent at v2", () => {
+    // A v2 envelope whose senderPublicKey is present-but-malformed → unreadable.
+    expect(
+      sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), senderPublicKey: "not base64 !!" }),
+    ).toBeUndefined();
+    // A v2 envelope missing the now-required hint → unreadable (mirrors require).
+    const { senderPublicKey: _omit, ...v2NoSender } = relayEnvelope();
+    void _omit;
+    expect(sanitizeGatewayRelayEnvelope(v2NoSender)).toBeUndefined();
+    // A v1 envelope carrying a present-but-malformed hint also fails closed.
+    expect(
+      sanitizeGatewayRelayEnvelope({ ...relayEnvelopeV1(), senderPublicKey: "not base64 !!" }),
+    ).toBeUndefined();
   });
   it("treats a doc with a malformed stored envelope as having no readable envelope", () => {
     // A schema-2 event whose envelope is corrupt must NOT pass the corrupt
