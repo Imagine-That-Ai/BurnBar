@@ -7,10 +7,7 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         executionTimeAllowance = 30
     }
     func testMASEntitlementsIncludeSandboxAndSignInWithApple() throws {
-        let entitlementsURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Resources")
-            .appendingPathComponent("OpenBurnBarMAS.entitlements")
+        let entitlementsURL = try bundledResourceURL(named: "OpenBurnBarMAS", extension: "entitlements")
         let data = try Data(contentsOf: entitlementsURL)
         let plist = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
@@ -23,28 +20,19 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testMacPopoverUsesStandardVisibleQuitCommandName() throws {
-        let popoverURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Popover")
-            .appendingPathComponent("MenuBarPopoverView.swift")
-        let source = try String(contentsOf: popoverURL, encoding: .utf8)
+        let source = try bundledTextResource(named: "MenuBarPopoverView")
 
         XCTAssertTrue(source.contains("title: \"Quit OpenBurnBar\""))
         XCTAssertTrue(source.contains("NSApplication.shared.terminate(nil)"))
     }
 
     func testMacCloudStoreHasNativeStoreKitPurchaseAndLegalLinks() throws {
-        let sourceURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Settings")
-            .appendingPathComponent("CloudStoreSettingsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try bundledTextResource(named: "CloudStoreSettingsView")
 
         XCTAssertTrue(source.contains("import StoreKit"))
-        XCTAssertTrue(source.contains("Product.products(for: [Self.productID])"))
-        XCTAssertTrue(source.contains("product.purchase(options: purchaseOptions)"))
+        XCTAssertTrue(source.contains("guard let productID = tier.monthlyProductID"))
+        XCTAssertTrue(source.contains("Product.products(for: [productID])"))
+        XCTAssertTrue(source.contains("purchaseTarget.purchase(options: purchaseOptions)"))
         XCTAssertTrue(source.contains("beginEntitlementBinding"))
         XCTAssertTrue(source.contains("verifyHostedQuotaEntitlement"))
         XCTAssertTrue(source.contains("Restore Purchases"))
@@ -55,12 +43,7 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testIOSActiveCloudMembersCanRestorePurchasesFromMemberCard() throws {
-        let sourceURL = repoRoot()
-            .appendingPathComponent("OpenBurnBarMobile")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Store")
-            .appendingPathComponent("CloudStoreView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try bundledTextResource(named: "CloudStoreView")
 
         XCTAssertTrue(source.contains("CloudStoreMemberCard(store: store)"))
         XCTAssertTrue(source.contains("Task { await store.restorePurchases() }"))
@@ -69,18 +52,8 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testMacAccountUpgradeRoutesToInAppCloudPurchaseSurface() throws {
-        let settingsURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Settings")
-            .appendingPathComponent("SettingsView.swift")
-        let accountURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Settings")
-            .appendingPathComponent("AccountSettingsView.swift")
-        let settingsSource = try String(contentsOf: settingsURL, encoding: .utf8)
-        let accountSource = try String(contentsOf: accountURL, encoding: .utf8)
+        let settingsSource = try bundledTextResource(named: "SettingsView")
+        let accountSource = try bundledTextResource(named: "AccountSettingsView")
 
         XCTAssertTrue(settingsSource.contains("router.selectedTab = .cloud"))
         XCTAssertTrue(settingsSource.contains("router.path.removeAll()"))
@@ -90,11 +63,7 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testReviewNotesDescribeMacIAPLocationAndLegalLinks() throws {
-        let ascURL = repoRoot()
-            .appendingPathComponent("tools")
-            .appendingPathComponent("app-store-connect")
-            .appendingPathComponent("asc-api.js")
-        let source = try String(contentsOf: ascURL, encoding: .utf8)
+        let source = try bundledTextResource(named: "asc-api", extension: "js")
 
         XCTAssertTrue(source.contains("macOS Guideline 2.1(a), 2.1(b), and 3.1.2(c) fixes"))
         XCTAssertTrue(source.contains("Account -> Subscription -> Upgrade"))
@@ -105,12 +74,16 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("Quit OpenBurnBar"))
     }
 
-    private func repoRoot(file: StaticString = #filePath) -> URL {
-        // AgentLensTests/Active/<this file> → repo root (no filesystem walk; avoids
-        // rare hangs when FileManager probes network-backed paths under xcodebuild).
-        URL(fileURLWithPath: "\(file)")
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+    private func bundledTextResource(named name: String, extension ext: String = "txt") throws -> String {
+        let url = try bundledResourceURL(named: name, extension: ext)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func bundledResourceURL(named name: String, extension ext: String) throws -> URL {
+        let bundle = Bundle(for: Self.self)
+        return try XCTUnwrap(
+            bundle.url(forResource: name, withExtension: ext),
+            "Missing bundled compliance fixture: \(name).\(ext)"
+        )
     }
 }

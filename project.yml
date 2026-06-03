@@ -311,6 +311,49 @@ targets:
           - "**/*.swift.plist"
       - path: AgentLensTests/Fixtures
         buildPhase: resources
+      # Static App Store review compliance scans read these from the test
+      # bundle instead of the workspace. App-hosted XCTest processes can lack
+      # the terminal's Documents-folder TCC grants on macOS, which turns direct
+      # repo reads into runner timeouts.
+      - path: AgentLens/Resources/OpenBurnBarMAS.entitlements
+        buildPhase: resources
+      - path: tools/app-store-connect/asc-api.js
+        buildPhase: resources
+    postBuildScripts:
+      - name: Bundle App Store Compliance Source Fixtures
+        script: |
+          set -euo pipefail
+
+          RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          mkdir -p "${RESOURCES_DIR}"
+
+          copy_fixture() {
+            local source_path="$1"
+            local output_name="$2"
+            if [[ ! -f "${source_path}" ]]; then
+              echo "error: missing compliance fixture source ${source_path}"
+              exit 1
+            fi
+            cp "${source_path}" "${RESOURCES_DIR}/${output_name}"
+          }
+
+          copy_fixture "${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift" "MenuBarPopoverView.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift" "AccountSettingsView.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift" "CloudStoreSettingsView.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift" "SettingsView.txt"
+          copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift" "CloudStoreView.txt"
+        inputFiles:
+          - $(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift
+          - $(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift
+          - $(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView.swift
+          - $(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarTests
