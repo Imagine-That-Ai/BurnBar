@@ -79,7 +79,7 @@ export function PasskeyEnrollmentCard({ className }: { className?: string }) {
           className="grid size-10 place-items-center border border-glass-line bg-mercury-wash"
           aria-hidden
         >
-          <KeyRound className="size-4 text-[color:var(--accent)]" />
+          <KeyRound className="size-4 text-[color:var(--accent-deep)]" />
         </div>
         <div>
           <p className="eyebrow eyebrow--accent">Passkey sign-in</p>
