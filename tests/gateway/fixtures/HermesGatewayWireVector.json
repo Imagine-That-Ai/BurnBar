@@ -1,0 +1,47 @@
+{
+  "algorithm" : "p256-hkdf-sha256-aesgcm",
+  "event" : {
+    "clientId" : "c-gateway",
+    "encodedPlaintext" : "eyJ0ZXh0Ijoib3BlbiB0aGUgQnVybkJhciBnYXRld2F5Iiwia2luZCI6ImNoYXQifQ==",
+    "eventId" : "e-gateway",
+    "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u-gateway|c-gateway|e-gateway",
+    "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEvent|u-gateway|c-gateway|e-gateway",
+    "payloadCiphertext" : "2sX63SoTTOm8kBW9CCLNff7kBVS0DPurwpOfO0K3LgzZeRWvo6KoCcFBTb3rKzOYWir07NQFR0M1Qcg+2pDMUn7ODU2kLpvi1vx0XkA=",
+    "plaintext" : "{\"text\":\"open the BurnBar gateway\",\"kind\":\"chat\"}",
+    "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgE=",
+    "recipientPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
+    "symmetricKey" : "ERgfJi00O0JJUFdeZWxzeoGIj5adpKuyucDHztXc4+o=",
+    "uid" : "u-gateway",
+    "wrappedKey" : "BNvNR8uiT871q7YHCwKQXvx5dWWfWuHn0RJTDnbWcVO3vi+vaQihgbaVopAI4yQEfOr0MdLTVZfMb7Cj+s2FTffO\/pZppsWkKZ\/EnR+ityJ0NvrSl9gbzP5Si4MF0ZLpjEtcCehts4NXyGWOFwYFPAhXjjlcf9p8eSB\/9n8="
+  },
+  "keyVersion" : 1,
+  "message" : {
+    "clientId" : "c-gateway",
+    "encodedPlaintext" : "eyJ0ZXh0IjoiSGVybWVzIHJlcGxpZWQgb3ZlciB0aGUgZW5jcnlwdGVkIGdhdGV3YXkuIn0=",
+    "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayMessageKey|u-gateway|c-gateway|m-gateway",
+    "messageId" : "m-gateway",
+    "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayMessage|u-gateway|c-gateway|m-gateway",
+    "payloadCiphertext" : "3TsFPLJuvzNas3Ap4JJNCO5O6WgaEzOa8RC+g8YC4ceb7lKFveoRT7AgvgQ3LL5Ut15eZXMmHnTqD+hKYatBD6t9yTe\/XqQA+NDsgN7oCSQ2",
+    "plaintext" : "{\"text\":\"Hermes replied over the encrypted gateway.\"}",
+    "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgI=",
+    "recipientPublicKey" : "BEKv7RhS+Y6na81bmkM5tzyhuY2lqIAoclDXgUMlOxYGgIa3AgfJHKxRBUYttVjR\/+p9mm94EPDWHQpMU175cwE=",
+    "symmetricKey" : "IikwNz5FTFNaYWhvdn2Ei5KZoKeutbzDytHY3+bt9AA=",
+    "uid" : "u-gateway",
+    "wrappedKey" : "BLZLRzx19FBs0bs2MDkhe1\/l6ulhxubZh\/ElvBSVmFKRsP08t9ddK06odi68JJWukwWmTyQWg1CkjjcyZ3d94Nvkfr5jRxhEe8vQMfGxFbWXAnsoBTMzofDMDWnTXE9eRAxw29VfjGrtTwBE7i\/ELZqe1WcnnagTAuEJhIo="
+  },
+  "modelSwitch" : {
+    "clientId" : "c-gateway",
+    "encodedPlaintext" : "eyJtb2RlbElkIjoiY2xhdWRlLW9wdXMtNC04In0=",
+    "eventId" : "e-model-switch",
+    "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u-gateway|c-gateway|e-model-switch",
+    "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEvent|u-gateway|c-gateway|e-model-switch",
+    "payloadCiphertext" : "Ox2wQdjn0am\/Mp+fBJytWEkft\/S3gIFiltx5a4LLOYpzJ7gIL34yQrwlJHXbGHDrz4cpIKwmhj5c",
+    "plaintext" : "{\"modelId\":\"claude-opus-4-8\"}",
+    "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgE=",
+    "recipientPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
+    "symmetricKey" : "MzpBSE9WXWRrcnmAh46VnKOqsbi\/xs3U2+Lp8PcDChE=",
+    "uid" : "u-gateway",
+    "wrappedKey" : "BCDY2IkwIfdYvN\/vvGgYjudt6jXaGImsfKPO+YxOxQZgEPxWnThzhoYQl6PcZki6WcVTXWf6pY4QWChDgp9LaMN\/sBBkBGmnuy1HdE6LzDaJhUmtUABAjAYvlQePJKYhdUuDmb5mi38pwoxX+T4\/QQGywR\/G6jzevMc29Ys="
+  },
+  "revision" : "v1"
+}

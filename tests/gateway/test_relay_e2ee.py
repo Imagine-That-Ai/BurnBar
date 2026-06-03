@@ -23,13 +23,30 @@ import pytest
 pytest.importorskip("cryptography")
 
 from gateway.crypto import relay_e2ee  # noqa: E402
+from tests.gateway._plugin_adapter_loader import load_plugin_adapter  # noqa: E402
+
+# The BurnBar adapter owns the production gateway AAD helpers
+# (``_gateway_event_aad`` / ``_gateway_event_key_aad`` / ``_gateway_message_aad``
+# / ``_gateway_message_key_aad``). The cross-language gateway tests below open a
+# Swift-sealed vector with exactly these helpers, so a label drift on either
+# side fails the GCM tag (and the explicit byte-string assertions).
+_burnbar = load_plugin_adapter("burnbar")
 
 _FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "HermesRelayWireVector.json"
+_GATEWAY_FIXTURE_PATH = (
+    Path(__file__).resolve().parent / "fixtures" / "HermesGatewayWireVector.json"
+)
 
 
 @pytest.fixture(scope="module")
 def vector() -> dict:
     with _FIXTURE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+@pytest.fixture(scope="module")
+def gateway_vector() -> dict:
+    with _GATEWAY_FIXTURE_PATH.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -323,3 +340,165 @@ def test_persist_failure_is_non_fatal_and_key_kept_in_process():
     assert isinstance(identity.private_key, relay_e2ee.RelayPrivateKey)
     # Despite the persist failure the key is still available for this run.
     assert environ.get(relay_e2ee.RELAY_PRIVATE_KEY_ENV) == identity.private_key.raw_base64()
+
+
+# ===========================================================================
+# F. GATEWAY cross-language interop (THE GATE)
+# ===========================================================================
+#
+# This is the regression test whose ABSENCE let the gateway payload-vs-key-wrap
+# AAD divergence ship green: every prior gateway test round-tripped one language
+# against itself, and the only shared fixture (HermesRelayWireVector.json) had
+# zero gateway labels. Here Python opens a *Swift-sealed* gateway wire vector
+# (HermesGatewayWireVector.json, emitted by HermesRelayCrypto's gateway helpers
+# in HermesRelayCrossPlatformVectorTests) using the BurnBar adapter's production
+# AAD helpers — the exact code path that runs on a real phone⇄agent link.
+#
+# CANONICAL CONTRACT (Swift HermesRelayCrypto is the source of truth):
+#   * phone→agent EVENT:   payload AAD = gatewayEvent,   key-wrap AAD = gatewayEventKey
+#   * agent→phone MESSAGE: payload AAD = gatewayMessage,  key-wrap AAD = gatewayMessageKey
+#   * model_switch:        reuses the EVENT AADs (gatewayEvent / gatewayEventKey);
+#                          there is NO separate gatewayModelSwitch label.
+#
+# seal uses the PAYLOAD AAD; wrap/unwrap use the distinct KEY AAD. If the labels
+# are wrong (e.g. the shipped bug that reused one AAD for both slots) these tests
+# MUST fail with InvalidTag. They depend on the FIX-adapter AAD alignment.
+
+
+def _gw_event_payload_aad(node: dict) -> bytes:
+    return _burnbar._gateway_event_aad(node["uid"], node["clientId"], node["eventId"])
+
+
+def _gw_event_key_aad(node: dict) -> bytes:
+    return _burnbar._gateway_event_key_aad(node["uid"], node["clientId"], node["eventId"])
+
+
+def _gw_message_payload_aad(node: dict) -> bytes:
+    return _burnbar._gateway_message_aad(node["uid"], node["clientId"], node["messageId"])
+
+
+def _gw_message_key_aad(node: dict) -> bytes:
+    return _burnbar._gateway_message_key_aad(node["uid"], node["clientId"], node["messageId"])
+
+
+def test_gateway_fixture_revision_is_the_contract_key(gateway_vector):
+    assert gateway_vector["revision"] == "v1"
+    assert gateway_vector["algorithm"] == relay_e2ee.ALGORITHM
+    assert gateway_vector["keyVersion"] == relay_e2ee.KEY_VERSION
+
+
+def test_gateway_aad_helpers_match_fixture_byte_strings(gateway_vector):
+    """The Python helpers reproduce the EXACT AAD byte-strings Swift embedded.
+
+    This is the drift tripwire: if a future rename moves one side's label, the
+    helper output no longer equals the fixture string and this fails before any
+    GCM tag check, naming the exact diverged label.
+    """
+    event = gateway_vector["event"]
+    assert _gw_event_payload_aad(event) == event["payloadAAD"].encode("utf-8")
+    assert _gw_event_key_aad(event) == event["keyAAD"].encode("utf-8")
+
+    message = gateway_vector["message"]
+    assert _gw_message_payload_aad(message) == message["payloadAAD"].encode("utf-8")
+    assert _gw_message_key_aad(message) == message["keyAAD"].encode("utf-8")
+
+    # model_switch reuses the EVENT labels — assert it carries gatewayEvent /
+    # gatewayEventKey, NOT a separate gatewayModelSwitch label.
+    model_switch = gateway_vector["modelSwitch"]
+    assert _gw_event_payload_aad(model_switch) == model_switch["payloadAAD"].encode("utf-8")
+    assert _gw_event_key_aad(model_switch) == model_switch["keyAAD"].encode("utf-8")
+    assert b"gatewayEvent|" in model_switch["payloadAAD"].encode("utf-8")
+    assert b"gatewayEventKey|" in model_switch["keyAAD"].encode("utf-8")
+    assert b"gatewayModelSwitch" not in model_switch["keyAAD"].encode("utf-8")
+
+
+def test_gateway_aad_labels_are_distinct_payload_vs_key(gateway_vector):
+    """The shipped bug reused ONE AAD for payload+wrap. Pin the split."""
+    for node in (gateway_vector["event"], gateway_vector["message"], gateway_vector["modelSwitch"]):
+        assert node["payloadAAD"] != node["keyAAD"]
+
+
+def test_gateway_event_sealed_by_swift_opens_in_python(gateway_vector):
+    """Phone→agent EVENT: the agent unwraps under gatewayEventKey, opens under
+    gatewayEvent, and recovers the exact Swift plaintext."""
+    event = gateway_vector["event"]
+    agent_private = relay_e2ee.RelayPrivateKey.from_base64(event["recipientPrivateKey"])
+    # Sanity: the embedded public key is the one Swift wrapped to.
+    assert agent_private.public_key_base64() == event["recipientPublicKey"]
+
+    sym = relay_e2ee.unwrap_symmetric_key(
+        event["wrappedKey"], agent_private, _gw_event_key_aad(event)
+    )
+    assert sym == base64.b64decode(event["symmetricKey"])
+
+    plaintext = relay_e2ee.open_base64(
+        event["payloadCiphertext"], sym, _gw_event_payload_aad(event)
+    )
+    assert plaintext == base64.b64decode(event["encodedPlaintext"])
+    assert plaintext.decode("utf-8") == event["plaintext"]
+    assert json.loads(plaintext.decode("utf-8"))["text"] == "open the BurnBar gateway"
+
+
+def test_gateway_message_sealed_by_swift_opens_in_python(gateway_vector):
+    """Agent→phone MESSAGE: the phone unwraps under gatewayMessageKey, opens
+    under gatewayMessage, and recovers the exact Swift reply text."""
+    message = gateway_vector["message"]
+    phone_private = relay_e2ee.RelayPrivateKey.from_base64(message["recipientPrivateKey"])
+    assert phone_private.public_key_base64() == message["recipientPublicKey"]
+
+    sym = relay_e2ee.unwrap_symmetric_key(
+        message["wrappedKey"], phone_private, _gw_message_key_aad(message)
+    )
+    assert sym == base64.b64decode(message["symmetricKey"])
+
+    plaintext = relay_e2ee.open_base64(
+        message["payloadCiphertext"], sym, _gw_message_payload_aad(message)
+    )
+    assert plaintext == base64.b64decode(message["encodedPlaintext"])
+    assert plaintext.decode("utf-8") == message["plaintext"]
+    decoded = json.loads(plaintext.decode("utf-8"))
+    assert decoded["text"] == "Hermes replied over the encrypted gateway."
+
+
+def test_gateway_model_switch_sealed_by_swift_opens_under_event_aads(gateway_vector):
+    """model_switch is sealed as a normal EVENT (payload gatewayEvent + wrap
+    gatewayEventKey) with modelId inside the payload — the agent opens it on the
+    event path. Proves iOS routes model_switch through the event sealer and the
+    distinct gatewayModelSwitch label was never part of the wire contract."""
+    model_switch = gateway_vector["modelSwitch"]
+    agent_private = relay_e2ee.RelayPrivateKey.from_base64(model_switch["recipientPrivateKey"])
+
+    sym = relay_e2ee.unwrap_symmetric_key(
+        model_switch["wrappedKey"], agent_private, _gw_event_key_aad(model_switch)
+    )
+    plaintext = relay_e2ee.open_base64(
+        model_switch["payloadCiphertext"], sym, _gw_event_payload_aad(model_switch)
+    )
+    assert json.loads(plaintext.decode("utf-8")) == {"modelId": "claude-opus-4-8"}
+
+
+def test_gateway_event_unwrap_with_payload_aad_fails_invalid_tag(gateway_vector):
+    """The EXACT shipped divergence: unwrapping the per-event key with the
+    PAYLOAD aad (gatewayEvent) instead of the KEY aad (gatewayEventKey) must
+    raise InvalidTag. This is the assertion that would have caught the bug."""
+    from cryptography.exceptions import InvalidTag
+
+    event = gateway_vector["event"]
+    agent_private = relay_e2ee.RelayPrivateKey.from_base64(event["recipientPrivateKey"])
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(
+            event["wrappedKey"], agent_private, _gw_event_payload_aad(event)
+        )
+
+
+def test_gateway_message_unwrap_with_payload_aad_fails_invalid_tag(gateway_vector):
+    """Symmetric to the event case: unwrapping the per-message key under the
+    gatewayMessage payload aad (the shipped iOS↔Python mismatch) is rejected."""
+    from cryptography.exceptions import InvalidTag
+
+    message = gateway_vector["message"]
+    phone_private = relay_e2ee.RelayPrivateKey.from_base64(message["recipientPrivateKey"])
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(
+            message["wrappedKey"], phone_private, _gw_message_payload_aad(message)
+        )
