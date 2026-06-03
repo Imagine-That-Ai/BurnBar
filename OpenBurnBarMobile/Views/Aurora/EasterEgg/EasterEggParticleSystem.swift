@@ -107,7 +107,7 @@ struct EasterEggParticleSystem {
                     tokenID: tokenID,
                     anchor: anchor,
                     drift: CGVector(dx: cos(angle) * dist, dy: sin(angle) * dist - 18),
-                    baseScale: rng.double(in: 0.42...0.78),
+                    baseScale: rng.cgFloat(in: 0.42...0.78),
                     spin: rng.double(in: -0.5...0.5),
                     burst: burst,
                     twinklePhase: rng.double(in: 0...(2 * .pi))
