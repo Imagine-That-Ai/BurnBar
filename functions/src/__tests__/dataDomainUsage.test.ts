@@ -28,7 +28,9 @@ describe("DATA_DOMAIN_USAGE ⇄ data-domain registry", () => {
       const domain = registry.domains.find((d: { id: string }) => d.id === id);
       const tops = domain.firestorePaths.map((p: string) => p.split("/")[0]);
       // audit_timeline's unified_audit_log is a planned collection (registered in the domain too)
-      expect(tops, `${id} count collection ${src.countCollection} not in firestorePaths`).toContain(src.countCollection);
+      expect(tops, `${id} count collection ${src.countCollection} not in firestorePaths`).toContain(
+        src.countCollection,
+      );
     }
   });
 });

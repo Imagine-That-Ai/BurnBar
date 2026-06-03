@@ -76,8 +76,9 @@ describe("panic drainCollection — completeness (the >500 fix)", () => {
 
   it("counts only what handlePage reports (skipped docs don't inflate the total)", async () => {
     const all = docs(10);
-    const total = await drainCollection(asQuery(stubQuery(all)), async (page) =>
-      page.filter((_, i) => i % 2 === 0).length,
+    const total = await drainCollection(
+      asQuery(stubQuery(all)),
+      async (page) => page.filter((_, i) => i % 2 === 0).length,
     );
     expect(total).toBe(5);
   });

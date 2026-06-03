@@ -47,7 +47,11 @@ export const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   usage_spend: { countCollection: "usage" },
   conversations_chat: { countCollection: "chat_threads" },
   session_logs: { countCollection: "cloud_search_documents" },
-  pensieve: { countCollection: "cloud_search_knowledge", byteCollection: "cloud_search_knowledge", byteField: "byteCount" },
+  pensieve: {
+    countCollection: "cloud_search_knowledge",
+    byteCollection: "cloud_search_knowledge",
+    byteField: "byteCount",
+  },
   provider_accounts: { countCollection: "provider_accounts" },
   connected_devices: { countCollection: "devices" },
   external_mcp: { countCollection: "remote_mcp_clients" },
@@ -68,7 +72,11 @@ export async function resolveDataTier(uid: string): Promise<DataTier> {
   return "free";
 }
 
-async function domainSnapshot(uid: string, id: string, src: UsageSource): Promise<{ id: string; count: number; bytes: number }> {
+async function domainSnapshot(
+  uid: string,
+  id: string,
+  src: UsageSource,
+): Promise<{ id: string; count: number; bytes: number }> {
   let count = 0;
   let bytes = 0;
   try {

@@ -17,9 +17,10 @@ describe("deleteDomainData ⇄ registry consistency", () => {
     for (const d of domains) {
       const hasDeleteAction = d.actions.includes("delete");
       const isUndeletable = UNDELETABLE_DOMAINS.has(d.id);
-      expect(hasDeleteAction, `${d.id}: delete-action(${hasDeleteAction}) must be the inverse of undeletable(${isUndeletable})`).toBe(
-        !isUndeletable,
-      );
+      expect(
+        hasDeleteAction,
+        `${d.id}: delete-action(${hasDeleteAction}) must be the inverse of undeletable(${isUndeletable})`,
+      ).toBe(!isUndeletable);
     }
   });
 

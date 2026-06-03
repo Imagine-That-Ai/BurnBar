@@ -36,8 +36,7 @@ function headFor(chain: Array<AuditEventCore & { hash: string }>, anchoredSeq?: 
 }
 
 describe("auditActorLabel — self-reported platform hint is clamped", () => {
-  const withHeader = (v: unknown) =>
-    auditActorLabel({ rawRequest: { headers: { "x-burnbar-platform": v } } } as never);
+  const withHeader = (v: unknown) => auditActorLabel({ rawRequest: { headers: { "x-burnbar-platform": v } } } as never);
 
   it("accepts a clean platform hint", () => {
     expect(withHeader("web")).toBe("user:web");

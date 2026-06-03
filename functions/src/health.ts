@@ -48,58 +48,64 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
  * Readiness probe — verifies Firestore responds within 3 seconds.
  * Returns 200 when ready, 503 when degraded.
  */
-export const healthReady = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, async (_req, res) => {
-  try {
-    const latencyMs = await probeFirestore();
-    logInfo({ event: "health_ready_ok", latency_ms: latencyMs });
-    res.status(200).json({
-      status: "ready",
-      timestamp: new Date().toISOString(),
-      version: FUNCTION_VERSION,
-      latency_ms: latencyMs,
-      checks: { firestore: "ok" },
-    });
-  } catch (error) {
-    logError({ event: "health_ready_failed", error: String(error) });
-    res.status(503).json({
-      status: "degraded",
-      timestamp: new Date().toISOString(),
-      version: FUNCTION_VERSION,
-      checks: { firestore: "error" },
-      error: "Firestore connectivity check failed",
-    });
-  }
-});
+export const healthReady = onRequest(
+  { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
+  async (_req, res) => {
+    try {
+      const latencyMs = await probeFirestore();
+      logInfo({ event: "health_ready_ok", latency_ms: latencyMs });
+      res.status(200).json({
+        status: "ready",
+        timestamp: new Date().toISOString(),
+        version: FUNCTION_VERSION,
+        latency_ms: latencyMs,
+        checks: { firestore: "ok" },
+      });
+    } catch (error) {
+      logError({ event: "health_ready_failed", error: String(error) });
+      res.status(503).json({
+        status: "degraded",
+        timestamp: new Date().toISOString(),
+        version: FUNCTION_VERSION,
+        checks: { firestore: "error" },
+        error: "Firestore connectivity check failed",
+      });
+    }
+  },
+);
 
 /**
  * Combined health check — returns full status, version, uptime, and all
  * dependency health. Used by monitoring dashboards and deployment scripts.
  */
-export const healthCheck = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, async (_req, res) => {
-  let firestoreStatus: "ok" | "error" = "ok";
-  let latencyMs = 0;
+export const healthCheck = onRequest(
+  { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
+  async (_req, res) => {
+    let firestoreStatus: "ok" | "error" = "ok";
+    let latencyMs = 0;
 
-  try {
-    latencyMs = await probeFirestore();
-  } catch {
-    firestoreStatus = "error";
-  }
+    try {
+      latencyMs = await probeFirestore();
+    } catch {
+      firestoreStatus = "error";
+    }
 
-  const allHealthy = firestoreStatus === "ok";
+    const allHealthy = firestoreStatus === "ok";
 
-  logInfo({
-    event: "health_check",
-    firestore: firestoreStatus,
-    latency_ms: latencyMs,
-    healthy: allHealthy,
-  });
+    logInfo({
+      event: "health_check",
+      firestore: firestoreStatus,
+      latency_ms: latencyMs,
+      healthy: allHealthy,
+    });
 
-  res.status(allHealthy ? 200 : 503).json({
-    status: allHealthy ? "ok" : "degraded",
-    timestamp: new Date().toISOString(),
-    version: FUNCTION_VERSION,
-    uptime_ms: Math.round(process.uptime() * 1000),
-    checks: { firestore: firestoreStatus },
-    ...(latencyMs > 0 && { latency_ms: latencyMs }),
-  });
-});
+    res.status(allHealthy ? 200 : 503).json({
+      status: allHealthy ? "ok" : "degraded",
+      timestamp: new Date().toISOString(),
+      version: FUNCTION_VERSION,
+      uptime_ms: Math.round(process.uptime() * 1000),
+      checks: { firestore: firestoreStatus },
+      ...(latencyMs > 0 && { latency_ms: latencyMs }),
+    });
+  },
+);
