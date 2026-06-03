@@ -161,15 +161,15 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "title": "Searchable Session Logs",
     "tier": "end_to_end",
     "blurb": "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes.",
-    "caveat": null,
+    "caveat": "The keyword search index is deterministic — repeated and co-occurring search terms produce stable keyed digests, so the server can learn which terms recur and appear together across your logs (the search structure), and the integrity hashes can confirm a guessed body or chunk; every title, snippet, body, and path stays sealed and unreadable.",
     "serverSees": [
       "provider",
       "model",
       "cost",
       "token counts",
       "timing",
-      "bodyHash",
-      "opaque token/semantic hashes"
+      "integrity hashes",
+      "deterministic keyed search digests"
     ],
     "deviceOnly": [
       "project/path text",

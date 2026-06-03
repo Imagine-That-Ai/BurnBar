@@ -656,6 +656,66 @@ assertRulesBlockDeniesClientWrite(
   "hermes_gateway_attachments must deny client writes (server-only writer)",
 );
 
+// ── Hermes Gateway callable source: the seal gate lives in the handler ───────
+// Gateway docs are server-WRITTEN (rules say `allow write: if false`), so
+// firestore.rules cannot catch a plaintext persist — the sealed-only contract is
+// enforced in the callable. Pin the gate so a regression that drops it (lets a
+// relay-capable client smuggle plaintext, or hardcodes the legacy protocol)
+// fails red here. (F8 — close the scanner's server-source blind spot.)
+const HERMES_GATEWAY_CALLABLE = "functions/src/callables/hermesGateway.ts";
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "requireGatewayRelayEnvelope(",
+  "gateway callable must require a sealed relayEnvelope for relay-capable clients",
+);
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "gatewayPlaintextWriteAllowed(",
+  "gateway callable must gate any plaintext body on the grace-window check",
+);
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "ciphertext_required",
+  "gateway callable must reject plaintext with ciphertext_required once sealing is mandatory",
+);
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "protocolVersion: HERMES_GATEWAY_PROTOCOL_VERSION",
+  "gateway /state must advertise the constant protocol version (sealed contract = 2)",
+);
+assertNotIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "protocolVersion: 1",
+  "gateway callable must NOT hardcode the legacy plaintext protocol version 1",
+);
+
+// ── Pensieve knowledge callables: keyed-dedup + cloaked-vector contract ──────
+// The vector rows are server-written/server-read, so firestore.rules cannot see
+// a re-introduced cleartext oracle. Pin the callable contract: dedup is a
+// vault-keyed HMAC (versioned), the embedding is cloaked, and recall floors out
+// legacy v0 cleartext-hash rows. (F8 — server-source blind spot.)
+const KNOWLEDGE_MEMORY = "functions/src/callables/knowledgeMemory.ts";
+assertIncludes(
+  KNOWLEDGE_MEMORY,
+  "requireCloakedVector",
+  "commitKnowledgeBatch must require a cloaked (not raw bge) embedding",
+);
+assertIncludes(
+  KNOWLEDGE_MEMORY,
+  "requireHexDigest(raw.dedupHash",
+  "commitKnowledgeBatch must require a vault-keyed dedupHash (no cleartext contentHash oracle)",
+);
+assertIncludes(
+  KNOWLEDGE_MEMORY,
+  "dedupHashVersion",
+  "knowledge vectors must carry a dedupHashVersion so legacy cleartext-hash rows are fenced out",
+);
+assertIncludes(
+  "functions/src/callables/knowledgeSearch.ts",
+  '.where("dedupHashVersion", "==", 1)',
+  "knowledgeSearch must floor dedupHashVersion == 1 so legacy cleartext-hash rows are never served",
+);
+
 // ── Sealed-content export coverage (dataExport seal-aware serializer) ────────
 // The export of the sealed gateway/media/subscription content must round-trip
 // ONLY the opaque sealed envelopes — never plaintext text / senderDisplayName /

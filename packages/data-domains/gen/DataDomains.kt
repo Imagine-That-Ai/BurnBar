@@ -49,8 +49,8 @@ object DataDomains {
         ),
         DataDomain(
             id = "session_logs", title = "Searchable Session Logs", icon = "text.magnifyingglass",
-            encryptionTier = EncryptionTier.END_TO_END, summary = "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes.",
-            serverSees = listOf("provider", "model", "cost", "token counts", "timing", "bodyHash", "opaque token/semantic hashes"), deviceOnly = listOf("project/path text", "title", "snippet", "body preview", "full transcript body"),
+            encryptionTier = EncryptionTier.END_TO_END, summary = "Full conversation bodies + the encrypted search index + project memory. Sealed on-device; the server holds only ciphertext, aggregate cockpit facets, and opaque search/integrity hashes. NOTE: the keyword search index is deterministic — repeated and co-occurring search terms produce stable keyed digests, so the server can learn which terms recur and appear together across your logs (the search structure), and the integrity hashes can confirm a guessed body or chunk; every title, snippet, body, and path stays sealed and unreadable.",
+            serverSees = listOf("provider", "model", "cost", "token counts", "timing", "integrity hashes", "deterministic keyed search digests"), deviceOnly = listOf("project/path text", "title", "snippet", "body preview", "full transcript body"),
             firestorePaths = listOf("session_logs", "cloud_search_documents", "cloud_search_chunks", "cloud_search_postings", "cloud_search_index_state", "cloud_search_index_manifest", "project_memory_snapshots"), storagePaths = listOf("session_logs/{documentID}/bodies/{bodyHash}.json.aesgcm"),
             countSource = "cloud_search_documents", byteSource = "session_logs",
             retention = "until_deleted", actions = listOf("view", "export", "delete"),
