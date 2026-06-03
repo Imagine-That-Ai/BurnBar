@@ -144,6 +144,7 @@ test("HONEST CLAIMS: the public trust copy never overstates the product", () => 
   assert.equal(chat.encryptionTier, "server_readable", "chat must stay server-readable in the registry");
   const chatBlock = trust.slice(trust.indexOf('"id": "conversations_chat"'), trust.indexOf('"id": "session_logs"'));
   assert.ok(chatBlock.length > 0, "expected a conversations_chat block in the generated trust module");
-  assert.ok(!/end-to-end/i.test(chatBlock), "chat must never be labeled end-to-end on the public site");
+  assert.match(chatBlock, /"tier": "server_readable"/, "chat must be tiered server-readable on the public site");
+  assert.ok(!/end[-_ ]to[-_ ]end/i.test(chatBlock), "chat must never be labeled end-to-end on the public site");
   assert.ok(/server can read/i.test(chatBlock), "chat must say the server can read the mirrored text");
 });

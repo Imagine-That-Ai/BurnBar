@@ -126,16 +126,17 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
   const otherDb = authedDb("credential-attacker");
   const validCode = "ABCDEFGHJKM2";
   const validPath = `credential_transfers/${validCode}`;
+  const now = Date.now();
   const baseTransfer = {
     ownerUid: "credential-owner",
     payload: "v1.c2FsdC1maXh0dXJl.aXYtZml4dHVyZQ.Y2lwaGVydGV4dC1maXh0dXJl",
-    createdAt: Timestamp.fromDate(new Date("2026-06-01T00:00:00.000Z")),
-    expiresAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+    createdAt: Timestamp.fromMillis(now - 1_000),
+    expiresAt: Timestamp.fromMillis(now + 23 * 60 * 60 * 1000),
     consumed: false,
   };
 
   await assertSucceeds(setDoc(doc(ownerDb, validPath), baseTransfer));
-  await assertSucceeds(getDoc(doc(ownerDb, validPath)));
+  await assertFails(getDoc(doc(ownerDb, validPath)));
   await assertFails(getDoc(doc(otherDb, validPath)));
 
   await assertFails(
@@ -157,7 +158,7 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
     updateDoc(doc(ownerDb, validPath), {
       consumed: true,
       consumedAt: Timestamp.fromDate(new Date("2026-06-01T00:05:00.000Z")),
@@ -178,6 +179,12 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
     });
   });
   await assertFails(getDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM5")));
+  await assertFails(
+    setDoc(doc(ownerDb, "credential_transfers/ABCDEFGHJKM6"), {
+      ...baseTransfer,
+      expiresAt: Timestamp.fromMillis(now + 25 * 60 * 60 * 1000),
+    })
+  );
 });
 
 test("owners can publish iroh pairing data and audit events without leaking secrets", async () => {

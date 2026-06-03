@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en" data-theme="basin">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>Pensieve — the basin that remembers without reading</title>
+  <meta name="description" content="Pensieve quietly remembers what matters from your repos, notes, and conversations — sealed on your devices, searched in the cloud without the server ever reading it." />
+  <meta name="theme-color" content="#050508" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="./styles/tokens.css" />
+  <link rel="stylesheet" href="./styles/app.css" />
+</head>
+<body>
+  <!-- The living pool: a single canvas substrate under every surface -->
+  <canvas id="basin-canvas" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <a class="skip-link" href="#surface">Skip to content</a>
+
+  <div class="app-shell">
+    <!-- Rim of the basin: navigation -->
+    <aside class="rail" id="rail" aria-label="Pensieve navigation">
+      <div class="rail__brand">
+        <div class="rail__sigil" aria-hidden="true">
+          <span class="rail__sigil-pool"></span>
+        </div>
+        <div class="rail__wordmark">
+          <span class="rail__name">Pensieve</span>
+          <span class="rail__sub">private memory</span>
+        </div>
+      </div>
+
+      <button class="rail__recall" id="open-recall" type="button" aria-keyshortcuts="Control+K Meta+K">
+        <span class="rail__recall-glyph" aria-hidden="true"></span>
+        <span class="rail__recall-label">Recall a memory</span>
+        <kbd class="rail__recall-kbd">⌘K</kbd>
+      </button>
+
+      <nav class="rail__nav" id="rail-nav" aria-label="Surfaces"><!-- built by app.js --></nav>
+
+      <div class="rail__foot">
+        <div class="rail__identity">
+          <span class="rail__avatar" aria-hidden="true">A</span>
+          <span class="rail__identity-text">
+            <span class="rail__identity-name">Alberto</span>
+            <span class="rail__identity-meta">Ultra · vault unlocked</span>
+          </span>
+          <span class="rail__lock" title="Vault unlocked on this device" aria-label="Vault unlocked on this device"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Mobile top bar -->
+    <header class="topbar" aria-label="Pensieve">
+      <button class="topbar__menu" id="toggle-rail" type="button" aria-label="Open navigation" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <span class="topbar__title">Pensieve</span>
+      <button class="topbar__recall" id="open-recall-mobile" type="button" aria-label="Recall a memory"></button>
+    </header>
+    <div class="rail-scrim" id="rail-scrim" hidden></div>
+
+    <main class="surface" id="surface" tabindex="-1"><!-- routed surfaces render here --></main>
+  </div>
+
+  <!-- Global recall command palette -->
+  <div class="palette" id="palette" hidden role="dialog" aria-modal="true" aria-label="Recall">
+    <div class="palette__scrim" data-close="palette"></div>
+    <div class="palette__panel" role="document">
+      <div class="palette__field">
+        <span class="palette__glyph" aria-hidden="true"></span>
+        <input
+          id="palette-input"
+          class="palette__input"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Ask your memory anything…"
+          aria-label="Recall query"
+        />
+        <button class="palette__esc" data-close="palette" type="button" aria-label="Close">esc</button>
+      </div>
+      <div class="palette__results" id="palette-results" role="listbox" aria-label="Recalled memories"></div>
+      <div class="palette__foot">
+        <span><span class="palette__pulse"></span> live recall · client-side cosine over <span id="palette-count">0</span> sealed strands</span>
+        <span>↵ open · ↑↓ move</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation with gravity -->
+  <div class="confirm" id="confirm" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="confirm__scrim" data-close="confirm"></div>
+    <div class="confirm__panel" role="document">
+      <div class="confirm__seal" id="confirm-seal" aria-hidden="true"></div>
+      <h2 class="confirm__title" id="confirm-title"></h2>
+      <p class="confirm__body" id="confirm-body"></p>
+      <label class="confirm__type" id="confirm-typewrap" hidden>
+        <span id="confirm-typelabel"></span>
+        <input id="confirm-typeinput" type="text" autocomplete="off" spellcheck="false" />
+      </label>
+      <div class="confirm__actions">
+        <button class="btn btn--ghost" id="confirm-cancel" type="button">Keep it</button>
+        <button class="btn btn--seal" id="confirm-ok" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+  <noscript>
+    <div class="noscript">Pensieve’s experience is rendered live. Enable JavaScript to look into the basin.</div>
+  </noscript>
+
+  <script src="./js/data.js"></script>
+  <script src="./js/recall.js"></script>
+  <script src="./js/basin.js"></script>
+  <script src="./js/components.js"></script>
+  <script src="./js/surfaces.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
