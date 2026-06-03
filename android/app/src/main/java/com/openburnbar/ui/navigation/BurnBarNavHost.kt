@@ -121,7 +121,13 @@ fun BurnBarNavHost(
     val currentRoute = navBackStackEntry?.destination?.route
     val currentTab =
         remember(currentRoute) {
-            BurnBarTab.fromRoute(currentRoute) ?: BurnBarTab.PULSE
+            when (currentRoute) {
+                "cloud_store",
+                "computer_use_agent",
+                -> BurnBarTab.YOU
+
+                else -> BurnBarTab.fromRoute(currentRoute) ?: BurnBarTab.PULSE
+            }
         }
 
     val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
