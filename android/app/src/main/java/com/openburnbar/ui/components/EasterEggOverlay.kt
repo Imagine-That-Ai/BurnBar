@@ -26,8 +26,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.input.nestedScroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedScroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Velocity
 import com.openburnbar.R
