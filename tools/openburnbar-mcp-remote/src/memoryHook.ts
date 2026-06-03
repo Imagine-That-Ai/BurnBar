@@ -17,9 +17,9 @@
 
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { cloakVector, loadDefaultEmbedder, loadVaultKeyBytes, type Embedder } from "./embed.js";
 import { sealText } from "./seal.js";
@@ -27,6 +27,17 @@ import type { SealedEnvelope } from "./decrypt.js";
 
 export const MIN_CONFIDENCE = 0.6;
 const MAX_MEMORY_BYTES = 6 * 1024; // keep each sealed chunk well under requireSealedText's base64 cap
+
+function writePrivateFile(path: string, contents: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const nofollow = constants.O_NOFOLLOW ?? 0;
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | nofollow, 0o600);
+  try {
+    writeFileSync(fd, contents);
+  } finally {
+    closeSync(fd);
+  }
+}
 
 /** The extraction prompt. Asks the user's own model for durable, verbatim, secret-free memories. */
 export const EXTRACT_PROMPT = [
@@ -296,7 +307,6 @@ export function installMemoryHook(options: InstallHookOptions = {}): string {
   }
 
   const next = { ...settings, hooks: { ...hooks, SessionEnd: sessionEnd } };
-  mkdirSync(join(settingsPath, ".."), { recursive: true });
-  writeFileSync(settingsPath, JSON.stringify(next, null, 2));
+  writePrivateFile(settingsPath, JSON.stringify(next, null, 2));
   return settingsPath;
 }
