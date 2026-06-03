@@ -63,12 +63,6 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
               stroke-linejoin="round"></path>
           </svg>
           <header class="plan__head">
-            <img
-              class="plan__crest"
-              src="/brand/vector/local_crest.svg"
-              alt=""
-              aria-hidden="true"
-            />
             <span class="plan__badge mono">Free · Local</span>
             <div class="plan__title">
               <h2 class="plan__name">{free.name}</h2>
@@ -194,7 +188,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/vector/tier_cloud_pro_logo.svg"
+              src="/brand/vector/tier_cloud_ultra_logo.svg"
               alt=""
               aria-hidden="true"
             />
@@ -260,7 +254,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <header class="plan__head">
             <img
               class="plan__crest"
-              src="/brand/vector/tier_cloud_ultra_logo.svg"
+              src="/brand/vector/tier_cloud_pro_logo.svg"
               alt=""
               aria-hidden="true"
             />
@@ -716,41 +710,37 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .plan__holo {
     position: absolute;
-    inset: -6%;
+    inset: -4%;
     z-index: 0;
     pointer-events: none;
-    border-radius: var(--r-4);
-    overflow: hidden;
-    /* the crest image, blown up and centred */
-    background-image: var(--holo-img);
-    background-repeat: no-repeat;
-    background-position: 50% 46%;
-    background-size: 160% auto;
-    opacity: 0.12;
-    filter: saturate(1.4) hue-rotate(var(--holo-hue, 0deg)) blur(0.3px)
-      drop-shadow(0 0 30px var(--bb-glow, rgba(250, 107, 6, 0.4)));
-    transition:
-      opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
-      background-size 320ms cubic-bezier(0.22, 1, 0.36, 1),
-      filter 320ms var(--ease);
-    animation: holoDrift 12s ease-in-out infinite alternate;
-  }
-  /* iridescent sheen riding over the hologram */
-  .plan__holo::after {
-    content: "";
-    position: absolute;
-    inset: -20%;
-    background: conic-gradient(
-      from var(--bb-angle),
-      transparent 0deg,
-      var(--holo-sheen, rgba(255, 255, 255, 0.5)) 60deg,
-      transparent 130deg,
-      var(--bb-accent, rgba(255, 255, 255, 0.4)) 220deg,
-      transparent 300deg
+    /* The crest's SILHOUETTE, used as a mask and filled with a shiny
+       iridescent holo-gradient that slowly sweeps — an elegant ghost of the
+       logo, not the literal image. Kept very faint so the card copy stays crisp. */
+    -webkit-mask-image: var(--holo-img);
+    mask-image: var(--holo-img);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: 50% 40%;
+    mask-position: 50% 40%;
+    -webkit-mask-size: 132% auto;
+    mask-size: 132% auto;
+    background: linear-gradient(
+      125deg,
+      transparent 8%,
+      var(--holo-sheen, rgba(255, 255, 255, 0.5)) 28%,
+      rgba(255, 255, 255, 0.92) 47%,
+      var(--holo-sheen, rgba(125, 211, 252, 0.55)) 62%,
+      transparent 86%
     );
-    mix-blend-mode: screen;
-    opacity: 0.35;
-    animation: holoSheen 14s linear infinite;
+    background-size: 280% 280%;
+    background-position: 0% 50%;
+    opacity: 0.06;
+    filter: hue-rotate(var(--holo-hue, 0deg)) blur(0.4px);
+    transition:
+      opacity 380ms cubic-bezier(0.22, 1, 0.36, 1),
+      mask-size 380ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 380ms var(--ease);
+    animation: holoShimmer 9s ease-in-out infinite;
   }
   .plan--popular {
     --holo-img: url("/brand/vector/tier_cloud_logo.svg");
@@ -758,46 +748,38 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     --holo-sheen: rgba(253, 196, 44, 0.55);
   }
   .plan--pro {
-    --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
+    --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
     --holo-hue: 8deg;
     --holo-sheen: rgba(60, 214, 192, 0.55);
   }
   .plan--ultra {
-    --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
+    --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
     --holo-hue: 4deg;
     --holo-sheen: rgba(125, 211, 252, 0.55);
   }
   /* bloom the hologram when the card steps forward */
+  /* On hover the ghost brightens just enough to feel alive — still faint
+     enough to read every line of copy through it. */
   .plan--popular:hover .plan__holo,
   .plan--popular:focus-within .plan__holo,
   .plan--pro:hover .plan__holo,
   .plan--pro:focus-within .plan__holo,
   .plan--ultra:hover .plan__holo,
   .plan--ultra:focus-within .plan__holo {
-    opacity: 0.4;
-    background-size: 184% auto;
-    filter: saturate(1.7) hue-rotate(var(--holo-hue, 0deg)) blur(0.2px)
-      drop-shadow(0 0 50px var(--bb-glow, rgba(250, 107, 6, 0.55)));
+    opacity: 0.16;
+    -webkit-mask-size: 138% auto;
+    mask-size: 138% auto;
   }
-  .plan--popular:hover .plan__holo::after,
-  .plan--popular:focus-within .plan__holo::after,
-  .plan--pro:hover .plan__holo::after,
-  .plan--pro:focus-within .plan__holo::after,
-  .plan--ultra:hover .plan__holo::after,
-  .plan--ultra:focus-within .plan__holo::after {
-    opacity: 0.55;
-  }
-  @keyframes holoDrift {
-    from {
-      transform: translate3d(0, 0, 0) scale(1);
+  /* slow iridescent sweep across the silhouette */
+  @keyframes holoShimmer {
+    0% {
+      background-position: 0% 50%;
     }
-    to {
-      transform: translate3d(0, -2.2%, 0) scale(1.04);
+    50% {
+      background-position: 100% 50%;
     }
-  }
-  @keyframes holoSheen {
-    to {
-      --bb-angle: 360deg;
+    100% {
+      background-position: 0% 50%;
     }
   }
 
@@ -1233,8 +1215,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       transition: none !important;
     }
     .plan--popular::before,
-    .plan__holo,
-    .plan__holo::after {
+    .plan__holo {
       animation: none !important;
     }
     /* No scale/lift dance — keep the hovered state subtle and instant. */
@@ -1250,7 +1231,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     .plan--pro:focus-within .plan__holo,
     .plan--ultra:hover .plan__holo,
     .plan--ultra:focus-within .plan__holo {
-      background-size: 160% auto;
+      -webkit-mask-size: 132% auto;
+      mask-size: 132% auto;
     }
     .plan--popular:hover .plan__crest,
     .plan--popular:focus-within .plan__crest,
