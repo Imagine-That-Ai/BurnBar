@@ -1,10 +1,10 @@
 {
-  "build": "40",
+  "build": "41",
   "bundleId": "com.openburnbar.app",
   "channel": "direct-download",
-  "commit": "1bbe233f0d8313a2ac389eac04cf314da100b925",
-  "createdAt": "2026-06-02T16:50:51Z",
-  "dmg": "OpenBurnBar-1.0.1-macOS.dmg",
-  "version": "1.0.1",
-  "zip": "OpenBurnBar-1.0.1-macOS.zip"
+  "commit": "b42cc3c138ec2701434701c6a62675bc4d9cd6da",
+  "createdAt": "2026-06-03T06:29:08Z",
+  "dmg": "OpenBurnBar-1.0.2-macOS.dmg",
+  "version": "1.0.2",
+  "zip": "OpenBurnBar-1.0.2-macOS.zip"
 }
