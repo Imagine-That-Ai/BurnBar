@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Read-only production proof for BurnBar Cloud and BurnBar Cloud Pro.
+ * Read-only production proof for BurnBar Cloud, Cloud Pro, and Ultra.
  *
  * The purchase itself must happen through Stripe Checkout, StoreKit, or Google
  * Play. This command proves the provider verifier produced the Firestore
@@ -45,6 +45,20 @@ export const PRODUCTS = Object.freeze({
     ],
     forbiddenFeatures: [],
   },
+  ultra: {
+    entitlementID: "burnbar_ultra",
+    products: {
+      apple: [
+        "com.openburnbar.ultra.monthly",
+        "com.openburnbar.ultra.annual.v2",
+        "com.openburnbar.ultra.annual",
+      ],
+      stripe: [],
+      google_play: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual"],
+    },
+    requiredFeatures: [],
+    forbiddenFeatures: [],
+  },
   "legacy-hosted-quota": {
     entitlementID: "hosted_quota_sync",
     products: {
@@ -71,7 +85,7 @@ function usage() {
 
 Options:
   --uid <uid>                         Firebase Auth UID to inspect.
-  --tier <cloud|cloud-pro|legacy-hosted-quota>
+  --tier <cloud|cloud-pro|ultra|legacy-hosted-quota>
   --channel <apple|stripe|google_play>
   --project <projectId>               Defaults to FIREBASE_PROJECT, GCLOUD_PROJECT, GOOGLE_CLOUD_PROJECT, then burnbar.
   --product-id <id>                   Require the entitlement productID/sourceProductID to match.

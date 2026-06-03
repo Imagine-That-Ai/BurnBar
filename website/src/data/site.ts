@@ -56,6 +56,23 @@ export const SITE = {
           hostedAgentActionMonthlyCap: 2000,
           relayGBMonthlyCap: 300
         }
+      },
+      {
+        id: "ultra",
+        name: "BurnBar Ultra",
+        shortName: "Ultra",
+        priceMonthlyUSD: "59.99",
+        priceAnnualUSD: "599",
+        period: "month",
+        productIds: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual.v2"],
+        entitlementId: "burnbar_ultra",
+        summary: "Cloud Pro plus larger encrypted Pensieve memory limits for heavy agent work.",
+        cta: "Choose Ultra",
+        allowance: {
+          knowledgeSources: 15,
+          memoryChunks: 50000,
+          encryptedStorageMB: 250
+        }
       }
     ],
     topUps: [

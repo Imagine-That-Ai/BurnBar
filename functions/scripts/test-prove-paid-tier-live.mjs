@@ -17,6 +17,7 @@ const past = new Date(Date.now() - 86_400_000).toISOString();
 assert.equal(selfTest().ok, true);
 assert.deepEqual(parseArgs(["--self-test"]).selfTest, true);
 assert.equal(parseArgs(["--uid", "u1", "--tier", "cloud-pro", "--channel", "stripe"]).requireAllowanceLedger, true);
+assert.equal(parseArgs(["--uid", "u1", "--tier", "ultra", "--channel", "apple"]).requireAllowanceLedger, false);
 assert.equal(parseArgs(["--uid", "u1", "--tier", "cloud", "--channel", "apple"]).requireAllowanceLedger, false);
 assert.equal(
   parseArgs([
@@ -145,6 +146,42 @@ assert.throws(
     },
   );
   assert.equal(proof.productID, "com.openburnbar.promax.v2.monthly");
+}
+
+{
+  const proof = assertPaidTierEntitlement(
+    {
+      id: "burnbar_ultra",
+      active: true,
+      productID: "com.openburnbar.ultra.annual.v2",
+      source: "apple_jws_verified",
+      environment: "Production",
+      expiresAt: future,
+      features: {},
+    },
+    { tier: "ultra", channel: "apple", environment: "Production", allowSandbox: false },
+  );
+  assert.equal(proof.productID, "com.openburnbar.ultra.annual.v2");
+}
+
+{
+  const proof = assertGooglePlayAuditRecord(
+    {
+      productID: "com.openburnbar.ultra.annual",
+      lineItemProductID: "com.openburnbar.ultra.annual",
+      entitlementID: "burnbar_ultra",
+      purchaseTokenHash: "token_hash",
+      subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+      expiresAt: future,
+    },
+    {
+      tier: "ultra",
+      channel: "google_play",
+      productID: "",
+      purchaseTokenHash: "token_hash",
+    },
+  );
+  assert.equal(proof.productID, "com.openburnbar.ultra.annual");
 }
 
 assert.throws(
