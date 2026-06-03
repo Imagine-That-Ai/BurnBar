@@ -1,0 +1,44 @@
+{
+  "capturedAt": "2026-06-03T11:53:00Z",
+  "track": "Google Play internal testing",
+  "release": {
+    "versionCode": 25,
+    "versionName": "1.0.15",
+    "status": "Available to internal testers",
+    "releasedAt": "2026-06-03T11:37:00Z",
+    "aabSha256": "330a46a5b402b2e39f702adff3728da006e764bf25d5da1da39480ca45710ecc",
+    "releaseNotes": "Fixes Google Play subscription upgrades from Cloud Pro to Ultra."
+  },
+  "device": {
+    "model": "SM-S921U",
+    "serial": "R3CXB0CNS0J",
+    "installerPackageName": "com.android.vending",
+    "installedVersionCode": 25,
+    "installedVersionName": "1.0.15"
+  },
+  "storeProof": {
+    "storeTabOpenedWithoutCrash": true,
+    "storeTopUpsOpenedWithoutCrash": true,
+    "checkoutProduct": "BurnBar Ultra Monthly",
+    "checkoutProductId": "com.openburnbar.ultra.monthly",
+    "paymentMethod": "Google Play test card, always approves",
+    "playAcknowledged": true
+  },
+  "backendProof": {
+    "proofFile": "launch-evidence/paid-proof-google_play_ultra-v25-20260603T115132Z.out",
+    "ok": true,
+    "project": "burnbar",
+    "uidHash16": "e82314a10622bcee",
+    "tier": "ultra",
+    "channel": "google_play",
+    "entitlementPath": "users/<uid>/entitlements/burnbar_ultra",
+    "productID": "com.openburnbar.ultra.monthly",
+    "source": "google_play_verified",
+    "expiresAt": "2026-06-03T11:56:07.387Z",
+    "purchaseTokenHash": "b90dc50762e76433c3dcae2434558dd4b3e7b89393b9230bfa91a6d5880b8cd8"
+  },
+  "liveLogReadback": [
+    "restorePurchases queried subscriptions=1 topUps=0 products=[com.openburnbar.ultra.monthly:purchased:ack=true]",
+    "verifiedSubscription productID=com.openburnbar.ultra.monthly active=true expiresAt=2026-06-03T11:56:07.387Z"
+  ]
+}

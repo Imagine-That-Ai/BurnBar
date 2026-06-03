@@ -81,6 +81,8 @@ class HostedQuotaSubscriptionStoreTest {
         assertEquals("com.openburnbar.pro.annual", HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID)
         assertEquals("com.openburnbar.promax.v2.monthly", HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
         assertEquals("com.openburnbar.promax.annual", HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID)
+        assertEquals("com.openburnbar.ultra.monthly", HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID)
+        assertEquals("com.openburnbar.ultra.annual", HostedQuotaSubscriptionStore.CLOUD_ULTRA_ANNUAL_PRODUCT_ID)
         assertEquals("com.openburnbar.agentcontrol.actions100", HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
         assertEquals("com.openburnbar.floo.relay50gb", HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID)
         HostedQuotaSubscriptionStore.STORE_PRODUCTS.forEach { product ->
@@ -93,6 +95,8 @@ class HostedQuotaSubscriptionStoreTest {
                 HostedQuotaSubscriptionStore.CLOUD_ANNUAL_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.CLOUD_ULTRA_ANNUAL_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID,
             ),
@@ -309,6 +313,11 @@ class HostedQuotaSubscriptionStoreTest {
             listenerSlot.captured.onProductDetailsResponse(mockResult, mockQueryResult)
         }
 
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, emptyList())
+        }
+
         every { mockBillingClient.launchBillingFlow(any(), any()) } returns
             mockk {
                 every { responseCode } returns BillingClient.BillingResponseCode.OK
@@ -322,6 +331,65 @@ class HostedQuotaSubscriptionStoreTest {
 
         // Assert
         assertNull(store.error.value)
+        verify { mockBillingClient.launchBillingFlow(mockActivity, any()) }
+    }
+
+    @Test
+    fun `purchase includes existing subscription when upgrading to Ultra`() = runTest {
+        // Arrange
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+
+        val mockPricingPhase = mockk<ProductDetails.PricingPhase>()
+        every { mockPricingPhase.formattedPrice } returns "$59.99"
+
+        val mockPricingPhases = mockk<ProductDetails.PricingPhases>()
+        every { mockPricingPhases.pricingPhaseList } returns listOf(mockPricingPhase)
+
+        val mockOfferDetails = mockk<ProductDetails.SubscriptionOfferDetails>()
+        every { mockOfferDetails.offerToken } returns "ultra-offer-token"
+        every { mockOfferDetails.pricingPhases } returns mockPricingPhases
+
+        val mockProductDetails = mockk<ProductDetails>(relaxed = true)
+        every { mockProductDetails.productId } returns HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID
+        every { mockProductDetails.subscriptionOfferDetails } returns listOf(mockOfferDetails)
+        every { mockProductDetails.oneTimePurchaseOfferDetails } returns null
+
+        val mockQueryResult = mockk<QueryProductDetailsResult>()
+        every { mockQueryResult.getProductDetailsList() } returns listOf(mockProductDetails)
+        every { mockQueryResult.getUnfetchedProductList() } returns emptyList()
+
+        val productDetailsListenerSlot = slot<ProductDetailsResponseListener>()
+        every { mockBillingClient.queryProductDetailsAsync(any(), capture(productDetailsListenerSlot)) } answers {
+            productDetailsListenerSlot.captured.onProductDetailsResponse(mockResult, mockQueryResult)
+        }
+
+        val cloudProPurchase = mockk<Purchase>()
+        every { cloudProPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { cloudProPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        every { cloudProPurchase.purchaseToken } returns "cloud-pro-token"
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(cloudProPurchase))
+        }
+
+        every { mockBillingClient.launchBillingFlow(any(), any()) } returns
+            mockk {
+                every { responseCode } returns BillingClient.BillingResponseCode.OK
+            }
+
+        val store = HostedQuotaSubscriptionStore(mockFunctions, mockBillingClient)
+
+        // Act
+        store.purchase(mockActivity, HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID)
+        advanceUntilIdle()
+
+        // Assert
+        assertNull(store.error.value)
+        verify { mockBillingClient.queryPurchasesAsync(any(), any()) }
         verify { mockBillingClient.launchBillingFlow(mockActivity, any()) }
     }
 
