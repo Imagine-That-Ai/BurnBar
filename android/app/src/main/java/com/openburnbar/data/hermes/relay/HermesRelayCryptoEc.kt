@@ -30,6 +30,9 @@ internal object HermesRelayCryptoEc {
 
     private val secureRandom = SecureRandom()
 
+    private val BIG_TWO: java.math.BigInteger = java.math.BigInteger.valueOf(2)
+    private val BIG_THREE: java.math.BigInteger = java.math.BigInteger.valueOf(3)
+
     fun decodeUncompressedPublicKey(uncompressed: ByteArray): java.security.PublicKey {
         require(uncompressed.size == UNCOMPRESSED_POINT_LEN && uncompressed[0] == 0x04.toByte()) {
             "Expected 65-byte uncompressed P-256 point"
@@ -83,6 +86,80 @@ internal object HermesRelayCryptoEc {
         agreement.init(privateKey)
         agreement.doPhase(peerPublicKey, true)
         return agreement.generateSecret()
+    }
+
+    /**
+     * Recover the raw 65-byte X9.63 uncompressed public key (`0x04 ‖ X ‖ Y`)
+     * for a P-256 private key. Mirrors Swift's `privateKey.publicKey.x963Representation`,
+     * which v2 binds into the `info` (kem_context). Computes `Q = d·G` from the
+     * private scalar over `secp256r1` so it works for a key reconstructed from a
+     * bare scalar (which carries no public point of its own).
+     */
+    fun publicKeyX963FromPrivateKey(privateKey: java.security.PrivateKey): ByteArray {
+        val ecPrivate =
+            privateKey as? java.security.interfaces.ECPrivateKey
+                ?: error("Hermes relay v2 requires an EC private key")
+        val params = ecPrivate.params
+        val q = ecPointMultiply(params.generator, ecPrivate.s, params)
+        val kf = KeyFactory.getInstance("EC")
+        val publicKey =
+            kf.generatePublic(java.security.spec.ECPublicKeySpec(q, params))
+                as java.security.interfaces.ECPublicKey
+        return encodeUncompressedPublicKey(publicKey)
+    }
+
+    /**
+     * Scalar multiplication `k·P` on the curve described by [params] using the
+     * Jacobian-coordinate double-and-add ladder over the prime field. P-256 has
+     * curve coefficient `a = p − 3`, which the formulas below assume.
+     */
+    private fun ecPointMultiply(
+        point: java.security.spec.ECPoint,
+        k: java.math.BigInteger,
+        params: java.security.spec.ECParameterSpec,
+    ): java.security.spec.ECPoint {
+        val field = params.curve.field as java.security.spec.ECFieldFp
+        val p = field.p
+        var result: java.security.spec.ECPoint? = null
+        var addend = point
+        var n = k
+        while (n.signum() > 0) {
+            if (n.testBit(0)) {
+                result = ecPointAdd(result, addend, p)
+            }
+            addend = ecPointAdd(addend, addend, p)
+            n = n.shiftRight(1)
+        }
+        return result ?: java.security.spec.ECPoint.POINT_INFINITY
+    }
+
+    private fun ecPointAdd(
+        a: java.security.spec.ECPoint?,
+        b: java.security.spec.ECPoint,
+        p: java.math.BigInteger,
+    ): java.security.spec.ECPoint {
+        if (a == null || a == java.security.spec.ECPoint.POINT_INFINITY) return b
+        if (b == java.security.spec.ECPoint.POINT_INFINITY) return a
+        val two = BIG_TWO
+        val three = BIG_THREE
+        val lambda: java.math.BigInteger
+        if (a.affineX == b.affineX) {
+            if ((a.affineY + b.affineY).mod(p).signum() == 0) {
+                return java.security.spec.ECPoint.POINT_INFINITY
+            }
+            // Doubling slope: (3·x² + a) / (2·y); for P-256, a = p − 3.
+            val curveA = p - three
+            val numerator = (three * a.affineX.modPow(two, p) + curveA).mod(p)
+            val denominator = (two * a.affineY).modInverse(p)
+            lambda = (numerator * denominator).mod(p)
+        } else {
+            val numerator = (b.affineY - a.affineY).mod(p)
+            val denominator = (b.affineX - a.affineX).mod(p).modInverse(p)
+            lambda = (numerator * denominator).mod(p)
+        }
+        val x3 = (lambda.modPow(two, p) - a.affineX - b.affineX).mod(p)
+        val y3 = (lambda * (a.affineX - x3) - a.affineY).mod(p)
+        return java.security.spec.ECPoint(x3, y3)
     }
 
     fun generateEphemeralKeyPair(): java.security.KeyPair {

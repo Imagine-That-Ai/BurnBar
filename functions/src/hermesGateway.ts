@@ -60,12 +60,19 @@ export const HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 = 900_000;
 // wrappedKey base64 cap. The wrapped symmetric key is a fixed ~125 bytes
 // (ephPubX963(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16)); 4096 leaves ample headroom.
 export const HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 = 4_096;
-// The ONLY relay key version whose crypto exists today (keyVersion 1 of the
-// "p256-hkdf-sha256-aesgcm" contract). Until a v2 wrapper ships, the server must
-// reject every other version on both the write (requireGatewayRelayEnvelope) and
-// the read (sanitizeGatewayRelayEnvelope) side so a forged/future version can
-// never slip past a permissive range check. Rotation = a future SIGNED protocol.
-export const HERMES_GATEWAY_RELAY_KEY_VERSION = 1;
+// The DEFAULT relay key version a freshly published key / envelope advertises
+// when none is supplied. v2 adds an optional senderPublicKey wire HINT (the
+// sealing peer's ephemeral/identity X9.63 key); clients bind the PINNED key, not
+// this hint, so the server still treats the envelope as opaque ciphertext.
+export const HERMES_GATEWAY_RELAY_KEY_VERSION = 2;
+// Every relay key version whose wire shape the BLIND relay accepts on both the
+// write (requireGatewayRelayEnvelope / parseRelayPublicKey) and the read
+// (sanitizeGatewayRelayEnvelope) side. v1 is the original
+// "p256-hkdf-sha256-aesgcm" contract; v2 is the same crypto plus an optional
+// senderPublicKey hint. A version outside this set is a forged/future value and
+// is rejected at every gate so it can never slip past a permissive range check.
+// Rotation to a NEW crypto contract remains a future SIGNED protocol.
+export const HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS = new Set([1, 2]);
 // Historical cutoff for the now-closed schema-1 plaintext migration. New writes
 // are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
 // still render while backfills/scrubbers drain them.
@@ -126,6 +133,11 @@ export interface GatewayRelayEnvelopeDoc {
   wrappedKey: string;
   relayEncryption: string;
   relayKeyVersion: number;
+  // OPTIONAL wire HINT (relay key v2+): the sealing peer's X9.63 uncompressed
+  // P-256 public key (65B, base64). The BLIND relay round-trips it verbatim and
+  // never uses it for crypto — clients bind the PINNED relay key, not this hint.
+  // Required for a v2 envelope, absent on a v1 envelope (legacy/back-compat).
+  senderPublicKey?: string;
 }
 
 export interface HermesGatewayClientDoc {
@@ -477,12 +489,12 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
   }
   const relayKeyVersion =
     typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
-  // Only keyVersion 1 crypto exists; reject every other version (no v2 wrapper
-  // shipped yet) so a forged future version can never be accepted as sealed.
-  if (relayKeyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) {
+  // Accept only a version whose wire shape exists (v1 or v2); reject every other
+  // value so a forged/future version can never be accepted as sealed.
+  if (!HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS.has(relayKeyVersion)) {
     throw new HttpsError(
       "invalid-argument",
-      `${fieldName}.relayKeyVersion must be ${HERMES_GATEWAY_RELAY_KEY_VERSION}.`,
+      `${fieldName}.relayKeyVersion must be one of ${[...HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS].join(", ")}.`,
     );
   }
   const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
@@ -501,7 +513,31 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
   ) {
     throw new HttpsError("invalid-argument", `${fieldName}.wrappedKey must be base64 within the size cap.`);
   }
-  return { payloadCiphertext, wrappedKey, relayEncryption, relayKeyVersion };
+  // senderPublicKey is the v2 wire HINT (a base64 X9.63 P-256 key). REQUIRE it for
+  // a v2 envelope and reject a malformed value; tolerate its absence for v1.
+  const senderPublicKey = isGatewayRelayPublicKeyB64(record.senderPublicKey);
+  if (relayKeyVersion >= 2) {
+    if (!senderPublicKey) {
+      throw new HttpsError(
+        "invalid-argument",
+        `${fieldName}.senderPublicKey must be a base64 X9.63 P-256 public key (65 bytes, 0x04-prefixed) for relayKeyVersion ${relayKeyVersion}.`,
+      );
+    }
+  } else if (record.senderPublicKey != null && !senderPublicKey) {
+    // A v1 envelope carrying a present-but-malformed hint is still a malformed
+    // write; reject it rather than silently dropping a forged value.
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName}.senderPublicKey must be a base64 X9.63 P-256 public key (65 bytes, 0x04-prefixed).`,
+    );
+  }
+  return stripUndefinedObject({
+    payloadCiphertext,
+    wrappedKey,
+    relayEncryption,
+    relayKeyVersion,
+    senderPublicKey,
+  }) as GatewayRelayEnvelopeDoc;
 }
 
 /**
@@ -520,7 +556,7 @@ export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelope
   if (relayEncryption !== HERMES_GATEWAY_RELAY_ENCRYPTION) return undefined;
   const relayKeyVersion =
     typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
-  if (relayKeyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) return undefined;
+  if (!HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS.has(relayKeyVersion)) return undefined;
   const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
   if (
     !payloadCiphertext ||
@@ -537,7 +573,23 @@ export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelope
   ) {
     return undefined;
   }
-  return { payloadCiphertext, wrappedKey, relayEncryption, relayKeyVersion };
+  // Mirror requireGatewayRelayEnvelope's senderPublicKey contract exactly so the
+  // read path round-trips precisely what the write path accepted (and rejects
+  // precisely what it would have rejected). A v2 envelope MUST carry a valid hint;
+  // a present-but-malformed hint (any version) fails closed to "unreadable".
+  const senderPublicKey = isGatewayRelayPublicKeyB64(record.senderPublicKey);
+  if (relayKeyVersion >= 2) {
+    if (!senderPublicKey) return undefined;
+  } else if (record.senderPublicKey != null && !senderPublicKey) {
+    return undefined;
+  }
+  return stripUndefinedObject({
+    payloadCiphertext,
+    wrappedKey,
+    relayEncryption,
+    relayKeyVersion,
+    senderPublicKey,
+  }) as GatewayRelayEnvelopeDoc;
 }
 
 export function bearerTokenFromAuthorizationHeader(raw: unknown): string | undefined {

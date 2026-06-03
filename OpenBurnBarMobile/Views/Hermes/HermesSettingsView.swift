@@ -2399,14 +2399,44 @@ final class HermesGatewaySettingsStore {
                 userCode: userCode,
                 displayName: displayName
             )
-            // Re-pairing is an explicit operator decision to re-establish trust:
-            // drop any stale TOFU pin so the freshly-advertised agent key is
-            // pinned on first seal instead of tripping the MITM guard forever.
+            // Root the agent-key pin in the AUTHENTICATED approval, not relay TOFU.
+            // `approveHermesGatewayDeviceGrant` is an AppCheck + auth-gated callable;
+            // the `relayPublicKey` it returns is delivered over that authenticated
+            // channel, so a relay cannot swap it post-approval. Re-pairing first
+            // drops any stale pin (explicit operator re-trust), then we pin the
+            // freshly-approved key IMMEDIATELY — so the very first seal authenticates
+            // against a pairing-rooted key instead of one read from a relay-writable
+            // client doc at send time (closes the first-pin poisoning window). The
+            // out-of-band safety code (shown at pairing) remains the ultimate root
+            // against a fully-compromised server, exactly like Signal's safety number.
             clearAgentKeyPin(clientId: client.id)
+            var pinPersisted = true
+            if let uid = listenedUID, !uid.isEmpty,
+               let agentKey = client.relayPublicKey, !agentKey.isEmpty {
+                // Fail-closed: `verifyOrPin` now reflects a Keychain WRITE failure
+                // (it returns `.unknownKeychainError` rather than a phantom
+                // `.pinnedFirstUse`). If the pairing-rooted pin could not be stored
+                // durably, the out-of-band safety code is the fallback root and the
+                // operator must verify it before trusting the link.
+                pinPersisted = agentKeyPinStore.verifyOrPin(
+                    agentPublicKeyBase64: agentKey, uid: uid, clientId: client.id
+                ).allowsSeal
+            }
             upsert(client)
             persistSelectedClientID(client.id)
+            // Surface the out-of-band safety code at pairing: comparing it against
+            // the code your Mac prints is what catches a server that tampered with
+            // the very first key exchange (the one window the authenticated pin
+            // above cannot close on its own). This is the Signal "safety number".
+            // If the pin did not persist, the safety check is the ONLY root, so we
+            // make the instruction emphatic.
+            let safetyHint = agentSafetyCode(for: client).map {
+                pinPersisted
+                    ? " Safety code: \($0) — confirm it matches the code shown on your Mac."
+                    : " IMPORTANT — this device couldn't store the pairing key securely, so you MUST verify the safety code: \($0) must match the code shown on your Mac before you trust this link."
+            } ?? ""
             setNotice(
-                "Hermes is paired. Now run `hermes gateway run`, or start/restart the installed gateway service, so Hermes is online to receive messages.",
+                "Hermes is paired.\(safetyHint) Now run `hermes gateway run`, or start/restart the installed gateway service, so Hermes is online to receive messages.",
                 style: .warning
             )
             return client
@@ -2753,7 +2783,12 @@ final class HermesGatewaySettingsStore {
 
             let sealedBody = try await downloadGatewayAttachmentBody(storagePath: storagePath)
             let keypair = HermesGatewayRelayKeypair.loadOrCreate()
-            guard let opened = record.opened(downloadedBody: sealedBody, using: keypair, uid: uid) else {
+            // v2: bind the AGENT's pinned relay key so a forged attachment fails
+            // the authenticated unwrap. Fail closed if unpinned.
+            guard let opened = record.opened(
+                downloadedBody: sealedBody, using: keypair, uid: uid,
+                pinnedSenderKey: agentKeyPinStore.pinnedKey(uid: uid, clientId: clientId)
+            ) else {
                 return nil
             }
             return try HermesAttachmentLoader.importGatewayOpenedAttachment(opened, threadID: gatewayThreadID)

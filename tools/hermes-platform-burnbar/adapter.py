@@ -71,6 +71,11 @@ MAX_SEEN_EVENT_IDS = 4096
 # all AES/ECDH/HKDF stays inside relay_e2ee — this module only labels and routes.
 RELAY_ENCRYPTION = relay_e2ee.ALGORITHM if RELAY_CRYPTO_AVAILABLE else "p256-hkdf-sha256-aesgcm"
 RELAY_KEY_VERSION = relay_e2ee.KEY_VERSION if RELAY_CRYPTO_AVAILABLE else 1
+# The gateway wrap-protocol version (authenticated 2-DH). Distinct from
+# RELAY_KEY_VERSION (the realtime/published-key version, which stays 1): gateway
+# envelopes stamp this and gateway opens hard-require it, so the relay can no
+# longer forge an event/reply/attachment by sealing to a known public key.
+GATEWAY_RELAY_KEY_VERSION = 2
 # Single-source the AAD namespace from relay_e2ee. RelayNamespace.aad(parts)
 # yields the locked wire bytes "OpenBurnBar-HermesRelay-v1|" + "|".join(parts);
 # we reuse it with the gateway-flavoured parts so the prefix/version is never
@@ -573,6 +578,11 @@ class _RelaySealer:
         peer = self._peer_key_for(destination_id)
         if not peer:
             raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange messages"))
+        # v2 authenticated seal: the agent's OWN static relay key is the sender,
+        # bound into the key-wrap so the phone can verify the reply came from us.
+        sender_private = self._adapter._relay_private_key()
+        if sender_private is None:
+            raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange messages"))
         message_id = secrets.token_hex(16)
         sym = relay_e2ee.generate_symmetric_key()
         payload_ct = relay_e2ee.seal_to_base64(
@@ -581,13 +591,15 @@ class _RelaySealer:
             _gateway_message_aad(self._uid, self._client_id, message_id),
         )
         wrapped = relay_e2ee.wrap_symmetric_key(
-            sym, peer, _gateway_message_key_aad(self._uid, self._client_id, message_id)
+            sym, peer, _gateway_message_key_aad(self._uid, self._client_id, message_id),
+            sender_private=sender_private,
         )
         return {
             "payloadCiphertext": payload_ct,
             "wrappedKey": wrapped,
             "relayEncryption": RELAY_ENCRYPTION,
-            "relayKeyVersion": RELAY_KEY_VERSION,
+            "relayKeyVersion": GATEWAY_RELAY_KEY_VERSION,
+            "senderPublicKey": sender_private.public_key_base64(),
             "messageId": message_id,
         }
 
@@ -596,6 +608,9 @@ class _RelaySealer:
     ) -> tuple[dict, bytes]:
         peer = self._peer_key_for(destination_id)
         if not peer:
+            raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange files"))
+        sender_private = self._adapter._relay_private_key()
+        if sender_private is None:
             raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange files"))
         attachment_id = secrets.token_hex(16)
         data = file_path.read_bytes()
@@ -617,13 +632,15 @@ class _RelaySealer:
             manifest, body_key, _gateway_attachment_manifest_aad(self._uid, self._client_id, attachment_id)
         )
         wrapped = relay_e2ee.wrap_symmetric_key(
-            body_key, peer, _gateway_attachment_key_aad(self._uid, self._client_id, attachment_id)
+            body_key, peer, _gateway_attachment_key_aad(self._uid, self._client_id, attachment_id),
+            sender_private=sender_private,
         )
         envelope = {
             "payloadCiphertext": manifest_ct,
             "wrappedKey": wrapped,
             "relayEncryption": RELAY_ENCRYPTION,
-            "relayKeyVersion": RELAY_KEY_VERSION,
+            "relayKeyVersion": GATEWAY_RELAY_KEY_VERSION,
+            "senderPublicKey": sender_private.public_key_base64(),
             "attachmentId": attachment_id,
         }
         return envelope, body_bytes
@@ -696,6 +713,9 @@ class _RelaySealer:
         peer = self._peer_key_for(destination_id)
         if not peer:
             raise _RelayPlaintextRefused(self.cannot_seal_reason("switch the model"))
+        sender_private = self._adapter._relay_private_key()
+        if sender_private is None:
+            raise _RelayPlaintextRefused(self.cannot_seal_reason("switch the model"))
         event_id = secrets.token_hex(16)
         payload_aad = _gateway_event_aad(self._uid, self._client_id, event_id)
         key_aad = _gateway_event_key_aad(self._uid, self._client_id, event_id)
@@ -703,16 +723,17 @@ class _RelaySealer:
         payload_ct = relay_e2ee.seal_to_base64(
             json.dumps({"modelId": model_id}).encode("utf-8"), sym, payload_aad
         )
-        wrapped = relay_e2ee.wrap_symmetric_key(sym, peer, key_aad)
+        wrapped = relay_e2ee.wrap_symmetric_key(sym, peer, key_aad, sender_private=sender_private)
         return {
             "payloadCiphertext": payload_ct,
             "wrappedKey": wrapped,
             "relayEncryption": RELAY_ENCRYPTION,
-            "relayKeyVersion": RELAY_KEY_VERSION,
+            "relayKeyVersion": GATEWAY_RELAY_KEY_VERSION,
+            "senderPublicKey": sender_private.public_key_base64(),
             "eventId": event_id,
         }
 
-    def _open_envelope(self, raw: dict, envelope: dict, private_key, payload_aad_builder, key_aad_builder=None) -> dict:
+    def _open_envelope(self, raw: dict, envelope: dict, private_key, payload_aad_builder, key_aad_builder) -> dict:
         """Unwrap + open one sealed envelope, then pin the peer key (TOFU/immutable).
 
         ``payload_aad_builder(uid, client_id, event_id)`` selects the payload
@@ -729,18 +750,39 @@ class _RelaySealer:
         """
         event_id = str(raw.get("id") or envelope.get("eventId") or "")
         payload_aad = payload_aad_builder(self._uid, self._client_id, event_id)
-        key_builder = key_aad_builder or payload_aad_builder
-        key_aad = key_builder(self._uid, self._client_id, event_id)
-        sym = relay_e2ee.unwrap_symmetric_key(envelope["wrappedKey"], private_key, key_aad)
+        key_aad = key_aad_builder(self._uid, self._client_id, event_id)
+        # v2-only authenticated open: require the gateway wrap protocol AND bind the
+        # phone's PINNED relay key as the sender. Fail closed on a v1 envelope or a
+        # missing pin — unwrapping without the pinned sender key (or accepting v1)
+        # would reopen the anonymous-sender forgery this upgrade closes. The pinned
+        # key (never the relay-supplied wire field) is what makes the static-static
+        # DH authenticate the sender.
+        destination_id = str(raw.get("destinationId") or "")
+        pinned_phone = (
+            self._adapter._peer_public_keys.get(destination_id)
+            or self._adapter._peer_public_key
+        )
+        version = envelope.get("relayKeyVersion", raw.get("relayKeyVersion"))
+        try:
+            version_int = int(version) if version is not None else 0
+        except (TypeError, ValueError):
+            version_int = 0
+        if version_int != GATEWAY_RELAY_KEY_VERSION or not pinned_phone:
+            raise _RelayPlaintextRefused(
+                "refusing a non-v2 or unpinned gateway envelope: the authenticated "
+                "sender pin is required to open"
+            )
+        sym = relay_e2ee.unwrap_symmetric_key(
+            envelope["wrappedKey"], private_key, key_aad, sender_public_base64=pinned_phone
+        )
         plaintext = relay_e2ee.open_base64(envelope["payloadCiphertext"], sym, payload_aad)
-        # Confirm/guard the pinned key only; never seed a new pin from an
-        # (unauthenticated) inbound field. The successful unwrap proves the frame
-        # was sealed to the agent's PUBLIC key — which the relay also knows — so it
-        # does not authenticate the carried senderPublicKey.
+        # The authenticated unwrap above already proved the frame was sealed by the
+        # holder of the pinned phone key. Confirm/guard the pin (never seed a new
+        # one from an inbound field).
         peer = raw.get("senderPublicKey") or envelope.get("senderPublicKey")
         if peer:
             self._adapter._pin_peer_public_key(
-                str(raw.get("destinationId") or ""), str(peer), source="event", allow_new_pin=False
+                destination_id, str(peer), source="event", allow_new_pin=False
             )
         decoded = json.loads(plaintext.decode("utf-8"))
         return decoded if isinstance(decoded, dict) else {"text": str(decoded)}

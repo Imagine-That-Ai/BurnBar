@@ -740,23 +740,33 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         // from the device Keychain, so a hostile server cannot suppress this gate;
         // `requiresSealedReplies` is fail-CLOSED on a Keychain read error (it treats
         // an unreadable pin as "must seal") so a transient Keychain failure can never
-        // re-open the plaintext path. NOTE: this defeats the cheap UNSEALED forgery
-        // (the server dropping the envelope). It does NOT by itself prove sender
-        // identity for a SEALED reply — the relay wrap is anonymous-sender ECIES, so
-        // a fully-compromised server that seals to this phone's public key is a
-        // separate residual, mitigated by the supervised-oversight gate for risky
-        // actions (see evidence/E2EE-AUDIT-all-platforms-2026-06-03.md).
+        // re-open the plaintext path.
+        //
+        // v2 closes the anonymous-sender residual: the wrap is now an authenticated
+        // 2-DH KEM, and the open below binds the AGENT's PINNED relay key as the
+        // sender. A swapped/forged sender key fails the GCM tag, so a compromised
+        // relay can no longer seal a forged reply to this phone's public key.
         resolved.requiresSealedReply = pinStore.requiresSealedReplies(uid: uid, clientId: clientId)
         guard isSealed,
               let payloadCiphertext,
               let wrappedKey else {
             return resolved
         }
+        // Gateway is v2-only: hard-require the authenticated wrap protocol AND a
+        // pinned agent key. Fail closed (no plaintext, no v1 fallback) on either
+        // gap — accepting a v1 envelope or unwrapping without the pinned sender key
+        // would reopen the forgery this whole upgrade exists to close.
+        guard relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion,
+              let pinnedAgentKey = pinStore.pinnedKey(uid: uid, clientId: clientId) else {
+            resolved.resolvedText = nil
+            return resolved
+        }
         do {
             let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
                 wrappedKey,
                 privateKey: keypair.privateKey,
-                aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id)
+                aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id),
+                senderPublicKeyBase64: pinnedAgentKey
             )
             let plaintext = try HermesRelayCrypto.openBase64(
                 ciphertext: payloadCiphertext,
@@ -884,12 +894,19 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
     /// the *key* AAD (`gatewayAttachmentKey`). Returns `nil` when the attachment
     /// is unsealed or the wrap was sealed for another device. This is the open
     /// primitive shared by the manifest-only and full-body paths.
-    func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String) -> Data? {
-        guard isSealed, let wrappedKey else { return nil }
+    func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String, pinnedSenderKey: String?) -> Data? {
+        // v2-only + authenticated: require the gateway wrap protocol and bind the
+        // AGENT's PINNED relay key as the sender. Fail closed (return nil → calm
+        // "sealed for another device" / re-pair state) on a missing pin or a v1
+        // envelope — never fall back to the unauthenticated unwrap.
+        guard isSealed, let wrappedKey,
+              relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion,
+              let pinnedSenderKey else { return nil }
         return try? HermesRelayCrypto.unwrapSymmetricKey(
             wrappedKey,
             privateKey: keypair.privateKey,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id),
+            senderPublicKeyBase64: pinnedSenderKey
         )
     }
 
@@ -939,9 +956,10 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
     func opened(
         downloadedBody: Data,
         using keypair: HermesGatewayRelayKeypair,
-        uid: String
+        uid: String,
+        pinnedSenderKey: String?
     ) -> HermesGatewayOpenedAttachment? {
-        guard let bodyKey = unwrapBodyKey(using: keypair, uid: uid) else { return nil }
+        guard let bodyKey = unwrapBodyKey(using: keypair, uid: uid, pinnedSenderKey: pinnedSenderKey) else { return nil }
         do {
             let manifest = try openManifest(bodyKey: bodyKey, uid: uid)
             let body = try openBody(downloadedBody: downloadedBody, bodyKey: bodyKey, uid: uid)
@@ -1850,6 +1868,12 @@ final class FunctionsRepository: HermesGatewayRepository {
             throw FunctionsError.gatewayRelayKeyChanged
         }
 
+        // v2 authenticated seal: the phone's own persistent gateway relay key is
+        // the SENDER. The agent opens the event binding this phone key (which it
+        // pinned at pairing), so a relay that cannot produce the phone's private
+        // key cannot forge an event to the agent.
+        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+
         let eventId = "evt_\(UUID().uuidString.lowercased())"
         var sealedPayload: [String: Any] = [
             "text": text,
@@ -1869,16 +1893,22 @@ final class FunctionsRepository: HermesGatewayRepository {
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: relayPublicKey,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId),
+            senderPrivateKey: keypair.privateKey
         )
         // Drop plaintext text/senderDisplayName/threadId from the top level — they
-        // now live only inside `payloadCiphertext`. Keep routing fields.
+        // now live only inside `payloadCiphertext`. Keep routing fields. The
+        // `relayKeyVersion` is the gateway wrap-protocol version (2) the phone
+        // authoritatively stamps for what it actually sealed — NOT the peer's
+        // self-asserted key version. `senderPublicKey` is a lookup hint; the agent
+        // authenticates against its pinned copy, never this wire field.
         payload["eventId"] = eventId
         payload["relayEnvelope"] = [
             "payloadCiphertext": payloadCiphertext,
             "wrappedKey": wrappedKey,
             "relayEncryption": HermesRelayCrypto.algorithm,
-            "relayKeyVersion": targetClient.relayKeyVersion ?? HermesRelayCrypto.keyVersion
+            "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+            "senderPublicKey": keypair.relayPublicKeyBase64
         ]
     }
 

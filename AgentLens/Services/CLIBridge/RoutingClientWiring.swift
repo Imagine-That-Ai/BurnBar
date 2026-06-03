@@ -506,6 +506,13 @@ struct RoutingClientWiring {
             guard Set(installed) == Set(expected) else {
                 return .stale(installedModelIDs: installed, expectedModelIDs: expected)
             }
+            // If the gateway auth token has rotated since the last wire, every
+            // custom model entry still carries the old API key → 401 on every
+            // Droid request. Treat a key mismatch as stale so the sentry
+            // re-wires immediately with the current token.
+            guard droidAPIKeyMatchesGateway(gateway: gateway) else {
+                return .stale(installedModelIDs: installed, expectedModelIDs: expected)
+            }
             return .current(modelIDs: installed)
         case .claudeCode, .codex, .opencode, .forge, .grok:
             return isWired(target: target) ? .current(modelIDs: []) : .notWired
@@ -1516,6 +1523,28 @@ struct RoutingClientWiring {
             }
         }
         return installed.uniquedPreservingOrder()
+    }
+
+    /// Returns `true` when every OpenBurnBar model entry in all Droid config
+    /// files carries the current gateway token as its `apiKey` / `api_key`.
+    /// Returns `true` vacuously when no OBB entries are found (the model-ID
+    /// check handles the not-wired case separately).
+    private func droidAPIKeyMatchesGateway(gateway: RoutingClientGateway) -> Bool {
+        let expectedKey = gateway.effectiveClientToken
+        for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
+            guard let root = try? readJSONObject(at: url) else { continue }
+            let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
+            let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+            for entry in settingsModels + configModels where isOpenBurnBarDroidModel(entry, gateway: gateway) {
+                let storedKey = (entry["apiKey"] as? String)
+                    ?? (entry["api_key"] as? String)
+                    ?? ""
+                if storedKey.trimmingCharacters(in: .whitespacesAndNewlines) != expectedKey {
+                    return false
+                }
+            }
+        }
+        return true
     }
 
     // MARK: - JSON file helpers

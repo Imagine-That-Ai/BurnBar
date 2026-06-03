@@ -253,10 +253,16 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         case .found(let pinned):
             return pinned == trimmed ? .matches : .mismatch(pinned: pinned)
         case .absent:
-            // First trust: pin it. If persistence fails we still allow this one
-            // send (the pin retries next time) — matching the keypair's
-            // best-effort persistence — but a *read* failure stays fail-closed.
-            _ = savePin(trimmed, uid: uid, clientId: clientId)
+            // First trust: pin it, FAIL-CLOSED on a write failure. A silently
+            // unpersisted pin would let the next seal re-pin from the
+            // relay-advertised key (reopening the first-pin poisoning window) and
+            // would let the pairing-rooted pin appear to succeed while not durable.
+            // Surfacing the Keychain status (which `allowsSeal` treats as unsafe)
+            // forces the caller to fail closed instead of trusting a phantom pin.
+            let status = savePin(trimmed, uid: uid, clientId: clientId)
+            guard status == errSecSuccess else {
+                return .unknownKeychainError(status: Int(status))
+            }
             return .pinnedFirstUse
         case .unreadable(let status):
             return .unknownKeychainError(status: Int(status))

@@ -39,6 +39,7 @@ import {
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
   HERMES_GATEWAY_RELAY_KEY_VERSION,
+  HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS,
   HERMES_GATEWAY_SCHEMA_VERSION,
   isGatewayRelayPublicKeyB64,
   isHermesGatewayClientDoc,
@@ -164,12 +165,42 @@ function baseAttachmentContentType(contentType: string): string {
   return contentType.split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
-function requiredHttpIdentifier(raw: unknown, fieldName: string): string {
-  const value = boundedTrimmedString(raw, fieldName, 160, true);
-  if (!/^[A-Za-z0-9_.:-]+$/u.test(value)) {
+// Canonical id length + charset for gateway HTTP identifiers. attachments/finalize
+// validates `attachmentId` with this exact contract (cap 160, [A-Za-z0-9_.:-]).
+export const HERMES_GATEWAY_HTTP_ID_MAX_LENGTH = 160;
+export const HERMES_GATEWAY_HTTP_ID_PATTERN = /^[A-Za-z0-9_.:-]+$/u;
+
+export function requiredHttpIdentifier(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, HERMES_GATEWAY_HTTP_ID_MAX_LENGTH, true);
+  if (!HERMES_GATEWAY_HTTP_ID_PATTERN.test(value)) {
     throw httpError(400, `invalid_${fieldName}`);
   }
   return value;
+}
+
+/**
+ * Resolve the id a /messages or /attachments/init write should adopt for its
+ * Firestore doc. When the client supplies an id we accept it ONLY if it would
+ * also pass the canonical `requiredHttpIdentifier` contract used by
+ * /attachments/finalize (and the /actions read path) — same ≤160 cap, same
+ * charset. This makes the rules symmetric: an id init adopts is always an id
+ * finalize accepts, closing the asymmetry where `safeIdentifier` (no length cap,
+ * lossy charset coercion) could mint an id finalize would later reject. A
+ * malformed/over-long/absent id falls back to a fresh server-minted token so the
+ * happy path (no client id, the common case) is unchanged.
+ */
+export function adoptedGatewayDocId(rawId: unknown, generateFallback: () => string): string {
+  if (typeof rawId === "string") {
+    const trimmed = rawId.trim();
+    if (
+      trimmed.length > 0 &&
+      trimmed.length <= HERMES_GATEWAY_HTTP_ID_MAX_LENGTH &&
+      HERMES_GATEWAY_HTTP_ID_PATTERN.test(trimmed)
+    ) {
+      return trimmed;
+    }
+  }
+  return generateFallback();
 }
 
 function requestedAttachmentHash(raw: unknown): string | undefined {
@@ -212,11 +243,13 @@ function parseRelayPublicKey(
       : typeof rawVersion === "number"
         ? Math.floor(rawVersion)
         : Number(rawVersion);
-  // Only keyVersion 1 crypto exists; a published relay key advertising any other
-  // version is rejected (no v2 wrapper shipped yet). Rotation = future signed
-  // protocol, out of scope for the pin-only TOFU model.
-  if (keyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) {
-    throwError(`${fields.keyVersionField} must be ${HERMES_GATEWAY_RELAY_KEY_VERSION}.`);
+  // Accept only a supported key version (v1 or v2 today); a published relay key
+  // advertising any other version is rejected. Rotation to a new crypto contract
+  // = future signed protocol, out of scope for the pin-only TOFU model.
+  if (!HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS.has(keyVersion)) {
+    throwError(
+      `${fields.keyVersionField} must be one of ${[...HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS].join(", ")}.`,
+    );
   }
   const rawEncryption = body[fields.encryptionField];
   const encryption =
@@ -675,7 +708,26 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
     createdAt: now,
     schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
   });
-  await db.doc(`users/${grant.uid}/hermes_gateway_messages/${id}`).set(doc, { merge: false });
+  // Create-if-absent, same hardening as attachments/init: a blind
+  // `set(merge:false)` would let a re-send of the same messageId clobber an
+  // already-stored sealed message. We keep `safeIdentifier` (not the stricter
+  // adoptedGatewayDocId) for the id here ON PURPOSE: the agent derives messageId
+  // as token_hex(16) and BINDS it into the sealed body's AES-GCM AAD
+  // (gatewayMessage/gatewayMessageKey). The phone re-derives that AAD from the
+  // stored `id` to open the body — so the server must echo the client's id
+  // byte-for-byte. token_hex(16) is already lowercase-hex, so safeIdentifier is a
+  // pass-through for the real client; swapping the resolver risks perturbing an
+  // AAD-bound value, and unlike attachments there is no stricter finalize
+  // validator to stay symmetric with. The transaction below still closes the
+  // clobber half of the finding.
+  const messageRef = db.doc(`users/${grant.uid}/hermes_gateway_messages/${id}`);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(messageRef);
+    if (existing.exists) {
+      throw httpError(409, "message_already_sent");
+    }
+    tx.set(messageRef, doc);
+  });
   logInfo({ event: "hermes_gateway.message_sent", client_id: grant.client.id, message_id: id });
   sendJSON(res, 200, { message: doc });
 }
@@ -874,7 +926,10 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     throw httpError(400, "invalid_byte_count");
   }
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
-  const attachmentId = safeIdentifier(body.attachmentId, `att_${randomBytes(8).toString("hex")}`);
+  // Adopt a client-supplied attachmentId only when it ALSO passes the canonical
+  // finalize contract (≤160, [A-Za-z0-9_.:-]); otherwise mint a fresh token. This
+  // keeps init↔finalize symmetric (no id init accepts that finalize would reject).
+  const attachmentId = adoptedGatewayDocId(body.attachmentId, () => `att_${randomBytes(8).toString("hex")}`);
   // The storage object name carries NO fileName segment — the file name is
   // private and never appears in a path the server (or a Storage listing) sees.
   const storagePath = `users/${grant.uid}/hermes_gateway_attachments/${grant.client.id}/${attachmentId}`;
@@ -900,7 +955,19 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     expiresAt: expiresAt.toISOString(),
     schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
   });
-  await db.doc(`users/${grant.uid}/hermes_gateway_attachments/${attachmentId}`).set(manifest, { merge: false });
+  // Create-if-absent: a blind `set(merge:false)` would re-mint a fresh signed
+  // upload URL over an already-initialized attachment doc. Adopting an id is now a
+  // create — a re-init of an existing id (malicious or buggy) is rejected (409)
+  // rather than clobbering the prior manifest. The agent's 128-bit token_hex makes
+  // an honest collision negligible.
+  const attachmentRef = db.doc(`users/${grant.uid}/hermes_gateway_attachments/${attachmentId}`);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(attachmentRef);
+    if (existing.exists) {
+      throw httpError(409, "attachment_already_initialized");
+    }
+    tx.set(attachmentRef, manifest);
+  });
   sendJSON(res, 200, { attachment: manifest, uploadURL, maxBytes: HERMES_GATEWAY_MAX_ATTACHMENT_BYTES });
 }
 
@@ -1098,6 +1165,48 @@ async function handleListApprovals(req: HttpRequest, res: HttpResponse): Promise
   sendJSON(res, 200, { approvals });
 }
 
+/**
+ * Inner request dispatcher for the Hermes Gateway HTTP API. Pure
+ * `(req, res) => Promise<void>` with no onRequest/CORS plumbing, so it is the
+ * exact path production runs AND the seam tests drive directly (the wrapped
+ * `burnBarHermesGateway` only adds CORS/trace middleware around this).
+ */
+export async function dispatchHermesGatewayRequest(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  try {
+    const path = gatewayPath(req);
+    if (path === "/device/start") return await handleDeviceStart(req, res);
+    if (path === "/device/poll") return await handleDevicePoll(req, res);
+    if (path === "/destinations") return await handleDestinations(req, res);
+    if (path === "/events") return await handleEvents(req, res);
+    if (path === "/messages") return await handleMessageSend(req, res);
+    if (path === "/typing") return await handleTyping(req, res);
+    if (path === "/runtime") return await handleRuntimeStatus(req, res);
+    if (path === "/state") return await handleGatewayState(req, res);
+    if (path === "/approvals") {
+      return req.method === "GET" ? await handleListApprovals(req, res) : await handleArmApproval(req, res);
+    }
+    if (path === "/attachments/init") return await handleAttachmentInit(req, res);
+    if (path === "/attachments/finalize") return await handleAttachmentFinalize(req, res);
+    sendJSON(res, 404, { error: "not_found" });
+  } catch (err) {
+    if (isGatewayHttpError(err)) {
+      sendJSON(res, err.status, stripUndefinedObject({ error: err.error, detail: err.detail }));
+      return;
+    }
+    if (err instanceof HttpsError) {
+      const status = err.code === "invalid-argument" ? 400 : err.code === "permission-denied" ? 403 : 500;
+      sendJSON(res, status, { error: err.code, detail: err.message });
+      return;
+    }
+    logError({ event: "hermes_gateway.http_failed", error: String(err) });
+    sendJSON(res, 500, { error: "internal" });
+  }
+}
+
 export const burnBarHermesGateway = onRequest(
   {
     region: FUNCTIONS_REGION,
@@ -1106,39 +1215,7 @@ export const burnBarHermesGateway = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
-    try {
-      const path = gatewayPath(req);
-      if (path === "/device/start") return await handleDeviceStart(req, res);
-      if (path === "/device/poll") return await handleDevicePoll(req, res);
-      if (path === "/destinations") return await handleDestinations(req, res);
-      if (path === "/events") return await handleEvents(req, res);
-      if (path === "/messages") return await handleMessageSend(req, res);
-      if (path === "/typing") return await handleTyping(req, res);
-      if (path === "/runtime") return await handleRuntimeStatus(req, res);
-      if (path === "/state") return await handleGatewayState(req, res);
-      if (path === "/approvals") {
-        return req.method === "GET" ? await handleListApprovals(req, res) : await handleArmApproval(req, res);
-      }
-      if (path === "/attachments/init") return await handleAttachmentInit(req, res);
-      if (path === "/attachments/finalize") return await handleAttachmentFinalize(req, res);
-      sendJSON(res, 404, { error: "not_found" });
-    } catch (err) {
-      if (isGatewayHttpError(err)) {
-        sendJSON(res, err.status, stripUndefinedObject({ error: err.error, detail: err.detail }));
-        return;
-      }
-      if (err instanceof HttpsError) {
-        const status = err.code === "invalid-argument" ? 400 : err.code === "permission-denied" ? 403 : 500;
-        sendJSON(res, status, { error: err.code, detail: err.message });
-        return;
-      }
-      logError({ event: "hermes_gateway.http_failed", error: String(err) });
-      sendJSON(res, 500, { error: "internal" });
-    }
+    await dispatchHermesGatewayRequest(req as unknown as HttpRequest, res as unknown as HttpResponse);
   },
 );
 

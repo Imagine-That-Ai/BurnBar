@@ -57,42 +57,110 @@ object HermesRelayCrypto {
         return cipher.doFinal(body)
     }
 
-    fun wrapSymmetricKey(keyData: ByteArray, recipientPublicKeyX963: ByteArray, aad: ByteArray): String {
+    /**
+     * Wrap a 32-byte symmetric key for [recipientPublicKeyX963].
+     *
+     * When [senderPrivateKey] is `null` this is the **v1** ephemeral-static
+     * ECIES wrap — byte-identical to the realtime relay path (`ikm = dh1`,
+     * `info = "…KeyWrap-v1|" ‖ aad`). Do not change that leg.
+     *
+     * When [senderPrivateKey] is provided this is the **v2 authenticated**
+     * wrap (HPKE-AuthEncap-shaped 2-DH KEM): `ikm = ECDH(eph, R) ‖ ECDH(skS, R)`
+     * (concat, `dh1` first — never XOR), one HKDF-SHA256 over the v2 `info`
+     * binding `enc ‖ pkR ‖ pkS`. The wire layout is unchanged from v1.
+     */
+    fun wrapSymmetricKey(
+        keyData: ByteArray,
+        recipientPublicKeyX963: ByteArray,
+        aad: ByteArray,
+        senderPrivateKey: java.security.PrivateKey? = null,
+    ): String {
         require(keyData.size == AES_KEY_BYTES) { "symmetric key must be 32 bytes" }
         val recipientKey = HermesRelayCryptoEc.decodeUncompressedPublicKey(recipientPublicKeyX963)
         val ephemeralKeyPair = HermesRelayCryptoEc.generateEphemeralKeyPair()
         val ephemeralPub =
             ephemeralKeyPair.public as? java.security.interfaces.ECPublicKey
                 ?: error("Hermes relay ephemeral keypair must use an EC public key")
-        val shared = HermesRelayCryptoEc.ecdh(ephemeralKeyPair.private, recipientKey)
+        val enc = HermesRelayCryptoEc.encodeUncompressedPublicKey(ephemeralPub)
+        val dh1 = HermesRelayCryptoEc.ecdh(ephemeralKeyPair.private, recipientKey)
         val wrappingKey =
-            HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
-                sharedSecret = shared,
-                sharedInfo = HermesRelayCryptoSupport.keyWrapSharedInfo(aad),
-                length = AES_KEY_BYTES,
-            )
+            if (senderPrivateKey != null) {
+                // v2 authenticated: ikm = ECDH(eph, R) ‖ ECDH(skS, R).
+                val dh2 = HermesRelayCryptoEc.ecdh(senderPrivateKey, recipientKey)
+                val senderPubX963 = HermesRelayCryptoEc.publicKeyX963FromPrivateKey(senderPrivateKey)
+                HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
+                    sharedSecret = dh1 + dh2,
+                    sharedInfo =
+                        HermesRelayCryptoSupport.keyWrapSharedInfoV2(
+                            aad = aad,
+                            enc = enc,
+                            pkR = recipientPublicKeyX963,
+                            pkS = senderPubX963,
+                        ),
+                    length = AES_KEY_BYTES,
+                )
+            } else {
+                HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
+                    sharedSecret = dh1,
+                    sharedInfo = HermesRelayCryptoSupport.keyWrapSharedInfo(aad),
+                    length = AES_KEY_BYTES,
+                )
+            }
         val nonce = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
         cipher.updateAAD(aad)
         val sealed = cipher.doFinal(keyData)
-        return HermesRelayCryptoSupport.base64NoWrap(HermesRelayCryptoEc.encodeUncompressedPublicKey(ephemeralPub) + nonce + sealed)
+        return HermesRelayCryptoSupport.base64NoWrap(enc + nonce + sealed)
     }
 
-    fun unwrapSymmetricKey(wrappedKeyBase64: String, privateKey: java.security.PrivateKey, aad: ByteArray): ByteArray {
+    /**
+     * Unwrap a symmetric key.
+     *
+     * When [senderPublicKeyX963] is `null` this is the **v1** path. When
+     * provided it is the **v2 authenticated** unwrap: the recipient binds the
+     * *pinned* sender static key (NOT a wire-supplied field) into the second DH,
+     * so a swapped/forged sender key fails AES-GCM tag verification — the forge
+     * defense. The pinned recipient public key is recovered from [privateKey]
+     * (`Q = d·G`) so it byte-matches the seal-side `info`.
+     */
+    fun unwrapSymmetricKey(
+        wrappedKeyBase64: String,
+        privateKey: java.security.PrivateKey,
+        aad: ByteArray,
+        senderPublicKeyX963: ByteArray? = null,
+    ): ByteArray {
         val envelope = HermesRelayCryptoSupport.base64Decode(wrappedKeyBase64)
         require(envelope.size > HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN) { "wrapped key too short" }
         val ephemeralPubBytes = envelope.copyOfRange(0, HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN)
         val sealed = envelope.copyOfRange(HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN, envelope.size)
         require(sealed.size > GCM_IV_BYTES) { "wrapped key body too short" }
         val ephemeralPub = HermesRelayCryptoEc.decodeUncompressedPublicKey(ephemeralPubBytes)
-        val shared = HermesRelayCryptoEc.ecdh(privateKey, ephemeralPub)
+        val dh1 = HermesRelayCryptoEc.ecdh(privateKey, ephemeralPub)
         val wrappingKey =
-            HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
-                sharedSecret = shared,
-                sharedInfo = HermesRelayCryptoSupport.keyWrapSharedInfo(aad),
-                length = AES_KEY_BYTES,
-            )
+            if (senderPublicKeyX963 != null) {
+                // v2 authenticated: ikm = ECDH(r, eph) ‖ ECDH(r, S_pinned).
+                val senderKey = HermesRelayCryptoEc.decodeUncompressedPublicKey(senderPublicKeyX963)
+                val dh2 = HermesRelayCryptoEc.ecdh(privateKey, senderKey)
+                val recipientOwnPubX963 = HermesRelayCryptoEc.publicKeyX963FromPrivateKey(privateKey)
+                HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
+                    sharedSecret = dh1 + dh2,
+                    sharedInfo =
+                        HermesRelayCryptoSupport.keyWrapSharedInfoV2(
+                            aad = aad,
+                            enc = ephemeralPubBytes,
+                            pkR = recipientOwnPubX963,
+                            pkS = senderPublicKeyX963,
+                        ),
+                    length = AES_KEY_BYTES,
+                )
+            } else {
+                HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
+                    sharedSecret = dh1,
+                    sharedInfo = HermesRelayCryptoSupport.keyWrapSharedInfo(aad),
+                    length = AES_KEY_BYTES,
+                )
+            }
         val nonce = sealed.copyOfRange(0, GCM_IV_BYTES)
         val body = sealed.copyOfRange(GCM_IV_BYTES, sealed.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
