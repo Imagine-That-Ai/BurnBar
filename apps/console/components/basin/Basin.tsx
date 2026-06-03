@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { DATA_DOMAINS, type DataDomain } from "@/lib/domains";
 import { usageById } from "@/lib/useDomainUsage";
 import type { DataDomainUsageResponse } from "@/lib/api";
@@ -60,20 +61,23 @@ export function PrivacyPosture({ usage }: { usage: DataDomainUsageResponse | nul
       </div>
 
       <div
-        className="mt-token-4 flex h-2.5 w-full overflow-hidden rounded-full"
+        className="mt-token-4 flex h-3 w-full"
         role="img"
         aria-label="Share of your data domains at each encryption tier."
       >
         {TIER_ORDER.map((t, i) => (
           <div
             key={t}
-            className="h-full"
-            style={{
-              width: `${(weights[t] / total) * 100}%`,
-              background: TIER_META[t].ink,
-              marginLeft: i === 0 ? 0 : 2,
-              borderRadius: 2,
-            }}
+            className="spine-seg h-full"
+            style={
+              {
+                width: `${(weights[t] / total) * 100}%`,
+                background: TIER_META[t].ink,
+                marginLeft: i === 0 ? 0 : 2,
+                borderRadius: 1,
+                "--d": `${120 + i * 140}ms`,
+              } as CSSProperties
+            }
           />
         ))}
       </div>

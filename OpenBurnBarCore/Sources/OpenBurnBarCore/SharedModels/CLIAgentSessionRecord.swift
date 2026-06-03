@@ -370,13 +370,17 @@ public enum CLIAgentSessionCodec {
         data: [String: Any],
         vaultKey: Data
     ) -> CLIAgentSessionRecord? {
-        guard let envelope = CloudVaultCrypto.sealedPayload(from: data[sealedPayloadField]),
-              let payload = try? CloudVaultCrypto.openPayload(envelope, keyData: vaultKey),
-              let record = try? JSONDecoder.openBurnBarCloudPayload.decode(CLIAgentSessionRecord.self, from: payload),
-              record.schemaVersion <= CLIAgentSessionRecord.currentSchemaVersion else {
+        guard let envelope = CloudVaultCrypto.sealedPayload(from: data[sealedPayloadField]) else {
             return nil
         }
-        return record.id.isEmpty ? nil : record
+        do {
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            let record = try JSONDecoder.openBurnBarCloudPayload.decode(CLIAgentSessionRecord.self, from: payload)
+            guard record.schemaVersion <= CLIAgentSessionRecord.currentSchemaVersion else { return nil }
+            return record.id.isEmpty ? nil : record
+        } catch {
+            return nil
+        }
     }
 
     /// Encode a `CLIAgentSessionRecord` to the dictionary form

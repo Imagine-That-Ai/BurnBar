@@ -8,8 +8,8 @@ export const metadata: Metadata = {
   title: "BurnBar Console",
   description: "Your data, your keys — the BurnBar Data & Privacy Control Center.",
   icons: {
-    icon: "/brand/burnbar_cloud_crest.jpg",
-    apple: "/brand/burnbar_cloud_crest.jpg",
+    icon: "/brand/burnbar_cloud_crest.svg",
+    apple: "/brand/burnbar_cloud_crest.svg",
   },
   // The console is a private member surface; never index it.
   robots: { index: false, follow: false, nocache: true },

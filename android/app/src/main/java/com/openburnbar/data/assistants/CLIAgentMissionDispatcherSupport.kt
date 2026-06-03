@@ -4,6 +4,7 @@ package com.openburnbar.data.assistants
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.WriteBatch
+import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
 import java.time.Instant
 import java.util.UUID
 
@@ -32,6 +33,7 @@ internal data class FanOutChildWriteRequest(
     val sourceSurface: String?,
     val deliveryMode: SkillRunDeliveryMode,
     val parentHermesThreadID: String?,
+    val key: AndroidCloudVaultResolvedKey,
 )
 
 internal fun planFanOutDispatch(
@@ -91,7 +93,7 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
     request.runtimeTokens.forEachIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
         val childPayload =
-            CLIAgentMissionRequestPayloadFactory.build(
+            CLIAgentMissionRequestPayloadFactory.buildSealed(
                 id = missionID,
                 title = "${request.plan.trimmedTitle} · $runtimeToken",
                 prompt = request.plan.trimmedPrompt,
@@ -107,6 +109,7 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
                 sourceSurface = request.sourceSurface,
                 deliveryMode = request.deliveryMode,
                 parentHermesThreadID = request.parentHermesThreadID,
+                key = request.key,
             ).toMutableMap().apply {
                 put("groupID", request.plan.groupID)
                 put("siblingIndex", index)
@@ -119,9 +122,10 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
         request.batch.set(requestRef, childPayload.toMap())
         request.batch.set(
             requestRef.collection("events").document("000001"),
-            CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+            CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                 sourceSkillID = request.sourceSkillID,
                 deliveryMode = request.deliveryMode,
+                key = request.key,
             ),
         )
     }

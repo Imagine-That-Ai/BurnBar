@@ -9,6 +9,7 @@ import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.DispatchException
 import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.toMissionSnapshotOrNull
+import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import java.lang.IllegalStateException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
@@ -155,22 +156,25 @@ class MobileMissionConsoleHost private constructor(
             rebuildSnapshot()
             return
         }
-        listListener =
-            firestore.collection("users").document(uid)
-                .collection("cli_agent_mission_requests")
-                .orderBy("createdAt", Query.Direction.DESCENDING)
-                .limit(VAL_12.toLong())
-                .addSnapshotListener { snap, error ->
-                    if (error != null) {
-                        _inlineError.value = error.localizedMessage
-                        return@addSnapshotListener
-                    }
-                    val missions =
-                        snap?.documents.orEmpty().mapNotNull { doc ->
-                            doc.toMissionSnapshotOrNull()
+        scope.launch {
+            val vaultKey = runCatching { AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData }.getOrNull()
+            listListener =
+                firestore.collection("users").document(uid)
+                    .collection("cli_agent_mission_requests")
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .limit(VAL_12.toLong())
+                    .addSnapshotListener { snap, error ->
+                        if (error != null) {
+                            _inlineError.value = error.localizedMessage
+                            return@addSnapshotListener
                         }
-                    absorb(missions)
-                }
+                        val missions =
+                            snap?.documents.orEmpty().mapNotNull { doc ->
+                                doc.toMissionSnapshotOrNull(vaultKey)
+                            }
+                        absorb(missions)
+                    }
+        }
     }
 
     private fun absorb(missions: List<CLIAgentMissionSnapshot>) {

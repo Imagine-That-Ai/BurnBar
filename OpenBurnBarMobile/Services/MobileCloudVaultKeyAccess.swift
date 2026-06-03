@@ -143,7 +143,12 @@ enum MobileCloudVaultKeyAccess {
         ], merge: true)
 
         let deviceRef = userRef.collection("escrow_devices").document(deviceId)
-        let existing = try? await deviceRef.getDocument().data()
+        let existing: [String: Any]?
+        do {
+            existing = try await deviceRef.getDocument().data()
+        } catch {
+            existing = nil
+        }
         let existingTrust = existing?["trustState"] as? String
         let trustState = existingTrust == EscrowDeviceTrustState.trusted.rawValue
             ? EscrowDeviceTrustState.trusted.rawValue

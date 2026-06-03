@@ -3,6 +3,9 @@ package com.openburnbar.data.cloud
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.openburnbar.BurnBarApplication
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -20,6 +23,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.tasks.await
 
 data class CloudVaultSealedText(
     val algorithm: String = "AES-256-GCM",
@@ -34,6 +38,14 @@ data class CloudVaultBlobEnvelope(
     val algorithm: String = "AES-256-GCM",
     val keyVersion: Int = 1,
     val plaintextSHA256: String = "",
+    val sealedBoxBase64: String = "",
+)
+
+data class CloudVaultSealedPayload(
+    val schemaVersion: Int = 1,
+    val algorithm: String = "AES-256-GCM",
+    val keyVersion: Int = 1,
+    val vaultKeyID: String = "",
     val sealedBoxBase64: String = "",
 )
 
@@ -100,6 +112,58 @@ object CloudVaultCrypto {
             )
         require(sha256Hex(plaintext) == envelope.plaintextSHA256) { "Encrypted blob hash mismatch" }
         return plaintext
+    }
+
+    fun vaultKeyID(vaultKey: ByteArray): String = "v1_${sha256Hex(vaultKey).take(32)}"
+
+    fun sealPayload(plaintext: ByteArray, vaultKey: ByteArray, vaultKeyID: String = vaultKeyID(vaultKey)): CloudVaultSealedPayload {
+        val nonce =
+            ByteArray(GCM_NONCE_BYTES).apply {
+                java.security.SecureRandom().nextBytes(this)
+            }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        return CloudVaultSealedPayload(
+            schemaVersion = 1,
+            algorithm = "AES-256-GCM",
+            keyVersion = 1,
+            vaultKeyID = vaultKeyID,
+            sealedBoxBase64 = Base64.encodeToString(nonce + cipher.doFinal(plaintext), Base64.NO_WRAP),
+        )
+    }
+
+    fun openPayload(envelope: CloudVaultSealedPayload, vaultKey: ByteArray): ByteArray {
+        require(envelope.schemaVersion == 1) { "Unsupported sealed payload schema" }
+        require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
+        val actualVaultKeyID = vaultKeyID(vaultKey)
+        require(envelope.vaultKeyID == actualVaultKeyID) { "Vault key mismatch" }
+        val combined = Base64.decode(envelope.sealedBoxBase64, Base64.DEFAULT)
+        require(combined.size > MIN_BLOB_ENVELOPE_BYTES) { "Invalid encrypted payload envelope" }
+        return CloudVaultCryptoSupport.openAesGcm(
+            vaultKey,
+            combined.copyOfRange(0, GCM_NONCE_BYTES),
+            combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
+        )
+    }
+
+    fun sealedPayloadMap(envelope: CloudVaultSealedPayload): Map<String, Any> =
+        mapOf(
+            "schemaVersion" to envelope.schemaVersion,
+            "algorithm" to envelope.algorithm,
+            "keyVersion" to envelope.keyVersion,
+            "vaultKeyID" to envelope.vaultKeyID,
+            "sealedBoxBase64" to envelope.sealedBoxBase64,
+        )
+
+    fun sealedPayloadFromMap(raw: Map<*, *>?): CloudVaultSealedPayload? {
+        if (raw == null) return null
+        return CloudVaultSealedPayload(
+            schemaVersion = (raw["schemaVersion"] as? Number)?.toInt() ?: 1,
+            algorithm = raw["algorithm"] as? String ?: "AES-256-GCM",
+            keyVersion = (raw["keyVersion"] as? Number)?.toInt() ?: 1,
+            vaultKeyID = raw["vaultKeyID"] as? String ?: return null,
+            sealedBoxBase64 = raw["sealedBoxBase64"] as? String ?: return null,
+        )
     }
 
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
@@ -174,6 +238,110 @@ class AndroidCloudVaultDeviceKeypair private constructor(
                 .apply()
             return AndroidCloudVaultDeviceKeypair(pair.private, publicX963)
         }
+    }
+}
+
+data class AndroidCloudVaultResolvedKey(
+    val keyData: ByteArray,
+    val vaultKeyID: String,
+)
+
+object AndroidCloudVaultKeyAccess {
+    private const val PREFS = "openburnbar_cloud_vault_keys"
+    private const val VAL_5 = 5
+
+    suspend fun keyForWriting(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey =
+        keyForReading(uid = uid, firestore = firestore) ?: error("Cloud vault key is not active on this Android device yet. Approve this device from a Mac or iPhone before writing cloud chat content.")
+
+    suspend fun keyForReading(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey? {
+        val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        AndroidEscrowDeviceRegistry(firestore).registerSelf(uid = uid, keypair = keypair)
+        loadLocalKey(uid)?.let { local ->
+            val resolved = AndroidCloudVaultResolvedKey(local, CloudVaultCrypto.vaultKeyID(local))
+            verifyStateIfPresent(uid, firestore, resolved.vaultKeyID)
+            return resolved
+        }
+        val unwrapped = unwrapExistingKey(uid, firestore, keypair) ?: return null
+        saveLocalKey(uid, unwrapped.keyData)
+        return unwrapped
+    }
+
+    private suspend fun unwrapExistingKey(
+        uid: String,
+        firestore: FirebaseFirestore,
+        keypair: AndroidCloudVaultDeviceKeypair,
+    ): AndroidCloudVaultResolvedKey? {
+        val userRef = firestore.collection("users").document(uid)
+        val stateVaultKeyID =
+            userRef.collection("cloud_vault_state")
+                .document("current")
+                .get()
+                .await()
+                .getString("vaultKeyID")
+        val snapshot =
+            userRef.collection("cloud_vault_key_wrappers")
+                .whereEqualTo("targetDeviceId", keypair.deviceId)
+                .whereEqualTo("status", "active")
+                .limit(VAL_5.toLong())
+                .get()
+                .await()
+
+        return snapshot.documents.firstNotNullOfOrNull { document ->
+            val wrapped = document.getString("wrappedVaultKey") ?: return@firstNotNullOfOrNull null
+            val wrapperVaultKeyID = document.getString("vaultKeyID")
+            val key =
+                runCatching {
+                    keypair.decryptWrappedVaultKey(wrapped)
+                }.getOrNull() ?: return@firstNotNullOfOrNull null
+            val actualVaultKeyID = CloudVaultCrypto.vaultKeyID(key)
+            if (wrapperVaultKeyID != null && wrapperVaultKeyID != actualVaultKeyID) {
+                return@firstNotNullOfOrNull null
+            }
+            if (stateVaultKeyID != null && stateVaultKeyID != actualVaultKeyID) {
+                return@firstNotNullOfOrNull null
+            }
+            AndroidCloudVaultResolvedKey(key, actualVaultKeyID)
+        }
+    }
+
+    private suspend fun verifyStateIfPresent(uid: String, firestore: FirebaseFirestore, vaultKeyID: String) {
+        val ref = firestore.collection("users").document(uid).collection("cloud_vault_state").document("current")
+        val snapshot = ref.get().await()
+        val existing = snapshot.getString("vaultKeyID")
+        if (existing != null) {
+            require(existing == vaultKeyID) { "Cloud vault key mismatch" }
+            return
+        }
+        ref.set(
+            mapOf(
+                "uid" to uid,
+                "vaultKeyID" to vaultKeyID,
+                "keyVersion" to 1,
+                "algorithm" to "AES-256-GCM",
+                "status" to "active",
+                "createdByDeviceId" to AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp(),
+                "schemaVersion" to 1,
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
+    private fun loadLocalKey(uid: String): ByteArray? {
+        val prefs = BurnBarApplication.appContext.getSharedPreferences(PREFS, 0)
+        val stored = prefs.getString("vault_key_$uid", null) ?: return null
+        return runCatching { AndroidLocalSecretBox.decrypt(Base64.decode(stored, Base64.DEFAULT)) }
+            .getOrNull()
+            ?.takeIf { it.size == 32 }
+    }
+
+    private fun saveLocalKey(uid: String, key: ByteArray) {
+        require(key.size == 32) { "Invalid vault key length" }
+        val prefs = BurnBarApplication.appContext.getSharedPreferences(PREFS, 0)
+        prefs.edit()
+            .putString("vault_key_$uid", Base64.encodeToString(AndroidLocalSecretBox.encrypt(key), Base64.NO_WRAP))
+            .apply()
     }
 }
 

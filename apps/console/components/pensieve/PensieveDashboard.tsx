@@ -78,11 +78,11 @@ export function PensieveDashboard() {
             <img
               src={
                 tier === "ultra"
-                  ? "/brand/burnbar_cloud_ultra_crest.jpg"
-                  : "/brand/burnbar_cloud_pro_crest.jpg"
+                  ? "/brand/burnbar_cloud_ultra_crest.svg"
+                  : "/brand/burnbar_cloud_pro_crest.svg"
               }
               alt=""
-              className="size-5 rounded-sm object-cover overflow-hidden"
+              className="size-5 object-contain overflow-hidden"
             />
           )}
           {tier} plan
