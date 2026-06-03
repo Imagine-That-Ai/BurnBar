@@ -101,7 +101,11 @@ export interface AgentNotificationReplyCommand {
 export function latestAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
   const sealedRole = stringValue(data?.lastMessageRole);
   const sealedMessageId = stringValue(data?.lastAssistantMessageID);
-  if ((data?.contentSealed === true || data?.sealedPayload !== undefined) && sealedRole === "assistant" && sealedMessageId) {
+  if (
+    (data?.contentSealed === true || data?.sealedPayload !== undefined) &&
+    sealedRole === "assistant" &&
+    sealedMessageId
+  ) {
     return {
       id: sealedMessageId,
       role: "assistant",
