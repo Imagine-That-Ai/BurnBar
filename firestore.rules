@@ -570,6 +570,7 @@ service cloud.firestore {
 
     function hermesGatewayDestinationWrite(userId, destinationId) {
       return ownerWritableNonSecret(userId)
+        && destinationId is string
         && hasActiveHostedQuotaEntitlement(userId)
         && request.resource.data.keys().hasOnly([
           "id",
@@ -2774,7 +2775,9 @@ service cloud.firestore {
         && request.resource.data.credentialKind in ["api_key", "oauth_token", "bearer_token", "unknown"]
         && (!("accountLabel" in request.resource.data) || (request.resource.data.accountLabel is string && request.resource.data.accountLabel.size() <= 160))
         && request.resource.data.ciphertext is string
-        && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]{16,20000}$")
+        && request.resource.data.ciphertext.size() >= 16
+        && request.resource.data.ciphertext.size() <= 20000
+        && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]*$")
         && request.resource.data.keyVersion is int
         && request.resource.data.envelopeVersion is int
         && request.resource.data.createdAt is timestamp;
