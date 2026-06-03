@@ -6,7 +6,13 @@ import { SITE } from "@data/site";
 const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
-const allowance = cloudPro.allowance!;
+const ultra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
+const allowance = cloudPro.allowance as {
+  hostedAgentActionsMonthly: number;
+  relayGBMonthly: number;
+  hostedAgentActionMonthlyCap: number;
+  relayGBMonthlyCap: number;
+};
 const actionTopUp = SITE.pricing.topUps[0]!;
 const relayTopUp = SITE.pricing.topUps[1]!;
 
@@ -14,12 +20,13 @@ const savePct = (monthly: string, annual: string) =>
   Math.round((1 - Number(annual) / (Number(monthly) * 12)) * 100);
 const cloudSave = savePct(cloud.priceMonthlyUSD, cloud.priceAnnualUSD!);
 const proSave = savePct(cloudPro.priceMonthlyUSD, cloudPro.priceAnnualUSD!);
-const headlineSave = Math.max(cloudSave, proSave);
+const ultraSave = savePct(ultra.priceMonthlyUSD, ultra.priceAnnualUSD!);
+const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 ---
 
 <BaseLayout
   title="Pricing"
-  description="OpenBurnBar pricing — OpenBurnBar Local at $0, BurnBar Cloud at $7.99/month or $79/year, and BurnBar Cloud Pro at $24.99/month or $249/year."
+  description="OpenBurnBar pricing — OpenBurnBar Local at $0, BurnBar Cloud at $7.99/month or $79/year, BurnBar Cloud Pro at $24.99/month or $249/year, and BurnBar Ultra at $59.99/month or $599/year."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -29,7 +36,8 @@ const headlineSave = Math.max(cloudSave, proSave);
         <p class="lead">
           The local product is free, forever. Cloud syncs your quota and encrypted history. Cloud
           Pro adds live phone-to-Mac workflows and supervised agent work — with prepaid allowances
-          for the hosted resources that cost real money.
+          for the hosted resources that cost real money. Ultra raises encrypted Pensieve memory
+          limits for heavy multi-repo agent work.
         </p>
       </div>
 
@@ -269,6 +277,73 @@ const headlineSave = Math.max(cloudSave, proSave);
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
         </article>
+
+        <!-- ULTRA -->
+        <article class="plan plan--ultra" data-animate-onview>
+          <svg class="plan__motif" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <path
+              d="M24 72c10-26 25-39 44-39 14 0 25 7 32 21M21 86h78M35 64h42M46 48h24"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"></path>
+          </svg>
+          <header class="plan__head">
+            <span class="plan__badge mono">For deep memory</span>
+            <div class="plan__title">
+              <span class="plan__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M4 16c2.2-5.5 5.6-8.2 10-8.2 3.2 0 5.7 1.4 7.4 4.2M4 19h16M7 13h9M9 10h5"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"></path>
+                </svg>
+              </span>
+              <h2 class="plan__name">{ultra.shortName}</h2>
+            </div>
+            <div class="plan__price">
+              <span class="plan__amount mono" data-billing="monthly">
+                ${ultra.priceMonthlyUSD}<span class="plan__unit">/mo</span>
+              </span>
+              <span class="plan__amount mono" data-billing="annual">
+                ${ultra.priceAnnualUSD}<span class="plan__unit">/yr</span>
+              </span>
+              <span class="plan__per">
+                <span class="plan__save mono" data-billing="annual"
+                  >${(Number(ultra.priceAnnualUSD) / 12).toFixed(2)}/mo · save {ultraSave}%</span
+                >
+                <span class="plan__per-dim" data-billing="monthly"
+                  >${ultra.priceAnnualUSD}/yr available</span
+                >
+              </span>
+            </div>
+            <p class="plan__sub">{ultra.summary}</p>
+          </header>
+
+          <ul class="plan__list plan__list--pro">
+            <li>Everything in BurnBar Cloud Pro</li>
+            <li>15 Pensieve knowledge sources</li>
+            <li>50,000 encrypted memory chunks</li>
+            <li>250 MB encrypted storage</li>
+            <li>Higher hosted-memory query bucket for deep projects</li>
+          </ul>
+
+          <div class="plan__included">
+            <span class="plan__inc-label mono">Built for</span>
+            <ul class="plan__specs">
+              <li>Long-running repos and multi-agent projects</li>
+              <li>Cross-device encrypted memory retrieval</li>
+              <li>Private knowledge search without plaintext cloud storage</li>
+            </ul>
+          </div>
+
+          <a class="btn btn--ember plan__cta" href="/download">
+            {ultra.cta}
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+        </article>
       </div>
 
       <!-- Top-ups -->
@@ -315,7 +390,8 @@ const headlineSave = Math.max(cloudSave, proSave);
           <dt>Is there a free trial?</dt>
           <dd>
             BurnBar Cloud monthly and annual include a 14-day introductory free trial for new
-            subscribers. BurnBar Cloud Pro and top-ups do not have an introductory trial.
+            subscribers. BurnBar Cloud Pro, BurnBar Ultra, and top-ups do not have an introductory
+            trial.
           </dd>
         </div>
         <div>
