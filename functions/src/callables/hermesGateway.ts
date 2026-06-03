@@ -38,6 +38,7 @@ import {
   HERMES_GATEWAY_MAX_MESSAGE_TEXT,
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
+  HERMES_GATEWAY_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SCHEMA_VERSION,
   isGatewayRelayPublicKeyB64,
   isHermesGatewayClientDoc,
@@ -53,7 +54,6 @@ import {
   requireGatewayRelayEnvelope,
   safeEqualHex,
   sha256Hex,
-  sanitizeHermesGatewayApprovalSummary,
   sanitizeHermesGatewayDestinationId,
   sanitizeHermesGatewayModelId,
   sanitizeHermesGatewayModelOptions,
@@ -205,9 +205,17 @@ function parseRelayPublicKey(
     throwError(`${fields.publicKeyField} must be a base64 X9.63 P-256 public key (65 bytes, 0x04-prefixed).`);
   }
   const rawVersion = body[fields.keyVersionField];
-  const keyVersion = rawVersion == null ? 1 : typeof rawVersion === "number" ? Math.floor(rawVersion) : Number(rawVersion);
-  if (!Number.isFinite(keyVersion) || keyVersion < 1 || keyVersion > 100) {
-    throwError(`${fields.keyVersionField} must be between 1 and 100.`);
+  const keyVersion =
+    rawVersion == null
+      ? HERMES_GATEWAY_RELAY_KEY_VERSION
+      : typeof rawVersion === "number"
+        ? Math.floor(rawVersion)
+        : Number(rawVersion);
+  // Only keyVersion 1 crypto exists; a published relay key advertising any other
+  // version is rejected (no v2 wrapper shipped yet). Rotation = future signed
+  // protocol, out of scope for the pin-only TOFU model.
+  if (keyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) {
+    throwError(`${fields.keyVersionField} must be ${HERMES_GATEWAY_RELAY_KEY_VERSION}.`);
   }
   const rawEncryption = body[fields.encryptionField];
   const encryption =
@@ -228,16 +236,13 @@ interface ResolvedGatewayWriteBody {
 }
 
 /**
- * Decide whether a phone/agent write carries a sealed body or a (deprecated)
- * plaintext one, and enforce the privacy gate. Precedence:
+ * Decide whether a phone/agent write carries a sealed body and enforce the
+ * privacy gate. Precedence:
  *   1. A present relayEnvelope is validated (shape only) and ALWAYS used; any
  *      plaintext text supplied alongside it is ignored (the sealed body wins).
- *   2. With no envelope, plaintext is accepted ONLY from a non-relay-capable
- *      legacy client inside the grace window — and a deprecation counter is
- *      logged. A relay-capable client, or any client past the cutoff, that omits
- *      the envelope is rejected with `ciphertext_required`.
- * The two outputs are mutually exclusive, so a doc never carries both a sealed
- * and a plaintext body.
+ *   2. With no envelope, plaintext is rejected. The legacy plaintext output is
+ *      retained only as dead-code-compatible shape for old test fixtures and
+ *      read paths; gatewayPlaintextWriteAllowed() now always returns false.
  */
 function resolveGatewayWriteBody(
   rawEnvelope: unknown,
@@ -264,6 +269,15 @@ function resolveGatewayWriteBody(
   });
   const maxLen = surface === "events" ? HERMES_GATEWAY_MAX_EVENT_TEXT : HERMES_GATEWAY_MAX_MESSAGE_TEXT;
   return { legacyText: text.slice(0, maxLen) };
+}
+
+function requireSafeGatewayEventId(raw: unknown): string {
+  const value = requiredIdentifier(raw, "eventId");
+  const safe = safeIdentifier(value, "evt");
+  if (safe !== value || !safe.startsWith("evt_")) {
+    throw new HttpsError("invalid-argument", "eventId must be a safe evt_ identifier.");
+  }
+  return safe;
 }
 
 function statusCodeForAttachmentManifest(status: HermesGatewayAttachmentManifestDoc["status"]): number {
@@ -398,6 +412,10 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (!clientSnap.exists || !isHermesGatewayClientDoc(client) || client.status !== "active") {
     throw httpError(401, "revoked_bearer_token");
   }
+  if (client.tokenHash !== tokenHash) {
+    await db.doc(`hermes_gateway_token_index/${tokenHash}`).delete().catch(() => undefined);
+    throw httpError(401, "stale_bearer_token");
+  }
   if (isHermesGatewayTokenExpired(client.expiresAt)) {
     throw httpError(401, "expired_bearer_token");
   }
@@ -456,8 +474,8 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   const requestedScopes = sanitizeHermesGatewayScopes(body.scopes);
 
   // The agent publishes its relay public key here so the phone can wrap event
-  // bodies to it at approval time. Absent only for a legacy unsealed pairing,
-  // which is tolerated until the grace cutoff and rejected afterward.
+  // bodies to it at approval time. Unsealed pairings are rejected; legacy
+  // plaintext remains a read fallback only for already-queued docs.
   const agentRelay = parseRelayPublicKey(
     body,
     {
@@ -620,10 +638,12 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
   const body = requestBody(req);
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const attachmentIds = sanitizedAttachmentIds(body.attachmentIds);
+  if (grant.client.relayCapable !== true) {
+    throw httpError(400, "unsealed_client_unsupported");
+  }
   // The agent seals its reply body (the message text) to the phone's relay key
-  // BEFORE this call; the server only forwards the opaque envelope. A plaintext
-  // `text` is accepted only from a legacy non-relay-capable client within the
-  // grace window — and is then rejected once sealing is mandatory.
+  // BEFORE this call; the server only forwards the opaque envelope. Plaintext
+  // `text` is rejected on every new write.
   const sealed = resolveGatewayWriteBody(body.relayEnvelope, body.text, grant.client, "messages");
   const attachmentsOnly = attachmentIds.length > 0;
   if (!sealed.relayEnvelope && !sealed.legacyText && !attachmentsOnly) {
@@ -637,10 +657,12 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
     clientId: grant.client.id,
     kind: "agent_message",
     destinationId,
-    threadId: boundedTrimmedString(body.threadId, "threadId", 160, false),
-    replyToEventId: boundedTrimmedString(body.replyToEventId, "replyToEventId", 160, false),
-    // Sealed body for schema 2+; plaintext text only for an in-grace legacy
-    // client (mutually exclusive — resolveGatewayWriteBody enforces one path).
+    // threadId/replyToEventId are private conversation-routing metadata. For new
+    // sealed messages they must live inside relayEnvelope, not as top-level
+    // Firestore fields.
+    threadId: sealed.legacyText ? boundedTrimmedString(body.threadId, "threadId", 160, false) : undefined,
+    replyToEventId: sealed.legacyText ? boundedTrimmedString(body.replyToEventId, "replyToEventId", 160, false) : undefined,
+    // Sealed body for schema 2+; plaintext text is never accepted for new writes.
     relayEnvelope: sealed.relayEnvelope,
     text: sealed.legacyText,
     attachmentIds,
@@ -656,6 +678,9 @@ async function handleTyping(req: HttpRequest, res: HttpResponse): Promise<void> 
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
+  if (grant.client.relayCapable !== true) {
+    throw httpError(400, "unsealed_client_unsupported");
+  }
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const now = nowISO();
   const doc = stripUndefinedObject({
@@ -680,10 +705,12 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   const runtimeProviderId = boundedTrimmedString(body.currentProviderId, "currentProviderId", 80, false);
   const runtimeModelOptions = sanitizeHermesGatewayModelOptions(body.modelOptions);
   const agentVersion = boundedTrimmedString(body.agentVersion, "agentVersion", 120, false);
-  // The agent re-publishes its relay public key here so a key established (or
-  // rotated) after pairing reaches the phone via /state. When supplied it also
-  // flips relayCapable true once the phone's key is already on record, so the
-  // write handlers begin requiring sealed bodies.
+  // The agent MAY publish its relay public key here, but only to ESTABLISH it on
+  // first pairing (trust-on-first-use). Once a key is pinned on the client doc it
+  // is IMMUTABLE: a /runtime request can never overwrite it. A bearer token alone
+  // must not be able to swap the pinned relay key — that would let the server (or
+  // any token holder) substitute its own key and MITM the sealed channel. Signed
+  // key rotation is a deferred follow-up; until then we PIN-only.
   const agentRelay = parseRelayPublicKey(
     body,
     {
@@ -695,15 +722,36 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
       throw new HttpsError("invalid-argument", message);
     },
   );
+  const pinnedAgentKey =
+    typeof grant.client.agentRelayPublicKey === "string" ? grant.client.agentRelayPublicKey : undefined;
+  // Decide whether this request may WRITE the relay-key fields. We write them only
+  // when no key is pinned yet (first pairing). If a key is already pinned and the
+  // incoming one differs, we DROP the incoming key (do not write) and log a
+  // security event so the substitution attempt is auditable. A re-publish of the
+  // SAME pinned key is a harmless no-op (no write needed, no alert).
+  let agentRelayKeyWrite: ParsedRelayPublicKey | undefined;
+  if (agentRelay) {
+    if (!pinnedAgentKey) {
+      agentRelayKeyWrite = agentRelay;
+    } else if (agentRelay.publicKey !== pinnedAgentKey) {
+      logInfo({
+        event: "hermes_gateway.relay_key_change_rejected",
+        reason: "agent_relay_public_key_immutable",
+        client_id: grant.client.id,
+        user_id_hash: grant.uid.slice(0, 8),
+      });
+    }
+  }
   const now = nowISO();
   // Reconcile the optimistic model-switch marker: once the runtime reports it is
   // actually running the requested model, clear pendingModelId so /state stops
   // reporting "switching…". A no-op when there is no pending switch.
   const pending = typeof grant.client.pendingModelId === "string" ? grant.client.pendingModelId.trim() : "";
   const settled = !!pending && !!runtimeModelId && pending.toLowerCase() === runtimeModelId.trim().toLowerCase();
-  // relayCapable becomes true once BOTH endpoints have a key on record.
+  // relayCapable becomes true once BOTH endpoints have a key on record. The agent
+  // key counts whether it was just pinned now or pinned earlier.
   const phoneKeyOnRecord = typeof grant.client.phoneRelayPublicKey === "string";
-  const agentKeyOnRecord = agentRelay != null || typeof grant.client.agentRelayPublicKey === "string";
+  const agentKeyOnRecord = pinnedAgentKey !== undefined || agentRelayKeyWrite != null;
   const relayCapable = agentKeyOnRecord && phoneKeyOnRecord ? true : undefined;
   await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(
     stripUndefinedObject({
@@ -711,9 +759,11 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
       runtimeProviderId,
       runtimeModelOptions,
       agentVersion,
-      agentRelayPublicKey: agentRelay?.publicKey,
-      agentRelayKeyVersion: agentRelay?.keyVersion,
-      agentRelayEncryption: agentRelay?.encryption,
+      // Pin-only: relay-key fields are written ONLY on first pairing
+      // (agentRelayKeyWrite set). Once pinned they are never overwritten here.
+      agentRelayPublicKey: agentRelayKeyWrite?.publicKey,
+      agentRelayKeyVersion: agentRelayKeyWrite?.keyVersion,
+      agentRelayEncryption: agentRelayKeyWrite?.encryption,
       relayCapable,
       runtimeUpdatedAt: now,
       lastSeenAt: now,
@@ -801,8 +851,8 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
       "ciphertext_required: a relayEnvelope (with the sealed fileName) is required for Hermes Gateway attachments.",
     );
   }
-  // Plaintext fileName is accepted ONLY on the legacy (in-grace) path; on the
-  // sealed path the name lives inside the envelope and is never stored cleartext.
+  // Plaintext fileName is never accepted for new writes; the name lives inside
+  // the envelope and is never stored cleartext.
   const legacyFileName = sealedEnvelope
     ? undefined
     : boundedTrimmedString(body.fileName, "fileName", 255, true).replace(/[\\/]/g, "-");
@@ -965,7 +1015,15 @@ async function handleArmApproval(req: HttpRequest, res: HttpResponse): Promise<v
   const body = requestBody(req);
   const actionId = requiredHttpIdentifier(body.actionId, "actionId");
   const toolName = boundedTrimmedString(body.toolName, "toolName", 120, false);
-  const summary = sanitizeHermesGatewayApprovalSummary(body.summary);
+  // PRIVACY BOUNDARY: the oversight gate is CONTROL-PLANE only — it carries the
+  // actionId + a coarse toolName category, never the agent's free-text command.
+  // The human-readable action detail is delivered end-to-end ENCRYPTED over the
+  // message channel (the adapter's send_slash_confirm posts a sealed prompt the
+  // phone correlates by actionId), so the server is never able to read it. We
+  // deliberately do NOT persist any client-supplied `summary`, even if an older
+  // adapter sends one — enforced here at the trust boundary so no client can
+  // reintroduce server-readable private text on the sealed gateway.
+  const summary = "";
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const approvalId = gatewayApprovalDocId(grant.client.id, actionId);
   const ref = db.doc(`users/${grant.uid}/hermes_gateway_approvals/${approvalId}`);
@@ -1151,8 +1209,8 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const agentRelayEncryption =
         typeof session.agentRelayEncryption === "string" ? session.agentRelayEncryption : agentRelayPublicKey ? HERMES_GATEWAY_RELAY_ENCRYPTION : undefined;
       const relayCapable = !!agentRelayPublicKey && !!phoneRelay;
-      // Past the grace cutoff a pairing that cannot seal in BOTH directions is
-      // refused so no plaintext-only client is ever minted.
+      // A pairing that cannot seal in BOTH directions is refused so no plaintext-
+      // only client is ever minted.
       if (!relayCapable && !gatewayPlaintextWriteAllowed(false)) {
         await recordCallableApprovalFailure(uid, "hermes_gateway_approve_fail");
         throw new HttpsError(
@@ -1429,6 +1487,7 @@ export const enqueueHermesGatewayEvent = onCall(
         senderDisplayName?: unknown;
         text?: unknown;
         relayEnvelope?: unknown;
+        eventId?: unknown;
         eventKind?: unknown;
         modelId?: unknown;
         targetClientId?: unknown;
@@ -1451,16 +1510,47 @@ export const enqueueHermesGatewayEvent = onCall(
       if (targetClientId) {
         targetClient = await assertActiveHermesGatewayClient(uid, targetClientId);
       }
-      // The phone seals {text, senderDisplayName, threadId} to the AGENT's relay
-      // key before this call; the server forwards the opaque envelope and never
-      // reads the body. A model_switch keeps a cleartext `/model <id>` command so
-      // the runtime can apply it without a key (modelId is not private), and a
-      // legacy in-grace client may still send plaintext text — resolveGatewayWrite-
-      // Body enforces the seal-vs-plaintext gate for the message path.
+      if (!targetClient) {
+        throw new HttpsError("invalid-argument", "targetClientId is required for sealed Hermes Gateway events.");
+      }
+      const targetIsRelayCapable = targetClient.relayCapable === true;
+      // A non-relay-capable (legacy pre-E2E) target is only tolerable while the
+      // plaintext grace window is open. New deployments have it closed, so an
+      // unsealed target is rejected and the client must re-pair to seal.
+      if (!targetIsRelayCapable && !gatewayPlaintextWriteAllowed(targetClient.relayCapable)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "unsealed_target_unsupported: update and re-pair the Hermes Gateway client so messages stay end-to-end encrypted.",
+        );
+      }
+      // The phone seals the event body before this call; the server forwards the
+      // opaque envelope and never reads it. A model_switch on a relay-capable
+      // target ALSO travels sealed: the model command ("/model …") is private, so
+      // the server REQUIRES the relayEnvelope and forwards it blindly. The agent
+      // opens it and validates the requested model against its own catalog AFTER
+      // decrypting — the server keeps no plaintext clientAdvertisesModel gate that
+      // would force it to read the (sealed) command or leak the catalog decision.
       let sealedBody: ResolvedGatewayWriteBody = {};
-      let modelSwitchText: string | undefined;
       if (eventKind === "model_switch") {
-        modelSwitchText = `/model ${requestedModelId ?? ""}`.trim();
+        if (targetIsRelayCapable) {
+          // Sealed model_switch: require the envelope (the command body is sealed
+          // to the agent's relay key). The cleartext modelId still rides alongside
+          // for routing/optimistic-pending, but no plaintext command is stored and
+          // the server does NOT pre-validate against the advertised catalog.
+          sealedBody = { relayEnvelope: requireGatewayRelayEnvelope(request.data.relayEnvelope, "relayEnvelope") };
+        }
+        // Legacy (grace-window) model_switch: no sealed body. We keep the old
+        // plaintext-catalog guard ONLY for these legacy clients so a typo'd model
+        // surfaces an error pre-E2E; relay-capable clients defer to the agent.
+        else if (requestedModelId) {
+          const hasCatalog = (targetClient.runtimeModelOptions?.length ?? 0) > 0;
+          if (hasCatalog && !clientAdvertisesModel(targetClient, requestedModelId)) {
+            throw new HttpsError(
+              "invalid-argument",
+              `model_not_available: ${requestedModelId} is not in the selected client's advertised models.`,
+            );
+          }
+        }
       } else {
         const relayClient = targetClient ?? { id: targetClientId ?? "broadcast", relayCapable: undefined };
         sealedBody = resolveGatewayWriteBody(request.data.relayEnvelope, request.data.text, relayClient, "events");
@@ -1468,23 +1558,11 @@ export const enqueueHermesGatewayEvent = onCall(
           throw new HttpsError("invalid-argument", "text is required: provide a relayEnvelope (sealed event body).");
         }
       }
-      // Validate the requested model against the target runtime's advertised
-      // catalog. We only reject when the runtime has actually published a
-      // non-empty catalog and the model is absent — before inventory is known, a
-      // custom model id is allowed through (the runtime is the final authority).
-      if (eventKind === "model_switch" && requestedModelId && targetClient) {
-        const hasCatalog = (targetClient.runtimeModelOptions?.length ?? 0) > 0;
-        if (hasCatalog && !clientAdvertisesModel(targetClient, requestedModelId)) {
-          throw new HttpsError(
-            "invalid-argument",
-            `model_not_available: ${requestedModelId} is not in the selected client's advertised models.`,
-          );
-        }
-      }
       const destinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
       const attachmentIds = sanitizedAttachmentIds(request.data.attachmentIds);
       await requireUploadedGatewayAttachments({ uid, clientId: targetClientId, destinationId, attachmentIds });
-      const eventId = `evt_${randomBytes(12).toString("hex")}`;
+      const eventId =
+        sealedBody.relayEnvelope != null ? requireSafeGatewayEventId(request.data.eventId) : `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
       let sequence = 0;
       await db.runTransaction(async (tx) => {
@@ -1507,17 +1585,16 @@ export const enqueueHermesGatewayEvent = onCall(
             targetClientId,
             // senderId is a non-PII routing id; modelId is not private. The
             // private fields (text/senderDisplayName/threadId) live ONLY inside
-            // relayEnvelope for sealed events. A model_switch carries a cleartext
-            // `/model <id>` so the runtime applies it without a key. A legacy
-            // in-grace client may still write plaintext (sealedBody.legacyText).
-            threadId: sealedBody.relayEnvelope
+            // relayEnvelope for sealed message events. Model switches do not carry
+            // a text body or thread id.
+            threadId: sealedBody.relayEnvelope || eventKind === "model_switch"
               ? undefined
               : boundedTrimmedString(request.data.threadId, "threadId", 160, false),
             senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
-            senderDisplayName: sealedBody.relayEnvelope
+            senderDisplayName: sealedBody.relayEnvelope || eventKind === "model_switch"
               ? undefined
               : boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
-            text: eventKind === "model_switch" ? modelSwitchText : sealedBody.legacyText,
+            text: sealedBody.legacyText,
             relayEnvelope: sealedBody.relayEnvelope,
             modelId: requestedModelId,
             attachmentIds,

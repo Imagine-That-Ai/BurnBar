@@ -5,8 +5,11 @@
  *      senderDisplayName and threadId never touch the stored doc.
  *   2. A relay-capable client that supplies a plaintext `text` (no envelope) is
  *      rejected with `ciphertext_required` (fail toward privacy when sealed).
- *   3. A model_switch keeps a cleartext `/model <id>` command + cleartext
- *      modelId (a model id is not private; the runtime needs it without a key).
+ *   3. A model_switch on a relay-capable client is itself SEALED: the server
+ *      requires the relayEnvelope (the "/model …" command body is private),
+ *      forwards it opaquely, routes by cleartext modelId, and stores NO generic
+ *      text / senderDisplayName / threadId. An unsealed model_switch to a relay-
+ *      capable client is rejected (Codex finding: MODEL_SWITCH SEALED).
  *
  * Mirrors the callable-invocation pattern in projectMemoryDocId.test.ts: an
  * in-memory Firestore double + the real validators, with only the Pro/entitlement
@@ -90,6 +93,7 @@ type Runnable = { run: (request: unknown) => Promise<unknown> };
 
 const UID = "userA";
 const TARGET_CLIENT_ID = "hgw_target";
+const SEALED_EVENT_ID = "evt_test_envelope";
 const PLAINTEXT_TEXT = "the private message body";
 const PLAINTEXT_NAME = "Alberto";
 const PLAINTEXT_THREAD = "thread-secret-id";
@@ -147,11 +151,12 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
     const res = (await run(
       request({
         targetClientId: TARGET_CLIENT_ID,
+        eventId: SEALED_EVENT_ID,
         relayEnvelope: sealedEnvelope(),
         senderId: "burnbar-user",
       }),
     )) as { id: string };
-    expect(res.id).toMatch(/^evt_/);
+    expect(res.id).toBe(SEALED_EVENT_ID);
 
     const eventPath = Object.keys(Object.fromEntries(stored)).find((p) =>
       p.startsWith(`users/${UID}/hermes_gateway_events/`),
@@ -212,17 +217,80 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
     ).rejects.toThrow(/relayEncryption/);
   });
 
-  it("keeps a model_switch cleartext (/model command + cleartext modelId, no envelope)", async () => {
+  it("requires a sealed relayEnvelope for a model_switch on a relay-capable client", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
     const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    // An unsealed model_switch (plaintext command, no envelope) is rejected: the
+    // server no longer reads/validates the model command in cleartext.
+    await expect(
+      run(
+        request({
+          targetClientId: TARGET_CLIENT_ID,
+          eventKind: "model_switch",
+          modelId: "minimax-m2.7",
+          text: "/model minimax-m2.7",
+        }),
+      ),
+    ).rejects.toThrow(/relay envelope|relayEnvelope/);
+    const leaked = [...stored.keys()].some((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
+    expect(leaked).toBe(false);
+  });
+
+  it("does NOT block a sealed model_switch on a model absent from the catalog (agent decides)", async () => {
+    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    // The seeded client advertises only "minimax-m2.7". A sealed switch to an
+    // unadvertised model must NOT be pre-rejected by the server — the agent
+    // validates against its own catalog after opening the sealed command.
     await run(
-      request({ targetClientId: TARGET_CLIENT_ID, eventKind: "model_switch", modelId: "minimax-m2.7" }),
+      request({
+        targetClientId: TARGET_CLIENT_ID,
+        eventKind: "model_switch",
+        modelId: "gpt-5-unlisted",
+        eventId: "evt_sealed_switch_unlisted",
+        relayEnvelope: sealedEnvelope(),
+      }),
     );
     const eventPath = [...stored.keys()].find((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
     const event = stored.get(eventPath!)!;
     expect(event.kind).toBe("model_switch");
-    expect(event.text).toBe("/model minimax-m2.7");
+    expect(event.modelId).toBe("gpt-5-unlisted");
+  });
+
+  it("stores a sealed model_switch with the envelope + cleartext modelId, no private body fields", async () => {
+    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const run = (enqueueHermesGatewayEvent as unknown as Runnable).run;
+    await run(
+      request({
+        targetClientId: TARGET_CLIENT_ID,
+        eventKind: "model_switch",
+        modelId: "minimax-m2.7",
+        eventId: "evt_sealed_switch",
+        relayEnvelope: sealedEnvelope(),
+        senderDisplayName: PLAINTEXT_NAME,
+        threadId: PLAINTEXT_THREAD,
+        text: "/model minimax-m2.7",
+      }),
+    );
+    const eventPath = [...stored.keys()].find((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
+    const event = stored.get(eventPath!)!;
+    expect(event.kind).toBe("model_switch");
     expect(event.modelId).toBe("minimax-m2.7");
-    expect(event).not.toHaveProperty("relayEnvelope");
+    // The sealed command body rides in the envelope; routing modelId is cleartext.
+    expect(event.relayEnvelope).toEqual(sealedEnvelope());
+    // NO plaintext private fields touch the stored doc.
+    expect(event).not.toHaveProperty("text");
+    expect(event).not.toHaveProperty("senderDisplayName");
+    expect(event).not.toHaveProperty("threadId");
+    const leaves: string[] = [];
+    const walk = (v: unknown) => {
+      if (typeof v === "string") leaves.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") Object.values(v).forEach(walk);
+    };
+    walk(event);
+    expect(leaves).not.toContain(PLAINTEXT_NAME);
+    expect(leaves).not.toContain(PLAINTEXT_THREAD);
+    expect(leaves).not.toContain("/model minimax-m2.7");
   });
 });
