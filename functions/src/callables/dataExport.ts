@@ -201,6 +201,8 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "escrow_audit_events",
       "entitlement_events",
       "budgetEvents",
+      "agent_notification_events",
+      "agent_notification_replies",
       "unified_audit_log",
       "audit_meta",
     ],

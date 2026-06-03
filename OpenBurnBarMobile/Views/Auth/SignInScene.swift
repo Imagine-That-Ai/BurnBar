@@ -187,6 +187,21 @@ struct SignInScene: View {
             .accessibilityHint(authStore.state.inFlightProvider == .google
                                ? "Signing in"
                                : "Continues sign in with your Google account")
+
+        case .github:
+            Button {
+                Task { await authStore.signIn(.github) }
+            } label: {
+                GitHubButtonLabel(
+                    isLoading: authStore.state.inFlightProvider == .github
+                )
+            }
+            .buttonStyle(EmberPressButtonStyle(reduceMotion: reduceMotion,
+                                              reduceTransparency: reduceTransparency))
+            .accessibilityLabel("Continue with GitHub")
+            .accessibilityHint(authStore.state.inFlightProvider == .github
+                               ? "Signing in"
+                               : "Continues sign in with your GitHub account")
         }
     }
 
@@ -704,6 +719,46 @@ private struct GoogleButtonLabel: View {
     }
 }
 
+// MARK: - GitHubButtonLabel
+
+/// Visual content of the GitHub button. Styled like the Google button
+/// with the GitHub monochrome Octocat mark.
+private struct GitHubButtonLabel: View {
+    let isLoading: Bool
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 12) {
+                Image("GitHubLogo")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
+                Text("Continue with GitHub")
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+            }
+
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .tint(MobileTheme.Colors.textSecondary)
+                }
+                .padding(.trailing, 18)
+                .accessibilityHidden(true)
+            }
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .foregroundStyle(MobileTheme.Colors.textPrimary)
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - Email Controls
 
 private struct AuthTextFieldChrome: ViewModifier {
@@ -893,7 +948,7 @@ private final class PreviewAuthGateway: AuthGateway {
         self.throwsOn = throwsOn
     }
 
-    var availableProviders: [MobileAuthProviderID] { [.apple, .google] }
+    var availableProviders: [MobileAuthProviderID] { [.apple, .google, .github] }
     var isFirebaseAvailable: Bool { true }
     var currentIdentity: MobileAuthIdentity? { nil }
     func observe(onChange: @escaping @MainActor (MobileAuthIdentity?) -> Void) {}

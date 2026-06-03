@@ -115,10 +115,11 @@ class RollbackServiceSealedFieldsTest {
             mapOf(
                 "sessionID" to "session-3",
                 "sealedScope" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("{\"kind\":\"fullSession\"}", vaultKey)),
+                "scopeJSON" to RollbackScope.LastN(9).asJson,
                 "status" to "pending",
             )
-        // No key: sealed scope cannot open and no legacy plaintext exists, so the
-        // row is dropped rather than inventing a fullSession scope.
+        // No key: sealed scope cannot open. Because the sealed field is present,
+        // the legacy sibling must NOT leak.
         assertNull(sealedOnly.toRollbackRequestOrNull(documentID = "req-3", vaultKey = null))
     }
 
@@ -198,6 +199,9 @@ class RollbackServiceSealedFieldsTest {
                 "sequence" to 1,
                 "takenAt" to "2026-06-02T10:00:00Z",
                 "sealedActionLabel" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("Hidden", vaultKey)),
+                "actionLabel" to "Legacy leak",
+                "touchedFiles" to listOf("legacy/leak.kt"),
+                "macSnapshotPath" to "/legacy/leak",
             )
         assertNull(data.toRollbackSnapshotOrNull(documentID = "snap-x", sessionID = "session-1", vaultKey = null))
     }

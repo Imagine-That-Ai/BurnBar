@@ -1,3 +1,4 @@
+import OpenBurnBarCore
 import SwiftUI
 
 // MARK: - Design System
@@ -10,13 +11,16 @@ enum DesignSystem {
     // MARK: - Colors
 
     enum Colors {
-        // Brand accents — warm spectrum + whimsy contrast
-        static let ember   = Color.adaptive(light: "F45B69", dark: "FA5053")
+        // Brand accents — warm spectrum + whimsy contrast.
+        // Editorial values are the shared `DesignSystemTokens.*Editorial` palette
+        // (the single coral accent, ochre, deep coral, and slate) so macOS, iOS,
+        // and the web console stay in lockstep.
+        static let ember   = Color.adaptive(editorial: DesignSystemTokens.emberEditorial,  light: "F45B69", dark: "FA5053")
         /// Light: tangerine; dark: amber.
-        static let amber   = Color.adaptive(light: "F28C38", dark: "FFA800")
+        static let amber   = Color.adaptive(editorial: DesignSystemTokens.amberEditorial,  light: "F28C38", dark: "FFA800")
         /// Light: Spanish orange; dark: blaze.
-        static let blaze   = Color.adaptive(light: "E86100", dark: "E86100")
-        static let whimsy  = Color.adaptive(light: "6A5ACD", dark: "8B7FE8")
+        static let blaze   = Color.adaptive(editorial: DesignSystemTokens.blazeEditorial,  light: "E86100", dark: "E86100")
+        static let whimsy  = Color.adaptive(editorial: DesignSystemTokens.whimsyEditorial, light: "6A5ACD", dark: "8B7FE8")
 
         // Legacy aliases (keeps ProviderTheme and other references compiling)
         static let coral  = ember
@@ -33,26 +37,26 @@ enum DesignSystem {
 
         // Surfaces — light: coral + tangerine dust (ember / Spanish orange cast);
         // dark: cool slate blue ramp (GitHub/Xcode dark lineage) — warm accents pop on cool chrome.
-        static let background      = Color.adaptive(light: "F3E8E6", dark: "0D1117")
-        static let surface         = Color.adaptive(light: "FAF5F2", dark: "161B22")
-        static let surfaceElevated = Color.adaptive(light: "FDF8F5", dark: "1F2630")
-        static let border          = Color.adaptive(light: "E8BFB5", dark: "30363D")
-        static let borderSubtle    = Color.adaptive(light: "F2E0DA", dark: "21262D")
-        static let surfaceMuted    = Color.adaptive(light: "F2E0DA", dark: "1B202A")
+        static let background      = Color.adaptive(editorial: DesignSystemTokens.backgroundEditorial,      light: "F3E8E6", dark: "0D1117")
+        static let surface         = Color.adaptive(editorial: DesignSystemTokens.surfaceEditorial,         light: "FAF5F2", dark: "161B22")
+        static let surfaceElevated = Color.adaptive(editorial: DesignSystemTokens.surfaceElevatedEditorial, light: "FDF8F5", dark: "1F2630")
+        static let border          = Color.adaptive(editorial: DesignSystemTokens.borderEditorial,          light: "E8BFB5", dark: "30363D")
+        static let borderSubtle    = Color.adaptive(editorial: DesignSystemTokens.borderSubtleEditorial,    light: "F2E0DA", dark: "21262D")
+        static let surfaceMuted    = Color.adaptive(editorial: "F0EEE7",                                     light: "F2E0DA", dark: "1B202A")
 
         // Text — light: warm brown with coral undertone / dark: cool slate off-white
-        static let textPrimary   = Color.adaptive(light: "2A1816", dark: "E6EDF3")
-        static let textSecondary = Color.adaptive(light: "6E4E48", dark: "8B949E")
-        static let textMuted     = Color.adaptive(light: "9A756D", dark: "6E7681")
+        static let textPrimary   = Color.adaptive(editorial: DesignSystemTokens.textPrimaryEditorial,   light: "2A1816", dark: "E6EDF3")
+        static let textSecondary = Color.adaptive(editorial: DesignSystemTokens.textSecondaryEditorial, light: "6E4E48", dark: "8B949E")
+        static let textMuted     = Color.adaptive(editorial: DesignSystemTokens.textMutedEditorial,     light: "9A756D", dark: "6E7681")
 
         // Semantic
-        static let success = Color.adaptive(light: "3A7835", dark: "38D898")
-        static let warning = Color.adaptive(light: "C47800", dark: "FFA800")
-        static let error   = Color.adaptive(light: "D43030", dark: "FA5053")
+        static let success = Color.adaptive(editorial: DesignSystemTokens.successEditorial, light: "3A7835", dark: "38D898")
+        static let warning = Color.adaptive(editorial: DesignSystemTokens.warningEditorial, light: "C47800", dark: "FFA800")
+        static let error   = Color.adaptive(editorial: DesignSystemTokens.errorEditorial,   light: "D43030", dark: "FA5053")
 
         // Hermes mercury identity (chat surfaces — not provider purple)
-        static let hermesMercury  = Color.adaptive(light: "AEA69C", dark: "C8BFB5")
-        static let hermesAureate  = Color.adaptive(light: "B8942E", dark: "D4AA3C")
+        static let hermesMercury  = Color.adaptive(editorial: DesignSystemTokens.hermesMercuryEditorial, light: "AEA69C", dark: "C8BFB5")
+        static let hermesAureate  = Color.adaptive(editorial: DesignSystemTokens.hermesAureateEditorial, light: "B8942E", dark: "D4AA3C")
 
         static let mercuryGradient = LinearGradient(
             colors: [hermesMercury, hermesAureate],
@@ -61,8 +65,8 @@ enum DesignSystem {
         )
 
         /// Chat bubbles: user outline (whimsy) / assistant accent (ember).
-        static let chatUserStroke = Color(hex: "6A5ACD")
-        static let chatAssistantStroke = Color(hex: "F45B69")
+        static let chatUserStroke = Color.adaptive(editorial: DesignSystemTokens.chatUserStrokeEditorial, light: "6A5ACD", dark: "6A5ACD")
+        static let chatAssistantStroke = Color.adaptive(editorial: DesignSystemTokens.chatAssistantStrokeEditorial, light: "F45B69", dark: "F45B69")
 
         static let primaryGradient = LinearGradient(
             colors: [ember, amber],

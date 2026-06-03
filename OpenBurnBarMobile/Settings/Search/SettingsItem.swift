@@ -141,6 +141,7 @@ enum SettingsPageRoute: Hashable, Codable {
 enum SettingsAnchor {
     // Hub / root
     static let theme = "hub.appearance.theme"
+    static let appSkin = "hub.appearance.appSkin"
     static let usageDisplay = "hub.appearance.usageDisplay"
     static let quotaCustomization = "hub.appearance.quotaCustomization"
     static let usePremiumSOTAUX = "hub.appearance.usePremiumSOTAUX"

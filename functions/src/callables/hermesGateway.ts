@@ -1016,14 +1016,14 @@ async function handleArmApproval(req: HttpRequest, res: HttpResponse): Promise<v
   const actionId = requiredHttpIdentifier(body.actionId, "actionId");
   const toolName = boundedTrimmedString(body.toolName, "toolName", 120, false);
   // PRIVACY BOUNDARY: the oversight gate is CONTROL-PLANE only — it carries the
-  // actionId + a coarse toolName category, never the agent's free-text command.
-  // The human-readable action detail is delivered end-to-end ENCRYPTED over the
-  // message channel (the adapter's send_slash_confirm posts a sealed prompt the
-  // phone correlates by actionId), so the server is never able to read it. We
-  // deliberately do NOT persist any client-supplied `summary`, even if an older
-  // adapter sends one — enforced here at the trust boundary so no client can
-  // reintroduce server-readable private text on the sealed gateway.
-  const summary = "";
+  // actionId + a coarse toolName category and a SERVER-DERIVED label, never the
+  // agent's free-text command. The human-readable action detail is delivered
+  // end-to-end ENCRYPTED over the message channel (the adapter's send_slash_confirm
+  // posts a sealed prompt the phone correlates by actionId), so the server is never
+  // able to read it. We deliberately IGNORE any client-supplied `summary`, even if
+  // an older adapter sends one — enforced here at the trust boundary so no client
+  // can reintroduce server-readable private text on the sealed gateway.
+  const summary = toolName ? `Approve ${toolName} action` : "Approve agent action";
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const approvalId = gatewayApprovalDocId(grant.client.id, actionId);
   const ref = db.doc(`users/${grant.uid}/hermes_gateway_approvals/${approvalId}`);

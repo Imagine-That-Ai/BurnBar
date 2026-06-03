@@ -17,13 +17,16 @@ async function read(relativePath) {
 
 const site = await read("src/data/site.ts");
 const pricing = await read("src/pages/pricing.astro");
-const pricingPublicText = pricing
-  .replace(/---[\s\S]*?---/, "")
-  .replace(/<style>[\s\S]*?<\/style>/g, "");
+// The plan cards now render via the shared <PricingPlans /> component, so the
+// public copy that used to live inline in pricing.astro lives there too.
+const plans = await read("src/components/PricingPlans.astro");
+const stripAstro = (src) =>
+  src.replace(/---[\s\S]*?---/, "").replace(/<style>[\s\S]*?<\/style>/g, "");
+const pricingPublicText = stripAstro(pricing) + "\n" + stripAstro(plans);
 const faq = await read("src/data/faq.ts");
 const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
-const publicPricingCopy = [pricing, faq, claims, supportMacros].join("\n");
+const publicPricingCopy = [pricing, plans, faq, claims, supportMacros].join("\n");
 
 assert.match(site, /pricing:\s*{/, "site constants must expose a structured pricing catalog");
 assert.doesNotMatch(

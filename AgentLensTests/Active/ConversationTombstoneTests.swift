@@ -262,12 +262,16 @@ final class ConversationTombstoneTests: XCTestCase {
         let deletedAt = Date().addingTimeInterval(-31 * 24 * 60 * 60)
         try dataStore.softDeleteConversation(id: id, at: deletedAt)
 
-        // Seed the cloud artifacts that GC must purge: manifest + chunks.
+        // Seed the cloud artifacts that GC must purge: manifest, legacy chunks,
+        // and the current server-owned cloud-search index rows.
         let fetched = try await rawRecord(id: id)
         let record = try XCTUnwrap(fetched)
         let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
         let storagePath = "users/test-uid-1/session_logs/\(docId)/bodies/deadbeef.json.aesgcm"
         let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+        let searchDocumentPath = "users/test-uid-1/cloud_search_documents/\(docId)"
+        let searchChunksPath = "users/test-uid-1/cloud_search_chunks"
+        let searchPostingsPath = "users/test-uid-1/cloud_search_postings"
         fakeGateway.setDocumentData([
             "id": id,
             "deviceId": "test-device-1",
@@ -276,6 +280,13 @@ final class ConversationTombstoneTests: XCTestCase {
         ], at: manifestPath)
         fakeGateway.setDocumentData(["index": 0, "tokenHashes": ["h0"]], at: "\(manifestPath)/chunks/0")
         fakeGateway.setDocumentData(["index": 1, "tokenHashes": ["h1"]], at: "\(manifestPath)/chunks/1")
+        fakeGateway.setDocumentData(["documentID": docId, "storagePath": storagePath], at: searchDocumentPath)
+        fakeGateway.setDocumentData(["documentID": docId, "chunkID": "\(docId)_0"], at: "\(searchChunksPath)/\(docId)_0")
+        fakeGateway.setDocumentData(["documentID": docId, "chunkID": "\(docId)_1"], at: "\(searchChunksPath)/\(docId)_1")
+        fakeGateway.setDocumentData(["documentID": "other-doc", "chunkID": "other_0"], at: "\(searchChunksPath)/other_0")
+        fakeGateway.setDocumentData(["documentID": docId, "edgeID": "token_a_\(docId)_0"], at: "\(searchPostingsPath)/token_a_\(docId)_0")
+        fakeGateway.setDocumentData(["documentID": docId, "edgeID": "semantic_b_\(docId)_1"], at: "\(searchPostingsPath)/semantic_b_\(docId)_1")
+        fakeGateway.setDocumentData(["documentID": "other-doc", "edgeID": "token_other_0"], at: "\(searchPostingsPath)/token_other_0")
 
         let fakeCloudClient = FakeSessionLogEncryptedCloudClient()
         let gc = ConversationTombstoneGCService(context: context, encryptedCloudClient: fakeCloudClient)
@@ -293,8 +304,19 @@ final class ConversationTombstoneTests: XCTestCase {
         XCTAssertEqual(fakeCloudClient.deletedBodies.first?.documentID, docId)
         XCTAssertEqual(fakeCloudClient.deletedBodies.first?.storagePath, storagePath)
 
-        // Search-index chunks and the manifest are gone.
-        XCTAssertTrue(fakeGateway.documents(under: "\(manifestPath)/chunks").isEmpty, "GC must delete the search-index chunks.")
+        // Search-index rows and the manifest are gone.
+        XCTAssertTrue(fakeGateway.documents(under: "\(manifestPath)/chunks").isEmpty, "GC must delete legacy search-index chunks.")
+        XCTAssertNil(fakeGateway.documentData(at: searchDocumentPath), "GC must delete the cloud_search_documents row.")
+        XCTAssertFalse(
+            fakeGateway.documents(under: searchChunksPath).values.contains { ($0["documentID"] as? String) == docId },
+            "GC must delete cloud_search_chunks rows for the expired document."
+        )
+        XCTAssertFalse(
+            fakeGateway.documents(under: searchPostingsPath).values.contains { ($0["documentID"] as? String) == docId },
+            "GC must delete cloud_search_postings rows for the expired document."
+        )
+        XCTAssertNotNil(fakeGateway.documentData(at: "\(searchChunksPath)/other_0"), "GC must not delete unrelated search chunks.")
+        XCTAssertNotNil(fakeGateway.documentData(at: "\(searchPostingsPath)/token_other_0"), "GC must not delete unrelated postings.")
         XCTAssertNil(fakeGateway.documentData(at: manifestPath), "GC must delete the session-log manifest.")
 
         // The local row is hard-deleted once cloud cleanup succeeds.

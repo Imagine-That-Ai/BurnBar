@@ -191,7 +191,7 @@ const fullTitle =
         function updateInteractiveElements() {
           interactiveBoxes = [];
           const elements = document.querySelectorAll(
-            ".btn, .eyebrow, .hero__h, .console, .card, .pillar, .ptcard"
+            ".btn, .eyebrow, .hero__h, .console, .card, .pillar"
           );
           elements.forEach((el) => {
             const rect = el.getBoundingClientRect();
@@ -1046,7 +1046,7 @@ const fullTitle =
         function startRain(now) {
           mode = "rain"; fxStart = now; tokens = []; clouds = []; nextEmit = now + 150;
           rects = [];
-          document.querySelectorAll(".btn, .hero__h, .hero__copy .lead, .card, .pillar, .ptcard, h1, h2, h3, .console")
+          document.querySelectorAll(".btn, .hero__h, .hero__copy .lead, .card, .pillar, h1, h2, h3, .console")
             .forEach(function (el) {
               var r = el.getBoundingClientRect();
               if (r.width > 40 && r.top > -60 && r.top < H + 60) rects.push({ l: r.left, r: r.right, t: r.top });

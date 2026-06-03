@@ -224,35 +224,39 @@ final class RollbackService {
 
     // MARK: - Seal helpers
 
-    /// Opens a sealed-text field, falling back to a legacy plaintext field when
-    /// the sealed field is absent (or the key is unavailable).
+    /// Opens a sealed-text field, falling back to a legacy plaintext field only
+    /// when the sealed field is absent. A present sealed field is authoritative:
+    /// decrypt it or fail closed instead of leaking a stale plaintext sibling.
     private static func openSealedString(
         data: [String: Any],
         sealedField: String,
         legacyField: String,
         vaultKey: Data?
     ) -> String? {
-        if let vaultKey, let envelope = sealedText(from: data[sealedField]),
-           let opened = try? CloudVaultCrypto.openText(envelope, keyData: vaultKey) {
-            return opened
+        if let envelope = sealedText(from: data[sealedField]) {
+            guard let vaultKey else { return nil }
+            return try? CloudVaultCrypto.openText(envelope, keyData: vaultKey)
         }
         return data[legacyField] as? String
     }
 
     /// Opens a sealed `[String]` (sealed as one JSON array), falling back to a
-    /// legacy plaintext `[String]` field.
+    /// legacy plaintext `[String]` field only when the sealed field is absent.
     private static func openSealedStringArray(
         data: [String: Any],
         sealedField: String,
         legacyField: String,
         vaultKey: Data?
     ) -> [String] {
-        if let json = openSealedString(
-            data: data,
-            sealedField: sealedField,
-            legacyField: "",
-            vaultKey: vaultKey
-        ), let decoded = try? JSONDecoder().decode([String].self, from: Data(json.utf8)) {
+        if sealedText(from: data[sealedField]) != nil {
+            guard let json = openSealedString(
+                data: data,
+                sealedField: sealedField,
+                legacyField: "",
+                vaultKey: vaultKey
+            ), let decoded = try? JSONDecoder().decode([String].self, from: Data(json.utf8)) else {
+                return []
+            }
             return decoded
         }
         return (data[legacyField] as? [String]) ?? []

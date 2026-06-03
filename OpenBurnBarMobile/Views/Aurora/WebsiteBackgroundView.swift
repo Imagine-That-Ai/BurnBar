@@ -17,6 +17,7 @@ struct WebsiteBackgroundView: View {
     var visibility: MobileBackgroundVisibility = .prominent
 
     @AppStorage("appThemePalette") private var themePalette: AppThemePalette = .system
+    @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
     @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
@@ -25,6 +26,19 @@ struct WebsiteBackgroundView: View {
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     var body: some View {
+        // Editorial / Paper skin replaces the energetic swarm with a flat paper
+        // field so every surface that drops this view in as its backdrop reads
+        // as clean editorial paper instead of the dark murmuration.
+        if appSkin == .editorial {
+            MobileTheme.background
+                .ignoresSafeArea()
+        } else {
+            swarmBody
+        }
+    }
+
+    @ViewBuilder
+    private var swarmBody: some View {
         let prefs = SwarmBackgroundPreferences.from(jsonString: prefsJSON)
         let effectiveVisibility = visibility.constrained(by: inheritedVisibility)
         let plan = SwarmBackgroundPowerPolicy.resolve(

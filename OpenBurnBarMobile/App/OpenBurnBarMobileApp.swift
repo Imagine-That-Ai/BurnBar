@@ -13,7 +13,14 @@ struct OpenBurnBarMobileApp: App {
     // the picker tags: "system" (no override), "light", "dark".
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
 
+    // The Editorial / Paper skin (see `AppSkin`). When active it is light-locked
+    // and accented with coral, overriding the appearance picker. Toggling it
+    // changes `preferredColorScheme`, which forces a trait change so the
+    // skin-aware design tokens re-resolve immediately.
+    @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
+
     private var appearanceOverride: ColorScheme? {
+        if appSkin == .editorial { return .light }
         switch preferredAppearance {
         case "light": return .light
         case "dark":  return .dark
@@ -21,10 +28,14 @@ struct OpenBurnBarMobileApp: App {
         }
     }
 
+    private var resolvedTint: Color? {
+        appSkin == .editorial ? MobileTheme.ember : customization.themePalette.tintColor
+    }
+
     var body: some Scene {
         WindowGroup {
             AuthGateView()
-                .tint(customization.themePalette.tintColor)
+                .tint(resolvedTint)
                 .preferredColorScheme(appearanceOverride)
                 .overlay(alignment: .top) {
                     if let banner = agentNotifications.banner {

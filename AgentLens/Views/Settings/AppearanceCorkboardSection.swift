@@ -31,6 +31,27 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("App Skin")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Aurora is the signature ember look. Editorial is the light, paper-bright app.burnbar.ai console skin — one coral accent, ink text, hairlines. Applies fully after Apply & Restart (below).")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    Spacer()
+                    Picker("", selection: $settingsManager.appearanceSkin) {
+                        Text("Aurora").tag(AppSkin.aurora)
+                        Text("Editorial").tag(AppSkin.editorial)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                }
+                .settingsAnchor(SettingsAnchor.appearanceSkin)
+
+                Divider().background(DesignSystem.Colors.border)
+
                 SettingsToggle(
                     title: "Show in Menu Bar",
                     subtitle: "Keep OpenBurnBar available as a menu-bar utility.",

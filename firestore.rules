@@ -393,54 +393,6 @@ service cloud.firestore {
         && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32));
     }
 
-    // Strict allowlist for an encrypted session-log search chunk. Union of the
-    // active-chunk write and the superseded-chunk tombstone write
-    // (SessionLogSyncService.swift). Chunks are store-and-forward: a sealed
-    // snippet plus opaque token/semantic hashes and storage pointers. No
-    // plaintext snippet/terms/body ever lands here.
-    function validSessionLogChunkKeys() {
-      return request.resource.data.keys().hasOnly([
-        "index",
-        "hash",
-        "uid",
-        "docId",
-        "conversationId",
-        "sessionId",
-        "deviceId",
-        "provider",
-        "model",
-        "sealedSnippet",
-        "tokenHashes",
-        "semanticHashes",
-        "semanticHashVersion",
-        "bodyStorage",
-        "storagePath",
-        "bodyHash",
-        "schemaVersion",
-        "superseded",
-        "updatedAt"
-      ]);
-    }
-
-    function ownerWritableSessionLogChunk(userId) {
-      return ownerWritableHostedCloudBackup(userId)
-        && validSessionLogChunkKeys()
-        && !("body" in request.resource.data)
-        && !("payloadCiphertext" in request.resource.data)
-        && !("ciphertext" in request.resource.data)
-        && !("data" in request.resource.data)
-        && !("text" in request.resource.data)
-        && !("title" in request.resource.data)
-        && !("snippet" in request.resource.data)
-        && !("terms" in request.resource.data)
-        && !("projectName" in request.resource.data)
-        && !("workingDirectory" in request.resource.data)
-        && (!("sealedSnippet" in request.resource.data) || validCloudSealedText(request.resource.data.sealedSnippet))
-        && (!("tokenHashes" in request.resource.data) || validCloudSearchHashes(request.resource.data.tokenHashes))
-        && (!("semanticHashes" in request.resource.data) || validCloudSearchHashes(request.resource.data.semanticHashes))
-        && (!("superseded" in request.resource.data) || request.resource.data.superseded is bool);
-    }
-
     function validCloudHexDigest(value) {
       return value is string
         && value.matches("^[a-f0-9]{32,128}$");
@@ -581,12 +533,6 @@ service cloud.firestore {
       return validCloudHexDigest(bodyHash)
         && storagePath is string
         && storagePath.matches("^users/" + userId + "/session_logs/" + documentId + "/bodies/" + bodyHash + "\\.json\\.aesgcm$");
-    }
-
-    function validCloudSearchHashes(value) {
-      return value is list
-        && value.size() > 0
-        && value.size() <= 250;
     }
 
     function chatThreadIncludesBackedUpContent() {
@@ -1047,8 +993,31 @@ service cloud.firestore {
     // Budget events: append-only audit log. Clients create events but never
     // update or delete them — the history is immutable.
     match /users/{userId}/budgetEvents/{eventId} {
+      function validBudgetEvent() {
+        return request.resource.data.keys().hasOnly([
+          "id",
+          "ruleID",
+          "kind",
+          "source",
+          "amountAtEvent",
+          "limitAtEvent",
+          "occurredAt",
+          "syncedAt",
+          "sourceDeviceID"
+        ])
+        && !("detailJSON" in request.resource.data)
+        && request.resource.data.id is string
+        && request.resource.data.id == eventId
+        && request.resource.data.ruleID is string
+        && request.resource.data.ruleID.size() <= 160
+        && request.resource.data.kind in ["warning", "block", "override", "pause", "resume", "ruleCreated", "ruleUpdated", "ruleDeleted"]
+        && (!("source" in request.resource.data) || (request.resource.data.source is string && request.resource.data.source.size() <= 80))
+        && request.resource.data.amountAtEvent is number
+        && request.resource.data.limitAtEvent is number
+        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160));
+      }
       allow read: if ownsUserNamespace(userId);
-      allow create: if ownerWritableNonSecret(userId);
+      allow create: if ownerWritableNonSecret(userId) && validBudgetEvent();
     }
 
     match /users/{userId}/conversations/{conversationId} {
@@ -1747,11 +1716,11 @@ service cloud.firestore {
       allow create, update: if ownerWritableSessionLogManifest(userId);
       allow delete: if ownsUserNamespace(userId);
 
-      match /chunks/{chunkId} {
-        allow read: if ownsUserNamespace(userId);
-        allow create, update: if ownerWritableSessionLogChunk(userId);
-        allow delete: if ownsUserNamespace(userId);
-      }
+	      match /chunks/{chunkId} {
+	        allow read: if ownsUserNamespace(userId);
+	        allow create, update: if false;
+	        allow delete: if ownsUserNamespace(userId);
+	      }
     }
 
     // Encrypted per-project memory snapshots (privacy-leak-remediation §2). The
@@ -1836,42 +1805,10 @@ service cloud.firestore {
 
     match /users/{userId}/cloud_search_chunks/{chunkId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if false
-        && request.resource.data.keys().hasOnly([
-          "uid",
-          "chunkID",
-          "documentID",
-          "deviceId",
-          "sourceKind",
-          "sourceID",
-          "provider",
-          "ordinal",
-          "startOffset",
-          "endOffset",
-          "contentHash",
-          "bodyHash",
-          "storagePath",
-          "sealedSnippet",
-          "tokenHashes",
-          "semanticHashes",
-          "indexVersion",
-          "tokenHashVersion",
-          "semanticHashVersion",
-          "updatedAt",
-          "schemaVersion"
-        ])
-        && request.resource.data.uid == userId
-        && request.resource.data.chunkID == chunkId
-        && validCloudSessionStoragePath(userId, request.resource.data.documentID, request.resource.data.bodyHash, request.resource.data.storagePath)
-        && validCloudHexDigest(request.resource.data.contentHash)
-        && validCloudSealedText(request.resource.data.sealedSnippet)
-        && validCloudSearchHashes(request.resource.data.tokenHashes)
-        && (!("semanticHashes" in request.resource.data) || validCloudSearchHashes(request.resource.data.semanticHashes))
-        && (!("semanticHashVersion" in request.resource.data) || (request.resource.data.semanticHashVersion is int && request.resource.data.semanticHashVersion >= 0 && request.resource.data.semanticHashVersion <= 100))
-        && !("title" in request.resource.data)
-        && !("snippet" in request.resource.data)
-        && !("body" in request.resource.data)
-        && !("text" in request.resource.data);
+      // Search chunks are server-owned. Clients submit encrypted chunks through
+      // commitEncryptedSearchIndexBatch, where trusted code validates every
+      // token/semantic hash before Admin SDK writes this collection.
+      allow create, update: if false;
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2287,8 +2224,7 @@ service cloud.firestore {
 
     match /users/{userId}/hermes_gateway_destinations/{destinationId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if hermesGatewayDestinationWrite(userId, destinationId);
-      allow delete: if ownsUserNamespace(userId);
+      allow write: if false;
     }
 
     // Hermes Gateway events (phone→agent). Server-written via the

@@ -23,9 +23,11 @@ enum MobileTheme {
     static let border          = UnifiedDesignSystem.Colors.border
     static let borderSubtle    = UnifiedDesignSystem.Colors.borderSubtle
 
-    /// Whether the user has enabled the Swarm Background theme.
+    /// Whether the user has enabled the Swarm Background theme. Always `false`
+    /// under the Editorial skin — paper surfaces stay fully opaque, never
+    /// translucent over a (suppressed) swarm.
     private static var swarmEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "useWebsiteBackground")
+        AppSkin.current != .editorial && UserDefaults.standard.bool(forKey: "useWebsiteBackground")
     }
 
     static let textPrimary   = UnifiedDesignSystem.Colors.textPrimary

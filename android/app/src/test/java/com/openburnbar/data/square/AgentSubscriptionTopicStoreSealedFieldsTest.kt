@@ -127,8 +127,11 @@ class AgentSubscriptionTopicStoreSealedFieldsTest {
             mapOf(
                 "sealedAgentURI" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("agent://burnbar/hidden", vaultKey)),
                 "sealedTopicID" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("agent-updates", vaultKey)),
+                "agentURI" to "agent://burnbar/legacy-leak",
+                "topicID" to "legacy-topic",
             )
-        // No key, no legacy plaintext: the graph edge stays invisible.
+        // No key: sealed graph edge cannot open. Because the sealed fields are
+        // present, legacy siblings must NOT leak.
         val (agentURI, topicID) = decodeSubscriptionTopicGraph(sealedOnly, vaultKey = null)
         assertNull(agentURI)
         assertNull(topicID)
@@ -211,12 +214,16 @@ class AgentSubscriptionTopicStoreSealedFieldsTest {
     }
 
     @Test
-    fun decodeWithoutKeyKeepsSealedOpaqueButLegacyWorks() {
+    fun decodeWithoutKeyKeepsSealedOpaqueAndDoesNotLeakLegacySibling() {
         val sealedOnly: Map<String, Any?> =
             mapOf(
                 "sealedDisplayName" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("Hidden", vaultKey)),
+                "sealedDescription" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText("Hidden desc", vaultKey)),
+                "displayName" to "Legacy leak",
+                "description" to "Legacy desc",
             )
-        // No key: sealed display name cannot open and there is no legacy plaintext.
+        // No key: sealed display name cannot open. Because the sealed field is
+        // present, legacy siblings must NOT leak.
         val (displayName, description) = decodeSubscriptionTopicDisplay(sealedOnly, vaultKey = null)
         assertNull(displayName)
         assertNull(description)

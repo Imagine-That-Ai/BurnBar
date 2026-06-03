@@ -137,6 +137,15 @@ object SettingsManifest {
                 keywords = listOf("theme", "sota", "premium", "ux", "background", "mesh", "grid"),
             ),
             SettingsItem(
+                id = "themePrefs.appAppearance",
+                section = SettingsSection.THEME,
+                pageRoute = SettingsPageRoute.THEME_PREFS,
+                anchorId = SettingsAnchor.APPEARANCE_SKIN,
+                title = "App Skin",
+                subtitle = "Aurora ember look, or the Editorial paper console skin",
+                keywords = listOf("skin", "editorial", "paper", "aurora", "light", "ink", "coral", "console", "burnbar", "theme", "appearance"),
+            ),
+            SettingsItem(
                 id = "themePrefs.usePremiumSOTAUX",
                 section = SettingsSection.THEME,
                 pageRoute = SettingsPageRoute.THEME_PREFS,
@@ -298,6 +307,7 @@ object SettingsManifest {
             SettingsAnchor.TEXT_EXPANSION_ROW,
             SettingsAnchor.PERSISTENT_NOTIFICATION,
             SettingsAnchor.THEME_ROW,
+            SettingsAnchor.APPEARANCE_SKIN,
             SettingsAnchor.USE_PREMIUM_SOTA_UX,
             SettingsAnchor.USE_WEBSITE_BACKGROUND,
             SettingsAnchor.ENABLE_SWARM_SPARKLES,

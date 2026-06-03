@@ -315,6 +315,9 @@ struct SettingsView: View {
                 onLinkApple: {
                     try await accountManager.signInWithApple(presentingWindow: authPresentationWindow())
                 },
+                onLinkGitHub: {
+                    try await accountManager.signInWithGitHub(presentingWindow: authPresentationWindow())
+                },
                 onUpgradeToPremium: {
                     router.selectedTab = .cloud
                     router.path.removeAll()

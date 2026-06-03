@@ -8,6 +8,7 @@ import ProviderTable from "@components/ProviderTable.astro";
 import LockedModelRelay from "@components/LockedModelRelay.astro";
 import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import HermesGatewayPromo from "@components/HermesGatewayPromo.astro";
+import PricingPlans from "@components/PricingPlans.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY, PROVIDERS_ALL } from "@data/providers";
@@ -26,9 +27,6 @@ const surfaceShowcase = SURFACES.filter((s) =>
 const primaryCount = PROVIDERS_PRIMARY.length;
 const totalCount = PROVIDERS_ALL.length;
 const detectedCount = totalCount - primaryCount;
-const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
-const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
-const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
 ---
 
 <BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">
@@ -600,100 +598,18 @@ const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
        PRICING TEASER
        ──────────────────────────────────────────────── -->
   <section class="pricing-teaser" aria-labelledby="pricing-h">
-    <div class="container">
+    <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Pricing</span>
         <h2 id="pricing-h">Free where it should be. Paid where it costs us money.</h2>
       </header>
 
-      <div class="pricing-teaser__grid">
-        <article class="ptcard">
-          <header>
-            <span class="tag tag--plain mono tag--exact">Free, local-first</span>
-            <div class="ptcard__price mono">$0</div>
-            <p class="muted small">forever · no account · works offline</p>
-          </header>
-          <ul>
-            <li>Local tracking from your existing agent logs</li>
-            <li>Token + cost rollups, quota windows, insights</li>
-            <li>Daemon, CLI, Cursor / VS Code panel</li>
-            <li>iOS / iPadOS companion (with sign-in)</li>
-            <li>Self-hosted quota runner for Claude Code &amp; Codex</li>
-            <li>Optional Firebase sync — metadata only</li>
-          </ul>
-        </article>
+      <PricingPlans />
 
-        <article class="ptcard ptcard--ember">
-          <header>
-            <span class="tag tag--ember tag--plain mono">{cloud.name}</span>
-            <div class="ptcard__price">
-              <span class="mono">${cloud.priceMonthlyUSD}</span><span class="ptcard__period"
-                >/month</span
-              >
-            </div>
-            <p class="muted small">
-              ${cloud.priceAnnualUSD}/year · sync, encrypted history, agent memory
-            </p>
-          </header>
-          <ul>
-            <li>Hosted quota refresh from any signed-in device</li>
-            <li>Conversation backup &amp; resume across iPhone, iPad, Mac</li>
-            <li>Full session-log sync, searchable across devices</li>
-            <li>Encrypted project memory and assistant history</li>
-            <li>Server-verified entitlement before hosted features turn on</li>
-          </ul>
-          <a class="btn btn--ember" href="/pricing">
-            Pricing details <span class="btn-arrow" aria-hidden="true">→</span>
-          </a>
-        </article>
-
-        <article class="ptcard ptcard--pro">
-          <header>
-            <span class="tag tag--plain mono tag--estimated">{cloudPro.name}</span>
-            <div class="ptcard__price">
-              <span class="mono">${cloudPro.priceMonthlyUSD}</span><span class="ptcard__period"
-                >/month</span
-              >
-            </div>
-            <p class="muted small">
-              ${cloudPro.priceAnnualUSD}/year · phone-to-Mac + supervised agent work
-            </p>
-          </header>
-          <ul>
-            <li>Everything in BurnBar Cloud</li>
-            <li>Floo phone-to-Mac live view, file transfer, calls, clipboard</li>
-            <li>Agent Control with grants, boundaries, and action records</li>
-            <li>Includes 500 hosted actions and 50 relay-accounting GB each month</li>
-            <li>Extra hosted usage is prepaid before use</li>
-          </ul>
-          <a class="btn btn--ghost" href="/pricing">
-            Compare plans <span class="btn-arrow" aria-hidden="true">→</span>
-          </a>
-        </article>
-
-        <article class="ptcard ptcard--ultra">
-          <header>
-            <span class="tag tag--plain mono tag--estimated">{cloudUltra.name}</span>
-            <div class="ptcard__price">
-              <span class="mono">${cloudUltra.priceMonthlyUSD}</span><span class="ptcard__period"
-                >/month</span
-              >
-            </div>
-            <p class="muted small">
-              ${cloudUltra.priceAnnualUSD}/year · 10× private agent memory
-            </p>
-          </header>
-          <ul>
-            <li>Everything in BurnBar Cloud Pro</li>
-            <li>10× agent memory: 15 sources, 50,000 chunks, 250 MB</li>
-            <li>Repo docs, notes &amp; chat memories your agents recall</li>
-            <li>Sealed on-device — the server searches without reading it</li>
-            <li>Same hosted Agent Control &amp; relay allowance as Pro</li>
-          </ul>
-          <a class="btn btn--ghost" href="/pricing">
-            Compare plans <span class="btn-arrow" aria-hidden="true">→</span>
-          </a>
-        </article>
+      <div class="pricing-teaser__more">
+        <a class="btn btn--ghost" href="/pricing">
+          Compare all plans &amp; full details <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
       </div>
     </div>
   </section>
@@ -1466,103 +1382,18 @@ const cloudUltra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
     }
   }
 
-  /* ────────── pricing teaser ────────── */
+  /* ────────── pricing teaser ──────────
+     The plan cards + billing toggle render via <PricingPlans />, so the home
+     teaser stays byte-identical to /pricing. Only the section frame + the
+     "compare all plans" link live here. */
   .pricing-teaser {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
   }
-  .pricing-teaser__grid {
-    display: grid;
-    /* Four tiers: 4-up on wide screens, 2×2 on laptops, single column on phones. */
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--s-5);
-  }
-  @media (max-width: 1180px) {
-    .pricing-teaser__grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-  .ptcard {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: var(--r-lg);
-    padding: var(--s-7);
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    box-shadow:
-      0 8px 32px 0 rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
-    display: grid;
-    gap: var(--s-5);
-    transition: all var(--dur-base) var(--ease);
-  }
-  .ptcard:hover {
-    border-color: rgba(250, 107, 6, 0.3);
-    box-shadow:
-      0 12px 40px 0 rgba(250, 107, 6, 0.08),
-      0 8px 32px 0 rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
-    transform: translateY(-8px);
-  }
-  .ptcard__price {
-    font-family: var(--font-display);
-    font-size: clamp(2.2rem, 1.8rem + 1.5vw, 3rem);
-    color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 460;
-    line-height: 1;
-    letter-spacing: -0.03em;
-  }
-  .ptcard__period {
-    color: var(--text-mute);
-    font-size: 1rem;
-    letter-spacing: 0;
-    margin-left: 0.2em;
-  }
-  .ptcard ul {
-    display: grid;
-    gap: var(--s-2);
-    font-size: 0.95rem;
-  }
-  .ptcard li {
-    color: var(--text-base);
-    padding-left: 1.1em;
-    position: relative;
-  }
-  .ptcard li::before {
-    content: "+";
-    position: absolute;
-    left: 0;
-    color: var(--ember-bright);
-    font-family: var(--font-mono);
-  }
-  .ptcard--ember {
-    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
-    background: var(--glass-bg-elevated);
-    position: relative;
-  }
-  .ptcard--ember::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: 0 0 60px -20px rgba(255, 106, 26, 0.4);
-    pointer-events: none;
-  }
-  .ptcard--pro {
-    border-color: color-mix(in oklab, var(--mercury-core) 35%, var(--ink-line));
-    background: rgba(12, 16, 20, 0.64);
-  }
-  .ptcard--ultra {
-    border-color: color-mix(in oklab, var(--core-amber) 38%, var(--ink-line));
-    background: rgba(20, 16, 8, 0.64);
-  }
-  @media (max-width: 900px) {
-    .pricing-teaser__grid {
-      grid-template-columns: 1fr;
-    }
+  .pricing-teaser__more {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--s-7);
   }
 
   /* ────────── endcta ────────── */
