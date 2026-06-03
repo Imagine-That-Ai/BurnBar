@@ -100,7 +100,7 @@ export const SITE = {
   },
   macReleaseLatest: "1.0.2",
   macReleaseFile: "OpenBurnBar-1.0.2-macOS.dmg",
-  macDownloadBaseUrl: "",
+  macDownloadBaseUrl: "https://pub-aa5c2dab05e3407ba0813655d58a810a.r2.dev",
   macMin: "macOS 14 Sonoma",
   iosMin: "iOS 17",
   iosStatus: "in App Store review",
