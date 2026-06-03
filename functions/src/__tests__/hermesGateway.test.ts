@@ -311,10 +311,17 @@ describe("publicClientView — surfaces relay public keys", () => {
   });
   it("reports relayCapable false for a legacy client without keys", () => {
     const legacy = {
-      id: "hgw_legacy", uid: "u", displayName: "Hermes Agent", status: "active" as const,
-      tokenHash: "b".repeat(64), tokenPreview: "obb_hgw_...wxyz",
-      scopes: ["hermes.gateway.read" as const], homeDestinationId: "burnbar:home",
-      createdAt: "2026-06-01T00:00:00.000Z", updatedAt: "2026-06-01T00:00:00.000Z", schemaVersion: 1,
+      id: "hgw_legacy",
+      uid: "u",
+      displayName: "Hermes Agent",
+      status: "active" as const,
+      tokenHash: "b".repeat(64),
+      tokenPreview: "obb_hgw_...wxyz",
+      scopes: ["hermes.gateway.read" as const],
+      homeDestinationId: "burnbar:home",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+      schemaVersion: 1,
     };
     expect(publicClientView(legacy).relayCapable).toBe(false);
     expect(publicClientView(legacy).agentRelayPublicKey).toBeUndefined();

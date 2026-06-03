@@ -134,11 +134,7 @@ function runtimeRequest(body: Record<string, unknown>) {
   };
 }
 
-async function runHttpHandler(
-  handler: unknown,
-  req: ReturnType<typeof runtimeRequest>,
-  res: FakeRes,
-): Promise<void> {
+async function runHttpHandler(handler: unknown, req: ReturnType<typeof runtimeRequest>, res: FakeRes): Promise<void> {
   const run = Reflect.get(Object(handler), "run");
   const callable = typeof run === "function" ? run : handler;
   if (typeof callable !== "function") {

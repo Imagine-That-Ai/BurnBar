@@ -302,7 +302,12 @@ export function isSealedEnvelope(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   // Mirrors requireSealedText (shared.ts): AES-256-GCM text envelope …
-  if (v.algorithm === "AES-256-GCM" && typeof v.nonce === "string" && typeof v.ciphertext === "string" && typeof v.tag === "string") {
+  if (
+    v.algorithm === "AES-256-GCM" &&
+    typeof v.nonce === "string" &&
+    typeof v.ciphertext === "string" &&
+    typeof v.tag === "string"
+  ) {
     return true;
   }
   // … or a CloudVault blob/payload envelope (sealedBoxBase64 combined box).
@@ -328,7 +333,12 @@ function isExportablePrimitive(value: unknown): boolean {
   if (value === null) return true;
   const t = typeof value;
   if (t === "number" || t === "boolean") return true;
-  if (value && t === "object" && "toDate" in (value as object) && typeof (value as { toDate: unknown }).toDate === "function") {
+  if (
+    value &&
+    t === "object" &&
+    "toDate" in (value as object) &&
+    typeof (value as { toDate: unknown }).toDate === "function"
+  ) {
     return true;
   }
   return false;
