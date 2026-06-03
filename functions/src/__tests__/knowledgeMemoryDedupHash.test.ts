@@ -174,7 +174,10 @@ function commitRequestForUser(uid: string, vaultKey: Buffer) {
     app: { appId: "test-app" },
     rawRequest: { headers: {} },
     data: {
-      sourceSlug: SOURCE_SLUG,
+      // sourceSlug is now an OPAQUE vault-keyed hex source id (the cleartext slug
+      // is rejected and never stored — privacy-leak-remediation §3); it is the
+      // same HMAC(slug) the client derives for the manifest doc id.
+      sourceSlug: slugHmac,
       slugHmac,
       embeddingModelVersion: "bge-small-en-v1.5-cloak-v1",
       vectors: [

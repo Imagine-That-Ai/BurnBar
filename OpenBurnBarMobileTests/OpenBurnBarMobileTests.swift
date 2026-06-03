@@ -724,7 +724,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         canSealToAgent: Bool = true
     ) -> HermesGatewayClientRecord {
         let relayKey = canSealToAgent ? HermesRelayCrypto.generatePrivateKey().publicKeyBase64 : nil
-        HermesGatewayClientRecord(
+        return HermesGatewayClientRecord(
             id: id ?? "hgw_test_\(status)_\(lastSeenAt ?? "never")",
             displayName: displayName,
             status: status,
