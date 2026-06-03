@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 import FirebaseFirestore
+import CryptoKit
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -321,6 +322,148 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         await sessionLogSync.sync()
         XCTAssertEqual(fakeGateway.batchCommitCount, commitsAfterFirstSync)
         XCTAssertTrue(try dataStore.fetchUnsyncedSessionLogs().isEmpty)
+    }
+
+    func test_sessionLogUpload_skipPathScrubsLegacyChunkPlaintext() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .factory, sessionId: "unchanged-legacy-chunk-session"),
+            provider: .factory,
+            sessionId: "unchanged-legacy-chunk-session",
+            projectName: "CheapSync",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 1,
+            userWordCount: 4,
+            assistantWordCount: 4,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Scrub legacy chunks",
+            lastAssistantMessage: "Done.",
+            fullText: "Stable transcript body with enough content to produce a search chunk.",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(record)
+
+        await sessionLogSync.sync()
+        let commitsAfterFirstSync = fakeGateway.batchCommitCount
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
+
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+        let chunkPath = "\(manifestPath)/chunks/0"
+        let orphanChunkPath = "\(manifestPath)/chunks/stale"
+        fakeGateway.setDocumentData([
+            "index": 0,
+            "sessionId": record.sessionId,
+            "body": "legacy plaintext chunk body",
+            "title": "legacy plaintext title",
+            "snippet": "legacy plaintext snippet",
+            "terms": ["legacy", "plaintext"]
+        ], at: chunkPath)
+        fakeGateway.setDocumentData([
+            "index": 999,
+            "sessionId": record.sessionId,
+            "body": "orphaned legacy plaintext chunk body",
+            "snippet": "orphaned legacy plaintext snippet",
+            "terms": ["orphaned", "plaintext"]
+        ], at: orphanChunkPath)
+
+        try await dataStore.dbQueue.write { db in
+            try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE id = ?", arguments: [record.id])
+        }
+
+        await sessionLogSync.sync()
+
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
+        XCTAssertEqual(fakeGateway.batchCommitCount, commitsAfterFirstSync + 1)
+        XCTAssertTrue(try dataStore.fetchUnsyncedSessionLogs().isEmpty)
+
+        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
+        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
+        XCTAssertEqual(chunk["docId"] as? String, docId)
+        XCTAssertNil(chunk["body"] as? String)
+        XCTAssertNil(chunk["title"] as? String)
+        XCTAssertNil(chunk["snippet"] as? String)
+        XCTAssertNil(chunk["terms"] as? [String])
+        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
+        XCTAssertFalse((chunk["tokenHashes"] as? [String] ?? []).isEmpty)
+        XCTAssertFalse((chunk["semanticHashes"] as? [String] ?? []).isEmpty)
+
+        let orphan = try XCTUnwrap(fakeGateway.documentData(at: orphanChunkPath))
+        XCTAssertEqual(orphan["bodyStorage"] as? String, "firebase_storage_encrypted")
+        XCTAssertEqual(orphan["docId"] as? String, docId)
+        XCTAssertEqual(orphan["orphanedByEncryptedReindex"] as? Bool, true)
+        XCTAssertNil(orphan["body"] as? String)
+        XCTAssertNil(orphan["snippet"] as? String)
+        XCTAssertNil(orphan["terms"] as? [String])
+        XCTAssertTrue((orphan["tokenHashes"] as? [String] ?? ["not-empty"]).isEmpty)
+        XCTAssertTrue((orphan["semanticHashes"] as? [String] ?? ["not-empty"]).isEmpty)
+    }
+
+    func test_sessionLogUpload_incompleteEncryptedManifestReuploadsBeforeScrubbingLegacyChunks() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .factory, sessionId: "incomplete-manifest-session"),
+            provider: .factory,
+            sessionId: "incomplete-manifest-session",
+            projectName: "CheapSync",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 1,
+            userWordCount: 4,
+            assistantWordCount: 4,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Repair missing storage path",
+            lastAssistantMessage: "Done.",
+            fullText: "Stable transcript body with a manifest that lost its encrypted storage path.",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(record)
+
+        let markdown = SessionLogMarkdownFormatter.markdown(for: record)
+        let bodyHash = SHA256.hash(data: Data(markdown.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let docId = SessionLogSyncService.cloudDocumentID(deviceId: "test-device-1", record: record)
+        let manifestPath = "users/test-uid-1/session_logs/\(docId)"
+        let chunkPath = "\(manifestPath)/chunks/0"
+        fakeGateway.setDocumentData([
+            "id": record.id,
+            "sessionId": record.sessionId,
+            "bodyHash": bodyHash,
+            "bodyStorage": "firebase_storage_encrypted",
+            "chunkMetadataVersion": 1,
+            "cloudSearchIndexVersion": 5
+        ], at: manifestPath)
+        fakeGateway.setDocumentData([
+            "index": 0,
+            "sessionId": record.sessionId,
+            "body": "legacy plaintext chunk body",
+            "snippet": "legacy plaintext snippet",
+            "terms": ["legacy", "plaintext"]
+        ], at: chunkPath)
+
+        await sessionLogSync.sync()
+
+        XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
+        XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
+
+        let manifest = try XCTUnwrap(fakeGateway.documentData(at: manifestPath))
+        XCTAssertEqual(manifest["bodyStorage"] as? String, "firebase_storage_encrypted")
+        XCTAssertEqual(manifest["storagePath"] as? String, "session-logs/\(docId).json")
+        XCTAssertNil(manifest["body"] as? String)
+
+        let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
+        XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
+        XCTAssertEqual(chunk["storagePath"] as? String, "session-logs/\(docId).json")
+        XCTAssertNil(chunk["body"] as? String)
+        XCTAssertNil(chunk["snippet"] as? String)
+        XCTAssertNil(chunk["terms"] as? [String])
+        XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
     }
 
     func test_countUnsyncedSessionLogs_tracksDirtyFlags() throws {
