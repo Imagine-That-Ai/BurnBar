@@ -1,0 +1,23 @@
+{
+  "algorithm" : "p256-hkdf-sha256-aesgcm",
+  "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
+  "chunkCiphertext" : "zQkigXXKzxZmUr2r5FziRafduM4OK0wFipvTe\/fHJjHH42\/VVXzNDwdl5G9fhOk=",
+  "chunkKind" : "sse",
+  "chunkPlaintext" : "data: hello mercury",
+  "chunkSequence" : 0,
+  "connectionId" : "c-vector",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
+  "payloadCiphertext" : "TOx3HLZTKS4UTjmPePkVK5A6vHIoOV\/\/v3aQ0hr5qCCLP+gAQYFYhlcq4gdHwrFmrGs1fjQqgUmdMGgFrcFRe9EDutN7D45hluglVPoQzrfD5Vcr5ObykD3L4gOkkN5GIR0q0IJPZwGElLhMtZkqMvPy8rX5hb49eotZ1OCfIDa85ivHoC0EU0sxmyK0mf7tcYhQl7xp",
+  "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+  "plaintextPath" : "\/v1\/chat\/completions",
+  "plaintextSessionId" : "s-vector",
+  "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
+  "recipientPublicKey" : "BBhRI4ZeauvNTdkGvAKEDPUEQUvGhhZb1OXB\/U\/7Z2r0jxx0fau6\/8BetTDJhtAXWXcjzL+eOe8UVVc1nKtsgEo=",
+  "requestAAD" : "OpenBurnBar-HermesRelay-v1|request|u-vector|c-vector|r-vector",
+  "requestId" : "r-vector",
+  "revision" : "v1",
+  "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
+  "uid" : "u-vector",
+  "wrappedKey" : "BB7I8g+x1PwSfHSMREZ95Hfu+6CxzRPgs6b8WQDYnCQEKh1d+u0wFKQz4O9URIc6PdFaWDItkv980I7a7c8OnXf9HpjwMMSzuh7YY7+w9WuG5+gVnG5PP7hbzh8JfrKk3HBeA8Zhc+tL6e1DbyMcgR6viC9i0MVWncwSfbE="
+}

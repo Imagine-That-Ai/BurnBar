@@ -1,11 +1,16 @@
 """Tests for the BurnBar Cloud platform-plugin adapter.
 
-Covers the messaging surface: registration, config, inbound mapping, send,
-attachments, cursor, and oversight/runtime-status.
+Covers the messaging surface (registration, config, inbound mapping, send,
+attachments, cursor, oversight/runtime-status) and the end-to-end relay
+encryption added in PR2: a real seal -> open round-trip against
+``gateway.crypto.relay_e2ee`` proving the agent seals replies to the phone's
+relay public key, opens phone-sealed events with its own key, and refuses
+plaintext once the link is E2E-paired.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import MagicMock
 
@@ -22,6 +27,18 @@ validate_config = _burnbar.validate_config
 is_connected = _burnbar.is_connected
 _env_enablement = _burnbar._env_enablement
 _apply_yaml_config = _burnbar._apply_yaml_config
+
+try:
+    from gateway.crypto import relay_e2ee
+
+    RELAY_CRYPTO_AVAILABLE = True
+except Exception:  # pragma: no cover - cryptography missing in CI slice.
+    relay_e2ee = None
+    RELAY_CRYPTO_AVAILABLE = False
+
+requires_relay = pytest.mark.skipif(
+    not RELAY_CRYPTO_AVAILABLE, reason="cryptography / relay_e2ee unavailable"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +107,7 @@ class _RecordingClient:
 
 
 # ---------------------------------------------------------------------------
-# Registration / config
+# Registration / config (PR1)
 # ---------------------------------------------------------------------------
 def test_platform_enum_resolves_via_plugin_scan():
     from gateway.config import Platform
@@ -172,6 +189,7 @@ def test_adapter_identity_and_defaults(monkeypatch):
     from gateway.config import Platform
 
     monkeypatch.delenv("BURNBAR_API_BASE_URL", raising=False)
+    monkeypatch.delenv("BURNBAR_RELAY_E2E", raising=False)
     cfg = PlatformConfig(enabled=True, extra={"access_token": "tok", "home_channel": "burnbar:phone"})
     adapter = BurnBarAdapter(cfg)
 
@@ -179,6 +197,8 @@ def test_adapter_identity_and_defaults(monkeypatch):
     assert adapter._api_base == _burnbar.DEFAULT_API_BASE_URL
     assert adapter._token == "tok"
     assert adapter._home_channel == "burnbar:phone"
+    # Legacy default: no E2E negotiated -> plaintext path stays available.
+    assert adapter._relay_e2e_enabled is False
 
 
 def test_register_shape_matches_platform_registry():
@@ -202,17 +222,18 @@ def test_register_shape_matches_platform_registry():
 
 
 # ---------------------------------------------------------------------------
-# Inbound mapping + cursor
+# Inbound mapping (legacy plaintext) + cursor (PR1)
 # ---------------------------------------------------------------------------
-def _adapter(monkeypatch, tmp_path):
+def _legacy_adapter(monkeypatch, tmp_path):
     monkeypatch.setattr(_burnbar, "CURSOR_FILE", tmp_path / "cursor.json")
+    monkeypatch.delenv("BURNBAR_RELAY_E2E", raising=False)
     cfg = PlatformConfig(enabled=True, extra={"access_token": "tok", "home_channel": "burnbar:home"})
     return BurnBarAdapter(cfg)
 
 
 @pytest.mark.asyncio
 async def test_inbound_event_maps_to_gateway_message_event(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     received = []
 
     async def capture(event):
@@ -243,7 +264,7 @@ async def test_inbound_event_maps_to_gateway_message_event(tmp_path, monkeypatch
 
 @pytest.mark.asyncio
 async def test_model_switch_event_synthesizes_model_command(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     received = []
 
     async def capture(event):
@@ -273,11 +294,11 @@ def test_cursor_round_trip(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Send happy / error + attachment
+# Send happy / error + attachment (legacy plaintext path)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_send_happy_path_posts_message(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+async def test_send_happy_path_posts_plaintext_when_legacy(tmp_path, monkeypatch):
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     client = _RecordingClient(
         post_responses={"/messages": _FakeResponse({"message": {"id": "msg_1"}})}
     )
@@ -291,11 +312,12 @@ async def test_send_happy_path_posts_message(tmp_path, monkeypatch):
     assert url.endswith("/messages")
     assert body["text"] == "all done"
     assert body["replyToEventId"] == "evt_9"
+    assert "relayEnvelope" not in body
 
 
 @pytest.mark.asyncio
 async def test_send_error_returns_failure(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     client = _RecordingClient(post_responses={"/messages": _FakeResponse(status_code=500)})
     adapter._client = client
 
@@ -306,7 +328,7 @@ async def test_send_error_returns_failure(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_send_local_file_inits_uploads_and_posts(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     f = tmp_path / "report.txt"
     f.write_text("payload-bytes")
     client = _RecordingClient(
@@ -323,10 +345,10 @@ async def test_send_local_file_inits_uploads_and_posts(tmp_path, monkeypatch):
 
     assert result.success is True
     assert result.message_id == "msg_att"
-    # init carried the fileName.
+    # init carried plaintext fileName on the legacy path.
     init_url, init_body = next((u, b) for (u, b) in client.posts if u.endswith("/attachments/init"))
     assert init_body["fileName"] == "report.txt"
-    # body uploaded verbatim to the signed URL.
+    # body uploaded verbatim (no sealing) to the signed URL.
     assert client.puts and client.puts[0][1] == b"payload-bytes"
     # the message references the attachment id.
     _, msg_body = next((u, b) for (u, b) in client.posts if u.endswith("/messages"))
@@ -334,11 +356,11 @@ async def test_send_local_file_inits_uploads_and_posts(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Oversight + runtime status
+# Oversight + runtime status (PR1 reconcile)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_refresh_oversight_mode_reads_state(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     adapter._client = _RecordingClient(
         get_responses={"/state": _FakeResponse({"oversightMode": "autonomous"})}
     )
@@ -349,7 +371,7 @@ async def test_refresh_oversight_mode_reads_state(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_autonomous_oversight_auto_approves(tmp_path, monkeypatch):
-    adapter = _adapter(monkeypatch, tmp_path)
+    adapter = _legacy_adapter(monkeypatch, tmp_path)
     adapter._client = _RecordingClient()
     adapter._oversight_mode = "autonomous"
     resolved = {}
@@ -370,3 +392,199 @@ def test_runtime_status_payload_shape(monkeypatch):
     # When inventory is available it has modelOptions; when not, it's {}.
     if body:
         assert "modelOptions" in body
+
+
+# ---------------------------------------------------------------------------
+# E2E relay (PR2): seal -> open round trip, refuse-plaintext
+# ---------------------------------------------------------------------------
+def _e2e_adapter(monkeypatch, tmp_path, *, peer_public_key=None):
+    """Build an adapter forced into E2E mode with an injected agent identity."""
+    monkeypatch.setattr(_burnbar, "CURSOR_FILE", tmp_path / "cursor.json")
+    monkeypatch.delenv("BURNBAR_RELAY_E2E", raising=False)
+    monkeypatch.delenv("BURNBAR_RELAY_PEER_PUBLIC_KEY", raising=False)
+    cfg = PlatformConfig(enabled=True, extra={"access_token": "tok", "home_channel": "burnbar:home"})
+    adapter = BurnBarAdapter(cfg)
+    # Inject a deterministic agent relay identity (avoid touching ~/.hermes/.env).
+    agent_priv = relay_e2ee.generate_private_key()
+    adapter._relay_identity = relay_e2ee.AgentRelayIdentity(agent_priv)
+    adapter._relay_e2e_enabled = True
+    adapter._relay_uid = "uid-1"
+    adapter._relay_client_id = "client-1"
+    if peer_public_key:
+        adapter._peer_public_key = peer_public_key
+    return adapter, agent_priv
+
+
+@requires_relay
+def test_agent_relay_public_key_is_x963_65_bytes(monkeypatch, tmp_path):
+    import base64
+
+    adapter, agent_priv = _e2e_adapter(monkeypatch, tmp_path)
+    pub_b64 = adapter._relay_public_key_base64()
+    raw = base64.b64decode(pub_b64)
+    assert len(raw) == 65 and raw[0] == 0x04  # X9.63 uncompressed P-256
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_seal_send_then_phone_opens(monkeypatch, tmp_path):
+    """Agent seals its reply to the phone pubkey; the phone opens it."""
+    phone_priv = relay_e2ee.generate_private_key()
+    adapter, _agent = _e2e_adapter(
+        monkeypatch, tmp_path, peer_public_key=phone_priv.public_key_base64()
+    )
+    client = _RecordingClient(post_responses={"/messages": _FakeResponse({"message": {"id": "m1"}})})
+    adapter._client = client
+
+    result = await adapter.send("burnbar:home", "secret reply")
+    assert result.success is True
+
+    _, body = client.posts[-1]
+    # Plaintext is GONE; only the sealed envelope remains.
+    assert "text" not in body
+    env = body["relayEnvelope"]
+    assert env["relayEncryption"] == _burnbar.RELAY_ENCRYPTION
+    assert env["relayKeyVersion"] == _burnbar.RELAY_KEY_VERSION
+    assert body["relayEncryption"] == _burnbar.RELAY_ENCRYPTION
+
+    # The phone unwraps the key + opens the payload using the SAME gateway AAD.
+    message_id = env["messageId"]
+    aad = _burnbar._gateway_message_aad("uid-1", "client-1", message_id)
+    sym = relay_e2ee.unwrap_symmetric_key(env["wrappedKey"], phone_priv, aad)
+    opened = json.loads(relay_e2ee.open_base64(env["payloadCiphertext"], sym, aad).decode())
+    assert opened == {"text": "secret reply"}
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_phone_sealed_event_is_opened_by_agent(monkeypatch, tmp_path):
+    """Phone seals an event to the agent pubkey; the adapter opens it."""
+    adapter, agent_priv = _e2e_adapter(monkeypatch, tmp_path)
+    agent_pub = adapter._relay_public_key_base64()
+
+    # Phone-side seal (mirrors iOS HermesService): wrap to the AGENT pubkey.
+    event_id = "evt_sealed_1"
+    aad = _burnbar._gateway_event_aad("uid-1", "client-1", event_id)
+    sym = relay_e2ee.generate_symmetric_key()
+    payload = json.dumps({"text": "open me", "senderDisplayName": "Phone", "threadId": "t1"}).encode()
+    payload_ct = relay_e2ee.seal_to_base64(payload, sym, aad)
+    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, aad)
+
+    received = []
+
+    async def capture(event):
+        received.append(event)
+
+    adapter.handle_message = capture
+    await adapter._handle_burnbar_event(
+        {
+            "id": event_id,
+            "destinationId": "burnbar:home",
+            "senderId": "burnbar-user",
+            "relayEncryption": _burnbar.RELAY_ENCRYPTION,
+            "relayEnvelope": {
+                "payloadCiphertext": payload_ct,
+                "wrappedKey": wrapped,
+                "relayEncryption": _burnbar.RELAY_ENCRYPTION,
+                "relayKeyVersion": _burnbar.RELAY_KEY_VERSION,
+            },
+        }
+    )
+
+    assert len(received) == 1
+    assert received[0].text == "open me"
+    assert received[0].source.user_name == "Phone"
+    assert received[0].source.thread_id == "t1"
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_refuses_plaintext_event_when_e2e_paired(monkeypatch, tmp_path):
+    """A legacy plaintext event arriving on an E2E link is dropped, not leaked."""
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path)
+    received = []
+
+    async def capture(event):
+        received.append(event)
+
+    adapter.handle_message = capture
+    await adapter._handle_burnbar_event(
+        {"id": "evt_plain", "destinationId": "burnbar:home", "text": "plaintext sneaking in"}
+    )
+    # Dropped: never surfaced to Hermes.
+    assert received == []
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_refuses_send_when_e2e_but_no_peer_key(monkeypatch, tmp_path):
+    """When E2E is on but we hold no phone pubkey, send refuses with a clear error."""
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path)  # no peer key
+    adapter._peer_public_key = None
+    adapter._client = _RecordingClient()
+
+    result = await adapter.send("burnbar:home", "would-be-plaintext")
+    assert result.success is False
+    assert "upgrade BurnBar" in (result.error or "")
+    # Nothing was posted.
+    assert all(not u.endswith("/messages") for (u, _b) in adapter._client.posts)
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_seal_attachment_round_trip(monkeypatch, tmp_path):
+    """Attachment bytes + filename are sealed; the phone opens both."""
+    phone_priv = relay_e2ee.generate_private_key()
+    adapter, _agent = _e2e_adapter(
+        monkeypatch, tmp_path, peer_public_key=phone_priv.public_key_base64()
+    )
+    f = tmp_path / "diagram.png"
+    f.write_bytes(b"\x89PNG-binary-body")
+    client = _RecordingClient(
+        post_responses={
+            "/attachments/init": _FakeResponse(
+                {"attachment": {"id": "att_e2e"}, "uploadURL": "https://signed.example/put"}
+            ),
+            "/messages": _FakeResponse({"message": {"id": "m_att"}}),
+        }
+    )
+    adapter._client = client
+
+    result = await adapter.send_document("burnbar:home", str(f), caption="")
+    assert result.success is True
+
+    # init carried a sealed envelope, NOT a plaintext fileName.
+    _, init_body = next((u, b) for (u, b) in client.posts if u.endswith("/attachments/init"))
+    assert "fileName" not in init_body
+    env = init_body["relayEnvelope"]
+    attachment_id = env["attachmentId"]
+
+    # Uploaded body is ciphertext (not the raw PNG bytes).
+    upload_url, uploaded, _hdrs = client.puts[0]
+    assert uploaded != b"\x89PNG-binary-body"
+
+    # Phone unwraps the body key with the attachment-KEY AAD, then opens both the
+    # manifest (payloadCiphertext) and the body with the attachment-BODY AAD.
+    key_aad = _burnbar._gateway_attachment_key_aad("uid-1", "client-1", attachment_id)
+    body_aad = _burnbar._gateway_attachment_body_aad("uid-1", "client-1", attachment_id)
+    body_key = relay_e2ee.unwrap_symmetric_key(env["wrappedKey"], phone_priv, key_aad)
+    manifest = json.loads(relay_e2ee.open_base64(env["payloadCiphertext"], body_key, body_aad).decode())
+    assert manifest["fileName"] == "diagram.png"
+    assert manifest["byteCount"] == len(b"\x89PNG-binary-body")
+    opened_body = relay_e2ee.open_base64(uploaded.decode("ascii"), body_key, body_aad)
+    assert opened_body == b"\x89PNG-binary-body"
+
+
+@requires_relay
+def test_gateway_aad_is_locked_wire_prefix():
+    """The gateway AAD bytes match the locked CONTRACT prefix verbatim."""
+    assert _burnbar._gateway_event_aad("u", "c", "e") == b"OpenBurnBar-HermesRelay-v1|gatewayEvent|u|c|e"
+    assert _burnbar._gateway_message_aad("u", "c", "m") == b"OpenBurnBar-HermesRelay-v1|gatewayMessage|u|c|m"
+    assert (
+        _burnbar._gateway_attachment_body_aad("u", "c", "a")
+        == b"OpenBurnBar-HermesRelay-v1|gatewayAttachmentBody|u|c|a"
+    )
+    assert (
+        _burnbar._gateway_attachment_key_aad("u", "c", "a")
+        == b"OpenBurnBar-HermesRelay-v1|gatewayAttachmentKey|u|c|a"
+    )

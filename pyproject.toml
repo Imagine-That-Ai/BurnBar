@@ -121,6 +121,16 @@ matrix = ["mautrix[encryption]==0.21.0", "aiosqlite==0.22.1", "asyncpg==0.31.0",
 # and XXE. aiohttp/httpx are already in [messaging]; defusedxml lands
 # here to keep the dependency local to wecom_callback's threat model.
 wecom = ["defusedxml==0.7.1"]
+# Gateway end-to-end relay encryption (gateway/crypto/relay_e2ee.py). Seals
+# BurnBar / PiAgent relay payloads to the peer's P-256 public key so the relay
+# server only store-and-forwards ciphertext. `cryptography` is already in
+# uv.lock transitively (alibabacloud/azure deps pin 46.0.7); this extra makes
+# the dependency explicit and lazy-loadable for installs that enable the
+# BurnBar gateway. Range (>=46) — not an exact pin — because the relay byte
+# format is stable ABI (AES-256-GCM / P-256 / HKDF-SHA256) and we want this
+# leg to track security patches; the core `dependencies` exact-pin policy
+# (top of file) deliberately does not extend to opt-in extras.
+gateway-e2ee = ["cryptography>=46"]
 cli = ["simple-term-menu==1.6.6"]
 tts-premium = ["elevenlabs==1.59.0"]
 voice = [
